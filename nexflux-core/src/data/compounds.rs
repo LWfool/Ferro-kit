@@ -1,8 +1,8 @@
-//! 常用化合物参考数据
+//! Reference data for common compounds.
 //!
-//! 主要用于 nexflux-structure 中根据分子数和密度估算初始模拟盒子大小。
-//! 密度单位：g/cm³（标准状态，25 °C）；气体密度为 None。
-//! 分子量单位：g/mol。
+//! Used by `nexflux-structure` to estimate the initial simulation box size from molecule counts and density.
+//! Density unit: g/cm³ (standard conditions, 25 °C); `None` for gases.
+//! Molecular mass unit: g/mol.
 
 pub struct CompoundData {
     /// 常用名称（小写，用于查找）

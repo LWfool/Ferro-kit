@@ -1,9 +1,9 @@
-//! 结构因子 S(q) 计算与输出
+//! Structure factor S(q) calculation and output.
 //!
-//! 工作流：先计算 g(r)（`calc_gr`），再调用 `calc_sq_from_gr` 得到 S(q)。
-//! 输出两个文件：`.gr`（由 gr 模块负责）和 `.sq`（本模块负责）。
+//! Workflow: compute g(r) first (`calc_gr`), then call `calc_sq_from_gr` to obtain S(q).
+//! Output: two files — `.gr` (written by the gr module) and `.sq` (written here).
 //!
-//! 公式（Faber-Ziman，code2/dump2sq.c CalcSq）：
+//! Formula (Faber-Ziman, from code2/dump2sq.c CalcSq):
 //!   S_ij(q) = 1 + (4πρ/q) Σ_r r[g_ij(r)−1] sin(qr) Δr
 
 use super::gr::{sorted_keys, GrResult, VERSION};

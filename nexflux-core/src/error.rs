@@ -1,4 +1,4 @@
-//! 错误类型定义
+//! Error type definitions.
 
 use thiserror::Error;
 

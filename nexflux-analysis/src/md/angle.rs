@@ -1,17 +1,18 @@
-//! 键角分布 (bond angle distribution) 计算与输出
+//! Bond angle distribution calculation and output.
 //!
-//! 三原子角 A-B-C，B 为中心原子。
-//! "All" 模式：自动枚举所有化学元素三元组。
+//! Three-atom angle A-B-C with B as the center atom.
+//! Automatically enumerates all chemical element triplets.
 //!
-//! 规范 key "ElemA-ElemB-ElemC"：
-//!   - B 始终为中心；两端按原子序数升序，Z(A) ≤ Z(C)
-//!   - 同一端相同元素（如 Si-O-Si）不会重复计数：枚举时要求 A_idx < C_idx
+//! Canonical key `"ElemA-ElemCenter-ElemC"`:
+//!   - B is always the center; endpoints sorted by atomic number, Z(A) ≤ Z(C).
+//!   - Symmetric pairs (e.g. Si-O-Si) are not double-counted: enumeration requires A_idx < C_idx.
 //!
-//! rcut_ab：低 Z 端(A)到中心截断；rcut_bc：高 Z 端(C)到中心截断。
-//! 两端元素相同时使用 min(rcut_ab, rcut_bc)。
+//! `rcut_ab`: cutoff from the lower-Z end atom (A) to center.
+//! `rcut_bc`: cutoff from the higher-Z end atom (C) to center.
+//! When both end atoms are the same element, `min(rcut_ab, rcut_bc)` is used.
 //!
-//! 并行策略：以帧为粒度 par_iter().fold().reduce()，同 gr.rs。
-//! 算法参考：code1/angle.c (EstimateAngle)。
+//! Parallelism: per-frame `par_iter().fold().reduce()`, same pattern as gr.rs.
+//! Algorithm reference: code1/angle.c (`EstimateAngle`).
 
 use nalgebra::{Matrix3, Vector3};
 use rayon::prelude::*;
@@ -22,8 +23,8 @@ use super::gr::{VERSION, elem_z};
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
-/// 构造规范三元组 key："ElemA-ElemCenter-ElemC"，Z(A) ≤ Z(C)。
-/// Z 相同时按字符串字典序排（保证伪元素标签的确定性顺序）。
+/// Construct a canonical triplet key `"ElemA-ElemCenter-ElemC"` with Z(A) ≤ Z(C).
+/// When Z values are equal, lexicographic order is used to guarantee deterministic ordering for pseudo-element labels.
 pub(crate) fn canonical_triplet(a: &str, b: &str, c: &str) -> String {
     // 先比较 Z，Z 相同时按字符串字典序决定顺序
     let swap = match elem_z(a).cmp(&elem_z(c)) {
@@ -34,8 +35,8 @@ pub(crate) fn canonical_triplet(a: &str, b: &str, c: &str) -> String {
     if swap { format!("{}-{}-{}", c, b, a) } else { format!("{}-{}-{}", a, b, c) }
 }
 
-/// 按 (Z_center, center_label, Z_left, left_label, Z_right, right_label) 排序三元组 key。
-/// 二级字符串排序确保同 Z 的伪元素标签顺序确定。
+/// Sort triplet keys by (Z_center, center_label, Z_left, left_label, Z_right, right_label).
+/// Secondary string ordering ensures deterministic ordering for pseudo-element labels sharing the same Z.
 fn sort_triplet_keys(map: &BTreeMap<String, Vec<u64>>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
     keys.sort_by(|ka, kb| {

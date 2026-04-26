@@ -1,7 +1,8 @@
-//! CubeData — Gaussian cube 文件的完整数据载体
+//! `CubeData` — complete data carrier for a Gaussian cube file.
 //!
-//! Cube 文件包含两部分：原子结构（单帧）和三维体积数据（电子密度、波函数等）。
-//! 两者不可分离，故用独立结构体承载，不污染通用的 [`Frame`]。
+//! A cube file contains two inseparable parts: the atomic structure (single frame) and
+//! 3-D volumetric data (electron density, wavefunction, etc.).
+//! A dedicated struct is used to avoid polluting the general-purpose [`Frame`].
 
 use ndarray::Array3;
 use nalgebra::{Matrix3, Vector3};

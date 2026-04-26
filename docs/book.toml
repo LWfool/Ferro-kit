@@ -1,0 +1,26 @@
+[book]
+title = "nexflux Documentation"
+authors = ["nexflux developers"]
+language = "en"
+src = "src"
+
+[output.html]
+mathjax-support = true
+
+[output.pandoc]
+hosted-html = "https://nexflux.github.io/nexflux"
+
+[output.pandoc.profile.pdf]
+output-file = "nexflux.pdf"
+to = "latex"
+pdf-engine = "xelatex"
+
+[output.pandoc.profile.pdf.variables]
+fontsize = "11pt"
+geometry = "margin=2.5cm"
+colorlinks = true
+linkcolor = "NavyBlue"
+urlcolor = "NavyBlue"
+toc = true
+toc-depth = 3
+numbersections = true

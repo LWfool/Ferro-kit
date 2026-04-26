@@ -57,11 +57,11 @@ pub struct CubeRadiusResult {
 
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
 
-/// 计算每个轴方向的 voxel 搜索半径。
+/// Compute the voxel search extent along each crystal axis.
 ///
-/// 由 `frac = (M^T)^{-1} * cart` 可知，第 i 行向量的范数决定了
-/// 当 Cartesian 距离为 `radius` 时分数坐标第 i 分量的最大偏移量。
-/// 乘以对应的 voxel 数并向上取整，再加 1 作为安全裕量。
+/// From `frac = (M^T)^{-1} * cart`, the norm of row i of `(M^T)^{-1}` gives the maximum
+/// fractional-coordinate offset in direction i when the Cartesian distance equals `radius`.
+/// Multiply by the voxel count along that axis, ceil, and add 1 as a safety margin.
 fn search_range(
     mat: &Matrix3<f64>,
     radius: f64,

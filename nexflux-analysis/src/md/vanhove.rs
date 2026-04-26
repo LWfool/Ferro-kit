@@ -1,15 +1,16 @@
-//! van Hove 自相关函数 Gs(r, τ) 计算与输出
+//! Van Hove self-correlation function Gs(r, τ) calculation and output.
 //!
-//! Gs(r, τ) 给出原子在时间间隔 τ 内位移距离为 r 的概率分布（离散 PMF，sum = 1）。
+//! Gs(r, τ) gives the probability distribution of atomic displacement distances over time interval τ
+//! (discrete PMF, sum = 1).
 //!
-//! 工作流：`calc_vanhove` → `write_vanhove`。
-//! 算法参考 code1/vanhove.c (`EstimateVanHove`)：
-//!   1. 分数坐标转换 + unwrap（与 msd.rs 相同）
-//!   2. 转回 Cartesian 绝对坐标
-//!   3. 对每个 time origin p，计算 |r(p+τ) − r(p)| 并统计直方图
-//!   4. 归一化：g[i] /= n_origins × n_atoms
+//! Workflow: `calc_vanhove` → `write_vanhove`.
+//! Algorithm follows code1/vanhove.c (`EstimateVanHove`):
+//!   1. Fractional coordinate conversion + unwrapping (identical to msd.rs).
+//!   2. Convert back to absolute Cartesian coordinates.
+//!   3. For each time origin p, compute |r(p+τ) − r(p)| and accumulate into a histogram.
+//!   4. Normalise: gs[i] /= n_origins × n_atoms.
 //!
-//! 并行策略：以 time origin 为粒度 par_iter，各 origin 独立计算后 reduce 合并。
+//! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;

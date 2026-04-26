@@ -1,4 +1,4 @@
-//! 轨迹数据结构
+//! Trajectory data structure.
 
 use serde::{Deserialize, Serialize};
 

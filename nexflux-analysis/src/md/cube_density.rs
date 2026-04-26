@@ -1,20 +1,20 @@
-//! 空间密度分布（cube 格式）
+//! Spatial density distribution (Gaussian cube format).
 //!
-//! 将模拟盒子划分为 nx×ny×nz 的网格，统计选定原子在每个格子中的
-//! 时间平均分布，支持三种模式：
-//!   - `Density`  — 原子数密度 [atoms/Å³]
-//!   - `Velocity` — 每格子内原子平均速度大小 [Å/fs]（需要 frame.velocities）
-//!   - `Force`    — 每格子内原子平均受力大小 [eV/Å]（需要 frame.forces）
+//! Divides the simulation box into an nx×ny×nz grid and accumulates the time-averaged
+//! distribution of selected atoms in each voxel.  Three modes are supported:
+//!   - `Density`  — atomic number density \[atoms/Å³\]
+//!   - `Velocity` — average speed |v| per voxel \[Å/fs\] (requires `frame.velocities`)
+//!   - `Force`    — average force magnitude |f| per voxel \[eV/Å\] (requires `frame.forces`)
 //!
-//! 输出为 [`CubeData`]，可直接用 `nexflux_io::write_cube` 写出 Gaussian cube 文件，
-//! 供 VESTA / VMD 等软件可视化。
+//! Output is a [`CubeData`] that can be written directly via `nexflux_io::write_cube`
+//! to produce a Gaussian cube file for visualisation in VESTA, VMD, etc.
 //!
-//! **CLI 参数**（供未来 nexflux-cli 接入，记录在此）：
-//!   `--elements Li,Na`              — 只统计指定元素（默认全部）
-//!   `--grid 50 50 50`               — 网格划分数量（默认 50×50×50）
-//!   `--mode density|velocity|force` — 统计模式（默认 density）
+//! **CLI parameters** (for future nexflux-cli integration):
+//!   `--elements Li,Na`              — include only specified elements (default: all)
+//!   `--grid 50 50 50`               — grid dimensions (default: 50×50×50)
+//!   `--mode density|velocity|force` — accumulation mode (default: density)
 //!
-//! 并行策略：以帧为粒度 `par_iter`，各帧独立生成 (count, value_sum)，再 reduce 合并。
+//! Parallelism: per-frame `par_iter`; each frame independently produces (count, value_sum) arrays, then reduced.
 
 use nexflux_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};

@@ -1,14 +1,14 @@
-//! 单位换算
+//! Unit conversion utilities.
 //!
-//! 内部统一单位（DeePMD-kit / VASP 标准）：
-//! - 长度：Å
-//! - 能量：eV
-//! - 力：eV/Å
-//! - 应力：eV/Å³
-//! - 时间：fs
-//! - 质量：amu
-//! - 电荷：e
-//! - 温度：K
+//! Internal standard units (DeePMD-kit / VASP convention):
+//! - Length: Å
+//! - Energy: eV
+//! - Force: eV/Å
+//! - Stress: eV/Å³
+//! - Time: fs
+//! - Mass: amu
+//! - Charge: e
+//! - Temperature: K
 
 // ── 物理常数 ──────────────────────────────────────────────────────────────────
 

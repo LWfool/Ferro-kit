@@ -1,11 +1,11 @@
-//! nexflux-core — 核心数据结构与工具
+//! nexflux-core — core data structures and utilities.
 //!
-//! 层次结构：
+//! Type hierarchy:
 //! ```text
 //! Trajectory (Vec<Frame>)
-//!   └── Frame  (atoms + cell + pbc + 计算结果)
-//!         └── Atom (element + position + 可选属性)
-//!               └── data::elements (静态元素表，用于质量查找)
+//!   └── Frame  (atoms + cell + pbc + computed results)
+//!         └── Atom (element + position + optional properties)
+//!               └── data::elements (static element table, used for mass lookup)
 //! ```
 
 pub mod atom;
@@ -17,7 +17,7 @@ pub mod data;
 pub mod units;
 pub mod error;
 
-// 顶层重导出，方便下游 crate 使用
+// top-level re-exports for downstream crates
 pub use atom::Atom;
 pub use cell::Cell;
 pub use frame::Frame;

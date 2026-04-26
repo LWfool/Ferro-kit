@@ -1,14 +1,14 @@
-//! Qn 物种分布计算。
+//! Qn speciation calculation.
 //!
-//! Qn 标记定义：
-//! - n = 该中心（former）原子的所有配体中，属于"桥接"类型（BO / OBO）的数量
-//! - mX = n 个桥接配体中，通过异元素 former X（X ≠ center）桥接的数量
+//! Qn label definition:
+//! - n = number of ligands bonded to the center (former) atom that are of "bridging" type (BO or OBO)
+//! - mX = number of those n bridging ligands that bridge through a heterogeneous former X (X ≠ center)
 //!
-//! 标签格式：
+//! Label format:
 //! - `Q0`
-//! - `Q3(0Al)` — 3 个桥接配体，0 个通过 Al 桥接（全部是 P-O-P）
-//! - `Q3(2Al)` — 3 个桥接配体，其中 2 个是 P-O-Al 桥
-//! - 若有多种异元素：`Q4(1Al,2Si)` （字母序）
+//! - `Q3(0Al)` — 3 bridging ligands, 0 bridging through Al (all are P-O-P)
+//! - `Q3(2Al)` — 3 bridging ligands, 2 of which are P-O-Al bridges
+//! - Multiple heterogeneous formers: `Q4(1Al,2Si)` (alphabetical order)
 
 use nexflux_core::Frame;
 use std::collections::HashMap;

@@ -1,4 +1,4 @@
-//! 原子数据结构
+//! Atom data structure.
 
 use nalgebra::Vector3;
 use serde::{Deserialize, Serialize};

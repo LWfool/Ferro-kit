@@ -1,4 +1,4 @@
-//! 逐原子配位数（CN）计算。
+//! Per-atom coordination number (CN) calculation.
 
 use nexflux_core::{Cell, Frame};
 use std::collections::HashMap;

@@ -1,13 +1,13 @@
-//! 均方位移 (MSD) 计算与输出
+//! Mean squared displacement (MSD) calculation and output.
 //!
-//! 工作流：`calc_msd` → `write_msd`。
-//! 算法参考 code1/msd.c (`EstimateMSD`)：
-//!   1. 将各帧 Cartesian 坐标转换为分数坐标
-//!   2. Unwrap：逐步检测分数坐标跳变（|Δ| > 0.5），修正跨边界位移
-//!   3. 时间平移平均（time-shift averaging）：step=shift，window=tau
-//!   4. NPT 支持：total MSD 使用 origin 与 endpoint 盒子矩阵的平均值
+//! Workflow: `calc_msd` → `write_msd`.
+//! Algorithm follows code1/msd.c (`EstimateMSD`):
+//!   1. Convert each frame's Cartesian coordinates to fractional coordinates.
+//!   2. Unwrap: detect fractional-coordinate jumps (|Δ| > 0.5) and correct cross-boundary displacements.
+//!   3. Time-shift averaging: step = shift, window = tau.
+//!   4. NPT support: total MSD uses the average of the origin- and endpoint-frame cell matrices.
 //!
-//! 并行策略：以 time origin 为粒度 par_iter，各 origin 独立计算后 reduce 合并。
+//! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
@@ -66,9 +66,10 @@ pub struct MsdResult {
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
-/// 原地 unwrap 分数坐标，解除周期性边界的跳变。
+/// Unwrap fractional coordinates in-place to remove periodic-boundary jumps.
 ///
-/// 逐步检查相邻帧间分数坐标差值：|Δ| > 0.5 表示跨越了边界，用 round() 修正。
+/// Checks the fractional-coordinate difference between adjacent frames:
+/// |Δ| > 0.5 indicates a boundary crossing; corrected by subtracting round(Δ).
 pub(super) fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
     let n_steps = frac.len();
     if n_steps < 2 { return; }
@@ -136,7 +137,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> Option<MsdResult> {
     }
 }
 
-/// 周期边界 MSD（通过分数坐标路径，以 time origin 为单位并行）
+/// MSD for periodic boundary conditions (fractional-coordinate unwrapping path, parallelised per time origin).
 fn calc_msd_periodic(
     traj: &Trajectory,
     atom_indices: &[usize],
@@ -216,7 +217,7 @@ fn calc_msd_periodic(
     Some(build_result(accum, tau, n_origins, n_atoms, elements, params))
 }
 
-/// 非周期（分子）MSD（直接使用 Cartesian 坐标，以 time origin 为单位并行）
+/// MSD for non-periodic (molecular) systems (Cartesian coordinates directly, parallelised per time origin).
 fn calc_msd_nonperiodic(
     traj: &Trajectory,
     atom_indices: &[usize],
@@ -277,7 +278,7 @@ fn calc_msd_nonperiodic(
     Some(build_result(accum, tau, n_origins, n_atoms, elements, params))
 }
 
-/// 从累积数组构建 MsdResult
+/// Build an `MsdResult` from the parallel-reduction accumulation array.
 fn build_result(
     accum: Vec<[f64; 4]>,
     tau: usize,

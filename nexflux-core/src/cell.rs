@@ -1,4 +1,4 @@
-//! 晶格（周期性盒子）
+//! Lattice (periodic simulation box).
 
 use nalgebra::{Matrix3, Vector3};
 use serde::{Deserialize, Serialize};

@@ -1,4 +1,4 @@
-//! 文件读取模块
+//! File reader modules.
 
 pub mod xyz;
 pub mod pdb;

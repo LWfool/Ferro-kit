@@ -1,4 +1,4 @@
-//! 配体原子分类：FO / NBO(X) / BO(X-Y) / OBO(X-Y-Z)
+//! Ligand atom classification: FO / NBO(X) / BO(X-Y) / OBO(X-Y-Z).
 
 use nexflux_core::{Cell, Frame};
 use std::collections::HashMap;

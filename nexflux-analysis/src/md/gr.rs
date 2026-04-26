@@ -1,14 +1,14 @@
-//! 径向分布函数 g(r) 计算与输出
+//! Radial distribution function g(r) calculation and output.
 //!
-//! 设计参考：
-//!   - 参数风格参照 code1/gr.c（GrParams 结构体对应 DR/RMAX/RMIN/RCUT 宏）
-//!   - 多组分 partial g(r) 和有向 CN 参照 code2/dump2sq.c 的 CalcCn_pp + CalcGr
+//! Design reference:
+//!   - Parameter style follows code1/gr.c (GrParams fields map to DR/RMAX/RMIN/RCUT macros)
+//!   - Multi-component partial g(r) and directed CN follow code2/dump2sq.c CalcCn_pp + CalcGr
 //!
-//! 列顺序：按元素原子序数（周期表顺序）排列。
+//! Column ordering: sorted by atomic number (periodic table order).
 //!
-//! 两种语义的 key：
-//!   - `gr`  — 对称对 "El1-El2"，Z(El1) ≤ Z(El2)
-//!   - `cn`  — **有向对** "center-neighbor"；对于 A≠B，"A-B" 与 "B-A" 分别独立，CN 不同
+//! Two key semantics:
+//!   - `gr`  — symmetric pair `"El1-El2"` with Z(El1) ≤ Z(El2)
+//!   - `cn`  — **directed pair** `"center-neighbor"`; for A≠B, `"A-B"` and `"B-A"` are independent with different CN values
 
 use nexflux_core::Trajectory;
 use rayon::prelude::*;
@@ -20,13 +20,13 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
 
-/// 查询原子序数，支持伪元素标签（如 "Onb"、"P1"、"Fe2"）。
+/// Look up the atomic number for an element symbol, including pseudo-element labels (e.g. "Onb", "P1", "Fe2").
 ///
-/// 匹配策略（依次尝试）：
-///   1. 精确匹配（"Fe" → 26, "O" → 8）
-///   2. 前2字节（首字大写 + 次字小写）→ 化学符号（"Onb" → try "On" → not found; "Fe1" → try "Fe" → 26）
-///   3. 首字节（大写字母）→ 单字符元素（"Onb" → "O" → 8, "P1" → "P" → 15）
-///   4. 未识别 → 255（排到末尾，按字符串二级排序）
+/// Matching strategy (tried in order):
+///   1. Exact match ("Fe" → 26, "O" → 8).
+///   2. First two bytes (uppercase + lowercase) as a chemical symbol ("Fe1" → try "Fe" → 26).
+///   3. First byte (uppercase letter) as a single-character element ("Onb" → "O" → 8, "P1" → "P" → 15).
+///   4. Unrecognised → 255 (sorted to end, with string secondary ordering).
 pub(super) fn elem_z(symbol: &str) -> u8 {
     use nexflux_core::data::elements::by_symbol;
     if let Some(e) = by_symbol(symbol) { return e.atomic_number; }
@@ -40,7 +40,7 @@ pub(super) fn elem_z(symbol: &str) -> u8 {
     255
 }
 
-/// 将 "El1-El2" key 拆分为 (El1, El2)
+/// Split a `"El1-El2"` key into `(El1, El2)`.
 fn split_pair(key: &str) -> (&str, &str) {
     key.split_once('-').unwrap_or((key, ""))
 }
@@ -226,12 +226,12 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
             (ha, ca, va + vb)
         });
 
-    // ── 归一化 ──────────────────────────────────────────────────────────────
+    // ── normalisation ───────────────────────────────────────────────────────
     let n_frames = traj.frames.len();
     let avg_volume = total_volume / n_frames as f64;
     if avg_volume <= 0.0 { return None; }
 
-    // 第一帧各元素原子数
+    // atom counts per element from first frame
     let mut type_counts = vec![0.0f64; n_types];
     let mut element_counts: BTreeMap<String, usize> = BTreeMap::new();
     for atom in &first_frame.atoms {
@@ -251,14 +251,14 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
     let mut gr_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     let mut cn_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
-    // ── partial g(r) + 有向 CN ───────────────────────────────────────────
-    // 归一化公式（code2 CalcGr）：
-    //   同种 (A=A)：g = 2·cr / (4πr²Δr·(N_A-1)/V·N_A·steps)
-    //   异种 (A-B)：g = cr  / (4πr²Δr·N_B/V·N_A·steps)
+    // ── partial g(r) + directed CN ──────────────────────────────────────
+    // Normalisation formula (code2 CalcGr):
+    //   Same type (A=A): g = 2·cr / (4πr²Δr·(N_A-1)/V·N_A·steps)
+    //   Different type (A-B): g = cr  / (4πr²Δr·N_B/V·N_A·steps)
     //
-    // 有向 CN：
+    // Directed CN:
     //   CN("A-B") = Σ_{bins} [count_AB / N_A / steps] * multiplicity
-    //   CN("B-A") = Σ_{bins} [count_AB / N_B / steps]  （仅异种对）
+    //   CN("B-A") = Σ_{bins} [count_AB / N_B / steps]  (heterogeneous pairs only)
     for (pidx, &(ti, tj)) in pairs.iter().enumerate() {
         let n_a = type_counts[ti];
         let n_b = type_counts[tj];

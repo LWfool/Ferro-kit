@@ -1,30 +1,32 @@
-//! 团簇空间分布函数（Cluster SDF）— mol-cube 第四模式
+//! Cluster spatial distribution function (Cluster SDF) — fourth mode of mol-cube.
 //!
-//! 从 MD 轨迹中识别指定 Qn 等级的磷酸盐团簇（按连通分量的最高个人 Qn 划分），
-//! 对每个团簇做刚体对齐（Kabsch + P 原子排列枚举），在局部笛卡尔坐标系叠加统计
-//! 各原子类型的三维概率密度，按签名分组输出 Gaussian cube 格式。
+//! Identifies phosphate clusters of the specified Qn level from an MD trajectory
+//! (partitioned by the highest individual Qn within a connected component), performs
+//! rigid-body alignment (Kabsch + P-atom permutation enumeration) for each cluster,
+//! and accumulates 3-D probability densities per atom type in a local Cartesian frame.
+//! Results are grouped by signature and written in Gaussian cube format.
 //!
-//! **签名**：同一帧内团簇的原子类型组合（如 `"Ob:3|On:6|P1:3|P3:1|Zn:2"`），
-//! 相同签名归为同一 family，各自取第一个团簇为参考结构。
+//! **Signature**: the atom-type composition of a cluster (e.g. `"Ob:3|On:6|P1:3|P3:1|Zn:2"`).
+//! Clusters with the same signature form one family; the first cluster encountered serves as the reference structure.
 //!
-//! **对齐策略**：
-//! - Q0（单 P）：枚举所有 O 原子排列（≤4! = 24），Kabsch 对齐 O 原子
-//! - Q1/Q2/Q3：枚举同标签 P 原子组内的所有排列（≤3! = 6），Kabsch 对齐 P 原子
+//! **Alignment strategy**:
+//! - Q0 (single P): enumerate all O-atom permutations (≤ 4! = 24), Kabsch-align on O atoms.
+//! - Q1/Q2/Q3: enumerate permutations within same-label P-atom groups (≤ 3! = 6), Kabsch-align on P atoms.
 //!
-//! **RMSD 质检**：对齐后计算 P 原子（Q0 时为所有 O）的均方根偏差；
-//! 超过 `rmsd_warn_threshold` 时打印警告，提示该团簇结构异常。
+//! **RMSD quality check**: after alignment, compute the RMSD of P atoms (or all O atoms for Q0).
+//! If RMSD exceeds `rmsd_warn_threshold`, a warning is printed flagging the cluster as a structural outlier.
 //!
-//! CLI 参数（供 nexflux-cli 接入）：
-//!   `--qn 3`             — 目标 Qn 等级 (0/1/2/3)
-//!   `--former P`         — 网络形成体元素
-//!   `--ligand O`         — 配体元素
-//!   `--cutoff-fl 2.4`    — former-ligand 截断半径 [Å]
-//!   `--modifier Zn`      — 修饰体元素（可省略）
-//!   `--cutoff-ml 2.8`    — modifier-ligand 截断半径 [Å]
-//!   `--grid-res 0.1`     — 网格分辨率 [Å/voxel]
-//!   `--sigma 1.5`        — 高斯展宽 [voxels]
-//!   `--padding 3.0`      — 网格边界留白 [Å]
-//!   `--rmsd-warn 0.5`    — RMSD 警告阈值 [Å]
+//! CLI parameters (for nexflux-cli integration):
+//!   `--qn 3`             — target Qn level (0/1/2/3)
+//!   `--former P`         — network-former element
+//!   `--ligand O`         — bridging-ligand element
+//!   `--cutoff-fl 2.4`    — former–ligand cutoff radius \[Å\]
+//!   `--modifier Zn`      — modifier cation element (optional)
+//!   `--cutoff-ml 2.8`    — modifier–ligand cutoff radius \[Å\]
+//!   `--grid-res 0.1`     — grid resolution \[Å/voxel\]
+//!   `--sigma 1.5`        — Gaussian broadening sigma \[voxels\]
+//!   `--padding 3.0`      — grid boundary margin \[Å\]
+//!   `--rmsd-warn 0.5`    — RMSD warning threshold \[Å\]
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -38,28 +40,28 @@ use petgraph::{
 
 // ─── 公开参数 ─────────────────────────────────────────────────────────────────
 
-/// 团簇 SDF 计算参数。
+/// Parameters for the cluster SDF calculation.
 #[derive(Debug, Clone)]
 pub struct ClusterSdfParams {
-    /// 网络形成体元素，如 `"P"`
+    /// Network-former element symbol, e.g. `"P"`
     pub former: String,
-    /// 配体元素，如 `"O"`
+    /// Bridging-ligand element symbol, e.g. `"O"`
     pub ligand: String,
-    /// 目标团簇 Qn 等级（0/1/2/3）；以连通分量内最高个人 Qn 判定
+    /// Target cluster Qn level (0/1/2/3); determined by the highest individual Qn in the connected component
     pub target_qn: u8,
-    /// former-ligand 截断半径 [Å]
+    /// Former–ligand cutoff radius \[Å\]
     pub former_ligand_cutoff: f64,
-    /// 修饰体元素（如 `Some("Zn")`），`None` 则不纳入团簇
+    /// Modifier cation element (e.g. `Some("Zn")`); `None` excludes modifier atoms from the cluster
     pub modifier: Option<String>,
-    /// modifier-ligand 截断半径 [Å]（`modifier` 为 `None` 时忽略）
+    /// Modifier–ligand cutoff radius \[Å\] (ignored when `modifier` is `None`)
     pub modifier_cutoff: f64,
-    /// 网格分辨率 [Å/voxel]
+    /// Grid resolution \[Å/voxel\]
     pub grid_res: f64,
-    /// 高斯展宽 sigma [voxels]
+    /// Gaussian broadening sigma \[voxels\]
     pub sigma: f64,
-    /// 网格边界额外留白 [Å]
+    /// Grid boundary margin \[Å\]
     pub padding: f64,
-    /// RMSD 超过此值时打印警告 [Å]
+    /// RMSD threshold above which a warning is printed \[Å\]
     pub rmsd_warn_threshold: f64,
 }
 
@@ -82,54 +84,54 @@ impl Default for ClusterSdfParams {
 
 // ─── 公开结果 ─────────────────────────────────────────────────────────────────
 
-/// 对齐质量统计（仅含参与对齐的骨架原子的 RMSD）。
+/// Alignment quality statistics (RMSD computed over the scaffold atoms used for alignment).
 #[derive(Debug, Clone, Default)]
 pub struct RmsdStats {
     pub mean: f64,
     pub max: f64,
-    /// 超出 `rmsd_warn_threshold` 的团簇数
+    /// Number of clusters that exceeded `rmsd_warn_threshold`
     pub n_warned: usize,
 }
 
-/// 同签名（相同原子类型组合）团簇的 SDF 结果。
+/// SDF result for a group of clusters sharing the same signature (identical atom-type composition).
 #[derive(Debug)]
 pub struct ClusterFamily {
-    /// 签名字符串，如 `"Ob:3|On:6|P1:3|P3:1|Zn:2"`
+    /// Signature string, e.g. `"Ob:3|On:6|P1:3|P3:1|Zn:2"`
     pub signature: String,
-    /// 各原子类型标签 → 三维密度格点（与所有 family 共享同一网格 origin/spacing）
+    /// Atom-type label → 3-D density grid (all families share the same grid origin and spacing)
     pub grids: HashMap<String, CubeData>,
-    /// 纳入统计的团簇数量（含参考结构自身）
+    /// Number of clusters accumulated (including the reference structure itself)
     pub n_clusters: usize,
-    /// 对齐 RMSD 统计（参考结构自身 RMSD=0 计入均值）
+    /// Alignment RMSD statistics (reference contributes RMSD = 0)
     pub rmsd_stats: RmsdStats,
 }
 
-/// [`calc_cluster_sdf`] 的返回值。
+/// Return type of [`calc_cluster_sdf`].
 pub struct ClusterSdfResult {
-    /// 签名 → ClusterFamily；可能存在多种签名（拓扑异构体）
+    /// Signature → ClusterFamily; multiple signatures arise from topological isomers
     pub families: HashMap<String, ClusterFamily>,
-    /// 处理的总帧数（有 Cell 的帧）
+    /// Total number of frames processed (frames with a periodic cell)
     pub n_frames: usize,
-    /// 所有 family 的团簇总数
+    /// Total number of clusters across all families
     pub n_clusters_total: usize,
 }
 
 // ─── 内部类型 ─────────────────────────────────────────────────────────────────
 
-/// 已提取并在局部坐标系（锚原子为原点）表示的单个团簇。
+/// A single cluster extracted and represented in a local Cartesian frame (anchor atom at origin).
 #[derive(Clone)]
 struct ClusterSnapshot {
-    /// 各原子类型标签：`"P0"/"P1"/"P2"/"P3"/"Of"/"On"/"Ob"/"Zn"`
+    /// Per-atom type labels: `"P0"/"P1"/"P2"/"P3"/"Of"/"On"/"Ob"/"Zn"`
     types: Vec<String>,
-    /// 局部笛卡尔坐标，锚原子为原点 [Å]
+    /// Local Cartesian coordinates with the anchor atom at the origin \[Å\]
     positions: Vec<Vector3<f64>>,
-    /// 锚原子在 `types`/`positions` 中的下标（保留供后续 CLI 使用）
+    /// Index of the anchor atom within `types`/`positions` (reserved for future CLI use)
     #[allow(dead_code)]
     anchor_idx: usize,
 }
 
 impl ClusterSnapshot {
-    /// 按 BTreeMap 排序的原子类型计数字符串，用作 HashMap key。
+    /// BTreeMap-sorted atom-type count string, used as a HashMap key.
     fn signature(&self) -> String {
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for t in &self.types {
@@ -141,7 +143,7 @@ impl ClusterSnapshot {
             .join("|")
     }
 
-    /// 所有 P 原子在 positions 中的下标。
+    /// Indices of all P atoms within `positions`.
     fn p_indices(&self) -> Vec<usize> {
         self.types.iter().enumerate()
             .filter(|(_, t)| t.starts_with('P'))
@@ -149,7 +151,7 @@ impl ClusterSnapshot {
             .collect()
     }
 
-    /// 所有非修饰体（非 Zn）的 O 原子下标。
+    /// Indices of all non-modifier (non-Zn) oxygen atoms within `positions`.
     fn o_indices(&self) -> Vec<usize> {
         self.types.iter().enumerate()
             .filter(|(_, t)| matches!(t.as_str(), "Of" | "On" | "Ob"))
@@ -158,10 +160,10 @@ impl ClusterSnapshot {
     }
 }
 
-/// 按签名累积的统计数据。
+/// Per-signature accumulator for alignment statistics.
 struct FamilyAccumulator {
     reference: ClusterSnapshot,
-    /// type_label → 所有对齐后的原子坐标（跨所有帧和团簇）
+    /// type_label → all aligned atom positions (across all frames and clusters)
     positions_by_type: HashMap<String, Vec<Vector3<f64>>>,
     n_clusters: usize,
     rmsd_sum: f64,
@@ -170,7 +172,7 @@ struct FamilyAccumulator {
 }
 
 impl FamilyAccumulator {
-    /// 以第一个团簇为参考结构初始化；参考自身以 RMSD=0 计入统计。
+    /// Initialise with the first cluster as the reference structure; the reference contributes RMSD = 0.
     fn new(reference: ClusterSnapshot) -> Self {
         let mut acc = Self {
             positions_by_type: HashMap::new(),
@@ -203,11 +205,11 @@ impl FamilyAccumulator {
 
 // ─── 主入口 ───────────────────────────────────────────────────────────────────
 
-/// 计算指定 Qn 团簇的空间分布函数（SDF）。
+/// Compute the spatial distribution function (SDF) for clusters of the specified Qn level.
 ///
-/// 返回 `None` 若：
-/// - 轨迹无帧或每帧无 Cell
-/// - 整条轨迹未找到任何目标 Qn 团簇
+/// Returns `None` if:
+/// - the trajectory has no frames, or no frame has a periodic cell
+/// - no target-Qn cluster is found in the entire trajectory
 pub fn calc_cluster_sdf(
     traj: &Trajectory,
     params: &ClusterSdfParams,
@@ -345,7 +347,7 @@ fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<C
     }).collect()
 }
 
-/// 从单个连通分量提取团簇快照（局部坐标，锚原子为原点）。
+/// Extract a cluster snapshot from a single connected component (local coordinates, anchor atom at origin).
 fn extract_snapshot(
     frame: &Frame,
     cell: &Cell,

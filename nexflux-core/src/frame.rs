@@ -1,4 +1,4 @@
-//! 单帧结构（等同于 ASE 的 Atoms 对象）
+//! Single-frame structure (analogous to ASE's `Atoms` object).
 
 use nalgebra::{Matrix3, Vector3};
 use serde::{Deserialize, Serialize};

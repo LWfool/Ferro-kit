@@ -1,15 +1,15 @@
-//! 旋转自相关函数 (rotational correlation function) 计算与输出
+//! Rotational autocorrelation function calculation and output.
 //!
-//! 计算分子取向的二阶 Legendre 多项式旋转相关函数：
+//! Computes the second-order Legendre polynomial rotational correlation function for molecular orientations:
 //!   C(t) = <P₂(cosθ)> = <(3cos²θ − 1) / 2>
 //!
-//! 取向向量 u_c(t) = Σ_{n ∈ neighbors(c, r_cut)} minimum_image(r_n − r_c)
-//! 对每个 center 原子 c，将其截断半径内所有指定元素邻居的键向量求和。
+//! Orientation vector: u_c(t) = Σ_{n ∈ neighbors(c, r_cut)} minimum_image(r_n − r_c)
+//! For each center atom c, the bond vectors to all specified-element neighbors within r_cut are summed.
 //!
-//! 工作流：`calc_rotcorr` → `write_rotcorr`。
-//! 算法参考 code1/rotcorr.c (`EstimateRotationCorr`)，已泛化为任意 A-center-B 结构。
+//! Workflow: `calc_rotcorr` → `write_rotcorr`.
+//! Algorithm follows code1/rotcorr.c (`EstimateRotationCorr`), generalised to arbitrary A-center-B structures.
 //!
-//! 并行策略：以 time origin 为粒度 par_iter，各 origin 独立计算后 reduce 合并。
+//! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use rayon::prelude::*;
 use std::io::{BufWriter, Write};
@@ -102,8 +102,8 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> Option<RotCorr
     let has_cell = ref_frame.cell.is_some();
     let r_cut2 = params.r_cut * params.r_cut;
 
-    // 预计算每帧每个 center 原子的取向向量 orient[step][mol_local] = [ux, uy, uz]
-    // 取向向量 = 截断半径内所有 center→neighbor 键向量之和（最近像修正）
+    // Precompute orientation vector orient[step][mol_local] = [ux, uy, uz] for every center atom in each frame.
+    // Orientation vector = sum of all center→neighbor bond vectors within r_cut (minimum-image corrected).
     let orient: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
         center_indices.iter().map(|&ci| {
             let mut ux = 0.0_f64;
@@ -154,7 +154,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> Option<RotCorr
                     let [bx, by, bz] = orient[p + i][j];
                     let norm_a2 = ax*ax + ay*ay + az*az;
                     let norm_b2 = bx*bx + by*by + bz*bz;
-                    // 零向量（无邻居）跳过，避免除零
+                    // skip zero-norm vectors (no neighbours) to avoid division by zero
                     if norm_a2 < 1e-30 || norm_b2 < 1e-30 { continue; }
                     let ab = ax*bx + ay*by + az*bz;
                     let cos2 = (ab * ab) / (norm_a2 * norm_b2);

@@ -1,4 +1,4 @@
-//! 文件写入模块
+//! File writer modules.
 
 pub mod xyz;
 pub mod pdb;

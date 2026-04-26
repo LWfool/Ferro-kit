@@ -1,21 +1,21 @@
-//! 速度自相关函数 (VACF) 计算与输出
+//! Velocity autocorrelation function (VACF) calculation and output.
 //!
 //! Cv(t) = <v(0)·v(t)> = (1/N) Σⱼ [vx_j(0)vx_j(t) + vy_j(0)vy_j(t) + vz_j(0)vz_j(t)]
 //!
-//! 工作流：`calc_vacf` → `write_vacf`。
-//! 算法参考 code1/velcorr.c (`EstimateVelocityCorr`)：
-//!   1. 读取所有帧的速度向量（不需要坐标 unwrap，速度无 PBC 问题）
-//!   2. 对每个 time origin p（间隔 shift），计算所有 lag i ∈ [0, tau) 的速度点积
-//!   3. 对全部 origins 平均
-//!   4. 累积积分 D(t) = Σᵢ Cv(i)·dt / 3 → t→∞ 时收敛为自扩散系数 D
+//! Workflow: `calc_vacf` → `write_vacf`.
+//! Algorithm follows code1/velcorr.c (`EstimateVelocityCorr`):
+//!   1. Read velocity vectors from all frames (no coordinate unwrapping needed — velocities have no PBC issues).
+//!   2. For each time origin p (spaced by shift), compute velocity dot products for all lags i ∈ [0, tau).
+//!   3. Average over all origins.
+//!   4. Running integral D(t) = Σᵢ Cv(i)·dt / 3 → converges to self-diffusion coefficient D as t → ∞.
 //!
-//! 并行策略：以 time origin 为粒度 par_iter，各 origin 独立计算后 reduce 合并。
+//! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 //!
-//! **单位说明**：速度采用 `frame.velocities` 中存储的原始值。
-//! 当前 IO 层对 LAMMPS metal 单位的速度（Å/ps）尚未换算为内部标准单位（Å/fs），
-//! 若使用 metal 单位轨迹，输出的 Cv 单位为 (Å/ps)²，D 单位为 Å²/ps；
-//! 换算为标准单位需乘以 1e-6（Cv）或 1e-3（D）。
-//! 此问题将在 IO 单位规范化任务完成后统一修复。
+//! **Unit note**: velocities use the raw values stored in `frame.velocities`.
+//! The IO layer has not yet converted LAMMPS metal-unit velocities (Å/ps) to the internal standard (Å/fs).
+//! For metal-unit trajectories, Cv is in (Å/ps)² and D is in Å²/ps;
+//! multiply by 1e-6 (Cv) or 1e-3 (D) to obtain standard units.
+//! This will be resolved when IO unit normalisation is implemented.
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
@@ -171,7 +171,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> Option<VacfResult> {
     let vacf_z: Vec<f64> = (0..tau).map(|i| accum[i][2] * inv).collect();
     let vacf:   Vec<f64> = (0..tau).map(|i| vacf_x[i] + vacf_y[i] + vacf_z[i]).collect();
 
-    // 累积积分 D(t) = Σᵢ Cv(i)·dt / 3（梯形近似的矩形积分，同 code1）
+    // Running integral D(t) = Σᵢ Cv(i)·dt / 3 (rectangular approximation matching code1)
     let mut diffusion = vec![0.0f64; tau];
     let mut running = 0.0;
     for i in 0..tau {
