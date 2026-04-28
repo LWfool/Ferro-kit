@@ -221,6 +221,62 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "ferro"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ferro-analysis",
+ "ferro-core",
+ "ferro-io",
+ "ferro-workflow",
+ "rayon",
+ "rust_xlsxwriter",
+]
+
+[[package]]
+name = "ferro-analysis"
+version = "0.1.0"
+dependencies = [
+ "ferro-core",
+ "nalgebra",
+ "ndarray",
+ "petgraph",
+ "rayon",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "ferro-core"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "ndarray",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "ferro-io"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ferro-core",
+ "nalgebra",
+ "ndarray",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "ferro-workflow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ferro-core",
+ "serde",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -335,62 +391,6 @@ dependencies = [
  "num-integer",
  "num-traits",
  "rawpointer",
-]
-
-[[package]]
-name = "nexflux"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "nexflux-analysis",
- "nexflux-core",
- "nexflux-io",
- "nexflux-workflow",
- "rayon",
- "rust_xlsxwriter",
-]
-
-[[package]]
-name = "nexflux-analysis"
-version = "0.1.0"
-dependencies = [
- "nalgebra",
- "ndarray",
- "nexflux-core",
- "petgraph",
- "rayon",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "nexflux-core"
-version = "0.1.0"
-dependencies = [
- "nalgebra",
- "ndarray",
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "nexflux-io"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nalgebra",
- "ndarray",
- "nexflux-core",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "nexflux-workflow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nexflux-core",
- "serde",
 ]
 
 [[package]]

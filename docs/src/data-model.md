@@ -2,7 +2,7 @@
 
 ## Type Hierarchy
 
-Every nexflux API accepts and returns `Trajectory`, even for single-frame files.
+Every ferro API accepts and returns `Trajectory`, even for single-frame files.
 
 ```
 Trajectory
@@ -99,7 +99,7 @@ NPT trajectories (variable box per frame) are handled naturally: each `Frame` ca
 
 ## Pseudo-Element Labels
 
-nexflux supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):
+ferro supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):
 
 | Label | Meaning |
 |---|---|

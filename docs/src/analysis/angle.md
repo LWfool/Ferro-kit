@@ -50,11 +50,11 @@ The header lists mean, standard deviation, and total count per triplet.
 ## Usage
 
 ```bash
-nex-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
+fe-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
 ```
 
 ```rust
-use nexflux_analysis::md::{AngleParams, calc_angle, write_angle};
+use ferro_analysis::md::{AngleParams, calc_angle, write_angle};
 
 let params = AngleParams { r_cut_ab: 2.4, r_cut_bc: 2.4, d_angle: 0.5 };
 let result = calc_angle(&traj, &params).unwrap();
@@ -65,7 +65,7 @@ write_angle(&result, "output.angle").unwrap();
 
 ### Linked-Cell List
 
-Brute-force neighbour search is O(N²) per frame.  nexflux uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.
+Brute-force neighbour search is O(N²) per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.
 
 For each central atom B, only the 27 cells within ±1 cell in each direction are searched. The cell size is chosen so that a sphere of radius $r_\text{cut,max}$ fits within the search volume:
 

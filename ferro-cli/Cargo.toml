@@ -1,0 +1,50 @@
+[package]
+name = "ferro"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "ferro"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ferro"
+path = "src/main.rs"
+
+[[bin]]
+name = "fe-convert"
+path = "src/bin/convert.rs"
+
+[[bin]]
+name = "fe-info"
+path = "src/bin/info.rs"
+
+[[bin]]
+name = "fe-job"
+path = "src/bin/job.rs"
+
+[[bin]]
+name = "fe-traj"
+path = "src/bin/traj.rs"
+
+[[bin]]
+name = "fe-corr"
+path = "src/bin/corr.rs"
+
+[[bin]]
+name = "fe-cube"
+path = "src/bin/cube.rs"
+
+[[bin]]
+name = "fe-network"
+path = "src/bin/network.rs"
+
+[dependencies]
+ferro-core     = { path = "../ferro-core" }
+ferro-io       = { path = "../ferro-io" }
+ferro-analysis = { path = "../ferro-analysis" }
+ferro-workflow = { path = "../ferro-workflow" }
+clap             = { version = "4.5", features = ["derive"] }
+rust_xlsxwriter  = "0.80"
+anyhow.workspace = true
+rayon.workspace  = true

@@ -66,11 +66,11 @@ This conversion will be applied automatically in a future IO unit normalisation 
 ## Usage
 
 ```bash
-nex-corr -m vacf -i traj.dump --dt 2.0 --elements Li -o output.vacf
+fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li -o output.vacf
 ```
 
 ```rust
-use nexflux_analysis::md::{VacfParams, calc_vacf, write_vacf};
+use ferro_analysis::md::{VacfParams, calc_vacf, write_vacf};
 
 let params = VacfParams { tau: Some(500), dt: 2.0, shift: 1,
     elements: Some(vec!["Li".into()]) };

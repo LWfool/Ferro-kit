@@ -1,0 +1,14 @@
+[package]
+name = "ferro-python"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "ferro"
+crate-type = ["cdylib"]
+
+[dependencies]
+ferro-core = { path = "../ferro-core" }
+ferro-io = { path = "../ferro-io" }
+ferro-analysis = { path = "../ferro-analysis" }
+pyo3 = { version = "0.20", features = ["extension-module"] }

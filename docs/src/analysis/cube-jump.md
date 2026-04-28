@@ -67,15 +67,15 @@ A Gaussian cube file with raw jump-event counts per voxel.  Typical post-process
 
 ```bash
 # Jump origins for Li, lag = 1 frame, threshold = 1.0 Å
-nex-cube -m jump -i traj.dump --elements Li --tau 1 --threshold 1.0 -o jump.cube
+fe-cube -m jump -i traj.dump --elements Li --tau 1 --threshold 1.0 -o jump.cube
 
 # Jump midpoints (migration pathway visualisation)
-nex-cube -m jump -i traj.dump --elements Li --record-at midpoint -o jump_mid.cube
+fe-cube -m jump -i traj.dump --elements Li --record-at midpoint -o jump_mid.cube
 ```
 
 ```rust
-use nexflux_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
-use nexflux_io::write_cube;
+use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
+use ferro_io::write_cube;
 
 let params = CubeJumpParams {
     nx: 50, ny: 50, nz: 50,

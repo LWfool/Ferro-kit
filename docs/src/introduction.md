@@ -1,6 +1,6 @@
 # Introduction
 
-**nexflux** is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:
+**ferro** is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:
 
 - **Structural analysis** — g(r), S(q), bond angle distributions, Qn speciation
 - **Dynamical analysis** — MSD, VACF, van Hove correlation, rotational correlation
@@ -19,12 +19,12 @@
 ## Architecture
 
 ```
-nexflux-cli / nexflux-python        ← only layer combining multiple crates
-    ├── nexflux-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
-    ├── nexflux-io        → core    ← format readers / writers
-    ├── nexflux-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── nexflux-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── nexflux-workflow  → core    ← QC software input builders
+ferro-cli / ferro-python        ← only layer combining multiple crates
+    ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
+    ├── ferro-io        → core    ← format readers / writers
+    ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
+    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
+    └── ferro-workflow  → core    ← QC software input builders
 ```
 
 ## Internal Units

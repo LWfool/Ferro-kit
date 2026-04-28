@@ -66,11 +66,11 @@ Columns: `time[fs]`, `C(t)`, `integral[fs]`
 ## Usage
 
 ```bash
-nex-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
+fe-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
 ```
 
 ```rust
-use nexflux_analysis::md::{RotCorrParams, calc_rotcorr, write_rotcorr};
+use ferro_analysis::md::{RotCorrParams, calc_rotcorr, write_rotcorr};
 
 let params = RotCorrParams {
     center: "P".into(), neighbor: "O".into(),

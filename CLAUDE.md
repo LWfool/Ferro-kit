@@ -7,23 +7,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cargo build                                                    # build entire workspace
 cargo build --release
-cargo build --package nexflux-core                             # single crate
+cargo build --package ferro-core                             # single crate
 cargo test                                                     # all tests
-cargo test --package nexflux-io                                # single crate
-cargo test --package nexflux-core test_basic_molecule          # single test
+cargo test --package ferro-io                                # single crate
+cargo test --package ferro-core test_basic_molecule          # single test
 cargo fmt
 cargo clippy
 cargo check
 
 # CLI (dev)
-cargo run --bin nex-convert -- -i input.xyz -o output.pdb
-cargo run --bin nex-info    -- -i input.xyz
-cargo run --bin nex-job     -- -i input.xyz -s gaussian -m B3LYP -o job.gjf
-cargo run --bin nex-traj    -- -m gr  -i traj.dump
-cargo run --bin nex-cube    -- -m sdf -i traj.dump --qn 3 --modifier Zn
+cargo run --bin fe-convert -- -i input.xyz -o output.pdb
+cargo run --bin fe-info    -- -i input.xyz
+cargo run --bin fe-job     -- -i input.xyz -s gaussian -m B3LYP -o job.gjf
+cargo run --bin fe-traj    -- -m gr  -i traj.dump
+cargo run --bin fe-cube    -- -m sdf -i traj.dump --qn 3 --modifier Zn
 
-# Python bindings (requires maturin; nexflux-python not yet in workspace)
-cd nexflux-python && maturin develop
+# Python bindings (requires maturin; ferro-python not yet in workspace)
+cd ferro-python && maturin develop
 ```
 
 Test fixtures: `tests/` (water.xyz, water.pdb, water.cif)
@@ -35,25 +35,25 @@ Test fixtures: `tests/` (water.xyz, water.pdb, water.cif)
 Cargo workspace with a strict layered dependency graph. Middle-layer crates must NOT depend on each other — only the top-layer entry points combine them.
 
 ```
-nexflux-cli / nexflux-python        ← only layer that combines multiple crates
-    ├── nexflux-core                ← pure data structures + static reference data
-    ├── nexflux-io        → core    ← format readers/writers
-    ├── nexflux-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── nexflux-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── nexflux-workflow  → core    ← QC software input file builders
+ferro-cli / ferro-python        ← only layer that combines multiple crates
+    ├── ferro-core                ← pure data structures + static reference data
+    ├── ferro-io        → core    ← format readers/writers
+    ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
+    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
+    └── ferro-workflow  → core    ← QC software input file builders
 ```
 
 ### Crate responsibilities
 
 | Crate | Role |
 |---|---|
-| `nexflux-core` | `Atom`, `Frame`, `Trajectory`, `Cell`; static element/compound data; error types; unit conversion |
-| `nexflux-io` | Format readers (`read_xyz`, `read_pdb`, ...) and writers; returns/accepts `Trajectory` |
-| `nexflux-structure` | Supercell, vacuum layer, merge, initial box estimation from compound data |
-| `nexflux-analysis` | Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `dft/` (future), `ml/` (future) |
-| `nexflux-workflow` | QC input file builders: `GaussianJobBuilder`, `GromacsTopologyBuilder`, etc. |
-| `nexflux-cli` | CLI + REPL + batch mode (shared interpreter) |
-| `nexflux-python` | PyO3 wrappers only; pure Rust libs have zero Python awareness |
+| `ferro-core` | `Atom`, `Frame`, `Trajectory`, `Cell`; static element/compound data; error types; unit conversion |
+| `ferro-io` | Format readers (`read_xyz`, `read_pdb`, ...) and writers; returns/accepts `Trajectory` |
+| `ferro-structure` | Supercell, vacuum layer, merge, initial box estimation from compound data |
+| `ferro-analysis` | Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `dft/` (future), `ml/` (future) |
+| `ferro-workflow` | QC input file builders: `GaussianJobBuilder`, `GromacsTopologyBuilder`, etc. |
+| `ferro-cli` | CLI + REPL + batch mode (shared interpreter) |
+| `ferro-python` | PyO3 wrappers only; pure Rust libs have zero Python awareness |
 
 ---
 
@@ -102,9 +102,9 @@ pub struct Frame {
 
 **`Molecule` struct does not exist** — `Frame` covers all cases.
 
-### nexflux-core file structure
+### ferro-core file structure
 ```
-nexflux-core/src/
+ferro-core/src/
 ├── lib.rs
 ├── atom.rs
 ├── cell.rs
@@ -164,18 +164,18 @@ pub fn convert_pressure(value: f64, from: PressureUnit, to: PressureUnit) -> f64
 ```
 
 ### Error handling
-- Library crates: `nexflux_core::error::ChemError` / `nexflux_core::Result<T>`
+- Library crates: `ferro_core::error::ChemError` / `ferro_core::Result<T>`
 - CLI: `anyhow::Result`
 
 ---
 
-## Static Reference Data (nexflux-core/data/)
+## Static Reference Data (ferro-core/data/)
 
 ### elements.rs
 Per-element: symbol, atomic number, atomic mass, common oxidation states, electron configuration, electronegativity.
 
 ### compounds.rs
-Used by `nexflux-structure` to estimate initial MD simulation box size:
+Used by `ferro-structure` to estimate initial MD simulation box size:
 ```rust
 pub struct CompoundData {
     pub name: &'static str,
@@ -185,7 +185,7 @@ pub struct CompoundData {
     pub cas: Option<&'static str>,
 }
 ```
-Box estimation logic (V = Σ n_i·M_i / ρ_mix·Nₐ) lives in `nexflux-structure`, not here.
+Box estimation logic (V = Σ n_i·M_i / ρ_mix·Nₐ) lives in `ferro-structure`, not here.
 
 ---
 
@@ -193,30 +193,30 @@ Box estimation logic (V = Σ n_i·M_i / ρ_mix·Nₐ) lives in `nexflux-structur
 
 ### 1. One-shot CLI
 ```bash
-nexflux convert -i a.xyz -o b.pdb
+ferro convert -i a.xyz -o b.pdb
 ```
 
 ### 2. Interactive REPL (rustyline)
 ```bash
-nexflux
-nexflux> read water.xyz
-nexflux> supercell 2 2 1
-nexflux> write POSCAR
+ferro
+ferro> read water.xyz
+ferro> supercell 2 2 1
+ferro> write POSCAR
 ```
 
 ### 3. Batch / script mode
 Same interpreter as REPL, non-interactive. For shell script integration.
 ```bash
-nexflux -f workflow.mf
-echo -e "read water.xyz\nsupercell 2 2 1\nwrite POSCAR" | nexflux
+ferro -f workflow.mf
+echo -e "read water.xyz\nsupercell 2 2 1\nwrite POSCAR" | ferro
 ```
 
 ### 4. Python library
-`import nexflux` via PyO3 in `nexflux-python`.
+`import ferro` via PyO3 in `ferro-python`.
 
-### nexflux-cli internal structure
+### ferro-cli internal structure
 ```
-nexflux-cli/src/
+ferro-cli/src/
 ├── main.rs          # mode detection
 ├── interpreter.rs   # shared command parser/executor (REPL + batch)
 ├── repl.rs          # rustyline interactive input
@@ -229,12 +229,12 @@ nexflux-cli/src/
 
 ---
 
-## Python Bindings (nexflux-python)
+## Python Bindings (ferro-python)
 
 All PyO3 glue lives here. Library crates have zero Python awareness.
 
 ```
-nexflux-python/src/
+ferro-python/src/
 ├── lib.rs        # #[pymodule] entry
 ├── types.rs      # PyTrajectory (#[pyclass] wrapping inner: Trajectory)
 ├── io.rs
@@ -245,13 +245,13 @@ nexflux-python/src/
 Return types: `Vec<f64>`, `HashMap<String, Vec<f64>>` — PyO3 converts automatically to Python list/dict. No numpy or polars Rust crates.
 
 ```toml
-# nexflux-python/Cargo.toml — minimal deps
+# ferro-python/Cargo.toml — minimal deps
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module"] }
-nexflux-core      = { path = "../nexflux-core" }
-nexflux-io        = { path = "../nexflux-io" }
-nexflux-structure = { path = "../nexflux-structure" }
-nexflux-analysis  = { path = "../nexflux-analysis" }
+ferro-core      = { path = "../ferro-core" }
+ferro-io        = { path = "../ferro-io" }
+ferro-structure = { path = "../ferro-structure" }
+ferro-analysis  = { path = "../ferro-analysis" }
 ```
 
 ---
@@ -260,23 +260,23 @@ nexflux-analysis  = { path = "../nexflux-analysis" }
 
 | Binary | Mode / flag | Purpose |
 |---|---|---|
-| `nex-convert` | `-i <in> -o <out>` | Format conversion |
-| `nex-info` | `-i <file>` | Print structure info |
-| `nex-job` | `-i <file> -s gaussian [-m B3LYP] [-b 6-31G*]` | Generate QC input file |
-| `nex-traj` | `-m gr\|sq\|msd\|angle` | Structural analysis |
-| `nex-corr` | `-m vacf\|rotcorr\|vanhove` | Correlation functions |
-| `nex-cube` | `-m density\|velocity\|force\|sdf` | Spatial distribution maps |
-| `nex-network` | `--P-O=2.3 [--format csv\|xlsx]` | Glass network analysis |
+| `fe-convert` | `-i <in> -o <out>` | Format conversion |
+| `fe-info` | `-i <file>` | Print structure info |
+| `fe-job` | `-i <file> -s gaussian [-m B3LYP] [-b 6-31G*]` | Generate QC input file |
+| `fe-traj` | `-m gr\|sq\|msd\|angle` | Structural analysis |
+| `fe-corr` | `-m vacf\|rotcorr\|vanhove` | Correlation functions |
+| `fe-cube` | `-m density\|velocity\|force\|sdf` | Spatial distribution maps |
+| `fe-network` | `--P-O=2.3 [--format csv\|xlsx]` | Glass network analysis |
 
 Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--metal-units`.
 Run any binary without `-i` to print mode-specific help.
 
-### `nex-cube -m sdf` — Cluster SDF
+### `fe-cube -m sdf` — Cluster SDF
 
 Identifies Qn-type clusters (connected components of network-former atoms sharing bridging ligands), aligns each to a reference via Kabsch + permutation enumeration, and outputs per-atom-type 3D probability density as Gaussian cube files.
 
 ```
-nexflux-analysis/src/md/cube_sdf.rs
+ferro-analysis/src/md/cube_sdf.rs
 ```
 
 Key types:
@@ -298,7 +298,7 @@ pub struct ClusterSdfParams {
 Atom-type labels: `P0/P1/P2/P3` (individual Qn), `Of/On/Ob` (O connectivity), modifier element symbol.
 Output: `<stem>_<label>.cube` per atom type (multi-family: `<stem>_fam<N>_<label>.cube`).
 
-### `nexflux-analysis/src/md/` file structure
+### `ferro-analysis/src/md/` file structure
 
 | File | Analysis |
 |---|---|
@@ -317,26 +317,26 @@ Output: `<stem>_<label>.cube` per atom type (multi-family: `<stem>_fam<N>_<label
 ## Extending the Project
 
 ### Add a file format
-1. `nexflux-io/src/readers/<fmt>.rs` — return `Result<Trajectory>`
-2. `nexflux-io/src/writers/<fmt>.rs`
+1. `ferro-io/src/readers/<fmt>.rs` — return `Result<Trajectory>`
+2. `ferro-io/src/writers/<fmt>.rs`
 3. Export from `readers/mod.rs`, `writers/mod.rs`
-4. Add format detection in `nexflux-cli/src/commands/io.rs`
-5. Add wrapper in `nexflux-python/src/io.rs`
+4. Add format detection in `ferro-cli/src/commands/io.rs`
+5. Add wrapper in `ferro-python/src/io.rs`
 
 ### Add a structure operation
-1. Implement in `nexflux-structure/src/` — takes/returns `Trajectory`
-2. `nexflux-cli/src/commands/structure.rs`
-3. `nexflux-python/src/structure.rs`
+1. Implement in `ferro-structure/src/` — takes/returns `Trajectory`
+2. `ferro-cli/src/commands/structure.rs`
+3. `ferro-python/src/structure.rs`
 
 ### Add an analysis method
-1. Implement in `nexflux-analysis/src/<domain>/`
-2. `nexflux-cli/src/commands/analysis.rs`
-3. `nexflux-python/src/analysis.rs`
+1. Implement in `ferro-analysis/src/<domain>/`
+2. `ferro-cli/src/commands/analysis.rs`
+3. `ferro-python/src/analysis.rs`
 
 ### Add a QC software target
-1. Builder in `nexflux-workflow/src/job_builder.rs`
-2. Templates in `nexflux-workflow/src/templates.rs`
-3. CLI branch in `nexflux-cli/src/commands/`
+1. Builder in `ferro-workflow/src/job_builder.rs`
+2. Templates in `ferro-workflow/src/templates.rs`
+3. CLI branch in `ferro-cli/src/commands/`
 
 ---
 
@@ -351,4 +351,4 @@ Output: `<stem>_<label>.cube` per atom type (multi-family: `<stem>_fam<N>_<label
 | `anyhow` | Error propagation in CLI |
 | `clap` | CLI argument parsing |
 | `rustyline` | Readline-style input for REPL (to be added to workspace deps) |
-| `pyo3` | Python bindings (nexflux-python only) |
+| `pyo3` | Python bindings (ferro-python only) |

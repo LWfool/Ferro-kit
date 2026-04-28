@@ -63,11 +63,11 @@ Columns: `time[fs]`, `msd[Å²]`, `msd_a[Å²]`, `msd_b[Å²]`, `msd_c[Å²]`
 ## Usage
 
 ```bash
-nex-traj -m msd -i traj.dump --dt 2.0 --shift 10 -o output.msd
+fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 -o output.msd
 ```
 
 ```rust
-use nexflux_analysis::md::{MsdParams, calc_msd, write_msd};
+use ferro_analysis::md::{MsdParams, calc_msd, write_msd};
 
 let params = MsdParams { tau: Some(1000), shift: 10, dt: 2.0,
     elements: Some(vec!["Li".into()]) };

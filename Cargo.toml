@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "nexflux-core",
-    "nexflux-io",
-    "nexflux-analysis",
-    "nexflux-workflow",
-    "nexflux-cli",
-    # "nexflux-python",  # 暂时注释掉，等熟悉 Rust 后再启用
+    "ferro-core",
+    "ferro-io",
+    "ferro-analysis",
+    "ferro-workflow",
+    "ferro-cli",
+    # "ferro-python",  # 暂时注释掉，等熟悉 Rust 后再启用
 ]
 resolver = "2"
 

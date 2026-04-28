@@ -109,16 +109,16 @@ All cube files within a family share the same grid origin and spacing, enabling 
 
 ```bash
 # Q3 phosphate clusters with Zn modifier
-nex-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
          --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
 
 # Q0 isolated tetrahedra (no modifier)
-nex-cube -m sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
+fe-cube -m sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
 ```
 
 ```rust
-use nexflux_analysis::md::{ClusterSdfParams, calc_cluster_sdf};
-use nexflux_io::write_cube;
+use ferro_analysis::md::{ClusterSdfParams, calc_cluster_sdf};
+use ferro_io::write_cube;
 
 let params = ClusterSdfParams {
     former: "P".into(),

@@ -50,15 +50,15 @@ A Gaussian cube file with raw occupancy counts per voxel.  Values are not normal
 
 ```bash
 # Li occupancy map, 100³ grid, radius 0.7 Å
-nex-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
 
 # All-atom occupancy
-nex-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
+fe-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
 ```
 
 ```rust
-use nexflux_analysis::md::{CubeRadiusParams, calc_cube_radius};
-use nexflux_io::write_cube;
+use ferro_analysis::md::{CubeRadiusParams, calc_cube_radius};
+use ferro_io::write_cube;
 
 let params = CubeRadiusParams {
     nx: 100, ny: 100, nz: 100,

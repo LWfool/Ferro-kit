@@ -61,11 +61,11 @@ The header records the lag time $\tau$ in both frames and physical time (fs).
 ## Usage
 
 ```bash
-nex-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
+fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
 ```
 
 ```rust
-use nexflux_analysis::md::{VanHoveParams, calc_vanhove, write_vanhove};
+use ferro_analysis::md::{VanHoveParams, calc_vanhove, write_vanhove};
 
 let params = VanHoveParams {
     tau: Some(500), shift: 1, dt: 2.0,

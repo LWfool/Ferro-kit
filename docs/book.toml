@@ -1,6 +1,6 @@
 [book]
-title = "nexflux Documentation"
-authors = ["nexflux developers"]
+title = "ferro Documentation"
+authors = ["ferro developers"]
 language = "en"
 src = "src"
 
@@ -8,10 +8,10 @@ src = "src"
 mathjax-support = true
 
 [output.pandoc]
-hosted-html = "https://nexflux.github.io/nexflux"
+hosted-html = "https://ferro.github.io/ferro"
 
 [output.pandoc.profile.pdf]
-output-file = "nexflux.pdf"
+output-file = "ferro.pdf"
 to = "latex"
 pdf-engine = "xelatex"
 

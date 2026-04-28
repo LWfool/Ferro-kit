@@ -1,9 +1,0 @@
-[package]
-name = "nexflux-workflow"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-nexflux-core = { path = "../nexflux-core" }
-serde.workspace = true
-anyhow.workspace = true

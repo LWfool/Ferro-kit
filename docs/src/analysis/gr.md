@@ -78,12 +78,12 @@ $$\bar{d} = \frac{1}{N_\text{bonds}} \sum_k d_k, \quad \sigma = \sqrt{\frac{1}{N
 ## Usage
 
 ```bash
-nex-traj -m gr -i traj.dump -o output
+fe-traj -m gr -i traj.dump -o output
 # writes output.gr, output.cn
 ```
 
 ```rust
-use nexflux_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
+use ferro_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
 
 let params = GrParams::with_auto_rmax(&traj);
 let result = calc_gr(&traj, &params).unwrap();
