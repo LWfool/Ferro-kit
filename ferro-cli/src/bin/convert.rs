@@ -5,7 +5,7 @@ use ferro_io::LammpsUnits;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "mol-convert", about = "Convert between structure/trajectory formats")]
+#[command(name = "fe-convert", about = "Convert between structure/trajectory formats")]
 struct Cli {
     /// Input file (format auto-detected)
     #[arg(short, long)]

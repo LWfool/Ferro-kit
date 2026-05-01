@@ -1,4 +1,4 @@
-//! Cluster spatial distribution function (Cluster SDF) — fourth mode of mol-cube.
+//! Cluster spatial distribution function (Cluster SDF) — fourth mode of fe-cube.
 //!
 //! Identifies phosphate clusters of the specified Qn level from an MD trajectory
 //! (partitioned by the highest individual Qn within a connected component), performs

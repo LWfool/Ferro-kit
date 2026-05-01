@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "molflow"
+name = "ferro"
 version = "0.1.0"
 description = "计算化学工具集 - Python 绑定"
 readme = "README.md"
@@ -15,4 +15,4 @@ classifiers = [
 
 [tool.maturin]
 python-source = "python"
-module-name = "molflow"
+module-name = "ferro"

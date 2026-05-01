@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
-    name = "mol-corr",
+    name = "fe-corr",
     about = "Correlation functions: vacf | rotcorr | vanhove  (run without -i for mode help)"
 )]
 struct Cli {

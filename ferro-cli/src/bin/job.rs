@@ -6,7 +6,7 @@ use ferro_workflow::GaussianJobBuilder;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "mol-job", about = "Generate QC software input files")]
+#[command(name = "fe-job", about = "Generate QC software input files")]
 struct Cli {
     /// Input structure file (format auto-detected)
     #[arg(short, long)]

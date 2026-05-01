@@ -27,11 +27,11 @@ pub fn print_cube_help(mode: &CubeCliMode) {
     }
 }
 
-// ─── mol-traj modes ──────────────────────────────────────────────────────────
+// ─── fe-traj modes ──────────────────────────────────────────────────────────
 
 fn print_gr() {
     println!(
-        r#"mol-traj -m gr — Radial Distribution Function
+        r#"fe-traj -m gr — Radial Distribution Function
   Computes g(r) for all atom-pair types, coordination number CN(r),
   and per-pair bond-length statistics (mean, std, count).
   Requires periodic cell (PBC) in the input file.
@@ -46,14 +46,14 @@ Parameters:
                    Also writes: <stem>_cn.dat
 
 Example:
-  mol-traj -m gr -i traj.xyz
-  mol-traj -m gr -i traj.dump --r-max 8.0 --r-cut 3.2 --last-n 500 -o result.dat"#
+  fe-traj -m gr -i traj.xyz
+  fe-traj -m gr -i traj.dump --r-max 8.0 --r-cut 3.2 --last-n 500 -o result.dat"#
     );
 }
 
 fn print_sq() {
     println!(
-        r#"mol-traj -m sq — Structure Factor S(q)
+        r#"fe-traj -m sq — Structure Factor S(q)
   Computes S(q) via Fourier transform of g(r) (Faber-Ziman formalism).
   Optionally applies XRD (Waasmaier-Kirfel) or neutron scattering weights.
 
@@ -68,14 +68,14 @@ Parameters:
   -o PATH             Output file                   default: sq.dat
 
 Example:
-  mol-traj -m sq -i traj.xyz
-  mol-traj -m sq -i traj.xyz --weighting xrd --q-max 20.0 -o sq_xrd.dat"#
+  fe-traj -m sq -i traj.xyz
+  fe-traj -m sq -i traj.xyz --weighting xrd --q-max 20.0 -o sq_xrd.dat"#
     );
 }
 
 fn print_msd() {
     println!(
-        r#"mol-traj -m msd — Mean Square Displacement
+        r#"fe-traj -m msd — Mean Square Displacement
   Computes MSD(t) = <|r(t₀+t) − r(t₀)|²> averaged over time origins.
   Outputs total MSD and per-axis (a/b/c) components.
 
@@ -88,14 +88,14 @@ Parameters:
   -o PATH               Output file                    default: msd.dat
 
 Example:
-  mol-traj -m msd -i traj.xyz --dt 2.0
-  mol-traj -m msd -i traj.dump --elements Li --dt 1.0 --last-n 2000"#
+  fe-traj -m msd -i traj.xyz --dt 2.0
+  fe-traj -m msd -i traj.dump --elements Li --dt 1.0 --last-n 2000"#
     );
 }
 
 fn print_angle() {
     println!(
-        r#"mol-traj -m angle — Bond Angle Distribution
+        r#"fe-traj -m angle — Bond Angle Distribution
   Computes P(θ) for all A-B-C triplets within cutoff distances.
   B is the central atom; A and C are its neighbors.
 
@@ -108,16 +108,16 @@ Parameters:
   -o PATH           Output file                   default: angle.dat
 
 Example:
-  mol-traj -m angle -i traj.xyz
-  mol-traj -m angle -i traj.xyz --r-cut-ab 2.0 --r-cut-bc 2.0"#
+  fe-traj -m angle -i traj.xyz
+  fe-traj -m angle -i traj.xyz --r-cut-ab 2.0 --r-cut-bc 2.0"#
     );
 }
 
-// ─── mol-corr modes ──────────────────────────────────────────────────────────
+// ─── fe-corr modes ──────────────────────────────────────────────────────────
 
 fn print_vacf() {
     println!(
-        r#"mol-corr -m vacf — Velocity Autocorrelation Function
+        r#"fe-corr -m vacf — Velocity Autocorrelation Function
   Computes C_v(t) = <v(t₀)·v(t₀+t)> / <v²(t₀)>, averaged over origins.
   Also outputs running integral (Green-Kubo diffusion coefficient).
   Requires frame.velocities in the input file.
@@ -130,14 +130,14 @@ Parameters:
   -o PATH               Output file                   default: vacf.dat
 
 Example:
-  mol-corr -m vacf -i traj.dump --dt 2.0
-  mol-corr -m vacf -i traj.dump --elements O --last-n 1000"#
+  fe-corr -m vacf -i traj.dump --dt 2.0
+  fe-corr -m vacf -i traj.dump --elements O --last-n 1000"#
     );
 }
 
 fn print_rotcorr() {
     println!(
-        r#"mol-corr -m rotcorr — Rotational Correlation Function
+        r#"fe-corr -m rotcorr — Rotational Correlation Function
   Computes C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors.
   --center and --neighbor are required to define the bond direction.
 
@@ -151,14 +151,14 @@ Parameters:
   -o PATH             Output file                       default: rotcorr.dat
 
 Example:
-  mol-corr -m rotcorr -i traj.xyz --center O --neighbor H
-  mol-corr -m rotcorr -i traj.dump --center O --neighbor H --dt 2.0"#
+  fe-corr -m rotcorr -i traj.xyz --center O --neighbor H
+  fe-corr -m rotcorr -i traj.dump --center O --neighbor H --dt 2.0"#
     );
 }
 
 fn print_vanhove() {
     println!(
-        r#"mol-corr -m vanhove — Van Hove Self-Correlation Function
+        r#"fe-corr -m vanhove — Van Hove Self-Correlation Function
   Computes Gs(r, τ) = probability distribution of atomic displacements
   over a fixed time lag τ.
 
@@ -173,16 +173,16 @@ Parameters:
   -o PATH               Output file                    default: vanhove.dat
 
 Example:
-  mol-corr -m vanhove -i traj.xyz --tau 100
-  mol-corr -m vanhove -i traj.dump --elements Li --tau 500 --dt 2.0"#
+  fe-corr -m vanhove -i traj.xyz --tau 100
+  fe-corr -m vanhove -i traj.dump --elements Li --tau 500 --dt 2.0"#
     );
 }
 
-// ─── mol-cube modes ──────────────────────────────────────────────────────────
+// ─── fe-cube modes ──────────────────────────────────────────────────────────
 
 fn print_cube_density() {
     println!(
-        r#"mol-cube -m density — Spatial Number Density
+        r#"fe-cube -m density — Spatial Number Density
   Divides the simulation box into nx×ny×nz voxels and computes
   the time-averaged atom number density [atoms/Å³] per voxel.
   Output is a Gaussian cube file (readable by VESTA / VMD).
@@ -197,14 +197,14 @@ Parameters:
   -o PATH             Output cube file            default: density.cube
 
 Example:
-  mol-cube -m density -i traj.dump
-  mol-cube -m density -i traj.dump --nx 100 --ny 100 --nz 100 --elements Li"#
+  fe-cube -m density -i traj.dump
+  fe-cube -m density -i traj.dump --nx 100 --ny 100 --nz 100 --elements Li"#
     );
 }
 
 fn print_cube_velocity() {
     println!(
-        r#"mol-cube -m velocity — Spatial Velocity Distribution
+        r#"fe-cube -m velocity — Spatial Velocity Distribution
   Computes the time-averaged speed |v| per voxel [Å/fs].
   Requires frame.velocities in the input file.
 
@@ -218,13 +218,13 @@ Parameters:
   -o PATH             Output cube file            default: velocity.cube
 
 Example:
-  mol-cube -m velocity -i traj.dump --nx 80 --ny 80 --nz 80"#
+  fe-cube -m velocity -i traj.dump --nx 80 --ny 80 --nz 80"#
     );
 }
 
 fn print_cube_force() {
     println!(
-        r#"mol-cube -m force — Spatial Force Distribution
+        r#"fe-cube -m force — Spatial Force Distribution
   Computes the time-averaged force magnitude |f| per voxel [eV/Å].
   Requires frame.forces in the input file.
 
@@ -238,7 +238,7 @@ Parameters:
   -o PATH             Output cube file            default: force.cube
 
 Example:
-  mol-cube -m force -i traj.dump --elements O"#
+  fe-cube -m force -i traj.dump --elements O"#
     );
 }
 

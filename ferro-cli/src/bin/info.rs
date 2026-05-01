@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "mol-info", about = "Display structure/trajectory information")]
+#[command(name = "fe-info", about = "Display structure/trajectory information")]
 struct Cli {
     /// Input file (format auto-detected)
     #[arg(short, long)]

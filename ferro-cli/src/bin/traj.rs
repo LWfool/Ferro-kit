@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
-    name = "mol-traj",
+    name = "fe-traj",
     about = "Structural analysis: gr | sq | msd | angle  (run without -i for mode help)"
 )]
 struct Cli {

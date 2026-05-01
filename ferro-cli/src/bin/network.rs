@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
-    name = "mol-network",
+    name = "fe-network",
     about = "Glass network analysis: CN, ligand classification (FO/NBO/BO/OBO), Qn speciation",
     long_about = None,
     after_help = HELP_EXTRA,
@@ -50,10 +50,10 @@ PAIR ARGUMENTS:
   Ligands        (examples): O, F
 
 EXAMPLES:
-  mol-network -i traj.dump --P-O=2.3
-  mol-network -i traj.dump --P-O=2.3 --P-F=2.1 --Si-O=1.8 -o result.csv
-  mol-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
-  mol-network -i traj.dump --P-O=2.3 --last-n 500
+  fe-network -i traj.dump --P-O=2.3
+  fe-network -i traj.dump --P-O=2.3 --P-F=2.1 --Si-O=1.8 -o result.csv
+  fe-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
+  fe-network -i traj.dump --P-O=2.3 --last-n 500
 
 OUTPUT FILES:
   <stem>_cn.csv         per-pair and total CN distribution
