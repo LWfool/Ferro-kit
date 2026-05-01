@@ -75,7 +75,11 @@ pub struct GrParams {
     pub r_max: f64,
     /// Distance bin width \[Å\] (default: 0.01)
     pub dr: f64,
-    /// Cut-off radius \[Å\] for short-range bond distance statistics (default: 2.3)
+    /// Cutoff \[Å\] used **only** for `pair_stats` (mean bond length ± std per pair).
+    /// Does **not** affect the g(r) curve or CN(r) — those always span `r_min..r_max`.
+    /// Set this to the first minimum of g(r) after the first peak so that only the
+    /// first coordination shell is captured (e.g. ~2.0 Å for P-O rather than the
+    /// default 2.3 Å, which would include the tail of the second shell). (default: 2.3)
     pub r_cut: f64,
 }
 

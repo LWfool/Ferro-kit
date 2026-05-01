@@ -258,9 +258,9 @@ mod tests {
     #[test]
     fn test_density_single_atom() {
         // 10³ box, 2³ grid → voxel_vol = 125 Å³
-        // 1 atom at (1,1,1) → frac (0.1,0.1,0.1) → voxel (0,0,0)
+        // 格点中心位置：voxel (0,0,0) 中心 = frac (0.25,0.25,0.25) = cart (2.5,2.5,2.5)
         // density[0,0,0] = 1 / (1 frame × 125 Å³) = 0.008
-        let traj = make_traj(vec![(1.0, 1.0, 1.0)], vec!["Li"]);
+        let traj = make_traj(vec![(2.5, 2.5, 2.5)], vec!["Li"]);
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let res = calc_cube_density(&traj, &params).unwrap();
         let d = &res.cube.data;
@@ -273,11 +273,12 @@ mod tests {
     #[test]
     fn test_density_multi_frame_averages() {
         // 2 identical frames → same density as 1 frame (2 counts / 2 frames / vox_vol)
+        // 格点中心：voxel (0,0,0) → (2.5,2.5,2.5)
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut traj = Trajectory::new();
         for _ in 0..2 {
             let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
-            frame.add_atom(Atom::new("Li", Vector3::new(1.0, 1.0, 1.0)));
+            frame.add_atom(Atom::new("Li", Vector3::new(2.5, 2.5, 2.5)));
             traj.frames.push(frame);
         }
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
@@ -288,9 +289,9 @@ mod tests {
 
     #[test]
     fn test_density_element_filter() {
-        // H at (1,1,1) → voxel (0,0,0), O at (6,6,6) → voxel (1,1,1)
-        // Filter to H only: O voxel should remain 0
-        let traj = make_traj(vec![(1.0, 1.0, 1.0), (6.0, 6.0, 6.0)], vec!["H", "O"]);
+        // 格点中心位置：H → voxel (0,0,0) 中心 (2.5,2.5,2.5)；O → voxel (1,1,1) 中心 (7.5,7.5,7.5)
+        // 仅统计 H：voxel (1,1,1) 应保持为 0
+        let traj = make_traj(vec![(2.5, 2.5, 2.5), (7.5, 7.5, 7.5)], vec!["H", "O"]);
         let params = CubeDensityParams {
             nx: 2, ny: 2, nz: 2,
             elements: Some(vec!["H".to_string()]),
@@ -305,9 +306,8 @@ mod tests {
 
     #[test]
     fn test_periodic_wrap() {
-        // Atom at (11,1,1): frac = (1.1,0.1,0.1) → rem_euclid → (0.1,0.1,0.1) → voxel (0,0,0)
-        // Same result as atom at (1,1,1)
-        let traj = make_traj(vec![(11.0, 1.0, 1.0)], vec!["Li"]);
+        // 格点中心 (2.5,2.5,2.5) 超出盒子一个周期：frac (1.25,0.25,0.25) → rem_euclid → (0.25,0.25,0.25) → voxel (0,0,0)
+        let traj = make_traj(vec![(12.5, 2.5, 2.5)], vec!["Li"]);
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let res = calc_cube_density(&traj, &params).unwrap();
         assert!((res.cube.data[[0, 0, 0]] - 0.008).abs() < 1e-10);
@@ -315,10 +315,10 @@ mod tests {
 
     #[test]
     fn test_velocity_mode() {
-        // Atom at (1,1,1), velocity (2,0,0) → |v|=2 → grid[0,0,0] = 2.0
+        // 格点中心：voxel (0,0,0) → (2.5,2.5,2.5)；velocity (2,0,0) → |v|=2
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("Li", Vector3::new(1.0, 1.0, 1.0)));
+        frame.add_atom(Atom::new("Li", Vector3::new(2.5, 2.5, 2.5)));
         frame.velocities = Some(vec![Vector3::new(2.0, 0.0, 0.0)]);
         let mut traj = Trajectory::new();
         traj.frames.push(frame);
@@ -333,8 +333,7 @@ mod tests {
 
     #[test]
     fn test_velocity_mode_no_velocities_returns_none() {
-        // Frame has no velocities → None for Velocity mode
-        let traj = make_traj(vec![(1.0, 1.0, 1.0)], vec!["Li"]);
+        let traj = make_traj(vec![(2.5, 2.5, 2.5)], vec!["Li"]);
         let params = CubeDensityParams {
             nx: 2, ny: 2, nz: 2,
             mode: CubeMode::Velocity,
@@ -345,10 +344,10 @@ mod tests {
 
     #[test]
     fn test_force_mode() {
-        // Force (0,3,4) → |f| = 5 → grid[0,0,0] = 5.0
+        // 格点中心：voxel (0,0,0) → (2.5,2.5,2.5)；force (0,3,4) → |f|=5
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("O", Vector3::new(1.0, 1.0, 1.0)));
+        frame.add_atom(Atom::new("O", Vector3::new(2.5, 2.5, 2.5)));
         frame.forces = Some(vec![Vector3::new(0.0, 3.0, 4.0)]);
         let mut traj = Trajectory::new();
         traj.frames.push(frame);

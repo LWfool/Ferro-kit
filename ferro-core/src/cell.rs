@@ -118,12 +118,15 @@ impl Cell {
     // ── 周期性处理 ────────────────────────────────────────────────────────────
 
     /// 将 Cartesian 坐标折叠回 [0, 1) 的分数坐标范围内（周期性包裹）。
+    ///
+    /// `rem_euclid(1.0)` 保证输出严格在 [0, 1)，避免 `cartesian_to_fractional`
+    /// 矩阵求逆引入的 ~1e-15 误差在 `floor` 处触发边界跳变。
     pub fn wrap_position(&self, cart: Vector3<f64>) -> Vector3<f64> {
         let frac = self.cartesian_to_fractional(cart);
         let wrapped = Vector3::new(
-            frac.x - frac.x.floor(),
-            frac.y - frac.y.floor(),
-            frac.z - frac.z.floor(),
+            frac.x.rem_euclid(1.0),
+            frac.y.rem_euclid(1.0),
+            frac.z.rem_euclid(1.0),
         );
         self.fractional_to_cartesian(wrapped)
     }
@@ -172,6 +175,7 @@ mod tests {
 
     #[test]
     fn test_frac_cart_roundtrip() {
+        // cartesian_to_fractional 内部做矩阵求逆，残差约 1e-15，容差取 1e-10
         let cell = Cell::from_lengths_angles(4.0, 5.0, 6.0, 80.0, 90.0, 100.0).unwrap();
         let frac = Vector3::new(0.3, 0.5, 0.7);
         let cart = cell.fractional_to_cartesian(frac);
@@ -186,6 +190,27 @@ mod tests {
         let wrapped = cell.wrap_position(pos);
         assert!(wrapped.x >= 0.0 && wrapped.x < 10.0);
         assert!(wrapped.y >= 0.0 && wrapped.y < 10.0);
+    }
+
+    #[test]
+    fn test_wrap_position_triclinic_boundary() {
+        // 非正交晶胞：矩阵求逆误差可能让分数坐标略为负（如 -1e-15），
+        // rem_euclid 应把这类值折叠到 [0,1) 而不是触发 floor 边界跳变
+        let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 80.0, 85.0, 95.0).unwrap();
+        // 原点处的 Cartesian 坐标经过来回转换后应仍在盒内
+        let origin = cell.fractional_to_cartesian(Vector3::new(0.0, 0.0, 0.0));
+        let wrapped = cell.wrap_position(origin);
+        let frac = cell.cartesian_to_fractional(wrapped);
+        assert!(frac.x >= -1e-10 && frac.x < 1.0 + 1e-10);
+        assert!(frac.y >= -1e-10 && frac.y < 1.0 + 1e-10);
+        assert!(frac.z >= -1e-10 && frac.z < 1.0 + 1e-10);
+        // 盒外坐标必须被折叠回合理范围
+        let out = cell.fractional_to_cartesian(Vector3::new(1.3, -0.5, 2.1));
+        let wrapped2 = cell.wrap_position(out);
+        let frac2 = cell.cartesian_to_fractional(wrapped2);
+        assert!(frac2.x >= -1e-10 && frac2.x < 1.0 + 1e-10);
+        assert!(frac2.y >= -1e-10 && frac2.y < 1.0 + 1e-10);
+        assert!(frac2.z >= -1e-10 && frac2.z < 1.0 + 1e-10);
     }
 
     #[test]

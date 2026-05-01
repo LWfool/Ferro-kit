@@ -1,5 +1,29 @@
 use crate::args::{corr::CorrMode, cube::CubeCliMode, traj::TrajMode};
 
+pub fn print_fe_traj_overview() {
+    println!(
+        r#"fe-traj — Trajectory structural analysis
+
+Usage:
+  fe-traj -m <MODE> -i <FILE> [OPTIONS]
+  fe-traj -m <MODE>              show mode-specific parameters
+
+Modes:
+  gr      Radial distribution function g(r) and coordination number CN(r)
+  sq      Structure factor S(q) via Fourier transform of g(r)
+  msd     Mean square displacement MSD(t), time-shift averaged
+  angle   Bond angle distribution P(θ) for A-B-C triplets
+
+Common options:
+  -i, --input  PATH     Input trajectory file (xyz, dump, extxyz, pdb, …)
+  -o, --output PATH     Output file (default name depends on mode)
+      --last-n N        Use only the last N frames of the trajectory
+      --ncore  N        Parallel threads (default: all cores)
+      --plot            Generate a PNG plot and open it after calculation
+      --metal-units     LAMMPS metal units (velocities in Å/ps)"#
+    );
+}
+
 pub fn print_traj_help(mode: &TrajMode) {
     match mode {
         TrajMode::Gr    => print_gr(),
@@ -33,21 +57,23 @@ fn print_gr() {
     println!(
         r#"fe-traj -m gr — Radial Distribution Function
   Computes g(r) for all atom-pair types, coordination number CN(r),
-  and per-pair bond-length statistics (mean, std, count).
+  and per-pair bond-length statistics (mean ± std, count).
   Requires periodic cell (PBC) in the input file.
 
 Parameters:
-  --r-max  FLOAT   Max cutoff radius [Å]           default: 10.005
-  --dr     FLOAT   Histogram bin width [Å]          default: 0.01
-  --r-cut  FLOAT   CN integration cutoff [Å]        default: 2.3
-  --last-n INT     Use only the last N frames
-  --ncore  INT     Parallel threads (default: all cores)
-  -o PATH          Output file                      default: gr.dat
-                   Also writes: <stem>_cn.dat
+  --r-max  FLOAT          Max cutoff radius [Å]                  default: 10.005
+  --dr     FLOAT          Histogram bin width [Å]                default: 0.01
+  --r-cut  FLOAT          First-shell cutoff for pair stats [Å]  default: 2.3
+  -a ELEM, -b ELEM        Show only one pair A-B (both required)
+  --last-n INT            Use only the last N frames
+  --ncore  INT            Parallel threads (default: all cores)
+  -o PATH                 Output file                            default: gr.dat
+                          Also writes: <stem>_cn.dat
+  --plot                  Generate PNG and open in viewer
 
 Example:
   fe-traj -m gr -i traj.xyz
-  fe-traj -m gr -i traj.dump --r-max 8.0 --r-cut 3.2 --last-n 500 -o result.dat"#
+  fe-traj -m gr -i traj.dump -a O -b P --r-max 8.0 --r-cut 2.0 --last-n 500"#
     );
 }
 
@@ -66,6 +92,7 @@ Parameters:
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads (used in g(r) step)
   -o PATH             Output file                   default: sq.dat
+  --plot              Generate PNG and open in viewer
 
 Example:
   fe-traj -m sq -i traj.xyz
@@ -100,16 +127,19 @@ fn print_angle() {
   B is the central atom; A and C are its neighbors.
 
 Parameters:
-  --r-cut-ab FLOAT  A-to-B distance cutoff [Å]   default: 2.3
-  --r-cut-bc FLOAT  C-to-B distance cutoff [Å]   default: 2.3
-  --d-angle  FLOAT  Histogram bin width [°]       default: 0.1
-  --last-n   INT    Use only the last N frames
-  --ncore    INT    Parallel threads
-  -o PATH           Output file                   default: angle.dat
+  --r-cut-ab FLOAT              A-to-center-B bond cutoff [Å]   default: 2.3
+  --r-cut-bc FLOAT              Center-B-to-C bond cutoff [Å]   default: 2.3
+  --d-angle  FLOAT              Histogram bin width [°]         default: 0.1
+  -a ELEM, -b ELEM, -c ELEM     Show only triplet A-B-C (all three required;
+                                B is the center atom)
+  --last-n   INT                Use only the last N frames
+  --ncore    INT                Parallel threads
+  -o PATH                       Output file                     default: angle.dat
+  --plot                        Generate PNG and open in viewer
 
 Example:
   fe-traj -m angle -i traj.xyz
-  fe-traj -m angle -i traj.xyz --r-cut-ab 2.0 --r-cut-bc 2.0"#
+  fe-traj -m angle -i traj.xyz -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0"#
     );
 }
 

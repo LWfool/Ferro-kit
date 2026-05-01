@@ -2,8 +2,9 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use ferro::{
     args::traj::{SqWeightingCli, TrajMode},
-    help::print_traj_help,
+    help::{print_fe_traj_overview, print_traj_help},
     io_dispatch::read_trajectory,
+    plot::{open_plot, plot_angle, plot_gr, plot_sq},
 };
 use ferro_io::LammpsUnits;
 use ferro_analysis::{
@@ -16,14 +17,19 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(
     name = "fe-traj",
-    about = "Structural analysis: gr | sq | msd | angle  (run without -i for mode help)"
+    about = "Trajectory structural analysis  (gr | sq | msd | angle)",
+    disable_help_flag = true,
 )]
 struct Cli {
-    /// Analysis mode
+    /// Analysis mode  (gr | sq | msd | angle); omit to see overview
     #[arg(short = 'm', long, value_enum)]
-    mode: TrajMode,
+    mode: Option<TrajMode>,
 
-    /// Input trajectory file (omit to show mode-specific help)
+    /// Show help: overview when -m is absent, mode-specific when -m is given
+    #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
+    help: bool,
+
+    /// Input trajectory file
     #[arg(short, long)]
     input: Option<PathBuf>,
 
@@ -81,13 +87,27 @@ struct Cli {
     #[arg(long, value_delimiter = ',')]
     elements: Option<Vec<String>>,
 
+    // ── pair / triplet filter ────────────────────────────────────────────────
+
+    /// [gr] Element A of the pair (e.g. O); [angle] end atom A — requires -b
+    #[arg(short = 'a', long)]
+    atom_a: Option<String>,
+
+    /// [gr] Element B of the pair (e.g. P); [angle] center atom B — requires -a
+    #[arg(short = 'b', long)]
+    atom_b: Option<String>,
+
+    /// [angle] End atom C (e.g. O); corresponds to --r-cut-bc — requires -a -b
+    #[arg(short = 'c', long)]
+    atom_c: Option<String>,
+
     // ── angle ───────────────────────────────────────────────────────────────
 
-    /// [angle] A-to-B distance cutoff [Å]
+    /// [angle] Cutoff for A-to-center-B bond [Å]; A is the atom given by -a
     #[arg(long, default_value = "2.3")]
     r_cut_ab: f64,
 
-    /// [angle] C-to-B distance cutoff [Å]
+    /// [angle] Cutoff for center-B-to-C bond [Å]; C is the atom given by -c
     #[arg(long, default_value = "2.3")]
     r_cut_bc: f64,
 
@@ -98,19 +118,31 @@ struct Cli {
     /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
     #[arg(long)]
     metal_units: bool,
+
+    /// Generate a PNG plot and open it after calculation
+    #[arg(long)]
+    plot: bool,
 }
 
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    // 没有输入文件时显示模式专属帮助
-    let input = match &args.input {
-        Some(p) => p.clone(),
+    // 无 -m → 概览
+    let mode = match args.mode.clone() {
+        Some(m) => m,
         None => {
-            print_traj_help(&args.mode);
+            print_fe_traj_overview();
             return Ok(());
         }
     };
+
+    // -h 或无 -i → 模式专属帮助
+    if args.help || args.input.is_none() {
+        print_traj_help(&mode);
+        return Ok(());
+    }
+
+    let input = args.input.as_ref().unwrap().clone();
 
     if let Some(n) = args.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
@@ -122,10 +154,10 @@ fn main() -> Result<()> {
         traj = traj.tail(n);
     }
 
-    match args.mode {
-        TrajMode::Gr => run_gr(&args, &traj)?,
-        TrajMode::Sq => run_sq(&args, &traj)?,
-        TrajMode::Msd => run_msd(&args, &traj)?,
+    match mode {
+        TrajMode::Gr    => run_gr(&args, &traj)?,
+        TrajMode::Sq    => run_sq(&args, &traj)?,
+        TrajMode::Msd   => run_msd(&args, &traj)?,
         TrajMode::Angle => run_angle(&args, &traj)?,
     }
 
@@ -133,13 +165,33 @@ fn main() -> Result<()> {
 }
 
 fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+    match (&args.atom_a, &args.atom_b) {
+        (Some(_), None) | (None, Some(_)) =>
+            return Err(anyhow!("GR pair filter: -a and -b must be specified together")),
+        _ => {}
+    }
+
     let params = GrParams {
         r_max: args.r_max,
         dr: args.dr,
         r_cut: args.r_cut,
         ..GrParams::default()
     };
-    let result = calc_gr(traj, &params).ok_or_else(|| anyhow!("GR calc failed (empty trajectory or missing cell)"))?;
+    let mut result = calc_gr(traj, &params)
+        .ok_or_else(|| anyhow!("GR calc failed (empty trajectory or missing cell)"))?;
+
+    // 指定原子对时过滤输出列，保留 total
+    if let (Some(a), Some(b)) = (&args.atom_a, &args.atom_b) {
+        let ab = format!("{a}-{b}");
+        let ba = format!("{b}-{a}");
+        let keep_sym = |k: &str| k == "total" || k == ab || k == ba;
+        result.gr.retain(|k, _| keep_sym(k));
+        result.cn.retain(|k, _| keep_sym(k));
+        result.pair_stats.retain(|k, _| keep_sym(k));
+        if result.gr.len() <= 1 {
+            return Err(anyhow!("pair '{ab}' not found in trajectory (check element symbols)"));
+        }
+    }
 
     let out = args.output.as_deref().unwrap_or(Path::new("gr.dat"));
     let out_str = out.to_str().unwrap_or("gr.dat");
@@ -151,6 +203,12 @@ fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
 
     println!("GR  -> {out_str}");
     println!("CN  -> {cn_path}");
+
+    if args.plot {
+        let png = plot_gr(&result, out_str)?;
+        println!("Plot-> {png}");
+        open_plot(&png);
+    }
     Ok(())
 }
 
@@ -172,8 +230,15 @@ fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
     let sq = calc_sq_from_gr(&gr, &sq_params);
 
     let out = args.output.as_deref().unwrap_or(Path::new("sq.dat"));
-    write_sq(&gr, &sq, out.to_str().unwrap_or("sq.dat"))?;
-    println!("SQ  -> {}", out.display());
+    let out_str = out.to_str().unwrap_or("sq.dat");
+    write_sq(&gr, &sq, out_str)?;
+    println!("SQ  -> {out_str}");
+
+    if args.plot {
+        let png = plot_sq(&sq, out_str)?;
+        println!("Plot-> {png}");
+        open_plot(&png);
+    }
     Ok(())
 }
 
@@ -193,16 +258,42 @@ fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
 }
 
 fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+    let n_filter = [&args.atom_a, &args.atom_b, &args.atom_c].iter().filter(|x| x.is_some()).count();
+    if n_filter > 0 && n_filter < 3 {
+        return Err(anyhow!("Angle filter: -a (end A), -b (center B), -c (end C) must all be specified together"));
+    }
+
     let params = AngleParams {
         r_cut_ab: args.r_cut_ab,
         r_cut_bc: args.r_cut_bc,
         d_angle: args.d_angle,
     };
-    let result = calc_angle(traj, &params).ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
+    let mut result = calc_angle(traj, &params)
+        .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
+
+    // 指定三元组时过滤输出列（key 格式 "A-Center-C"，端原子按 Z 排序，两种顺序均检查）
+    if let (Some(a), Some(b), Some(c)) = (&args.atom_a, &args.atom_b, &args.atom_c) {
+        let key1 = format!("{a}-{b}-{c}");
+        let key2 = format!("{c}-{b}-{a}");
+        result.hist.retain(|k, _| k == &key1 || k == &key2);
+        result.stats.retain(|k, _| k == &key1 || k == &key2);
+        if result.hist.is_empty() {
+            return Err(anyhow!(
+                "triplet '{key1}' not found (check element symbols and that -b is the center atom)"
+            ));
+        }
+    }
 
     let out = args.output.as_deref().unwrap_or(Path::new("angle.dat"));
-    write_angle(&result, out.to_str().unwrap_or("angle.dat"))?;
-    println!("Angle -> {}", out.display());
+    let out_str = out.to_str().unwrap_or("angle.dat");
+    write_angle(&result, out_str)?;
+    println!("Angle -> {out_str}");
+
+    if args.plot {
+        let png = plot_angle(&result, out_str)?;
+        println!("Plot -> {png}");
+        open_plot(&png);
+    }
     Ok(())
 }
 

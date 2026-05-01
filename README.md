@@ -69,13 +69,36 @@ fe-job -i water.xyz -s gaussian -m B3LYP -b "6-31G*" -o job.gjf
 ```
 
 ### fe-traj — Structural trajectory analysis
+
 ```bash
-fe-traj -m gr    -i traj.dump                         # Radial distribution function g(r)
-fe-traj -m sq    -i traj.dump --weighting both        # Structure factor S(q)
-fe-traj -m msd   -i traj.dump --dt 2.0 --elements Li  # Mean square displacement
-fe-traj -m angle -i traj.dump --r-cut-ab 2.0          # Bond-angle distribution
-fe-traj -m gr                                         # Run without -i to show mode help
+# overview of all modes
+fe-traj -h
+
+# mode-specific parameters
+fe-traj -m gr
+
+# g(r) — all pairs
+fe-traj -m gr -i traj.dump
+
+# g(r) — single pair, with PNG plot (g(r) left axis + CN right axis)
+fe-traj -m gr -i traj.dump -a O -b P --r-cut 2.0 --plot
+
+# S(q) — XRD + neutron weighted, with plot
+fe-traj -m sq -i traj.dump --weighting both --plot
+
+# MSD — specific elements
+fe-traj -m msd -i traj.dump --dt 2.0 --elements Li
+
+# bond-angle distribution — all triplets
+fe-traj -m angle -i traj.dump
+
+# bond-angle distribution — specific triplet A-B-C (B is center)
+fe-traj -m angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --plot
 ```
+
+`--plot` writes a PNG next to the output file and opens it in the system viewer.
+`--last-n N` restricts analysis to the last N frames.
+`--ncore N` sets the number of parallel threads.
 
 ### fe-corr — Correlation functions
 ```bash

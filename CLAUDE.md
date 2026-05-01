@@ -217,14 +217,24 @@ echo -e "read water.xyz\nsupercell 2 2 1\nwrite POSCAR" | ferro
 ### ferro-cli internal structure
 ```
 ferro-cli/src/
-├── main.rs          # mode detection
-├── interpreter.rs   # shared command parser/executor (REPL + batch)
-├── repl.rs          # rustyline interactive input
-├── batch.rs         # file/stdin input
-└── commands/
-    ├── io.rs
-    ├── structure.rs
-    └── analysis.rs
+├── main.rs              # REPL / batch mode detection (placeholder)
+├── lib.rs               # re-exports args, help, io_dispatch, plot
+├── args/
+│   ├── common.rs
+│   ├── traj.rs          # TrajMode, SqWeightingCli
+│   ├── corr.rs
+│   └── cube.rs
+├── help.rs              # print_fe_traj_overview / print_traj_help / print_corr_help / print_cube_help
+├── io_dispatch.rs       # read_trajectory (format detection)
+├── plot.rs              # plot_gr / plot_angle / plot_sq / open_plot  (plotters)
+└── bin/
+    ├── convert.rs
+    ├── info.rs
+    ├── job.rs
+    ├── traj.rs
+    ├── corr.rs
+    ├── cube.rs
+    └── network.rs
 ```
 
 ---
@@ -269,7 +279,47 @@ ferro-analysis  = { path = "../ferro-analysis" }
 | `fe-network` | `--P-O=2.3 [--format csv\|xlsx]` | Glass network analysis |
 
 Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--metal-units`.
-Run any binary without `-i` to print mode-specific help.
+
+**fe-traj help system** (two-level):
+- `fe-traj` / `fe-traj -h` → overview: available modes + common flags
+- `fe-traj -m <MODE>` (no `-i`) → mode-specific parameters + examples
+
+### `fe-traj` — detailed flags
+
+```
+# pair / triplet element filter
+-a ELEM   [gr] element A of pair A-B; [angle] end atom A
+-b ELEM   [gr] element B of pair A-B; [angle] center atom B  (requires -a)
+-c ELEM   [angle] end atom C  (requires -a -b)
+
+# gr-specific
+--r-max FLOAT   max r [Å]                  default 10.005
+--dr    FLOAT   bin width [Å]              default 0.01
+--r-cut FLOAT   first-shell cutoff [Å]     default 2.3
+
+# sq-specific
+--q-max     FLOAT   max q [Å⁻¹]           default 25.0
+--dq        FLOAT   q bin width [Å⁻¹]     default 0.05
+--weighting ENUM    none|xrd|neutron|both  default both
+
+# msd-specific
+--dt    FLOAT   timestep [fs]              default 1.0
+--shift INT     time-origin stride         default 1
+--elements El,El,...  filter elements
+
+# angle-specific
+--r-cut-ab FLOAT   A→B cutoff [Å]         default 2.3
+--r-cut-bc FLOAT   B→C cutoff [Å]         default 2.3
+--d-angle  FLOAT   bin width [°]           default 0.1
+
+# plot (gr / sq / angle only)
+--plot   write PNG next to output file and open with system viewer
+```
+
+**Plot behaviour:**
+- `gr`: left axis g(r) solid lines + right axis CN(r) lighter lines (same colour per pair)
+- `sq`: only `total_xrd` ("XRD") and `total_neutron` ("Neutron") curves shown
+- `angle`: normalised histograms with mean ± std in legend
 
 ### `fe-cube -m sdf` — Cluster SDF
 
