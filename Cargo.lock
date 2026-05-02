@@ -406,6 +406,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ferro-structure"
+version = "0.1.0"
+dependencies = [
+ "ferro-core",
+ "nalgebra",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "ferro-workflow"
 version = "0.1.0"
 dependencies = [

@@ -2,6 +2,7 @@
 members = [
     "ferro-core",
     "ferro-io",
+    "ferro-structure",
     "ferro-analysis",
     "ferro-workflow",
     "ferro-cli",
