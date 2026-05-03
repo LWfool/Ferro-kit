@@ -377,6 +377,19 @@ fn write_header(
         writeln!(w, "#   {:<4}: {}", elem, count)?;
     }
     writeln!(w, "# {}", "-".repeat(60))?;
+    // pair_stats：第一配位壳层键长统计（r < r_cut）
+    if !result.pair_stats.is_empty() {
+        writeln!(w, "# pair stats (r < {} Ang):", result.params.r_cut)?;
+        writeln!(w, "# {:<10}  {:>12}  {:>12}  {:>10}", "pair", "mean[Ang]", "std[Ang]", "count")?;
+        for (pair, stats) in &result.pair_stats {
+            writeln!(
+                w,
+                "# {:<10}  {:>12.6}  {:>12.6}  {:>10}",
+                pair, stats.mean_dist, stats.std_dist, stats.count
+            )?;
+        }
+        writeln!(w, "# {}", "-".repeat(60))?;
+    }
     Ok(())
 }
 

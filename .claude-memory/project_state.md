@@ -19,6 +19,13 @@ originSessionId: 0e8d82ba-c0c2-4836-af51-2fc7e824f750
 - API 设计：单帧而非 Trajectory（用户决策）
 - 12 个单元测试全绿，clippy 零 warning
 
+## ferro-analysis gr 输出格式
+
+- `write_header`（`ferro-analysis/src/md/gr.rs`）在 atoms 块之后追加 pair_stats 块（2026-05-03）
+- 格式：`# pair stats (r < X Ang):` + 表头 + 每行 `pair / mean / std / count`
+- pair_stats 为空时该块自动省略，不影响已有文件解析
+- `--r-cut` 只控制 pair_stats 的采集范围，不影响 g(r) / CN(r) 曲线
+
 ## 编码陷阱
 
 - 浮点断言：`cartesian_to_fractional` 误差 ~1e-15，用 `< 1e-10`，不能 `assert_eq!`
