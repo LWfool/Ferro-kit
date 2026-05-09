@@ -73,7 +73,7 @@ fn search_range(
     let m_t_inv = mat
         .transpose()
         .try_inverse()
-        .unwrap_or_else(|| *mat); // 奇异矩阵时退化（不应发生）
+        .unwrap_or(*mat); // 奇异矩阵时退化（不应发生）
     let sx = (radius * m_t_inv.row(0).norm() * nx as f64).ceil() as i64 + 1;
     let sy = (radius * m_t_inv.row(1).norm() * ny as f64).ceil() as i64 + 1;
     let sz = (radius * m_t_inv.row(2).norm() * nz as f64).ceil() as i64 + 1;

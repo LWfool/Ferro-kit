@@ -16,6 +16,7 @@ mod qn;
 pub use qn::qn_label_order;
 
 use ferro_core::{Cell, Frame, Trajectory};
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 /// (network_former_element, ligand_element) → cutoff radius [Å]
@@ -63,11 +64,13 @@ impl NetworkParams {
 
 // ─── 结果结构体 ───────────────────────────────────────────────────────────────
 
+type CnDist = HashMap<(String, String), Vec<(u32, usize, f64)>>;
+
 /// 最终输出结果（所有帧累加后归一化）
 #[derive(Debug, Clone)]
 pub struct NetworkResult {
     /// (former, ligand) → CN 分布行：(cn_value, count, fraction)
-    pub cn_dist: HashMap<(String, String), Vec<(u32, usize, f64)>>,
+    pub cn_dist: CnDist,
     /// former → total CN 分布（所有配体之和）
     pub cn_total: HashMap<String, Vec<(u32, usize, f64)>>,
     /// (former, ligand) → 平均 CN
@@ -102,13 +105,20 @@ pub fn calc_network(traj: &Trajectory, params: &NetworkParams) -> Option<Network
     if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
     if params.cutoffs.is_empty() { return None; }
 
-    let mut acc = Accumulator::new(params);
-    for frame in &traj.frames {
-        let cell = frame.cell.as_ref().unwrap();
-        if let Some(fd) = compute_frame(frame, cell, params) {
-            acc.push(&fd);
-        }
-    }
+    let acc = traj.frames
+        .par_iter()
+        .filter_map(|frame| {
+            let cell = frame.cell.as_ref().unwrap();
+            compute_frame(frame, cell, params)
+        })
+        .fold(
+            || Accumulator::new(params),
+            |mut acc, fd| { acc.push(&fd); acc },
+        )
+        .reduce(
+            || Accumulator::new(params),
+            |mut a, b| { a.merge(b); a },
+        );
     Some(acc.finalize())
 }
 
@@ -177,6 +187,25 @@ impl Accumulator {
         for (former, labels) in &fd.qn_labels {
             let m = self.qn.entry(former.clone()).or_default();
             for l in labels { *m.entry(l.clone()).or_insert(0) += 1; }
+        }
+    }
+
+    fn merge(&mut self, other: Self) {
+        for (k, inner) in other.cn_pair {
+            let m = self.cn_pair.entry(k).or_default();
+            for (cn, c) in inner { *m.entry(cn).or_insert(0) += c; }
+        }
+        for (k, inner) in other.cn_total {
+            let m = self.cn_total.entry(k).or_default();
+            for (cn, c) in inner { *m.entry(cn).or_insert(0) += c; }
+        }
+        for (k, inner) in other.lig_class {
+            let m = self.lig_class.entry(k).or_default();
+            for (label, c) in inner { *m.entry(label).or_insert(0) += c; }
+        }
+        for (k, inner) in other.qn {
+            let m = self.qn.entry(k).or_default();
+            for (label, c) in inner { *m.entry(label).or_insert(0) += c; }
         }
     }
 

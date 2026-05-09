@@ -348,6 +348,7 @@ fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<C
 }
 
 /// Extract a cluster snapshot from a single connected component (local coordinates, anchor atom at origin).
+#[allow(clippy::too_many_arguments)]
 fn extract_snapshot(
     frame: &Frame,
     cell: &Cell,
@@ -546,7 +547,7 @@ fn heap_permutations(arr: &mut [usize], k: usize, cb: &mut impl FnMut(&[usize]))
     }
     for i in 0..k {
         heap_permutations(arr, k - 1, cb);
-        if k % 2 == 0 {
+        if k.is_multiple_of(2) {
             arr.swap(i, k - 1);
         } else {
             arr.swap(0, k - 1);
@@ -616,6 +617,7 @@ fn build_family(acc: FamilyAccumulator, params: &ClusterSdfParams) -> ClusterFam
 }
 
 /// 对单个原子类型建 3D 密度格点（直方图 + 高斯展宽 + 均值归一化）。
+#[allow(clippy::too_many_arguments)]
 fn build_cube_for_type(
     positions: &[Vector3<f64>],
     origin: &Vector3<f64>,

@@ -16,7 +16,7 @@ pub fn write_cif(trajectory: &Trajectory, path: &str) -> Result<()> {
         // 生成 data block 名称
         let block_name = trajectory.metadata.source
             .as_deref()
-            .map(|s| sanitize_block_name(s))
+            .map(sanitize_block_name)
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| format!("structure_{}", idx + 1));
 

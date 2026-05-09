@@ -14,6 +14,7 @@ use ferro_core::Trajectory;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::io::{BufWriter, Write};
+use super::angle::CellList;
 
 /// ferro package version (from Cargo.toml)
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -28,16 +29,40 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 ///   3. First byte (uppercase letter) as a single-character element ("Onb" → "O" → 8, "P1" → "P" → 15).
 ///   4. Unrecognised → 255 (sorted to end, with string secondary ordering).
 pub(super) fn elem_z(symbol: &str) -> u8 {
-    use ferro_core::data::elements::by_symbol;
-    if let Some(e) = by_symbol(symbol) { return e.atomic_number; }
-    let b = symbol.as_bytes();
-    if b.len() >= 2 && b[0].is_ascii_uppercase() && b[1].is_ascii_lowercase() {
-        if let Some(e) = by_symbol(&symbol[..2]) { return e.atomic_number; }
+    ferro_core::data::elements::symbol_to_z(symbol)
+}
+
+/// Welford 在线统计量（无需存储所有样本）
+#[derive(Default, Clone)]
+struct WelfordStats {
+    count: u64,
+    mean:  f64,
+    m2:    f64,
+}
+
+impl WelfordStats {
+    fn update(&mut self, x: f64) {
+        self.count += 1;
+        let delta = x - self.mean;
+        self.mean += delta / self.count as f64;
+        self.m2   += delta * (x - self.mean);
     }
-    if !b.is_empty() && b[0].is_ascii_uppercase() {
-        if let Some(e) = by_symbol(&symbol[..1]) { return e.atomic_number; }
+
+    fn merge(a: Self, b: Self) -> Self {
+        if b.count == 0 { return a; }
+        if a.count == 0 { return b; }
+        let count = a.count + b.count;
+        let delta = b.mean - a.mean;
+        let mean  = a.mean + delta * b.count as f64 / count as f64;
+        let m2    = a.m2 + b.m2 + delta.powi(2) * (a.count as f64 * b.count as f64 / count as f64);
+        WelfordStats { count, mean, m2 }
     }
-    255
+
+    fn finalize(&self) -> (f64, f64, usize) {
+        if self.count == 0 { return (0.0, 0.0, 0); }
+        let std = if self.count > 1 { (self.m2 / self.count as f64).sqrt() } else { 0.0 };
+        (self.mean, std, self.count as usize)
+    }
 }
 
 /// Split a `"El1-El2"` key into `(El1, El2)`.
@@ -192,32 +217,33 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
     // 先校验所有帧都有 cell（并行路径内无法使用 ?）
     if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
 
-    // 并行逐帧计数：每个线程独立维护 (hist, cut_dists, volume)，最后 reduce 合并
+    // 并行逐帧计数：每个线程独立维护 (hist, welford, volume)，最后 reduce 合并
+    // 使用 linked-cell list 将帧内原子对遍历从 O(N²) 降至 O(N)
     let init = || (
         vec![vec![0.0f64; n_bins]; n_pairs + 1],
-        vec![Vec::<f64>::new(); n_pairs],
+        vec![WelfordStats::default(); n_pairs],
         0.0f64,
     );
-    let (hist, cut_dists, total_volume) = traj.frames.par_iter()
+    let (hist, welford, total_volume) = traj.frames.par_iter()
         .fold(init, |(mut h, mut c, mut v), frame| {
             let cell = frame.cell.as_ref().unwrap();
             v += cell.volume();
             let n_atoms = frame.atoms.len();
+            let cl = CellList::build(frame, cell, params.r_max);
             for i in 0..n_atoms {
-                for j in (i + 1)..n_atoms {
-                    let ai = &frame.atoms[i];
-                    let aj = &frame.atoms[j];
-                    let diff = cell.minimum_image(aj.position - ai.position);
-                    let r_val = diff.norm();
-                    if r_val < params.r_min || r_val >= params.r_max { continue; }
+                let ai = &frame.atoms[i];
+                let Some(&ti) = elem_idx.get(ai.element.as_str()) else { continue; };
+                for (j, r_val, _) in cl.neighbors_of(i, params.r_max) {
+                    if j <= i { continue; }
+                    if r_val < params.r_min { continue; }
                     let bin = ((r_val - params.r_min) / params.dr) as usize;
                     if bin >= n_bins { continue; }
-                    let Some(&ti) = elem_idx.get(ai.element.as_str()) else { continue; };
+                    let aj = &frame.atoms[j];
                     let Some(&tj) = elem_idx.get(aj.element.as_str()) else { continue; };
                     let pidx = pair_lookup[ti.min(tj)][ti.max(tj)];
                     h[pidx][bin] += 1.0;
                     h[n_pairs][bin] += 1.0;
-                    if r_val < params.r_cut { c[pidx].push(r_val); }
+                    if r_val < params.r_cut { c[pidx].update(r_val); }
                 }
             }
             (h, c, v)
@@ -226,7 +252,9 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
             for p in 0..ha.len() {
                 for b in 0..ha[p].len() { ha[p][b] += hb[p][b]; }
             }
-            for (dst, src) in ca.iter_mut().zip(cb) { dst.extend(src); }
+            for (dst, src) in ca.iter_mut().zip(cb) {
+                *dst = WelfordStats::merge(std::mem::take(dst), src);
+            }
             (ha, ca, va + vb)
         });
 
@@ -326,16 +354,14 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
         cn_map.insert("total".to_string(), cn_t);
     }
 
-    // 键长统计（正则对标签）
+    // 键长统计（Welford 在线统计，无需存储所有距离值）
     let mut pair_stats: BTreeMap<String, PairStats> = BTreeMap::new();
-    for (pidx, dists) in cut_dists.iter().enumerate() {
-        if dists.is_empty() { continue; }
-        let n = dists.len() as f64;
-        let mean = dists.iter().sum::<f64>() / n;
-        let var = dists.iter().map(|&d| (d - mean).powi(2)).sum::<f64>() / n;
+    for (pidx, stats) in welford.iter().enumerate() {
+        if stats.count == 0 { continue; }
+        let (mean, std, count) = stats.finalize();
         pair_stats.insert(
             sym_labels[pidx].clone(),
-            PairStats { mean_dist: mean, std_dist: var.sqrt(), count: dists.len() },
+            PairStats { mean_dist: mean, std_dist: std, count },
         );
     }
 

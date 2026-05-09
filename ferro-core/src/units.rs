@@ -62,7 +62,7 @@ impl LengthUnit {
             Self::Picometer => v * 0.01,
         }
     }
-    fn from_angstrom(self, v: f64) -> f64 {
+    fn ang_into(self, v: f64) -> f64 {
         match self {
             Self::Angstrom  => v,
             Self::Bohr      => v * ANG_TO_BOHR,
@@ -73,7 +73,7 @@ impl LengthUnit {
 }
 
 pub fn convert_length(value: f64, from: LengthUnit, to: LengthUnit) -> f64 {
-    to.from_angstrom(from.to_angstrom(value))
+    to.ang_into(from.to_angstrom(value))
 }
 
 // ── 能量 ──────────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ impl EnergyUnit {
             Self::Wavenumber => v * WAVENUMBER_TO_EV,
         }
     }
-    fn from_ev(self, v: f64) -> f64 {
+    fn ev_into(self, v: f64) -> f64 {
         match self {
             Self::EV         => v,
             Self::Hartree    => v * EV_TO_HARTREE,
@@ -109,7 +109,7 @@ impl EnergyUnit {
 }
 
 pub fn convert_energy(value: f64, from: EnergyUnit, to: EnergyUnit) -> f64 {
-    to.from_ev(from.to_ev(value))
+    to.ev_into(from.to_ev(value))
 }
 
 // ── 压强/应力 ─────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ impl PressureUnit {
             Self::Kbar      => v * KBAR_TO_GPA * GPA_TO_EV_ANG3,
         }
     }
-    fn from_ev_ang3(self, v: f64) -> f64 {
+    fn ev_ang3_into(self, v: f64) -> f64 {
         match self {
             Self::EVPerAng3 => v,
             Self::GPa       => v * EV_ANG3_TO_GPA,
@@ -140,7 +140,7 @@ impl PressureUnit {
 }
 
 pub fn convert_pressure(value: f64, from: PressureUnit, to: PressureUnit) -> f64 {
-    to.from_ev_ang3(from.to_ev_ang3(value))
+    to.ev_ang3_into(from.to_ev_ang3(value))
 }
 
 // ── 时间 ──────────────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ impl TimeUnit {
             Self::Picosecond  => v * 1000.0,
         }
     }
-    fn from_fs(self, v: f64) -> f64 {
+    fn fs_into(self, v: f64) -> f64 {
         match self {
             Self::Femtosecond => v,
             Self::Picosecond  => v * 0.001,
@@ -167,7 +167,7 @@ impl TimeUnit {
 }
 
 pub fn convert_time(value: f64, from: TimeUnit, to: TimeUnit) -> f64 {
-    to.from_fs(from.to_fs(value))
+    to.fs_into(from.to_fs(value))
 }
 
 #[cfg(test)]

@@ -82,9 +82,9 @@ pub struct CubeJumpResult {
 /// 原地 unwrap 单原子的分数坐标序列，消除 PBC 穿越引起的跳变。
 fn unwrap_single(frac: &mut [[f64; 3]]) {
     for i in 1..frac.len() {
-        for k in 0..3 {
-            let delta = frac[i][k] - frac[i - 1][k];
-            frac[i][k] -= delta.round();
+        let (prev, curr_and_later) = frac.split_at_mut(i);
+        for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
+            *c -= (*c - *p).round();
         }
     }
 }

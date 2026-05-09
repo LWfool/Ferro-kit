@@ -101,10 +101,9 @@ pub fn plot_gr(result: &GrResult, dat_path: &str) -> Result<String> {
             if let Some(cn) = result.cn.get(*key) {
                 let pts: Vec<(f64, f64)> = result.r.iter().copied().zip(cn.iter().copied()).collect();
                 let s = ShapeStyle { color: c.mix(0.55), filled: false, stroke_width: 1 };
-                let s2 = s.clone();
                 chart.draw_secondary_series(LineSeries::new(pts, s))?
                     .label(format!("{key}  CN"))
-                    .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s2.clone()));
+                    .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s));
             }
         }
 

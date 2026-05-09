@@ -149,9 +149,9 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> Option<RotCorr
             for i in 0..tau {
                 let mut sum_p2 = 0.0_f64;
                 let mut count = 0usize;
-                for j in 0..n_mol {
-                    let [ax, ay, az] = orient[p][j];
-                    let [bx, by, bz] = orient[p + i][j];
+                for (oa, ob) in orient[p].iter().zip(orient[p + i].iter()) {
+                    let [ax, ay, az] = *oa;
+                    let [bx, by, bz] = *ob;
                     let norm_a2 = ax*ax + ay*ay + az*az;
                     let norm_b2 = bx*bx + by*by + bz*bz;
                     // skip zero-norm vectors (no neighbours) to avoid division by zero

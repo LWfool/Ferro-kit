@@ -3,6 +3,8 @@ use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{Context, Result};
 
+type AtomRaw = (usize, Atom, Option<Vector3<f64>>, Option<Vector3<f64>>);
+
 const KCAL_TO_EV: f64 = 0.04336410;
 
 /// LAMMPS unit system for dump files.
@@ -106,7 +108,7 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
 
         let get_col = |name: &str| col.get(name).copied();
 
-        let mut atoms_raw: Vec<(usize, Atom, Option<Vector3<f64>>, Option<Vector3<f64>>)> = Vec::new();
+        let mut atoms_raw: Vec<AtomRaw> = Vec::new();
 
         for _ in 0..n {
             let line = lines.get(i).unwrap_or(&"");

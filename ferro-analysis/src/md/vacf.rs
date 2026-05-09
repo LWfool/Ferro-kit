@@ -138,10 +138,10 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> Option<VacfResult> {
             let mut local = vec![[0.0f64; 3]; tau];
             for i in 0..tau {
                 let mut sum = [0.0f64; 3];
-                for j in 0..n_atoms {
-                    sum[0] += vel[p][j][0] * vel[p + i][j][0];
-                    sum[1] += vel[p][j][1] * vel[p + i][j][1];
-                    sum[2] += vel[p][j][2] * vel[p + i][j][2];
+                for (v0, vi) in vel[p].iter().zip(vel[p + i].iter()) {
+                    sum[0] += v0[0] * vi[0];
+                    sum[1] += v0[1] * vi[1];
+                    sum[2] += v0[2] * vi[2];
                 }
                 local[i] = [
                     sum[0] / n_atoms as f64,

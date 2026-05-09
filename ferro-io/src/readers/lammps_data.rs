@@ -94,7 +94,7 @@ fn parse_lammps_data(content: &str) -> Result<Trajectory> {
                 // Try comment for element symbol: "# Fe" or "# Fe ..."
                 let elem = raw.find('#')
                     .and_then(|p| {
-                        raw[p+1..].trim().split_whitespace().next().map(|s| s.to_string())
+                        raw[p+1..].split_whitespace().next().map(|s| s.to_string())
                     })
                     .unwrap_or_else(|| element_from_mass(mass).to_string());
                 type_element.insert(tid, elem);

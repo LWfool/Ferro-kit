@@ -73,22 +73,8 @@ pub struct SqResult {
 /// Tries exact match, then 2-char (uppercase+lowercase), then 1-char.
 /// Returns 0 for unrecognised symbols.
 fn elem_z_local(symbol: &str) -> usize {
-    use ferro_core::data::elements::by_symbol;
-    if let Some(e) = by_symbol(symbol) { return e.atomic_number as usize; }
-    let b = symbol.as_bytes();
-    if b.len() >= 2 {
-        let two = [b[0].to_ascii_uppercase(), b[1].to_ascii_lowercase()];
-        if let Ok(s) = std::str::from_utf8(&two) {
-            if let Some(e) = by_symbol(s) { return e.atomic_number as usize; }
-        }
-    }
-    if let Some(&first) = b.first() {
-        let one = [first.to_ascii_uppercase()];
-        if let Ok(s) = std::str::from_utf8(&one) {
-            if let Some(e) = by_symbol(s) { return e.atomic_number as usize; }
-        }
-    }
-    0
+    let z = ferro_core::data::elements::symbol_to_z(symbol);
+    if z == 255 { 0 } else { z as usize }
 }
 
 /// Compute S(q) from a pre-computed g(r) result via Fourier sine transform.

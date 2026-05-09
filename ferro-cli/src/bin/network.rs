@@ -4,7 +4,7 @@ use ferro::io_dispatch::read_trajectory;
 use ferro_analysis::{calc_network, NetworkParams, NetworkResult};
 use ferro_io::LammpsUnits;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
@@ -161,7 +161,7 @@ fn parse_pairs(pair_args: &[String]) -> Result<HashMap<(String, String), f64>> {
 
 // ─── CSV 输出 ─────────────────────────────────────────────────────────────────
 
-fn write_csv(result: &NetworkResult, params: &NetworkParams, base: &PathBuf) -> Result<()> {
+fn write_csv(result: &NetworkResult, params: &NetworkParams, base: &Path) -> Result<()> {
     let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("network");
     let dir  = base.parent().map(|p| p.to_str().unwrap_or("")).unwrap_or("");
     let prefix = if dir.is_empty() { stem.to_string() } else { format!("{dir}/{stem}") };
@@ -259,7 +259,7 @@ fn write_qn_csv(result: &NetworkResult, path: &str) -> Result<()> {
 
 // ─── XLSX 输出 ────────────────────────────────────────────────────────────────
 
-fn write_xlsx(result: &NetworkResult, params: &NetworkParams, base: &PathBuf) -> Result<()> {
+fn write_xlsx(result: &NetworkResult, params: &NetworkParams, base: &Path) -> Result<()> {
     use rust_xlsxwriter::*;
 
     let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("network");

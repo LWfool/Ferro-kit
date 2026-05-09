@@ -74,12 +74,25 @@ pub(super) fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
     let n_steps = frac.len();
     if n_steps < 2 { return; }
     let n_atoms = frac[0].len();
-    for j in 0..n_atoms {
+
+    // 转置为 atom-major：各原子时间序列互相独立，可并行处理
+    let mut by_atom: Vec<Vec<[f64; 3]>> = (0..n_atoms)
+        .map(|j| frac.iter().map(|step| step[j]).collect())
+        .collect();
+
+    by_atom.par_iter_mut().for_each(|coords| {
         for i in 1..n_steps {
-            for k in 0..3 {
-                let delta = frac[i][j][k] - frac[i - 1][j][k];
-                frac[i][j][k] -= delta.round();
+            let (prev, curr_and_later) = coords.split_at_mut(i);
+            for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
+                *c -= (*c - *p).round();
             }
+        }
+    });
+
+    // 转置回 step-major
+    for (i, step) in frac.iter_mut().enumerate() {
+        for j in 0..n_atoms {
+            step[j] = by_atom[j][i];
         }
     }
 }
@@ -183,10 +196,10 @@ fn calc_msd_periodic(
                 let avg_mat = (cell_end.matrix + cell_orig.matrix) * 0.5;
                 let [a_len, b_len, c_len] = cell_end.lengths();
                 let mut sum = [0.0f64; 4];
-                for j in 0..n_atoms {
-                    let dx = frac[p + i][j][0] - frac[p][j][0];
-                    let dy = frac[p + i][j][1] - frac[p][j][1];
-                    let dz = frac[p + i][j][2] - frac[p][j][2];
+                for (f_end, f_orig) in frac[p + i].iter().zip(frac[p].iter()) {
+                    let dx = f_end[0] - f_orig[0];
+                    let dy = f_end[1] - f_orig[1];
+                    let dz = f_end[2] - f_orig[2];
                     // 分数位移 → Cartesian（avg_mat 行向量 = a,b,c）
                     let cx = dx*avg_mat[(0,0)] + dy*avg_mat[(1,0)] + dz*avg_mat[(2,0)];
                     let cy = dx*avg_mat[(0,1)] + dy*avg_mat[(1,1)] + dz*avg_mat[(2,1)];
@@ -249,10 +262,10 @@ fn calc_msd_nonperiodic(
             let mut local = vec![[0.0f64; 4]; tau];
             for i in 0..tau {
                 let mut sum = [0.0f64; 4];
-                for j in 0..n_atoms {
-                    let dx = cart[p + i][j][0] - cart[p][j][0];
-                    let dy = cart[p + i][j][1] - cart[p][j][1];
-                    let dz = cart[p + i][j][2] - cart[p][j][2];
+                for (c_end, c_orig) in cart[p + i].iter().zip(cart[p].iter()) {
+                    let dx = c_end[0] - c_orig[0];
+                    let dy = c_end[1] - c_orig[1];
+                    let dz = c_end[2] - c_orig[2];
                     sum[0] += dx*dx + dy*dy + dz*dz;
                     sum[1] += dx*dx;
                     sum[2] += dy*dy;

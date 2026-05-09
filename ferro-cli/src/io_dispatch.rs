@@ -9,10 +9,10 @@ pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Traject
     let upper = name.to_uppercase();
 
     if upper.starts_with("POSCAR") {
-        return Ok(read_poscar(s)?);
+        return read_poscar(s);
     }
     if upper.starts_with("CONTCAR") {
-        return Ok(read_contcar(s)?);
+        return read_contcar(s);
     }
 
     match path.extension().and_then(|e| e.to_str()) {
@@ -36,7 +36,7 @@ pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnit
     let upper = name.to_uppercase();
 
     if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
-        return Ok(write_poscar(traj, s)?);
+        return write_poscar(traj, s);
     }
 
     match path.extension().and_then(|e| e.to_str()) {
