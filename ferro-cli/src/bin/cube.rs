@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use ferro::{
     args::cube::CubeCliMode,
-    help::print_cube_help,
+    help::{print_cube_help, print_fe_cube_overview},
     io_dispatch::read_trajectory,
 };
 use ferro_analysis::{
@@ -16,12 +16,17 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(
     name = "fe-cube",
-    about = "Spatial distribution maps: density | velocity | force | sdf  (run without -i for mode help)"
+    about = "Spatial distribution maps  (density | velocity | force | radius | sdf)",
+    disable_help_flag = true,
 )]
 struct Cli {
-    /// Analysis mode
+    /// Analysis mode; omit to see overview
     #[arg(short = 'm', long, value_enum)]
-    mode: CubeCliMode,
+    mode: Option<CubeCliMode>,
+
+    /// Show help: overview when -m is absent, mode-specific when -m is given
+    #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
+    help: bool,
 
     /// Input trajectory file (omit to show mode-specific help)
     #[arg(short, long)]
@@ -111,13 +116,22 @@ struct Cli {
 fn main() -> Result<()> {
     let args = Cli::parse();
 
-    let input = match &args.input {
-        Some(p) => p.clone(),
+    // 无 -m → 概览
+    let mode = match args.mode.clone() {
+        Some(m) => m,
         None => {
-            print_cube_help(&args.mode);
+            print_fe_cube_overview();
             return Ok(());
         }
     };
+
+    // -h 或无 -i → 模式专属帮助
+    if args.help || args.input.is_none() {
+        print_cube_help(&mode);
+        return Ok(());
+    }
+
+    let input = args.input.as_ref().unwrap().clone();
 
     if let Some(n) = args.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
@@ -129,7 +143,7 @@ fn main() -> Result<()> {
         traj = traj.tail(n);
     }
 
-    match args.mode {
+    match mode {
         CubeCliMode::Sdf    => run_sdf(&args, &traj),
         CubeCliMode::Radius => run_radius(&args, &traj),
         ref m               => run_density(m, &args, &traj),

@@ -58,7 +58,7 @@ fn sort_triplet_keys(map: &BTreeMap<String, Vec<u64>>) -> Vec<String> {
 
 // ─── linked-cell list ────────────────────────────────────────────────────────
 
-struct CellList {
+pub(super) struct CellList {
     nx: usize,
     ny: usize,
     nz: usize,
@@ -71,7 +71,7 @@ struct CellList {
 }
 
 impl CellList {
-    fn build(frame: &ferro_core::Frame, cell: &ferro_core::Cell, max_rcut: f64) -> Self {
+    pub(super) fn build(frame: &ferro_core::Frame, cell: &ferro_core::Cell, max_rcut: f64) -> Self {
         let mat_t = cell.matrix.transpose();
         // (mat_t)^{-1} 的第 i 行是倒格矢 i，其模 = 1/d_i（面间距）
         // 每轴 cell 数 = floor(d_i / max_rcut).max(1)，对三斜晶胞完全正确
@@ -98,7 +98,7 @@ impl CellList {
     }
 
     /// 返回 b_idx 在 max_rcut 内的所有邻居：(atom_idx, dist, [dx, dy, dz] Å)
-    fn neighbors_of(&self, b_idx: usize, max_rcut: f64) -> Vec<(usize, f64, [f64; 3])> {
+    pub(super) fn neighbors_of(&self, b_idx: usize, max_rcut: f64) -> Vec<(usize, f64, [f64; 3])> {
         let fb = self.frac[b_idx];
         let radius2 = max_rcut * max_rcut;
 

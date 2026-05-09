@@ -17,7 +17,7 @@ pub fn mean_squared_displacement(traj: &Trajectory) -> Vec<f64> {
     let n_atoms = traj.n_atoms().unwrap_or(0);
     let mut msd = vec![0.0; n_frames];
 
-    for dt in 0..n_frames {
+    for (dt, msd_val) in msd.iter_mut().enumerate().take(n_frames) {
         let mut sum = 0.0;
         let mut count = 0usize;
         for t0 in 0..(n_frames - dt) {
@@ -31,7 +31,7 @@ pub fn mean_squared_displacement(traj: &Trajectory) -> Vec<f64> {
             }
         }
         if count > 0 {
-            msd[dt] = sum / count as f64;
+            *msd_val = sum / count as f64;
         }
     }
     msd

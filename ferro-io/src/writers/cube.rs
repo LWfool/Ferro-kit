@@ -30,11 +30,11 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
 
     // 3行体素定义：n_i  vx  vy  vz（Å → Bohr）
     let ns = [nx, ny, nz];
-    for i in 0..3 {
+    for (i, &n) in ns.iter().enumerate() {
         let vx = cube.spacing[(i, 0)] * ANG_TO_BOHR;
         let vy = cube.spacing[(i, 1)] * ANG_TO_BOHR;
         let vz = cube.spacing[(i, 2)] * ANG_TO_BOHR;
-        writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}", ns[i], vx, vy, vz)?;
+        writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}", n, vx, vy, vz)?;
     }
 
     // 原子行：Z  0.000000  x  y  z（Å → Bohr）

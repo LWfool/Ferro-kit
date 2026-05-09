@@ -11,11 +11,13 @@
 //!   对复数散射长度（Cd、Sm、Eu、Gd、Dy 等）取实部；
 //!   未测量或数据缺失的元素设为 0.0。
 
-/// Waasmaier-Kirfel 5-term XRD form factor coefficients (a0,b0,a1,b1,a2,b2,a3,b3,a4,b4,c)
-/// for Z = 0..=98.  Index 0 is unused (dummy zeros).
+/// Waasmaier-Kirfel 5-Gaussian XRD form factor (a0,b0, a1,b1, a2,b2, a3,b3, a4,b4, c)
+type WkCoeff = (f64,f64, f64,f64, f64,f64, f64,f64, f64,f64, f64);
+
+/// Form factor table for Z = 0..=98.  Index 0 is unused (dummy zeros).
 /// Source: code2/coefficient.c (xcoeff/xcoeff.f via RMC++)
 #[allow(clippy::excessive_precision)]
-pub static WAASMAIER_KIRFEL: [(f64,f64,f64,f64,f64,f64,f64,f64,f64,f64,f64); 99] = [
+pub static WAASMAIER_KIRFEL: [WkCoeff; 99] = [
     // Z=0 unused
     (0.0,0.0, 0.0,0.0, 0.0,0.0, 0.0,0.0, 0.0,0.0, 0.0),
     // Z=1 H

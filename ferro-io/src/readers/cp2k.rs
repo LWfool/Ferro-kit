@@ -45,7 +45,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         while j < subsys.len() {
             let low = subsys[j].to_lowercase();
             if low.starts_with("&kind") {
-                let label = low["&kind".len()..].trim().to_string();
+                let label = low.strip_prefix("&kind").unwrap_or("").trim().to_string();
                 let end = find_end(subsys, j).unwrap_or(subsys.len() - 1);
                 for l in &subsys[j..=end] {
                     let kv: Vec<&str> = l.split_whitespace().collect();
@@ -170,7 +170,7 @@ fn parse_cell_section(section: &[&str]) -> Result<Cell> {
         } else if low.starts_with("c ") || low.starts_with("c\t") {
             if let Some(v) = parse_vec3(&parts[1..]) { vecs[2] = Some(v); }
         } else if low.starts_with("abc ") {
-            abc = parse_vec3(&parts[1..]).map(|v| v);
+            abc = parse_vec3(&parts[1..]);
         } else if low.starts_with("alpha_beta_gamma") {
             if let Some(v) = parse_vec3(&parts[1..]) { angles = v; }
         }

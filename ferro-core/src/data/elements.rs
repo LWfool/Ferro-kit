@@ -123,6 +123,25 @@ pub fn by_number(n: u8) -> Option<&'static ElementData> {
     Some(&ELEMENTS[(n - 1) as usize])
 }
 
+/// Look up the atomic number for a symbol, with pseudo-element label fallback.
+///
+/// Matching strategy (tried in order):
+///   1. Exact match ("Fe" → 26, "O" → 8).
+///   2. First two bytes (uppercase + lowercase) as a chemical symbol ("Fe1" → "Fe" → 26).
+///   3. First byte (uppercase letter) as a single-character element ("Onb" → "O" → 8).
+///   4. Unrecognised → 255.
+pub fn symbol_to_z(symbol: &str) -> u8 {
+    if let Some(e) = by_symbol(symbol) { return e.atomic_number; }
+    let b = symbol.as_bytes();
+    if b.len() >= 2 && b[0].is_ascii_uppercase() && b[1].is_ascii_lowercase() {
+        if let Some(e) = by_symbol(&symbol[..2]) { return e.atomic_number; }
+    }
+    if !b.is_empty() && b[0].is_ascii_uppercase() {
+        if let Some(e) = by_symbol(&symbol[..1]) { return e.atomic_number; }
+    }
+    255
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

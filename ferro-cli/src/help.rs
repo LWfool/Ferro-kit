@@ -33,6 +33,53 @@ pub fn print_traj_help(mode: &TrajMode) {
     }
 }
 
+pub fn print_fe_corr_overview() {
+    println!(
+        r#"fe-corr — Correlation functions
+
+Usage:
+  fe-corr -m <MODE> -i <FILE> [OPTIONS]
+  fe-corr -m <MODE>              show mode-specific parameters
+
+Modes:
+  vacf      Velocity autocorrelation function C_v(t) + Green-Kubo diffusion
+  rotcorr   Rotational correlation C₂(t) for molecular bond vectors
+  vanhove   Van Hove self-correlation Gs(r, τ)
+
+Common options:
+  -i, --input  PATH     Input trajectory file (dump, xyz, extxyz, …)
+  -o, --output PATH     Output file (default name depends on mode)
+      --last-n N        Use only the last N frames
+      --dt     FLOAT    Timestep between frames [fs]  (default: 1.0)
+      --shift  INT      Time-origin stride            (default: 1)
+      --metal-units     LAMMPS metal units (velocities in Å/ps)"#
+    );
+}
+
+pub fn print_fe_cube_overview() {
+    println!(
+        r#"fe-cube — Spatial distribution maps
+
+Usage:
+  fe-cube -m <MODE> -i <FILE> [OPTIONS]
+  fe-cube -m <MODE>              show mode-specific parameters
+
+Modes:
+  density   Time-averaged number density [atoms/Å³] per voxel
+  velocity  Time-averaged speed |v| per voxel  (needs frame velocities)
+  force     Time-averaged force magnitude |f| per voxel  (needs frame forces)
+  radius    Hard-sphere spatial occupancy map
+  sdf       Cluster spatial distribution function (Qn-type, Kabsch alignment)
+
+Common options:
+  -i, --input  PATH     Input trajectory file (dump, xyz, extxyz, …)
+  -o, --output PATH     Output cube file / stem (default depends on mode)
+      --last-n N        Use only the last N frames
+      --ncore  N        Parallel threads (default: all cores)
+      --metal-units     LAMMPS metal units (velocities in Å/ps)"#
+    );
+}
+
 pub fn print_corr_help(mode: &CorrMode) {
     match mode {
         CorrMode::Vacf    => print_vacf(),

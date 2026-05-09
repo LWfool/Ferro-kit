@@ -169,10 +169,10 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
     let hist: Vec<u64> = p_values.par_iter()
         .map(|&p| {
             let mut local = vec![0u64; n_bins];
-            for j in 0..n_atoms {
-                let dx = cart[p + tau][j][0] - cart[p][j][0];
-                let dy = cart[p + tau][j][1] - cart[p][j][1];
-                let dz = cart[p + tau][j][2] - cart[p][j][2];
+            for (c_end, c_orig) in cart[p + tau].iter().zip(cart[p].iter()) {
+                let dx = c_end[0] - c_orig[0];
+                let dy = c_end[1] - c_orig[1];
+                let dz = c_end[2] - c_orig[2];
                 let r = (dx*dx + dy*dy + dz*dz).sqrt();
                 if r >= params.r_min && r < params.r_max {
                     let bin = ((r - params.r_min) / params.dr) as usize;
