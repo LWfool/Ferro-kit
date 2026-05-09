@@ -43,9 +43,5 @@ config/secrets.yml
 /private
 /examples
 .claude/
-PROJECT_ARCHITECTURE.md
-PROJECT_STRUCTURE.txt
-PYTHON_BINDING.md
-TROUBLESHOOTING.md
-QUICKSTART.md
-OPTIMIZATION.md
+CLAUDE.md
+dev/
