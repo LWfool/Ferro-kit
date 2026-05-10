@@ -42,7 +42,8 @@ pub fn build_ligand_nf_map(
                 };
                 for &fa_idx in former_indices {
                     if fa_idx == la_idx { continue; }
-                    let diff = cell.minimum_image(frame.atoms[fa_idx].position - la_pos);
+                    let diff = cell.minimum_image(frame.atoms[fa_idx].position - la_pos)
+                        .expect("cell is non-singular");
                     if diff.norm_squared() < cutoff2 {
                         entry.push((former.clone(), fa_idx));
                     }

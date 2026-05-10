@@ -164,7 +164,8 @@ pub fn calc_cube_jump(
     let frac_all: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
         let cell = frame.cell.as_ref().unwrap_or(ref_cell);
         frame.atoms.iter().map(|a| {
-            let f = cell.cartesian_to_fractional(a.position);
+            let f = cell.cartesian_to_fractional(a.position)
+                .expect("cell is non-singular");
             [f.x, f.y, f.z]
         }).collect()
     }).collect();
@@ -232,7 +233,8 @@ pub fn calc_cube_jump(
 
     let cube = CubeData {
         frame: build_avg_frame(traj),
-        data,
+        data: data.into_iter().collect(),
+        shape: [nx, ny, nz],
         origin: Vector3::zeros(),
         spacing,
     };
@@ -297,7 +299,7 @@ mod tests {
         };
         let res = calc_cube_jump(&traj, &params).unwrap();
         assert_eq!(res.n_jumps, 0);
-        assert_eq!(res.cube.data.sum(), 0.0);
+        assert_eq!(res.cube.data.iter().sum::<f64>(), 0.0);
     }
 
     #[test]
@@ -313,7 +315,7 @@ mod tests {
         };
         let res = calc_cube_jump(&traj, &params).unwrap();
         assert_eq!(res.n_jumps, 1);
-        assert_eq!(res.cube.data[[2, 5, 5]], 1.0);
+        assert_eq!(res.cube.get(2, 5, 5), 1.0);
     }
 
     #[test]
@@ -328,7 +330,7 @@ mod tests {
         };
         let res = calc_cube_jump(&traj, &params).unwrap();
         assert_eq!(res.n_jumps, 1);
-        assert_eq!(res.cube.data[[5, 5, 5]], 1.0);
+        assert_eq!(res.cube.get(5, 5, 5), 1.0);
     }
 
     #[test]
@@ -344,7 +346,7 @@ mod tests {
         };
         let res = calc_cube_jump(&traj, &params).unwrap();
         assert_eq!(res.n_jumps, 1);
-        assert_eq!(res.cube.data[[5, 5, 5]], 1.0);
+        assert_eq!(res.cube.get(5, 5, 5), 1.0);
     }
 
     #[test]
@@ -410,8 +412,8 @@ mod tests {
         };
         let res = calc_cube_jump(&traj, &params).unwrap();
         assert_eq!(res.n_jumps, 2);
-        assert_eq!(res.cube.data[[2, 5, 5]], 1.0); // 第一个窗口的起点 voxel
-        assert_eq!(res.cube.data[[5, 5, 5]], 1.0); // 第二个窗口的起点 voxel
+        assert_eq!(res.cube.get(2, 5, 5), 1.0); // 第一个窗口的起点 voxel
+        assert_eq!(res.cube.get(5, 5, 5), 1.0); // 第二个窗口的起点 voxel
         assert_eq!(res.n_frames, 3);
     }
 

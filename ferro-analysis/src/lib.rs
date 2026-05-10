@@ -10,7 +10,7 @@ pub use geometry::*;
 pub use trajectory_analysis::*;
 pub use properties::*;
 pub use network::{
-    NetworkParams, NetworkResult, CutoffTable, calc_network, qn_label_order,
+    NetworkParams, NetworkResult, CutoffTable, calc_network, qn_label_order, modifier_role_order,
 };
 pub use md::{
     GrParams, GrResult, PairStats, calc_gr, write_gr, write_cn,

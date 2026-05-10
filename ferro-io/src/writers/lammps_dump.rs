@@ -69,7 +69,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &str, units: LammpsUnits
             // Transform to LAMMPS frame
             let pos = match &frame.cell {
                 Some(orig) => {
-                    let frac = orig.cartesian_to_fractional(atom.position);
+                    let frac = orig.cartesian_to_fractional(atom.position)?;
                     lammps_cell.fractional_to_cartesian(frac)
                 }
                 None => atom.position,

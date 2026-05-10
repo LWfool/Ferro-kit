@@ -279,7 +279,8 @@ fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<C
     for (pi, &pa_idx) in p_global.iter().enumerate() {
         let pa_pos = frame.atoms[pa_idx].position;
         for (oi, &oa_idx) in o_global.iter().enumerate() {
-            let diff = cell.minimum_image(frame.atoms[oa_idx].position - pa_pos);
+            let diff = cell.minimum_image(frame.atoms[oa_idx].position - pa_pos)
+                .expect("cell is non-singular");
             if diff.norm_squared() < fl_cutoff2 {
                 p_o_adj[pi].push(oi);
                 o_p_adj[oi].push(pi);
@@ -395,7 +396,9 @@ fn extract_snapshot(
         mod_global.iter().enumerate().filter_map(|(mi, &ma_idx)| {
             let ma_pos = frame.atoms[ma_idx].position;
             let is_near = cluster_o_pos.iter().any(|&op| {
-                cell.minimum_image(op - ma_pos).norm_squared() < ml_cutoff2
+                cell.minimum_image(op - ma_pos)
+                    .expect("cell is non-singular")
+                    .norm_squared() < ml_cutoff2
             });
             if is_near { Some(mi) } else { None }
         }).collect()
@@ -441,7 +444,7 @@ fn extract_snapshot(
 
     // PBC 展开：以锚原子为原点，用最小镜像得到局部坐标
     let positions: Vec<Vector3<f64>> = raw_pos.iter()
-        .map(|&pos| cell.minimum_image(pos - anchor_pos))
+        .map(|&pos| cell.minimum_image(pos - anchor_pos).expect("cell is non-singular"))
         .collect();
 
     Some(ClusterSnapshot { types, positions, anchor_idx })
@@ -649,7 +652,7 @@ fn build_cube_for_type(
     let mean = smoothed.mean().unwrap_or(1.0);
     let data = if mean > 0.0 { smoothed.mapv(|v| v / mean) } else { smoothed };
 
-    CubeData { frame, data, origin: *origin, spacing }
+    CubeData { frame, data: data.into_iter().collect(), shape: [nx, ny, nz], origin: *origin, spacing }
 }
 
 /// 构建放置在 cube box 中心的参考结构帧（用于 cube 文件头）。

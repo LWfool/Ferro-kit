@@ -230,7 +230,7 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
             let x = parse_cif_float(get(idx_cx.unwrap())).unwrap_or(0.0);
             let y = parse_cif_float(get(idx_cy.unwrap())).unwrap_or(0.0);
             let z = parse_cif_float(get(idx_cz.unwrap())).unwrap_or(0.0);
-            cell.cartesian_to_fractional(Vector3::new(x, y, z))
+            cell.cartesian_to_fractional(Vector3::new(x, y, z))?
         };
 
         sites.elements.push(element);

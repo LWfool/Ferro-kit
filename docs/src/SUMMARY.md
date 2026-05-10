@@ -22,6 +22,7 @@
 - [Jump Distance Distribution](analysis/cube-jump.md)
 - [Hard-Sphere Occupancy](analysis/cube-radius.md)
 - [Cluster SDF](analysis/cube-sdf.md)
+- [Glass Network Analysis](analysis/network.md)
 
 # Reference
 

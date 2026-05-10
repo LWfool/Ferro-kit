@@ -3,13 +3,13 @@ use clap::{CommandFactory, Parser};
 use ferro::io_dispatch::read_trajectory;
 use ferro_analysis::{calc_network, NetworkParams, NetworkResult};
 use ferro_io::LammpsUnits;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(
     name = "fe-network",
-    about = "Glass network analysis: CN, ligand classification (FO/NBO/BO/OBO), Qn speciation",
+    about = "Glass network analysis: CN, ligand classification (FO/NBO/BO/OBO), Qn speciation, modifier roles",
     long_about = None,
     after_help = HELP_EXTRA,
 )]
@@ -37,6 +37,11 @@ struct Cli {
     /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
     #[arg(long)]
     metal_units: bool,
+
+    /// Modifier cation elements, comma-separated (e.g. Zn or Zn,Na,Ca).
+    /// Their cutoffs are supplied via the same --Elem-O=cutoff syntax.
+    #[arg(long)]
+    modifier: Option<String>,
 }
 
 const HELP_EXTRA: &str = "\
@@ -49,16 +54,28 @@ PAIR ARGUMENTS:
   Network formers (examples): Si, Al, P, B, Ge, Zn
   Ligands        (examples): O, F
 
+MODIFIER ROLE ANALYSIS:
+  Use --modifier to name modifier cation elements (comma-separated).
+  Supply their cutoffs with the same --Elem-O=cutoff syntax.
+  Modifier role labels (by NBO coordination count):
+    Free  — 0 NBO neighbors
+    T     — 1 NBO neighbor  (terminal)
+    B     — 2 NBO neighbors (bridging)
+    M     — ≥3 NBO neighbors (multi)
+
 EXAMPLES:
   fe-network -i traj.dump --P-O=2.3
   fe-network -i traj.dump --P-O=2.3 --P-F=2.1 --Si-O=1.8 -o result.csv
   fe-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
   fe-network -i traj.dump --P-O=2.3 --last-n 500
+  fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
+  fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
 
 OUTPUT FILES:
   <stem>_cn.csv         per-pair and total CN distribution
   <stem>_ligand.csv     FO / NBO / BO / OBO classification
-  <stem>_qn.csv         Qn species distribution";
+  <stem>_qn.csv         Qn species distribution
+  <stem>_modifier.csv   modifier role distribution (Free/T/B/M)  [only with --modifier]";
 
 fn main() -> Result<()> {
     // ── 预解析 --X-Y=N 形式的 pair 参数 ──────────────────────────────────────
@@ -83,7 +100,24 @@ fn main() -> Result<()> {
         );
     }
 
-    let cutoffs = parse_pairs(&pair_args)?;
+    let all_pairs = parse_pairs(&pair_args)?;
+
+    // 修饰子集合（逗号分隔，如 "Zn,Na"）
+    let modifier_elems: std::collections::HashSet<String> = cli.modifier
+        .as_deref()
+        .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    // 按修饰子集合将 pair args 路由到 former cutoffs / modifier cutoffs
+    let mut cutoffs = BTreeMap::new();
+    let mut modifier_cutoffs = BTreeMap::new();
+    for ((elem, ligand), cutoff) in all_pairs {
+        if modifier_elems.contains(&elem) {
+            modifier_cutoffs.insert((elem, ligand), cutoff);
+        } else {
+            cutoffs.insert((elem, ligand), cutoff);
+        }
+    }
 
     if let Some(n) = cli.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
@@ -95,7 +129,7 @@ fn main() -> Result<()> {
         traj = traj.tail(n);
     }
 
-    let params = NetworkParams { cutoffs };
+    let params = NetworkParams { cutoffs, modifier_cutoffs };
     let result = calc_network(&traj, &params)
         .ok_or_else(|| anyhow::anyhow!(
             "Network analysis failed — trajectory empty or frames missing cell (PBC required)"
@@ -139,8 +173,8 @@ fn is_pair_arg(s: &str) -> bool {
 }
 
 /// 解析 ["--P-O=2.3", "--Si-O=1.8"] → CutoffTable
-fn parse_pairs(pair_args: &[String]) -> Result<HashMap<(String, String), f64>> {
-    let mut map = HashMap::new();
+fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> {
+    let mut map = BTreeMap::new();
     for arg in pair_args {
         let inner = arg.trim_start_matches('-');
         // inner = "P-O=2.3"
@@ -173,6 +207,12 @@ fn write_csv(result: &NetworkResult, params: &NetworkParams, base: &Path) -> Res
     println!("CN       -> {prefix}_cn.csv");
     println!("Ligand   -> {prefix}_ligand.csv");
     println!("Qn       -> {prefix}_qn.csv");
+
+    if !result.modifier_roles.is_empty() {
+        let path = format!("{prefix}_modifier.csv");
+        write_modifier_csv(result, &path)?;
+        println!("Modifier -> {path}");
+    }
     Ok(())
 }
 
@@ -251,6 +291,23 @@ fn write_qn_csv(result: &NetworkResult, path: &str) -> Result<()> {
         if let Some(rows) = result.qn_species.get(former) {
             for (label, count, frac) in rows {
                 writeln!(f, "{former},{label},{count},{frac:.6}")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_modifier_csv(result: &NetworkResult, path: &str) -> Result<()> {
+    use std::io::Write;
+    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
+    writeln!(f, "Modifier,Role,Count,Fraction")?;
+
+    let mut mods: Vec<&String> = result.modifier_roles.keys().collect();
+    mods.sort();
+    for mod_elem in mods {
+        if let Some(rows) = result.modifier_roles.get(mod_elem) {
+            for (label, count, frac) in rows {
+                writeln!(f, "{mod_elem},{label},{count},{frac:.6}")?;
             }
         }
     }
@@ -362,7 +419,33 @@ fn write_xlsx(result: &NetworkResult, params: &NetworkParams, base: &Path) -> Re
         }
     }
 
+    // ── Sheet 4: Modifier Roles (optional) ───────────────────────────────────
+    if !result.modifier_roles.is_empty() {
+        let ws = wb.add_worksheet();
+        ws.set_name("Modifier")?;
+        ws.write_row(0, 0, ["Modifier", "Role", "Count", "Fraction"])?;
+        let mut row = 1u32;
+
+        let mut mods: Vec<&String> = result.modifier_roles.keys().collect();
+        mods.sort();
+        for mod_elem in mods {
+            if let Some(rows) = result.modifier_roles.get(mod_elem) {
+                for (label, count, frac) in rows {
+                    ws.write_row(row, 0, [mod_elem.as_str(), label.as_str()])?;
+                    ws.write(row, 2, *count as u32)?;
+                    ws.write(row, 3, *frac)?;
+                    row += 1;
+                }
+            }
+        }
+    }
+
+    let sheet_list = if result.modifier_roles.is_empty() {
+        "CN, Ligand, Qn"
+    } else {
+        "CN, Ligand, Qn, Modifier"
+    };
     wb.save(&path)?;
-    println!("Network  -> {path}  (sheets: CN, Ligand, Qn)");
+    println!("Network  -> {path}  (sheets: {sheet_list})");
     Ok(())
 }

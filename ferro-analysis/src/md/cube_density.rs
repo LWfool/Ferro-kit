@@ -110,7 +110,7 @@ fn process_frame(
         if let Some(elems) = &params.elements {
             if !elems.contains(&atom.element) { continue; }
         }
-        let frac = cell.cartesian_to_fractional(atom.position);
+        let frac = cell.cartesian_to_fractional(atom.position).ok()?;
         let (ix, iy, iz) = voxel_idx(frac, nx, ny, nz);
         match params.mode {
             CubeMode::Density => {
@@ -217,7 +217,8 @@ pub fn calc_cube_density(
 
     let cube = CubeData {
         frame: build_avg_frame(traj),
-        data,
+        data: data.into_iter().collect(),
+        shape: [nx, ny, nz],
         origin: Vector3::zeros(),
         spacing,
     };
@@ -263,9 +264,8 @@ mod tests {
         let traj = make_traj(vec![(2.5, 2.5, 2.5)], vec!["Li"]);
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let res = calc_cube_density(&traj, &params).unwrap();
-        let d = &res.cube.data;
-        assert!((d[[0, 0, 0]] - 0.008).abs() < 1e-10);
-        assert_eq!(d[[1, 0, 0]], 0.0);
+        assert!((res.cube.get(0, 0, 0) - 0.008).abs() < 1e-10);
+        assert_eq!(res.cube.get(1, 0, 0), 0.0);
         assert_eq!(res.n_frames, 1);
         assert_eq!(res.n_atoms, 1);
     }
@@ -283,7 +283,7 @@ mod tests {
         }
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let res = calc_cube_density(&traj, &params).unwrap();
-        assert!((res.cube.data[[0, 0, 0]] - 0.008).abs() < 1e-10);
+        assert!((res.cube.get(0, 0, 0) - 0.008).abs() < 1e-10);
         assert_eq!(res.n_frames, 2);
     }
 
@@ -298,9 +298,8 @@ mod tests {
             ..Default::default()
         };
         let res = calc_cube_density(&traj, &params).unwrap();
-        let d = &res.cube.data;
-        assert!((d[[0, 0, 0]] - 0.008).abs() < 1e-10);
-        assert_eq!(d[[1, 1, 1]], 0.0);
+        assert!((res.cube.get(0, 0, 0) - 0.008).abs() < 1e-10);
+        assert_eq!(res.cube.get(1, 1, 1), 0.0);
         assert_eq!(res.n_atoms, 1);
     }
 
@@ -310,7 +309,7 @@ mod tests {
         let traj = make_traj(vec![(12.5, 2.5, 2.5)], vec!["Li"]);
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let res = calc_cube_density(&traj, &params).unwrap();
-        assert!((res.cube.data[[0, 0, 0]] - 0.008).abs() < 1e-10);
+        assert!((res.cube.get(0, 0, 0) - 0.008).abs() < 1e-10);
     }
 
     #[test]
@@ -328,7 +327,7 @@ mod tests {
             ..Default::default()
         };
         let res = calc_cube_density(&traj, &params).unwrap();
-        assert!((res.cube.data[[0, 0, 0]] - 2.0).abs() < 1e-10);
+        assert!((res.cube.get(0, 0, 0) - 2.0).abs() < 1e-10);
     }
 
     #[test]
@@ -357,7 +356,7 @@ mod tests {
             ..Default::default()
         };
         let res = calc_cube_density(&traj, &params).unwrap();
-        assert!((res.cube.data[[0, 0, 0]] - 5.0).abs() < 1e-10);
+        assert!((res.cube.get(0, 0, 0) - 5.0).abs() < 1e-10);
     }
 
     #[test]

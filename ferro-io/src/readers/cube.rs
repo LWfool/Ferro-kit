@@ -10,7 +10,6 @@
 //!   原子行 Z  charge  x  y  z  （Bohr → Å）
 //!   体积数据 平铺浮点，XYZ 顺序
 
-use ndarray::Array3;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 use ferro_core::{Atom, Cell, CubeData, Frame};
@@ -109,11 +108,8 @@ fn parse_cube(content: &str) -> Result<CubeData> {
         bail!("volumetric data too short: got {}, expected {}", raw.len(), expected);
     }
 
-    // C-order (X outer, Z inner) = Array3 默认行主序
-    let data = Array3::from_shape_vec((shape[0], shape[1], shape[2]), raw[..expected].to_vec())
-        .context("reshaping volumetric data")?;
-
-    Ok(CubeData { frame, data, origin, spacing })
+    let data = raw[..expected].to_vec();
+    Ok(CubeData { frame, data, shape, origin, spacing })
 }
 
 // ─── 测试 ────────────────────────────────────────────────────────────────────
@@ -192,9 +188,9 @@ OUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z
     fn test_read_grid_values() {
         let cd = parse_cube(CUBE_H2).unwrap();
         // 值按 XYZ 顺序：1..8
-        assert!((cd.data[[0,0,0]] - 1.0).abs() < 1e-10);
-        assert!((cd.data[[0,0,1]] - 2.0).abs() < 1e-10);
-        assert!((cd.data[[1,1,1]] - 8.0).abs() < 1e-10);
+        assert!((cd.get(0, 0, 0) - 1.0).abs() < 1e-10);
+        assert!((cd.get(0, 0, 1) - 2.0).abs() < 1e-10);
+        assert!((cd.get(1, 1, 1) - 8.0).abs() < 1e-10);
     }
 
     #[test]

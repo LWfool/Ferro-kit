@@ -13,6 +13,7 @@ use rayon::prelude::*;
 use std::collections::BTreeSet;
 use std::io::{BufWriter, Write};
 use ferro_core::Trajectory;
+use ferro_core::error::ChemError;
 use super::gr::VERSION;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
@@ -107,7 +108,7 @@ pub(super) fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 /// 3. Average over all time origins spaced `params.shift` frames apart,
 ///    computed in parallel (one task per origin).
 ///
-/// Returns `None` if:
+/// Returns `Err` if:
 /// - The trajectory has fewer than 2 frames
 /// - No atoms match the element filter
 /// - `tau` exceeds the trajectory length
@@ -117,12 +118,15 @@ pub(super) fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 /// Total MSD uses the average of the origin- and endpoint-frame cell matrices
 /// to convert fractional displacements to Cartesian. Directional MSD uses the
 /// endpoint cell parameter (same simplified approximation as code1/msd.c).
-pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> Option<MsdResult> {
+pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
     let n_steps = traj.n_frames();
-    if n_steps < 2 { return None; }
+    if n_steps < 2 {
+        return Err(ChemError::ValidationError("trajectory requires at least 2 frames".into()));
+    }
 
     // 确定参与计算的原子下标（按第一帧筛选元素）
-    let ref_frame = traj.first()?;
+    let ref_frame = traj.first()
+        .ok_or_else(|| ChemError::ValidationError("empty trajectory".into()))?;
     let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
         .filter(|(_, a)| match &params.elements {
             Some(elems) => elems.contains(&a.element),
@@ -130,7 +134,9 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> Option<MsdResult> {
         })
         .map(|(i, _)| i)
         .collect();
-    if atom_indices.is_empty() { return None; }
+    if atom_indices.is_empty() {
+        return Err(ChemError::ValidationError("no atoms match the element filter".into()));
+    }
     let n_atoms = atom_indices.len();
 
     let tau = params.tau.unwrap_or(n_steps).min(n_steps).max(1);
@@ -159,17 +165,20 @@ fn calc_msd_periodic(
     shift: usize,
     params: &MsdParams,
     elements: Vec<String>,
-) -> Option<MsdResult> {
+) -> ferro_core::Result<MsdResult> {
     let n_steps = traj.n_frames();
 
     // 先校验所有帧都有 cell
-    if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
+    if traj.frames.iter().any(|f| f.cell.is_none()) {
+        return Err(ChemError::ValidationError("all frames must have a periodic cell for MSD".into()));
+    }
 
     // 构建 frac[step][atom_local] = [fa, fb, fc]（串行，顺序依赖无法并行）
     let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
         let cell = frame.cell.as_ref().unwrap();
         atom_indices.iter().map(|&i| {
-            let f = cell.cartesian_to_fractional(frame.atoms[i].position);
+            let f = cell.cartesian_to_fractional(frame.atoms[i].position)
+                .expect("cell is non-singular");
             [f.x, f.y, f.z]
         }).collect()
     }).collect();
@@ -183,7 +192,9 @@ fn calc_msd_periodic(
         .take_while(|&p| p + tau <= n_steps)
         .collect();
     let n_origins = p_values.len();
-    if n_origins == 0 { return None; }
+    if n_origins == 0 {
+        return Err(ChemError::ValidationError("tau exceeds trajectory length".into()));
+    }
 
     // 并行计算各 origin 的局部累积，每个 origin 产生 Vec<[f64;4]>(tau)
     let accum: Vec<[f64; 4]> = p_values.par_iter()
@@ -227,7 +238,7 @@ fn calc_msd_periodic(
             },
         );
 
-    Some(build_result(accum, tau, n_origins, n_atoms, elements, params))
+    Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
 }
 
 /// MSD for non-periodic (molecular) systems (Cartesian coordinates directly, parallelised per time origin).
@@ -239,7 +250,7 @@ fn calc_msd_nonperiodic(
     shift: usize,
     params: &MsdParams,
     elements: Vec<String>,
-) -> Option<MsdResult> {
+) -> ferro_core::Result<MsdResult> {
     let n_steps = traj.n_frames();
 
     // 收集各帧 Cartesian 坐标（非周期不需要 unwrap）
@@ -255,7 +266,9 @@ fn calc_msd_nonperiodic(
         .take_while(|&p| p + tau <= n_steps)
         .collect();
     let n_origins = p_values.len();
-    if n_origins == 0 { return None; }
+    if n_origins == 0 {
+        return Err(ChemError::ValidationError("tau exceeds trajectory length".into()));
+    }
 
     let accum: Vec<[f64; 4]> = p_values.par_iter()
         .map(|&p| {
@@ -288,7 +301,7 @@ fn calc_msd_nonperiodic(
             },
         );
 
-    Some(build_result(accum, tau, n_origins, n_atoms, elements, params))
+    Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
 }
 
 /// Build an `MsdResult` from the parallel-reduction accumulation array.

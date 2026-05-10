@@ -11,6 +11,7 @@
 //!   - `cn`  — **directed pair** `"center-neighbor"`; for A≠B, `"A-B"` and `"B-A"` are independent with different CN values
 
 use ferro_core::Trajectory;
+use ferro_core::error::ChemError;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::io::{BufWriter, Write};
@@ -177,15 +178,20 @@ pub struct GrResult {
 ///
 /// This is the `--all` mode: all element pairs are calculated simultaneously.
 /// Requires periodic cells in every frame; uses the minimum-image convention.
-/// Returns `None` when the trajectory is empty or any frame has no cell.
-pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
-    if traj.frames.is_empty() { return None; }
+/// Returns `Err` when the trajectory is empty, bin count is zero, or any frame has no cell.
+pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrResult> {
+    if traj.frames.is_empty() {
+        return Err(ChemError::ValidationError("trajectory is empty".into()));
+    }
 
     let n_bins = ((params.r_max - params.r_min) / params.dr).floor() as usize;
-    if n_bins == 0 { return None; }
+    if n_bins == 0 {
+        return Err(ChemError::ValidationError("r range produces zero bins".into()));
+    }
 
     // ── 元素列表，按原子序数升序 ─────────────────────────────────────────
-    let first_frame = traj.frames.first()?;
+    let first_frame = traj.frames.first()
+        .ok_or_else(|| ChemError::ValidationError("empty trajectory".into()))?;
     let mut elem_set = std::collections::HashSet::new();
     for a in &first_frame.atoms { elem_set.insert(a.element.clone()); }
     let mut elements: Vec<String> = elem_set.into_iter().collect();
@@ -215,7 +221,9 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
         .collect();
 
     // 先校验所有帧都有 cell（并行路径内无法使用 ?）
-    if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
+    if traj.frames.iter().any(|f| f.cell.is_none()) {
+        return Err(ChemError::ValidationError("all frames must have a periodic cell".into()));
+    }
 
     // 并行逐帧计数：每个线程独立维护 (hist, welford, volume)，最后 reduce 合并
     // 使用 linked-cell list 将帧内原子对遍历从 O(N²) 降至 O(N)
@@ -261,7 +269,9 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
     // ── normalisation ───────────────────────────────────────────────────────
     let n_frames = traj.frames.len();
     let avg_volume = total_volume / n_frames as f64;
-    if avg_volume <= 0.0 { return None; }
+    if avg_volume <= 0.0 {
+        return Err(ChemError::ValidationError("average cell volume is zero or negative".into()));
+    }
 
     // atom counts per element from first frame
     let mut type_counts = vec![0.0f64; n_types];
@@ -365,7 +375,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> Option<GrResult> {
         );
     }
 
-    Some(GrResult {
+    Ok(GrResult {
         r: r_centers,
         gr: gr_map,
         cn: cn_map,

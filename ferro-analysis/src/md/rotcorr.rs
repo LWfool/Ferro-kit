@@ -115,6 +115,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> Option<RotCorr
                 let diff = if has_cell {
                     if let Some(cell) = &frame.cell {
                         cell.minimum_image(na.position - c_pos)
+                            .expect("cell is non-singular")
                     } else {
                         na.position - c_pos
                     }

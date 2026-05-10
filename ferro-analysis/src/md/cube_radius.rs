@@ -103,7 +103,7 @@ fn process_frame(
         }
 
         // 原子分数坐标，归一化到 [0, 1)
-        let frac = cell.cartesian_to_fractional(atom.position);
+        let frac = cell.cartesian_to_fractional(atom.position).ok()?;
         let fx = frac.x.rem_euclid(1.0);
         let fy = frac.y.rem_euclid(1.0);
         let fz = frac.z.rem_euclid(1.0);
@@ -219,7 +219,8 @@ pub fn calc_cube_radius(
 
     let cube = CubeData {
         frame: build_avg_frame(traj),
-        data,
+        data: data.into_iter().collect(),
+        shape: [nx, ny, nz],
         origin: Vector3::zeros(),
         spacing,
     };
@@ -266,9 +267,9 @@ mod tests {
         };
         let res = calc_cube_radius(&traj, &params).unwrap();
         // 原子所在 voxel (5,5,5)（中心在 5.5Å，原子在 5.0Å，距离 0.5Å < 1.2Å）→ 应被标记
-        assert!(res.cube.data[[5, 5, 5]] > 0.0);
+        assert!(res.cube.get(5, 5, 5) > 0.0);
         // 远处 voxel (0,0,0)（中心在 0.5Å）距离 > 1.2Å → 应为 0
-        assert_eq!(res.cube.data[[0, 0, 0]], 0.0);
+        assert_eq!(res.cube.get(0, 0, 0), 0.0);
     }
 
     #[test]
@@ -292,7 +293,7 @@ mod tests {
         let res2 = calc_cube_radius(&traj, &params).unwrap();
         // 两帧计数应恰好是单帧的两倍
         for ix in 0..10 { for iy in 0..10 { for iz in 0..10 {
-            assert!((res2.cube.data[[ix,iy,iz]] - 2.0 * res1.cube.data[[ix,iy,iz]]).abs() < 1e-10);
+            assert!((res2.cube.get(ix,iy,iz) - 2.0 * res1.cube.get(ix,iy,iz)).abs() < 1e-10);
         }}}
         assert_eq!(res2.n_frames, 2);
     }
@@ -309,9 +310,9 @@ mod tests {
         let res = calc_cube_radius(&traj, &params).unwrap();
         // O 所在区域（voxel (1,1,1) 中心 1.5Å）距离 O (1,1,1) 约 0.87Å < 1.2Å
         // 但 Li 与之距离 ≈ 6.9Å > 1.2Å，所以 voxel (1,1,1) 应为 0
-        assert_eq!(res.cube.data[[1, 1, 1]], 0.0);
+        assert_eq!(res.cube.get(1, 1, 1), 0.0);
         // Li 附近 voxel (5,5,5) 应有计数
-        assert!(res.cube.data[[5, 5, 5]] > 0.0);
+        assert!(res.cube.get(5, 5, 5) > 0.0);
         assert_eq!(res.n_atoms, 1);
     }
 
@@ -326,7 +327,7 @@ mod tests {
         let res = calc_cube_radius(&traj, &params).unwrap();
         // voxel (0,5,5) 的中心在 (0.5, 5.5, 5.5)Å，原子在 (0.5, 5.0, 5.0)Å
         // 距离 = sqrt(0 + 0.25 + 0.25) ≈ 0.71Å < 1.2Å → 应被标记
-        assert!(res.cube.data[[0, 5, 5]] > 0.0);
+        assert!(res.cube.get(0, 5, 5) > 0.0);
     }
 
     #[test]

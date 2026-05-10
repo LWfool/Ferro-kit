@@ -11,21 +11,26 @@
 
 mod cn;
 mod ligand_class;
+mod modifier;
 mod qn;
 
+pub use modifier::modifier_role_order;
 pub use qn::qn_label_order;
 
 use ferro_core::{Cell, Frame, Trajectory};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// (network_former_element, ligand_element) → cutoff radius [Å]
-pub type CutoffTable = HashMap<(String, String), f64>;
+pub type CutoffTable = BTreeMap<(String, String), f64>;
 
 /// Input parameters for network analysis.
 #[derive(Debug, Clone)]
 pub struct NetworkParams {
+    /// former-ligand cutoffs: (former_elem, ligand_elem) → cutoff [Å]
     pub cutoffs: CutoffTable,
+    /// modifier-ligand cutoffs: (modifier_elem, ligand_elem) → cutoff [Å]
+    pub modifier_cutoffs: CutoffTable,
 }
 
 impl NetworkParams {
@@ -60,6 +65,17 @@ impl NetworkParams {
             .map(|((f, _), &c)| (f.clone(), c))
             .collect()
     }
+
+    /// 所有修饰子元素（有序）
+    pub fn modifiers(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.modifier_cutoffs.keys()
+            .map(|(m, _)| m.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        v.sort();
+        v
+    }
 }
 
 // ─── 结果结构体 ───────────────────────────────────────────────────────────────
@@ -81,6 +97,8 @@ pub struct NetworkResult {
     pub ligand_classes: HashMap<String, Vec<(String, usize, f64)>>,
     /// former → Qn 物种分布：(species_label, count, fraction)，按 Qn 序
     pub qn_species: HashMap<String, Vec<(String, usize, f64)>>,
+    /// modifier_elem → 角色分布：(role_label, count, fraction)，Free < T < B < M
+    pub modifier_roles: HashMap<String, Vec<(String, usize, f64)>>,
 }
 
 // ─── 逐帧中间数据 ─────────────────────────────────────────────────────────────
@@ -95,6 +113,8 @@ struct FrameData {
     ligand_labels: HashMap<String, Vec<String>>,
     /// former → 每个 former 原子的 Qn 标签
     qn_labels: HashMap<String, Vec<String>>,
+    /// modifier_elem → 每个修饰子原子的角色标签（有修饰子时才填充）
+    modifier_labels: HashMap<String, Vec<String>>,
 }
 
 // ─── 顶层入口 ─────────────────────────────────────────────────────────────────
@@ -146,7 +166,25 @@ fn compute_frame(frame: &Frame, cell: &Cell, params: &NetworkParams) -> Option<F
     // 6. Qn 计算
     let qn_labels = qn::calc_qn(frame, &neighbor_map, &ligand_nf_map, params);
 
-    Some(FrameData { cn_by_pair, cn_total_by_former, ligand_labels, qn_labels })
+    // 7. 修饰子角色分类（遍历全部修饰子元素）
+    let modifier_labels = if !params.modifier_cutoffs.is_empty() {
+        let nbo_set = modifier::build_nbo_set(&ligand_nf_map);
+        let mut map = HashMap::new();
+        for mod_elem in params.modifiers() {
+            // 找该修饰子对应的最大截断（允许多配体类型取最大值覆盖）
+            let cutoff = params.modifier_cutoffs.iter()
+                .filter(|((m, _), _)| m == &mod_elem)
+                .map(|(_, &c)| c)
+                .fold(0.0_f64, f64::max);
+            let labels = modifier::classify_modifiers(frame, cell, &mod_elem, cutoff, &nbo_set);
+            map.insert(mod_elem, labels);
+        }
+        map
+    } else {
+        HashMap::new()
+    };
+
+    Some(FrameData { cn_by_pair, cn_total_by_former, ligand_labels, qn_labels, modifier_labels })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
@@ -160,6 +198,8 @@ struct Accumulator {
     lig_class: HashMap<String, HashMap<String, usize>>,
     /// former → { qn_label → count }
     qn: HashMap<String, HashMap<String, usize>>,
+    /// modifier_elem → { role_label → count }
+    modifier: HashMap<String, HashMap<String, usize>>,
 }
 
 impl Accumulator {
@@ -168,7 +208,8 @@ impl Accumulator {
         let cn_total = params.formers().into_iter().map(|f| (f, HashMap::new())).collect();
         let lig_class = params.ligands().into_iter().map(|l| (l, HashMap::new())).collect();
         let qn = params.formers().into_iter().map(|f| (f, HashMap::new())).collect();
-        Accumulator { cn_pair, cn_total, lig_class, qn }
+        let modifier = params.modifiers().into_iter().map(|m| (m, HashMap::new())).collect();
+        Accumulator { cn_pair, cn_total, lig_class, qn, modifier }
     }
 
     fn push(&mut self, fd: &FrameData) {
@@ -188,6 +229,10 @@ impl Accumulator {
             let m = self.qn.entry(former.clone()).or_default();
             for l in labels { *m.entry(l.clone()).or_insert(0) += 1; }
         }
+        for (mod_elem, labels) in &fd.modifier_labels {
+            let m = self.modifier.entry(mod_elem.clone()).or_default();
+            for l in labels { *m.entry(l.clone()).or_insert(0) += 1; }
+        }
     }
 
     fn merge(&mut self, other: Self) {
@@ -205,6 +250,10 @@ impl Accumulator {
         }
         for (k, inner) in other.qn {
             let m = self.qn.entry(k).or_default();
+            for (label, c) in inner { *m.entry(label).or_insert(0) += c; }
+        }
+        for (k, inner) in other.modifier {
+            let m = self.modifier.entry(k).or_default();
             for (label, c) in inner { *m.entry(label).or_insert(0) += c; }
         }
     }
@@ -262,7 +311,23 @@ impl Accumulator {
             })
             .collect();
 
-        NetworkResult { cn_dist, cn_total, mean_cn, mean_cn_total, ligand_classes, qn_species }
+        let modifier_roles: HashMap<_, _> = self.modifier.iter()
+            .map(|(mod_elem, counts)| {
+                let total: usize = counts.values().sum();
+                let mut rows: Vec<(String, usize, f64)> = counts.iter()
+                    .map(|(l, &c)| (l.clone(), c, if total > 0 { c as f64 / total as f64 } else { 0.0 }))
+                    .collect();
+                rows.sort_by(|a, b| {
+                    modifier::modifier_role_order(&a.0).cmp(&modifier::modifier_role_order(&b.0))
+                });
+                (mod_elem.clone(), rows)
+            })
+            .collect();
+
+        NetworkResult {
+            cn_dist, cn_total, mean_cn, mean_cn_total,
+            ligand_classes, qn_species, modifier_roles,
+        }
     }
 }
 
