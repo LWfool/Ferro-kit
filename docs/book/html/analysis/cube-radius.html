@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Hard-Sphere Occupancy - nexflux Documentation</title>
+        <title>Hard-Sphere Occupancy - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -216,15 +216,15 @@ $$\Delta\mathbf{r} = \mathbf{M}^T \Delta\mathbf{f}$$</p>
 <p>A Gaussian cube file with raw occupancy counts per voxel.  Values are not normalised.  To convert to fractional occupancy, divide by $N_\text{frames} \cdot N_\text{atoms}$.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <pre><code class="language-bash"># Li occupancy map, 100³ grid, radius 0.7 Å
-nex-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
 
 # All-atom occupancy
-nex-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
+fe-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{CubeRadiusParams, calc_cube_radius};
-use nexflux_io::write_cube;
+</span>use ferro_analysis::md::{CubeRadiusParams, calc_cube_radius};
+use ferro_io::write_cube;
 
 let params = CubeRadiusParams {
     nx: 100, ny: 100, nz: 100,

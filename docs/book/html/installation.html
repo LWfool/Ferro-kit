@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Installation - nexflux Documentation</title>
+        <title>Installation - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-51ae9713.js"></script>
+        <script src="toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -183,8 +183,8 @@
 <li>Cargo (bundled with Rust)</li>
 </ul>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from Source</a></h2>
-<pre><code class="language-bash">git clone https://github.com/nexflux/nexflux
-cd nexflux
+<pre><code class="language-bash">git clone https://github.com/ferro/ferro
+cd ferro
 cargo build --release
 </code></pre>
 <p>The compiled CLI binaries are placed in <code>target/release/</code>:</p>
@@ -194,25 +194,25 @@ cargo build --release
 <tr><th>Binary</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>nex-convert</code></td><td>Format conversion</td></tr>
-<tr><td><code>nex-info</code></td><td>Print structure information</td></tr>
-<tr><td><code>nex-job</code></td><td>Generate QC input files</td></tr>
-<tr><td><code>nex-traj</code></td><td>Structural analysis (g(r), S(q), MSD, angle)</td></tr>
-<tr><td><code>nex-corr</code></td><td>Correlation functions (VACF, rotcorr, van Hove)</td></tr>
-<tr><td><code>nex-cube</code></td><td>3-D spatial maps (density, jump, radius, SDF)</td></tr>
-<tr><td><code>nex-network</code></td><td>Glass network analysis (Qn, CN, ligand classification)</td></tr>
+<tr><td><code>fe-convert</code></td><td>Format conversion</td></tr>
+<tr><td><code>fe-info</code></td><td>Print structure information</td></tr>
+<tr><td><code>fe-job</code></td><td>Generate QC input files</td></tr>
+<tr><td><code>fe-traj</code></td><td>Structural analysis (g(r), S(q), MSD, angle)</td></tr>
+<tr><td><code>fe-corr</code></td><td>Correlation functions (VACF, rotcorr, van Hove)</td></tr>
+<tr><td><code>fe-cube</code></td><td>3-D spatial maps (density, jump, radius, SDF)</td></tr>
+<tr><td><code>fe-network</code></td><td>Glass network analysis (Qn, CN, ligand classification)</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="python-bindings"><a class="header" href="#python-bindings">Python Bindings</a></h2>
-<pre><code class="language-bash">cd nexflux-python
+<pre><code class="language-bash">cd ferro-python
 pip install maturin
 maturin develop
 </code></pre>
 <h2 id="generating-this-documentation"><a class="header" href="#generating-this-documentation">Generating This Documentation</a></h2>
 <pre><code class="language-bash">cd docs
 mdbook build          # HTML output → docs/book/
-mdbook-pandoc         # PDF output → docs/book/nexflux.pdf
+mdbook-pandoc         # PDF output → docs/book/ferro.pdf
 </code></pre>
 <p>Requires <a href="https://rust-lang.github.io/mdBook/">mdbook</a>, <a href="https://github.com/max-heller/mdbook-pandoc">mdbook-pandoc</a>, pandoc, and a LaTeX distribution (XeLaTeX recommended).</p>
 

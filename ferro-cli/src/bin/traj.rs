@@ -177,8 +177,7 @@ fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         r_cut: args.r_cut,
         ..GrParams::default()
     };
-    let mut result = calc_gr(traj, &params)
-        .ok_or_else(|| anyhow!("GR calc failed (empty trajectory or missing cell)"))?;
+    let mut result = calc_gr(traj, &params)?;
 
     // 指定原子对时过滤输出列，保留 total
     if let (Some(a), Some(b)) = (&args.atom_a, &args.atom_b) {
@@ -219,7 +218,7 @@ fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         r_cut: args.r_cut,
         ..GrParams::default()
     };
-    let gr = calc_gr(traj, &gr_params).ok_or_else(|| anyhow!("GR calc failed (needed for SQ)"))?;
+    let gr = calc_gr(traj, &gr_params)?;
 
     let sq_params = SqParams {
         q_max: args.q_max,
@@ -249,7 +248,7 @@ fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         elements: args.elements.clone(),
         ..MsdParams::default()
     };
-    let result = calc_msd(traj, &params).ok_or_else(|| anyhow!("MSD calc failed (trajectory too short?)"))?;
+    let result = calc_msd(traj, &params)?;
 
     let out = args.output.as_deref().unwrap_or(Path::new("msd.dat"));
     write_msd(&result, out.to_str().unwrap_or("msd.dat"))?;

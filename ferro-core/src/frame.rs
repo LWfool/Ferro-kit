@@ -157,7 +157,9 @@ impl Frame {
         if let Some(cell) = &self.cell {
             let cell = cell.clone();
             for atom in &mut self.atoms {
-                atom.position = cell.wrap_position(atom.position);
+                if let Ok(wrapped) = cell.wrap_position(atom.position) {
+                    atom.position = wrapped;
+                }
             }
         }
     }

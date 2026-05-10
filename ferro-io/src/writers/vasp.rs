@@ -40,7 +40,7 @@ pub fn write_poscar(trajectory: &Trajectory, path: &str) -> Result<()> {
     writeln!(w, "Direct")?;
     for elem in &elem_order {
         for atom in frame.atoms.iter().filter(|a| a.element == *elem) {
-            let f = cell.cartesian_to_fractional(atom.position);
+            let f = cell.cartesian_to_fractional(atom.position)?;
             writeln!(w, "  {:>18.16}  {:>18.16}  {:>18.16}", f.x, f.y, f.z)?;
         }
     }

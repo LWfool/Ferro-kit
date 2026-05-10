@@ -81,7 +81,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &str) -> Result<()> {
         // Transform position to LAMMPS coordinate frame
         let pos = match &frame.cell {
             Some(orig_cell) => {
-                let frac = orig_cell.cartesian_to_fractional(atom.position);
+                let frac = orig_cell.cartesian_to_fractional(atom.position)?;
                 lammps_cell.fractional_to_cartesian(frac)
             }
             None => atom.position,

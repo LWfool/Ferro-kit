@@ -49,7 +49,7 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
     }
 
     // 体积数据：每行 6 个值，科学计数法
-    let data_flat = cube.data.as_slice().context("data not contiguous")?;
+    let data_flat = cube.data.as_slice();
     for (i, val) in data_flat.iter().enumerate() {
         if i > 0 && i % 6 == 0 { writeln!(w)?; }
         write!(w, " {:12.5e}", val)?;
@@ -67,7 +67,6 @@ mod tests {
     use crate::readers::cube::read_cube;
     use ferro_core::{Atom, Cell, CubeData, Frame};
     use nalgebra::{Matrix3, Vector3};
-    use ndarray::Array3;
 
     /// 构建一个简单的 2×2×2 CubeData（C 立方，密度递增）
     fn make_test_cube() -> CubeData {
@@ -76,16 +75,16 @@ mod tests {
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("C", Vector3::new(0.5, 0.5, 0.5)));
 
-        // 体素 = a/n = 1.0 Å；spacing 对角矩阵
         let voxel = a / 2.0;
         let spacing = Matrix3::from_diagonal(&Vector3::new(voxel, voxel, voxel));
 
-        let data = Array3::from_shape_vec(
-            (2, 2, 2),
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-        ).unwrap();
-
-        CubeData { frame, data, origin: Vector3::zeros(), spacing }
+        CubeData {
+            frame,
+            data: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            shape: [2, 2, 2],
+            origin: Vector3::zeros(),
+            spacing,
+        }
     }
 
     #[test]
@@ -111,10 +110,11 @@ mod tests {
         // 网格形状
         assert_eq!(loaded.shape(), original.shape());
         // 体积数据值
-        for idx in ndarray::indices(original.data.raw_dim()) {
-            let diff = (loaded.data[idx] - original.data[idx]).abs();
-            assert!(diff < 1e-4, "data[{:?}] diff = {:.2e}", idx, diff);
-        }
+        let (nx, ny, nz) = original.shape();
+        for ix in 0..nx { for iy in 0..ny { for iz in 0..nz {
+            let diff = (loaded.get(ix, iy, iz) - original.get(ix, iy, iz)).abs();
+            assert!(diff < 1e-4, "data[{ix},{iy},{iz}] diff = {:.2e}", diff);
+        }}}
     }
 
     #[test]

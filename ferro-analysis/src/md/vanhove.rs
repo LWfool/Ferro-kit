@@ -139,7 +139,8 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
         let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
             let cell = frame.cell.as_ref().unwrap();
             atom_indices.iter().map(|&i| {
-                let f = cell.cartesian_to_fractional(frame.atoms[i].position);
+                let f = cell.cartesian_to_fractional(frame.atoms[i].position)
+                    .expect("cell is non-singular");
                 [f.x, f.y, f.z]
             }).collect()
         }).collect();

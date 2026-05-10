@@ -49,7 +49,8 @@ pub fn build_neighbor_map(
             for &la_idx in ligand_indices {
                 // 排除 former == ligand 时的自身
                 if la_idx == fa_idx { continue; }
-                let diff = cell.minimum_image(frame.atoms[la_idx].position - fa_pos);
+                let diff = cell.minimum_image(frame.atoms[la_idx].position - fa_pos)
+                    .expect("cell is non-singular");
                 if diff.norm_squared() < cutoff2 {
                     pair_neighbors[fi].push(la_idx);
                 }

@@ -106,13 +106,13 @@ impl Cell {
         self.matrix.transpose() * frac
     }
 
-    /// Cartesian 坐标（Å）→ 分数坐标。
-    pub fn cartesian_to_fractional(&self, cart: Vector3<f64>) -> Vector3<f64> {
+    /// Cartesian 坐标（Å）→ 分数坐标。晶胞矩阵奇异时返回 `Err`。
+    pub fn cartesian_to_fractional(&self, cart: Vector3<f64>) -> Result<Vector3<f64>> {
         self.matrix
             .transpose()
             .try_inverse()
-            .expect("Cell matrix is singular")
-            * cart
+            .map(|inv| inv * cart)
+            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))
     }
 
     // ── 周期性处理 ────────────────────────────────────────────────────────────
@@ -121,14 +121,15 @@ impl Cell {
     ///
     /// `rem_euclid(1.0)` 保证输出严格在 [0, 1)，避免 `cartesian_to_fractional`
     /// 矩阵求逆引入的 ~1e-15 误差在 `floor` 处触发边界跳变。
-    pub fn wrap_position(&self, cart: Vector3<f64>) -> Vector3<f64> {
-        let frac = self.cartesian_to_fractional(cart);
+    /// 晶胞矩阵奇异时返回 `Err`。
+    pub fn wrap_position(&self, cart: Vector3<f64>) -> Result<Vector3<f64>> {
+        let frac = self.cartesian_to_fractional(cart)?;
         let wrapped = Vector3::new(
             frac.x.rem_euclid(1.0),
             frac.y.rem_euclid(1.0),
             frac.z.rem_euclid(1.0),
         );
-        self.fractional_to_cartesian(wrapped)
+        Ok(self.fractional_to_cartesian(wrapped))
     }
 
     /// 对位移向量应用最小镜像约定，使每个分量落在 [-0.5, 0.5)。
@@ -136,17 +137,18 @@ impl Cell {
     /// 用法示例：计算两原子的周期性最短距离
     /// ```ignore
     /// let diff = atom_b.position - atom_a.position;
-    /// let mic_diff = cell.minimum_image(diff);
+    /// let mic_diff = cell.minimum_image(diff)?;
     /// let dist = mic_diff.norm();
     /// ```
-    pub fn minimum_image(&self, diff: Vector3<f64>) -> Vector3<f64> {
-        let frac = self.cartesian_to_fractional(diff);
+    /// 晶胞矩阵奇异时返回 `Err`。
+    pub fn minimum_image(&self, diff: Vector3<f64>) -> Result<Vector3<f64>> {
+        let frac = self.cartesian_to_fractional(diff)?;
         let mic_frac = Vector3::new(
             frac.x - frac.x.round(),
             frac.y - frac.y.round(),
             frac.z - frac.z.round(),
         );
-        self.fractional_to_cartesian(mic_frac)
+        Ok(self.fractional_to_cartesian(mic_frac))
     }
 }
 
@@ -179,7 +181,7 @@ mod tests {
         let cell = Cell::from_lengths_angles(4.0, 5.0, 6.0, 80.0, 90.0, 100.0).unwrap();
         let frac = Vector3::new(0.3, 0.5, 0.7);
         let cart = cell.fractional_to_cartesian(frac);
-        let back = cell.cartesian_to_fractional(cart);
+        let back = cell.cartesian_to_fractional(cart).unwrap();
         assert!((back - frac).norm() < 1e-10);
     }
 
@@ -187,7 +189,7 @@ mod tests {
     fn test_wrap_position() {
         let cell = cubic(10.0);
         let pos = Vector3::new(12.0, -1.0, 5.0);
-        let wrapped = cell.wrap_position(pos);
+        let wrapped = cell.wrap_position(pos).unwrap();
         assert!(wrapped.x >= 0.0 && wrapped.x < 10.0);
         assert!(wrapped.y >= 0.0 && wrapped.y < 10.0);
     }
@@ -199,15 +201,15 @@ mod tests {
         let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 80.0, 85.0, 95.0).unwrap();
         // 原点处的 Cartesian 坐标经过来回转换后应仍在盒内
         let origin = cell.fractional_to_cartesian(Vector3::new(0.0, 0.0, 0.0));
-        let wrapped = cell.wrap_position(origin);
-        let frac = cell.cartesian_to_fractional(wrapped);
+        let wrapped = cell.wrap_position(origin).unwrap();
+        let frac = cell.cartesian_to_fractional(wrapped).unwrap();
         assert!(frac.x >= -1e-10 && frac.x < 1.0 + 1e-10);
         assert!(frac.y >= -1e-10 && frac.y < 1.0 + 1e-10);
         assert!(frac.z >= -1e-10 && frac.z < 1.0 + 1e-10);
         // 盒外坐标必须被折叠回合理范围
         let out = cell.fractional_to_cartesian(Vector3::new(1.3, -0.5, 2.1));
-        let wrapped2 = cell.wrap_position(out);
-        let frac2 = cell.cartesian_to_fractional(wrapped2);
+        let wrapped2 = cell.wrap_position(out).unwrap();
+        let frac2 = cell.cartesian_to_fractional(wrapped2).unwrap();
         assert!(frac2.x >= -1e-10 && frac2.x < 1.0 + 1e-10);
         assert!(frac2.y >= -1e-10 && frac2.y < 1.0 + 1e-10);
         assert!(frac2.z >= -1e-10 && frac2.z < 1.0 + 1e-10);
@@ -218,7 +220,7 @@ mod tests {
         let cell = cubic(10.0);
         // 距离 9 Å，MIC 应返回 -1 Å
         let diff = Vector3::new(9.0, 0.0, 0.0);
-        let mic = cell.minimum_image(diff);
+        let mic = cell.minimum_image(diff).unwrap();
         assert!((mic.x + 1.0).abs() < 1e-10);
     }
 }

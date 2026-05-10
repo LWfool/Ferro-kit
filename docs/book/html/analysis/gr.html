@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Radial Distribution Function g(r) - nexflux Documentation</title>
+        <title>Radial Distribution Function g(r) - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -229,12 +229,12 @@ $$g_{\alpha\beta}(r_i) = \frac{C_{\alpha\beta}(r_i)}{4\pi r_i^2 \Delta r \cdot \
 <p>Within <code>r_cut</code>, the mean and standard deviation of pair distances are computed and printed in the <code>.cn</code> header:</p>
 <p>$$\bar{d} = \frac{1}{N_\text{bonds}} \sum_k d_k, \quad \sigma = \sqrt{\frac{1}{N_\text{bonds}} \sum_k (d_k - \bar{d})^2}$$</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">nex-traj -m gr -i traj.dump -o output
+<pre><code class="language-bash">fe-traj -m gr -i traj.dump -o output
 # writes output.gr, output.cn
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
+</span>use ferro_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
 
 let params = GrParams::with_auto_rmax(&amp;traj);
 let result = calc_gr(&amp;traj, &amp;params).unwrap();

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Rotational Correlation C₂(t) - nexflux Documentation</title>
+        <title>Rotational Correlation C₂(t) - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -224,11 +224,11 @@
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
 <p>Columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">nex-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
+<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{RotCorrParams, calc_rotcorr, write_rotcorr};
+</span>use ferro_analysis::md::{RotCorrParams, calc_rotcorr, write_rotcorr};
 
 let params = RotCorrParams {
     center: "P".into(), neighbor: "O".into(),

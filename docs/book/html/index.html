@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - nexflux Documentation</title>
+        <title>Introduction - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-51ae9713.js"></script>
+        <script src="toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -177,7 +177,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><strong>nexflux</strong> is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:</p>
+<p><strong>ferro</strong> is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:</p>
 <ul>
 <li><strong>Structural analysis</strong> — g(r), S(q), bond angle distributions, Qn speciation</li>
 <li><strong>Dynamical analysis</strong> — MSD, VACF, van Hove correlation, rotational correlation</li>
@@ -199,12 +199,12 @@
 </table>
 </div>
 <h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<pre><code>nexflux-cli / nexflux-python        ← only layer combining multiple crates
-    ├── nexflux-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
-    ├── nexflux-io        → core    ← format readers / writers
-    ├── nexflux-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── nexflux-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── nexflux-workflow  → core    ← QC software input builders
+<pre><code>ferro-cli / ferro-python        ← only layer combining multiple crates
+    ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
+    ├── ferro-io        → core    ← format readers / writers
+    ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
+    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
+    └── ferro-workflow  → core    ← QC software input builders
 </code></pre>
 <h2 id="internal-units"><a class="header" href="#internal-units">Internal Units</a></h2>
 <div class="table-wrapper">

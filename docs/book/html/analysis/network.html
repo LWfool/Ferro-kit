@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Mean Squared Displacement (MSD) - ferro Documentation</title>
+        <title>Glass Network Analysis - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -176,76 +176,204 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="mean-squared-displacement-msd"><a class="header" href="#mean-squared-displacement-msd">Mean Squared Displacement (MSD)</a></h1>
-<h2 id="theory"><a class="header" href="#theory">Theory</a></h2>
-<p>The mean squared displacement (MSD) quantifies how far atoms diffuse over time.  In the diffusive regime it grows linearly, and the self-diffusion coefficient $D$ is extracted via the Einstein relation.</p>
-<h3 id="einstein-relation"><a class="header" href="#einstein-relation">Einstein Relation</a></h3>
-<p>$$\text{MSD}(t) = \langle |\mathbf{r}(t_0 + t) - \mathbf{r}(t_0)|^2 \rangle$$</p>
-<p>$$D = \lim_{t \to \infty} \frac{\text{MSD}(t)}{6t}$$</p>
-<p>(factor of 6 for 3-D isotropic diffusion; use 2 for 1-D or 4 for 2-D).</p>
-<h3 id="time-shift-averaging"><a class="header" href="#time-shift-averaging">Time-Shift Averaging</a></h3>
-<p>To reduce statistical noise, the MSD is averaged over all possible time origins $t_0$ separated by <code>shift</code> frames:</p>
-<p>$$\text{MSD}(\tau) = \frac{1}{N_\text{origins}} \sum_{p} \frac{1}{N_\text{atoms}} \sum_j \left|\mathbf{r}_j(p+\tau) - \mathbf{r}_j(p)\right|^2$$</p>
-<p>where $p$ runs over ${0, \text{shift}, 2\cdot\text{shift}, \ldots}$ subject to $p + \tau \leq N_\text{frames}$.</p>
-<h3 id="periodic-boundary-handling"><a class="header" href="#periodic-boundary-handling">Periodic Boundary Handling</a></h3>
-<p>Atoms crossing periodic boundaries must be <strong>unwrapped</strong> to obtain true displacements.</p>
-<p><strong>Algorithm</strong> (matching code1/msd.c <code>EstimateMSD</code>):</p>
-<ol>
-<li>Convert Cartesian coordinates to fractional: $\mathbf{f}_j^{(t)} = \mathbf{r}_j^{(t)} \cdot \mathbf{M}^{-1}$</li>
-<li>Unwrap: for each step $t &gt; 0$ and each fractional component $k$:
-$$f_{j,k}^{(t)} \leftarrow f_{j,k}^{(t)} - \text{round}!\left(f_{j,k}^{(t)} - f_{j,k}^{(t-1)}\right)$$</li>
-<li>Compute unwrapped Cartesian displacement $\Delta\mathbf{r}_j = \mathbf{\Delta f}_j \cdot \overline{\mathbf{M}}$</li>
-</ol>
-<h3 id="npt-trajectories"><a class="header" href="#npt-trajectories">NPT Trajectories</a></h3>
-<p>For variable-box (NPT) simulations, the box matrix changes each frame.  The total MSD uses the <strong>average</strong> of the origin- and endpoint-frame matrices:</p>
-<p>$$\overline{\mathbf{M}} = \frac{\mathbf{M}^{(p)} + \mathbf{M}^{(p+\tau)}}{2}$$</p>
-<p>The directional MSD along axis $k$ uses the endpoint cell parameter $L_k^{(p+\tau)}$ (simplified approximation matching code1):</p>
-<p>$$\text{MSD}_k(\tau) = \langle (\Delta f_k)^2 \rangle \cdot \left(L_k^{(p+\tau)}\right)^2$$</p>
-<h3 id="directional-msd"><a class="header" href="#directional-msd">Directional MSD</a></h3>
-<p>For periodic systems, <code>msd_a</code>, <code>msd_b</code>, <code>msd_c</code> give displacements along the three crystal axes.  For non-periodic systems they correspond to Cartesian $x$, $y$, $z$.</p>
-<h2 id="parameters"><a class="header" href="#parameters">Parameters</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct MsdParams {
-    pub tau: Option&lt;usize&gt;,           // window size [frames]; None = all frames
-    pub shift: usize,                 // origin spacing [frames]; default: 1
-    pub dt: f64,                      // time step [fs]; default: 1.0
-    pub elements: Option&lt;Vec&lt;String&gt;&gt;,// None = all atoms
-}
-<span class="boring">}</span></code></pre>
-<h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p>Columns: <code>time[fs]</code>, <code>msd[Å²]</code>, <code>msd_a[Å²]</code>, <code>msd_b[Å²]</code>, <code>msd_c[Å²]</code></p>
-<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 -o output.msd
-</code></pre>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use ferro_analysis::md::{MsdParams, calc_msd, write_msd};
-
-let params = MsdParams { tau: Some(1000), shift: 10, dt: 2.0,
-    elements: Some(vec!["Li".into()]) };
-let result = calc_msd(&amp;traj, &amp;params).unwrap();
-write_msd(&amp;result, "output.msd").unwrap();
-<span class="boring">}</span></code></pre>
-<h2 id="extracting-the-diffusion-coefficient"><a class="header" href="#extracting-the-diffusion-coefficient">Extracting the Diffusion Coefficient</a></h2>
-<p>Fit the linear region (avoiding the ballistic regime at short $t$ and the noise-dominated long-$t$ tail):</p>
-<p>$$D = \frac{1}{6} \cdot \frac{d,\text{MSD}}{d,t}$$</p>
-<p>To convert from Å²/fs to cm²/s: multiply by $10^{-16}$.</p>
-<h2 id="implementation-notes"><a class="header" href="#implementation-notes">Implementation Notes</a></h2>
+                        <h1 id="glass-network-analysis-fe-network"><a class="header" href="#glass-network-analysis-fe-network">Glass Network Analysis (<code>fe-network</code>)</a></h1>
+<p><code>fe-network</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，统计以下四类量并在全轨迹上累加归一化：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>量</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td>配位数 (CN)</td><td>网络形成子与各配体类型的平均配位数及其分布</td></tr>
+<tr><td>配体分类</td><td>FO / NBO / BO / OBO</td></tr>
+<tr><td>Qn 物种</td><td>网络形成子的桥接度分布</td></tr>
+<tr><td>修饰子角色</td><td>Free / T / B / M（可选）</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="理论背景"><a class="header" href="#理论背景">理论背景</a></h2>
+<h3 id="键连关系的判定"><a class="header" href="#键连关系的判定">键连关系的判定</a></h3>
+<p>以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小镜像约定（minimum-image convention），支持斜方和三斜晶胞：</p>
+<p>$$d_{ij} = \bigl|\mathbf{r}<em>{ij} - \mathbf{M} \cdot \text{round}!\left(\mathbf{M}^{-1}\mathbf{r}</em>{ij}\right)\bigr|$$</p>
+<p>分析要求每帧均存在晶胞（PBC）。</p>
+<h3 id="配位数-cn"><a class="header" href="#配位数-cn">配位数 (CN)</a></h3>
+<p>对每个网络形成子原子 $i$（元素 $\alpha$），其与配体元素 $\beta$ 的配位数为：</p>
+<p>$$\text{CN}^{(\alpha\beta)}<em>i = \bigl|{j : \text{elem}(j)=\beta,; d</em>{ij} &lt; r_{\alpha\beta}^{\text{cut}}}\bigr|$$</p>
+<p>全轨迹统计：对所有帧、所有同类形成子原子的 CN 值做频率直方图，给出 CN 分布和均值。</p>
+<p><strong>总 CN</strong>：对同一形成子原子，将其对所有配体类型的 CN 求和。</p>
+<h3 id="配体分类"><a class="header" href="#配体分类">配体分类</a></h3>
+<p>对每个配体原子 $k$（元素 $\beta$），统计其网络形成子邻居数 $n_k$：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>$n_k$</th><th>标签</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>FO</code></td><td>Free oxygen（游离氧）</td></tr>
+<tr><td>1</td><td><code>NBO(X)</code></td><td>Non-bridging oxygen（非桥氧），X = 形成子元素</td></tr>
+<tr><td>2</td><td><code>BO(X-Y)</code></td><td>Bridging oxygen（桥氧），X、Y 字母序</td></tr>
+<tr><td>≥3</td><td><code>OBO(X-Y-Z)</code></td><td>Over-bridging oxygen（过桥氧）</td></tr>
+</tbody>
+</table>
+</div>
+<p>混合形成子体系（如 P + Si）时，标签携带具体元素信息，例如 <code>BO(P-Si)</code> 表示该桥氧连接一个 P 和一个 Si。</p>
+<h3 id="qn-物种分类"><a class="header" href="#qn-物种分类">Qn 物种分类</a></h3>
+<p>对每个网络形成子原子 $i$，$Q_n$ 表示其桥接配体数（即所连配体中被分类为 BO 或 OBO 的数量）：</p>
+<p>$$n_i = \bigl|{k \in \text{neighbors}(i) : \text{label}(k) \in {\text{BO}, \text{OBO}}}\bigr|$$</p>
+<p><strong>异核桥接标注</strong>：若桥接配体 $k$ 的另一侧形成子与 $i$ 不同元素，则在标签中注明，例如：</p>
 <ul>
-<li>Parallelism: per-origin <code>par_iter</code>; <code>unwrap_frac</code> runs serially before parallelisation (sequential dependency).</li>
-<li>Non-periodic path: Cartesian coordinates are used directly without unwrapping.</li>
+<li><code>Q3</code> — 3 个桥氧，全为同核（P-O-P）</li>
+<li><code>Q3(2Al)</code> — 3 个桥氧，其中 2 个为 P-O-Al 异核桥</li>
+<li><code>Q4(1Al,1Si)</code> — 4 个桥氧，分别含 1 个 P-O-Al 和 1 个 P-O-Si</li>
 </ul>
+<p>异核元素按字母序排列，格式为 <code>Q{n}({count}{Elem},...)</code>.</p>
+<h3 id="修饰子角色分类"><a class="header" href="#修饰子角色分类">修饰子角色分类</a></h3>
+<p>修饰子（modifier）阳离子（如 Zn²⁺、Na⁺）通过与非桥氧（NBO）配位锚定在网络中。对每个修饰子原子 $m$，统计其在截断半径内的 NBO 邻居数 $p_m$：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>$p_m$</th><th>角色标签</th><th>物理含义</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>Free</code></td><td>未与任何 NBO 配位</td></tr>
+<tr><td>1</td><td><code>T</code></td><td>Terminal（单端连接一个 NBO）</td></tr>
+<tr><td>2</td><td><code>B</code></td><td>Bridging（桥接两个 NBO）</td></tr>
+<tr><td>≥3</td><td><code>M</code></td><td>Multi（连接 3 个或更多 NBO）</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="快速入门"><a class="header" href="#快速入门">快速入门</a></h2>
+<pre><code class="language-bash"># P₂O₅ 玻璃，P-O 截断 2.3 Å，输出 CSV
+fe-network -i traj.dump --P-O=2.3
+
+# 混合 P-Si 玻璃，多个配体对
+fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 -o result.csv
+
+# 含 Zn 修饰子，分析其角色
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
+
+# 多修饰子
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
+
+# 输出 xlsx（多 sheet）
+fe-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
+
+# 只统计尾部 500 帧，8 线程
+fe-network -i traj.dump --P-O=2.3 --last-n 500 --ncore 8
+</code></pre>
+<hr>
+<h2 id="命令行参数"><a class="header" href="#命令行参数">命令行参数</a></h2>
+<h3 id="必需"><a class="header" href="#必需">必需</a></h3>
+<p><code>fe-network</code> 至少需要一个 <code>--Former-Ligand=cutoff</code> 形式的配对参数（首字母大写）。</p>
+<pre><code>--P-O=2.3        P（形成子）与 O（配体）的截断半径 2.3 Å
+--Si-O=1.8       Si-O 截断 1.8 Å
+--Al-O=2.0       Al-O 截断 2.0 Å
+--Al-F=2.1       Al-F 截断 2.1 Å（同一形成子可有多种配体）
+</code></pre>
+<h3 id="可选参数"><a class="header" href="#可选参数">可选参数</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>参数</th><th>默认值</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹文件（缺省时显示帮助）</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出文件前缀</td></tr>
+<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>--last-n N</code></td><td>全部帧</td><td>仅使用尾部 N 帧</td></tr>
+<tr><td><code>--ncore N</code></td><td>全部核心</td><td>并行线程数</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位（速度 Å/ps，力 eV/Å）</td></tr>
+<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔，如 <code>Zn</code> 或 <code>Zn,Na</code>）</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>修饰子截断</strong>：通过相同的 <code>--Elem-O=cutoff</code> 语法提供，系统根据 <code>--modifier</code> 列表自动路由。</p>
+<hr>
+<h2 id="输出文件"><a class="header" href="#输出文件">输出文件</a></h2>
+<h3 id="csv-格式默认"><a class="header" href="#csv-格式默认">CSV 格式（默认）</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>文件</th><th>内容</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>各 (former, ligand) 配对的 CN 分布及均值，含总 CN</td></tr>
+<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>各配体元素的 FO/NBO/BO/OBO 分布</td></tr>
+<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>各形成子元素的 Qn 物种分布</td></tr>
+<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>各修饰子元素的角色分布（仅指定 <code>--modifier</code> 时生成）</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="_cncsv-格式"><a class="header" href="#_cncsv-格式"><code>_cn.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Former,Ligand,CN,Count,Fraction
+P,O,3,120,0.240000
+P,O,4,380,0.760000
+P,O,mean,3.7600,
+P,total,4,500,1.000000
+P,total,mean,3.7600,
+</code></pre>
+<h4 id="_ligandcsv-格式"><a class="header" href="#_ligandcsv-格式"><code>_ligand.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Ligand,Class,Count,Fraction
+O,FO,50,0.033333
+O,NBO(P),650,0.433333
+O,BO(P-P),800,0.533333
+</code></pre>
+<h4 id="_qncsv-格式"><a class="header" href="#_qncsv-格式"><code>_qn.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Former,Species,Count,Fraction
+P,Q2,120,0.240000
+P,Q3,380,0.760000
+</code></pre>
+<h4 id="_modifiercsv-格式"><a class="header" href="#_modifiercsv-格式"><code>_modifier.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Modifier,Role,Count,Fraction
+Zn,Free,10,0.040000
+Zn,T,120,0.480000
+Zn,B,110,0.440000
+Zn,M,10,0.040000
+</code></pre>
+<h3 id="xlsx-格式"><a class="header" href="#xlsx-格式">XLSX 格式</a></h3>
+<p>使用 <code>--format xlsx</code> 时，所有结果写入同一文件的多个 sheet：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Sheet</th><th>内容</th></tr>
+</thead>
+<tbody>
+<tr><td>CN</td><td>配位数分布</td></tr>
+<tr><td>Ligand</td><td>配体分类分布</td></tr>
+<tr><td>Qn</td><td>Qn 物种分布</td></tr>
+<tr><td>Modifier</td><td>修饰子角色分布（有修饰子时才生成）</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="典型参数参考"><a class="header" href="#典型参数参考">典型参数参考</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>体系</th><th>形成子</th><th>配体</th><th>参考截断</th></tr>
+</thead>
+<tbody>
+<tr><td>P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å</td></tr>
+<tr><td>SiO₂ 玻璃</td><td>Si</td><td>O</td><td>Si-O: 1.8 Å</td></tr>
+<tr><td>Al₂O₃</td><td>Al</td><td>O</td><td>Al-O: 2.1 Å</td></tr>
+<tr><td>GeO₂ 玻璃</td><td>Ge</td><td>O</td><td>Ge-O: 2.0 Å</td></tr>
+<tr><td>ZnO-P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å，Zn（modifier）: Zn-O: 3.5 Å</td></tr>
+</tbody>
+</table>
+</div>
+<p>截断值应参照 g(r) 第一峰谷位置（<code>fe-traj -m gr</code>）确定。</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../analysis/sq.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../analysis/cube-sdf.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../analysis/angle.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../cli-reference.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -255,11 +383,11 @@ write_msd(&amp;result, "output.msd").unwrap();
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../analysis/sq.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../analysis/cube-sdf.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../analysis/angle.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../cli-reference.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

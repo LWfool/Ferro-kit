@@ -18,17 +18,17 @@ license = "MIT"
 
 [workspace.dependencies]
 # 线性代数库,用于处理坐标、矩阵计算
-nalgebra = "0.32"
+nalgebra = "0.34"
 # 多维数组,用于大规模数据处理
-ndarray = "0.15"
+ndarray = "0.17"
 # 并行计算库
 rayon = "1.8"
 # 序列化/反序列化
 serde = { version = "1.0", features = ["derive"] }
 # 错误处理
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
-petgraph = "0.6"
+petgraph = "0.8"
 rand = "0.8"
 
 [profile.release]

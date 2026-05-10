@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Van Hove Self-Correlation Gs(r,τ) - nexflux Documentation</title>
+        <title>Van Hove Self-Correlation Gs(r,τ) - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -218,11 +218,11 @@ Accumulate into histogram bin $\lfloor r / \Delta r \rfloor$.</li>
 <p>Columns: <code>r[Å]</code>, <code>Gs(r,tau)</code> (normalised so sum = 1).</p>
 <p>The header records the lag time $\tau$ in both frames and physical time (fs).</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">nex-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
+<pre><code class="language-bash">fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{VanHoveParams, calc_vanhove, write_vanhove};
+</span>use ferro_analysis::md::{VanHoveParams, calc_vanhove, write_vanhove};
 
 let params = VanHoveParams {
     tau: Some(500), shift: 1, dt: 2.0,

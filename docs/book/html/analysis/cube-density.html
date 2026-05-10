@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>3-D Spatial Density Maps - nexflux Documentation</title>
+        <title>3-D Spatial Density Maps - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -231,21 +231,21 @@
 <p>The cube format is directly accepted by VESTA, VMD, Ovito, and most electronic-structure visualisation packages.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <pre><code class="language-bash"># Number density of all atoms
-nex-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
+fe-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
 
 # Li-only density
-nex-cube -m density -i traj.dump --elements Li -o li_density.cube
+fe-cube -m density -i traj.dump --elements Li -o li_density.cube
 
 # Time-averaged velocity magnitude
-nex-cube -m velocity -i traj.dump --metal-units -o velocity.cube
+fe-cube -m velocity -i traj.dump --metal-units -o velocity.cube
 
 # Time-averaged force magnitude
-nex-cube -m force -i traj.dump -o force.cube
+fe-cube -m force -i traj.dump -o force.cube
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{CubeDensityParams, CubeMode, calc_cube_density};
-use nexflux_io::write_cube;
+</span>use ferro_analysis::md::{CubeDensityParams, CubeMode, calc_cube_density};
+use ferro_io::write_cube;
 
 let params = CubeDensityParams {
     nx: 80, ny: 80, nz: 80,

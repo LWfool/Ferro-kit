@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Bond Angle Distribution - nexflux Documentation</title>
+        <title>Bond Angle Distribution - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -205,11 +205,11 @@
 <p>Columns: <code>angle[deg]</code>, then one column per triplet key in (Z_center, Z_left, Z_right) order.</p>
 <p>The header lists mean, standard deviation, and total count per triplet.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">nex-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
+<pre><code class="language-bash">fe-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{AngleParams, calc_angle, write_angle};
+</span>use ferro_analysis::md::{AngleParams, calc_angle, write_angle};
 
 let params = AngleParams { r_cut_ab: 2.4, r_cut_bc: 2.4, d_angle: 0.5 };
 let result = calc_angle(&amp;traj, &amp;params).unwrap();
@@ -217,7 +217,7 @@ write_angle(&amp;result, "output.angle").unwrap();
 <span class="boring">}</span></code></pre>
 <h2 id="implementation-notes"><a class="header" href="#implementation-notes">Implementation Notes</a></h2>
 <h3 id="linked-cell-list"><a class="header" href="#linked-cell-list">Linked-Cell List</a></h3>
-<p>Brute-force neighbour search is O(N²) per frame.  nexflux uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.</p>
+<p>Brute-force neighbour search is O(N²) per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.</p>
 <p>For each central atom B, only the 27 cells within ±1 cell in each direction are searched. The cell size is chosen so that a sphere of radius $r_\text{cut,max}$ fits within the search volume:</p>
 <p>$$n_k = \left\lfloor \frac{1}{r_\text{cut,max} \cdot |({\mathbf{M}^T})^{-1}|_k} \right\rfloor$$</p>
 <p>This is exact for triclinic cells.</p>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Structure Factor S(q) - nexflux Documentation</title>
+        <title>Structure Factor S(q) - ferro Documentation</title>
 
 
         <!-- Custom HTML head -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-28acadd8.js";
+            window.path_to_searchindex_js = "../searchindex-e02a5889.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-51ae9713.js"></script>
+        <script src="../toc-4cd03dbb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -139,7 +139,7 @@
                         </button>
                     </div>
 
-                    <h1 class="menu-title">nexflux Documentation</h1>
+                    <h1 class="menu-title">ferro Documentation</h1>
 
                     <div class="right-buttons">
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
@@ -226,14 +226,14 @@ pub enum SqWeighting {
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<pre><code class="language-bash">nex-traj -m sq -i traj.dump -o output
+<pre><code class="language-bash">fe-traj -m sq -i traj.dump -o output
 # writes output.gr, output.sq
 </code></pre>
 <p>The <code>.sq</code> file header records both the g(r) parameters (used as input) and the S(q) parameters.<br>Column ordering matches the <code>.gr</code> file. Additional columns <code>total_xrd</code> and/or <code>total_neutron</code> are appended when weighting is requested.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use nexflux_analysis::md::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr, write_sq};
+</span>use ferro_analysis::md::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr, write_sq};
 
 let gr = calc_gr(&amp;traj, &amp;GrParams::with_auto_rmax(&amp;traj)).unwrap();
 let sq = calc_sq_from_gr(&amp;gr, &amp;SqParams {
@@ -245,7 +245,7 @@ write_sq(&amp;gr, &amp;sq, "output.sq").unwrap();
 <h2 id="implementation-notes"><a class="header" href="#implementation-notes">Implementation Notes</a></h2>
 <ul>
 <li>The Fourier transform is parallelised over $q$ values with <code>rayon::par_iter</code>.</li>
-<li>Scattering data (form factors and neutron lengths) are stored as static tables in <code>nexflux_analysis::md::scattering_data</code>.</li>
+<li>Scattering data (form factors and neutron lengths) are stored as static tables in <code>ferro_analysis::md::scattering_data</code>.</li>
 <li>For a single-element system, <code>total_xrd ≈ total</code> because all Faber-Ziman weights reduce to 1.</li>
 </ul>
 

@@ -268,14 +268,53 @@ Output: `<stem>_<label>.cube` per atom type (multiple families: `<stem>_fam<N>_<
 
 ## `fe-network`
 
-Glass network analysis: Qn distribution, connectivity statistics.
+Glass network analysis: CN distribution, ligand classification (FO/NBO/BO/OBO), Qn speciation, modifier cation roles.
 
 ```bash
-fe-network -i traj.dump --P-O 2.3 --format csv -o network.csv
-fe-network -i traj.dump --P-O 2.3 --format xlsx -o network.xlsx
+# 基础用法
+fe-network -i traj.dump --P-O=2.3
+
+# 混合形成子 + xlsx 输出
+fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 --format xlsx -o result.xlsx
+
+# 含修饰子角色分析
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
+
+# 多修饰子
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
 ```
 
-| Flag | Description |
+### 配对参数（Pair Arguments）
+
+截断参数使用 `--Former-Ligand=cutoff` 格式（首字母大写）：
+
+```
+--P-O=2.3     P-O 截断 2.3 Å（P 为形成子，O 为配体）
+--Si-O=1.8    Si-O 截断 1.8 Å
+--Zn-O=3.5    当配合 --modifier Zn 时，视为修饰子-配体截断
+```
+
+### 普通参数
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-i <file>` | — | 输入轨迹（缺省显示帮助） |
+| `-o <file>` | `network` | 输出前缀 |
+| `--format csv\|xlsx` | `csv` | 输出格式 |
+| `--last-n N` | 全部 | 仅用尾部 N 帧 |
+| `--ncore N` | 全部核心 | 线程数 |
+| `--metal-units` | 关 | LAMMPS metal 单位 |
+| `--modifier Elem` | — | 修饰子元素（逗号分隔） |
+
+### 输出文件
+
+| 文件 | 内容 |
 |---|---|
-| `--P-O <r>` | P–O bond cutoff [Å] |
-| `--format csv\|xlsx` | Output format |
+| `<stem>_cn.csv` | CN 分布及均值 |
+| `<stem>_ligand.csv` | FO / NBO / BO / OBO 分布 |
+| `<stem>_qn.csv` | Qn 物种分布 |
+| `<stem>_modifier.csv` | Free / T / B / M 分布（有 `--modifier` 时） |
+
+XLSX 格式将上述内容写入同一文件的多个 sheet（CN、Ligand、Qn、Modifier）。
+
+详细说明见 [Glass Network Analysis](analysis/network.md)。

@@ -61,7 +61,7 @@ pub fn write_cif(trajectory: &Trajectory, path: &str) -> Result<()> {
                     *n += 1;
                     format!("{}{n}", atom.element)
                 };
-                let frac = cell.cartesian_to_fractional(atom.position);
+                let frac = cell.cartesian_to_fractional(atom.position)?;
                 writeln!(
                     w,
                     "{label:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
