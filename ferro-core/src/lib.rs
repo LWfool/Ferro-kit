@@ -10,6 +10,7 @@
 
 pub mod atom;
 pub mod cell;
+pub mod charge_grid;
 pub mod frame;
 pub mod trajectory;
 pub mod cube_data;
@@ -20,6 +21,7 @@ pub mod error;
 // top-level re-exports for downstream crates
 pub use atom::Atom;
 pub use cell::Cell;
+pub use charge_grid::ChargeGrid;
 pub use frame::Frame;
 pub use trajectory::{Trajectory, TrajectoryMetadata};
 pub use cube_data::CubeData;

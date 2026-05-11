@@ -39,6 +39,10 @@ path = "src/bin/cube.rs"
 name = "fe-network"
 path = "src/bin/network.rs"
 
+[[bin]]
+name = "fe-bader"
+path = "src/bin/bader.rs"
+
 [dependencies]
 ferro-core     = { path = "../ferro-core" }
 ferro-io       = { path = "../ferro-io" }
