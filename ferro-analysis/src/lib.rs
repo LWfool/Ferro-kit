@@ -5,6 +5,7 @@ pub mod trajectory_analysis;
 pub mod properties;
 pub mod md;
 pub mod network;
+pub mod dft;
 
 pub use geometry::*;
 pub use trajectory_analysis::*;
@@ -12,6 +13,7 @@ pub use properties::*;
 pub use network::{
     NetworkParams, NetworkResult, CutoffTable, calc_network, qn_label_order, modifier_role_order,
 };
+pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult};
 pub use md::{
     GrParams, GrResult, PairStats, calc_gr, write_gr, write_cn,
     SqParams, SqResult, SqWeighting, calc_sq_from_gr, write_sq,
