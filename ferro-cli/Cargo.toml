@@ -44,10 +44,11 @@ name = "fe-bader"
 path = "src/bin/bader.rs"
 
 [dependencies]
-ferro-core     = { path = "../ferro-core" }
-ferro-io       = { path = "../ferro-io" }
-ferro-analysis = { path = "../ferro-analysis" }
-ferro-workflow = { path = "../ferro-workflow" }
+ferro-core      = { path = "../ferro-core" }
+ferro-io        = { path = "../ferro-io" }
+ferro-analysis  = { path = "../ferro-analysis" }
+ferro-structure = { path = "../ferro-structure" }
+ferro-workflow  = { path = "../ferro-workflow" }
 clap             = { version = "4.5", features = ["derive"] }
 rust_xlsxwriter  = "0.80"
 plotters         = { version = "0.3", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "ttf", "full_palette", "line_series"] }

@@ -22,4 +22,4 @@ pub use lammps_data::read_lammps_data;
 pub use lammps_dump::{read_lammps_dump, LammpsUnits};
 pub use cp2k::{read_cp2k_inp, read_cp2k_restart};
 pub use qe::read_qe_input;
-pub use cube::read_cube;
+pub use cube::{read_cube, read_cube_as_chg};
