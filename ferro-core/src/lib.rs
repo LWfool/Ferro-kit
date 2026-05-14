@@ -17,6 +17,7 @@ pub mod cube_data;
 pub mod data;
 pub mod units;
 pub mod error;
+pub mod network_type;
 
 // top-level re-exports for downstream crates
 pub use atom::Atom;
@@ -26,3 +27,7 @@ pub use frame::Frame;
 pub use trajectory::{Trajectory, TrajectoryMetadata};
 pub use cube_data::CubeData;
 pub use error::{ChemError, Result};
+pub use network_type::{
+    TypeParams, CutoffTable, classify_frame,
+    oxygen_label_order, modifier_label_order, former_label_order,
+};

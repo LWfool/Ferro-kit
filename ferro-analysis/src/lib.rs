@@ -11,8 +11,10 @@ pub use geometry::*;
 pub use trajectory_analysis::*;
 pub use properties::*;
 pub use network::{
-    NetworkParams, NetworkResult, CutoffTable, calc_network, qn_label_order, modifier_role_order,
+    NetworkResult, calc_network,
+    oxygen_label_order, modifier_label_order, former_label_order,
 };
+pub use ferro_core::{TypeParams, CutoffTable};
 pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult};
 pub use md::{
     GrParams, GrResult, PairStats, calc_gr, write_gr, write_cn,

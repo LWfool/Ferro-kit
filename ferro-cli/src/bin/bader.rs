@@ -1,13 +1,16 @@
 use anyhow::{bail, Result};
 use clap::Parser;
-use ferro_io::read_chgcar;
+use ferro_io::{read_chgcar, read_cube_as_chg};
 use ferro_analysis::{BaderAnalyzer, BaderMethod};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "fe-bader", about = "Bader charge analysis from VASP CHGCAR")]
+#[command(
+    name = "fe-bader",
+    about = "Bader charge analysis from VASP CHGCAR or Gaussian cube (QE pp.x)"
+)]
 struct Cli {
-    /// Input CHGCAR file
+    /// Input file: CHGCAR (VASP) or .cube (Gaussian / QE pp.x)
     #[arg(short, long)]
     input: PathBuf,
 
@@ -28,7 +31,17 @@ fn main() -> Result<()> {
     let args = Cli::parse();
     let path = args.input.to_str().unwrap_or_default();
 
-    let (frame, chg) = read_chgcar(path)?;
+    let is_cube = args.input
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("cube"))
+        .unwrap_or(false);
+
+    let (frame, chg) = if is_cube {
+        read_cube_as_chg(path)?
+    } else {
+        read_chgcar(path)?
+    };
 
     let method = match args.method.to_lowercase().as_str() {
         "ongrid"   => BaderMethod::OnGrid,
@@ -50,7 +63,6 @@ fn main() -> Result<()> {
 
     println!("Bader volumes found: {}", result.nvols);
 
-    // Write output files
     let stem = args.input.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("bader");
@@ -64,7 +76,6 @@ fn main() -> Result<()> {
 
     println!("Output: {acf_path}, {bcf_path}, {avf_path}");
 
-    // Summary
     let total_e: f64 = result.ionchg.iter().sum();
     println!("\nTotal ionic charge: {:.4} e", total_e);
     println!("Vacuum charge:      {:.4} e", result.vacchg);
