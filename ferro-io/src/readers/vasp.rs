@@ -39,10 +39,14 @@ fn parse_poscar(content: &str) -> Result<Trajectory> {
 
     // VASP4 vs VASP5 detection
     let line5 = next("element/count line")?.trim();
+    // Parse line5 once as usize counts: Some ⇒ VASP4, None ⇒ VASP5.
+    // (Parsing directly as usize avoids the prior u64-check / usize-unwrap
+    // mismatch that could panic on 32-bit targets for large values.)
+    let line5_counts: Option<Vec<usize>> =
+        line5.split_whitespace().map(|t| t.parse::<usize>().ok()).collect();
     let (elements, counts): (Vec<String>, Vec<usize>) =
-        if line5.split_whitespace().all(|t| t.parse::<u64>().is_ok()) {
+        if let Some(c) = line5_counts {
             // VASP4: counts only
-            let c: Vec<usize> = line5.split_whitespace().map(|s| s.parse().unwrap()).collect();
             let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
             (e, c)
         } else {

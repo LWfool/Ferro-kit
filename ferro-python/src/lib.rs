@@ -1,56 +1,34 @@
-//! ChemTools Python 绑定
-//! 
-//! 将 Rust 库导出为 Python 模块
+//! ferro — Python 绑定（PyO3）。
+//!
+//! 纯 Rust 库（ferro-core / io / structure / analysis）对 Python 零感知；
+//! 本 crate 是唯一的 PyO3 胶水层。用 maturin 构建：`maturin develop`。
+//!
+//! ```python
+//! import ferro
+//! t = ferro.read("traj.lammpstrj", metal_units=True)
+//! sc = ferro.supercell(t, 2, 2, 1)
+//! g  = ferro.gr(t, r_max=10.0, dr=0.02)   # dict[str, list[float]]
+//! d  = ferro.msd(t, dt=2.0, elements=["Li"])
+//! ```
 
 use pyo3::prelude::*;
 
-/// 读取 XYZ 文件
-#[pyfunction]
-fn read_xyz(path: String) -> PyResult<String> {
-    use ferro_io::read_xyz;
-    
-    let mol = read_xyz(&path)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    
-    Ok(format!(
-        "分子包含 {} 个原子，总质量 {:.2} amu",
-        mol.atom_count(),
-        mol.total_mass()
-    ))
+mod analysis;
+mod io;
+mod structure;
+mod types;
+
+/// 把任意可显示错误（anyhow::Error / ferro_core::ChemError 等）转为 Python 异常。
+pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
+    pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
 }
 
-/// 写入 XYZ 文件
-#[pyfunction]
-fn write_xyz(input_path: String, output_path: String) -> PyResult<()> {
-    use ferro_io::{read_xyz, write_xyz};
-    
-    let mol = read_xyz(&input_path)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    
-    write_xyz(&mol, &output_path)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    
-    Ok(())
-}
-
-/// 计算分子质心
-#[pyfunction]
-fn center_of_mass(path: String) -> PyResult<(f64, f64, f64)> {
-    use ferro_io::read_xyz;
-    
-    let mol = read_xyz(&path)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-    
-    let com = mol.center_of_mass();
-    Ok((com.x, com.y, com.z))
-}
-
-/// Python 模块定义
 #[pymodule]
-fn ferro(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(read_xyz, m)?)?;
-    m.add_function(wrap_pyfunction!(write_xyz, m)?)?;
-    m.add_function(wrap_pyfunction!(center_of_mass, m)?)?;
-    
+fn ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<types::PyTrajectory>()?;
+    io::register(m)?;
+    structure::register(m)?;
+    analysis::register(m)?;
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

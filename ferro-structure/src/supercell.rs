@@ -199,7 +199,7 @@ mod tests {
         let a = 3.0;
         let frame = bcc_frame(a);
         let sc = make_supercell(&frame, 2, 3, 1).unwrap();
-        assert_eq!(sc.atoms.len(), 2 * 2 * 3 * 1);
+        assert_eq!(sc.atoms.len(), 2 * 2 * 3);
         let [la, lb, lc] = sc.cell.as_ref().unwrap().lengths();
         assert!((la - 2.0 * a).abs() < 1e-10);
         assert!((lb - 3.0 * a).abs() < 1e-10);

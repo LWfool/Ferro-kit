@@ -27,11 +27,19 @@ The compiled CLI binaries are placed in `target/release/`:
 
 ## Python Bindings
 
+`ferro-python` is its own workspace and is built with maturin (not the root
+`cargo build`).  `maturin develop` needs an active virtualenv / conda env:
+
 ```bash
-cd ferro-python
 pip install maturin
-maturin develop
+cd ferro-python
+maturin develop                                   # into the active env
+# or, without an active env:
+maturin build --release --interpreter "$(which python)"
+pip install target/wheels/ferro-*.whl
 ```
+
+See [Python Bindings](python.md) for the full API reference.
 
 ## Generating This Documentation
 

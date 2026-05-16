@@ -41,18 +41,94 @@ fe-info -i traj.dump --last-n 1
 
 ## `fe-job`
 
-Generate QC software input files.
+Generate QC software input files for **Gaussian**, **CP2K**, or **Quantum ESPRESSO**.  Run without `-s` to see an overview; run with `-s <software>` but without `-i` to see software-specific help.  See [Job Builders](workflow/job-builders.md) for a guided overview.
 
 ```bash
+fe-job                                    # overview
+fe-job -s cp2k                            # CP2K-specific help
 fe-job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-fe-job -i input.xyz -s gromacs -o topology.top
+fe-job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
 ```
 
-| Flag | Description |
-|---|---|
-| `-s <software>` | Target software: `gaussian`, `gromacs` |
-| `-m <method>` | DFT method, e.g. `B3LYP`, `PBE` |
-| `-b <basis>` | Basis set, e.g. `6-31G*`, `def2-TZVP` |
+### Charge / Spin (shared by all targets)
+
+| Flag | Default | Description |
+|---|---|---|
+| `--charge` | (from file) | Override total system charge (applied before spin estimation) |
+| `--multiplicity` | (from file) | Force spin multiplicity 2S+1; highest priority, disables auto-spin |
+| `--auto-spin` | off (on by default for cp2k/qe) | Estimate multiplicity from structure |
+
+The estimator (magmom → oxidation state + Hund → electron parity) is documented in [Spin Estimation](workflow/spin.md).
+
+### Gaussian
+
+| Flag | Default | Description |
+|---|---|---|
+| `-m <method>` | (required) | DFT method, e.g. `B3LYP`, `PBE0` |
+| `-b <basis>` | (required) | Basis set, e.g. `6-31G*`, `def2-TZVP` |
+| `-o <file>` | `job.gjf` | Output file |
+
+### CP2K
+
+#### Task & Electronic Structure
+
+| Flag | Default | Candidates |
+|---|---|---|
+| `--task` | `energy` | `energy`, `force`, `geo-opt`, `cell-opt`, `md`, `freq` |
+| `--functional` | `pbe` | `pbe`, `blyp`, `pbe0`, `b3lyp`, `revpbe`, `pbesol`, `scan`, `r2scan`, `hse06` |
+| `--cp2k-basis` | `dzvp-molopt-sr` | `dzvp-molopt-sr`, `tzvp-molopt`, `tzv2p-molopt`, `dzvp-gth`, `tzvp-gth`, `pob-dzvp`, `pob-tzvp` (all-electron), or any custom string |
+| `--dispersion` | `none` | `none`, `d3`, `d3bj` |
+| `--scf` | `diag` | `diag` (metals/large), `ot` (insulators) |
+| `--pbc` | (auto) | `xyz`, `z`, `none`; auto-detected from cell if omitted |
+| `--kpoints` | (none) | Three integers, e.g. `--kpoints 2 2 2` |
+| `--cutoff` | `400` | Plane-wave cutoff [Ry] |
+| `--rel-cutoff` | `50` | Relative cutoff [Ry] |
+| `--smear` | off | Enable Fermi–Dirac smearing |
+
+#### Output
+
+| Flag | Default | Candidates |
+|---|---|---|
+| `--atom-charge` | `none` | `none`, `mulliken`, `hirshfeld`, `hirshfeld-i` |
+| `--cube` | `none` | `none`, `density`, `elf`, `hartree` |
+| `--molden` | off | Export Molden orbital file |
+| `--project` | `ferro` | CP2K project name |
+
+#### MD (only with `--task md`)
+
+| Flag | Default | Description |
+|---|---|---|
+| `--md-steps` | `10000` | Number of MD steps |
+| `--md-timestep` | `1.0` | Timestep [fs] |
+| `--temperature` | `298.15` | Temperature [K] |
+| `--thermostat` | `csvr` | `csvr`, `nose`, `langevin`, `none` |
+| `--traj-freq` | `100` | Trajectory write frequency [steps] |
+| `--barostat` | off | Enable NPT barostat |
+
+> Basis-set and pseudopotential names are resolved **per element** from a 2829-entry database (PBE / SCAN / all-electron, with matching valence `q`).  `--cp2k-basis` selects the family; the exact element-specific name is filled in automatically.  See [Job Builders](workflow/job-builders.md#precise-basis--pseudopotential-matching).
+
+### Quantum ESPRESSO
+
+```bash
+fe-job -i crystal.cif -s qe
+fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+```
+
+| Flag | Default | Candidates / Description |
+|---|---|---|
+| `--qe-task` | `scf` | `scf`, `nscf`, `bands`, `relax`, `vc-relax`, `md`, `vc-md` |
+| `--qe-functional` | `pbe` | `pbe`, `pbesol`, `revpbe`, `blyp`, `scan`, `r2scan`, `pbe0`, `hse06` |
+| `--ecutwfc` | `50` | Plane-wave cutoff [Ry] |
+| `--smearing` | `none` | `none`, `gaussian`, `mp`, `mv`, `fd` (mp/mv for metals) |
+| `--kpoints` | (Gamma) | Three integers → Monkhorst-Pack mesh |
+| `--pseudo-dir` | `./pseudo` | Pseudopotential directory (`<El>.UPF`) |
+| `--md-steps` | `10000` | MD steps (`--qe-task md`/`vc-md`) |
+| `--temperature` | `298.15` | MD target temperature [K] |
+| `-o <file>` | `pw.in` | Output file |
+
+`ibrav = 0`; the cell is written as `CELL_PARAMETERS angstrom` from the structure.  Spin uses the shared estimator → `nspin` / `tot_magnetization`.
 
 ---
 
@@ -263,6 +339,60 @@ fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
 | `--rmsd-warn` | 0.5 | RMSD warning threshold [Å] |
 
 Output: `<stem>_<label>.cube` per atom type (multiple families: `<stem>_fam<N>_<label>.cube`).
+
+#### `chg-sdf` — Averaged Charge-Density SDF
+
+Computes the orientationally averaged electron density around Qn clusters from a set of QE `pp.x` charge-density cube files.  Does **not** require a trajectory `-i`; instead takes `--cubes`.
+
+```bash
+fe-cube -m chg_sdf \
+    --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    -o chg_sdf
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--cubes <files…>` | (required) | QE pp.x cube files, one per MD frame |
+| `--qn` | `3` | Target Qn level (0–3) |
+| `--former` | `P` | Network-former element |
+| `--ligand` | `O` | Bridging-ligand element |
+| `--cutoff-fl` | `2.4` | Former–ligand cutoff [Å] |
+| `--modifier` | (none) | Modifier cation element |
+| `--cutoff-ml` | `2.8` | Modifier–ligand cutoff [Å] |
+| `--chg-padding` | `6.0` | Sub-grid boundary margin [Å] |
+| `--rmsd-warn` | `0.5` | Alignment RMSD warning threshold [Å] |
+
+Output: `<stem>_Q<n>.cube` (one file per signature family).
+
+See [Averaged Charge-Density SDF](analysis/chg-sdf.md) for algorithm details.
+
+---
+
+## `fe-bader`
+
+Bader charge decomposition from DFT charge-density files.  Supports VASP CHGCAR and Gaussian/QE cube files.
+
+```bash
+fe-bader -i CHGCAR                      # VASP CHGCAR
+fe-bader -i charge.cube                 # Gaussian/QE cube file
+fe-bader -i CHGCAR -o bader            # custom output stem
+fe-bader -i CHGCAR --method weight     # Yu-Trinkle weight method
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <file>` | (required) | Input file (`.cube` → cube reader; others → CHGCAR reader) |
+| `-o <stem>` | `bader` | Output file stem |
+| `--method` | `ongrid` | Bader method: `ongrid`, `neargrid`, `offgrid`, `weight` |
+
+### Output Files
+
+| File | Content |
+|---|---|
+| `<stem>_ACF.dat` | Atomic Charges File — per-atom Bader charge, volume, min distance to surface |
+| `<stem>_BCF.dat` | Bader Charge File — per-Bader-volume charge, volume, coordinates |
+| `<stem>_AVF.dat` | Atomic Volume File — atom → Bader volume index mapping |
 
 ---
 

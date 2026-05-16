@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "ferro"
-version = "0.1.0"
-description = "计算化学工具集 - Python 绑定"
+version = "0.1.7"
+description = "ferro — 计算化学 MD 轨迹后处理工具（Python 绑定）"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -14,5 +14,4 @@ classifiers = [
 ]
 
 [tool.maturin]
-python-source = "python"
 module-name = "ferro"

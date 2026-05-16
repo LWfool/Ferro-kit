@@ -11,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.4"
+version = "0.1.7"
 edition = "2021"
 authors = ["Your Name <you@example.com>"]
 license = "MIT"
@@ -28,7 +28,6 @@ serde = { version = "1.0", features = ["derive"] }
 # 错误处理
 thiserror = "2.0"
 anyhow = "1.0"
-petgraph = "0.8"
 rand = "0.8"
 
 [profile.release]

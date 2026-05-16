@@ -1,5 +1,199 @@
 use crate::args::{corr::CorrMode, cube::CubeCliMode, traj::TrajMode};
 
+pub fn print_fe_job_overview() {
+    println!(
+        r#"fe-job — Generate QC software input files
+
+Usage:
+  fe-job -s <SOFTWARE> -i <FILE> [OPTIONS]
+  fe-job -s <SOFTWARE>              show software-specific parameters
+
+Supported software:
+  gaussian   Gaussian 16/09 input file (.gjf)
+  cp2k       CP2K input file (.inp)  — DFT/MD/GeoOpt/CellOpt
+  qe         Quantum ESPRESSO pw.x input (.in)  — scf/relax/md/bands
+
+Common options:
+  -i, --input  PATH   Input structure file (xyz, cif, pdb, POSCAR, …)
+  -o, --output PATH   Output file (default: job.gjf / job.inp)
+      --metal-units   LAMMPS metal units for dump files"#
+    );
+}
+
+pub fn print_job_help(software: &str) {
+    match software.to_lowercase().as_str() {
+        "gaussian"                     => print_job_gaussian(),
+        "cp2k"                         => print_job_cp2k(),
+        "qe" | "espresso" | "pwscf"    => print_job_qe(),
+        other => println!("Unknown software: {other}  (supported: gaussian | cp2k | qe)"),
+    }
+}
+
+fn print_job_qe() {
+    println!(
+        r#"fe-job -s qe — Quantum ESPRESSO pw.x input file
+
+Parameters — task:
+  --qe-task STR     Calculation type                    default: scf
+    scf               Single-point SCF
+    nscf              Non-self-consistent (after scf)
+    bands             Band-structure run
+    relax             Atomic relaxation (BFGS)
+    vc-relax          Variable-cell relaxation
+    md                Born-Oppenheimer MD
+    vc-md             Variable-cell MD
+
+Parameters — electronic structure:
+  --qe-functional STR  DFT functional                   default: pbe
+    pbe pbesol revpbe blyp scan r2scan pbe0 hse06
+  --ecutwfc F       Plane-wave cutoff [Ry]               default: 50
+  --smearing STR    Occupation smearing                  default: none
+    none gaussian mp mv fd   (mp/mv recommended for metals)
+  --kpoints K1 K2 K3  Monkhorst-Pack mesh (omit → Gamma)
+  --pseudo-dir PATH Pseudopotential directory            default: ./pseudo
+
+Charge / spin (shared):
+  --charge INT        Override total charge
+  --multiplicity INT  Override 2S+1 (→ nspin=2, tot_magnetization)
+  --auto-spin         Guess spin from structure (default for qe);
+                      nspin/tot_magnetization via guess_spin
+
+Parameters — MD (--qe-task md|vc-md):
+  --md-steps INT    Number of MD steps                   default: 10000
+  --temperature F   Target temperature [K]               default: 298.15
+
+Notes:
+  ibrav = 0; cell from structure (CELL_PARAMETERS angstrom).
+  Pseudopotentials referenced as <Element>.UPF in --pseudo-dir.
+
+Examples:
+  fe-job -s qe -i crystal.cif
+  fe-job -s qe -i metal.cif --smearing mp --kpoints 8 8 8
+  fe-job -s qe -i slab.xyz --qe-task relax --qe-functional scan
+  fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4 -o pw.in"#
+    );
+}
+
+fn print_job_gaussian() {
+    println!(
+        r#"fe-job -s gaussian — Gaussian 16/09 input file
+
+Parameters:
+  -m, --method  STR   DFT functional           default: B3LYP
+  -b, --basis   STR   Basis set                default: 6-31G*
+  -o PATH             Output file              default: job.gjf
+
+Charge / spin (shared):
+  --charge INT        Override total system charge
+  --multiplicity INT  Override spin multiplicity 2S+1 (highest priority)
+  --auto-spin         Guess multiplicity from structure:
+                        magmom 求和 → 氧化态+Hund → 电子数奇偶下限
+
+Example:
+  fe-job -s gaussian -i mol.xyz
+  fe-job -s gaussian -i mol.xyz -m PBE0 -b def2-TZVP -o sp.gjf
+  fe-job -s gaussian -i FeCl3.xyz --auto-spin            # 推断高自旋多重度
+  fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2"#
+    );
+}
+
+fn print_job_cp2k() {
+    println!(
+        r#"fe-job -s cp2k — CP2K input file (GPW/DFT, periodic systems)
+
+Parameters — task:
+  --task STR        Calculation type                    default: energy
+    energy            Single-point energy
+    force             Energy + forces
+    geo-opt           Geometry optimisation (atoms)
+    cell-opt          Geometry + cell optimisation
+    md                Born-Oppenheimer molecular dynamics
+    freq              Vibrational analysis
+
+Parameters — electronic structure:
+  --functional STR  DFT functional                      default: pbe
+    pbe               GGA-PBE  (GTH-PBE pseudopotential)
+    blyp              GGA-BLYP (GTH-BLYP pseudopotential)
+    revpbe            GGA-revPBE
+    pbesol            GGA-PBEsol
+    pbe0              Hybrid PBE0  (25 % HF)
+    b3lyp             Hybrid B3LYP (20 % HF, Gaussian definition)
+    hse06             Range-separated HSE06
+    scan              meta-GGA SCAN  (via LIBXC)
+    r2scan            meta-GGA r²SCAN (via LIBXC)
+
+  --cp2k-basis STR  Basis set                           default: dzvp-molopt-sr
+    dzvp-molopt-sr    DZVP-MOLOPT-SR-GTH  (fast, good all-round)
+    tzvp-molopt       TZVP-MOLOPT-GTH     (higher quality)
+    tzv2p-molopt      TZV2P-MOLOPT-GTH    (highest quality MOLOPT)
+    dzvp-gth          DZVP-GTH            (older GTH style)
+    tzvp-gth          TZVP-GTH
+    pob-dzvp          pob-DZVP            (all-electron, periodic)
+    pob-tzvp          pob-TZVP            (all-electron, periodic)
+  基组/赝势名经数据库按元素精确匹配（PBE/SCAN/全电子，含 q 价电子数）。
+
+  --dispersion STR  Dispersion correction               default: none
+    none  d3  d3bj
+
+  --scf STR         SCF solver                          default: diag
+    diag              Diagonalisation + Broyden  (metals, large systems)
+    ot                Orbital Transform           (insulators / band-gap systems)
+
+  --cutoff INT      Plane-wave cutoff [Ry]               default: 400
+  --rel-cutoff INT  Relative cutoff [Ry]                 default: 50
+  --smear           Enable Fermi-Dirac smearing (300 K)
+  --pbc STR         Periodic boundary  xyz | z | none   (auto from cell)
+  --kpoints K1 K2 K3  Monkhorst-Pack k-point mesh
+
+Parameters — charge / spin (shared):
+  --charge INT      Override total system charge
+  --multiplicity INT  Override spin multiplicity 2S+1 (highest priority)
+  --auto-spin       Guess multiplicity from structure:
+                      magmom 求和 → 氧化态+Hund → 电子数奇偶下限
+                      过渡金属按高自旋估计，结果需 DFT 验证
+
+Parameters — output:
+  --atom-charge STR Atomic charge scheme                 default: none
+    none  mulliken  hirshfeld  hirshfeld-i
+  --cube STR        Export cube file                     default: none
+    none  density  elf  hartree
+  --molden          Export Molden wavefunction file
+  --project STR     CP2K project name                    default: ferro
+
+Parameters — MD (--task md):
+  --md-steps INT    Number of MD steps                   default: 10000
+  --md-timestep F   Timestep [fs]                        default: 1.0
+  --temperature F   Temperature [K]                      default: 298.15
+  --thermostat STR  Thermostat                           default: csvr
+    csvr              Canonical sampling (robust default)
+    nose              Nosé-Hoover chain
+    langevin          Langevin stochastic thermostat
+    none              NVE (no thermostat)
+  --traj-freq INT   Write trajectory every N steps       default: 100
+  --barostat        Enable NPT barostat (flexible cell)
+
+Examples:
+  # Single-point PBE on a periodic glass structure
+  fe-job -s cp2k -i glass.xyz
+
+  # Geometry optimisation with DFT-D3(BJ)
+  fe-job -s cp2k -i glass.xyz --task geo-opt --dispersion d3bj -o opt.inp
+
+  # AIMD at 1500 K, NVT-CSVR, PBE-D3
+  fe-job -s cp2k -i glass.xyz --task md --dispersion d3 \
+         --temperature 1500 --md-steps 50000 --traj-freq 50 -o aimd.inp
+
+  # Cell optimisation with PBE0 / OT / no dispersion
+  fe-job -s cp2k -i crystal.cif --task cell-opt --functional pbe0 --scf ot
+
+  # Mulliken charges + electron density cube
+  fe-job -s cp2k -i mol.xyz --atom-charge mulliken --cube density
+
+  # Auto-guess spin for a transition-metal oxide (high-spin estimate)
+  fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear"#
+    );
+}
+
 pub fn print_fe_traj_overview() {
     println!(
         r#"fe-traj — Trajectory structural analysis
@@ -95,6 +289,7 @@ pub fn print_cube_help(mode: &CubeCliMode) {
         CubeCliMode::Force    => print_cube_force(),
         CubeCliMode::Radius   => print_cube_radius(),
         CubeCliMode::Sdf      => print_cube_sdf(),
+        CubeCliMode::ChgSdf   => print_cube_chg_sdf(),
     }
 }
 
@@ -382,5 +577,40 @@ Example:
   fe-cube -m sdf -i traj.dump --qn 3
   fe-cube -m sdf -i traj.dump --qn 2 --modifier Zn --cutoff-ml 2.8 -o q2_sdf
   fe-cube -m sdf -i traj.dump --qn 1 --grid-res 0.05 --sigma 2.0 --last-n 500"#
+    );
+}
+
+fn print_cube_chg_sdf() {
+    println!(
+        r#"fe-cube -m chg_sdf — Averaged Charge-Density Cluster SDF
+  Reads multiple QE pp.x cube files (one per MD frame), identifies Qn
+  clusters with the same logic as -m sdf, extracts a cubic sub-grid of
+  the charge density centered on the cluster anchor, applies the Kabsch
+  rotation to align the sub-grid to a common reference frame, and
+  accumulates the averaged charge density.
+
+  Input: --cubes <file1.cube> <file2.cube> ...
+  Each cube file contains both atomic structure and charge density.
+  All cube files must have the same grid resolution (i.e. same QE cutoff).
+
+  Output values are in ChargeGrid convention (ρ_phys × V_cell).
+  The output cube file can be visualised directly in VESTA or VMD.
+
+Parameters:
+  --cubes      FILE...  QE pp.x cube files (required, one per frame)
+  --qn         INT      Target Qn cluster level (0/1/2/3)      default: 2
+  --former     ELEM     Network-former element                  default: P
+  --ligand     ELEM     Ligand (bridging) element               default: O
+  --cutoff-fl  FLOAT    Former-ligand bond cutoff [Å]          default: 2.4
+  --modifier   ELEM     Modifier element (optional, e.g. Zn)
+  --cutoff-ml  FLOAT    Modifier-ligand cutoff [Å]             default: 2.8
+  --chg-padding FLOAT   Sub-grid boundary margin [Å]           default: 6.0
+  --rmsd-warn  FLOAT    RMSD warning threshold [Å]             default: 0.5
+  --ncore      INT      Parallel threads
+  -o PATH               Output stem (no extension)             default: chg_sdf
+
+Example:
+  fe-cube -m chg_sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
+  fe-cube -m chg_sdf --cubes f1.cube f2.cube --qn 0 --chg-padding 5.0"#
     );
 }

@@ -1,14 +1,21 @@
+# ferro-python is intentionally NOT a member of the main workspace.
+# It is a PyO3 extension module built with maturin (`maturin develop`),
+# not `cargo build` from the workspace root. An explicit empty [workspace]
+# table makes this directory its own workspace so it builds independently.
+[workspace]
+
 [package]
 name = "ferro-python"
-version.workspace = true
-edition.workspace = true
+version = "0.1.7"
+edition = "2021"
 
 [lib]
 name = "ferro"
 crate-type = ["cdylib"]
 
 [dependencies]
-ferro-core = { path = "../ferro-core" }
-ferro-io = { path = "../ferro-io" }
-ferro-analysis = { path = "../ferro-analysis" }
-pyo3 = { version = "0.20", features = ["extension-module"] }
+ferro-core      = { path = "../ferro-core" }
+ferro-io        = { path = "../ferro-io" }
+ferro-structure = { path = "../ferro-structure" }
+ferro-analysis  = { path = "../ferro-analysis" }
+pyo3 = { version = "0.21", features = ["extension-module"] }

@@ -141,70 +141,69 @@ pub fn bader_weight(chg: &ChargeGrid, frame: &Frame, params: &BaderParams) -> Ba
             });
 
             if is_boundary {
-                // Boundary point: distribute flow to upstream basins
+                // 边界点：按概率分配给各上游体积；同时记录最大概率上游的体积用于 volnum
                 basin[pos] = 0;
+                let mut max_frac = 0.0_f64;
+                let mut max_basin = 0i32;
                 for &(m, t) in &above {
                     let idx_m = indices[m];
                     let frac = t / tsum;
                     prob[idx_m].push(frac);
                     neigh[idx_m].push(pos);
                     numbelow[idx_m] += 1;
+                    // 记录最大概率来源体积，用于 volnum 可视化
+                    let bm = basin[idx_m];
+                    if frac > max_frac && bm > 0 {
+                        max_frac = frac;
+                        max_basin = bm;
+                    }
                 }
+                // 以负数存储 volnum 来源（>0 代表内部，<0 代表边界待填）
+                basin[pos] = -(max_basin);
             } else {
-                // Internal point: inherit basin
+                // 内部点：继承上游体积编号
                 basin[pos] = first_basin;
             }
         }
     }
 
-    // Step 4: Charge integration
-    // Forward pass: propagate weights from high density to low density
-    let mut weight = vec![0.0_f64; nrho];
-    let mut volchg = vec![0.0_f64; nvols + 1]; // index 0 unused, 1..=nvols for volumes
+    // Step 4: Charge integration — 对每个 Bader 体积独立传播权重（Fortran 算法）
+    // 边界点 basin < 0，内部点 basin > 0
+    let mut volchg = vec![0.0_f64; nvols + 1]; // index 0 unused, 1..=nvols
+    let mut w = vec![0.0_f64; nrho];
 
-    // Initialize: maxima get weight 1
-    for &pos in indices.iter().take(nrho) {
-        if basin[pos] > 0 && weight[pos] == 0.0 {
-            // This is a basin maximum — it should already have weight 0
-            // Set weight based on basin assignment
-            weight[pos] = if basin[pos] > 0 { 1.0 } else { 0.0 };
+    for (bv, vc) in volchg.iter_mut().enumerate().skip(1) {
+        // 内部点（basin == bv）权重 = 1，其余 = 0
+        for i in 0..nrho {
+            w[i] = if basin[i] == bv as i32 { 1.0 } else { 0.0 };
         }
-
-        // Propagate weight to lower-density neighbors
-        for k in 0..numbelow[pos] {
-            let target = neigh[pos][k];
-            weight[target] += prob[pos][k] * weight[pos];
-        }
-
-        // Accumulate charge for the basin
-        let b = basin[pos];
-        if b > 0 && weight[pos] > 0.0 {
-            volchg[b as usize] += weight[pos] * chg.rho[pos];
+        // 按密度降序传播权重到边界点，同时累加电荷
+        for &pos in &indices {
+            let tw = w[pos];
+            if tw > 0.0 {
+                for k in 0..numbelow[pos] {
+                    w[neigh[pos][k]] += prob[pos][k] * tw;
+                }
+                *vc += tw * chg.rho[pos];
+            }
         }
     }
 
-    // Normalize: volchg = sum / nrho
     let inv_nrho = 1.0 / nrho as f64;
     for v in volchg.iter_mut() {
         *v *= inv_nrho;
     }
 
-    // Step 5: Assign volnum for visualization (take largest-flow basin for boundary points)
+    // Step 5: 构建 volnum（内部点=basin，边界点=最大概率上游体积）
     let mut volnum = vec![0i32; nrho];
     for i in 0..nrho {
-        if basin[i] > 0 {
-            volnum[i] = basin[i];
-        } else if basin[i] == 0 && !neigh[i].is_empty() {
-            // Boundary point: find which upstream basin contributes most
-            // We need to look at who flows INTO this point
-            // Actually, for boundary points we need to look backwards.
-            // For simplicity, assign to the basin of the highest-density neighbor.
-            let best = neigh[i].iter().enumerate()
-                .max_by(|(_, &a), (_, &b)| weight[a].partial_cmp(&weight[b]).unwrap_or(std::cmp::Ordering::Equal));
-            if let Some((_, &target)) = best {
-                volnum[i] = volnum[target].max(1);
-            }
-        }
+        volnum[i] = if basin[i] > 0 {
+            basin[i]
+        } else if basin[i] < 0 {
+            -basin[i]  // 边界点存储的是 -max_basin
+        } else {
+            0
+        };
     }
 
     // Step 6: Mark vacuum

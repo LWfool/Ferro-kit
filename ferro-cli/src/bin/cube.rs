@@ -9,8 +9,9 @@ use ferro_analysis::{
     calc_cube_density, CubeDensityParams,
     calc_cube_radius, CubeRadiusParams,
     calc_cluster_sdf, ClusterSdfParams,
+    calc_chg_sdf, ChgSdfParams,
 };
-use ferro_io::{write_cube, LammpsUnits};
+use ferro_io::{read_cube_as_chg, write_cube, LammpsUnits};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -108,9 +109,19 @@ struct Cli {
     #[arg(long, default_value = "3.0")]
     padding: f64,
 
-    /// RMSD warning threshold [Å]  [sdf]
+    /// RMSD warning threshold [Å]  [sdf / chg_sdf]
     #[arg(long, default_value = "0.5")]
     rmsd_warn: f64,
+
+    // ── chg_sdf mode ─────────────────────────────────────────────────────────
+
+    /// QE pp.x cube files (one per MD frame)  [chg_sdf]
+    #[arg(long = "cubes", num_args = 1..)]
+    cube_files: Vec<PathBuf>,
+
+    /// Sub-grid boundary margin [Å]  [chg_sdf]
+    #[arg(long = "chg-padding", default_value = "6.0")]
+    chg_padding: f64,
 }
 
 fn main() -> Result<()> {
@@ -124,6 +135,18 @@ fn main() -> Result<()> {
             return Ok(());
         }
     };
+
+    // chg_sdf 模式使用 --cubes，不需要 -i 轨迹文件
+    if matches!(mode, CubeCliMode::ChgSdf) {
+        if args.help || args.cube_files.is_empty() {
+            print_cube_help(&mode);
+            return Ok(());
+        }
+        if let Some(n) = args.ncore {
+            rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
+        }
+        return run_chg_sdf(&args);
+    }
 
     // -h 或无 -i → 模式专属帮助
     if args.help || args.input.is_none() {
@@ -268,6 +291,69 @@ fn run_sdf(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
     Ok(())
 }
 
+fn run_chg_sdf(args: &Cli) -> Result<()> {
+    // 读取全部 cube 文件 → (Frame, ChargeGrid) 列表
+    let mut pairs = Vec::with_capacity(args.cube_files.len());
+    for path in &args.cube_files {
+        let (frame, chg) = read_cube_as_chg(path.to_str().unwrap_or_default())
+            .map_err(|e| anyhow!("读取 {} 失败: {e}", path.display()))?;
+        pairs.push((frame, chg));
+    }
+
+    let params = ChgSdfParams {
+        former: args.former.clone(),
+        ligand: args.ligand.clone(),
+        target_qn: args.qn,
+        former_ligand_cutoff: args.cutoff_fl,
+        modifier: args.modifier.clone(),
+        modifier_cutoff: args.cutoff_ml,
+        padding: args.chg_padding,
+        rmsd_warn_threshold: args.rmsd_warn,
+    };
+
+    let result = calc_chg_sdf(&pairs, &params)
+        .ok_or_else(|| anyhow!("未找到 Q{} 团簇，请检查参数", args.qn))?;
+
+    let stem = args.output.as_deref()
+        .and_then(|p| p.to_str())
+        .unwrap_or("chg_sdf");
+
+    let multi_family = result.families.len() > 1;
+    let mut families: Vec<_> = result.families.values().collect();
+    families.sort_by(|a, b| a.signature.cmp(&b.signature));
+
+    let mut total_files = 0usize;
+    for (fam_idx, family) in families.iter().enumerate() {
+        let fam_stem = if multi_family {
+            format!("{}_fam{}", stem, fam_idx)
+        } else {
+            stem.to_string()
+        };
+        let path = format!("{}_Q{}.cube", fam_stem, args.qn);
+        write_cube(&path, &family.cube)?;
+        total_files += 1;
+
+        println!(
+            "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {}",
+            family.signature,
+            family.n_clusters,
+            family.rmsd_stats.mean,
+            family.rmsd_stats.max,
+            family.rmsd_stats.n_warned,
+            path,
+        );
+    }
+
+    println!(
+        "ChgSDF Q{} done: {} frames, {} clusters total, {} cube files written",
+        args.qn,
+        result.n_frames,
+        result.n_clusters_total,
+        total_files,
+    );
+    Ok(())
+}
+
 fn mode_name(m: &CubeCliMode) -> &'static str {
     match m {
         CubeCliMode::Density  => "density",
@@ -275,5 +361,6 @@ fn mode_name(m: &CubeCliMode) -> &'static str {
         CubeCliMode::Force    => "force",
         CubeCliMode::Radius   => "radius",
         CubeCliMode::Sdf      => "sdf",
+        CubeCliMode::ChgSdf   => "chg_sdf",
     }
 }

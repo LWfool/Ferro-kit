@@ -21,15 +21,10 @@ pub fn write_poscar(trajectory: &Trajectory, path: &str) -> Result<()> {
         writeln!(w, "   {:>20.16}  {:>20.16}  {:>20.16}", r[0], r[1], r[2])?;
     }
 
-    // Collect elements in first-appearance order
-    let mut elem_order: Vec<&str> = Vec::new();
-    for atom in &frame.atoms {
-        if !elem_order.contains(&atom.element.as_str()) {
-            elem_order.push(atom.element.as_str());
-        }
-    }
+    // Unique elements in first-appearance order
+    let elem_order = frame.unique_elements();
     let counts: Vec<usize> = elem_order.iter()
-        .map(|e| frame.atoms.iter().filter(|a| a.element == *e).count())
+        .map(|e| frame.count_element(e))
         .collect();
 
     // Element and count lines (VASP5)

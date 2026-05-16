@@ -22,7 +22,17 @@
 - [Jump Distance Distribution](analysis/cube-jump.md)
 - [Hard-Sphere Occupancy](analysis/cube-radius.md)
 - [Cluster SDF](analysis/cube-sdf.md)
+- [Averaged Charge-Density SDF](analysis/chg-sdf.md)
 - [Glass Network Analysis](analysis/network.md)
+
+# Input Generation
+
+- [Job Builders](workflow/job-builders.md)
+- [Spin / Unpaired-Electron Estimation](workflow/spin.md)
+
+# Python API
+
+- [Python Bindings](python.md)
 
 # Reference
 
