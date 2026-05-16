@@ -1,0 +1,690 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>CLI Reference - ferro Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-372d655a.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-61fad4d5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ferro Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="cli-reference"><a class="header" href="#cli-reference">CLI Reference</a></h1>
+<p>ferro provides six command-line binaries.  All trajectory binaries share common flags for frame selection and parallelism.  Run any binary without <code>-i</code> to print mode-specific help.</p>
+<h2 id="common-flags"><a class="header" href="#common-flags">Common Flags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>Input file</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td>Output file (default: mode-specific name)</td></tr>
+<tr><td><code>--last-n N</code></td><td>Use only the last N frames</td></tr>
+<tr><td><code>--ncore N</code></td><td>Parallel threads (default: all cores)</td></tr>
+<tr><td><code>--metal-units</code></td><td>LAMMPS metal units (velocities Å/ps, forces eV/Å)</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="fe-convert"><a class="header" href="#fe-convert"><code>fe-convert</code></a></h2>
+<p>Format conversion.</p>
+<pre><code class="language-bash">fe-convert -i input.xyz -o output.pdb
+fe-convert -i input.cif -o POSCAR
+</code></pre>
+<p>Supported input formats: <code>.xyz</code>, <code>.pdb</code>, <code>.cif</code>, LAMMPS dump<br>Supported output formats: <code>.xyz</code>, <code>.pdb</code>, <code>POSCAR</code>, LAMMPS dump</p>
+<hr>
+<h2 id="fe-info"><a class="header" href="#fe-info"><code>fe-info</code></a></h2>
+<p>Print structure summary (cell parameters, atom counts, element list).</p>
+<pre><code class="language-bash">fe-info -i input.xyz
+fe-info -i traj.dump --last-n 1
+</code></pre>
+<hr>
+<h2 id="fe-job"><a class="header" href="#fe-job"><code>fe-job</code></a></h2>
+<p>Generate QC software input files for <strong>Gaussian</strong>, <strong>CP2K</strong>, or <strong>Quantum ESPRESSO</strong>.  Run without <code>-s</code> to see an overview; run with <code>-s &lt;software&gt;</code> but without <code>-i</code> to see software-specific help.  See <a href="workflow/job-builders.html">Job Builders</a> for a guided overview.</p>
+<pre><code class="language-bash">fe-job                                    # overview
+fe-job -s cp2k                            # CP2K-specific help
+fe-job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+fe-job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
+</code></pre>
+<h3 id="charge--spin-shared-by-all-targets"><a class="header" href="#charge--spin-shared-by-all-targets">Charge / Spin (shared by all targets)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--charge</code></td><td>(from file)</td><td>Override total system charge (applied before spin estimation)</td></tr>
+<tr><td><code>--multiplicity</code></td><td>(from file)</td><td>Force spin multiplicity 2S+1; highest priority, disables auto-spin</td></tr>
+<tr><td><code>--auto-spin</code></td><td>off (on by default for cp2k/qe)</td><td>Estimate multiplicity from structure</td></tr>
+</tbody>
+</table>
+</div>
+<p>The estimator (magmom → oxidation state + Hund → electron parity) is documented in <a href="workflow/spin.html">Spin Estimation</a>.</p>
+<h3 id="gaussian"><a class="header" href="#gaussian">Gaussian</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-m &lt;method&gt;</code></td><td>(required)</td><td>DFT method, e.g. <code>B3LYP</code>, <code>PBE0</code></td></tr>
+<tr><td><code>-b &lt;basis&gt;</code></td><td>(required)</td><td>Basis set, e.g. <code>6-31G*</code>, <code>def2-TZVP</code></td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>job.gjf</code></td><td>Output file</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="cp2k"><a class="header" href="#cp2k">CP2K</a></h3>
+<h4 id="task--electronic-structure"><a class="header" href="#task--electronic-structure">Task &amp; Electronic Structure</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--task</code></td><td><code>energy</code></td><td><code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code></td></tr>
+<tr><td><code>--functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>blyp</code>, <code>pbe0</code>, <code>b3lyp</code>, <code>revpbe</code>, <code>pbesol</code>, <code>scan</code>, <code>r2scan</code>, <code>hse06</code></td></tr>
+<tr><td><code>--cp2k-basis</code></td><td><code>dzvp-molopt-sr</code></td><td><code>dzvp-molopt-sr</code>, <code>tzvp-molopt</code>, <code>tzv2p-molopt</code>, <code>dzvp-gth</code>, <code>tzvp-gth</code>, <code>pob-dzvp</code>, <code>pob-tzvp</code> (all-electron), or any custom string</td></tr>
+<tr><td><code>--dispersion</code></td><td><code>none</code></td><td><code>none</code>, <code>d3</code>, <code>d3bj</code></td></tr>
+<tr><td><code>--scf</code></td><td><code>diag</code></td><td><code>diag</code> (metals/large), <code>ot</code> (insulators)</td></tr>
+<tr><td><code>--pbc</code></td><td>(auto)</td><td><code>xyz</code>, <code>z</code>, <code>none</code>; auto-detected from cell if omitted</td></tr>
+<tr><td><code>--kpoints</code></td><td>(none)</td><td>Three integers, e.g. <code>--kpoints 2 2 2</code></td></tr>
+<tr><td><code>--cutoff</code></td><td><code>400</code></td><td>Plane-wave cutoff [Ry]</td></tr>
+<tr><td><code>--rel-cutoff</code></td><td><code>50</code></td><td>Relative cutoff [Ry]</td></tr>
+<tr><td><code>--smear</code></td><td>off</td><td>Enable Fermi–Dirac smearing</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="output"><a class="header" href="#output">Output</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--atom-charge</code></td><td><code>none</code></td><td><code>none</code>, <code>mulliken</code>, <code>hirshfeld</code>, <code>hirshfeld-i</code></td></tr>
+<tr><td><code>--cube</code></td><td><code>none</code></td><td><code>none</code>, <code>density</code>, <code>elf</code>, <code>hartree</code></td></tr>
+<tr><td><code>--molden</code></td><td>off</td><td>Export Molden orbital file</td></tr>
+<tr><td><code>--project</code></td><td><code>ferro</code></td><td>CP2K project name</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="md-only-with---task-md"><a class="header" href="#md-only-with---task-md">MD (only with <code>--task md</code>)</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>Number of MD steps</td></tr>
+<tr><td><code>--md-timestep</code></td><td><code>1.0</code></td><td>Timestep [fs]</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>Temperature [K]</td></tr>
+<tr><td><code>--thermostat</code></td><td><code>csvr</code></td><td><code>csvr</code>, <code>nose</code>, <code>langevin</code>, <code>none</code></td></tr>
+<tr><td><code>--traj-freq</code></td><td><code>100</code></td><td>Trajectory write frequency [steps]</td></tr>
+<tr><td><code>--barostat</code></td><td>off</td><td>Enable NPT barostat</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p>Basis-set and pseudopotential names are resolved <strong>per element</strong> from a 2829-entry database (PBE / SCAN / all-electron, with matching valence <code>q</code>).  <code>--cp2k-basis</code> selects the family; the exact element-specific name is filled in automatically.  See <a href="workflow/job-builders.html#precise-basis--pseudopotential-matching">Job Builders</a>.</p>
+</blockquote>
+<h3 id="quantum-espresso"><a class="header" href="#quantum-espresso">Quantum ESPRESSO</a></h3>
+<pre><code class="language-bash">fe-job -i crystal.cif -s qe
+fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates / Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--qe-task</code></td><td><code>scf</code></td><td><code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code></td></tr>
+<tr><td><code>--qe-functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>pbesol</code>, <code>revpbe</code>, <code>blyp</code>, <code>scan</code>, <code>r2scan</code>, <code>pbe0</code>, <code>hse06</code></td></tr>
+<tr><td><code>--ecutwfc</code></td><td><code>50</code></td><td>Plane-wave cutoff [Ry]</td></tr>
+<tr><td><code>--smearing</code></td><td><code>none</code></td><td><code>none</code>, <code>gaussian</code>, <code>mp</code>, <code>mv</code>, <code>fd</code> (mp/mv for metals)</td></tr>
+<tr><td><code>--kpoints</code></td><td>(Gamma)</td><td>Three integers → Monkhorst-Pack mesh</td></tr>
+<tr><td><code>--pseudo-dir</code></td><td><code>./pseudo</code></td><td>Pseudopotential directory (<code>&lt;El&gt;.UPF</code>)</td></tr>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>MD steps (<code>--qe-task md</code>/<code>vc-md</code>)</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>MD target temperature [K]</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>pw.in</code></td><td>Output file</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>ibrav = 0</code>; the cell is written as <code>CELL_PARAMETERS angstrom</code> from the structure.  Spin uses the shared estimator → <code>nspin</code> / <code>tot_magnetization</code>.</p>
+<hr>
+<h2 id="fe-traj"><a class="header" href="#fe-traj"><code>fe-traj</code></a></h2>
+<p>Structural analysis of MD trajectories.</p>
+<pre><code class="language-bash">fe-traj -m &lt;mode&gt; -i traj.dump [flags] -o output
+</code></pre>
+<h3 id="modes"><a class="header" href="#modes">Modes</a></h3>
+<h4 id="gr--radial-distribution-function"><a class="header" href="#gr--radial-distribution-function"><code>gr</code> — Radial Distribution Function</a></h4>
+<p>Computes partial and total $g(r)$ plus coordination numbers $\text{CN}(r)$.</p>
+<pre><code class="language-bash">fe-traj -m gr -i traj.dump --r-max 10.0 --dr 0.01 --r-cut 2.3 -o gr.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-max</code></td><td>10.005</td><td>Maximum radius [Å]</td></tr>
+<tr><td><code>--dr</code></td><td>0.01</td><td>Bin width [Å]</td></tr>
+<tr><td><code>--r-cut</code></td><td>2.3</td><td>CN integration cutoff [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;.dat</code> (g(r)) and <code>&lt;stem&gt;_cn.dat</code> (coordination numbers)</p>
+<h4 id="sq--structure-factor"><a class="header" href="#sq--structure-factor"><code>sq</code> — Structure Factor</a></h4>
+<p>Computes $S(q)$ via Fourier transform of $g(r)$.</p>
+<pre><code class="language-bash">fe-traj -m sq -i traj.dump --q-max 25.0 --dq 0.05 --weighting xrd -o sq.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--q-max</code></td><td>25.0</td><td>Maximum $q$ [Å⁻¹]</td></tr>
+<tr><td><code>--dq</code></td><td>0.05</td><td>$q$ bin width [Å⁻¹]</td></tr>
+<tr><td><code>--weighting</code></td><td><code>both</code></td><td><code>xrd</code>, <code>neutron</code>, or <code>both</code></td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="msd--mean-squared-displacement"><a class="header" href="#msd--mean-squared-displacement"><code>msd</code> — Mean Squared Displacement</a></h4>
+<p>Computes MSD and directional components; supports NPT and non-periodic trajectories.</p>
+<pre><code class="language-bash">fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 --elements Li -o msd.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Comma-separated element filter</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="angle--bond-angle-distribution"><a class="header" href="#angle--bond-angle-distribution"><code>angle</code> — Bond Angle Distribution</a></h4>
+<p>Computes $P(\theta)$ for all A–B–C triplets.</p>
+<pre><code class="language-bash">fe-traj -m angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 --d-angle 0.1 -o angle.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-cut-ab</code></td><td>2.3</td><td>A–B bond cutoff [Å]</td></tr>
+<tr><td><code>--r-cut-bc</code></td><td>2.3</td><td>C–B bond cutoff [Å]</td></tr>
+<tr><td><code>--d-angle</code></td><td>0.1</td><td>Histogram bin width [°]</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="fe-corr"><a class="header" href="#fe-corr"><code>fe-corr</code></a></h2>
+<p>Correlation function analysis.</p>
+<pre><code class="language-bash">fe-corr -m &lt;mode&gt; -i traj.dump [flags] -o output
+</code></pre>
+<h3 id="modes-1"><a class="header" href="#modes-1">Modes</a></h3>
+<h4 id="vacf--velocity-autocorrelation-function"><a class="header" href="#vacf--velocity-autocorrelation-function"><code>vacf</code> — Velocity Autocorrelation Function</a></h4>
+<p>Computes VACF and the running Green-Kubo diffusion integral.</p>
+<pre><code class="language-bash">fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li --metal-units -o vacf.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--tau</code></td><td>(all)</td><td>Lag window [frames]</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output columns: <code>time[fs]</code>, <code>vacf[v²]</code>, <code>vacf_x</code>, <code>vacf_y</code>, <code>vacf_z</code>, <code>diffusion[v²·fs]</code></p>
+<h4 id="rotcorr--rotational-autocorrelation"><a class="header" href="#rotcorr--rotational-autocorrelation"><code>rotcorr</code> — Rotational Autocorrelation</a></h4>
+<p>Computes $C_2(t)$ for molecular orientation vectors.</p>
+<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --r-cut 2.4 --dt 2.0 -o rotcorr.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--center</code></td><td>(required)</td><td>Central atom element</td></tr>
+<tr><td><code>--neighbor</code></td><td>(required)</td><td>Neighbour atom element</td></tr>
+<tr><td><code>--r-cut</code></td><td>1.2</td><td>Bond search cutoff [Å]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--tau</code></td><td>(all)</td><td>Lag window [frames]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
+<h4 id="vanhove--van-hove-self-correlation"><a class="header" href="#vanhove--van-hove-self-correlation"><code>vanhove</code> — Van Hove Self-Correlation</a></h4>
+<p>Computes $G_s(r, \tau)$ displacement histogram.</p>
+<pre><code class="language-bash">fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o vanhove.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--tau</code></td><td>(last frame)</td><td>Lag [frames]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--r-max</code></td><td>10.0</td><td>Max displacement [Å]</td></tr>
+<tr><td><code>--dr</code></td><td>0.01</td><td>Bin width [Å]</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output columns: <code>r[Å]</code>, <code>Gs(r,tau)</code></p>
+<hr>
+<h2 id="fe-cube"><a class="header" href="#fe-cube"><code>fe-cube</code></a></h2>
+<p>3-D spatial distribution maps (Gaussian cube format).</p>
+<pre><code class="language-bash">fe-cube -m &lt;mode&gt; -i traj.dump [flags] -o output
+</code></pre>
+<h3 id="modes-2"><a class="header" href="#modes-2">Modes</a></h3>
+<h4 id="density--atomic-number-density"><a class="header" href="#density--atomic-number-density"><code>density</code> — Atomic Number Density</a></h4>
+<pre><code class="language-bash">fe-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 --elements Li -o li.cube
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>Grid dimensions</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="velocity--mean-speed-per-voxel"><a class="header" href="#velocity--mean-speed-per-voxel"><code>velocity</code> — Mean Speed per Voxel</a></h4>
+<p>Requires trajectory with velocities (use <code>--metal-units</code> for LAMMPS metal dumps).</p>
+<pre><code class="language-bash">fe-cube -m velocity -i traj.dump --metal-units -o velocity.cube
+</code></pre>
+<h4 id="force--mean-force-magnitude-per-voxel"><a class="header" href="#force--mean-force-magnitude-per-voxel"><code>force</code> — Mean Force Magnitude per Voxel</a></h4>
+<p>Requires trajectory with forces.</p>
+<pre><code class="language-bash">fe-cube -m force -i traj.dump -o force.cube
+</code></pre>
+<h4 id="radius--hard-sphere-occupancy"><a class="header" href="#radius--hard-sphere-occupancy"><code>radius</code> — Hard-Sphere Occupancy</a></h4>
+<pre><code class="language-bash">fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--radius</code></td><td>0.7</td><td>Hard-sphere radius [Å]</td></tr>
+<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>Grid dimensions</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="sdf--cluster-sdf"><a class="header" href="#sdf--cluster-sdf"><code>sdf</code> — Cluster SDF</a></h4>
+<pre><code class="language-bash">fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+         --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--qn</code></td><td>3</td><td>Target $Q_n$ level (0–3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td>2.4</td><td>Former–ligand cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td>2.8</td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--grid-res</code></td><td>0.1</td><td>Voxel size [Å]</td></tr>
+<tr><td><code>--sigma</code></td><td>1.5</td><td>Gaussian broadening [voxels]</td></tr>
+<tr><td><code>--padding</code></td><td>3.0</td><td>Grid margin [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td>0.5</td><td>RMSD warning threshold [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;_&lt;label&gt;.cube</code> per atom type (multiple families: <code>&lt;stem&gt;_fam&lt;N&gt;_&lt;label&gt;.cube</code>).</p>
+<h4 id="chg-sdf--averaged-charge-density-sdf"><a class="header" href="#chg-sdf--averaged-charge-density-sdf"><code>chg-sdf</code> — Averaged Charge-Density SDF</a></h4>
+<p>Computes the orientationally averaged electron density around Qn clusters from a set of QE <code>pp.x</code> charge-density cube files.  Does <strong>not</strong> require a trajectory <code>-i</code>; instead takes <code>--cubes</code>.</p>
+<pre><code class="language-bash">fe-cube -m chg_sdf \
+    --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    -o chg_sdf
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>QE pp.x cube files, one per MD frame</td></tr>
+<tr><td><code>--qn</code></td><td><code>3</code></td><td>Target Qn level (0–3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>Former–ligand cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>Sub-grid boundary margin [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>Alignment RMSD warning threshold [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;_Q&lt;n&gt;.cube</code> (one file per signature family).</p>
+<p>See <a href="analysis/chg-sdf.html">Averaged Charge-Density SDF</a> for algorithm details.</p>
+<hr>
+<h2 id="fe-bader"><a class="header" href="#fe-bader"><code>fe-bader</code></a></h2>
+<p>Bader charge decomposition from DFT charge-density files.  Supports VASP CHGCAR and Gaussian/QE cube files.</p>
+<pre><code class="language-bash">fe-bader -i CHGCAR                      # VASP CHGCAR
+fe-bader -i charge.cube                 # Gaussian/QE cube file
+fe-bader -i CHGCAR -o bader            # custom output stem
+fe-bader -i CHGCAR --method weight     # Yu-Trinkle weight method
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>(required)</td><td>Input file (<code>.cube</code> → cube reader; others → CHGCAR reader)</td></tr>
+<tr><td><code>-o &lt;stem&gt;</code></td><td><code>bader</code></td><td>Output file stem</td></tr>
+<tr><td><code>--method</code></td><td><code>ongrid</code></td><td>Bader method: <code>ongrid</code>, <code>neargrid</code>, <code>offgrid</code>, <code>weight</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="output-files"><a class="header" href="#output-files">Output Files</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Content</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_ACF.dat</code></td><td>Atomic Charges File — per-atom Bader charge, volume, min distance to surface</td></tr>
+<tr><td><code>&lt;stem&gt;_BCF.dat</code></td><td>Bader Charge File — per-Bader-volume charge, volume, coordinates</td></tr>
+<tr><td><code>&lt;stem&gt;_AVF.dat</code></td><td>Atomic Volume File — atom → Bader volume index mapping</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="fe-network"><a class="header" href="#fe-network"><code>fe-network</code></a></h2>
+<p>Glass network analysis: CN distribution, ligand classification (FO/NBO/BO/OBO), Qn speciation, modifier cation roles.</p>
+<pre><code class="language-bash"># 基础用法
+fe-network -i traj.dump --P-O=2.3
+
+# 混合形成子 + xlsx 输出
+fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 --format xlsx -o result.xlsx
+
+# 含修饰子角色分析
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
+
+# 多修饰子
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
+</code></pre>
+<h3 id="配对参数pair-arguments"><a class="header" href="#配对参数pair-arguments">配对参数（Pair Arguments）</a></h3>
+<p>截断参数使用 <code>--Former-Ligand=cutoff</code> 格式（首字母大写）：</p>
+<pre><code>--P-O=2.3     P-O 截断 2.3 Å（P 为形成子，O 为配体）
+--Si-O=1.8    Si-O 截断 1.8 Å
+--Zn-O=3.5    当配合 --modifier Zn 时，视为修饰子-配体截断
+</code></pre>
+<h3 id="普通参数"><a class="header" href="#普通参数">普通参数</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>参数</th><th>默认值</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹（缺省显示帮助）</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出前缀</td></tr>
+<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>--last-n N</code></td><td>全部</td><td>仅用尾部 N 帧</td></tr>
+<tr><td><code>--ncore N</code></td><td>全部核心</td><td>线程数</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位</td></tr>
+<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔）</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="输出文件"><a class="header" href="#输出文件">输出文件</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>文件</th><th>内容</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>CN 分布及均值</td></tr>
+<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>FO / NBO / BO / OBO 分布</td></tr>
+<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>Qn 物种分布</td></tr>
+<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>Free / T / B / M 分布（有 <code>--modifier</code> 时）</td></tr>
+</tbody>
+</table>
+</div>
+<p>XLSX 格式将上述内容写入同一文件的多个 sheet（CN、Ligand、Qn、Modifier）。</p>
+<p>详细说明见 <a href="analysis/network.html">Glass Network Analysis</a>。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="workflow/spin.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="workflow/spin.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

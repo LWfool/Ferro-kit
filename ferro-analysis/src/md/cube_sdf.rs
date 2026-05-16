@@ -30,13 +30,11 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ferro_core::{Atom, Cell, CubeData, Frame, Trajectory};
+use ferro_core::{
+    build_network_graph, Atom, Cell, CubeData, Frame, LigandKind, NetworkGraph, Trajectory,
+};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
-use petgraph::{
-    graph::{NodeIndex, UnGraph},
-    visit::Bfs,
-};
 
 // ─── 公开参数 ─────────────────────────────────────────────────────────────────
 
@@ -120,19 +118,21 @@ pub struct ClusterSdfResult {
 
 /// A single cluster extracted and represented in a local Cartesian frame (anchor atom at origin).
 #[derive(Clone)]
-struct ClusterSnapshot {
+pub(crate) struct ClusterSnapshot {
     /// Per-atom type labels: `"P0"/"P1"/"P2"/"P3"/"Of"/"On"/"Ob"/"Zn"`
-    types: Vec<String>,
+    pub(crate) types: Vec<String>,
     /// Local Cartesian coordinates with the anchor atom at the origin \[Å\]
-    positions: Vec<Vector3<f64>>,
-    /// Index of the anchor atom within `types`/`positions` (reserved for future CLI use)
+    pub(crate) positions: Vec<Vector3<f64>>,
+    /// Index of the anchor atom within `types`/`positions`
     #[allow(dead_code)]
-    anchor_idx: usize,
+    pub(crate) anchor_idx: usize,
+    /// Anchor atom's Cartesian position in the global frame \[Å\]
+    pub(crate) anchor_global_pos: Vector3<f64>,
 }
 
 impl ClusterSnapshot {
     /// BTreeMap-sorted atom-type count string, used as a HashMap key.
-    fn signature(&self) -> String {
+    pub(crate) fn signature(&self) -> String {
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for t in &self.types {
             *counts.entry(t.as_str()).or_default() += 1;
@@ -144,7 +144,7 @@ impl ClusterSnapshot {
     }
 
     /// Indices of all P atoms within `positions`.
-    fn p_indices(&self) -> Vec<usize> {
+    pub(crate) fn p_indices(&self) -> Vec<usize> {
         self.types.iter().enumerate()
             .filter(|(_, t)| t.starts_with('P'))
             .map(|(i, _)| i)
@@ -152,7 +152,7 @@ impl ClusterSnapshot {
     }
 
     /// Indices of all non-modifier (non-Zn) oxygen atoms within `positions`.
-    fn o_indices(&self) -> Vec<usize> {
+    pub(crate) fn o_indices(&self) -> Vec<usize> {
         self.types.iter().enumerate()
             .filter(|(_, t)| matches!(t.as_str(), "Of" | "On" | "Ob"))
             .map(|(i, _)| i)
@@ -229,7 +229,7 @@ pub fn calc_cluster_sdf(
         for mut snapshot in process_frame(frame, cell, params) {
             let sig = snapshot.signature();
             if let Some(acc) = accumulators.get_mut(&sig) {
-                let rmsd = align_to_reference(&mut snapshot, &acc.reference, params.target_qn);
+                let (rmsd, _rot) = align_to_reference(&mut snapshot, &acc.reference, params.target_qn);
                 acc.push(&snapshot, rmsd, params.rmsd_warn_threshold);
             } else {
                 accumulators.insert(sig, FamilyAccumulator::new(snapshot));
@@ -253,113 +253,50 @@ pub fn calc_cluster_sdf(
 
 // ─── 逐帧处理 ─────────────────────────────────────────────────────────────────
 
-fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<ClusterSnapshot> {
-    // 1. 按元素收集全局原子索引
-    let mut p_global: Vec<usize> = Vec::new();
-    let mut o_global: Vec<usize> = Vec::new();
-    let mut mod_global: Vec<usize> = Vec::new();
+pub(crate) fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<ClusterSnapshot> {
+    // 修饰体原子（不属于 former–ligand 图，单独收集）
+    let mod_global: Vec<usize> = match params.modifier.as_deref() {
+        Some(m) => frame.atoms.iter().enumerate()
+            .filter(|(_, a)| a.element == m)
+            .map(|(i, _)| i)
+            .collect(),
+        None => Vec::new(),
+    };
 
-    for (i, atom) in frame.atoms.iter().enumerate() {
-        if atom.element == params.former          { p_global.push(i); }
-        else if atom.element == params.ligand     { o_global.push(i); }
-        else if params.modifier.as_deref() == Some(atom.element.as_str()) {
-            mod_global.push(i);
-        }
-    }
+    // 共享原语：former–ligand 邻接图 + 连通分量
+    let g = build_network_graph(
+        frame, cell,
+        &params.former, &params.ligand,
+        params.former_ligand_cutoff,
+    );
+    if g.components.is_empty() { return Vec::new(); }
 
-    let np = p_global.len();
-    let no = o_global.len();
-    if np == 0 || no == 0 { return Vec::new(); }
-
-    // 2. P-O 邻接表（局部下标）
-    let fl_cutoff2 = params.former_ligand_cutoff * params.former_ligand_cutoff;
-    let mut p_o_adj: Vec<Vec<usize>> = vec![Vec::new(); np]; // p_local → [o_local]
-    let mut o_p_adj: Vec<Vec<usize>> = vec![Vec::new(); no]; // o_local → [p_local]
-
-    for (pi, &pa_idx) in p_global.iter().enumerate() {
-        let pa_pos = frame.atoms[pa_idx].position;
-        for (oi, &oa_idx) in o_global.iter().enumerate() {
-            let diff = cell.minimum_image(frame.atoms[oa_idx].position - pa_pos)
-                .expect("cell is non-singular");
-            if diff.norm_squared() < fl_cutoff2 {
-                p_o_adj[pi].push(oi);
-                o_p_adj[oi].push(pi);
-            }
-        }
-    }
-
-    // 3. O 原子类型：Of=0P, On=1P, Ob≥2P
-    let o_type: Vec<&str> = o_p_adj.iter().map(|ps| match ps.len() {
-        0 => "Of",
-        1 => "On",
-        _ => "Ob",
-    }).collect();
-
-    // 4. 每个 P 的个人 Qn（连接的 Ob 数量）
-    let p_qn: Vec<u8> = (0..np)
-        .map(|pi| p_o_adj[pi].iter().filter(|&&oi| o_type[oi] == "Ob").count() as u8)
-        .collect();
-
-    // 5. 建 P-P 图（共享 Ob 则有边），BFS 求连通分量
-    let mut g: UnGraph<(), ()> = UnGraph::with_capacity(np, np * 2);
-    let nodes: Vec<NodeIndex> = (0..np).map(|_| g.add_node(())).collect();
-
-    for oi in 0..no {
-        if o_type[oi] == "Ob" {
-            let ps = &o_p_adj[oi];
-            for i in 0..ps.len() {
-                for j in (i + 1)..ps.len() {
-                    g.add_edge(nodes[ps[i]], nodes[ps[j]], ());
-                }
-            }
-        }
-    }
-
-    let mut visited = vec![false; np];
-    let mut components: Vec<Vec<usize>> = Vec::new(); // p_local 下标组
-
-    for start in 0..np {
-        if visited[start] { continue; }
-        let mut comp: Vec<usize> = Vec::new();
-        let mut bfs = Bfs::new(&g, nodes[start]);
-        while let Some(nx) = bfs.next(&g) {
-            let pi = nx.index();
-            if !visited[pi] {
-                visited[pi] = true;
-                comp.push(pi);
-            }
-        }
-        components.push(comp);
-    }
-
-    // 6. 筛选 target_qn 团簇，提取快照
     let ml_cutoff2 = params.modifier_cutoff * params.modifier_cutoff;
 
-    components.into_iter().filter_map(|comp_p| {
-        let max_qn = comp_p.iter().map(|&pi| p_qn[pi]).max()?;
+    g.components.iter().filter_map(|comp_p| {
+        let max_qn = comp_p.iter().map(|&pi| g.former_qn[pi]).max()?;
         if max_qn != params.target_qn { return None; }
 
-        extract_snapshot(
-            frame, cell,
-            &comp_p, &p_global, &o_global, &mod_global,
-            &p_o_adj, &o_type, &p_qn,
-            ml_cutoff2, params.target_qn,
-        )
+        extract_snapshot(frame, cell, comp_p, &g, &mod_global, ml_cutoff2, params.target_qn)
     }).collect()
 }
 
+/// Ligand 类型字符串标签（保持与历史一致：Of / On / Ob）。
+fn ligand_label(kind: LigandKind) -> &'static str {
+    match kind {
+        LigandKind::Free        => "Of",
+        LigandKind::NonBridging => "On",
+        LigandKind::Bridging    => "Ob",
+    }
+}
+
 /// Extract a cluster snapshot from a single connected component (local coordinates, anchor atom at origin).
-#[allow(clippy::too_many_arguments)]
 fn extract_snapshot(
     frame: &Frame,
     cell: &Cell,
     comp_p: &[usize],
-    p_global: &[usize],
-    o_global: &[usize],
+    g: &NetworkGraph,
     mod_global: &[usize],
-    p_o_adj: &[Vec<usize>],
-    o_type: &[&str],
-    p_qn: &[u8],
     ml_cutoff2: f64,
     target_qn: u8,
 ) -> Option<ClusterSnapshot> {
@@ -367,7 +304,7 @@ fn extract_snapshot(
     let mut cluster_o: Vec<usize> = {
         let mut set: HashSet<usize> = HashSet::new();
         for &pi in comp_p {
-            set.extend(p_o_adj[pi].iter().copied());
+            set.extend(g.f_l_adj[pi].iter().copied());
         }
         let mut v: Vec<usize> = set.into_iter().collect();
         v.sort_unstable();
@@ -377,12 +314,13 @@ fn extract_snapshot(
     // 确定锚原子全局索引与类型标签
     let anchor_ga: usize = if target_qn == 1 {
         // Q1：以唯一 Ob 为锚
-        let ob_oi = cluster_o.iter().find(|&&oi| o_type[oi] == "Ob")?;
-        o_global[*ob_oi]
+        let ob_oi = cluster_o.iter()
+            .find(|&&oi| g.ligand_kind[oi] == LigandKind::Bridging)?;
+        g.ligand_global[*ob_oi]
     } else {
         // Q0/Q2/Q3：以最高个人 Qn 的 P 为锚
-        let anchor_pi = *comp_p.iter().max_by_key(|&&pi| p_qn[pi])?;
-        p_global[anchor_pi]
+        let anchor_pi = *comp_p.iter().max_by_key(|&&pi| g.former_qn[pi])?;
+        g.former_global[anchor_pi]
     };
 
     let anchor_pos = frame.atoms[anchor_ga].position;
@@ -390,7 +328,7 @@ fn extract_snapshot(
     // 收集修饰体原子（紧邻团簇 O 原子）
     let cluster_mod: Vec<usize> = if ml_cutoff2 > 0.0 && !mod_global.is_empty() {
         let cluster_o_pos: Vec<Vector3<f64>> = cluster_o.iter()
-            .map(|&oi| frame.atoms[o_global[oi]].position)
+            .map(|&oi| frame.atoms[g.ligand_global[oi]].position)
             .collect();
 
         mod_global.iter().enumerate().filter_map(|(mi, &ma_idx)| {
@@ -413,23 +351,22 @@ fn extract_snapshot(
 
     // P 原子
     let mut sorted_p = comp_p.to_vec();
-    sorted_p.sort_by(|&a, &b| p_qn[b].cmp(&p_qn[a]).then(a.cmp(&b)));
+    sorted_p.sort_by(|&a, &b| g.former_qn[b].cmp(&g.former_qn[a]).then(a.cmp(&b)));
     for &pi in &sorted_p {
-        let ga = p_global[pi];
+        let ga = g.former_global[pi];
         if ga == anchor_ga { anchor_idx = types.len(); }
-        types.push(format!("P{}", p_qn[pi]));
+        types.push(format!("P{}", g.former_qn[pi]));
         raw_pos.push(frame.atoms[ga].position);
     }
 
     // O 原子
     cluster_o.sort_by(|&a, &b| {
-        let ord = |t: &str| match t { "Ob" => 0u8, "On" => 1, _ => 2 };
-        ord(o_type[a]).cmp(&ord(o_type[b])).then(a.cmp(&b))
+        g.ligand_kind[a].sort_rank().cmp(&g.ligand_kind[b].sort_rank()).then(a.cmp(&b))
     });
     for &oi in &cluster_o {
-        let ga = o_global[oi];
+        let ga = g.ligand_global[oi];
         if ga == anchor_ga { anchor_idx = types.len(); }
-        types.push(o_type[oi].to_string());
+        types.push(ligand_label(g.ligand_kind[oi]).to_string());
         raw_pos.push(frame.atoms[ga].position);
     }
 
@@ -447,20 +384,20 @@ fn extract_snapshot(
         .map(|&pos| cell.minimum_image(pos - anchor_pos).expect("cell is non-singular"))
         .collect();
 
-    Some(ClusterSnapshot { types, positions, anchor_idx })
+    Some(ClusterSnapshot { types, positions, anchor_idx, anchor_global_pos: anchor_pos })
 }
 
 // ─── 刚体对齐 ─────────────────────────────────────────────────────────────────
 
-/// 将 `mobile` 对齐到 `reference`，原地旋转 `mobile.positions`，返回骨架 RMSD [Å]。
+/// 将 `mobile` 对齐到 `reference`，原地旋转 `mobile.positions`，返回 `(骨架 RMSD [Å], 旋转矩阵)`。
 ///
 /// - Q0：以 O 原子枚举排列找最优旋转（P 已在原点，自动对齐）
 /// - Q1/Q2/Q3：以 P 原子枚举同标签组内排列找最优旋转
-fn align_to_reference(
+pub(crate) fn align_to_reference(
     mobile: &mut ClusterSnapshot,
     reference: &ClusterSnapshot,
     target_qn: u8,
-) -> f64 {
+) -> (f64, Matrix3<f64>) {
     let rot = if target_qn == 0 {
         best_rotation_by_permutation(reference, mobile, mobile.o_indices(), reference.o_indices())
     } else {
@@ -479,12 +416,12 @@ fn align_to_reference(
     };
 
     if ref_idx.is_empty() || ref_idx.len() != mob_idx.len() {
-        return 0.0;
+        return (0.0, rot);
     }
 
     let ref_pts: Vec<_> = ref_idx.iter().map(|&i| reference.positions[i]).collect();
     let mob_pts: Vec<_> = mob_idx.iter().map(|&i| mobile.positions[i]).collect();
-    compute_rmsd(&ref_pts, &mob_pts)
+    (compute_rmsd(&ref_pts, &mob_pts), rot)
 }
 
 /// 枚举 `mob_atom_indices` 对应原子的所有排列，对每种排列计算 Kabsch 旋转，
@@ -672,7 +609,7 @@ fn build_reference_frame(
 }
 
 /// 将内部 type label 转为化学元素符号。
-fn type_to_element(label: &str) -> &str {
+pub(crate) fn type_to_element(label: &str) -> &str {
     if label.starts_with('P') { "P" }
     else if matches!(label, "Of" | "On" | "Ob") { "O" }
     else { label } // modifier 直接用元素符号（如 "Zn"）
@@ -746,6 +683,7 @@ mod tests {
             types: vec!["P1".into(), "Ob".into(), "P3".into(), "On".into()],
             positions: vec![Vector3::zeros(); 4],
             anchor_idx: 2,
+            anchor_global_pos: Vector3::zeros(),
         };
         assert_eq!(snap.signature(), "Ob:1|On:1|P1:1|P3:1");
     }

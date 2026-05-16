@@ -1,0 +1,2197 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>ferro Documentation</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+        <!-- MathJax -->
+        <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-372d655a.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-61fad4d5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">ferro Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p><strong>ferro</strong> is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:</p>
+<ul>
+<li><strong>Structural analysis</strong> — g(r), S(q), bond angle distributions, Qn speciation</li>
+<li><strong>Dynamical analysis</strong> — MSD, VACF, van Hove correlation, rotational correlation</li>
+<li><strong>Spatial maps</strong> — 3-D density/velocity/force grids, jump-distance maps, hard-sphere occupancy, cluster SDF</li>
+<li><strong>Charge analysis</strong> — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF</li>
+<li><strong>Input generation</strong> — Gaussian, CP2K, and Quantum ESPRESSO input files with structure-based spin estimation and a precise CP2K basis/pseudopotential database</li>
+<li><strong>I/O</strong> — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube</li>
+</ul>
+<h2 id="design-goals"><a class="header" href="#design-goals">Design Goals</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Goal</th><th>Implementation</th></tr>
+</thead>
+<tbody>
+<tr><td>Correct periodic-boundary handling</td><td>Minimum-image convention; fractional-coordinate unwrapping for NPT</td></tr>
+<tr><td>Multi-component support</td><td>Partial g(r), directed CN, per-element filters throughout</td></tr>
+<tr><td>Performance</td><td>Rayon data parallelism; linked-cell neighbour lists for O(N) searches</td></tr>
+<tr><td>Extensibility</td><td>Strict layered crate architecture; no cross-dependencies between middle layers</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
+<pre><code>ferro-cli / ferro-python        ← only layer combining multiple crates
+    ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
+    ├── ferro-io        → core    ← format readers / writers
+    ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
+    ├── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
+    └── ferro-workflow  → core    ← QC input builders (Gaussian / CP2K / QE)
+</code></pre>
+<h2 id="internal-units"><a class="header" href="#internal-units">Internal Units</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Quantity</th><th>Unit</th></tr>
+</thead>
+<tbody>
+<tr><td>Length</td><td>Å</td></tr>
+<tr><td>Energy</td><td>eV</td></tr>
+<tr><td>Force</td><td>eV/Å</td></tr>
+<tr><td>Stress</td><td>eV/Å³</td></tr>
+<tr><td>Time</td><td>fs</td></tr>
+<tr><td>Mass</td><td>amu</td></tr>
+<tr><td>Charge</td><td>e</td></tr>
+<tr><td>Temperature</td><td>K</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<ul>
+<li>Rust 1.75+ (<code>rustup</code> recommended)</li>
+<li>Cargo (bundled with Rust)</li>
+</ul>
+<h2 id="build-from-source"><a class="header" href="#build-from-source">Build from Source</a></h2>
+<pre><code class="language-bash">git clone https://github.com/ferro/ferro
+cd ferro
+cargo build --release
+</code></pre>
+<p>The compiled CLI binaries are placed in <code>target/release/</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Binary</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fe-convert</code></td><td>Format conversion</td></tr>
+<tr><td><code>fe-info</code></td><td>Print structure information</td></tr>
+<tr><td><code>fe-job</code></td><td>Generate QC input files</td></tr>
+<tr><td><code>fe-traj</code></td><td>Structural analysis (g(r), S(q), MSD, angle)</td></tr>
+<tr><td><code>fe-corr</code></td><td>Correlation functions (VACF, rotcorr, van Hove)</td></tr>
+<tr><td><code>fe-cube</code></td><td>3-D spatial maps (density, jump, radius, SDF)</td></tr>
+<tr><td><code>fe-network</code></td><td>Glass network analysis (Qn, CN, ligand classification)</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="python-bindings"><a class="header" href="#python-bindings">Python Bindings</a></h2>
+<pre><code class="language-bash">cd ferro-python
+pip install maturin
+maturin develop
+</code></pre>
+<h2 id="generating-this-documentation"><a class="header" href="#generating-this-documentation">Generating This Documentation</a></h2>
+<pre><code class="language-bash">cd docs
+mdbook build          # HTML output → docs/book/
+mdbook-pandoc         # PDF output → docs/book/ferro.pdf
+</code></pre>
+<p>Requires <a href="https://rust-lang.github.io/mdBook/">mdbook</a>, <a href="https://github.com/max-heller/mdbook-pandoc">mdbook-pandoc</a>, pandoc, and a LaTeX distribution (XeLaTeX recommended).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="core-data-model"><a class="header" href="#core-data-model">Core Data Model</a></h1>
+<h2 id="type-hierarchy"><a class="header" href="#type-hierarchy">Type Hierarchy</a></h2>
+<p>Every ferro API accepts and returns <code>Trajectory</code>, even for single-frame files.</p>
+<pre><code>Trajectory
+  └── Vec&lt;Frame&gt;
+        ├── Vec&lt;Atom&gt;           — atomic species, positions, optional properties
+        ├── Option&lt;Cell&gt;        — None = non-periodic
+        ├── [bool; 3]           — pbc flags per axis
+        └── Optional results    — energy, forces, stress, velocities
+</code></pre>
+<h2 id="atom"><a class="header" href="#atom">Atom</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Atom {
+    pub element: String,
+    pub position: Vector3&lt;f64&gt;,  // Å, Cartesian
+    pub label: Option&lt;String&gt;,   // e.g. "Fe1", "Fe2"
+    pub mass: Option&lt;f64&gt;,       // None → look up from element table
+    pub magmom: Option&lt;f64&gt;,     // initial magnetic moment (DFT input)
+    pub charge: Option&lt;f64&gt;,     // Bader / DDEC charge (post-processing)
+}
+<span class="boring">}</span></code></pre>
+<p>The atom <strong>index is implicit</strong> (position in <code>Vec&lt;Atom&gt;</code>); no <code>index</code> field is stored to prevent inconsistency.</p>
+<h2 id="frame"><a class="header" href="#frame">Frame</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Frame {
+    pub atoms: Vec&lt;Atom&gt;,
+    pub cell: Option&lt;Cell&gt;,              // None = non-periodic
+    pub pbc: [bool; 3],
+    pub charge: i32,
+    pub multiplicity: u32,
+    pub bonds: Option&lt;Vec&lt;(usize,usize)&gt;&gt;,
+    pub energy: Option&lt;f64&gt;,             // eV
+    pub forces: Option&lt;Vec&lt;Vector3&lt;f64&gt;&gt;&gt;, // eV/Å
+    pub stress: Option&lt;Matrix3&lt;f64&gt;&gt;,    // eV/Å³
+    pub velocities: Option&lt;Vec&lt;Vector3&lt;f64&gt;&gt;&gt;, // Å/fs (internal standard)
+}
+<span class="boring">}</span></code></pre>
+<p><code>pbc = [false,false,false]</code> → molecular system.<br><code>pbc = [true,true,false]</code> → surface / slab.<br><code>pbc = [true,true,true]</code> → bulk crystal or glass.</p>
+<h2 id="cell"><a class="header" href="#cell">Cell</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Cell {
+    pub matrix: Matrix3&lt;f64&gt;,  // row vectors a, b, c  [Å]
+}
+<span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>from_lengths_angles(a,b,c,α,β,γ)</code></td><td>Construct from lattice parameters</td></tr>
+<tr><td><code>lengths() -&gt; [f64; 3]</code></td><td>|a|, |b|, |c|</td></tr>
+<tr><td><code>angles() -&gt; [f64; 3]</code></td><td>α, β, γ in degrees</td></tr>
+<tr><td><code>volume() -&gt; f64</code></td><td>Cell volume [Å³]</td></tr>
+<tr><td><code>fractional_to_cartesian(f)</code></td><td>f·M</td></tr>
+<tr><td><code>cartesian_to_fractional(c)</code></td><td>c·M⁻¹</td></tr>
+<tr><td><code>wrap_position(c)</code></td><td>Fold Cartesian position into [0, L)</td></tr>
+<tr><td><code>minimum_image(v)</code></td><td>Apply minimum-image convention to vector v</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="coordinate-conventions"><a class="header" href="#coordinate-conventions">Coordinate Conventions</a></h3>
+<p>The cell matrix stores row vectors:</p>
+<p>$$\mathbf{M} = \begin{pmatrix} \mathbf{a} \ \mathbf{b} \ \mathbf{c} \end{pmatrix}$$</p>
+<p>Fractional → Cartesian: $\mathbf{r} = \mathbf{f} \cdot \mathbf{M}$</p>
+<p>Cartesian → Fractional: $\mathbf{f} = \mathbf{r} \cdot \mathbf{M}^{-1}$</p>
+<p>For a triclinic cell:</p>
+<p>$$\mathbf{M} = \begin{pmatrix}
+a &amp; 0 &amp; 0 \
+b\cos\gamma &amp; b\sin\gamma &amp; 0 \
+c\cos\beta &amp; c(\cos\alpha - \cos\beta\cos\gamma)/\sin\gamma &amp; c\sqrt{1 - \cos^2\alpha - \cos^2\beta - \cos^2\gamma + 2\cos\alpha\cos\beta\cos\gamma}/\sin\gamma
+\end{pmatrix}$$</p>
+<h2 id="trajectory"><a class="header" href="#trajectory">Trajectory</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Trajectory {
+    pub frames: Vec&lt;Frame&gt;,
+    pub metadata: Option&lt;TrajectoryMetadata&gt;,
+}
+<span class="boring">}</span></code></pre>
+<p>NPT trajectories (variable box per frame) are handled naturally: each <code>Frame</code> carries its own <code>Cell</code>.</p>
+<h2 id="pseudo-element-labels"><a class="header" href="#pseudo-element-labels">Pseudo-Element Labels</a></h2>
+<p>ferro supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Label</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>P0/P1/P2/P3</code></td><td>Phosphorus with Qn connectivity</td></tr>
+<tr><td><code>Of</code></td><td>Free oxygen (0 P neighbours)</td></tr>
+<tr><td><code>On</code></td><td>Non-bridging oxygen (1 P neighbour)</td></tr>
+<tr><td><code>Ob</code></td><td>Bridging oxygen (≥2 P neighbours)</td></tr>
+<tr><td><code>Zn</code>, <code>Na</code>, …</td><td>Modifier cation symbols</td></tr>
+</tbody>
+</table>
+</div>
+<p>Atomic-number lookup (<code>elem_z</code>) resolves pseudo-labels by stripping suffixes: <code>"P3"</code> → P (Z=15), <code>"Ob"</code> → O (Z=8).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="radial-distribution-function-gr"><a class="header" href="#radial-distribution-function-gr">Radial Distribution Function g(r)</a></h1>
+<h2 id="theory"><a class="header" href="#theory">Theory</a></h2>
+<p>The radial distribution function (RDF) $g_{\alpha\beta}(r)$ describes the probability of finding a particle of type $\beta$ at distance $r$ from a particle of type $\alpha$, relative to an ideal gas at the same number density.</p>
+<h3 id="partial-gr"><a class="header" href="#partial-gr">Partial g(r)</a></h3>
+<p>For a system with $N_\alpha$ atoms of type $\alpha$ and $N_\beta$ atoms of type $\beta$ in a volume $V$:</p>
+<p>$$g_{\alpha\beta}(r) = \frac{V}{N_\alpha N_\beta} \frac{\langle n_{\alpha\beta}(r, r+\Delta r)\rangle}{4\pi r^2 \Delta r}$$</p>
+<p>where $n_{\alpha\beta}(r, r+\Delta r)$ is the number of $\beta$ atoms in the shell $[r, r+\Delta r)$ around any $\alpha$ atom.</p>
+<p>In practice, the histogram count $C_{\alpha\beta}$ is accumulated and normalised as follows:</p>
+<p><strong>Same species</strong> ($\alpha = \beta$):
+$$g_{\alpha\alpha}(r_i) = \frac{2 , C_{\alpha\alpha}(r_i)}{4\pi r_i^2 \Delta r \cdot \frac{N_\alpha - 1}{V} \cdot N_\alpha \cdot N_\text{frames}}$$</p>
+<p><strong>Different species</strong> ($\alpha \neq \beta$):
+$$g_{\alpha\beta}(r_i) = \frac{C_{\alpha\beta}(r_i)}{4\pi r_i^2 \Delta r \cdot \frac{N_\beta}{V} \cdot N_\alpha \cdot N_\text{frames}}$$</p>
+<p>The bin centre is $r_i = r_\text{min} + (i + 0.5) \Delta r$.</p>
+<h3 id="total-gr"><a class="header" href="#total-gr">Total g(r)</a></h3>
+<p>All atoms are treated as a single species:</p>
+<p>$$g_\text{total}(r_i) = \frac{2 , C_\text{total}(r_i)}{4\pi r_i^2 \Delta r \cdot \frac{N-1}{V} \cdot N \cdot N_\text{frames}}$$</p>
+<h3 id="coordination-number-cnr"><a class="header" href="#coordination-number-cnr">Coordination Number CN(r)</a></h3>
+<p>The cumulative coordination number gives the average number of neighbours within distance $r$.</p>
+<p><strong>Directed CN</strong> (<code>"A-B"</code> = average B atoms within $r$ around each A):</p>
+<p>$$\text{CN}<em>{A \to B}(r) = \sum</em>{r_i \leq r} \frac{m \cdot C_{AB}(r_i)}{N_A \cdot N_\text{frames}}$$</p>
+<p>where $m = 2$ for same-species pairs and $m = 1$ for cross-species pairs.<br>For $A \neq B$: the reverse direction <code>"B-A"</code> is also computed with $N_B$ as the denominator.</p>
+<h3 id="minimum-image-convention"><a class="header" href="#minimum-image-convention">Minimum-Image Convention</a></h3>
+<p>All pair distances use the minimum-image convention:</p>
+<p>$$\mathbf{r}<em>{ij}^\text{min} = \mathbf{r}</em>{ij} - \mathbf{M} \cdot \text{round}!\left(\mathbf{M}^{-1} \mathbf{r}_{ij}\right)$$</p>
+<p>This is correct for orthorhombic and triclinic cells as long as $r_\text{max} &lt; L_\text{min}/2$.</p>
+<h2 id="parameters"><a class="header" href="#parameters">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct GrParams {
+    pub r_min: f64,   // default: 0.005 Å
+    pub r_max: f64,   // default: 10.005 Å  (use with_auto_rmax for safety)
+    pub dr: f64,      // default: 0.01 Å
+    pub r_cut: f64,   // default: 2.3 Å  (for short-range bond statistics)
+}
+<span class="boring">}</span></code></pre>
+<p><code>r_max</code> must satisfy $r_\text{max} &lt; L_\text{min}/2$.  Use <code>GrParams::with_auto_rmax(&amp;traj)</code> to set it automatically from the first frame.</p>
+<h2 id="output"><a class="header" href="#output">Output</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Content</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.gr</code></td><td>Columns: <code>r[Å]</code>, then symmetric partial g(r) in periodic-table order, <code>total</code> last</td></tr>
+<tr><td><code>.cn</code></td><td>Columns: <code>r[Å]</code>, then directed CN pairs in (Z_center, Z_neighbor) order</td></tr>
+</tbody>
+</table>
+</div>
+<p>Header lines record all parameters, atom counts, average volume, and number density.</p>
+<h3 id="bond-statistics"><a class="header" href="#bond-statistics">Bond Statistics</a></h3>
+<p>Within <code>r_cut</code>, the mean and standard deviation of pair distances are computed and printed in the <code>.cn</code> header:</p>
+<p>$$\bar{d} = \frac{1}{N_\text{bonds}} \sum_k d_k, \quad \sigma = \sqrt{\frac{1}{N_\text{bonds}} \sum_k (d_k - \bar{d})^2}$$</p>
+<h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<pre><code class="language-bash">fe-traj -m gr -i traj.dump -o output
+# writes output.gr, output.cn
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
+
+let params = GrParams::with_auto_rmax(&amp;traj);
+let result = calc_gr(&amp;traj, &amp;params).unwrap();
+write_gr(&amp;result, "output.gr").unwrap();
+write_cn(&amp;result, "output.cn").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes"><a class="header" href="#implementation-notes">Implementation Notes</a></h2>
+<ul>
+<li>Parallelism: per-frame <code>par_iter</code> with <code>fold</code>/<code>reduce</code> accumulation.</li>
+<li>Pseudo-element labels (e.g. <code>"P0"</code>, <code>"Ob"</code>) are supported: <code>elem_z</code> resolves them by stripping numeric/alphabetic suffixes.</li>
+<li>Column ordering uses atomic number Z as the primary sort key, with string labels as tiebreaker for deterministic ordering of pseudo-elements.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="structure-factor-sq"><a class="header" href="#structure-factor-sq">Structure Factor S(q)</a></h1>
+<h2 id="theory-1"><a class="header" href="#theory-1">Theory</a></h2>
+<p>The static structure factor $S(q)$ is computed from the radial distribution function $g(r)$ via a Fourier sine transform (Faber-Ziman formalism).</p>
+<h3 id="partial-sq"><a class="header" href="#partial-sq">Partial S(q)</a></h3>
+<p>$$S_{\alpha\beta}(q) = 1 + \frac{4\pi\rho}{q} \int_0^\infty r\left[g_{\alpha\beta}(r) - 1\right] \sin(qr) , dr$$</p>
+<p>In discretised form:</p>
+<p>$$S_{\alpha\beta}(q) = 1 + \frac{4\pi\rho}{q} \sum_{r_i} r_i \left[g_{\alpha\beta}(r_i) - 1\right] \sin(q r_i) , \Delta r$$</p>
+<p>where $\rho = N/V$ is the total number density.</p>
+<h3 id="weighted-total-sq"><a class="header" href="#weighted-total-sq">Weighted Total S(q)</a></h3>
+<p>For experimental comparison, the total S(q) can be weighted by scattering factors.</p>
+<p><strong>Faber-Ziman weights:</strong></p>
+<p>$$S_\text{weighted}(q) = \sum_{\alpha \leq \beta} w_{\alpha\beta}(q) \cdot S_{\alpha\beta}(q)$$</p>
+<p>$$w_{\alpha\beta}(q) = \frac{(2 - \delta_{\alpha\beta}) , c_\alpha c_\beta f_\alpha(q) f_\beta(q)}{\left[\sum_\gamma c_\gamma f_\gamma(q)\right]^2}$$</p>
+<p>where $c_\alpha = N_\alpha / N$ is the mole fraction of species $\alpha$, and $f_\alpha(q)$ is the scattering factor.</p>
+<ul>
+<li><strong>X-ray</strong> (<code>Xrd</code>): $f_\alpha(q)$ are the $q$-dependent atomic form factors.</li>
+<li><strong>Neutron</strong> (<code>Neutron</code>): $f_\alpha$ is replaced by the $q$-independent coherent scattering length $b_\alpha^\text{coh}$.</li>
+</ul>
+<h3 id="physical-interpretation"><a class="header" href="#physical-interpretation">Physical Interpretation</a></h3>
+<p>$S(q)$ characterises structural correlations at length scale $2\pi/q$. Key features:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>Interpretation</th></tr>
+</thead>
+<tbody>
+<tr><td>First sharp diffraction peak (FSDP) at $q \approx 1$–2 Å⁻¹</td><td>Medium-range order (network periodicity ~3–5 Å)</td></tr>
+<tr><td>Principal peak at $q \approx 2$–3 Å⁻¹</td><td>Nearest-neighbour distance</td></tr>
+<tr><td>$S(q) \to 1$ as $q \to \infty$</td><td>Loss of structural correlations at short wavelengths</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="parameters-1"><a class="header" href="#parameters-1">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct SqParams {
+    pub q_min: f64,              // default: 0.1 Å⁻¹
+    pub q_max: f64,              // default: 25.0 Å⁻¹
+    pub dq: f64,                 // default: 0.05 Å⁻¹
+    pub weighting: SqWeighting,  // default: None
+}
+
+pub enum SqWeighting {
+    None,     // equal weights (Faber-Ziman, no form factors)
+    Xrd,      // X-ray atomic form factors
+    Neutron,  // neutron coherent scattering lengths
+    Both,     // compute both simultaneously
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-1"><a class="header" href="#output-1">Output</a></h2>
+<pre><code class="language-bash">fe-traj -m sq -i traj.dump -o output
+# writes output.gr, output.sq
+</code></pre>
+<p>The <code>.sq</code> file header records both the g(r) parameters (used as input) and the S(q) parameters.<br>Column ordering matches the <code>.gr</code> file. Additional columns <code>total_xrd</code> and/or <code>total_neutron</code> are appended when weighting is requested.</p>
+<h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr, write_sq};
+
+let gr = calc_gr(&amp;traj, &amp;GrParams::with_auto_rmax(&amp;traj)).unwrap();
+let sq = calc_sq_from_gr(&amp;gr, &amp;SqParams {
+    q_min: 0.5, q_max: 20.0, dq: 0.02,
+    weighting: SqWeighting::Neutron,
+});
+write_sq(&amp;gr, &amp;sq, "output.sq").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes-1"><a class="header" href="#implementation-notes-1">Implementation Notes</a></h2>
+<ul>
+<li>The Fourier transform is parallelised over $q$ values with <code>rayon::par_iter</code>.</li>
+<li>Scattering data (form factors and neutron lengths) are stored as static tables in <code>ferro_analysis::md::scattering_data</code>.</li>
+<li>For a single-element system, <code>total_xrd ≈ total</code> because all Faber-Ziman weights reduce to 1.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="mean-squared-displacement-msd"><a class="header" href="#mean-squared-displacement-msd">Mean Squared Displacement (MSD)</a></h1>
+<h2 id="theory-2"><a class="header" href="#theory-2">Theory</a></h2>
+<p>The mean squared displacement (MSD) quantifies how far atoms diffuse over time.  In the diffusive regime it grows linearly, and the self-diffusion coefficient $D$ is extracted via the Einstein relation.</p>
+<h3 id="einstein-relation"><a class="header" href="#einstein-relation">Einstein Relation</a></h3>
+<p>$$\text{MSD}(t) = \langle |\mathbf{r}(t_0 + t) - \mathbf{r}(t_0)|^2 \rangle$$</p>
+<p>$$D = \lim_{t \to \infty} \frac{\text{MSD}(t)}{6t}$$</p>
+<p>(factor of 6 for 3-D isotropic diffusion; use 2 for 1-D or 4 for 2-D).</p>
+<h3 id="time-shift-averaging"><a class="header" href="#time-shift-averaging">Time-Shift Averaging</a></h3>
+<p>To reduce statistical noise, the MSD is averaged over all possible time origins $t_0$ separated by <code>shift</code> frames:</p>
+<p>$$\text{MSD}(\tau) = \frac{1}{N_\text{origins}} \sum_{p} \frac{1}{N_\text{atoms}} \sum_j \left|\mathbf{r}_j(p+\tau) - \mathbf{r}_j(p)\right|^2$$</p>
+<p>where $p$ runs over ${0, \text{shift}, 2\cdot\text{shift}, \ldots}$ subject to $p + \tau \leq N_\text{frames}$.</p>
+<h3 id="periodic-boundary-handling"><a class="header" href="#periodic-boundary-handling">Periodic Boundary Handling</a></h3>
+<p>Atoms crossing periodic boundaries must be <strong>unwrapped</strong> to obtain true displacements.</p>
+<p><strong>Algorithm</strong> (matching code1/msd.c <code>EstimateMSD</code>):</p>
+<ol>
+<li>Convert Cartesian coordinates to fractional: $\mathbf{f}_j^{(t)} = \mathbf{r}_j^{(t)} \cdot \mathbf{M}^{-1}$</li>
+<li>Unwrap: for each step $t &gt; 0$ and each fractional component $k$:
+$$f_{j,k}^{(t)} \leftarrow f_{j,k}^{(t)} - \text{round}!\left(f_{j,k}^{(t)} - f_{j,k}^{(t-1)}\right)$$</li>
+<li>Compute unwrapped Cartesian displacement $\Delta\mathbf{r}_j = \mathbf{\Delta f}_j \cdot \overline{\mathbf{M}}$</li>
+</ol>
+<h3 id="npt-trajectories"><a class="header" href="#npt-trajectories">NPT Trajectories</a></h3>
+<p>For variable-box (NPT) simulations, the box matrix changes each frame.  The total MSD uses the <strong>average</strong> of the origin- and endpoint-frame matrices:</p>
+<p>$$\overline{\mathbf{M}} = \frac{\mathbf{M}^{(p)} + \mathbf{M}^{(p+\tau)}}{2}$$</p>
+<p>The directional MSD along axis $k$ uses the endpoint cell parameter $L_k^{(p+\tau)}$ (simplified approximation matching code1):</p>
+<p>$$\text{MSD}_k(\tau) = \langle (\Delta f_k)^2 \rangle \cdot \left(L_k^{(p+\tau)}\right)^2$$</p>
+<h3 id="directional-msd"><a class="header" href="#directional-msd">Directional MSD</a></h3>
+<p>For periodic systems, <code>msd_a</code>, <code>msd_b</code>, <code>msd_c</code> give displacements along the three crystal axes.  For non-periodic systems they correspond to Cartesian $x$, $y$, $z$.</p>
+<h2 id="parameters-2"><a class="header" href="#parameters-2">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct MsdParams {
+    pub tau: Option&lt;usize&gt;,           // window size [frames]; None = all frames
+    pub shift: usize,                 // origin spacing [frames]; default: 1
+    pub dt: f64,                      // time step [fs]; default: 1.0
+    pub elements: Option&lt;Vec&lt;String&gt;&gt;,// None = all atoms
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-2"><a class="header" href="#output-2">Output</a></h2>
+<p>Columns: <code>time[fs]</code>, <code>msd[Å²]</code>, <code>msd_a[Å²]</code>, <code>msd_b[Å²]</code>, <code>msd_c[Å²]</code></p>
+<h2 id="usage-2"><a class="header" href="#usage-2">Usage</a></h2>
+<pre><code class="language-bash">fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 -o output.msd
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{MsdParams, calc_msd, write_msd};
+
+let params = MsdParams { tau: Some(1000), shift: 10, dt: 2.0,
+    elements: Some(vec!["Li".into()]) };
+let result = calc_msd(&amp;traj, &amp;params).unwrap();
+write_msd(&amp;result, "output.msd").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="extracting-the-diffusion-coefficient"><a class="header" href="#extracting-the-diffusion-coefficient">Extracting the Diffusion Coefficient</a></h2>
+<p>Fit the linear region (avoiding the ballistic regime at short $t$ and the noise-dominated long-$t$ tail):</p>
+<p>$$D = \frac{1}{6} \cdot \frac{d,\text{MSD}}{d,t}$$</p>
+<p>To convert from Å²/fs to cm²/s: multiply by $10^{-16}$.</p>
+<h2 id="implementation-notes-2"><a class="header" href="#implementation-notes-2">Implementation Notes</a></h2>
+<ul>
+<li>Parallelism: per-origin <code>par_iter</code>; <code>unwrap_frac</code> runs serially before parallelisation (sequential dependency).</li>
+<li>Non-periodic path: Cartesian coordinates are used directly without unwrapping.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="bond-angle-distribution"><a class="header" href="#bond-angle-distribution">Bond Angle Distribution</a></h1>
+<h2 id="theory-3"><a class="header" href="#theory-3">Theory</a></h2>
+<p>The bond angle distribution $P(\theta)$ describes the probability of observing a three-body angle A–B–C, where B is the central atom.  It is a key structural descriptor for network-forming glasses (e.g. P–O–P, O–P–O angles in phosphate glasses).</p>
+<h3 id="angle-calculation"><a class="header" href="#angle-calculation">Angle Calculation</a></h3>
+<p>For a triplet (A, B, C) with B as centre:</p>
+<p>$$\theta = \arccos!\left(\frac{\overrightarrow{BA} \cdot \overrightarrow{BC}}{|\overrightarrow{BA}||\overrightarrow{BC}|}\right)$$</p>
+<p>The vectors $\overrightarrow{BA}$ and $\overrightarrow{BC}$ use the minimum-image convention for periodic cells.</p>
+<h3 id="selection-criteria"><a class="header" href="#selection-criteria">Selection Criteria</a></h3>
+<p>An atom pair (A, B) forms a bond if $|\overrightarrow{BA}| &lt; r_\text{cut,AB}$.<br>Similarly for (B, C): $|\overrightarrow{BC}| &lt; r_\text{cut,BC}$.</p>
+<p>When both end atoms are the same element: $r_\text{cut} = \min(r_\text{cut,AB}, r_\text{cut,BC})$.</p>
+<h3 id="canonical-key-convention"><a class="header" href="#canonical-key-convention">Canonical Key Convention</a></h3>
+<p>For each triplet, the key <code>"ElemA-ElemCenter-ElemC"</code> is assigned with $Z(\text{ElemA}) \leq Z(\text{ElemC})$.  When both end atoms have the same Z, lexicographic order on the label string is used.  This ensures each angle type appears exactly once.</p>
+<p><strong>No double-counting</strong>: the enumeration requires $\text{idx}(A) &lt; \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events.</p>
+<h3 id="statistics"><a class="header" href="#statistics">Statistics</a></h3>
+<p>From the raw count histogram $h(\theta_i)$:</p>
+<p>$$\bar{\theta} = \frac{\sum_i \theta_i , h_i}{\sum_i h_i}, \quad \sigma = \sqrt{\frac{\sum_i (\theta_i - \bar{\theta})^2 h_i}{\sum_i h_i}}$$</p>
+<h2 id="parameters-3"><a class="header" href="#parameters-3">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct AngleParams {
+    pub r_cut_ab: f64,   // cutoff for lower-Z end to centre [Å]; default: 2.3
+    pub r_cut_bc: f64,   // cutoff for higher-Z end to centre [Å]; default: 2.3
+    pub d_angle: f64,    // histogram bin width [degrees]; default: 0.1
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-3"><a class="header" href="#output-3">Output</a></h2>
+<p>Columns: <code>angle[deg]</code>, then one column per triplet key in (Z_center, Z_left, Z_right) order.</p>
+<p>The header lists mean, standard deviation, and total count per triplet.</p>
+<h2 id="usage-3"><a class="header" href="#usage-3">Usage</a></h2>
+<pre><code class="language-bash">fe-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{AngleParams, calc_angle, write_angle};
+
+let params = AngleParams { r_cut_ab: 2.4, r_cut_bc: 2.4, d_angle: 0.5 };
+let result = calc_angle(&amp;traj, &amp;params).unwrap();
+write_angle(&amp;result, "output.angle").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes-3"><a class="header" href="#implementation-notes-3">Implementation Notes</a></h2>
+<h3 id="linked-cell-list"><a class="header" href="#linked-cell-list">Linked-Cell List</a></h3>
+<p>Brute-force neighbour search is O(N²) per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.</p>
+<p>For each central atom B, only the 27 cells within ±1 cell in each direction are searched. The cell size is chosen so that a sphere of radius $r_\text{cut,max}$ fits within the search volume:</p>
+<p>$$n_k = \left\lfloor \frac{1}{r_\text{cut,max} \cdot |({\mathbf{M}^T})^{-1}|_k} \right\rfloor$$</p>
+<p>This is exact for triclinic cells.</p>
+<h3 id="parallelism"><a class="header" href="#parallelism">Parallelism</a></h3>
+<p>Computation is parallelised per frame with <code>rayon::par_iter().fold().reduce()</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="van-hove-self-correlation-function"><a class="header" href="#van-hove-self-correlation-function">Van Hove Self-Correlation Function</a></h1>
+<h2 id="theory-4"><a class="header" href="#theory-4">Theory</a></h2>
+<p>The van Hove self-correlation function $G_s(r, \tau)$ is the probability distribution of single-particle displacements over a time interval $\tau$.  It provides a more complete picture of atomic motion than the MSD alone: it can reveal non-Gaussian dynamics, heterogeneous mobility, and jump diffusion.</p>
+<h3 id="definition"><a class="header" href="#definition">Definition</a></h3>
+<p>$$G_s(r, \tau) = \frac{1}{N} \sum_j \langle \delta!\left(r - |\mathbf{r}_j(t_0 + \tau) - \mathbf{r}<em>j(t_0)|\right) \rangle</em>{t_0}$$</p>
+<p>In practice this is discretised as a histogram $P(r_i, \tau)$ normalised so that $\sum_i P(r_i, \tau) = 1$ (discrete probability mass function).</p>
+<h3 id="gaussian-reference"><a class="header" href="#gaussian-reference">Gaussian Reference</a></h3>
+<p>For a purely diffusive Gaussian process:</p>
+<p>$$G_s^\text{Gaussian}(r, \tau) = \left(\frac{1}{4\pi D\tau}\right)^{3/2} \exp!\left(-\frac{r^2}{4D\tau}\right) \cdot 4\pi r^2$$</p>
+<p>Deviations from this Gaussian form — e.g. a secondary peak at large $r$ — indicate heterogeneous dynamics or discrete jump events.</p>
+<h3 id="non-gaussian-parameter"><a class="header" href="#non-gaussian-parameter">Non-Gaussian Parameter</a></h3>
+<p>The non-Gaussian parameter $\alpha_2(\tau)$ quantifies the deviation from Gaussian behaviour:</p>
+<p>$$\alpha_2(\tau) = \frac{3\langle r^4(\tau)\rangle}{5\langle r^2(\tau)\rangle^2} - 1$$</p>
+<p>$\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 &gt; 0$ indicates fat tails (fast-moving particles).</p>
+<h3 id="algorithm"><a class="header" href="#algorithm">Algorithm</a></h3>
+<p>Follows code1/vanhove.c (<code>EstimateVanHove</code>):</p>
+<ol>
+<li>Convert Cartesian positions to fractional coordinates.</li>
+<li>Unwrap fractional coordinates (same procedure as MSD).</li>
+<li>Convert back to absolute Cartesian positions.</li>
+<li>For each time origin $p$ and each selected atom $j$:
+$$r = |\mathbf{r}_j(p + \tau) - \mathbf{r}_j(p)|$$
+Accumulate into histogram bin $\lfloor r / \Delta r \rfloor$.</li>
+<li>Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms})$.</li>
+</ol>
+<h2 id="parameters-4"><a class="header" href="#parameters-4">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct VanHoveParams {
+    pub tau: Option&lt;usize&gt;,            // lag [frames]; None = n_frames - 1
+    pub shift: usize,                  // origin spacing [frames]; default: 1
+    pub dt: f64,                       // time step [fs]; default: 1.0
+    pub r_min: f64,                    // default: 0.0 Å
+    pub r_max: f64,                    // default: 10.0 Å
+    pub dr: f64,                       // bin width [Å]; default: 0.01
+    pub elements: Option&lt;Vec&lt;String&gt;&gt;, // None = all atoms
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-4"><a class="header" href="#output-4">Output</a></h2>
+<p>Columns: <code>r[Å]</code>, <code>Gs(r,tau)</code> (normalised so sum = 1).</p>
+<p>The header records the lag time $\tau$ in both frames and physical time (fs).</p>
+<h2 id="usage-4"><a class="header" href="#usage-4">Usage</a></h2>
+<pre><code class="language-bash">fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{VanHoveParams, calc_vanhove, write_vanhove};
+
+let params = VanHoveParams {
+    tau: Some(500), shift: 1, dt: 2.0,
+    r_min: 0.0, r_max: 8.0, dr: 0.02,
+    elements: Some(vec!["Li".into()]),
+};
+let result = calc_vanhove(&amp;traj, &amp;params).unwrap();
+write_vanhove(&amp;result, "output.vanhove").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="interpreting-results"><a class="header" href="#interpreting-results">Interpreting Results</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>Interpretation</th></tr>
+</thead>
+<tbody>
+<tr><td>Single peak near $r = 0$</td><td>Localised, non-diffusing atoms</td></tr>
+<tr><td>Broad peak with Gaussian shape</td><td>Normal diffusion</td></tr>
+<tr><td>Bimodal distribution</td><td>Coexistence of slow and fast populations</td></tr>
+<tr><td>Secondary peak at $r \approx$ jump length</td><td>Discrete jump mechanism</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="implementation-notes-4"><a class="header" href="#implementation-notes-4">Implementation Notes</a></h2>
+<ul>
+<li>Parallelism: per-origin <code>par_iter</code>.</li>
+<li>For periodic systems, fractional-coordinate unwrapping (shared with MSD) is applied before computing displacements.</li>
+<li>For non-periodic systems, raw Cartesian distances are used directly.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="velocity-autocorrelation-function-vacf"><a class="header" href="#velocity-autocorrelation-function-vacf">Velocity Autocorrelation Function (VACF)</a></h1>
+<h2 id="theory-5"><a class="header" href="#theory-5">Theory</a></h2>
+<p>The velocity autocorrelation function (VACF) $C_v(t)$ measures how quickly atomic velocities decorrelate over time.  Its Fourier transform gives the vibrational density of states (VDOS), which encodes information about lattice dynamics and diffusion mechanisms.</p>
+<h3 id="definition-1"><a class="header" href="#definition-1">Definition</a></h3>
+<p>$$C_v(t) = \langle \mathbf{v}(t_0) \cdot \mathbf{v}(t_0 + t) \rangle = \frac{1}{N} \sum_j \langle \mathbf{v}_j(t_0) \cdot \mathbf{v}<em>j(t_0 + t) \rangle</em>{t_0}$$</p>
+<p>Expanding into Cartesian components:</p>
+<p>$$C_v(t) = \frac{1}{N} \sum_j \left[ v_{x,j}(0) v_{x,j}(t) + v_{y,j}(0) v_{y,j}(t) + v_{z,j}(0) v_{z,j}(t) \right]$$</p>
+<p>At $t = 0$: $C_v(0) = \langle v^2 \rangle = 3 k_B T / m$ (equipartition theorem).</p>
+<h3 id="self-diffusion-coefficient"><a class="header" href="#self-diffusion-coefficient">Self-Diffusion Coefficient</a></h3>
+<p>The Green-Kubo relation connects the VACF to the self-diffusion coefficient $D$:</p>
+<p>$$D = \frac{1}{3} \int_0^\infty C_v(t) , dt$$</p>
+<p>In practice, the running integral is computed as:</p>
+<p>$$D(t) = \frac{1}{3} \sum_{i=0}^{n} C_v(i \cdot \Delta t) \cdot \Delta t$$</p>
+<p>which converges to $D$ as $t \to \infty$ (rectangular approximation, same as code1).</p>
+<h3 id="vibrational-density-of-states"><a class="header" href="#vibrational-density-of-states">Vibrational Density of States</a></h3>
+<p>The VDOS $g(\nu)$ is obtained via Fourier transform of the VACF:</p>
+<p>$$g(\nu) \propto \int_0^\infty C_v(t) \cos(2\pi \nu t) , dt$$</p>
+<p>Peaks in $g(\nu)$ correspond to characteristic vibrational modes.</p>
+<h3 id="time-shift-averaging-1"><a class="header" href="#time-shift-averaging-1">Time-Shift Averaging</a></h3>
+<p>$$C_v(\tau) = \frac{1}{N_\text{origins}} \sum_p \frac{1}{N_\text{atoms}} \sum_j \mathbf{v}_j(p) \cdot \mathbf{v}_j(p + \tau)$$</p>
+<p>Unlike position-based analyses, <strong>no coordinate unwrapping is needed</strong> — velocities do not have periodic boundary jumps.</p>
+<h2 id="parameters-5"><a class="header" href="#parameters-5">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct VacfParams {
+    pub tau: Option&lt;usize&gt;,            // window [frames]; None = all frames
+    pub shift: usize,                  // origin spacing [frames]; default: 1
+    pub dt: f64,                       // time step [fs]; default: 1.0
+    pub elements: Option&lt;Vec&lt;String&gt;&gt;, // None = all atoms
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-5"><a class="header" href="#output-5">Output</a></h2>
+<p>Columns: <code>time[fs]</code>, <code>vacf[v²]</code>, <code>vacf_x[v²]</code>, <code>vacf_y[v²]</code>, <code>vacf_z[v²]</code>, <code>diffusion[v²·fs]</code></p>
+<h3 id="unit-note"><a class="header" href="#unit-note">Unit Note</a></h3>
+<p>Velocities are stored in whatever unit the source trajectory uses.  LAMMPS metal-unit dump files store velocities in Å/ps.  To convert to internal standard units (Å/fs), multiply by $10^{-3}$.  As a consequence:</p>
+<ul>
+<li>$C_v$ in metal units: (Å/ps)² → multiply by $10^{-6}$ to get (Å/fs)²</li>
+<li>$D$ in metal units: Å²/ps → multiply by $10^{-3}$ to get Å²/fs → multiply by $10^{-16}$ to get cm²/s</li>
+</ul>
+<p>This conversion will be applied automatically in a future IO unit normalisation update.</p>
+<h2 id="usage-5"><a class="header" href="#usage-5">Usage</a></h2>
+<pre><code class="language-bash">fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li -o output.vacf
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{VacfParams, calc_vacf, write_vacf};
+
+let params = VacfParams { tau: Some(500), dt: 2.0, shift: 1,
+    elements: Some(vec!["Li".into()]) };
+let result = calc_vacf(&amp;traj, &amp;params).unwrap();
+write_vacf(&amp;result, "output.vacf").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes-5"><a class="header" href="#implementation-notes-5">Implementation Notes</a></h2>
+<ul>
+<li>Requires <code>frame.velocities</code> to be populated (returns <code>None</code> if any frame lacks velocities).</li>
+<li>Parallelism: per-origin <code>par_iter</code>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="rotational-autocorrelation-function-c₂t"><a class="header" href="#rotational-autocorrelation-function-c₂t">Rotational Autocorrelation Function C₂(t)</a></h1>
+<h2 id="theory-6"><a class="header" href="#theory-6">Theory</a></h2>
+<p>The second-order rotational autocorrelation function $C_2(t)$ measures how quickly molecular orientations decorrelate over time.  It is defined using the second-order Legendre polynomial $P_2$:</p>
+<p>$$C_2(t) = \langle P_2(\cos\theta(t)) \rangle = \left\langle \frac{3\cos^2\theta(t) - 1}{2} \right\rangle$$</p>
+<p>where $\theta(t)$ is the angle between the orientation vector at time $t_0$ and time $t_0 + t$.</p>
+<h3 id="orientation-vector"><a class="header" href="#orientation-vector">Orientation Vector</a></h3>
+<p>For each centre atom $c$, the orientation vector $\mathbf{u}<em>c(t)$ is the vectorial sum of all bond vectors to neighbour atoms within the cutoff radius $r</em>\text{cut}$:</p>
+<p>$$\mathbf{u}<em>c(t) = \sum</em>{n \in \text{neighbours}(c,, r_\text{cut})} (\mathbf{r}_n - \mathbf{r}<em>c)</em>\text{min-image}$$</p>
+<p>This generalises to arbitrary A-centre-B structures (e.g. water: O as centre, H as neighbour; phosphate tetrahedra: P as centre, O as neighbour).</p>
+<h3 id="p₂-calculation"><a class="header" href="#p₂-calculation">P₂ Calculation</a></h3>
+<p>For each centre atom $j$ and time origin $p$:</p>
+<p>$$P_2!\left[\cos\theta_j(p, \tau)\right] = \frac{3(\mathbf{u}_j(p) \cdot \mathbf{u}_j(p+\tau))^2}{2|\mathbf{u}_j(p)|^2 |\mathbf{u}_j(p+\tau)|^2} - \frac{1}{2}$$</p>
+<p>Atoms with zero orientation vector (no neighbours) are excluded.</p>
+<h3 id="time-shift-averaging-2"><a class="header" href="#time-shift-averaging-2">Time-Shift Averaging</a></h3>
+<p>$$C_2(\tau) = \frac{1}{N_\text{origins}} \sum_p \frac{1}{N_\text{mol}} \sum_j P_2!\left[\cos\theta_j(p, \tau)\right]$$</p>
+<h3 id="physical-properties"><a class="header" href="#physical-properties">Physical Properties</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Property</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>$C_2(0)$</td><td>Always = 1 (angle with itself is 0°)</td></tr>
+<tr><td>$C_2(\infty)$</td><td>→ 0 for freely rotating molecules</td></tr>
+<tr><td>Range</td><td>$[-0.5,\ 1]$</td></tr>
+</tbody>
+</table>
+</div>
+<p>$C_2(t)$ for a perfect rotor decays exponentially: $C_2(t) = e^{-t/\tau_c}$, where $\tau_c$ is the rotational correlation time.</p>
+<h3 id="rotational-correlation-time"><a class="header" href="#rotational-correlation-time">Rotational Correlation Time</a></h3>
+<p>The rotational correlation time $\tau_c$ is obtained from the running integral:</p>
+<p>$$\tau_c(t) = \int_0^t C_2(t’) , dt’$$</p>
+<p>which converges to $\tau_c$ as $t \to \infty$.</p>
+<h2 id="parameters-6"><a class="header" href="#parameters-6">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct RotCorrParams {
+    pub center: String,      // centre element, e.g. "O"
+    pub neighbor: String,    // neighbour element, e.g. "H"
+    pub r_cut: f64,          // cutoff radius [Å]; default: 1.2
+    pub tau: Option&lt;usize&gt;,  // window [frames]; None = all frames
+    pub shift: usize,        // origin spacing; default: 1
+    pub dt: f64,             // time step [fs]; default: 1.0
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-6"><a class="header" href="#output-6">Output</a></h2>
+<p>Columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
+<h2 id="usage-6"><a class="header" href="#usage-6">Usage</a></h2>
+<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{RotCorrParams, calc_rotcorr, write_rotcorr};
+
+let params = RotCorrParams {
+    center: "P".into(), neighbor: "O".into(),
+    r_cut: 2.4, tau: Some(500), shift: 5, dt: 2.0,
+};
+let result = calc_rotcorr(&amp;traj, &amp;params).unwrap();
+write_rotcorr(&amp;result, "output.rotcorr").unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes-6"><a class="header" href="#implementation-notes-6">Implementation Notes</a></h2>
+<ul>
+<li>Orientation vectors are precomputed for all frames before the parallel loop.</li>
+<li>For periodic systems, the minimum-image convention is applied to bond vectors.</li>
+<li>Parallelism: per-origin <code>par_iter</code>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="3-d-spatial-density-maps"><a class="header" href="#3-d-spatial-density-maps">3-D Spatial Density Maps</a></h1>
+<h2 id="theory-7"><a class="header" href="#theory-7">Theory</a></h2>
+<p>The spatial density map divides the simulation box into an $n_x \times n_y \times n_z$ voxel grid and accumulates a time-averaged scalar quantity for each voxel.  Three modes are supported:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Accumulated quantity</th><th>Unit</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Density</code></td><td>atomic number density</td><td>atoms/Å³</td></tr>
+<tr><td><code>Velocity</code></td><td>mean atomic speed $</td><td>\mathbf{v}</td></tr>
+<tr><td><code>Force</code></td><td>mean atomic force magnitude $</td><td>\mathbf{f}</td></tr>
+</tbody>
+</table>
+</div>
+<p>The result is a Gaussian cube file that can be visualised directly in VESTA, VMD, or similar tools.</p>
+<h3 id="density-mode"><a class="header" href="#density-mode">Density Mode</a></h3>
+<p>Each atom is mapped to a voxel by converting its Cartesian position to fractional coordinates:</p>
+<p>$$\mathbf{f}<em>j = \mathbf{M}^{-1} \mathbf{r}<em>j, \quad f</em>{j,k} = f</em>{j,k} \bmod 1$$</p>
+<p>The voxel index along axis $k$ is:</p>
+<p>$$i_k = \lfloor f_{j,k} \cdot n_k \rfloor \bmod n_k$$</p>
+<p>After accumulating counts over all atoms and frames, the number density in voxel $(i, j, k)$ is:</p>
+<p>$$\rho_{ijk} = \frac{\text{count}<em>{ijk}}{N</em>\text{frames} \cdot V_\text{voxel}}$$</p>
+<p>where the voxel volume is:</p>
+<p>$$V_\text{voxel} = \frac{V_\text{cell}}{n_x \cdot n_y \cdot n_z}$$</p>
+<h3 id="velocity--force-mode"><a class="header" href="#velocity--force-mode">Velocity / Force Mode</a></h3>
+<p>For <code>Velocity</code> and <code>Force</code> modes the average magnitude is computed per voxel:</p>
+<p>$$\langle |\mathbf{q}| \rangle_{ijk} = \frac{\sum_{\text{visits}} |\mathbf{q}|}{\text{count}_{ijk}}$$</p>
+<p>where $\mathbf{q}$ is the velocity or force vector of the visiting atom.  Voxels with no visits are set to zero.</p>
+<h3 id="voxel-spacing-matrix"><a class="header" href="#voxel-spacing-matrix">Voxel Spacing Matrix</a></h3>
+<p>The output cube file encodes the voxel step vectors.  For a general triclinic cell with matrix $\mathbf{M}$ (rows = $\mathbf{a}, \mathbf{b}, \mathbf{c}$), the spacing matrix is:</p>
+<p>$$\mathbf{S} = \begin{pmatrix} \mathbf{a}/n_x \ \mathbf{b}/n_y \ \mathbf{c}/n_z \end{pmatrix}$$</p>
+<p>This ensures correct spatial mapping for both orthogonal and triclinic simulation cells.</p>
+<h3 id="time-averaged-structure"><a class="header" href="#time-averaged-structure">Time-Averaged Structure</a></h3>
+<p>The cube file header includes a time-averaged atomic structure (mean position over all frames), which serves as a reference geometry for visualisation.</p>
+<h2 id="parameters-7"><a class="header" href="#parameters-7">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CubeDensityParams {
+    pub nx: usize,                        // grid divisions along a axis; default: 50
+    pub ny: usize,                        // grid divisions along b axis; default: 50
+    pub nz: usize,                        // grid divisions along c axis; default: 50
+    pub elements: Option&lt;Vec&lt;String&gt;&gt;,    // None = all atoms
+    pub mode: CubeMode,                   // Density | Velocity | Force; default: Density
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-7"><a class="header" href="#output-7">Output</a></h2>
+<p>A Gaussian cube file (<code>.cube</code>):</p>
+<ul>
+<li>Header: time-averaged atomic positions + unit cell</li>
+<li>Data: $n_x \times n_y \times n_z$ scalar field</li>
+</ul>
+<p>The cube format is directly accepted by VESTA, VMD, Ovito, and most electronic-structure visualisation packages.</p>
+<h2 id="usage-7"><a class="header" href="#usage-7">Usage</a></h2>
+<pre><code class="language-bash"># Number density of all atoms
+fe-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
+
+# Li-only density
+fe-cube -m density -i traj.dump --elements Li -o li_density.cube
+
+# Time-averaged velocity magnitude
+fe-cube -m velocity -i traj.dump --metal-units -o velocity.cube
+
+# Time-averaged force magnitude
+fe-cube -m force -i traj.dump -o force.cube
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{CubeDensityParams, CubeMode, calc_cube_density};
+use ferro_io::write_cube;
+
+let params = CubeDensityParams {
+    nx: 80, ny: 80, nz: 80,
+    elements: Some(vec!["Li".into()]),
+    mode: CubeMode::Density,
+};
+let result = calc_cube_density(&amp;traj, &amp;params).unwrap();
+write_cube("li_density.cube", &amp;result.cube).unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes-7"><a class="header" href="#implementation-notes-7">Implementation Notes</a></h2>
+<ul>
+<li>Parallelism: per-frame <code>par_iter</code>.  Each frame independently produces <code>(count, value_sum)</code> arrays; results are reduced by element-wise addition.</li>
+<li>Fractional coordinates are folded with <code>rem_euclid(1.0)</code> to handle atoms outside the nominal box (e.g. from NPT fluctuations or wrapped dump files).</li>
+<li><code>Velocity</code> mode requires <code>frame.velocities</code> to be populated; <code>Force</code> mode requires <code>frame.forces</code>.  Frames missing the required data are silently skipped.</li>
+<li>For NPT trajectories the spacing matrix is taken from the first periodic frame; the density is therefore referenced to that cell geometry.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="jump-distance-distribution"><a class="header" href="#jump-distance-distribution">Jump Distance Distribution</a></h1>
+<h2 id="theory-8"><a class="header" href="#theory-8">Theory</a></h2>
+<p>The jump distribution map identifies spatial hotspots of large atomic displacements (jump events).  For each atom and each time window $[t,, t+\tau]$, the true Cartesian displacement is computed from unwrapped fractional coordinates.  If the displacement exceeds a threshold $d_\text{min}$, the event is recorded at a voxel position on the 3-D grid.</p>
+<p>This analysis is particularly useful for characterising ion hopping in glassy or disordered materials: the resulting cube shows <em>where</em> jumps originate, terminate, or pass through, enabling the identification of preferred migration corridors.</p>
+<h3 id="fractional-coordinate-unwrapping"><a class="header" href="#fractional-coordinate-unwrapping">Fractional-Coordinate Unwrapping</a></h3>
+<p>To obtain the minimum-image displacement correctly for periodic (and NPT) trajectories, fractional coordinates are unwrapped in-place before computing differences.  For a single atom over all frames:</p>
+<p>$$f_{j,k}^{(t)} \leftarrow f_{j,k}^{(t)} - \text{round}!\left(f_{j,k}^{(t)} - f_{j,k}^{(t-1)}\right), \quad k \in {a, b, c}$$</p>
+<p>This step-by-step correction removes periodic-boundary crossings from the fractional trajectory.</p>
+<h3 id="displacement-calculation"><a class="header" href="#displacement-calculation">Displacement Calculation</a></h3>
+<p>For each time window $[t,, t+\tau]$, the unwrapped fractional displacement is:</p>
+<p>$$\Delta\mathbf{f} = \mathbf{f}^{(t+\tau)} - \mathbf{f}^{(t)}$$</p>
+<p>The true Cartesian displacement uses the average cell matrix of the two endpoint frames (consistent with the MSD NPT treatment):</p>
+<p>$$\Delta\mathbf{r} = \overline{\mathbf{M}}^T, \Delta\mathbf{f}, \quad \overline{\mathbf{M}} = \frac{\mathbf{M}^{(t)} + \mathbf{M}^{(t+\tau)}}{2}$$</p>
+<p>A jump event is recorded when $|\Delta\mathbf{r}| &gt; d_\text{min}$.</p>
+<h3 id="recording-position"><a class="header" href="#recording-position">Recording Position</a></h3>
+<p>Each jump event is recorded at the atom’s wrapped fractional position.  Three choices are available:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Option</th><th>Recorded position</th><th>Typical use</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Start</code></td><td>$\mathbf{f}^{(t)}$ wrapped</td><td>Identify jump origins</td></tr>
+<tr><td><code>End</code></td><td>$\mathbf{f}^{(t+\tau)}$ wrapped</td><td>Identify jump destinations</td></tr>
+<tr><td><code>Midpoint</code></td><td>$(\mathbf{f}^{(t)} + \mathbf{f}^{(t+\tau)})/2$ wrapped</td><td>Highlight migration pathways</td></tr>
+</tbody>
+</table>
+</div>
+<p>The voxel index is computed by folding the fractional coordinate into $[0, 1)$ and multiplying by the grid size.</p>
+<h3 id="grid-value"><a class="header" href="#grid-value">Grid Value</a></h3>
+<p>Each voxel stores the raw count of jump events recorded at that location.  No normalisation is applied; to convert to a probability density, divide by the total event count.</p>
+<h2 id="parameters-8"><a class="header" href="#parameters-8">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CubeJumpParams {
+    pub nx: usize,                        // grid divisions along a axis; default: 50
+    pub ny: usize,                        // grid divisions along b axis; default: 50
+    pub nz: usize,                        // grid divisions along c axis; default: 50
+    pub tau: usize,                       // displacement lag [frames]; default: 1
+    pub threshold: f64,                   // minimum displacement [Å]; default: 1.0
+    pub elements: Option&lt;Vec&lt;String&gt;&gt;,    // None = all atoms
+    pub record_at: JumpPosition,          // Start | End | Midpoint; default: Start
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-8"><a class="header" href="#output-8">Output</a></h2>
+<p>A Gaussian cube file with raw jump-event counts per voxel.  Typical post-processing:</p>
+<ol>
+<li>Load in VESTA with isosurface rendering to visualise migration channels.</li>
+<li>Normalise by total jump count to obtain the spatial probability distribution.</li>
+</ol>
+<h2 id="usage-8"><a class="header" href="#usage-8">Usage</a></h2>
+<pre><code class="language-bash"># Jump origins for Li, lag = 1 frame, threshold = 1.0 Å
+fe-cube -m jump -i traj.dump --elements Li --tau 1 --threshold 1.0 -o jump.cube
+
+# Jump midpoints (migration pathway visualisation)
+fe-cube -m jump -i traj.dump --elements Li --record-at midpoint -o jump_mid.cube
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
+use ferro_io::write_cube;
+
+let params = CubeJumpParams {
+    nx: 50, ny: 50, nz: 50,
+    tau: 1,
+    threshold: 1.0,
+    elements: Some(vec!["Li".into()]),
+    record_at: JumpPosition::Start,
+};
+let result = calc_cube_jump(&amp;traj, &amp;params).unwrap();
+write_cube("jump.cube", &amp;result.cube).unwrap();
+println!("{} jump events recorded", result.n_jumps);
+<span class="boring">}</span></code></pre>
+<h2 id="implementation-notes-8"><a class="header" href="#implementation-notes-8">Implementation Notes</a></h2>
+<ul>
+<li>Parallelism: per-atom <code>par_iter</code>.  Each atom independently unwraps its fractional trajectory and accumulates jump events into a local grid; results are reduced by element-wise addition.</li>
+<li>Fractional coordinates for all frames are pre-extracted into a <code>Vec&lt;Vec&lt;[f64;3]&gt;&gt;</code> before parallelisation (shared read-only, zero copying per thread).</li>
+<li>For NPT trajectories, cell matrices are also cached per frame so that the average $\overline{\mathbf{M}}$ can be computed without locking.</li>
+<li>Atoms absent from some frames (length-mismatch guard) are silently skipped.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="hard-sphere-occupancy"><a class="header" href="#hard-sphere-occupancy">Hard-Sphere Occupancy</a></h1>
+<h2 id="theory-9"><a class="header" href="#theory-9">Theory</a></h2>
+<p>The hard-sphere occupancy map treats each atom as a sphere of radius $r$.  For each (frame, atom) pair, every voxel whose centre lies within $r$ of the atom is incremented by 1.  The resulting 3-D grid represents the cumulative time-averaged occupancy: high values indicate regions of space that are frequently occupied by the selected atom type.</p>
+<p>Unlike the density mode (which bins atoms by position), this method smears each atom over a finite volume, producing smoother maps suitable for visualising preferred coordination sites or channel geometry in disordered materials.</p>
+<h3 id="voxel-inclusion-criterion"><a class="header" href="#voxel-inclusion-criterion">Voxel Inclusion Criterion</a></h3>
+<p>For an atom at fractional coordinate $\mathbf{f}_\text{atom}$ and a voxel with centre at fractional coordinate $\mathbf{v}$:</p>
+<ol>
+<li>
+<p>Compute the fractional displacement with minimum-image convention:
+$$\Delta\mathbf{f} = \mathbf{f}_\text{atom} - \mathbf{v}, \quad \Delta f_k \leftarrow \Delta f_k - \text{round}(\Delta f_k)$$</p>
+</li>
+<li>
+<p>Convert to Cartesian using the cell matrix transpose:
+$$\Delta\mathbf{r} = \mathbf{M}^T \Delta\mathbf{f}$$</p>
+</li>
+<li>
+<p>Increment the voxel count if $|\Delta\mathbf{r}| &lt; r$.</p>
+</li>
+</ol>
+<p>The voxel centre fractional coordinates are:</p>
+<p>$$v_k = \frac{i_k + 0.5}{n_k}, \quad i_k \in {0, \ldots, n_k - 1}$$</p>
+<h3 id="bounding-box-optimisation"><a class="header" href="#bounding-box-optimisation">Bounding-Box Optimisation</a></h3>
+<p>Brute-force comparison of every atom against every voxel is $O(N \cdot n_x n_y n_z)$.  Instead, for each atom, only the voxels within a bounding box of half-width</p>
+<p>$$s_k = \left\lceil r \cdot \left|(\mathbf{M}^T)^{-1}_k\right| \cdot n_k \right\rceil + 1$$</p>
+<p>around the atom’s home voxel are checked.  The row norm of $(\mathbf{M}^T)^{-1}$ gives the maximum fractional offset in direction $k$ corresponding to a Cartesian distance of $r$, making the bound exact for triclinic cells.</p>
+<h2 id="parameters-9"><a class="header" href="#parameters-9">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct CubeRadiusParams {
+    pub nx: usize,                        // grid divisions along a axis; default: 100
+    pub ny: usize,                        // grid divisions along b axis; default: 100
+    pub nz: usize,                        // grid divisions along c axis; default: 100
+    pub radius: f64,                      // hard-sphere radius [Å]; default: 0.7
+    pub elements: Option&lt;Vec&lt;String&gt;&gt;,    // None = all atoms
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-9"><a class="header" href="#output-9">Output</a></h2>
+<p>A Gaussian cube file with raw occupancy counts per voxel.  Values are not normalised.  To convert to fractional occupancy, divide by $N_\text{frames} \cdot N_\text{atoms}$.</p>
+<h2 id="usage-9"><a class="header" href="#usage-9">Usage</a></h2>
+<pre><code class="language-bash"># Li occupancy map, 100³ grid, radius 0.7 Å
+fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+
+# All-atom occupancy
+fe-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{CubeRadiusParams, calc_cube_radius};
+use ferro_io::write_cube;
+
+let params = CubeRadiusParams {
+    nx: 100, ny: 100, nz: 100,
+    radius: 0.7,
+    elements: Some(vec!["Li".into()]),
+};
+let result = calc_cube_radius(&amp;traj, &amp;params).unwrap();
+write_cube("li_radius.cube", &amp;result.cube).unwrap();
+<span class="boring">}</span></code></pre>
+<h2 id="comparison-with-density-mode"><a class="header" href="#comparison-with-density-mode">Comparison with Density Mode</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>Density mode</th><th>Radius mode</th></tr>
+</thead>
+<tbody>
+<tr><td>Resolution</td><td>Depends on bin width $1/n_k$</td><td>Depends on $r$ and $n_k$</td></tr>
+<tr><td>Smoothing</td><td>None (point-like atoms)</td><td>Hard-sphere smearing</td></tr>
+<tr><td>Normalisation</td><td>atoms/Å³</td><td>Raw counts</td></tr>
+<tr><td>Typical use</td><td>Structural analysis</td><td>Site visualisation</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="implementation-notes-9"><a class="header" href="#implementation-notes-9">Implementation Notes</a></h2>
+<ul>
+<li>Parallelism: per-frame <code>par_iter</code>.  Each frame independently produces a count array; results are reduced by element-wise addition.</li>
+<li>The bounding-box optimisation reduces the inner loop from $O(n_x n_y n_z)$ to $O(s_x s_y s_z)$ per atom, giving roughly $10\times$ speedup at default settings.</li>
+<li>Fractional coordinates are folded into $[0, 1)$ with <code>rem_euclid</code> before the bounding-box centre is computed, ensuring correct periodic wrapping.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cluster-sdf-spatial-distribution-function"><a class="header" href="#cluster-sdf-spatial-distribution-function">Cluster SDF (Spatial Distribution Function)</a></h1>
+<h2 id="theory-10"><a class="header" href="#theory-10">Theory</a></h2>
+<p>The cluster SDF identifies all phosphate clusters of a specified $Q_n$ type from an MD trajectory, aligns them to a common reference frame using rigid-body superposition, and accumulates per-atom-type 3-D probability densities.  The result reveals the average local geometry and spatial spread of the cluster type in a simulation-cell-independent local coordinate frame.</p>
+<h3 id="q_n-classification"><a class="header" href="#q_n-classification">$Q_n$ Classification</a></h3>
+<p>Each network-former atom (e.g. P) is assigned a $Q_n$ label based on the number of bridging ligands (e.g. O) it shares with other former atoms:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Label</th><th>Bridging ligands</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>$Q_0$</td><td>0</td><td>Isolated tetrahedron</td></tr>
+<tr><td>$Q_1$</td><td>1</td><td>Chain end</td></tr>
+<tr><td>$Q_2$</td><td>2</td><td>Chain middle</td></tr>
+<tr><td>$Q_3$</td><td>3</td><td>Branching point</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="cluster-identification"><a class="header" href="#cluster-identification">Cluster Identification</a></h3>
+<p>Connected components of former atoms sharing bridging ligands are found by graph traversal.  Each component is classified by the <strong>highest individual $Q_n$</strong> within it: a component containing one $Q_3$ and two $Q_1$ atoms is a $Q_3$ cluster.</p>
+<h3 id="atom-type-labels"><a class="header" href="#atom-type-labels">Atom-Type Labels</a></h3>
+<p>Each atom in the cluster receives one of the following labels:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Label</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>P0</code> / <code>P1</code> / <code>P2</code> / <code>P3</code></td><td>Former atom with its individual $Q_n$</td></tr>
+<tr><td><code>Of</code></td><td>Free (non-bridging) oxygen bonded to exactly one former</td></tr>
+<tr><td><code>On</code></td><td>Non-bridging oxygen bonded to one former + one modifier</td></tr>
+<tr><td><code>Ob</code></td><td>Bridging oxygen shared by two formers</td></tr>
+<tr><td><code>OBO</code>/<code>Zn</code></td><td>Modifier cation (if <code>modifier</code> is set)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="signature"><a class="header" href="#signature">Signature</a></h3>
+<p>The composition of atom-type labels is encoded in a canonical signature string, e.g.:</p>
+<pre><code>"Ob:3|On:6|P1:3|P3:1|Zn:2"
+</code></pre>
+<p>Clusters with the same signature form one <strong>family</strong>; the first cluster in the trajectory serves as the reference structure.</p>
+<h3 id="alignment-strategy"><a class="header" href="#alignment-strategy">Alignment Strategy</a></h3>
+<p>Rigid-body alignment is performed using the <strong>Kabsch algorithm</strong>, which minimises the RMSD between the current cluster and the reference after optimal rotation.  To handle atom permutation symmetry, alignment candidates are generated by permuting atoms within groups of the same label:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Cluster type</th><th>Permutation set</th><th>Max permutations</th></tr>
+</thead>
+<tbody>
+<tr><td>$Q_0$ (single P)</td><td>All O atoms</td><td>$4! = 24$</td></tr>
+<tr><td>$Q_1$/$Q_2$/$Q_3$</td><td>Same-label P groups</td><td>$\leq 3! = 6$</td></tr>
+</tbody>
+</table>
+</div>
+<p>The permutation giving the lowest RMSD is kept.</p>
+<h4 id="kabsch-algorithm"><a class="header" href="#kabsch-algorithm">Kabsch Algorithm</a></h4>
+<p>Given two sets of $N$ corresponding points ${P_i}$ (current) and ${Q_i}$ (reference), both centred at the origin:</p>
+<ol>
+<li>Compute the cross-covariance matrix $\mathbf{H} = \sum_i P_i Q_i^T$.</li>
+<li>Singular value decomposition: $\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T$.</li>
+<li>Optimal rotation: $\mathbf{R} = \mathbf{V}, \text{diag}(1, 1, \det(\mathbf{V}\mathbf{U}^T)), \mathbf{U}^T$.</li>
+<li>Apply $\mathbf{R}$ to all atoms in the current cluster.</li>
+</ol>
+<p>The determinant correction in step 3 prevents reflection (improper rotation) when the SVD produces a left-handed coordinate system.</p>
+<h3 id="density-accumulation"><a class="header" href="#density-accumulation">Density Accumulation</a></h3>
+<p>After alignment, each atom at position $\mathbf{r}$ contributes a Gaussian kernel to the 3-D grid:</p>
+<p>$$\rho(\mathbf{x}) \mathrel{+}= \exp!\left(-\frac{|\mathbf{x} - \mathbf{r}|^2}{2\sigma_\text{px}^2}\right)$$</p>
+<p>where $\sigma_\text{px}$ is the Gaussian broadening width in voxels.  All atoms of the same type accumulate into the same grid.  Separate grids are maintained for each cluster family (signature group).</p>
+<h3 id="rmsd-quality-check"><a class="header" href="#rmsd-quality-check">RMSD Quality Check</a></h3>
+<p>After alignment, the RMSD of the scaffold atoms (P atoms for $Q_1$/$Q_2$/$Q_3$; all O atoms for $Q_0$) is computed:</p>
+<p>$$\text{RMSD} = \sqrt{\frac{1}{N}\sum_i |\mathbf{r}_i^\text{aligned} - \mathbf{r}_i^\text{ref}|^2}$$</p>
+<p>If RMSD exceeds <code>rmsd_warn_threshold</code>, a warning is printed to stderr flagging the cluster as a structural outlier.</p>
+<h2 id="parameters-10"><a class="header" href="#parameters-10">Parameters</a></h2>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct ClusterSdfParams {
+    pub former: String,              // network-former element, e.g. "P"
+    pub ligand: String,              // bridging-ligand element, e.g. "O"
+    pub target_qn: u8,               // 0/1/2/3 — cluster Qn level
+    pub former_ligand_cutoff: f64,   // former–ligand bond cutoff [Å]; default: 2.4
+    pub modifier: Option&lt;String&gt;,    // modifier cation element, e.g. Some("Zn")
+    pub modifier_cutoff: f64,        // modifier–ligand cutoff [Å]; default: 2.8
+    pub grid_res: f64,               // grid resolution [Å/voxel]; default: 0.1
+    pub sigma: f64,                  // Gaussian broadening [voxels]; default: 1.5
+    pub padding: f64,                // grid boundary margin [Å]; default: 3.0
+    pub rmsd_warn_threshold: f64,    // RMSD warning threshold [Å]; default: 0.5
+}
+<span class="boring">}</span></code></pre>
+<h2 id="output-10"><a class="header" href="#output-10">Output</a></h2>
+<p>One Gaussian cube file per atom type per family:</p>
+<ul>
+<li>Single family: <code>&lt;stem&gt;_&lt;label&gt;.cube</code> (e.g. <code>sdf_P3.cube</code>, <code>sdf_Ob.cube</code>)</li>
+<li>Multiple families: <code>&lt;stem&gt;_fam0_&lt;label&gt;.cube</code>, <code>&lt;stem&gt;_fam1_&lt;label&gt;.cube</code>, …</li>
+</ul>
+<p>All cube files within a family share the same grid origin and spacing, enabling direct overlay in VESTA or VMD.</p>
+<h2 id="usage-10"><a class="header" href="#usage-10">Usage</a></h2>
+<pre><code class="language-bash"># Q3 phosphate clusters with Zn modifier
+fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+         --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
+
+# Q0 isolated tetrahedra (no modifier)
+fe-cube -m sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
+</code></pre>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use ferro_analysis::md::{ClusterSdfParams, calc_cluster_sdf};
+use ferro_io::write_cube;
+
+let params = ClusterSdfParams {
+    former: "P".into(),
+    ligand: "O".into(),
+    target_qn: 3,
+    former_ligand_cutoff: 2.4,
+    modifier: Some("Zn".into()),
+    modifier_cutoff: 2.8,
+    grid_res: 0.1,
+    sigma: 1.5,
+    padding: 3.0,
+    rmsd_warn_threshold: 0.5,
+};
+let result = calc_cluster_sdf(&amp;traj, &amp;params).unwrap();
+
+for (sig, family) in &amp;result.families {
+    println!("Family {}: {} clusters", sig, family.n_clusters);
+    for (label, cube) in &amp;family.grids {
+        write_cube(&amp;format!("sdf_{label}.cube"), cube).unwrap();
+    }
+}
+<span class="boring">}</span></code></pre>
+<h2 id="interpreting-results-1"><a class="header" href="#interpreting-results-1">Interpreting Results</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Observation</th><th>Interpretation</th></tr>
+</thead>
+<tbody>
+<tr><td>Single family, narrow Gaussian peaks</td><td>Highly ordered cluster geometry</td></tr>
+<tr><td>Multiple families</td><td>Topological isomers (different O connectivity patterns)</td></tr>
+<tr><td>High RMSD warnings</td><td>Structurally distorted clusters; may warrant separate analysis</td></tr>
+<tr><td>Broad <code>Ob</code> distribution</td><td>Flexible bridging-oxygen geometry</td></tr>
+<tr><td>Sharp <code>P3</code> peak</td><td>Rigid network-former backbone</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="implementation-notes-10"><a class="header" href="#implementation-notes-10">Implementation Notes</a></h2>
+<ul>
+<li>Cluster identification uses <code>petgraph</code> BFS on a bond graph constructed per frame.</li>
+<li>The Kabsch algorithm is applied in the centred frame; the grid origin is positioned at the reference centroid minus <code>padding</code>.</li>
+<li>Parallelism: cluster extraction is serial per frame (bond graph is not thread-safe to build in parallel); Gaussian accumulation is serial per cluster (grids are mutably borrowed by family).</li>
+<li>For trajectories with many frames, performance is dominated by bond-graph construction ($O(N^2)$ per frame without a cell list).</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="averaged-charge-density-sdf-chg-sdf"><a class="header" href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF (<code>chg-sdf</code>)</a></h1>
+<p><code>fe-cube -m chg_sdf</code> computes the <strong>averaged electron-density spatial distribution function</strong> over a set of Qn-type network clusters.  Given a collection of QE <code>pp.x</code> charge-density cube files (one per MD snapshot), the tool:</p>
+<ol>
+<li>Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as <code>fe-cube -m sdf</code>.</li>
+<li>Extracts a cubic sub-grid of the electron density centred on the cluster anchor atom, interpolating the raw charge-density grid with trilinear interpolation (PBC-safe).</li>
+<li>Rotates the sub-grid to align with the first-encountered reference cluster via the Kabsch rotation matrix, using “pull” interpolation (<code>output[r] = input[R⁻¹ r]</code>).</li>
+<li>Accumulates rotated sub-grids; divides by the cluster count to obtain the averaged density.</li>
+<li>Writes one Gaussian cube file per signature family.</li>
+</ol>
+<p>The result reveals the orientationally averaged electron-density distribution around a specific local structural motif (e.g. Q2 PO₄ unit in a phosphate glass).</p>
+<hr>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Charge-density cube files must be produced by QE <code>pp.x</code> (or any program that outputs the Gaussian cube format with atom coordinates in Bohr and density in <code>e/Bohr³</code>).  One cube file per MD frame is expected.</p>
+<hr>
+<h2 id="usage-11"><a class="header" href="#usage-11">Usage</a></h2>
+<pre><code class="language-bash"># Basic: average charge density around Q2 clusters (P–O system)
+fe-cube -m chg_sdf \
+    --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    -o chg_sdf
+
+# With modifier cation (e.g. Zn2+ in Zn-phosphate glass)
+fe-cube -m chg_sdf \
+    --cubes *.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    --modifier Zn --cutoff-ml 2.8 \
+    --chg-padding 6.0 \
+    -o chg_sdf_Q2
+
+# Tighter sub-grid / multiple threads
+fe-cube -m chg_sdf \
+    --cubes *.cube \
+    --qn 3 --former P --ligand O \
+    --chg-padding 5.0 --rmsd-warn 0.3 \
+    --ncore 8 \
+    -o q3_density
+</code></pre>
+<hr>
+<h2 id="parameters-11"><a class="header" href="#parameters-11">Parameters</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>One or more QE pp.x cube files; each file = one MD frame</td></tr>
+<tr><td><code>--qn</code></td><td><code>3</code></td><td>Target Qn cluster level (0, 1, 2, or 3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element symbol</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element symbol</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>Former–ligand bond cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element; omit if not needed</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>Sub-grid margin around the cluster anchor [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>RMSD threshold for alignment quality warnings [Å]</td></tr>
+<tr><td><code>--ncore</code></td><td>all</td><td>Parallel threads</td></tr>
+<tr><td><code>-o</code></td><td><code>chg_sdf</code></td><td>Output file stem</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>Note</strong>: <code>--chg-padding</code> controls the sub-grid size, not the atom SDF grid.  Larger values capture more surrounding density but increase memory and runtime.</p>
+</blockquote>
+<hr>
+<h2 id="output-11"><a class="header" href="#output-11">Output</a></h2>
+<p>For a single signature family:</p>
+<pre><code>chg_sdf_Q2.cube
+</code></pre>
+<p>For multiple families (distinct cluster topologies at the same Qn):</p>
+<pre><code>chg_sdf_fam0_Q2.cube
+chg_sdf_fam1_Q2.cube
+...
+</code></pre>
+<p>The cube file contains:</p>
+<ul>
+<li><strong>Atom positions</strong>: the reference cluster atoms in a local Cartesian frame (anchor at origin).</li>
+<li><strong>Density values</strong>: averaged <code>ρ_phys × V_cell</code> in internal units.  To convert to physical electron density [e/Å³], divide by the voxel volume in Å³.</li>
+</ul>
+<p>Console output reports per-family cluster count and alignment RMSD statistics:</p>
+<pre><code>Family "P-O-O-P"  (142 clusters, RMSD mean=0.031 max=0.187 Å, 0 warnings) → chg_sdf_Q2.cube
+ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
+</code></pre>
+<hr>
+<h2 id="algorithm-details"><a class="header" href="#algorithm-details">Algorithm Details</a></h2>
+<h3 id="cluster-identification-1"><a class="header" href="#cluster-identification-1">Cluster identification</a></h3>
+<p>Identical to <code>fe-cube -m sdf</code>: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.</p>
+<h3 id="sub-grid-extraction"><a class="header" href="#sub-grid-extraction">Sub-grid extraction</a></h3>
+<p>For each cluster anchor position <code>c</code> (Cartesian, Å):</p>
+<pre><code>sub[ix, iy, iz] = ρ_charge( c + Δr )
+</code></pre>
+<p>where <code>Δr = (ix − half_n, iy − half_n, iz − half_n) × δ_voxel</code> and <code>ρ_charge</code> is evaluated via trilinear interpolation with PBC folding on the original charge-density grid.  The sub-grid has shape <code>n × n × n</code> with <code>n = 2 × ⌈padding / δ_voxel⌉ + 1</code>.</p>
+<h3 id="grid-rotation"><a class="header" href="#grid-rotation">Grid rotation</a></h3>
+<p>For each subsequent cluster the Kabsch rotation matrix <code>R</code> is computed from the atom positions (same as the atom SDF).  The sub-grid is rotated using “pull” interpolation:</p>
+<pre><code>output[r_out] = input[ R⁻¹ · (r_out − centre) + centre ]
+</code></pre>
+<p><code>R⁻¹ = Rᵀ</code> for a proper rotation.  Points outside the sub-grid boundary return 0.</p>
+<h3 id="accumulation"><a class="header" href="#accumulation">Accumulation</a></h3>
+<pre><code>ρ_avg = (1 / N) Σᵢ ρᵢ_rotated
+</code></pre>
+<hr>
+<h2 id="related-commands"><a class="header" href="#related-commands">Related Commands</a></h2>
+<ul>
+<li><a href="#cluster-sdf-spatial-distribution-function"><code>fe-cube -m sdf</code></a> — atom-type SDF (no charge density required)</li>
+<li><a href="#fe-bader"><code>fe-bader</code></a> — Bader charge decomposition from CHGCAR / cube files</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="glass-network-analysis-fe-network"><a class="header" href="#glass-network-analysis-fe-network">Glass Network Analysis (<code>fe-network</code>)</a></h1>
+<p><code>fe-network</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，统计以下四类量并在全轨迹上累加归一化：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>量</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td>配位数 (CN)</td><td>网络形成子与各配体类型的平均配位数及其分布</td></tr>
+<tr><td>配体分类</td><td>FO / NBO / BO / OBO</td></tr>
+<tr><td>Qn 物种</td><td>网络形成子的桥接度分布</td></tr>
+<tr><td>修饰子角色</td><td>Free / T / B / M（可选）</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="理论背景"><a class="header" href="#理论背景">理论背景</a></h2>
+<h3 id="键连关系的判定"><a class="header" href="#键连关系的判定">键连关系的判定</a></h3>
+<p>以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小镜像约定（minimum-image convention），支持斜方和三斜晶胞：</p>
+<p>$$d_{ij} = \bigl|\mathbf{r}<em>{ij} - \mathbf{M} \cdot \text{round}!\left(\mathbf{M}^{-1}\mathbf{r}</em>{ij}\right)\bigr|$$</p>
+<p>分析要求每帧均存在晶胞（PBC）。</p>
+<h3 id="配位数-cn"><a class="header" href="#配位数-cn">配位数 (CN)</a></h3>
+<p>对每个网络形成子原子 $i$（元素 $\alpha$），其与配体元素 $\beta$ 的配位数为：</p>
+<p>$$\text{CN}^{(\alpha\beta)}<em>i = \bigl|{j : \text{elem}(j)=\beta,; d</em>{ij} &lt; r_{\alpha\beta}^{\text{cut}}}\bigr|$$</p>
+<p>全轨迹统计：对所有帧、所有同类形成子原子的 CN 值做频率直方图，给出 CN 分布和均值。</p>
+<p><strong>总 CN</strong>：对同一形成子原子，将其对所有配体类型的 CN 求和。</p>
+<h3 id="配体分类"><a class="header" href="#配体分类">配体分类</a></h3>
+<p>对每个配体原子 $k$（元素 $\beta$），统计其网络形成子邻居数 $n_k$：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>$n_k$</th><th>标签</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>FO</code></td><td>Free oxygen（游离氧）</td></tr>
+<tr><td>1</td><td><code>NBO(X)</code></td><td>Non-bridging oxygen（非桥氧），X = 形成子元素</td></tr>
+<tr><td>2</td><td><code>BO(X-Y)</code></td><td>Bridging oxygen（桥氧），X、Y 字母序</td></tr>
+<tr><td>≥3</td><td><code>OBO(X-Y-Z)</code></td><td>Over-bridging oxygen（过桥氧）</td></tr>
+</tbody>
+</table>
+</div>
+<p>混合形成子体系（如 P + Si）时，标签携带具体元素信息，例如 <code>BO(P-Si)</code> 表示该桥氧连接一个 P 和一个 Si。</p>
+<h3 id="qn-物种分类"><a class="header" href="#qn-物种分类">Qn 物种分类</a></h3>
+<p>对每个网络形成子原子 $i$，$Q_n$ 表示其桥接配体数（即所连配体中被分类为 BO 或 OBO 的数量）：</p>
+<p>$$n_i = \bigl|{k \in \text{neighbors}(i) : \text{label}(k) \in {\text{BO}, \text{OBO}}}\bigr|$$</p>
+<p><strong>异核桥接标注</strong>：若桥接配体 $k$ 的另一侧形成子与 $i$ 不同元素，则在标签中注明，例如：</p>
+<ul>
+<li><code>Q3</code> — 3 个桥氧，全为同核（P-O-P）</li>
+<li><code>Q3(2Al)</code> — 3 个桥氧，其中 2 个为 P-O-Al 异核桥</li>
+<li><code>Q4(1Al,1Si)</code> — 4 个桥氧，分别含 1 个 P-O-Al 和 1 个 P-O-Si</li>
+</ul>
+<p>异核元素按字母序排列，格式为 <code>Q{n}({count}{Elem},...)</code>.</p>
+<h3 id="修饰子角色分类"><a class="header" href="#修饰子角色分类">修饰子角色分类</a></h3>
+<p>修饰子（modifier）阳离子（如 Zn²⁺、Na⁺）通过与非桥氧（NBO）配位锚定在网络中。对每个修饰子原子 $m$，统计其在截断半径内的 NBO 邻居数 $p_m$：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>$p_m$</th><th>角色标签</th><th>物理含义</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td><code>Free</code></td><td>未与任何 NBO 配位</td></tr>
+<tr><td>1</td><td><code>T</code></td><td>Terminal（单端连接一个 NBO）</td></tr>
+<tr><td>2</td><td><code>B</code></td><td>Bridging（桥接两个 NBO）</td></tr>
+<tr><td>≥3</td><td><code>M</code></td><td>Multi（连接 3 个或更多 NBO）</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="快速入门"><a class="header" href="#快速入门">快速入门</a></h2>
+<pre><code class="language-bash"># P₂O₅ 玻璃，P-O 截断 2.3 Å，输出 CSV
+fe-network -i traj.dump --P-O=2.3
+
+# 混合 P-Si 玻璃，多个配体对
+fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 -o result.csv
+
+# 含 Zn 修饰子，分析其角色
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
+
+# 多修饰子
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
+
+# 输出 xlsx（多 sheet）
+fe-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
+
+# 只统计尾部 500 帧，8 线程
+fe-network -i traj.dump --P-O=2.3 --last-n 500 --ncore 8
+</code></pre>
+<hr>
+<h2 id="命令行参数"><a class="header" href="#命令行参数">命令行参数</a></h2>
+<h3 id="必需"><a class="header" href="#必需">必需</a></h3>
+<p><code>fe-network</code> 至少需要一个 <code>--Former-Ligand=cutoff</code> 形式的配对参数（首字母大写）。</p>
+<pre><code>--P-O=2.3        P（形成子）与 O（配体）的截断半径 2.3 Å
+--Si-O=1.8       Si-O 截断 1.8 Å
+--Al-O=2.0       Al-O 截断 2.0 Å
+--Al-F=2.1       Al-F 截断 2.1 Å（同一形成子可有多种配体）
+</code></pre>
+<h3 id="可选参数"><a class="header" href="#可选参数">可选参数</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>参数</th><th>默认值</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹文件（缺省时显示帮助）</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出文件前缀</td></tr>
+<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>--last-n N</code></td><td>全部帧</td><td>仅使用尾部 N 帧</td></tr>
+<tr><td><code>--ncore N</code></td><td>全部核心</td><td>并行线程数</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位（速度 Å/ps，力 eV/Å）</td></tr>
+<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔，如 <code>Zn</code> 或 <code>Zn,Na</code>）</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>修饰子截断</strong>：通过相同的 <code>--Elem-O=cutoff</code> 语法提供，系统根据 <code>--modifier</code> 列表自动路由。</p>
+<hr>
+<h2 id="输出文件"><a class="header" href="#输出文件">输出文件</a></h2>
+<h3 id="csv-格式默认"><a class="header" href="#csv-格式默认">CSV 格式（默认）</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>文件</th><th>内容</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>各 (former, ligand) 配对的 CN 分布及均值，含总 CN</td></tr>
+<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>各配体元素的 FO/NBO/BO/OBO 分布</td></tr>
+<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>各形成子元素的 Qn 物种分布</td></tr>
+<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>各修饰子元素的角色分布（仅指定 <code>--modifier</code> 时生成）</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="_cncsv-格式"><a class="header" href="#_cncsv-格式"><code>_cn.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Former,Ligand,CN,Count,Fraction
+P,O,3,120,0.240000
+P,O,4,380,0.760000
+P,O,mean,3.7600,
+P,total,4,500,1.000000
+P,total,mean,3.7600,
+</code></pre>
+<h4 id="_ligandcsv-格式"><a class="header" href="#_ligandcsv-格式"><code>_ligand.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Ligand,Class,Count,Fraction
+O,FO,50,0.033333
+O,NBO(P),650,0.433333
+O,BO(P-P),800,0.533333
+</code></pre>
+<h4 id="_qncsv-格式"><a class="header" href="#_qncsv-格式"><code>_qn.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Former,Species,Count,Fraction
+P,Q2,120,0.240000
+P,Q3,380,0.760000
+</code></pre>
+<h4 id="_modifiercsv-格式"><a class="header" href="#_modifiercsv-格式"><code>_modifier.csv</code> 格式</a></h4>
+<pre><code class="language-csv">Modifier,Role,Count,Fraction
+Zn,Free,10,0.040000
+Zn,T,120,0.480000
+Zn,B,110,0.440000
+Zn,M,10,0.040000
+</code></pre>
+<h3 id="xlsx-格式"><a class="header" href="#xlsx-格式">XLSX 格式</a></h3>
+<p>使用 <code>--format xlsx</code> 时，所有结果写入同一文件的多个 sheet：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Sheet</th><th>内容</th></tr>
+</thead>
+<tbody>
+<tr><td>CN</td><td>配位数分布</td></tr>
+<tr><td>Ligand</td><td>配体分类分布</td></tr>
+<tr><td>Qn</td><td>Qn 物种分布</td></tr>
+<tr><td>Modifier</td><td>修饰子角色分布（有修饰子时才生成）</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="典型参数参考"><a class="header" href="#典型参数参考">典型参数参考</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>体系</th><th>形成子</th><th>配体</th><th>参考截断</th></tr>
+</thead>
+<tbody>
+<tr><td>P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å</td></tr>
+<tr><td>SiO₂ 玻璃</td><td>Si</td><td>O</td><td>Si-O: 1.8 Å</td></tr>
+<tr><td>Al₂O₃</td><td>Al</td><td>O</td><td>Al-O: 2.1 Å</td></tr>
+<tr><td>GeO₂ 玻璃</td><td>Ge</td><td>O</td><td>Ge-O: 2.0 Å</td></tr>
+<tr><td>ZnO-P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å，Zn（modifier）: Zn-O: 3.5 Å</td></tr>
+</tbody>
+</table>
+</div>
+<p>截断值应参照 g(r) 第一峰谷位置（<code>fe-traj -m gr</code>）确定。</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="job-builders"><a class="header" href="#job-builders">Job Builders</a></h1>
+<p><code>fe-job</code> generates ready-to-run input files for quantum-chemistry / DFT codes from any structure <code>ferro</code> can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).</p>
+<pre><code class="language-bash">fe-job                                 # overview of supported software
+fe-job -s cp2k                         # CP2K-specific help
+fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Target</th><th><code>-s</code> value</th><th>Output</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>Gaussian 16/09</td><td><code>gaussian</code></td><td><code>.gjf</code></td><td>molecular DFT, method + basis</td></tr>
+<tr><td>CP2K (Quickstep)</td><td><code>cp2k</code></td><td><code>.inp</code></td><td>periodic DFT/MD; GPW; precise basis DB</td></tr>
+<tr><td>Quantum ESPRESSO</td><td><code>qe</code></td><td><code>.in</code></td><td>plane-wave <code>pw.x</code>; scf/relax/md/bands</td></tr>
+</tbody>
+</table>
+</div>
+<p>All three share charge/spin handling (see <a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>).</p>
+<hr>
+<h2 id="gaussian"><a class="header" href="#gaussian">Gaussian</a></h2>
+<pre><code class="language-bash">fe-job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+fe-job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
+</code></pre>
+<p><code>-m</code> method and <code>-b</code> basis set are written verbatim into the route section.</p>
+<h2 id="cp2k"><a class="header" href="#cp2k">CP2K</a></h2>
+<p>A full GPW/Quickstep input: <code>&amp;GLOBAL</code>, <code>&amp;FORCE_EVAL</code> (<code>&amp;SUBSYS</code>, <code>&amp;DFT</code>), and a task-specific <code>&amp;MOTION</code>/<code>&amp;VIBRATIONAL_ANALYSIS</code> block.</p>
+<pre><code class="language-bash"># Geometry optimisation, PBE-D3(BJ)
+fe-job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+
+# AIMD, 1500 K, CSVR thermostat
+fe-job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
+
+# Hybrid PBE0 with OT, all-electron pob basis
+fe-job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
+</code></pre>
+<p>Tasks: <code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code>.
+Functionals: PBE/BLYP/revPBE/PBEsol (GGA), PBE0/B3LYP/HSE06 (hybrid, auto <code>&amp;HF</code> block), SCAN/r²SCAN (meta-GGA via LIBXC).</p>
+<h3 id="precise-basis--pseudopotential-matching"><a class="header" href="#precise-basis--pseudopotential-matching">Precise basis &amp; pseudopotential matching</a></h3>
+<p>CP2K basis-set and pseudopotential names are <strong>element- and valence-specific</strong> (e.g. <code>DZVP-MOLOPT-SR-GTH-q16</code> for Fe vs <code>-q6</code> for O).  <code>ferro</code> ships a database of <strong>2829 entries</strong> parsed from the official CP2K files (<code>BASIS_MOLOPT</code>, <code>BASIS_MOLOPT_UCL</code>, <code>BASIS_MOLOPT_UZH</code>, <code>BASIS_pob</code>, <code>POTENTIAL</code>, <code>POTENTIAL_UZH</code>), covering:</p>
+<ul>
+<li><strong>PBE / GGA</strong> MOLOPT basis sets, all elements, all levels</li>
+<li><strong>SCAN</strong> MOLOPT basis sets</li>
+<li><strong>All-electron</strong> <code>pob</code> basis sets (<code>pob-dzvp</code>, <code>pob-tzvp</code>)</li>
+</ul>
+<p>For each <code>&amp;KIND</code> the builder looks up the exact basis name and a pseudopotential whose valence count <code>q</code> matches, preferring canonical names (<code>GTH-PBE</code> over <code>GTH-NLCC-PBE</code>).  Unknown/exotic elements fall back to a heuristic <code>q</code>-guess.  <code>--cp2k-basis</code> selects the family; the per-element exact name is resolved automatically.</p>
+<h2 id="quantum-espresso"><a class="header" href="#quantum-espresso">Quantum ESPRESSO</a></h2>
+<p>A complete <code>pw.x</code> input with <code>ibrav = 0</code>: <code>&amp;CONTROL</code>, <code>&amp;SYSTEM</code>, <code>&amp;ELECTRONS</code>, plus <code>&amp;IONS</code>/<code>&amp;CELL</code> for relaxation/MD, then <code>ATOMIC_SPECIES</code>, <code>CELL_PARAMETERS angstrom</code>, <code>ATOMIC_POSITIONS angstrom</code>, <code>K_POINTS</code>.</p>
+<pre><code class="language-bash"># SCF, Gamma point
+fe-job -i crystal.cif -s qe
+
+# Metal: Methfessel-Paxton smearing + k-mesh
+fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+
+# SCAN relaxation
+fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+</code></pre>
+<p>Tasks: <code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code>.
+Functionals map to <code>input_dft</code> (PBE uses the pseudopotential’s own functional).
+Spin reuses the same <a href="#unpaired-electron--spin-multiplicity-estimation"><code>guess_spin</code></a> estimator → <code>nspin</code> / <code>tot_magnetization</code>.
+Pseudopotentials are referenced as <code>&lt;Element&gt;.UPF</code> in <code>--pseudo-dir</code> (UPF files are user-supplied; the CP2K GTH database does not apply to QE).</p>
+<hr>
+<h2 id="charge--spin-all-targets"><a class="header" href="#charge--spin-all-targets">Charge &amp; spin (all targets)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--charge INT</code></td><td>Override total system charge (applied before spin estimation)</td></tr>
+<tr><td><code>--multiplicity INT</code></td><td>Force 2S+1 — highest priority, disables auto-spin</td></tr>
+<tr><td><code>--auto-spin</code></td><td>Estimate multiplicity from structure (<a href="#unpaired-electron--spin-multiplicity-estimation">details</a>)</td></tr>
+</tbody>
+</table>
+</div>
+<p>See the <a href="#fe-job">CLI Reference</a> for the complete flag tables.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="unpaired-electron--spin-multiplicity-estimation"><a class="header" href="#unpaired-electron--spin-multiplicity-estimation">Unpaired-Electron / Spin-Multiplicity Estimation</a></h1>
+<p>When generating a QC input file you must specify the system’s <strong>spin multiplicity</strong> (2S+1).  Guessing wrong produces a calculation that either fails to converge or converges to the wrong electronic state.  <code>ferro</code> can estimate the multiplicity directly from the structure via <code>ferro_core::guess_spin</code>, exposed on every job builder through the <code>--auto-spin</code> flag.</p>
+<p>The estimator uses three strategies in decreasing order of reliability and falls back automatically:</p>
+<ol>
+<li><strong>Magnetic-moment sum</strong> — most reliable</li>
+<li><strong>Oxidation state + Hund’s rule</strong> — for ionic solids</li>
+<li><strong>Electron-count parity</strong> — universal lower bound</li>
+</ol>
+<p>The result is always reconciled against the total electron count; an inconsistency triggers a warning and a fall back to the parity bound.</p>
+<hr>
+<h2 id="strategy-1--magnetic-moment-sum"><a class="header" href="#strategy-1--magnetic-moment-sum">Strategy 1 — Magnetic-moment sum</a></h2>
+<p>If any atom carries a <code>magmom</code> (read from a QE input, extxyz, or VASP OUTCAR), the number of unpaired electrons is</p>
+<p>\[ n_\text{unpaired} = \operatorname{round}!\left( \left| \sum_i m_i \right| \right), \qquad 2S+1 = n_\text{unpaired} + 1 \]</p>
+<p>This reflects an actual (DFT- or user-supplied) spin state and is preferred whenever magmom data is present.</p>
+<h2 id="strategy-2--oxidation-state--hunds-rule"><a class="header" href="#strategy-2--oxidation-state--hunds-rule">Strategy 2 — Oxidation state + Hund’s rule</a></h2>
+<p>For ionic solids with no magmom data, <code>assign_oxidation_states</code> assigns formal oxidation states by electronegativity rules and charge balance:</p>
+<ol>
+<li>The most electronegative element that has a negative common oxidation state is the <strong>anion</strong>; it takes its most-negative common state (O → −2, F → −1, S → −2, …).</li>
+<li>Remaining elements are <strong>cations</strong>.  The combination of their common positive oxidation states that satisfies overall charge balance is selected (highest-oxidation solution preferred when ambiguous).</li>
+</ol>
+<p>Each ion’s unpaired count is then:</p>
+<ul>
+<li><strong>Transition metals</strong> — d-electron count \( n_d = \text{group} - \text{oxidation state} \); high-spin filling of 5 d-orbitals (Hund’s rule):
+\[ n_\text{unpaired} = \begin{cases} n_d &amp; n_d \le 5 \\ 10 - n_d &amp; n_d &gt; 5 \end{cases} \]</li>
+<li><strong>Main group</strong> — valence electrons after ionization filled into the s/p shell; closed-shell ions give 0.</li>
+</ul>
+<p>Contributions are summed over all sites (ferromagnetic assumption → upper bound).</p>
+<h2 id="strategy-3--electron-count-parity"><a class="header" href="#strategy-3--electron-count-parity">Strategy 3 — Electron-count parity</a></h2>
+<p>With no usable structural information, only a bound is given from the total electron count \( N_e = \sum_i Z_i - q \):</p>
+<ul>
+<li>\( N_e \) odd → at least one unpaired electron (doublet, 2S+1 = 2)</li>
+<li>\( N_e \) even → singlet assumed (2S+1 = 1)</li>
+</ul>
+<p>This is always applied as a final sanity check: if the multiplicity from strategy 1 or 2 has the wrong parity relative to \( N_e \), a warning is emitted and the parity bound is used instead.</p>
+<hr>
+<h2 id="worked-examples"><a class="header" href="#worked-examples">Worked examples</a></h2>
+<h3 id="znp₂o₆--diamagnetic"><a class="header" href="#znp₂o₆--diamagnetic">ZnP₂O₆ — diamagnetic</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Ion</th><th>Configuration</th><th>Unpaired</th></tr>
+</thead>
+<tbody>
+<tr><td>Zn²⁺</td><td>group 12, \(n_d = 12-2 = 10\) → d¹⁰</td><td>0</td></tr>
+<tr><td>P⁵⁺</td><td>main group, 5 − 5 = 0 valence e⁻</td><td>0</td></tr>
+<tr><td>O²⁻</td><td>6 + 2 = 8 → closed octet</td><td>0</td></tr>
+</tbody>
+</table>
+</div>
+<p>Oxidation states resolve uniquely (Zn fixed at +2 ⇒ P = +5).  Total = <strong>0 unpaired → multiplicity 1</strong>.</p>
+<h3 id="mns--high-spin-d⁵"><a class="header" href="#mns--high-spin-d⁵">MnS — high-spin d⁵</a></h3>
+<p>S (electronegativity 2.58) is the anion at −2 ⇒ Mn = +2.
+Mn²⁺: group 7, \(n_d = 7 - 2 = 5\) → d⁵ high-spin → <strong>5 unpaired → multiplicity 6</strong>.</p>
+<h3 id="fe₂o₃"><a class="header" href="#fe₂o₃">Fe₂O₃</a></h3>
+<p>O₃ = −6 ⇒ 2 Fe = +6 ⇒ Fe = +3.  Fe³⁺: \(n_d = 8 - 3 = 5\) → 5 unpaired each → <strong>10 total → multiplicity 11</strong>.</p>
+<hr>
+<h2 id="usage-12"><a class="header" href="#usage-12">Usage</a></h2>
+<pre><code class="language-bash"># Auto-guess for a transition-metal oxide (CP2K)
+fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear
+
+# Auto-guess for QE
+fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
+
+# Manual override (highest priority — disables auto-spin)
+fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
+</code></pre>
+<p>Priority: explicit <code>--multiplicity</code> &gt; <code>--auto-spin</code> (or builder default) &gt; value from the input file.  In the CP2K and QE builders <code>auto_spin</code> is on by default; passing <code>--multiplicity</code> disables it so the manual value is respected.</p>
+<hr>
+<h2 id="limitations"><a class="header" href="#limitations">Limitations</a></h2>
+<p>These are inherent to formal-charge / parity methods and are reported as warnings:</p>
+<ul>
+<li><strong>Transition metals are always estimated high-spin.</strong>  Low-spin complexes (strong-field ligands) and the geometry-dependent crossover are not detected — verify with DFT.</li>
+<li><strong>Multi-centre magnetic coupling</strong> (ferro- vs antiferromagnetic) cannot be inferred from structure; the sum is an upper bound.</li>
+<li><strong>Purely covalent molecules</strong> fall back to the parity bound.  O₂, for example, is reported as a singlet — its triplet ground state arises from π* orbital degeneracy, which requires molecular-orbital theory.</li>
+<li><strong>Lanthanide f-electrons</strong> are not counted.</li>
+<li><strong>Covalent transition-metal complexes</strong> (organometallics) do not satisfy the ionic assumption.</li>
+</ul>
+<p>The estimate is an <em>initial guess</em>, not a substitute for an electronic-structure calculation.</p>
+<hr>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="#job-builders">Job Builders</a> — Gaussian / CP2K / QE input generation</li>
+<li><a href="#fe-job">CLI Reference: <code>fe-job</code></a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="cli-reference"><a class="header" href="#cli-reference">CLI Reference</a></h1>
+<p>ferro provides six command-line binaries.  All trajectory binaries share common flags for frame selection and parallelism.  Run any binary without <code>-i</code> to print mode-specific help.</p>
+<h2 id="common-flags"><a class="header" href="#common-flags">Common Flags</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>Input file</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td>Output file (default: mode-specific name)</td></tr>
+<tr><td><code>--last-n N</code></td><td>Use only the last N frames</td></tr>
+<tr><td><code>--ncore N</code></td><td>Parallel threads (default: all cores)</td></tr>
+<tr><td><code>--metal-units</code></td><td>LAMMPS metal units (velocities Å/ps, forces eV/Å)</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="fe-convert"><a class="header" href="#fe-convert"><code>fe-convert</code></a></h2>
+<p>Format conversion.</p>
+<pre><code class="language-bash">fe-convert -i input.xyz -o output.pdb
+fe-convert -i input.cif -o POSCAR
+</code></pre>
+<p>Supported input formats: <code>.xyz</code>, <code>.pdb</code>, <code>.cif</code>, LAMMPS dump<br>Supported output formats: <code>.xyz</code>, <code>.pdb</code>, <code>POSCAR</code>, LAMMPS dump</p>
+<hr>
+<h2 id="fe-info"><a class="header" href="#fe-info"><code>fe-info</code></a></h2>
+<p>Print structure summary (cell parameters, atom counts, element list).</p>
+<pre><code class="language-bash">fe-info -i input.xyz
+fe-info -i traj.dump --last-n 1
+</code></pre>
+<hr>
+<h2 id="fe-job"><a class="header" href="#fe-job"><code>fe-job</code></a></h2>
+<p>Generate QC software input files for <strong>Gaussian</strong>, <strong>CP2K</strong>, or <strong>Quantum ESPRESSO</strong>.  Run without <code>-s</code> to see an overview; run with <code>-s &lt;software&gt;</code> but without <code>-i</code> to see software-specific help.  See <a href="#job-builders">Job Builders</a> for a guided overview.</p>
+<pre><code class="language-bash">fe-job                                    # overview
+fe-job -s cp2k                            # CP2K-specific help
+fe-job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+fe-job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
+</code></pre>
+<h3 id="charge--spin-shared-by-all-targets"><a class="header" href="#charge--spin-shared-by-all-targets">Charge / Spin (shared by all targets)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--charge</code></td><td>(from file)</td><td>Override total system charge (applied before spin estimation)</td></tr>
+<tr><td><code>--multiplicity</code></td><td>(from file)</td><td>Force spin multiplicity 2S+1; highest priority, disables auto-spin</td></tr>
+<tr><td><code>--auto-spin</code></td><td>off (on by default for cp2k/qe)</td><td>Estimate multiplicity from structure</td></tr>
+</tbody>
+</table>
+</div>
+<p>The estimator (magmom → oxidation state + Hund → electron parity) is documented in <a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>.</p>
+<h3 id="gaussian-1"><a class="header" href="#gaussian-1">Gaussian</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-m &lt;method&gt;</code></td><td>(required)</td><td>DFT method, e.g. <code>B3LYP</code>, <code>PBE0</code></td></tr>
+<tr><td><code>-b &lt;basis&gt;</code></td><td>(required)</td><td>Basis set, e.g. <code>6-31G*</code>, <code>def2-TZVP</code></td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>job.gjf</code></td><td>Output file</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="cp2k-1"><a class="header" href="#cp2k-1">CP2K</a></h3>
+<h4 id="task--electronic-structure"><a class="header" href="#task--electronic-structure">Task &amp; Electronic Structure</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--task</code></td><td><code>energy</code></td><td><code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code></td></tr>
+<tr><td><code>--functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>blyp</code>, <code>pbe0</code>, <code>b3lyp</code>, <code>revpbe</code>, <code>pbesol</code>, <code>scan</code>, <code>r2scan</code>, <code>hse06</code></td></tr>
+<tr><td><code>--cp2k-basis</code></td><td><code>dzvp-molopt-sr</code></td><td><code>dzvp-molopt-sr</code>, <code>tzvp-molopt</code>, <code>tzv2p-molopt</code>, <code>dzvp-gth</code>, <code>tzvp-gth</code>, <code>pob-dzvp</code>, <code>pob-tzvp</code> (all-electron), or any custom string</td></tr>
+<tr><td><code>--dispersion</code></td><td><code>none</code></td><td><code>none</code>, <code>d3</code>, <code>d3bj</code></td></tr>
+<tr><td><code>--scf</code></td><td><code>diag</code></td><td><code>diag</code> (metals/large), <code>ot</code> (insulators)</td></tr>
+<tr><td><code>--pbc</code></td><td>(auto)</td><td><code>xyz</code>, <code>z</code>, <code>none</code>; auto-detected from cell if omitted</td></tr>
+<tr><td><code>--kpoints</code></td><td>(none)</td><td>Three integers, e.g. <code>--kpoints 2 2 2</code></td></tr>
+<tr><td><code>--cutoff</code></td><td><code>400</code></td><td>Plane-wave cutoff [Ry]</td></tr>
+<tr><td><code>--rel-cutoff</code></td><td><code>50</code></td><td>Relative cutoff [Ry]</td></tr>
+<tr><td><code>--smear</code></td><td>off</td><td>Enable Fermi–Dirac smearing</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="output-12"><a class="header" href="#output-12">Output</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--atom-charge</code></td><td><code>none</code></td><td><code>none</code>, <code>mulliken</code>, <code>hirshfeld</code>, <code>hirshfeld-i</code></td></tr>
+<tr><td><code>--cube</code></td><td><code>none</code></td><td><code>none</code>, <code>density</code>, <code>elf</code>, <code>hartree</code></td></tr>
+<tr><td><code>--molden</code></td><td>off</td><td>Export Molden orbital file</td></tr>
+<tr><td><code>--project</code></td><td><code>ferro</code></td><td>CP2K project name</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="md-only-with---task-md"><a class="header" href="#md-only-with---task-md">MD (only with <code>--task md</code>)</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>Number of MD steps</td></tr>
+<tr><td><code>--md-timestep</code></td><td><code>1.0</code></td><td>Timestep [fs]</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>Temperature [K]</td></tr>
+<tr><td><code>--thermostat</code></td><td><code>csvr</code></td><td><code>csvr</code>, <code>nose</code>, <code>langevin</code>, <code>none</code></td></tr>
+<tr><td><code>--traj-freq</code></td><td><code>100</code></td><td>Trajectory write frequency [steps]</td></tr>
+<tr><td><code>--barostat</code></td><td>off</td><td>Enable NPT barostat</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p>Basis-set and pseudopotential names are resolved <strong>per element</strong> from a 2829-entry database (PBE / SCAN / all-electron, with matching valence <code>q</code>).  <code>--cp2k-basis</code> selects the family; the exact element-specific name is filled in automatically.  See <a href="#precise-basis--pseudopotential-matching">Job Builders</a>.</p>
+</blockquote>
+<h3 id="quantum-espresso-1"><a class="header" href="#quantum-espresso-1">Quantum ESPRESSO</a></h3>
+<pre><code class="language-bash">fe-job -i crystal.cif -s qe
+fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates / Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--qe-task</code></td><td><code>scf</code></td><td><code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code></td></tr>
+<tr><td><code>--qe-functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>pbesol</code>, <code>revpbe</code>, <code>blyp</code>, <code>scan</code>, <code>r2scan</code>, <code>pbe0</code>, <code>hse06</code></td></tr>
+<tr><td><code>--ecutwfc</code></td><td><code>50</code></td><td>Plane-wave cutoff [Ry]</td></tr>
+<tr><td><code>--smearing</code></td><td><code>none</code></td><td><code>none</code>, <code>gaussian</code>, <code>mp</code>, <code>mv</code>, <code>fd</code> (mp/mv for metals)</td></tr>
+<tr><td><code>--kpoints</code></td><td>(Gamma)</td><td>Three integers → Monkhorst-Pack mesh</td></tr>
+<tr><td><code>--pseudo-dir</code></td><td><code>./pseudo</code></td><td>Pseudopotential directory (<code>&lt;El&gt;.UPF</code>)</td></tr>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>MD steps (<code>--qe-task md</code>/<code>vc-md</code>)</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>MD target temperature [K]</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>pw.in</code></td><td>Output file</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>ibrav = 0</code>; the cell is written as <code>CELL_PARAMETERS angstrom</code> from the structure.  Spin uses the shared estimator → <code>nspin</code> / <code>tot_magnetization</code>.</p>
+<hr>
+<h2 id="fe-traj"><a class="header" href="#fe-traj"><code>fe-traj</code></a></h2>
+<p>Structural analysis of MD trajectories.</p>
+<pre><code class="language-bash">fe-traj -m &lt;mode&gt; -i traj.dump [flags] -o output
+</code></pre>
+<h3 id="modes"><a class="header" href="#modes">Modes</a></h3>
+<h4 id="gr--radial-distribution-function"><a class="header" href="#gr--radial-distribution-function"><code>gr</code> — Radial Distribution Function</a></h4>
+<p>Computes partial and total $g(r)$ plus coordination numbers $\text{CN}(r)$.</p>
+<pre><code class="language-bash">fe-traj -m gr -i traj.dump --r-max 10.0 --dr 0.01 --r-cut 2.3 -o gr.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-max</code></td><td>10.005</td><td>Maximum radius [Å]</td></tr>
+<tr><td><code>--dr</code></td><td>0.01</td><td>Bin width [Å]</td></tr>
+<tr><td><code>--r-cut</code></td><td>2.3</td><td>CN integration cutoff [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;.dat</code> (g(r)) and <code>&lt;stem&gt;_cn.dat</code> (coordination numbers)</p>
+<h4 id="sq--structure-factor"><a class="header" href="#sq--structure-factor"><code>sq</code> — Structure Factor</a></h4>
+<p>Computes $S(q)$ via Fourier transform of $g(r)$.</p>
+<pre><code class="language-bash">fe-traj -m sq -i traj.dump --q-max 25.0 --dq 0.05 --weighting xrd -o sq.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--q-max</code></td><td>25.0</td><td>Maximum $q$ [Å⁻¹]</td></tr>
+<tr><td><code>--dq</code></td><td>0.05</td><td>$q$ bin width [Å⁻¹]</td></tr>
+<tr><td><code>--weighting</code></td><td><code>both</code></td><td><code>xrd</code>, <code>neutron</code>, or <code>both</code></td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="msd--mean-squared-displacement"><a class="header" href="#msd--mean-squared-displacement"><code>msd</code> — Mean Squared Displacement</a></h4>
+<p>Computes MSD and directional components; supports NPT and non-periodic trajectories.</p>
+<pre><code class="language-bash">fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 --elements Li -o msd.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Comma-separated element filter</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="angle--bond-angle-distribution"><a class="header" href="#angle--bond-angle-distribution"><code>angle</code> — Bond Angle Distribution</a></h4>
+<p>Computes $P(\theta)$ for all A–B–C triplets.</p>
+<pre><code class="language-bash">fe-traj -m angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 --d-angle 0.1 -o angle.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-cut-ab</code></td><td>2.3</td><td>A–B bond cutoff [Å]</td></tr>
+<tr><td><code>--r-cut-bc</code></td><td>2.3</td><td>C–B bond cutoff [Å]</td></tr>
+<tr><td><code>--d-angle</code></td><td>0.1</td><td>Histogram bin width [°]</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="fe-corr"><a class="header" href="#fe-corr"><code>fe-corr</code></a></h2>
+<p>Correlation function analysis.</p>
+<pre><code class="language-bash">fe-corr -m &lt;mode&gt; -i traj.dump [flags] -o output
+</code></pre>
+<h3 id="modes-1"><a class="header" href="#modes-1">Modes</a></h3>
+<h4 id="vacf--velocity-autocorrelation-function"><a class="header" href="#vacf--velocity-autocorrelation-function"><code>vacf</code> — Velocity Autocorrelation Function</a></h4>
+<p>Computes VACF and the running Green-Kubo diffusion integral.</p>
+<pre><code class="language-bash">fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li --metal-units -o vacf.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--tau</code></td><td>(all)</td><td>Lag window [frames]</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output columns: <code>time[fs]</code>, <code>vacf[v²]</code>, <code>vacf_x</code>, <code>vacf_y</code>, <code>vacf_z</code>, <code>diffusion[v²·fs]</code></p>
+<h4 id="rotcorr--rotational-autocorrelation"><a class="header" href="#rotcorr--rotational-autocorrelation"><code>rotcorr</code> — Rotational Autocorrelation</a></h4>
+<p>Computes $C_2(t)$ for molecular orientation vectors.</p>
+<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --r-cut 2.4 --dt 2.0 -o rotcorr.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--center</code></td><td>(required)</td><td>Central atom element</td></tr>
+<tr><td><code>--neighbor</code></td><td>(required)</td><td>Neighbour atom element</td></tr>
+<tr><td><code>--r-cut</code></td><td>1.2</td><td>Bond search cutoff [Å]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--tau</code></td><td>(all)</td><td>Lag window [frames]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
+<h4 id="vanhove--van-hove-self-correlation"><a class="header" href="#vanhove--van-hove-self-correlation"><code>vanhove</code> — Van Hove Self-Correlation</a></h4>
+<p>Computes $G_s(r, \tau)$ displacement histogram.</p>
+<pre><code class="language-bash">fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o vanhove.dat
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--tau</code></td><td>(last frame)</td><td>Lag [frames]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
+<tr><td><code>--r-max</code></td><td>10.0</td><td>Max displacement [Å]</td></tr>
+<tr><td><code>--dr</code></td><td>0.01</td><td>Bin width [Å]</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output columns: <code>r[Å]</code>, <code>Gs(r,tau)</code></p>
+<hr>
+<h2 id="fe-cube"><a class="header" href="#fe-cube"><code>fe-cube</code></a></h2>
+<p>3-D spatial distribution maps (Gaussian cube format).</p>
+<pre><code class="language-bash">fe-cube -m &lt;mode&gt; -i traj.dump [flags] -o output
+</code></pre>
+<h3 id="modes-2"><a class="header" href="#modes-2">Modes</a></h3>
+<h4 id="density--atomic-number-density"><a class="header" href="#density--atomic-number-density"><code>density</code> — Atomic Number Density</a></h4>
+<pre><code class="language-bash">fe-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 --elements Li -o li.cube
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>Grid dimensions</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="velocity--mean-speed-per-voxel"><a class="header" href="#velocity--mean-speed-per-voxel"><code>velocity</code> — Mean Speed per Voxel</a></h4>
+<p>Requires trajectory with velocities (use <code>--metal-units</code> for LAMMPS metal dumps).</p>
+<pre><code class="language-bash">fe-cube -m velocity -i traj.dump --metal-units -o velocity.cube
+</code></pre>
+<h4 id="force--mean-force-magnitude-per-voxel"><a class="header" href="#force--mean-force-magnitude-per-voxel"><code>force</code> — Mean Force Magnitude per Voxel</a></h4>
+<p>Requires trajectory with forces.</p>
+<pre><code class="language-bash">fe-cube -m force -i traj.dump -o force.cube
+</code></pre>
+<h4 id="radius--hard-sphere-occupancy"><a class="header" href="#radius--hard-sphere-occupancy"><code>radius</code> — Hard-Sphere Occupancy</a></h4>
+<pre><code class="language-bash">fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--radius</code></td><td>0.7</td><td>Hard-sphere radius [Å]</td></tr>
+<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>Grid dimensions</td></tr>
+<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="sdf--cluster-sdf"><a class="header" href="#sdf--cluster-sdf"><code>sdf</code> — Cluster SDF</a></h4>
+<pre><code class="language-bash">fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+         --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--qn</code></td><td>3</td><td>Target $Q_n$ level (0–3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td>2.4</td><td>Former–ligand cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td>2.8</td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--grid-res</code></td><td>0.1</td><td>Voxel size [Å]</td></tr>
+<tr><td><code>--sigma</code></td><td>1.5</td><td>Gaussian broadening [voxels]</td></tr>
+<tr><td><code>--padding</code></td><td>3.0</td><td>Grid margin [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td>0.5</td><td>RMSD warning threshold [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;_&lt;label&gt;.cube</code> per atom type (multiple families: <code>&lt;stem&gt;_fam&lt;N&gt;_&lt;label&gt;.cube</code>).</p>
+<h4 id="chg-sdf--averaged-charge-density-sdf"><a class="header" href="#chg-sdf--averaged-charge-density-sdf"><code>chg-sdf</code> — Averaged Charge-Density SDF</a></h4>
+<p>Computes the orientationally averaged electron density around Qn clusters from a set of QE <code>pp.x</code> charge-density cube files.  Does <strong>not</strong> require a trajectory <code>-i</code>; instead takes <code>--cubes</code>.</p>
+<pre><code class="language-bash">fe-cube -m chg_sdf \
+    --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    -o chg_sdf
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>QE pp.x cube files, one per MD frame</td></tr>
+<tr><td><code>--qn</code></td><td><code>3</code></td><td>Target Qn level (0–3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>Former–ligand cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>Sub-grid boundary margin [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>Alignment RMSD warning threshold [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;_Q&lt;n&gt;.cube</code> (one file per signature family).</p>
+<p>See <a href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF</a> for algorithm details.</p>
+<hr>
+<h2 id="fe-bader"><a class="header" href="#fe-bader"><code>fe-bader</code></a></h2>
+<p>Bader charge decomposition from DFT charge-density files.  Supports VASP CHGCAR and Gaussian/QE cube files.</p>
+<pre><code class="language-bash">fe-bader -i CHGCAR                      # VASP CHGCAR
+fe-bader -i charge.cube                 # Gaussian/QE cube file
+fe-bader -i CHGCAR -o bader            # custom output stem
+fe-bader -i CHGCAR --method weight     # Yu-Trinkle weight method
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>(required)</td><td>Input file (<code>.cube</code> → cube reader; others → CHGCAR reader)</td></tr>
+<tr><td><code>-o &lt;stem&gt;</code></td><td><code>bader</code></td><td>Output file stem</td></tr>
+<tr><td><code>--method</code></td><td><code>ongrid</code></td><td>Bader method: <code>ongrid</code>, <code>neargrid</code>, <code>offgrid</code>, <code>weight</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="output-files"><a class="header" href="#output-files">Output Files</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Content</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_ACF.dat</code></td><td>Atomic Charges File — per-atom Bader charge, volume, min distance to surface</td></tr>
+<tr><td><code>&lt;stem&gt;_BCF.dat</code></td><td>Bader Charge File — per-Bader-volume charge, volume, coordinates</td></tr>
+<tr><td><code>&lt;stem&gt;_AVF.dat</code></td><td>Atomic Volume File — atom → Bader volume index mapping</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="fe-network"><a class="header" href="#fe-network"><code>fe-network</code></a></h2>
+<p>Glass network analysis: CN distribution, ligand classification (FO/NBO/BO/OBO), Qn speciation, modifier cation roles.</p>
+<pre><code class="language-bash"># 基础用法
+fe-network -i traj.dump --P-O=2.3
+
+# 混合形成子 + xlsx 输出
+fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 --format xlsx -o result.xlsx
+
+# 含修饰子角色分析
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
+
+# 多修饰子
+fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
+</code></pre>
+<h3 id="配对参数pair-arguments"><a class="header" href="#配对参数pair-arguments">配对参数（Pair Arguments）</a></h3>
+<p>截断参数使用 <code>--Former-Ligand=cutoff</code> 格式（首字母大写）：</p>
+<pre><code>--P-O=2.3     P-O 截断 2.3 Å（P 为形成子，O 为配体）
+--Si-O=1.8    Si-O 截断 1.8 Å
+--Zn-O=3.5    当配合 --modifier Zn 时，视为修饰子-配体截断
+</code></pre>
+<h3 id="普通参数"><a class="header" href="#普通参数">普通参数</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>参数</th><th>默认值</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹（缺省显示帮助）</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出前缀</td></tr>
+<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>--last-n N</code></td><td>全部</td><td>仅用尾部 N 帧</td></tr>
+<tr><td><code>--ncore N</code></td><td>全部核心</td><td>线程数</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位</td></tr>
+<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔）</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="输出文件-1"><a class="header" href="#输出文件-1">输出文件</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>文件</th><th>内容</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>CN 分布及均值</td></tr>
+<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>FO / NBO / BO / OBO 分布</td></tr>
+<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>Qn 物种分布</td></tr>
+<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>Free / T / B / M 分布（有 <code>--modifier</code> 时）</td></tr>
+</tbody>
+</table>
+</div>
+<p>XLSX 格式将上述内容写入同一文件的多个 sheet（CN、Ligand、Qn、Modifier）。</p>
+<p>详细说明见 <a href="#glass-network-analysis-fe-network">Glass Network Analysis</a>。</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            MathJax.Hub.Register.StartupHook('End', function() {
+                window.setTimeout(window.print, 100);
+            });
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

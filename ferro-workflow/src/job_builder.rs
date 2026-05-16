@@ -39,19 +39,3 @@ impl GaussianJobBuilder {
     }
 }
 
-/// GROMACS 拓扑文件构建器 (示例)
-pub struct GromacsTopologyBuilder {
-    pub frame: Frame,
-}
-
-impl GromacsTopologyBuilder {
-    pub fn new(frame: Frame) -> Self {
-        Self { frame }
-    }
-
-    /// 生成 GROMACS 拓扑文件 (简化版)
-    pub fn build(&self) -> Result<String> {
-        // TODO: 实现完整的拓扑生成
-        Ok("[ moleculetype ]\n; Name  nrexcl\nMOL     3\n".to_string())
-    }
-}

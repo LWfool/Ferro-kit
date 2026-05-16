@@ -7,3 +7,6 @@ edition.workspace = true
 ferro-core = { path = "../ferro-core" }
 serde.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+nalgebra.workspace = true

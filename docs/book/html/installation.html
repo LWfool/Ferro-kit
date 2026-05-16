@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e02a5889.js";
+            window.path_to_searchindex_js = "searchindex-87948516.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-4cd03dbb.js"></script>
+        <script src="toc-3dd42c47.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -205,10 +205,16 @@ cargo build --release
 </table>
 </div>
 <h2 id="python-bindings"><a class="header" href="#python-bindings">Python Bindings</a></h2>
-<pre><code class="language-bash">cd ferro-python
-pip install maturin
-maturin develop
+<p><code>ferro-python</code> is its own workspace and is built with maturin (not the root
+<code>cargo build</code>).  <code>maturin develop</code> needs an active virtualenv / conda env:</p>
+<pre><code class="language-bash">pip install maturin
+cd ferro-python
+maturin develop                                   # into the active env
+# or, without an active env:
+maturin build --release --interpreter "$(which python)"
+pip install target/wheels/ferro-*.whl
 </code></pre>
+<p>See <a href="python.html">Python Bindings</a> for the full API reference.</p>
 <h2 id="generating-this-documentation"><a class="header" href="#generating-this-documentation">Generating This Documentation</a></h2>
 <pre><code class="language-bash">cd docs
 mdbook build          # HTML output → docs/book/

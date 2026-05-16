@@ -160,7 +160,7 @@ impl BaderResult {
     /// Write ACF.dat (Atom-Centered File): per-atom Bader charge summary.
     ///
     /// Columns: atom# | X | Y | Z | charge | min_distance | atomic_volume
-    pub fn write_acf(&self, path: &str) -> Result<()> {
+    pub fn write_acf(&self, path: &str, frame: &Frame) -> Result<()> {
         let f = std::fs::File::create(path)
             .map_err(ChemError::IoError)?;
         let mut w = BufWriter::new(f);
@@ -173,15 +173,15 @@ impl BaderResult {
 
         for (i, charge) in self.ionchg.iter().enumerate() {
             let vol = self.ionvol.get(i).copied().unwrap_or(0.0);
-            // Find min distance for this atom
             let min_dist = self.nnion.iter().enumerate()
                 .filter(|(_, &nn)| nn == i)
                 .map(|(v, _)| self.iondist.get(v).copied().unwrap_or(f64::MAX))
                 .fold(f64::MAX, f64::min);
             let min_dist = if min_dist == f64::MAX { 0.0 } else { min_dist };
+            let pos = frame.atoms.get(i).map(|a| a.position).unwrap_or_default();
 
             writeln!(w, " {:>5} {:>12.6} {:>12.6} {:>12.6} {:>14.6} {:>14.6} {:>14.6}",
-                     i + 1, 0.0, 0.0, 0.0, charge, min_dist, vol)
+                     i + 1, pos.x, pos.y, pos.z, charge, min_dist, vol)
                 .map_err(ChemError::IoError)?;
         }
 
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn test_bader_output_files() {
         let (frame, chg) = two_peak_system();
-        let result = BaderAnalyzer::new(chg, frame)
+        let result = BaderAnalyzer::new(chg, frame.clone())
             .method(BaderMethod::OnGrid)
             .refine(0)
             .run();
@@ -368,7 +368,7 @@ mod tests {
         let bcf = dir.join("test_bcf.dat");
         let avf = dir.join("test_avf.dat");
 
-        result.write_acf(acf.to_str().unwrap()).unwrap();
+        result.write_acf(acf.to_str().unwrap(), &frame).unwrap();
         result.write_bcf(bcf.to_str().unwrap()).unwrap();
         result.write_avf(avf.to_str().unwrap()).unwrap();
 

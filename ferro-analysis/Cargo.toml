@@ -9,4 +9,3 @@ nalgebra = { workspace = true, features = ["serde-serialize"] }
 ndarray.workspace = true
 rayon.workspace = true
 thiserror.workspace = true
-petgraph.workspace = true

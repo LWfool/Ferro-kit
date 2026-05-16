@@ -93,6 +93,18 @@ impl Frame {
         self.atoms.iter().map(|a| a.element.as_str()).collect()
     }
 
+    /// 按首次出现顺序返回去重后的元素符号（用于 KIND/类型 ID/POSCAR 元素行等）。
+    pub fn unique_elements(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for a in &self.atoms {
+            if seen.insert(a.element.as_str()) {
+                out.push(a.element.clone());
+            }
+        }
+        out
+    }
+
     /// 返回某元素在此帧中的原子数量。
     pub fn count_element(&self, element: &str) -> usize {
         self.atoms.iter().filter(|a| a.element == element).count()
@@ -193,6 +205,17 @@ mod tests {
         f.add_atom(Atom::new("O",  Vector3::new(0.0, 2.0, 0.0)));
         assert_eq!(f.n_atoms(), 3);
         assert_eq!(f.count_element("O"), 2);
+    }
+
+    #[test]
+    fn test_unique_elements_first_appearance() {
+        let mut f = Frame::new();
+        for e in ["O", "H", "O", "Fe", "H", "O"] {
+            f.add_atom(Atom::new(e, Vector3::zeros()));
+        }
+        // 去重并保持首次出现顺序
+        assert_eq!(f.unique_elements(), vec!["O", "H", "Fe"]);
+        assert!(Frame::new().unique_elements().is_empty());
     }
 
     #[test]

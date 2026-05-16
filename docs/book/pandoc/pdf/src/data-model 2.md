@@ -1,0 +1,38 @@
+[Header 1 ("core-data-model", [], []) [Str "Core Data Model"], Header 2 ("type-hierarchy", ["unnumbered", "unlisted"], []) [Str "Type Hierarchy"], Para [Str "Every ferro API accepts and returns ", Code ("", [], []) "Trajectory", Str ", even for single-frame files."], CodeBlock ("", [""], []) "Trajectory
+  └── Vec<Frame>
+        ├── Vec<Atom>           — atomic species, positions, optional properties
+        ├── Option<Cell>        — None = non-periodic
+        ├── [bool; 3]           — pbc flags per axis
+        └── Optional results    — energy, forces, stress, velocities
+", Header 2 ("atom", ["unnumbered", "unlisted"], []) [Str "Atom"], CodeBlock ("", ["rust"], []) "pub struct Atom {
+    pub element: String,
+    pub position: Vector3<f64>,  // Å, Cartesian
+    pub label: Option<String>,   // e.g. \"Fe1\", \"Fe2\"
+    pub mass: Option<f64>,       // None → look up from element table
+    pub magmom: Option<f64>,     // initial magnetic moment (DFT input)
+    pub charge: Option<f64>,     // Bader / DDEC charge (post-processing)
+}
+", Para [Str "The atom ", Strong [Str "index is implicit"], Str " (position in ", Code ("", [], []) "Vec<Atom>", Str "); no ", Code ("", [], []) "index", Str " field is stored to prevent inconsistency."], Header 2 ("frame", ["unnumbered", "unlisted"], []) [Str "Frame"], CodeBlock ("", ["rust"], []) "pub struct Frame {
+    pub atoms: Vec<Atom>,
+    pub cell: Option<Cell>,              // None = non-periodic
+    pub pbc: [bool; 3],
+    pub charge: i32,
+    pub multiplicity: u32,
+    pub bonds: Option<Vec<(usize,usize)>>,
+    pub energy: Option<f64>,             // eV
+    pub forces: Option<Vec<Vector3<f64>>>, // eV/Å
+    pub stress: Option<Matrix3<f64>>,    // eV/Å³
+    pub velocities: Option<Vec<Vector3<f64>>>, // Å/fs (internal standard)
+}
+", Para [Code ("", [], []) "pbc = [false,false,false]", Str " → molecular system.", LineBreak, Code ("", [], []) "pbc = [true,true,false]", Str " → surface / slab.", LineBreak, Code ("", [], []) "pbc = [true,true,true]", Str " → bulk crystal or glass."], Header 2 ("cell", ["unnumbered", "unlisted"], []) [Str "Cell"], CodeBlock ("", ["rust"], []) "pub struct Cell {
+    pub matrix: Matrix3<f64>,  // row vectors a, b, c  [Å]
+}
+", Table ("", [], []) (Caption Nothing []) [(AlignDefault, (ColWidth 0.5)), (AlignDefault, (ColWidth 0.5))] (TableHead ("", [], []) [Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Method"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Description"]]]]) [(TableBody ("", [], []) (RowHeadColumns 0) [] [Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "from_lengths_angles(a,b,c,α,β,γ)"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Construct from lattice parameters"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "lengths() -> [f64; 3]"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "|a", Str "|, ", Str "|b", Str "|, ", Str "|c", Str "|"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "angles() -> [f64; 3]"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "α, β, γ in degrees"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "volume() -> f64"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Cell volume ", Str "[", Str "Å³", Str "]"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "fractional_to_cartesian(f)"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "f·M"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "cartesian_to_fractional(c)"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "c·M⁻¹"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "wrap_position(c)"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Fold Cartesian position into ", Str "[", Str "0, L)"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "minimum_image(v)"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Apply minimum-image convention to vector v"]]]])] (TableFoot ("", [], []) []), Header 3 ("coordinate-conventions", ["unnumbered", "unlisted"], []) [Str "Coordinate Conventions"], Para [Str "The cell matrix stores row vectors:"], Para [Math DisplayMath "\\mathbf{M} = \\begin{pmatrix} \\mathbf{a} \\ \\mathbf{b} \\ \\mathbf{c} \\end{pmatrix}"], Para [Str "Fractional → Cartesian: $\\mathbf{r} = \\mathbf{f} \\cdot \\mathbf{M}$"], Para [Str "Cartesian → Fractional: $\\mathbf{f} = \\mathbf{r} \\cdot \\mathbf{M}^{-1}$"], Para [Str "For a triclinic cell:"], Para [Math DisplayMath "\\mathbf{M} = \\begin{pmatrix}
+a & 0 & 0 \\
+b\\cos\\gamma & b\\sin\\gamma & 0 \\
+c\\cos\\beta & c(\\cos\\alpha - \\cos\\beta\\cos\\gamma)/\\sin\\gamma & c\\sqrt{1 - \\cos^2\\alpha - \\cos^2\\beta - \\cos^2\\gamma + 2\\cos\\alpha\\cos\\beta\\cos\\gamma}/\\sin\\gamma
+\\end{pmatrix}"], Header 2 ("trajectory", ["unnumbered", "unlisted"], []) [Str "Trajectory"], CodeBlock ("", ["rust"], []) "pub struct Trajectory {
+    pub frames: Vec<Frame>,
+    pub metadata: Option<TrajectoryMetadata>,
+}
+", Para [Str "NPT trajectories (variable box per frame) are handled naturally: each ", Code ("", [], []) "Frame", Str " carries its own ", Code ("", [], []) "Cell", Str "."], Header 2 ("pseudo-element-labels", ["unnumbered", "unlisted"], []) [Str "Pseudo-Element Labels"], Para [Str "ferro supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):"], Table ("", [], []) (Caption Nothing []) [(AlignDefault, ColWidthDefault), (AlignDefault, ColWidthDefault)] (TableHead ("", [], []) [Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Label"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Meaning"]]]]) [(TableBody ("", [], []) (RowHeadColumns 0) [] [Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "P0/P1/P2/P3"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Phosphorus with Qn connectivity"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "Of"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Free oxygen (0 P neighbours)"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "On"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Non-bridging oxygen (1 P neighbour)"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "Ob"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Bridging oxygen (≥2 P neighbours)"]]], Row ("", [], []) [Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Code ("", [], []) "Zn", Str ", ", Code ("", [], []) "Na", Str ", …"]], Cell ("", [], []) AlignDefault (RowSpan 0) (ColSpan 0) [Plain [Str "Modifier cation symbols"]]]])] (TableFoot ("", [], []) []), Para [Str "Atomic-number lookup (", Code ("", [], []) "elem_z", Str ") resolves pseudo-labels by stripping suffixes: ", Code ("", [], []) "\"P3\"", Str " → P (Z=15), ", Code ("", [], []) "\"Ob\"", Str " → O (Z=8)."]]

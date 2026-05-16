@@ -38,10 +38,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e02a5889.js";
+            window.path_to_searchindex_js = "searchindex-87948516.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-4cd03dbb.js"></script>
+        <script src="toc-3dd42c47.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,7 +183,10 @@
 <li><strong>Structural analysis</strong> — g(r), S(q), bond angle distributions, Qn speciation</li>
 <li><strong>Dynamical analysis</strong> — MSD, VACF, van Hove correlation, rotational correlation</li>
 <li><strong>Spatial maps</strong> — 3-D density/velocity/force grids, jump-distance maps, hard-sphere occupancy, cluster SDF</li>
-<li><strong>I/O</strong> — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube</li>
+<li><strong>Charge analysis</strong> — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF</li>
+<li><strong>Input generation</strong> — Gaussian, CP2K, and Quantum ESPRESSO input files with structure-based spin estimation and a precise CP2K basis/pseudopotential database</li>
+<li><strong>I/O</strong> — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube</li>
+<li><strong>Python bindings</strong> — <code>import ferro</code>: read/write, supercell/vacuum/merge, g(r) &amp; MSD (<a href="#python-bindings-1">details</a>)</li>
 </ul>
 <h2 id="design-goals"><a class="header" href="#design-goals">Design Goals</a></h2>
 <div class="table-wrapper">
@@ -204,8 +207,8 @@
     ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
     ├── ferro-io        → core    ← format readers / writers
     ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── ferro-workflow  → core    ← QC software input builders
+    ├── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
+    └── ferro-workflow  → core    ← QC input builders (Gaussian / CP2K / QE)
 </code></pre>
 <h2 id="internal-units"><a class="header" href="#internal-units">Internal Units</a></h2>
 <div class="table-wrapper">
@@ -255,10 +258,16 @@ cargo build --release
 </table>
 </div>
 <h2 id="python-bindings"><a class="header" href="#python-bindings">Python Bindings</a></h2>
-<pre><code class="language-bash">cd ferro-python
-pip install maturin
-maturin develop
+<p><code>ferro-python</code> is its own workspace and is built with maturin (not the root
+<code>cargo build</code>).  <code>maturin develop</code> needs an active virtualenv / conda env:</p>
+<pre><code class="language-bash">pip install maturin
+cd ferro-python
+maturin develop                                   # into the active env
+# or, without an active env:
+maturin build --release --interpreter "$(which python)"
+pip install target/wheels/ferro-*.whl
 </code></pre>
+<p>See <a href="#python-bindings-1">Python Bindings</a> for the full API reference.</p>
 <h2 id="generating-this-documentation"><a class="header" href="#generating-this-documentation">Generating This Documentation</a></h2>
 <pre><code class="language-bash">cd docs
 mdbook build          # HTML output → docs/book/
@@ -1224,6 +1233,111 @@ for (sig, family) in &amp;result.families {
 <li>For trajectories with many frames, performance is dominated by bond-graph construction ($O(N^2)$ per frame without a cell list).</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="averaged-charge-density-sdf-chg-sdf"><a class="header" href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF (<code>chg-sdf</code>)</a></h1>
+<p><code>fe-cube -m chg_sdf</code> computes the <strong>averaged electron-density spatial distribution function</strong> over a set of Qn-type network clusters.  Given a collection of QE <code>pp.x</code> charge-density cube files (one per MD snapshot), the tool:</p>
+<ol>
+<li>Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as <code>fe-cube -m sdf</code>.</li>
+<li>Extracts a cubic sub-grid of the electron density centred on the cluster anchor atom, interpolating the raw charge-density grid with trilinear interpolation (PBC-safe).</li>
+<li>Rotates the sub-grid to align with the first-encountered reference cluster via the Kabsch rotation matrix, using “pull” interpolation (<code>output[r] = input[R⁻¹ r]</code>).</li>
+<li>Accumulates rotated sub-grids; divides by the cluster count to obtain the averaged density.</li>
+<li>Writes one Gaussian cube file per signature family.</li>
+</ol>
+<p>The result reveals the orientationally averaged electron-density distribution around a specific local structural motif (e.g. Q2 PO₄ unit in a phosphate glass).</p>
+<hr>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<p>Charge-density cube files must be produced by QE <code>pp.x</code> (or any program that outputs the Gaussian cube format with atom coordinates in Bohr and density in <code>e/Bohr³</code>).  One cube file per MD frame is expected.</p>
+<hr>
+<h2 id="usage-11"><a class="header" href="#usage-11">Usage</a></h2>
+<pre><code class="language-bash"># Basic: average charge density around Q2 clusters (P–O system)
+fe-cube -m chg_sdf \
+    --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    -o chg_sdf
+
+# With modifier cation (e.g. Zn2+ in Zn-phosphate glass)
+fe-cube -m chg_sdf \
+    --cubes *.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    --modifier Zn --cutoff-ml 2.8 \
+    --chg-padding 6.0 \
+    -o chg_sdf_Q2
+
+# Tighter sub-grid / multiple threads
+fe-cube -m chg_sdf \
+    --cubes *.cube \
+    --qn 3 --former P --ligand O \
+    --chg-padding 5.0 --rmsd-warn 0.3 \
+    --ncore 8 \
+    -o q3_density
+</code></pre>
+<hr>
+<h2 id="parameters-11"><a class="header" href="#parameters-11">Parameters</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>One or more QE pp.x cube files; each file = one MD frame</td></tr>
+<tr><td><code>--qn</code></td><td><code>3</code></td><td>Target Qn cluster level (0, 1, 2, or 3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element symbol</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element symbol</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>Former–ligand bond cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element; omit if not needed</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>Sub-grid margin around the cluster anchor [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>RMSD threshold for alignment quality warnings [Å]</td></tr>
+<tr><td><code>--ncore</code></td><td>all</td><td>Parallel threads</td></tr>
+<tr><td><code>-o</code></td><td><code>chg_sdf</code></td><td>Output file stem</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p><strong>Note</strong>: <code>--chg-padding</code> controls the sub-grid size, not the atom SDF grid.  Larger values capture more surrounding density but increase memory and runtime.</p>
+</blockquote>
+<hr>
+<h2 id="output-11"><a class="header" href="#output-11">Output</a></h2>
+<p>For a single signature family:</p>
+<pre><code>chg_sdf_Q2.cube
+</code></pre>
+<p>For multiple families (distinct cluster topologies at the same Qn):</p>
+<pre><code>chg_sdf_fam0_Q2.cube
+chg_sdf_fam1_Q2.cube
+...
+</code></pre>
+<p>The cube file contains:</p>
+<ul>
+<li><strong>Atom positions</strong>: the reference cluster atoms in a local Cartesian frame (anchor at origin).</li>
+<li><strong>Density values</strong>: averaged <code>ρ_phys × V_cell</code> in internal units.  To convert to physical electron density [e/Å³], divide by the voxel volume in Å³.</li>
+</ul>
+<p>Console output reports per-family cluster count and alignment RMSD statistics:</p>
+<pre><code>Family "P-O-O-P"  (142 clusters, RMSD mean=0.031 max=0.187 Å, 0 warnings) → chg_sdf_Q2.cube
+ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
+</code></pre>
+<hr>
+<h2 id="algorithm-details"><a class="header" href="#algorithm-details">Algorithm Details</a></h2>
+<h3 id="cluster-identification-1"><a class="header" href="#cluster-identification-1">Cluster identification</a></h3>
+<p>Identical to <code>fe-cube -m sdf</code>: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.</p>
+<h3 id="sub-grid-extraction"><a class="header" href="#sub-grid-extraction">Sub-grid extraction</a></h3>
+<p>For each cluster anchor position <code>c</code> (Cartesian, Å):</p>
+<pre><code>sub[ix, iy, iz] = ρ_charge( c + Δr )
+</code></pre>
+<p>where <code>Δr = (ix − half_n, iy − half_n, iz − half_n) × δ_voxel</code> and <code>ρ_charge</code> is evaluated via trilinear interpolation with PBC folding on the original charge-density grid.  The sub-grid has shape <code>n × n × n</code> with <code>n = 2 × ⌈padding / δ_voxel⌉ + 1</code>.</p>
+<h3 id="grid-rotation"><a class="header" href="#grid-rotation">Grid rotation</a></h3>
+<p>For each subsequent cluster the Kabsch rotation matrix <code>R</code> is computed from the atom positions (same as the atom SDF).  The sub-grid is rotated using “pull” interpolation:</p>
+<pre><code>output[r_out] = input[ R⁻¹ · (r_out − centre) + centre ]
+</code></pre>
+<p><code>R⁻¹ = Rᵀ</code> for a proper rotation.  Points outside the sub-grid boundary return 0.</p>
+<h3 id="accumulation"><a class="header" href="#accumulation">Accumulation</a></h3>
+<pre><code>ρ_avg = (1 / N) Σᵢ ρᵢ_rotated
+</code></pre>
+<hr>
+<h2 id="related-commands"><a class="header" href="#related-commands">Related Commands</a></h2>
+<ul>
+<li><a href="#cluster-sdf-spatial-distribution-function"><code>fe-cube -m sdf</code></a> — atom-type SDF (no charge density required)</li>
+<li><a href="#fe-bader"><code>fe-bader</code></a> — Bader charge decomposition from CHGCAR / cube files</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="glass-network-analysis-fe-network"><a class="header" href="#glass-network-analysis-fe-network">Glass Network Analysis (<code>fe-network</code>)</a></h1>
 <p><code>fe-network</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，统计以下四类量并在全轨迹上累加归一化：</p>
 <div class="table-wrapper">
@@ -1413,6 +1527,284 @@ Zn,M,10,0.040000
 </div>
 <p>截断值应参照 g(r) 第一峰谷位置（<code>fe-traj -m gr</code>）确定。</p>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="job-builders"><a class="header" href="#job-builders">Job Builders</a></h1>
+<p><code>fe-job</code> generates ready-to-run input files for quantum-chemistry / DFT codes from any structure <code>ferro</code> can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).</p>
+<pre><code class="language-bash">fe-job                                 # overview of supported software
+fe-job -s cp2k                         # CP2K-specific help
+fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Target</th><th><code>-s</code> value</th><th>Output</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>Gaussian 16/09</td><td><code>gaussian</code></td><td><code>.gjf</code></td><td>molecular DFT, method + basis</td></tr>
+<tr><td>CP2K (Quickstep)</td><td><code>cp2k</code></td><td><code>.inp</code></td><td>periodic DFT/MD; GPW; precise basis DB</td></tr>
+<tr><td>Quantum ESPRESSO</td><td><code>qe</code></td><td><code>.in</code></td><td>plane-wave <code>pw.x</code>; scf/relax/md/bands</td></tr>
+</tbody>
+</table>
+</div>
+<p>All three share charge/spin handling (see <a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>).</p>
+<hr>
+<h2 id="gaussian"><a class="header" href="#gaussian">Gaussian</a></h2>
+<pre><code class="language-bash">fe-job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+fe-job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
+</code></pre>
+<p><code>-m</code> method and <code>-b</code> basis set are written verbatim into the route section.</p>
+<h2 id="cp2k"><a class="header" href="#cp2k">CP2K</a></h2>
+<p>A full GPW/Quickstep input: <code>&amp;GLOBAL</code>, <code>&amp;FORCE_EVAL</code> (<code>&amp;SUBSYS</code>, <code>&amp;DFT</code>), and a task-specific <code>&amp;MOTION</code>/<code>&amp;VIBRATIONAL_ANALYSIS</code> block.</p>
+<pre><code class="language-bash"># Geometry optimisation, PBE-D3(BJ)
+fe-job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+
+# AIMD, 1500 K, CSVR thermostat
+fe-job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
+
+# Hybrid PBE0 with OT, all-electron pob basis
+fe-job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
+</code></pre>
+<p>Tasks: <code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code>.
+Functionals: PBE/BLYP/revPBE/PBEsol (GGA), PBE0/B3LYP/HSE06 (hybrid, auto <code>&amp;HF</code> block), SCAN/r²SCAN (meta-GGA via LIBXC).</p>
+<h3 id="precise-basis--pseudopotential-matching"><a class="header" href="#precise-basis--pseudopotential-matching">Precise basis &amp; pseudopotential matching</a></h3>
+<p>CP2K basis-set and pseudopotential names are <strong>element- and valence-specific</strong> (e.g. <code>DZVP-MOLOPT-SR-GTH-q16</code> for Fe vs <code>-q6</code> for O).  <code>ferro</code> ships a database of <strong>2829 entries</strong> parsed from the official CP2K files (<code>BASIS_MOLOPT</code>, <code>BASIS_MOLOPT_UCL</code>, <code>BASIS_MOLOPT_UZH</code>, <code>BASIS_pob</code>, <code>POTENTIAL</code>, <code>POTENTIAL_UZH</code>), covering:</p>
+<ul>
+<li><strong>PBE / GGA</strong> MOLOPT basis sets, all elements, all levels</li>
+<li><strong>SCAN</strong> MOLOPT basis sets</li>
+<li><strong>All-electron</strong> <code>pob</code> basis sets (<code>pob-dzvp</code>, <code>pob-tzvp</code>)</li>
+</ul>
+<p>For each <code>&amp;KIND</code> the builder looks up the exact basis name and a pseudopotential whose valence count <code>q</code> matches, preferring canonical names (<code>GTH-PBE</code> over <code>GTH-NLCC-PBE</code>).  Unknown/exotic elements fall back to a heuristic <code>q</code>-guess.  <code>--cp2k-basis</code> selects the family; the per-element exact name is resolved automatically.</p>
+<h2 id="quantum-espresso"><a class="header" href="#quantum-espresso">Quantum ESPRESSO</a></h2>
+<p>A complete <code>pw.x</code> input with <code>ibrav = 0</code>: <code>&amp;CONTROL</code>, <code>&amp;SYSTEM</code>, <code>&amp;ELECTRONS</code>, plus <code>&amp;IONS</code>/<code>&amp;CELL</code> for relaxation/MD, then <code>ATOMIC_SPECIES</code>, <code>CELL_PARAMETERS angstrom</code>, <code>ATOMIC_POSITIONS angstrom</code>, <code>K_POINTS</code>.</p>
+<pre><code class="language-bash"># SCF, Gamma point
+fe-job -i crystal.cif -s qe
+
+# Metal: Methfessel-Paxton smearing + k-mesh
+fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+
+# SCAN relaxation
+fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+</code></pre>
+<p>Tasks: <code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code>.
+Functionals map to <code>input_dft</code> (PBE uses the pseudopotential’s own functional).
+Spin reuses the same <a href="#unpaired-electron--spin-multiplicity-estimation"><code>guess_spin</code></a> estimator → <code>nspin</code> / <code>tot_magnetization</code>.
+Pseudopotentials are referenced as <code>&lt;Element&gt;.UPF</code> in <code>--pseudo-dir</code> (UPF files are user-supplied; the CP2K GTH database does not apply to QE).</p>
+<hr>
+<h2 id="charge--spin-all-targets"><a class="header" href="#charge--spin-all-targets">Charge &amp; spin (all targets)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--charge INT</code></td><td>Override total system charge (applied before spin estimation)</td></tr>
+<tr><td><code>--multiplicity INT</code></td><td>Force 2S+1 — highest priority, disables auto-spin</td></tr>
+<tr><td><code>--auto-spin</code></td><td>Estimate multiplicity from structure (<a href="#unpaired-electron--spin-multiplicity-estimation">details</a>)</td></tr>
+</tbody>
+</table>
+</div>
+<p>See the <a href="#fe-job">CLI Reference</a> for the complete flag tables.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="unpaired-electron--spin-multiplicity-estimation"><a class="header" href="#unpaired-electron--spin-multiplicity-estimation">Unpaired-Electron / Spin-Multiplicity Estimation</a></h1>
+<p>When generating a QC input file you must specify the system’s <strong>spin multiplicity</strong> (2S+1).  Guessing wrong produces a calculation that either fails to converge or converges to the wrong electronic state.  <code>ferro</code> can estimate the multiplicity directly from the structure via <code>ferro_core::guess_spin</code>, exposed on every job builder through the <code>--auto-spin</code> flag.</p>
+<p>The estimator uses three strategies in decreasing order of reliability and falls back automatically:</p>
+<ol>
+<li><strong>Magnetic-moment sum</strong> — most reliable</li>
+<li><strong>Oxidation state + Hund’s rule</strong> — for ionic solids</li>
+<li><strong>Electron-count parity</strong> — universal lower bound</li>
+</ol>
+<p>The result is always reconciled against the total electron count; an inconsistency triggers a warning and a fall back to the parity bound.</p>
+<hr>
+<h2 id="strategy-1--magnetic-moment-sum"><a class="header" href="#strategy-1--magnetic-moment-sum">Strategy 1 — Magnetic-moment sum</a></h2>
+<p>If any atom carries a <code>magmom</code> (read from a QE input, extxyz, or VASP OUTCAR), the number of unpaired electrons is</p>
+<p>\[ n_\text{unpaired} = \operatorname{round}!\left( \left| \sum_i m_i \right| \right), \qquad 2S+1 = n_\text{unpaired} + 1 \]</p>
+<p>This reflects an actual (DFT- or user-supplied) spin state and is preferred whenever magmom data is present.</p>
+<h2 id="strategy-2--oxidation-state--hunds-rule"><a class="header" href="#strategy-2--oxidation-state--hunds-rule">Strategy 2 — Oxidation state + Hund’s rule</a></h2>
+<p>For ionic solids with no magmom data, <code>assign_oxidation_states</code> assigns formal oxidation states by electronegativity rules and charge balance:</p>
+<ol>
+<li>The most electronegative element that has a negative common oxidation state is the <strong>anion</strong>; it takes its most-negative common state (O → −2, F → −1, S → −2, …).</li>
+<li>Remaining elements are <strong>cations</strong>.  The combination of their common positive oxidation states that satisfies overall charge balance is selected (highest-oxidation solution preferred when ambiguous).</li>
+</ol>
+<p>Each ion’s unpaired count is then:</p>
+<ul>
+<li><strong>Transition metals</strong> — d-electron count \( n_d = \text{group} - \text{oxidation state} \); high-spin filling of 5 d-orbitals (Hund’s rule):
+\[ n_\text{unpaired} = \begin{cases} n_d &amp; n_d \le 5 \\ 10 - n_d &amp; n_d &gt; 5 \end{cases} \]</li>
+<li><strong>Main group</strong> — valence electrons after ionization filled into the s/p shell; closed-shell ions give 0.</li>
+</ul>
+<p>Contributions are summed over all sites (ferromagnetic assumption → upper bound).</p>
+<h2 id="strategy-3--electron-count-parity"><a class="header" href="#strategy-3--electron-count-parity">Strategy 3 — Electron-count parity</a></h2>
+<p>With no usable structural information, only a bound is given from the total electron count \( N_e = \sum_i Z_i - q \):</p>
+<ul>
+<li>\( N_e \) odd → at least one unpaired electron (doublet, 2S+1 = 2)</li>
+<li>\( N_e \) even → singlet assumed (2S+1 = 1)</li>
+</ul>
+<p>This is always applied as a final sanity check: if the multiplicity from strategy 1 or 2 has the wrong parity relative to \( N_e \), a warning is emitted and the parity bound is used instead.</p>
+<hr>
+<h2 id="worked-examples"><a class="header" href="#worked-examples">Worked examples</a></h2>
+<h3 id="znp₂o₆--diamagnetic"><a class="header" href="#znp₂o₆--diamagnetic">ZnP₂O₆ — diamagnetic</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Ion</th><th>Configuration</th><th>Unpaired</th></tr>
+</thead>
+<tbody>
+<tr><td>Zn²⁺</td><td>group 12, \(n_d = 12-2 = 10\) → d¹⁰</td><td>0</td></tr>
+<tr><td>P⁵⁺</td><td>main group, 5 − 5 = 0 valence e⁻</td><td>0</td></tr>
+<tr><td>O²⁻</td><td>6 + 2 = 8 → closed octet</td><td>0</td></tr>
+</tbody>
+</table>
+</div>
+<p>Oxidation states resolve uniquely (Zn fixed at +2 ⇒ P = +5).  Total = <strong>0 unpaired → multiplicity 1</strong>.</p>
+<h3 id="mns--high-spin-d⁵"><a class="header" href="#mns--high-spin-d⁵">MnS — high-spin d⁵</a></h3>
+<p>S (electronegativity 2.58) is the anion at −2 ⇒ Mn = +2.
+Mn²⁺: group 7, \(n_d = 7 - 2 = 5\) → d⁵ high-spin → <strong>5 unpaired → multiplicity 6</strong>.</p>
+<h3 id="fe₂o₃"><a class="header" href="#fe₂o₃">Fe₂O₃</a></h3>
+<p>O₃ = −6 ⇒ 2 Fe = +6 ⇒ Fe = +3.  Fe³⁺: \(n_d = 8 - 3 = 5\) → 5 unpaired each → <strong>10 total → multiplicity 11</strong>.</p>
+<hr>
+<h2 id="usage-12"><a class="header" href="#usage-12">Usage</a></h2>
+<pre><code class="language-bash"># Auto-guess for a transition-metal oxide (CP2K)
+fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear
+
+# Auto-guess for QE
+fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
+
+# Manual override (highest priority — disables auto-spin)
+fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
+</code></pre>
+<p>Priority: explicit <code>--multiplicity</code> &gt; <code>--auto-spin</code> (or builder default) &gt; value from the input file.  In the CP2K and QE builders <code>auto_spin</code> is on by default; passing <code>--multiplicity</code> disables it so the manual value is respected.</p>
+<hr>
+<h2 id="limitations"><a class="header" href="#limitations">Limitations</a></h2>
+<p>These are inherent to formal-charge / parity methods and are reported as warnings:</p>
+<ul>
+<li><strong>Transition metals are always estimated high-spin.</strong>  Low-spin complexes (strong-field ligands) and the geometry-dependent crossover are not detected — verify with DFT.</li>
+<li><strong>Multi-centre magnetic coupling</strong> (ferro- vs antiferromagnetic) cannot be inferred from structure; the sum is an upper bound.</li>
+<li><strong>Purely covalent molecules</strong> fall back to the parity bound.  O₂, for example, is reported as a singlet — its triplet ground state arises from π* orbital degeneracy, which requires molecular-orbital theory.</li>
+<li><strong>Lanthanide f-electrons</strong> are not counted.</li>
+<li><strong>Covalent transition-metal complexes</strong> (organometallics) do not satisfy the ionic assumption.</li>
+</ul>
+<p>The estimate is an <em>initial guess</em>, not a substitute for an electronic-structure calculation.</p>
+<hr>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="#job-builders">Job Builders</a> — Gaussian / CP2K / QE input generation</li>
+<li><a href="#fe-job">CLI Reference: <code>fe-job</code></a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="python-bindings-1"><a class="header" href="#python-bindings-1">Python Bindings</a></h1>
+<p><code>ferro</code> ships first-class Python bindings (PyO3) covering the core workflow:
+<strong>read → transform → analyze</strong>.  The pure-Rust crates have zero Python
+awareness; the bindings live in the separate <code>ferro-python</code> crate, which is its
+own Cargo workspace and is built with <a href="https://www.maturin.rs/">maturin</a> rather
+than <code>cargo build</code>.</p>
+<h2 id="install"><a class="header" href="#install">Install</a></h2>
+<pre><code class="language-bash">pip install maturin
+cd ferro-python
+maturin develop                 # build + install into the active venv/conda env
+# or, without an active environment:
+maturin build --release --interpreter "$(which python)"
+pip install target/wheels/ferro-*.whl
+</code></pre>
+<blockquote>
+<p><code>cargo build</code> from the workspace root does <strong>not</strong> build this crate (and a
+standalone <code>cargo build</code> fails at the macOS link step on undefined Python
+symbols — that is expected; maturin supplies the correct link flags).</p>
+</blockquote>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
+<pre><code class="language-python">import ferro
+
+t = ferro.read("traj.lammpstrj", metal_units=True)   # -&gt; Trajectory
+print(len(t), t.n_atoms(), t.elements())
+
+sc = ferro.supercell(t, 2, 2, 1)
+ferro.write(sc, "POSCAR")
+
+g = ferro.gr(t, r_max=10.0, dr=0.02)        # dict[str, list[float]]
+d = ferro.msd(t, dt=2.0, elements=["Li"])
+</code></pre>
+<h2 id="trajectory-1"><a class="header" href="#trajectory-1"><code>Trajectory</code></a></h2>
+<p>Returned by <code>ferro.read</code>; wraps the Rust <code>Trajectory</code> (single-frame files use
+this type too).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Method</th><th>Returns</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>n_frames()</code></td><td><code>int</code></td><td>Number of frames</td></tr>
+<tr><td><code>n_atoms()</code></td><td><code>int | None</code></td><td>Atom count (None if empty)</td></tr>
+<tr><td><code>elements()</code></td><td><code>list[str]</code></td><td>First-frame elements, first-appearance order</td></tr>
+<tr><td><code>positions(frame)</code></td><td><code>list[(float,float,float)]</code></td><td>Cartesian coords [Å]</td></tr>
+<tr><td><code>symbols(frame)</code></td><td><code>list[str]</code></td><td>Element symbols (matches <code>positions</code>)</td></tr>
+<tr><td><code>cell(frame)</code></td><td><code>list[list[float]] | None</code></td><td>3×3 cell rows [Å]; None if non-periodic</td></tr>
+<tr><td><code>charge(frame)</code></td><td><code>int</code></td><td>Total charge</td></tr>
+<tr><td><code>multiplicity(frame)</code></td><td><code>int</code></td><td>Spin multiplicity 2S+1</td></tr>
+<tr><td><code>tail(n)</code></td><td><code>Trajectory</code></td><td>New trajectory with the last <code>n</code> frames</td></tr>
+<tr><td><code>len(t)</code></td><td><code>int</code></td><td>= <code>n_frames()</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Frame indices are 0-based; out-of-range raises <code>IndexError</code>.</p>
+<h2 id="io"><a class="header" href="#io">I/O</a></h2>
+<h3 id="readpath-metal_unitsfalse---trajectory"><a class="header" href="#readpath-metal_unitsfalse---trajectory"><code>read(path, metal_units=False) -&gt; Trajectory</code></a></h3>
+<p>Format auto-detected from the file name / extension:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Extension / name</th><th>Format</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.xyz</code> / <code>.extxyz</code></td><td>XYZ / extended XYZ</td></tr>
+<tr><td><code>.pdb</code> / <code>.cif</code></td><td>PDB / CIF</td></tr>
+<tr><td><code>POSCAR*</code> / <code>CONTCAR*</code></td><td>VASP</td></tr>
+<tr><td><code>.in</code> / <code>.qe</code></td><td>Quantum ESPRESSO input</td></tr>
+<tr><td><code>.inp</code> / <code>.restart</code></td><td>CP2K input / restart</td></tr>
+<tr><td><code>.lammpstrj</code> / <code>.dump</code> / <code>.lammps</code></td><td>LAMMPS dump (<code>metal_units</code> switches real↔metal)</td></tr>
+<tr><td><code>.data</code> / <code>.lmp</code></td><td>LAMMPS data</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="writetraj-path-metal_unitsfalse"><a class="header" href="#writetraj-path-metal_unitsfalse"><code>write(traj, path, metal_units=False)</code></a></h3>
+<p>Writes by extension: <code>xyz</code>, <code>extxyz</code>, <code>pdb</code>, <code>cif</code>, <code>POSCAR</code>, <code>in</code>/<code>qe</code>,
+<code>data</code>/<code>lmp</code>, <code>lammpstrj</code>/<code>dump</code>.</p>
+<h2 id="structure-operations"><a class="header" href="#structure-operations">Structure operations</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Function</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>supercell(traj, nx, ny, nz)</code></td><td>Per-frame supercell → new <code>Trajectory</code></td></tr>
+<tr><td><code>add_vacuum_layer(traj, axis, thickness)</code></td><td>Add vacuum along <code>"x"</code>/<code>"y"</code>/<code>"z"</code></td></tr>
+<tr><td><code>merge(a, b, axis, gap)</code></td><td>Merge first frames of two trajectories</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="analysis"><a class="header" href="#analysis">Analysis</a></h2>
+<p>Analysis functions return <code>dict[str, list[float]]</code> (PyO3 converts the Rust
+<code>HashMap&lt;String, Vec&lt;f64&gt;&gt;</code> automatically — no NumPy dependency).</p>
+<h3 id="grtraj-r_maxnone-dr001-r_cut23-r_min0005"><a class="header" href="#grtraj-r_maxnone-dr001-r_cut23-r_min0005"><code>gr(traj, r_max=None, dr=0.01, r_cut=2.3, r_min=0.005)</code></a></h3>
+<p>Radial distribution function and coordination number.  <code>r_max=None</code>
+auto-selects half the shortest cell vector of the first frame.</p>
+<p>Returned keys:</p>
+<ul>
+<li><code>"r"</code> — bin-centre radii [Å]</li>
+<li><code>"gr:&lt;El1-El2&gt;"</code>, <code>"gr:total"</code> — partial / total g(r)</li>
+<li><code>"cn:&lt;center-neighbor&gt;"</code> — directed cumulative CN(r)</li>
+</ul>
+<pre><code class="language-python">g = ferro.gr(t, r_max=8.0, dr=0.05)
+import matplotlib.pyplot as plt
+plt.plot(g["r"], g["gr:total"])
+</code></pre>
+<h3 id="msdtraj-dt10-shift1-taunone-elementsnone"><a class="header" href="#msdtraj-dt10-shift1-taunone-elementsnone"><code>msd(traj, dt=1.0, shift=1, tau=None, elements=None)</code></a></h3>
+<p>Mean squared displacement (time-origin averaged, NPT-safe).</p>
+<p>Returned keys: <code>"time"</code> [fs], <code>"msd"</code> (total), <code>"msd_a"</code>, <code>"msd_b"</code>, <code>"msd_c"</code>
+(crystal axes for periodic systems, x/y/z otherwise).</p>
+<pre><code class="language-python">d = ferro.msd(t, dt=2.0, elements=["Li"])
+</code></pre>
+<h2 id="errors"><a class="header" href="#errors">Errors</a></h2>
+<p>Rust errors (I/O failures, missing cells, empty trajectories) surface as Python
+exceptions (<code>RuntimeError</code> / <code>IndexError</code> / <code>ValueError</code>) with the underlying
+message preserved.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cli-reference"><a class="header" href="#cli-reference">CLI Reference</a></h1>
 <p>ferro provides six command-line binaries.  All trajectory binaries share common flags for frame selection and parallelism.  Run any binary without <code>-i</code> to print mode-specific help.</p>
 <h2 id="common-flags"><a class="header" href="#common-flags">Common Flags</a></h2>
@@ -1445,22 +1837,118 @@ fe-info -i traj.dump --last-n 1
 </code></pre>
 <hr>
 <h2 id="fe-job"><a class="header" href="#fe-job"><code>fe-job</code></a></h2>
-<p>Generate QC software input files.</p>
-<pre><code class="language-bash">fe-job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-fe-job -i input.xyz -s gromacs -o topology.top
+<p>Generate QC software input files for <strong>Gaussian</strong>, <strong>CP2K</strong>, or <strong>Quantum ESPRESSO</strong>.  Run without <code>-s</code> to see an overview; run with <code>-s &lt;software&gt;</code> but without <code>-i</code> to see software-specific help.  See <a href="#job-builders">Job Builders</a> for a guided overview.</p>
+<pre><code class="language-bash">fe-job                                    # overview
+fe-job -s cp2k                            # CP2K-specific help
+fe-job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+fe-job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
+</code></pre>
+<h3 id="charge--spin-shared-by-all-targets"><a class="header" href="#charge--spin-shared-by-all-targets">Charge / Spin (shared by all targets)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--charge</code></td><td>(from file)</td><td>Override total system charge (applied before spin estimation)</td></tr>
+<tr><td><code>--multiplicity</code></td><td>(from file)</td><td>Force spin multiplicity 2S+1; highest priority, disables auto-spin</td></tr>
+<tr><td><code>--auto-spin</code></td><td>off (on by default for cp2k/qe)</td><td>Estimate multiplicity from structure</td></tr>
+</tbody>
+</table>
+</div>
+<p>The estimator (magmom → oxidation state + Hund → electron parity) is documented in <a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>.</p>
+<h3 id="gaussian-1"><a class="header" href="#gaussian-1">Gaussian</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-m &lt;method&gt;</code></td><td>(required)</td><td>DFT method, e.g. <code>B3LYP</code>, <code>PBE0</code></td></tr>
+<tr><td><code>-b &lt;basis&gt;</code></td><td>(required)</td><td>Basis set, e.g. <code>6-31G*</code>, <code>def2-TZVP</code></td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>job.gjf</code></td><td>Output file</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="cp2k-1"><a class="header" href="#cp2k-1">CP2K</a></h3>
+<h4 id="task--electronic-structure"><a class="header" href="#task--electronic-structure">Task &amp; Electronic Structure</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--task</code></td><td><code>energy</code></td><td><code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code></td></tr>
+<tr><td><code>--functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>blyp</code>, <code>pbe0</code>, <code>b3lyp</code>, <code>revpbe</code>, <code>pbesol</code>, <code>scan</code>, <code>r2scan</code>, <code>hse06</code></td></tr>
+<tr><td><code>--cp2k-basis</code></td><td><code>dzvp-molopt-sr</code></td><td><code>dzvp-molopt-sr</code>, <code>tzvp-molopt</code>, <code>tzv2p-molopt</code>, <code>dzvp-gth</code>, <code>tzvp-gth</code>, <code>pob-dzvp</code>, <code>pob-tzvp</code> (all-electron), or any custom string</td></tr>
+<tr><td><code>--dispersion</code></td><td><code>none</code></td><td><code>none</code>, <code>d3</code>, <code>d3bj</code></td></tr>
+<tr><td><code>--scf</code></td><td><code>diag</code></td><td><code>diag</code> (metals/large), <code>ot</code> (insulators)</td></tr>
+<tr><td><code>--pbc</code></td><td>(auto)</td><td><code>xyz</code>, <code>z</code>, <code>none</code>; auto-detected from cell if omitted</td></tr>
+<tr><td><code>--kpoints</code></td><td>(none)</td><td>Three integers, e.g. <code>--kpoints 2 2 2</code></td></tr>
+<tr><td><code>--cutoff</code></td><td><code>400</code></td><td>Plane-wave cutoff [Ry]</td></tr>
+<tr><td><code>--rel-cutoff</code></td><td><code>50</code></td><td>Relative cutoff [Ry]</td></tr>
+<tr><td><code>--smear</code></td><td>off</td><td>Enable Fermi–Dirac smearing</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="output-12"><a class="header" href="#output-12">Output</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Candidates</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--atom-charge</code></td><td><code>none</code></td><td><code>none</code>, <code>mulliken</code>, <code>hirshfeld</code>, <code>hirshfeld-i</code></td></tr>
+<tr><td><code>--cube</code></td><td><code>none</code></td><td><code>none</code>, <code>density</code>, <code>elf</code>, <code>hartree</code></td></tr>
+<tr><td><code>--molden</code></td><td>off</td><td>Export Molden orbital file</td></tr>
+<tr><td><code>--project</code></td><td><code>ferro</code></td><td>CP2K project name</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="md-only-with---task-md"><a class="header" href="#md-only-with---task-md">MD (only with <code>--task md</code>)</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>Number of MD steps</td></tr>
+<tr><td><code>--md-timestep</code></td><td><code>1.0</code></td><td>Timestep [fs]</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>Temperature [K]</td></tr>
+<tr><td><code>--thermostat</code></td><td><code>csvr</code></td><td><code>csvr</code>, <code>nose</code>, <code>langevin</code>, <code>none</code></td></tr>
+<tr><td><code>--traj-freq</code></td><td><code>100</code></td><td>Trajectory write frequency [steps]</td></tr>
+<tr><td><code>--barostat</code></td><td>off</td><td>Enable NPT barostat</td></tr>
+</tbody>
+</table>
+</div>
+<blockquote>
+<p>Basis-set and pseudopotential names are resolved <strong>per element</strong> from a 2829-entry database (PBE / SCAN / all-electron, with matching valence <code>q</code>).  <code>--cp2k-basis</code> selects the family; the exact element-specific name is filled in automatically.  See <a href="#precise-basis--pseudopotential-matching">Job Builders</a>.</p>
+</blockquote>
+<h3 id="quantum-espresso-1"><a class="header" href="#quantum-espresso-1">Quantum ESPRESSO</a></h3>
+<pre><code class="language-bash">fe-job -i crystal.cif -s qe
+fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 </code></pre>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Flag</th><th>Description</th></tr>
+<tr><th>Flag</th><th>Default</th><th>Candidates / Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-s &lt;software&gt;</code></td><td>Target software: <code>gaussian</code>, <code>gromacs</code></td></tr>
-<tr><td><code>-m &lt;method&gt;</code></td><td>DFT method, e.g. <code>B3LYP</code>, <code>PBE</code></td></tr>
-<tr><td><code>-b &lt;basis&gt;</code></td><td>Basis set, e.g. <code>6-31G*</code>, <code>def2-TZVP</code></td></tr>
+<tr><td><code>--qe-task</code></td><td><code>scf</code></td><td><code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code></td></tr>
+<tr><td><code>--qe-functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>pbesol</code>, <code>revpbe</code>, <code>blyp</code>, <code>scan</code>, <code>r2scan</code>, <code>pbe0</code>, <code>hse06</code></td></tr>
+<tr><td><code>--ecutwfc</code></td><td><code>50</code></td><td>Plane-wave cutoff [Ry]</td></tr>
+<tr><td><code>--smearing</code></td><td><code>none</code></td><td><code>none</code>, <code>gaussian</code>, <code>mp</code>, <code>mv</code>, <code>fd</code> (mp/mv for metals)</td></tr>
+<tr><td><code>--kpoints</code></td><td>(Gamma)</td><td>Three integers → Monkhorst-Pack mesh</td></tr>
+<tr><td><code>--pseudo-dir</code></td><td><code>./pseudo</code></td><td>Pseudopotential directory (<code>&lt;El&gt;.UPF</code>)</td></tr>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>MD steps (<code>--qe-task md</code>/<code>vc-md</code>)</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>MD target temperature [K]</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>pw.in</code></td><td>Output file</td></tr>
 </tbody>
 </table>
 </div>
+<p><code>ibrav = 0</code>; the cell is written as <code>CELL_PARAMETERS angstrom</code> from the structure.  Spin uses the shared estimator → <code>nspin</code> / <code>tot_magnetization</code>.</p>
 <hr>
 <h2 id="fe-traj"><a class="header" href="#fe-traj"><code>fe-traj</code></a></h2>
 <p>Structural analysis of MD trajectories.</p>
@@ -1663,6 +2151,66 @@ fe-job -i input.xyz -s gromacs -o topology.top
 </table>
 </div>
 <p>Output: <code>&lt;stem&gt;_&lt;label&gt;.cube</code> per atom type (multiple families: <code>&lt;stem&gt;_fam&lt;N&gt;_&lt;label&gt;.cube</code>).</p>
+<h4 id="chg-sdf--averaged-charge-density-sdf"><a class="header" href="#chg-sdf--averaged-charge-density-sdf"><code>chg-sdf</code> — Averaged Charge-Density SDF</a></h4>
+<p>Computes the orientationally averaged electron density around Qn clusters from a set of QE <code>pp.x</code> charge-density cube files.  Does <strong>not</strong> require a trajectory <code>-i</code>; instead takes <code>--cubes</code>.</p>
+<pre><code class="language-bash">fe-cube -m chg_sdf \
+    --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
+    -o chg_sdf
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>QE pp.x cube files, one per MD frame</td></tr>
+<tr><td><code>--qn</code></td><td><code>3</code></td><td>Target Qn level (0–3)</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>Former–ligand cutoff [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>Modifier–ligand cutoff [Å]</td></tr>
+<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>Sub-grid boundary margin [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>Alignment RMSD warning threshold [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>Output: <code>&lt;stem&gt;_Q&lt;n&gt;.cube</code> (one file per signature family).</p>
+<p>See <a href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF</a> for algorithm details.</p>
+<hr>
+<h2 id="fe-bader"><a class="header" href="#fe-bader"><code>fe-bader</code></a></h2>
+<p>Bader charge decomposition from DFT charge-density files.  Supports VASP CHGCAR and Gaussian/QE cube files.</p>
+<pre><code class="language-bash">fe-bader -i CHGCAR                      # VASP CHGCAR
+fe-bader -i charge.cube                 # Gaussian/QE cube file
+fe-bader -i CHGCAR -o bader            # custom output stem
+fe-bader -i CHGCAR --method weight     # Yu-Trinkle weight method
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>(required)</td><td>Input file (<code>.cube</code> → cube reader; others → CHGCAR reader)</td></tr>
+<tr><td><code>-o &lt;stem&gt;</code></td><td><code>bader</code></td><td>Output file stem</td></tr>
+<tr><td><code>--method</code></td><td><code>ongrid</code></td><td>Bader method: <code>ongrid</code>, <code>neargrid</code>, <code>offgrid</code>, <code>weight</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="output-files"><a class="header" href="#output-files">Output Files</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Content</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;stem&gt;_ACF.dat</code></td><td>Atomic Charges File — per-atom Bader charge, volume, min distance to surface</td></tr>
+<tr><td><code>&lt;stem&gt;_BCF.dat</code></td><td>Bader Charge File — per-Bader-volume charge, volume, coordinates</td></tr>
+<tr><td><code>&lt;stem&gt;_AVF.dat</code></td><td>Atomic Volume File — atom → Bader volume index mapping</td></tr>
+</tbody>
+</table>
+</div>
 <hr>
 <h2 id="fe-network"><a class="header" href="#fe-network"><code>fe-network</code></a></h2>
 <p>Glass network analysis: CN distribution, ligand classification (FO/NBO/BO/OBO), Qn speciation, modifier cation roles.</p>

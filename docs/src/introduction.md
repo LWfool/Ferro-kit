@@ -5,7 +5,10 @@
 - **Structural analysis** — g(r), S(q), bond angle distributions, Qn speciation
 - **Dynamical analysis** — MSD, VACF, van Hove correlation, rotational correlation
 - **Spatial maps** — 3-D density/velocity/force grids, jump-distance maps, hard-sphere occupancy, cluster SDF
-- **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube
+- **Charge analysis** — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF
+- **Input generation** — Gaussian, CP2K, and Quantum ESPRESSO input files with structure-based spin estimation and a precise CP2K basis/pseudopotential database
+- **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube
+- **Python bindings** — `import ferro`: read/write, supercell/vacuum/merge, g(r) & MSD ([details](python.md))
 
 ## Design Goals
 
@@ -23,8 +26,8 @@ ferro-cli / ferro-python        ← only layer combining multiple crates
     ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
     ├── ferro-io        → core    ← format readers / writers
     ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── ferro-workflow  → core    ← QC software input builders
+    ├── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
+    └── ferro-workflow  → core    ← QC input builders (Gaussian / CP2K / QE)
 ```
 
 ## Internal Units

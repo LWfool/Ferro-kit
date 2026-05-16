@@ -225,12 +225,16 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
             let fy = parse_cif_float(get(iy)).unwrap_or(0.0);
             let fz = parse_cif_float(get(iz)).unwrap_or(0.0);
             Vector3::new(fx, fy, fz)
-        } else {
-            // Cartesian → fractional
-            let x = parse_cif_float(get(idx_cx.unwrap())).unwrap_or(0.0);
-            let y = parse_cif_float(get(idx_cy.unwrap())).unwrap_or(0.0);
-            let z = parse_cif_float(get(idx_cz.unwrap())).unwrap_or(0.0);
+        } else if let (Some(ix), Some(iy), Some(iz)) = (idx_cx, idx_cy, idx_cz) {
+            // Cartesian → fractional. Column presence is guaranteed by the
+            // ensure! above; checked locally so the invariant is self-contained
+            // and a future edit to ensure! cannot silently introduce a panic.
+            let x = parse_cif_float(get(ix)).unwrap_or(0.0);
+            let y = parse_cif_float(get(iy)).unwrap_or(0.0);
+            let z = parse_cif_float(get(iz)).unwrap_or(0.0);
             cell.cartesian_to_fractional(Vector3::new(x, y, z))?
+        } else {
+            bail!("atom site has neither fractional nor Cartesian coordinate columns");
         };
 
         sites.elements.push(element);

@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     println!("Grid: {} × {} × {} ({} points)", chg.shape[0], chg.shape[1], chg.shape[2], chg.nrho);
     println!("Atoms: {}", frame.n_atoms());
 
-    let result = BaderAnalyzer::new(chg, frame)
+    let result = BaderAnalyzer::new(chg, frame.clone())
         .method(method)
         .refine(args.refine)
         .vacval(args.vacval)
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     let bcf_path = format!("{stem}_BCF.dat");
     let avf_path = format!("{stem}_AVF.dat");
 
-    result.write_acf(&acf_path)?;
+    result.write_acf(&acf_path, &frame)?;
     result.write_bcf(&bcf_path)?;
     result.write_avf(&avf_path)?;
 

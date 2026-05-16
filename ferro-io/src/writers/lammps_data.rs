@@ -18,17 +18,12 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &str) -> Result<()> {
 
     let n = frame.n_atoms();
 
-    // Collect unique elements in first-appearance order → type IDs
-    let mut elem_order: Vec<&str> = Vec::new();
-    for atom in &frame.atoms {
-        if !elem_order.contains(&atom.element.as_str()) {
-            elem_order.push(atom.element.as_str());
-        }
-    }
+    // Unique elements in first-appearance order → type IDs
+    let elem_order = frame.unique_elements();
     let n_types = elem_order.len();
     let elem_to_type: HashMap<&str, usize> = elem_order.iter()
         .enumerate()
-        .map(|(i, e)| (*e, i + 1))
+        .map(|(i, e)| (e.as_str(), i + 1))
         .collect();
 
 

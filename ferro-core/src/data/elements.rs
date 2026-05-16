@@ -142,9 +142,110 @@ pub fn symbol_to_z(symbol: &str) -> u8 {
     255
 }
 
+/// IUPAC 族号 (1–18)。
+///
+/// - s/p 区按标准周期表返回 1, 2, 13–18。
+/// - d 区过渡金属返回 3–12（第 4–6 周期）。
+/// - La 视为第 3 族（f⁰，d 区起始）。
+/// - 镧系 Ce–Lu (Z=58–71) 为 f 区，返回 `None`（自旋判定需单独的 f 电子逻辑）。
+/// - 超出元素表范围 (Z=0 或 >86) 返回 `None`。
+pub fn group_number(z: u8) -> Option<u8> {
+    match z {
+        1 => Some(1),
+        2 => Some(18),
+        // 第 2、3 周期：1,2 然后 13..=18
+        3..=10 => {
+            let p = z - 2;
+            Some(if p <= 2 { p } else { p + 10 })
+        }
+        11..=18 => {
+            let p = z - 10;
+            Some(if p <= 2 { p } else { p + 10 })
+        }
+        // 第 4、5 周期：含 d 区，族号 = 周期内序号
+        19..=36 => Some(z - 18),
+        37..=54 => Some(z - 36),
+        // 第 6 周期
+        55 | 56 => Some(z - 54), // Cs=1, Ba=2
+        57 => Some(3),           // La：视为第 3 族
+        58..=71 => None,         // 镧系 f 区
+        72..=86 => Some(z - 68), // Hf=4 … Hg=12, Tl=13 … Rn=18
+        _ => None,
+    }
+}
+
+/// 中性原子价电子数。
+///
+/// - 主族 (族 1–2, 13–18)：1, 2, 3–8。
+/// - 过渡金属 (族 3–12)：返回族号（(n−1)d + ns 之和），用于 `n_d = 价电子 − 氧化态`。
+/// - 镧系 / 范围外：`None`。
+pub fn valence_electrons(z: u8) -> Option<u8> {
+    let g = group_number(z)?;
+    Some(if g >= 13 { g - 10 } else { g })
+}
+
+/// 是否为 d 区过渡金属（族 3–12 且属第 4–6 周期）。
+pub fn is_transition_metal(z: u8) -> bool {
+    matches!(group_number(z), Some(3..=12)) && z >= 21
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_group_number_main_group() {
+        assert_eq!(group_number(1), Some(1));   // H
+        assert_eq!(group_number(2), Some(18));  // He
+        assert_eq!(group_number(3), Some(1));   // Li
+        assert_eq!(group_number(8), Some(16));  // O
+        assert_eq!(group_number(9), Some(17));  // F
+        assert_eq!(group_number(15), Some(15)); // P
+        assert_eq!(group_number(16), Some(16)); // S
+        assert_eq!(group_number(11), Some(1));  // Na
+    }
+
+    #[test]
+    fn test_group_number_transition() {
+        assert_eq!(group_number(21), Some(3));  // Sc
+        assert_eq!(group_number(25), Some(7));  // Mn
+        assert_eq!(group_number(26), Some(8));  // Fe
+        assert_eq!(group_number(30), Some(12)); // Zn
+        assert_eq!(group_number(42), Some(6));  // Mo
+        assert_eq!(group_number(48), Some(12)); // Cd
+        assert_eq!(group_number(72), Some(4));  // Hf
+        assert_eq!(group_number(80), Some(12)); // Hg
+        assert_eq!(group_number(79), Some(11)); // Au
+    }
+
+    #[test]
+    fn test_group_number_lanthanide_none() {
+        assert_eq!(group_number(57), Some(3)); // La
+        assert_eq!(group_number(58), None);    // Ce (f-block)
+        assert_eq!(group_number(64), None);    // Gd
+        assert_eq!(group_number(71), None);    // Lu
+        assert_eq!(group_number(0), None);
+        assert_eq!(group_number(99), None);
+    }
+
+    #[test]
+    fn test_valence_electrons() {
+        assert_eq!(valence_electrons(8), Some(6));   // O: group 16 → 6
+        assert_eq!(valence_electrons(15), Some(5));  // P: group 15 → 5
+        assert_eq!(valence_electrons(11), Some(1));  // Na
+        assert_eq!(valence_electrons(26), Some(8));  // Fe: d-block → group 8
+        assert_eq!(valence_electrons(30), Some(12)); // Zn → 12
+    }
+
+    #[test]
+    fn test_is_transition_metal() {
+        assert!(is_transition_metal(26));   // Fe
+        assert!(is_transition_metal(25));   // Mn
+        assert!(is_transition_metal(30));   // Zn
+        assert!(!is_transition_metal(15));  // P
+        assert!(!is_transition_metal(20));  // Ca (group 2)
+        assert!(!is_transition_metal(58));  // Ce (f-block)
+    }
 
     #[test]
     fn test_by_symbol() {

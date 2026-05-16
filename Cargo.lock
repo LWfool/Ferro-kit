@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "ferro"
-version = "0.1.4"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -375,19 +375,18 @@ dependencies = [
 
 [[package]]
 name = "ferro-analysis"
-version = "0.1.4"
+version = "0.1.7"
 dependencies = [
  "ferro-core",
  "nalgebra",
  "ndarray",
- "petgraph",
  "rayon",
  "thiserror",
 ]
 
 [[package]]
 name = "ferro-core"
-version = "0.1.4"
+version = "0.1.7"
 dependencies = [
  "nalgebra",
  "serde",
@@ -396,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-io"
-version = "0.1.4"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "ferro-core",
@@ -406,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-structure"
-version = "0.1.4"
+version = "0.1.7"
 dependencies = [
  "ferro-core",
  "nalgebra",
@@ -416,10 +415,11 @@ dependencies = [
 
 [[package]]
 name = "ferro-workflow"
-version = "0.1.4"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "ferro-core",
+ "nalgebra",
  "serde",
 ]
 
@@ -428,12 +428,6 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
-
-[[package]]
-name = "fixedbitset"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
 name = "flate2"
@@ -450,12 +444,6 @@ name = "float-ord"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ce81f49ae8a0482e4c55ea62ebbd7e5a686af544c00b9d090bba3ff9be97b3d"
-
-[[package]]
-name = "foldhash"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "font-kit"
@@ -665,15 +653,6 @@ checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 
 [[package]]
 name = "hashbrown"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
-dependencies = [
- "foldhash",
-]
-
-[[package]]
-name = "hashbrown"
 version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f467dd6dccf739c208452f8014c75c18bb8301b050ad1cfb27153803edb0f51"
@@ -705,7 +684,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.0",
+ "hashbrown",
 ]
 
 [[package]]
@@ -946,18 +925,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4500030c302e4af1d423f36f3b958d1aecb6c04184356ed5a833bf6b60435777"
 dependencies = [
  "rustc_version",
-]
-
-[[package]]
-name = "petgraph"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8701b58ea97060d5e5b155d383a69952a60943f0e6dfe30b04c287beb0b27455"
-dependencies = [
- "fixedbitset",
- "hashbrown 0.15.5",
- "indexmap",
- "serde",
 ]
 
 [[package]]

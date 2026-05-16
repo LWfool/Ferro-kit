@@ -4,6 +4,14 @@ use std::io::{BufWriter, Write};
 use anyhow::{Context, Result};
 
 /// 写 Quantum ESPRESSO pw.x 输入文件（ibrav=0，ATOMIC_POSITIONS angstrom）。
+///
+/// 这是 **格式转换** 用途（`fe-convert`，与 [`crate::readers::qe::read_qe_input`]
+/// 往返）：只写结构骨架 + 占位 `&CONTROL/&SYSTEM/&ELECTRONS`。需要完整计算
+/// 设置（任务/泛函/k 点/自旋等）请用 `ferro_workflow::QeJobBuilder`（`fe-job -s qe`）。
+///
+/// 两者分属 ferro-io / ferro-workflow 中间层，按架构不能互相依赖，故 QE 卡片
+/// 格式（ATOMIC_SPECIES / CELL_PARAMETERS / ATOMIC_POSITIONS）各写一份，
+/// 修改其一须同步另一处。
 pub fn write_qe_input(trajectory: &Trajectory, path: &str) -> Result<()> {
     let frame = trajectory.first().context("trajectory is empty")?;
 
@@ -12,13 +20,8 @@ pub fn write_qe_input(trajectory: &Trajectory, path: &str) -> Result<()> {
 
     let prefix = trajectory.metadata.source.as_deref().unwrap_or("ferro");
 
-    // Collect unique element labels in first-appearance order
-    let mut elem_order: Vec<&str> = Vec::new();
-    for atom in &frame.atoms {
-        if !elem_order.contains(&atom.element.as_str()) {
-            elem_order.push(atom.element.as_str());
-        }
-    }
+    // Unique element labels in first-appearance order
+    let elem_order = frame.unique_elements();
     let ntyp = elem_order.len();
     let nat = frame.n_atoms();
 

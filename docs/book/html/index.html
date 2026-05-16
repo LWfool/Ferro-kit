@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e02a5889.js";
+            window.path_to_searchindex_js = "searchindex-87948516.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-4cd03dbb.js"></script>
+        <script src="toc-3dd42c47.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,7 +182,10 @@
 <li><strong>Structural analysis</strong> — g(r), S(q), bond angle distributions, Qn speciation</li>
 <li><strong>Dynamical analysis</strong> — MSD, VACF, van Hove correlation, rotational correlation</li>
 <li><strong>Spatial maps</strong> — 3-D density/velocity/force grids, jump-distance maps, hard-sphere occupancy, cluster SDF</li>
-<li><strong>I/O</strong> — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube</li>
+<li><strong>Charge analysis</strong> — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF</li>
+<li><strong>Input generation</strong> — Gaussian, CP2K, and Quantum ESPRESSO input files with structure-based spin estimation and a precise CP2K basis/pseudopotential database</li>
+<li><strong>I/O</strong> — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube</li>
+<li><strong>Python bindings</strong> — <code>import ferro</code>: read/write, supercell/vacuum/merge, g(r) &amp; MSD (<a href="python.html">details</a>)</li>
 </ul>
 <h2 id="design-goals"><a class="header" href="#design-goals">Design Goals</a></h2>
 <div class="table-wrapper">
@@ -203,8 +206,8 @@
     ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
     ├── ferro-io        → core    ← format readers / writers
     ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── ferro-workflow  → core    ← QC software input builders
+    ├── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
+    └── ferro-workflow  → core    ← QC input builders (Gaussian / CP2K / QE)
 </code></pre>
 <h2 id="internal-units"><a class="header" href="#internal-units">Internal Units</a></h2>
 <div class="table-wrapper">

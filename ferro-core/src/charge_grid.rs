@@ -43,12 +43,13 @@ impl ChargeGrid {
         let nrho = n1 * n2 * n3;
         assert_eq!(rho.len(), nrho, "rho length {} != N1*N2*N3 = {}", rho.len(), nrho);
 
-        // lat2car: column i = a_i / N_i  (each lattice step in Cartesian)
+        // lat2car: 第 i 列 = a_i / N_i，即 r_cart = lat2car * [i1, i2, i3]
+        // cell.matrix 行向量为 a, b, c；正确构造为 M^T * diag(1/N)，列放晶格矢量
         let m = cell.matrix;
         let lat2car = Matrix3::new(
-            m[(0, 0)] / n1 as f64, m[(0, 1)] / n1 as f64, m[(0, 2)] / n1 as f64,
-            m[(1, 0)] / n2 as f64, m[(1, 1)] / n2 as f64, m[(1, 2)] / n2 as f64,
-            m[(2, 0)] / n3 as f64, m[(2, 1)] / n3 as f64, m[(2, 2)] / n3 as f64,
+            m[(0,0)] / n1 as f64,  m[(1,0)] / n2 as f64,  m[(2,0)] / n3 as f64,
+            m[(0,1)] / n1 as f64,  m[(1,1)] / n2 as f64,  m[(2,1)] / n3 as f64,
+            m[(0,2)] / n1 as f64,  m[(1,2)] / n2 as f64,  m[(2,2)] / n3 as f64,
         );
         let car2lat = lat2car.try_inverse()
             .expect("lat2car is singular — cell matrix or grid dimensions are degenerate");
@@ -182,6 +183,32 @@ mod tests {
         assert!((chg.lat_i_dist_i(0, 0, 0)).abs() < 1e-15);
         // face neighbor → 1/2 = 0.5
         assert!((chg.lat_i_dist_i(1, 0, 0) - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_lat2car_noncubic() {
+        // 六方晶胞：a=b=3Å γ=120°，c=5Å，1×1×1 网格
+        // a = [3,0,0], b = [-1.5, 2.598, 0], c = [0,0,5]
+        // lat2car 第0列应 = a/N1, 第1列 = b/N2, 第2列 = c/N3
+        let cell = Cell::from_lengths_angles(3.0, 3.0, 5.0, 90.0, 90.0, 120.0).unwrap();
+        let shape = [1, 1, 1];
+        let rho = vec![1.0];
+        let chg = ChargeGrid::new(rho, shape, &cell);
+
+        // 格点 [1,0,0] → Cartesian 应沿 a 方向
+        let v = chg.lat2car * nalgebra::Vector3::new(1.0, 0.0, 0.0);
+        let a = nalgebra::Vector3::new(cell.matrix[(0,0)], cell.matrix[(0,1)], cell.matrix[(0,2)]);
+        assert!((v - a).norm() < 1e-10, "lat2car * [1,0,0] 应等于晶格矢量 a, got {v:?}");
+
+        // 格点 [0,1,0] → Cartesian 应沿 b 方向
+        let v = chg.lat2car * nalgebra::Vector3::new(0.0, 1.0, 0.0);
+        let b = nalgebra::Vector3::new(cell.matrix[(1,0)], cell.matrix[(1,1)], cell.matrix[(1,2)]);
+        assert!((v - b).norm() < 1e-10, "lat2car * [0,1,0] 应等于晶格矢量 b, got {v:?}");
+
+        // 格点 [0,0,1] → Cartesian 应沿 c 方向
+        let v = chg.lat2car * nalgebra::Vector3::new(0.0, 0.0, 1.0);
+        let c = nalgebra::Vector3::new(cell.matrix[(2,0)], cell.matrix[(2,1)], cell.matrix[(2,2)]);
+        assert!((v - c).norm() < 1e-10, "lat2car * [0,0,1] 应等于晶格矢量 c, got {v:?}");
     }
 
     #[test]

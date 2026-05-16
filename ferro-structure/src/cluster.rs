@@ -4,7 +4,7 @@
 //! bridging oxygen atoms (oxygen with ≥2 NF neighbors).  Used by `cube_sdf`
 //! and downstream analysis that needs per-cluster statistics.
 
-use ferro_core::{classify_frame, Frame, TypeParams};
+use ferro_core::{classify_frame, connected_components, Frame, TypeParams};
 use std::collections::HashMap;
 
 /// Result of cluster identification for one frame.
@@ -49,11 +49,8 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
         .map(|(i, _)| i)
         .collect();
 
-    // 2. Union-Find
+    // 2. atom_idx → local_idx 映射
     let n = former_indices.len();
-    let mut parent: Vec<usize> = (0..n).collect();
-
-    // 建立 atom_idx → local_idx 映射
     let local: HashMap<usize, usize> = former_indices.iter().enumerate()
         .map(|(li, &ai)| (ai, li))
         .collect();
@@ -65,6 +62,7 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
         elem_map.entry(atom.element.as_str()).or_default().push(idx);
     }
 
+    let mut edges: Vec<(usize, usize)> = Vec::new();
     for (la_idx, label) in labels.iter().enumerate() {
         if !label.starts_with("Ob_") { continue; }
         // 收集该桥氧在截断内的所有形成子邻居
@@ -89,19 +87,14 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
                 }
             }
         }
-        // 合并所有相邻形成子
+        // 该桥氧的相邻形成子两两连通（链式即可）
         for i in 1..nf_locals.len() {
-            union(&mut parent, nf_locals[0], nf_locals[i]);
+            edges.push((nf_locals[0], nf_locals[i]));
         }
     }
 
-    // 4. 压缩根节点，生成连续 cluster ID
-    let mut root_to_id: HashMap<usize, usize> = HashMap::new();
-    let mut next_id = 0usize;
-    let local_cluster: Vec<usize> = (0..n).map(|li| {
-        let r = find(&mut parent, li);
-        *root_to_id.entry(r).or_insert_with(|| { let i = next_id; next_id += 1; i })
-    }).collect();
+    // 4. 连通分量（复用 ferro-core 并查集，分量 ID 按首见根确定）
+    let (local_cluster, next_id) = connected_components(n, &edges);
 
     // 5. 组装结果（per-atom）
     let mut cluster_id: Vec<Option<usize>> = vec![None; frame.atoms.len()];
@@ -110,19 +103,6 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
     }
 
     Some(ClusterResult { cluster_id, n_clusters: next_id })
-}
-
-// ─── Union-Find ───────────────────────────────────────────────────────────────
-
-fn find(parent: &mut Vec<usize>, x: usize) -> usize {
-    if parent[x] != x { parent[x] = find(parent, parent[x]); }
-    parent[x]
-}
-
-fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
-    let ra = find(parent, a);
-    let rb = find(parent, b);
-    if ra != rb { parent[ra] = rb; }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
