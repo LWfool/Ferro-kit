@@ -349,16 +349,21 @@ fn print_msd() {
   Outputs total MSD and per-axis (a/b/c) components.
 
 Parameters:
-  --dt       FLOAT      Timestep between frames [fs]   default: 1.0
-  --shift    INT        Time-origin stride             default: 1
-  --elements Fe,O,...   Track only these elements      default: all
-  --last-n   INT        Use only the last N frames
-  --ncore    INT        Parallel threads
-  -o PATH               Output file                    default: msd.dat
+  --dt        FLOAT      Timestep between frames [fs]   default: 1.0
+  --shift     INT        Time-origin stride             default: 1
+  --elements  Fe,O,...   Track only these elements      default: all
+  --fit-range FMIN,FMAX  Linear-fit window as fractions of the MSD
+                         curve; reports self-diffusion D = slope/6
+                         (Einstein, 3-D) and R²
+  --last-n    INT        Use only the last N frames
+  --ncore     INT        Parallel threads
+  --plot                 Generate PNG and open in viewer
+  -o PATH                Output file                    default: msd.dat
 
 Example:
   fe-traj -m msd -i traj.xyz --dt 2.0
-  fe-traj -m msd -i traj.dump --elements Li --dt 1.0 --last-n 2000"#
+  fe-traj -m msd -i traj.dump --elements Li --dt 1.0 --last-n 2000
+  fe-traj -m msd -i traj.dump --dt 1.0 --fit-range 0.3,0.8 --plot"#
     );
 }
 
