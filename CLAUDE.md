@@ -306,13 +306,14 @@ Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--me
 --dt    FLOAT   timestep [fs]              default 1.0
 --shift INT     time-origin stride         default 1
 --elements El,El,...  filter elements
+--fit-range FMIN,FMAX  linear-fit window (traj. fractions) → self-diffusion D
 
 # angle-specific
 --r-cut-ab FLOAT   A→B cutoff [Å]         default 2.3
 --r-cut-bc FLOAT   B→C cutoff [Å]         default 2.3
 --d-angle  FLOAT   bin width [°]           default 0.1
 
-# plot (gr / sq / angle only)
+# plot (gr / sq / angle / msd)
 --plot   write PNG next to output file and open with system viewer
 ```
 
@@ -320,6 +321,7 @@ Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--me
 - `gr`: left axis g(r) solid lines + right axis CN(r) lighter lines (same colour per pair)
 - `sq`: only `total_xrd` ("XRD") and `total_neutron` ("Neutron") curves shown
 - `angle`: normalised histograms with mean ± std in legend
+- `msd`: total MSD + a/b/c components; with `--fit-range` overlays the linear fit and prints D = slope/6 + R²
 
 ### `fe-cube -m sdf` — Cluster SDF
 

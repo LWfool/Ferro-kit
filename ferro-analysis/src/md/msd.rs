@@ -29,11 +29,14 @@ pub struct MsdParams {
     pub dt: f64,
     /// Elements to include (`None` = all atoms)
     pub elements: Option<Vec<String>>,
+    /// Linear-fit window as fractions of the MSD lag-time axis
+    /// (`(fmin, fmax)`, `0 <= fmin < fmax <= 1`). `None` = no fit.
+    pub fit_range: Option<(f64, f64)>,
 }
 
 impl Default for MsdParams {
     fn default() -> Self {
-        MsdParams { tau: None, shift: 1, dt: 1.0, elements: None }
+        MsdParams { tau: None, shift: 1, dt: 1.0, elements: None, fit_range: None }
     }
 }
 
@@ -63,6 +66,34 @@ pub struct MsdResult {
     pub params: MsdParams,
     /// Elements included (sorted alphabetically)
     pub elements: Vec<String>,
+    /// Linear-fit / self-diffusion result (`None` unless `fit_range` was set)
+    pub fit: Option<MsdFit>,
+}
+
+/// Linear-fit result for self-diffusion coefficient extraction.
+///
+/// `D = slope / 6` (Einstein relation, 3-D isotropic). Unit conversions:
+/// `D[cm²/s] = d_ang2_per_fs · 0.1`, `D[m²/s] = d_ang2_per_fs · 1e-5`.
+#[derive(Debug, Clone)]
+pub struct MsdFit {
+    /// Lower fraction of the lag-time axis used for the fit
+    pub frac_lo: f64,
+    /// Upper fraction of the lag-time axis used for the fit
+    pub frac_hi: f64,
+    /// First time point of the fit window \[fs\]
+    pub t_lo: f64,
+    /// Last time point of the fit window \[fs\]
+    pub t_hi: f64,
+    /// Fitted slope of MSD vs time \[Å²/fs\]
+    pub slope: f64,
+    /// Fitted intercept \[Å²\]
+    pub intercept: f64,
+    /// Self-diffusion coefficient `slope / 6` \[Å²/fs\]
+    pub d_ang2_per_fs: f64,
+    /// Coefficient of determination of the linear fit
+    pub r2: f64,
+    /// Number of points used in the fit
+    pub n_points: usize,
 }
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
@@ -122,6 +153,15 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
     let n_steps = traj.n_frames();
     if n_steps < 2 {
         return Err(ChemError::ValidationError("trajectory requires at least 2 frames".into()));
+    }
+
+    // Fail fast on an obviously bad fit-range before the heavy parallel loop.
+    if let Some((fmin, fmax)) = params.fit_range {
+        if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
+            return Err(ChemError::ValidationError(format!(
+                "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]"
+            )));
+        }
     }
 
     // 确定参与计算的原子下标（按第一帧筛选元素）
@@ -238,7 +278,7 @@ fn calc_msd_periodic(
             },
         );
 
-    Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
+    build_result(accum, tau, n_origins, n_atoms, elements, params)
 }
 
 /// MSD for non-periodic (molecular) systems (Cartesian coordinates directly, parallelised per time origin).
@@ -301,10 +341,91 @@ fn calc_msd_nonperiodic(
             },
         );
 
-    Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
+    build_result(accum, tau, n_origins, n_atoms, elements, params)
 }
 
-/// Build an `MsdResult` from the parallel-reduction accumulation array.
+/// Ordinary least-squares fit of total MSD vs time over a fractional window
+/// of the lag-time axis. `frac = (fmin, fmax)` with `0 <= fmin < fmax <= 1`
+/// mapped to indices `i_lo = round(fmin·(n-1))`, `i_hi = round(fmax·(n-1))`.
+///
+/// Returns slope/intercept, `D = slope / 6` (Einstein, 3-D isotropic) and the
+/// fit `R²`. Errors on invalid range, length mismatch, or a window with
+/// fewer than 2 points / zero x-variance.
+pub fn fit_diffusion(
+    time: &[f64],
+    msd: &[f64],
+    frac: (f64, f64),
+) -> ferro_core::Result<MsdFit> {
+    let (fmin, fmax) = frac;
+    if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
+        return Err(ChemError::ValidationError(format!(
+            "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]"
+        )));
+    }
+    let n = time.len();
+    if n != msd.len() {
+        return Err(ChemError::ValidationError(
+            "fit_diffusion: time/msd length mismatch".into(),
+        ));
+    }
+    if n < 2 {
+        return Err(ChemError::ValidationError(
+            "MSD curve has fewer than 2 points; cannot fit".into(),
+        ));
+    }
+    let last = (n - 1) as f64;
+    let i_lo = (fmin * last).round() as usize;
+    let i_hi = ((fmax * last).round() as usize).min(n - 1);
+    if i_hi <= i_lo || (i_hi - i_lo + 1) < 2 {
+        return Err(ChemError::ValidationError(format!(
+            "fit-range [{fmin}, {fmax}] selects fewer than 2 points (i_lo={i_lo}, i_hi={i_hi})"
+        )));
+    }
+
+    let xs = &time[i_lo..=i_hi];
+    let ys = &msd[i_lo..=i_hi];
+    let m = xs.len() as f64;
+    let sx: f64 = xs.iter().sum();
+    let sy: f64 = ys.iter().sum();
+    let sxx: f64 = xs.iter().map(|x| x * x).sum();
+    let sxy: f64 = xs.iter().zip(ys).map(|(x, y)| x * y).sum();
+    let denom = m * sxx - sx * sx;
+    if denom.abs() < f64::EPSILON {
+        return Err(ChemError::ValidationError(
+            "degenerate fit window (zero x-variance)".into(),
+        ));
+    }
+    let slope = (m * sxy - sx * sy) / denom;
+    let intercept = (sy - slope * sx) / m;
+
+    let mean_y = sy / m;
+    let ss_tot: f64 = ys.iter().map(|y| (y - mean_y).powi(2)).sum();
+    let ss_res: f64 = xs
+        .iter()
+        .zip(ys)
+        .map(|(x, y)| (y - (slope * x + intercept)).powi(2))
+        .sum();
+    let r2 = if ss_tot.abs() < f64::EPSILON {
+        1.0
+    } else {
+        1.0 - ss_res / ss_tot
+    };
+
+    Ok(MsdFit {
+        frac_lo: fmin,
+        frac_hi: fmax,
+        t_lo: xs[0],
+        t_hi: xs[xs.len() - 1],
+        slope,
+        intercept,
+        d_ang2_per_fs: slope / 6.0,
+        r2,
+        n_points: xs.len(),
+    })
+}
+
+/// Build an `MsdResult` from the parallel-reduction accumulation array,
+/// computing the diffusion fit when `params.fit_range` is set.
 fn build_result(
     accum: Vec<[f64; 4]>,
     tau: usize,
@@ -312,14 +433,21 @@ fn build_result(
     n_atoms: usize,
     elements: Vec<String>,
     params: &MsdParams,
-) -> MsdResult {
+) -> ferro_core::Result<MsdResult> {
     let inv = 1.0 / n_origins as f64;
     let time:  Vec<f64> = (0..tau).map(|i| i as f64 * params.dt).collect();
     let msd:   Vec<f64> = (0..tau).map(|i| accum[i][0] * inv).collect();
     let msd_a: Vec<f64> = (0..tau).map(|i| accum[i][1] * inv).collect();
     let msd_b: Vec<f64> = (0..tau).map(|i| accum[i][2] * inv).collect();
     let msd_c: Vec<f64> = (0..tau).map(|i| accum[i][3] * inv).collect();
-    MsdResult { time, msd, msd_a, msd_b, msd_c, n_atoms, n_origins, params: params.clone(), elements }
+    let fit = match params.fit_range {
+        Some(fr) => Some(fit_diffusion(&time, &msd, fr)?),
+        None => None,
+    };
+    Ok(MsdResult {
+        time, msd, msd_a, msd_b, msd_c,
+        n_atoms, n_origins, params: params.clone(), elements, fit,
+    })
 }
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
@@ -345,6 +473,17 @@ pub fn write_msd(result: &MsdResult, path: &str) -> std::io::Result<()> {
     for e in &result.elements { write!(w, " {}", e)?; }
     writeln!(w)?;
     writeln!(w, "# {}", "-".repeat(60))?;
+    if let Some(f) = &result.fit {
+        writeln!(w, "# fit range  = [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs",
+            f.frac_lo, f.frac_hi, f.t_lo, f.t_hi)?;
+        writeln!(w, "# points     = {}", f.n_points)?;
+        writeln!(w, "# slope      = {:.6e} Ang^2/fs", f.slope)?;
+        writeln!(w, "# D (total)  = {:.6e} Ang^2/fs", f.d_ang2_per_fs)?;
+        writeln!(w, "#            = {:.6e} cm^2/s = {:.6e} m^2/s",
+            f.d_ang2_per_fs * 0.1, f.d_ang2_per_fs * 1e-5)?;
+        writeln!(w, "# R^2        = {:.6}", f.r2)?;
+        writeln!(w, "# {}", "-".repeat(60))?;
+    }
     writeln!(w, "# time[fs]\tmsd[Ang^2]\tmsd_a[Ang^2]\tmsd_b[Ang^2]\tmsd_c[Ang^2]")?;
 
     for i in 0..result.time.len() {
@@ -414,7 +553,7 @@ mod tests {
         let n = 6;
         let traj = make_traj_linear(a, v, n);
         let result = calc_msd(&traj, &MsdParams {
-            tau: Some(n), shift: 1, dt: 1.0, elements: None,
+            tau: Some(n), shift: 1, dt: 1.0, elements: None, fit_range: None,
         }).unwrap();
 
         for (lag, &msd_val) in result.msd.iter().enumerate() {
@@ -449,7 +588,7 @@ mod tests {
             traj.add_frame(frame);
         }
         let result = calc_msd(&traj, &MsdParams {
-            tau: Some(n), shift: 1, dt: 1.0, elements: None,
+            tau: Some(n), shift: 1, dt: 1.0, elements: None, fit_range: None,
         }).unwrap();
 
         for (lag, &msd_val) in result.msd.iter().enumerate() {
@@ -477,7 +616,7 @@ mod tests {
 
         let result = calc_msd(&traj, &MsdParams {
             tau: Some(5), shift: 1, dt: 1.0,
-            elements: Some(vec!["Li".to_string()]),
+            elements: Some(vec!["Li".to_string()]), fit_range: None,
         }).unwrap();
 
         assert_eq!(result.n_atoms, 1);
@@ -495,7 +634,7 @@ mod tests {
         // shift=1, tau=3, 10 帧 → origins: p=0..7 → 8 origins
         let traj = make_traj_static(10);
         let result = calc_msd(&traj, &MsdParams {
-            tau: Some(3), shift: 1, dt: 2.0, elements: None,
+            tau: Some(3), shift: 1, dt: 2.0, elements: None, fit_range: None,
         }).unwrap();
         assert_eq!(result.n_origins, 8);
         assert_eq!(result.time.len(), 3);
@@ -517,5 +656,84 @@ mod tests {
         assert!(content.starts_with("# ferro v"), "missing version header");
         assert!(content.contains("# time[fs]"), "missing column header");
         assert!(content.contains("MSD"), "missing MSD title");
+    }
+
+    #[test]
+    fn test_fit_diffusion_exact_line() {
+        // msd = 6*D*t + c with known D → recovered slope/6 == D, R² == 1
+        let d_true = 1.5e-4_f64; // Å²/fs
+        let c = 0.7_f64;
+        let dt = 2.0_f64;
+        let n = 500;
+        let time: Vec<f64> = (0..n).map(|i| i as f64 * dt).collect();
+        let msd: Vec<f64> = time.iter().map(|&t| 6.0 * d_true * t + c).collect();
+
+        let fit = fit_diffusion(&time, &msd, (0.2, 0.9)).unwrap();
+        assert!((fit.d_ang2_per_fs - d_true).abs() < 1e-12,
+            "D: expected {d_true}, got {}", fit.d_ang2_per_fs);
+        assert!((fit.slope - 6.0 * d_true).abs() < 1e-12);
+        assert!((fit.intercept - c).abs() < 1e-9);
+        assert!((fit.r2 - 1.0).abs() < 1e-12, "R² = {}", fit.r2);
+    }
+
+    #[test]
+    fn test_fit_range_index_mapping() {
+        // n=11, dt=10 → time 0..100; frac (0.3,0.8) → indices 3..=8
+        let dt = 10.0;
+        let n = 11;
+        let time: Vec<f64> = (0..n).map(|i| i as f64 * dt).collect();
+        let msd: Vec<f64> = time.clone(); // slope 1
+        let fit = fit_diffusion(&time, &msd, (0.3, 0.8)).unwrap();
+        assert_eq!(fit.n_points, 6);
+        assert!((fit.t_lo - 30.0).abs() < 1e-12);
+        assert!((fit.t_hi - 80.0).abs() < 1e-12);
+        assert!((fit.slope - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_fit_range_invalid() {
+        let time: Vec<f64> = (0..10).map(|i| i as f64).collect();
+        let msd = time.clone();
+        assert!(fit_diffusion(&time, &msd, (0.8, 0.3)).is_err()); // fmin>=fmax
+        assert!(fit_diffusion(&time, &msd, (-0.1, 0.5)).is_err()); // out of range
+        assert!(fit_diffusion(&time, &msd, (0.2, 1.5)).is_err()); // out of range
+        let t2 = vec![0.0, 1.0];
+        let m2 = vec![0.0, 1.0];
+        assert!(fit_diffusion(&t2, &m2, (0.0, 0.001)).is_err()); // <2 points
+    }
+
+    #[test]
+    fn test_calc_msd_populates_fit() {
+        let traj = make_traj_static(10);
+
+        let none = calc_msd(&traj, &MsdParams::default()).unwrap();
+        assert!(none.fit.is_none());
+
+        let with = calc_msd(&traj, &MsdParams {
+            fit_range: Some((0.0, 1.0)),
+            ..MsdParams::default()
+        }).unwrap();
+        assert!(with.fit.is_some());
+        let f = with.fit.unwrap();
+        assert!((f.d_ang2_per_fs).abs() < 1e-12); // static traj → D = 0
+    }
+
+    #[test]
+    fn test_write_msd_with_fit() {
+        use std::io::Read;
+        let traj = make_traj_linear(10.0, 0.2, 6);
+        let result = calc_msd(&traj, &MsdParams {
+            fit_range: Some((0.0, 1.0)),
+            ..MsdParams::default()
+        }).unwrap();
+        let path = "/tmp/test_ferro_fit.msd";
+        write_msd(&result, path).expect("write_msd failed");
+
+        let mut content = String::new();
+        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.contains("# D (total)"), "missing D line:\n{content}");
+        assert!(content.contains("cm^2/s"), "missing cm^2/s conversion");
+        assert!(content.contains("# R^2"), "missing R^2 line");
+        assert!(content.contains("# time[fs]"), "column header lost");
     }
 }
