@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use plotters::prelude::*;
-use ferro_analysis::{AngleResult, GrResult, SqResult};
+use ferro_analysis::{AngleResult, GrResult, MsdResult, SqResult};
 use std::path::Path;
 
 // matplotlib tab10 色板
@@ -228,6 +228,89 @@ pub fn plot_sq(result: &SqResult, dat_path: &str) -> Result<String> {
             .background_style(WHITE.mix(0.85))
             .border_style(BLACK)
             .position(SeriesLabelPosition::UpperRight)
+            .draw()?;
+
+        root.present()?;
+    }
+    Ok(out)
+}
+
+// ─── MSD ─────────────────────────────────────────────────────────────────────
+
+/// Plot total MSD plus a/b/c components vs time; overlay the linear fit and
+/// D / R² when `result.fit` is present. Saved as PNG.
+pub fn plot_msd(result: &MsdResult, dat_path: &str) -> Result<String> {
+    let out = png_path(dat_path);
+
+    let x_max = result.time.last().copied().unwrap_or(1.0).max(1e-9);
+    let y_max = result.msd.iter()
+        .chain(result.msd_a.iter())
+        .chain(result.msd_b.iter())
+        .chain(result.msd_c.iter())
+        .copied()
+        .fold(0.0f64, f64::max) * 1.1;
+    let y_max = y_max.max(1e-6);
+
+    {
+        let root = BitMapBackend::new(&out, (900, 540)).into_drawing_area();
+        root.fill(&WHITE)?;
+
+        let mut chart = ChartBuilder::on(&root)
+            .caption("Mean Squared Displacement", ("sans-serif", 18))
+            .margin(15)
+            .x_label_area_size(45)
+            .y_label_area_size(70)
+            .build_cartesian_2d(0.0..x_max, 0.0..y_max)?;
+
+        chart.configure_mesh()
+            .x_desc("t  [fs]")
+            .y_desc("MSD  [Å²]")
+            .x_labels(10).y_labels(8)
+            .draw()?;
+
+        // a/b/c 分量：淡色细线
+        for (k, (label, data)) in [
+            ("MSD_a", &result.msd_a),
+            ("MSD_b", &result.msd_b),
+            ("MSD_c", &result.msd_c),
+        ].into_iter().enumerate() {
+            let c = color(k + 1);
+            let pts: Vec<(f64, f64)> =
+                result.time.iter().copied().zip(data.iter().copied()).collect();
+            let s = ShapeStyle { color: c.mix(0.55), filled: false, stroke_width: 1 };
+            chart.draw_series(LineSeries::new(pts, s))?
+                .label(label)
+                .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s));
+        }
+
+        // total MSD：主曲线
+        {
+            let c = color(0);
+            let pts: Vec<(f64, f64)> =
+                result.time.iter().copied().zip(result.msd.iter().copied()).collect();
+            chart.draw_series(LineSeries::new(pts, style(c, 2)))?
+                .label("MSD total")
+                .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], style(c, 2)));
+        }
+
+        // 拟合直线 + D / R²（黑色实线，避开调色板）
+        if let Some(f) = &result.fit {
+            let s = ShapeStyle { color: BLACK.to_rgba(), filled: false, stroke_width: 2 };
+            let line = vec![
+                (f.t_lo, f.slope * f.t_lo + f.intercept),
+                (f.t_hi, f.slope * f.t_hi + f.intercept),
+            ];
+            let label =
+                format!("fit: D={:.3e} Å²/fs (R²={:.4})", f.d_ang2_per_fs, f.r2);
+            chart.draw_series(LineSeries::new(line, s))?
+                .label(label)
+                .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], s));
+        }
+
+        chart.configure_series_labels()
+            .background_style(WHITE.mix(0.85))
+            .border_style(BLACK)
+            .position(SeriesLabelPosition::UpperLeft)
             .draw()?;
 
         root.present()?;
