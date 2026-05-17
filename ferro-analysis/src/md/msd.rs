@@ -29,11 +29,14 @@ pub struct MsdParams {
     pub dt: f64,
     /// Elements to include (`None` = all atoms)
     pub elements: Option<Vec<String>>,
+    /// Linear-fit window as fractions of the MSD lag-time axis
+    /// (`(fmin, fmax)`, `0 <= fmin < fmax <= 1`). `None` = no fit.
+    pub fit_range: Option<(f64, f64)>,
 }
 
 impl Default for MsdParams {
     fn default() -> Self {
-        MsdParams { tau: None, shift: 1, dt: 1.0, elements: None }
+        MsdParams { tau: None, shift: 1, dt: 1.0, elements: None, fit_range: None }
     }
 }
 
@@ -63,6 +66,34 @@ pub struct MsdResult {
     pub params: MsdParams,
     /// Elements included (sorted alphabetically)
     pub elements: Vec<String>,
+    /// Linear-fit / self-diffusion result (`None` unless `fit_range` was set)
+    pub fit: Option<MsdFit>,
+}
+
+/// Linear-fit result for self-diffusion coefficient extraction.
+///
+/// `D = slope / 6` (Einstein relation, 3-D isotropic). Unit conversions:
+/// `D[cm²/s] = d_ang2_per_fs · 0.1`, `D[m²/s] = d_ang2_per_fs · 1e-5`.
+#[derive(Debug, Clone)]
+pub struct MsdFit {
+    /// Lower fraction of the lag-time axis used for the fit
+    pub frac_lo: f64,
+    /// Upper fraction of the lag-time axis used for the fit
+    pub frac_hi: f64,
+    /// First time point of the fit window \[fs\]
+    pub t_lo: f64,
+    /// Last time point of the fit window \[fs\]
+    pub t_hi: f64,
+    /// Fitted slope of MSD vs time \[Å²/fs\]
+    pub slope: f64,
+    /// Fitted intercept \[Å²\]
+    pub intercept: f64,
+    /// Self-diffusion coefficient `slope / 6` \[Å²/fs\]
+    pub d_ang2_per_fs: f64,
+    /// Coefficient of determination of the linear fit
+    pub r2: f64,
+    /// Number of points used in the fit
+    pub n_points: usize,
 }
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
@@ -319,7 +350,11 @@ fn build_result(
     let msd_a: Vec<f64> = (0..tau).map(|i| accum[i][1] * inv).collect();
     let msd_b: Vec<f64> = (0..tau).map(|i| accum[i][2] * inv).collect();
     let msd_c: Vec<f64> = (0..tau).map(|i| accum[i][3] * inv).collect();
-    MsdResult { time, msd, msd_a, msd_b, msd_c, n_atoms, n_origins, params: params.clone(), elements }
+    MsdResult {
+        time, msd, msd_a, msd_b, msd_c,
+        n_atoms, n_origins, params: params.clone(), elements,
+        fit: None,
+    }
 }
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
@@ -414,7 +449,7 @@ mod tests {
         let n = 6;
         let traj = make_traj_linear(a, v, n);
         let result = calc_msd(&traj, &MsdParams {
-            tau: Some(n), shift: 1, dt: 1.0, elements: None,
+            tau: Some(n), shift: 1, dt: 1.0, elements: None, fit_range: None,
         }).unwrap();
 
         for (lag, &msd_val) in result.msd.iter().enumerate() {
@@ -449,7 +484,7 @@ mod tests {
             traj.add_frame(frame);
         }
         let result = calc_msd(&traj, &MsdParams {
-            tau: Some(n), shift: 1, dt: 1.0, elements: None,
+            tau: Some(n), shift: 1, dt: 1.0, elements: None, fit_range: None,
         }).unwrap();
 
         for (lag, &msd_val) in result.msd.iter().enumerate() {
@@ -477,7 +512,7 @@ mod tests {
 
         let result = calc_msd(&traj, &MsdParams {
             tau: Some(5), shift: 1, dt: 1.0,
-            elements: Some(vec!["Li".to_string()]),
+            elements: Some(vec!["Li".to_string()]), fit_range: None,
         }).unwrap();
 
         assert_eq!(result.n_atoms, 1);
@@ -495,7 +530,7 @@ mod tests {
         // shift=1, tau=3, 10 帧 → origins: p=0..7 → 8 origins
         let traj = make_traj_static(10);
         let result = calc_msd(&traj, &MsdParams {
-            tau: Some(3), shift: 1, dt: 2.0, elements: None,
+            tau: Some(3), shift: 1, dt: 2.0, elements: None, fit_range: None,
         }).unwrap();
         assert_eq!(result.n_origins, 8);
         assert_eq!(result.time.len(), 3);
