@@ -335,6 +335,86 @@ fn calc_msd_nonperiodic(
     Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
 }
 
+/// Ordinary least-squares fit of total MSD vs time over a fractional window
+/// of the lag-time axis. `frac = (fmin, fmax)` with `0 <= fmin < fmax <= 1`
+/// mapped to indices `i_lo = round(fmin·(n-1))`, `i_hi = round(fmax·(n-1))`.
+///
+/// Returns slope/intercept, `D = slope / 6` (Einstein, 3-D isotropic) and the
+/// fit `R²`. Errors on invalid range, length mismatch, or a window with
+/// fewer than 2 points / zero x-variance.
+pub fn fit_diffusion(
+    time: &[f64],
+    msd: &[f64],
+    frac: (f64, f64),
+) -> ferro_core::Result<MsdFit> {
+    let (fmin, fmax) = frac;
+    if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
+        return Err(ChemError::ValidationError(format!(
+            "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]"
+        )));
+    }
+    let n = time.len();
+    if n != msd.len() {
+        return Err(ChemError::ValidationError(
+            "fit_diffusion: time/msd length mismatch".into(),
+        ));
+    }
+    if n < 2 {
+        return Err(ChemError::ValidationError(
+            "MSD curve has fewer than 2 points; cannot fit".into(),
+        ));
+    }
+    let last = (n - 1) as f64;
+    let i_lo = (fmin * last).round() as usize;
+    let i_hi = ((fmax * last).round() as usize).min(n - 1);
+    if i_hi <= i_lo || (i_hi - i_lo + 1) < 2 {
+        return Err(ChemError::ValidationError(format!(
+            "fit-range [{fmin}, {fmax}] selects fewer than 2 points (i_lo={i_lo}, i_hi={i_hi})"
+        )));
+    }
+
+    let xs = &time[i_lo..=i_hi];
+    let ys = &msd[i_lo..=i_hi];
+    let m = xs.len() as f64;
+    let sx: f64 = xs.iter().sum();
+    let sy: f64 = ys.iter().sum();
+    let sxx: f64 = xs.iter().map(|x| x * x).sum();
+    let sxy: f64 = xs.iter().zip(ys).map(|(x, y)| x * y).sum();
+    let denom = m * sxx - sx * sx;
+    if denom.abs() < f64::EPSILON {
+        return Err(ChemError::ValidationError(
+            "degenerate fit window (zero x-variance)".into(),
+        ));
+    }
+    let slope = (m * sxy - sx * sy) / denom;
+    let intercept = (sy - slope * sx) / m;
+
+    let mean_y = sy / m;
+    let ss_tot: f64 = ys.iter().map(|y| (y - mean_y).powi(2)).sum();
+    let ss_res: f64 = xs
+        .iter()
+        .zip(ys)
+        .map(|(x, y)| (y - (slope * x + intercept)).powi(2))
+        .sum();
+    let r2 = if ss_tot.abs() < f64::EPSILON {
+        1.0
+    } else {
+        1.0 - ss_res / ss_tot
+    };
+
+    Ok(MsdFit {
+        frac_lo: fmin,
+        frac_hi: fmax,
+        t_lo: xs[0],
+        t_hi: xs[xs.len() - 1],
+        slope,
+        intercept,
+        d_ang2_per_fs: slope / 6.0,
+        r2,
+        n_points: xs.len(),
+    })
+}
+
 /// Build an `MsdResult` from the parallel-reduction accumulation array.
 fn build_result(
     accum: Vec<[f64; 4]>,
@@ -552,5 +632,49 @@ mod tests {
         assert!(content.starts_with("# ferro v"), "missing version header");
         assert!(content.contains("# time[fs]"), "missing column header");
         assert!(content.contains("MSD"), "missing MSD title");
+    }
+
+    #[test]
+    fn test_fit_diffusion_exact_line() {
+        // msd = 6*D*t + c with known D → recovered slope/6 == D, R² == 1
+        let d_true = 1.5e-4_f64; // Å²/fs
+        let c = 0.7_f64;
+        let dt = 2.0_f64;
+        let n = 500;
+        let time: Vec<f64> = (0..n).map(|i| i as f64 * dt).collect();
+        let msd: Vec<f64> = time.iter().map(|&t| 6.0 * d_true * t + c).collect();
+
+        let fit = fit_diffusion(&time, &msd, (0.2, 0.9)).unwrap();
+        assert!((fit.d_ang2_per_fs - d_true).abs() < 1e-12,
+            "D: expected {d_true}, got {}", fit.d_ang2_per_fs);
+        assert!((fit.slope - 6.0 * d_true).abs() < 1e-12);
+        assert!((fit.intercept - c).abs() < 1e-9);
+        assert!((fit.r2 - 1.0).abs() < 1e-12, "R² = {}", fit.r2);
+    }
+
+    #[test]
+    fn test_fit_range_index_mapping() {
+        // n=11, dt=10 → time 0..100; frac (0.3,0.8) → indices 3..=8
+        let dt = 10.0;
+        let n = 11;
+        let time: Vec<f64> = (0..n).map(|i| i as f64 * dt).collect();
+        let msd: Vec<f64> = time.clone(); // slope 1
+        let fit = fit_diffusion(&time, &msd, (0.3, 0.8)).unwrap();
+        assert_eq!(fit.n_points, 6);
+        assert!((fit.t_lo - 30.0).abs() < 1e-12);
+        assert!((fit.t_hi - 80.0).abs() < 1e-12);
+        assert!((fit.slope - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_fit_range_invalid() {
+        let time: Vec<f64> = (0..10).map(|i| i as f64).collect();
+        let msd = time.clone();
+        assert!(fit_diffusion(&time, &msd, (0.8, 0.3)).is_err()); // fmin>=fmax
+        assert!(fit_diffusion(&time, &msd, (-0.1, 0.5)).is_err()); // out of range
+        assert!(fit_diffusion(&time, &msd, (0.2, 1.5)).is_err()); // out of range
+        let t2 = vec![0.0, 1.0];
+        let m2 = vec![0.0, 1.0];
+        assert!(fit_diffusion(&t2, &m2, (0.0, 0.001)).is_err()); // <2 points
     }
 }
