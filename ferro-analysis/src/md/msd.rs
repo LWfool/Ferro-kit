@@ -155,6 +155,15 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
         return Err(ChemError::ValidationError("trajectory requires at least 2 frames".into()));
     }
 
+    // Fail fast on an obviously bad fit-range before the heavy parallel loop.
+    if let Some((fmin, fmax)) = params.fit_range {
+        if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
+            return Err(ChemError::ValidationError(format!(
+                "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]"
+            )));
+        }
+    }
+
     // 确定参与计算的原子下标（按第一帧筛选元素）
     let ref_frame = traj.first()
         .ok_or_else(|| ChemError::ValidationError("empty trajectory".into()))?;
@@ -269,7 +278,7 @@ fn calc_msd_periodic(
             },
         );
 
-    Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
+    build_result(accum, tau, n_origins, n_atoms, elements, params)
 }
 
 /// MSD for non-periodic (molecular) systems (Cartesian coordinates directly, parallelised per time origin).
@@ -332,7 +341,7 @@ fn calc_msd_nonperiodic(
             },
         );
 
-    Ok(build_result(accum, tau, n_origins, n_atoms, elements, params))
+    build_result(accum, tau, n_origins, n_atoms, elements, params)
 }
 
 /// Ordinary least-squares fit of total MSD vs time over a fractional window
@@ -415,7 +424,8 @@ pub fn fit_diffusion(
     })
 }
 
-/// Build an `MsdResult` from the parallel-reduction accumulation array.
+/// Build an `MsdResult` from the parallel-reduction accumulation array,
+/// computing the diffusion fit when `params.fit_range` is set.
 fn build_result(
     accum: Vec<[f64; 4]>,
     tau: usize,
@@ -423,18 +433,21 @@ fn build_result(
     n_atoms: usize,
     elements: Vec<String>,
     params: &MsdParams,
-) -> MsdResult {
+) -> ferro_core::Result<MsdResult> {
     let inv = 1.0 / n_origins as f64;
     let time:  Vec<f64> = (0..tau).map(|i| i as f64 * params.dt).collect();
     let msd:   Vec<f64> = (0..tau).map(|i| accum[i][0] * inv).collect();
     let msd_a: Vec<f64> = (0..tau).map(|i| accum[i][1] * inv).collect();
     let msd_b: Vec<f64> = (0..tau).map(|i| accum[i][2] * inv).collect();
     let msd_c: Vec<f64> = (0..tau).map(|i| accum[i][3] * inv).collect();
-    MsdResult {
+    let fit = match params.fit_range {
+        Some(fr) => Some(fit_diffusion(&time, &msd, fr)?),
+        None => None,
+    };
+    Ok(MsdResult {
         time, msd, msd_a, msd_b, msd_c,
-        n_atoms, n_origins, params: params.clone(), elements,
-        fit: None,
-    }
+        n_atoms, n_origins, params: params.clone(), elements, fit,
+    })
 }
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
@@ -676,5 +689,21 @@ mod tests {
         let t2 = vec![0.0, 1.0];
         let m2 = vec![0.0, 1.0];
         assert!(fit_diffusion(&t2, &m2, (0.0, 0.001)).is_err()); // <2 points
+    }
+
+    #[test]
+    fn test_calc_msd_populates_fit() {
+        let traj = make_traj_static(10);
+
+        let none = calc_msd(&traj, &MsdParams::default()).unwrap();
+        assert!(none.fit.is_none());
+
+        let with = calc_msd(&traj, &MsdParams {
+            fit_range: Some((0.0, 1.0)),
+            ..MsdParams::default()
+        }).unwrap();
+        assert!(with.fit.is_some());
+        let f = with.fit.unwrap();
+        assert!((f.d_ang2_per_fs).abs() < 1e-12); // static traj → D = 0
     }
 }
