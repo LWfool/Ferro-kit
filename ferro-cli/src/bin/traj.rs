@@ -4,7 +4,7 @@ use ferro::{
     args::traj::{SqWeightingCli, TrajMode},
     help::{print_fe_traj_overview, print_traj_help},
     io_dispatch::read_trajectory,
-    plot::{open_plot, plot_angle, plot_gr, plot_sq},
+    plot::{open_plot, plot_angle, plot_gr, plot_msd, plot_sq},
 };
 use ferro_io::LammpsUnits;
 use ferro_analysis::{
@@ -86,6 +86,10 @@ struct Cli {
     /// [msd] Track only these elements, e.g. Fe,O
     #[arg(long, value_delimiter = ',')]
     elements: Option<Vec<String>>,
+
+    /// [msd] Linear-fit window as trajectory fractions FMIN,FMAX (e.g. 0.3,0.8) -> self-diffusion D
+    #[arg(long, value_delimiter = ',')]
+    fit_range: Option<Vec<f64>>,
 
     // ── pair / triplet filter ────────────────────────────────────────────────
 
@@ -242,17 +246,48 @@ fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
 }
 
 fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+    let fit_range = match &args.fit_range {
+        None => None,
+        Some(v) if v.len() == 2 => Some((v[0], v[1])),
+        Some(v) => return Err(anyhow!(
+            "--fit-range expects exactly two comma-separated fractions, e.g. 0.3,0.8 (got {} value(s))",
+            v.len()
+        )),
+    };
+
     let params = MsdParams {
         dt: args.dt,
         shift: args.shift,
         elements: args.elements.clone(),
+        fit_range,
         ..MsdParams::default()
     };
     let result = calc_msd(traj, &params)?;
 
     let out = args.output.as_deref().unwrap_or(Path::new("msd.dat"));
-    write_msd(&result, out.to_str().unwrap_or("msd.dat"))?;
-    println!("MSD -> {}", out.display());
+    let out_str = out.to_str().unwrap_or("msd.dat");
+    write_msd(&result, out_str)?;
+    println!("MSD -> {out_str}");
+
+    if let Some(f) = &result.fit {
+        println!(
+            "Fit  range [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs  ({} pts)",
+            f.frac_lo, f.frac_hi, f.t_lo, f.t_hi, f.n_points
+        );
+        println!(
+            "D (total) = {:.6e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
+            f.d_ang2_per_fs,
+            f.d_ang2_per_fs * 0.1,
+            f.d_ang2_per_fs * 1e-5,
+            f.r2
+        );
+    }
+
+    if args.plot {
+        let png = plot_msd(&result, out_str)?;
+        println!("Plot -> {png}");
+        open_plot(&png);
+    }
     Ok(())
 }
 
