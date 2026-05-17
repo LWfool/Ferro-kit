@@ -473,6 +473,17 @@ pub fn write_msd(result: &MsdResult, path: &str) -> std::io::Result<()> {
     for e in &result.elements { write!(w, " {}", e)?; }
     writeln!(w)?;
     writeln!(w, "# {}", "-".repeat(60))?;
+    if let Some(f) = &result.fit {
+        writeln!(w, "# fit range  = [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs",
+            f.frac_lo, f.frac_hi, f.t_lo, f.t_hi)?;
+        writeln!(w, "# points     = {}", f.n_points)?;
+        writeln!(w, "# slope      = {:.6e} Ang^2/fs", f.slope)?;
+        writeln!(w, "# D (total)  = {:.6e} Ang^2/fs", f.d_ang2_per_fs)?;
+        writeln!(w, "#            = {:.6e} cm^2/s = {:.6e} m^2/s",
+            f.d_ang2_per_fs * 0.1, f.d_ang2_per_fs * 1e-5)?;
+        writeln!(w, "# R^2        = {:.6}", f.r2)?;
+        writeln!(w, "# {}", "-".repeat(60))?;
+    }
     writeln!(w, "# time[fs]\tmsd[Ang^2]\tmsd_a[Ang^2]\tmsd_b[Ang^2]\tmsd_c[Ang^2]")?;
 
     for i in 0..result.time.len() {
@@ -705,5 +716,24 @@ mod tests {
         assert!(with.fit.is_some());
         let f = with.fit.unwrap();
         assert!((f.d_ang2_per_fs).abs() < 1e-12); // static traj → D = 0
+    }
+
+    #[test]
+    fn test_write_msd_with_fit() {
+        use std::io::Read;
+        let traj = make_traj_linear(10.0, 0.2, 6);
+        let result = calc_msd(&traj, &MsdParams {
+            fit_range: Some((0.0, 1.0)),
+            ..MsdParams::default()
+        }).unwrap();
+        let path = "/tmp/test_ferro_fit.msd";
+        write_msd(&result, path).expect("write_msd failed");
+
+        let mut content = String::new();
+        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
+        assert!(content.contains("# D (total)"), "missing D line:\n{content}");
+        assert!(content.contains("cm^2/s"), "missing cm^2/s conversion");
+        assert!(content.contains("# R^2"), "missing R^2 line");
+        assert!(content.contains("# time[fs]"), "column header lost");
     }
 }
