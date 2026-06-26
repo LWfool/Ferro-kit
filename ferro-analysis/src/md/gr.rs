@@ -184,7 +184,16 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         return Err(ChemError::ValidationError("trajectory is empty".into()));
     }
 
-    let n_bins = ((params.r_max - params.r_min) / params.dr).floor() as usize;
+    // 最小镜像有效上界 = 所有帧最短晶格矢量的一半。r_max 超过它时 CellList 每轴
+    // 退化为单个 cell，最小镜像在 r > L/2 失效，会让 g(r) 尾部被错误压向 0，
+    // 故将有效 r_max clamp 到该上界（默认 r_max=10.005 对 < 20 Å 的盒子常被触发）。
+    let mic_max = traj.frames.iter()
+        .filter_map(|f| f.cell.as_ref())
+        .map(|c| { let l = c.lengths(); l[0].min(l[1]).min(l[2]) * 0.5 })
+        .fold(f64::INFINITY, f64::min);
+    let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };
+
+    let n_bins = ((r_max - params.r_min) / params.dr).floor() as usize;
     if n_bins == 0 {
         return Err(ChemError::ValidationError("r range produces zero bins".into()));
     }
@@ -237,11 +246,11 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
             let cell = frame.cell.as_ref().unwrap();
             v += cell.volume();
             let n_atoms = frame.atoms.len();
-            let cl = CellList::build(frame, cell, params.r_max);
+            let cl = CellList::build(frame, cell, r_max);
             for i in 0..n_atoms {
                 let ai = &frame.atoms[i];
                 let Some(&ti) = elem_idx.get(ai.element.as_str()) else { continue; };
-                for (j, r_val, _) in cl.neighbors_of(i, params.r_max) {
+                for (j, r_val, _) in cl.neighbors_of(i, r_max) {
                     if j <= i { continue; }
                     if r_val < params.r_min { continue; }
                     let bin = ((r_val - params.r_min) / params.dr) as usize;
@@ -385,7 +394,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         n_frames,
         avg_volume,
         rho,
-        params: params.clone(),
+        params: GrParams { r_max, ..params.clone() },
     })
 }
 
@@ -668,6 +677,35 @@ mod tests {
         assert_eq!(elem_z("Fe2"), 26, "Fe site 2");
         assert_eq!(elem_z("Na1"), 11, "Na site 1");
         assert_eq!(elem_z("??"),  255, "totally unknown");
+    }
+
+    #[test]
+    fn test_gr_rmax_clamped_to_half_min_cell() {
+        // 盒子 6 Å → MIC 有效上界 L/2 = 3.0。请求 r_max=10（> L/2）时若不 clamp，
+        // CellList 每轴退化为 1 个 cell，最小镜像在 r > L/2 失效，g(r) 尾部会被错误压向 0。
+        // calc_gr 应把有效 r_max clamp 到 L/2，使 r 轴与 result.params.r_max 都不超过 3.0。
+        let cell = Cell::from_lengths_angles(6.0, 6.0, 6.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
+        frame.add_atom(Atom::new("Fe", Vector3::new(3.0, 0.0, 0.0)));
+        let traj = Trajectory::from_frame(frame);
+        let params = GrParams { r_min: 0.1, r_max: 10.0, dr: 0.01, r_cut: 2.0 };
+        let res = calc_gr(&traj, &params).unwrap();
+
+        let r_last = res.r.last().copied().unwrap();
+        assert!(r_last <= 3.0 + 1e-9, "r axis should not exceed L/2=3.0, got {r_last}");
+        assert!(res.params.r_max <= 3.0 + 1e-9,
+            "effective r_max should be clamped to 3.0, got {}", res.params.r_max);
+    }
+
+    #[test]
+    fn test_gr_rmax_not_clamped_when_within_half_cell() {
+        // r_max=3.9 < L/2=4.305（8.61 Å 盒子）时不应被 clamp。
+        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, r_cut: 3.0 };
+        let res = calc_gr(&traj, &params).unwrap();
+        assert!((res.params.r_max - 3.9).abs() < 1e-12,
+            "r_max within L/2 should be unchanged, got {}", res.params.r_max);
     }
 
     #[test]
