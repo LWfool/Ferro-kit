@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "ferro"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-analysis"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "ferro-core",
  "nalgebra",
@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-core"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "nalgebra",
  "serde",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-io"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "ferro-core",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-structure"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "ferro-core",
  "nalgebra",
@@ -415,7 +415,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-workflow"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "ferro-core",

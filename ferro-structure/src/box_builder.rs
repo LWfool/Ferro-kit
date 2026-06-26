@@ -228,7 +228,9 @@ impl CellList {
     fn neighbors(&self, atoms: &[Atom], i: usize) -> Vec<usize> {
         let (ix, iy, iz) = self.bin_index(&atoms[i].position);
         let mut result = Vec::new();
-        // 检查 27 个相邻 bin
+        // 检查 27 个相邻 bin；盒子过小（n_bins ≤ 2）时 rem 折叠会让同一 bin 被多次
+        // 映射，用 seen 去重避免把近邻原子重复计入（否则弛豫斥力被成倍累加）。
+        let mut seen: Vec<usize> = Vec::with_capacity(27);
         for dx in [self.n_bins - 1, 0, 1] {
             for dy in [self.n_bins - 1, 0, 1] {
                 for dz in [self.n_bins - 1, 0, 1] {
@@ -236,6 +238,8 @@ impl CellList {
                     let ny = (iy + dy) % self.n_bins;
                     let nz = (iz + dz) % self.n_bins;
                     let idx = self.flat_index(nx, ny, nz);
+                    if seen.contains(&idx) { continue; }
+                    seen.push(idx);
                     for &j in &self.bins[idx] {
                         if j != i {
                             result.push(j);
@@ -504,6 +508,32 @@ mod tests {
         let frame = build_box(&comps, 0.8, 1.5, 50).unwrap();
         // 5×3 + 3×6 = 33 个原子
         assert_eq!(frame.atoms.len(), 33);
+    }
+
+    #[test]
+    fn test_celllist_neighbors_no_duplicates_small_box() {
+        // 小盒子使每轴 cell 数退化为 2：旧实现的 27-bin 遍历缺去重，
+        // 同一 bin 被多次访问会把近邻原子重复计入（弛豫斥力被成倍累加）。
+        let box_len = 4.0;
+        let cutoff = 2.0; // n_bins = floor(4 / 2) = 2
+        let mut cl = CellList::new(box_len, cutoff);
+        assert_eq!(cl.n_bins, 2, "test requires n_bins == 2 to exercise the wrap-around path");
+
+        let atoms = vec![
+            Atom::new("Ar", Vector3::new(0.5, 0.5, 0.5)), // bin (0,0,0)
+            Atom::new("Ar", Vector3::new(3.5, 3.5, 3.5)), // bin (1,1,1)
+            Atom::new("Ar", Vector3::new(1.0, 1.0, 1.0)), // bin (0,0,0)
+        ];
+        cl.rebuild(&atoms);
+
+        let nbrs = cl.neighbors(&atoms, 0);
+        let mut deduped = nbrs.clone();
+        deduped.sort_unstable();
+        deduped.dedup();
+        assert_eq!(
+            nbrs.len(), deduped.len(),
+            "neighbors must not contain duplicate atom indices, got {nbrs:?}"
+        );
     }
 
     #[test]

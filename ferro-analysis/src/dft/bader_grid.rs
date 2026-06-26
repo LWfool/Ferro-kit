@@ -167,48 +167,8 @@ pub fn bader_ongrid(chg: &ChargeGrid, frame: &Frame, params: &BaderParams) -> Ba
     let mut nvols = 0usize;
     let mut volpos_lat: Vec<[f64; 3]> = Vec::new();
 
-    // 1. Gradient ascent from every unassigned grid point
-    for i3 in 0..n3 {
-        for i2 in 0..n2 {
-            for i1 in 0..n1 {
-                let idx = i1 + n1 * (i2 + n2 * i3);
-                if volnum[idx] != 0 {
-                    continue;
-                }
-                let p_max = max_ongrid(chg, [i1, i2, i3]);
-                let idx_max = p_max[0] + n1 * (p_max[1] + n2 * p_max[2]);
-
-                let vol_id = if volnum[idx_max] > 0 {
-                    // Maximum already belongs to an existing volume
-                    volnum[idx_max]
-                } else {
-                    // New maximum → new volume
-                    nvols += 1;
-                    volpos_lat.push([p_max[0] as f64, p_max[1] as f64, p_max[2] as f64]);
-                    nvols as i32
-                };
-
-                // Assign all points along the path (re-trace from start)
-                // For on-grid, we just assign the starting point — the path
-                // points between start and max were already assigned in previous
-                // iterations or will be assigned when their turn comes.
-                // Actually, we need to trace the full path and assign all points.
-                // Let me re-implement with proper path tracking.
-                volnum[idx] = vol_id;
-                if volnum[idx_max] == 0 {
-                    volnum[idx_max] = vol_id;
-                }
-            }
-        }
-    }
-
-    // Re-trace: re-run gradient ascent to fill in path assignments
-    // This is needed because the simple loop above only assigns start points.
-    // For correctness, re-assign all points with proper path tracking.
-    volnum = vec![0i32; nrho];
-    nvols = 0;
-    volpos_lat.clear();
-
+    // 1. Gradient ascent from every unassigned grid point, tracing the full
+    //    path so every point along it is assigned to the maximum's volume.
     for i3 in 0..n3 {
         for i2 in 0..n2 {
             for i1 in 0..n1 {
