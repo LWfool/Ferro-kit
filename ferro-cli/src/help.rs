@@ -214,7 +214,13 @@ Common options:
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
       --plot            Generate a PNG plot and open it after calculation
-      --metal-units     LAMMPS metal units (velocities in Å/ps)"#
+      --metal-units     LAMMPS metal units (velocities in Å/ps)
+
+Selecting types (gr / sq / angle):
+  -a -b -c              by chemical element   (e.g. -a P -b O)
+  -x -y -z              by site label         (e.g. -x P_0 -y O_b_P_P)
+  The two groups are mutually exclusive. For gr and sq the first is the centre
+  and the second the neighbour, and the order matters for CN."#
     );
 }
 
@@ -297,33 +303,63 @@ pub fn print_cube_help(mode: &CubeCliMode) {
 
 fn print_gr() {
     println!(
-        r#"fe-traj -m gr — Radial Distribution Function
-  Computes g(r) for all atom-pair types, coordination number CN(r),
-  and per-pair bond-length statistics (mean ± std, count).
+        r#"fe-traj -m gr — Radial Distribution Function and Coordination Number
+  Computes g(r) and CN(r) for every ordered pair of types, into one file.
   Requires periodic cell (PBC) in the input file.
+
+  g(r) is symmetric: A-B and B-A hold identical values.
+  CN(r) is directed:  A-B is the average number of B around each A,
+                      so A-B and B-A generally differ.
+
+Selecting a pair (centre first, neighbour second):
+  -a ELEM  -b ELEM        by element, e.g. -a P -b O  -> O around each P
+  -x LABEL -y LABEL       by site label, e.g. -x P_0 -y O_b_P_P
+  (the two groups are mutually exclusive; omit both to get every pair)
+
+  Site labels come from the LAMMPS dump element column written as
+  <Element>_<suffix> (P_0, O_b_P_P, Zn_f); they are split into element +
+  label on read, so -a/-b keep working on the plain element.
 
 Parameters:
   --r-max  FLOAT          Max cutoff radius [Å]                  default: 10.005
+                          (clamped to half the smallest interplanar spacing)
   --dr     FLOAT          Histogram bin width [Å]                default: 0.01
-  --r-cut  FLOAT          First-shell cutoff for pair stats [Å]  default: 2.3
-  -a ELEM, -b ELEM        Show only one pair A-B (both required)
   --last-n INT            Use only the last N frames
   --ncore  INT            Parallel threads (default: all cores)
   -o PATH                 Output file                            default: gr.dat
-                          Also writes: <stem>_cn.dat
-  --plot                  Generate PNG and open in viewer
+  --plot                  Generate PNG and open in viewer (needs a pair)
+
+Output columns:
+  pair given   r[Ang]  A-B_gr  A-B_cn
+  no pair      r[Ang]  then every ordered pair as an adjacent _gr / _cn duplet,
+               grouped by centre type
 
 Example:
-  fe-traj -m gr -i traj.xyz
-  fe-traj -m gr -i traj.dump -a O -b P --r-max 8.0 --r-cut 2.0 --last-n 500"#
+  fe-traj -m gr -i traj.dump
+  fe-traj -m gr -i traj.dump -a P -b O --r-max 8.0 --plot
+  fe-traj -m gr -i traj.dump -x P_0 -y O_b_P_P --last-n 500"#
     );
 }
 
 fn print_sq() {
     println!(
         r#"fe-traj -m sq — Structure Factor S(q)
-  Computes S(q) via Fourier transform of g(r) (Faber-Ziman formalism).
-  Optionally applies XRD (Waasmaier-Kirfel) or neutron scattering weights.
+  Computes S(q) via Fourier transform of g(r) (Faber-Ziman formalism),
+  weighted by XRD (Waasmaier-Kirfel) form factors or neutron scattering lengths.
+
+  Only the canonical half of the pairs is kept — S(q) is symmetric and has no
+  directed counterpart, so B-A would duplicate A-B.
+
+  Per pair three columns are written: _sq (unweighted), _xrd and _neutron
+  (w_ij(q)*S_ij(q)). The weighted ones sum over pairs to total_xrd / total_neutron,
+  so they decompose the experimentally comparable curve pair by pair.
+
+Selecting a pair:
+  -a ELEM  -b ELEM        by element
+  -x LABEL -y LABEL       by site label — recommended here, since the pair count
+                          grows quadratically with the number of labels and the
+                          full table would run to hundreds of columns
+  With a pair given only that pair's three columns are written, next to the totals.
 
 Parameters:
   --q-max      FLOAT  Max q [Å⁻¹]                  default: 25.0
@@ -334,11 +370,12 @@ Parameters:
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads (used in g(r) step)
   -o PATH             Output file                   default: sq.dat
-  --plot              Generate PNG and open in viewer
+  --plot              Generate PNG and open in viewer (weighted totals only)
 
 Example:
-  fe-traj -m sq -i traj.xyz
-  fe-traj -m sq -i traj.xyz --weighting xrd --q-max 20.0 -o sq_xrd.dat"#
+  fe-traj -m sq -i traj.dump
+  fe-traj -m sq -i traj.dump --weighting xrd --q-max 20.0 -o sq_xrd.dat
+  fe-traj -m sq -i traj.dump -x P_0 -y O_b_P_P"#
     );
 }
 
@@ -371,22 +408,26 @@ fn print_angle() {
     println!(
         r#"fe-traj -m angle — Bond Angle Distribution
   Computes P(θ) for all A-B-C triplets within cutoff distances.
-  B is the central atom; A and C are its neighbors.
+  B is the central atom; A and C are its neighbours.
+
+Selecting a triplet (all three required):
+  -a ELEM  -b ELEM  -c ELEM      by element,    B is the centre
+  -x LABEL -y LABEL -z LABEL     by site label, Y is the centre
+  (the two groups are mutually exclusive)
 
 Parameters:
-  --r-cut-ab FLOAT              A-to-center-B bond cutoff [Å]   default: 2.3
-  --r-cut-bc FLOAT              Center-B-to-C bond cutoff [Å]   default: 2.3
+  --r-cut-ab FLOAT              A-to-centre-B bond cutoff [Å]   default: 2.3
+  --r-cut-bc FLOAT              Centre-B-to-C bond cutoff [Å]   default: 2.3
   --d-angle  FLOAT              Histogram bin width [°]         default: 0.1
-  -a ELEM, -b ELEM, -c ELEM     Show only triplet A-B-C (all three required;
-                                B is the center atom)
   --last-n   INT                Use only the last N frames
   --ncore    INT                Parallel threads
   -o PATH                       Output file                     default: angle.dat
   --plot                        Generate PNG and open in viewer
 
 Example:
-  fe-traj -m angle -i traj.xyz
-  fe-traj -m angle -i traj.xyz -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0"#
+  fe-traj -m angle -i traj.dump
+  fe-traj -m angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
+  fe-traj -m angle -i traj.dump -x O_b_P_P -y P_0 -z O_f"#
     );
 }
 
