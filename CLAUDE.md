@@ -287,15 +287,18 @@ Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--me
 ### `fe-traj` — detailed flags
 
 ```
-# pair / triplet element filter
--a ELEM   [gr] element A of pair A-B; [angle] end atom A
--b ELEM   [gr] element B of pair A-B; [angle] center atom B  (requires -a)
--c ELEM   [angle] end atom C  (requires -a -b)
+# type selection — two mutually exclusive groups
+-a ELEM   [gr/sq] centre element; [angle] end atom A
+-b ELEM   [gr/sq] neighbour element; [angle] centre atom B   (requires -a)
+-c ELEM   [angle] end atom C   (requires -a -b)
+-x LABEL  [gr/sq] centre site label; [angle] end atom A
+-y LABEL  [gr/sq] neighbour site label; [angle] centre atom B  (requires -x)
+-z LABEL  [angle] end atom C   (requires -x -y)
 
 # gr-specific
 --r-max FLOAT   max r [Å]                  default 10.005
+                (clamped to half the smallest interplanar spacing)
 --dr    FLOAT   bin width [Å]              default 0.01
---r-cut FLOAT   first-shell cutoff [Å]     default 2.3
 
 # sq-specific
 --q-max     FLOAT   max q [Å⁻¹]           default 25.0
@@ -317,8 +320,37 @@ Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--me
 --plot   write PNG next to output file and open with system viewer
 ```
 
+**element vs. label.** `Atom::element` is the chemical element; `Atom::label` is an
+optional site type. The LAMMPS dump reader splits an `element` column entry written as
+`<Element>_<suffix>` (`P_0`, `O_b_P_P`, `Zn_f`) at the **first underscore** — element
+prefix into `element`, whole string into `label` — and prints the mapping once on read.
+Plain symbols pass through untouched with `label = None`. `-a/-b/-c` select by element,
+`-x/-y/-z` by label; only `ferro-io`'s CIF / CP2K / QE readers also populate `label`,
+from their native site names.
+
+**`gr` output** — one file, `g(r)` and `CN(r)` side by side:
+- `g(r)` is **symmetric**: `A-B` and `B-A` are pointwise identical.
+- `CN(r)` is **directed**: `A-B` is the average number of B around each A, so the order
+  of `-a`/`-b` matters.
+- pair given → three columns `r[Ang]  A-B_gr  A-B_cn`
+- no pair → wide table: `r[Ang]` then every ordered pair (n² of them) as an adjacent
+  `_gr` / `_cn` duplet, ordered by (Z_centre, centre, Z_neighbour, neighbour) so all
+  columns sharing a centre stay together
+
+**`sq` output** — only the canonical half of the pairs (S(q) has no directed counterpart):
+- columns `q[Ang^-1]`, `total_xrd`, `total_neutron`, then per pair `_sq` (unweighted),
+  `_xrd`, `_neutron`
+- the weighted partials are `w_ij(q)·S_ij(q)` and sum over pairs to the corresponding
+  total, so they decompose the experimentally comparable curve pair by pair
+- pair given → only that pair's three columns next to the totals; recommended in label
+  mode, where the pair count grows quadratically with the number of labels
+- label-resolved totals match element-resolved ones up to an O(1/N) term: same-type
+  partials normalise by `N_A(N_A−1)` whereas summing label partials reconstructs `N_A²`
+
 **Plot behaviour:**
-- `gr`: left axis g(r) solid lines + right axis CN(r) lighter lines (same colour per pair)
+- `gr`: needs a pair — g(r) solid on the left axis, CN(r) lighter on the right axis.
+  Without a pair the wide table would be a dozen-plus curves, so plotting is skipped
+  with a note.
 - `sq`: only `total_xrd` ("XRD") and `total_neutron` ("Neutron") curves shown
 - `angle`: normalised histograms with mean ± std in legend
 - `msd`: total MSD + a/b/c components; with `--fit-range` overlays the linear fit and prints D = slope/6 + R²
