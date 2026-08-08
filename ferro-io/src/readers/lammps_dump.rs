@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use ferro_core::data::elements::{LabelSplit, split_element_label};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{Context, Result};
@@ -29,6 +30,9 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
     let mut traj = Trajectory::new();
+    // element 列原始串 → 拆分后的元素符号；仅用于读取结束时打印一次映射表
+    let mut site_map: BTreeMap<String, String> = BTreeMap::new();
+    let mut unknown_prefixes: BTreeSet<String> = BTreeSet::new();
 
     while i < lines.len() {
         // Find ITEM: TIMESTEP
@@ -126,10 +130,23 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1);
 
-            let element = get_col("element")
+            // element 列可能写的是位点类型标签（`O_b_P_P`、`Zn_f`），按第一个下划线
+            // 拆成 element + label；无下划线的普通符号原样通过。
+            let raw = get_col("element")
                 .and_then(|c| parts.get(c))
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("X{tp}"));
+            let (element, label) = match split_element_label(&raw) {
+                LabelSplit::Plain(e) => (e.to_string(), None),
+                LabelSplit::Split { element, label } => {
+                    (element.to_string(), Some(label.to_string()))
+                }
+                LabelSplit::Unknown(s) => {
+                    unknown_prefixes.insert(s.to_string());
+                    (s.to_string(), None)
+                }
+            };
+            site_map.entry(raw).or_insert_with(|| element.clone());
 
             // Position — try x/y/z first, then xs/ys/zs (scaled), then xu/yu/zu (unwrapped)
             let pos = if let (Some(cx), Some(cy), Some(cz)) =
@@ -159,6 +176,7 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
             };
 
             let mut atom = Atom::new(element, pos);
+            atom.label = label;
             // Charge
             if let Some(c) = get_col("q") {
                 atom.charge = parts.get(c).and_then(|s| s.parse().ok());
@@ -218,7 +236,36 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
         traj.add_frame(frame);
     }
 
+    report_site_map(&site_map, &unknown_prefixes);
     Ok(traj)
+}
+
+/// Print the raw-string → element mapping once per file, so a silently wrong split
+/// is visible rather than buried in the results.
+///
+/// Stays quiet for ordinary trajectories where every element column entry is already
+/// a plain chemical symbol.
+fn report_site_map(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) {
+    let split: Vec<(&String, &String)> = site_map.iter()
+        .filter(|(raw, elem)| raw.as_str() != elem.as_str())
+        .collect();
+    if split.is_empty() && unknown.is_empty() { return; }
+
+    if !split.is_empty() {
+        eprintln!("[ferro] LAMMPS dump: element column carries site labels, split into element + label:");
+        for (raw, elem) in &split {
+            eprintln!("[ferro]   {raw:<12} -> element {elem:<4} label {raw}");
+        }
+        eprintln!("[ferro]   -a/-b/-c select by element, -x/-y/-z select by label");
+    }
+    if !unknown.is_empty() {
+        let list: Vec<&str> = unknown.iter().map(|s| s.as_str()).collect();
+        eprintln!(
+            "[ferro] warning: underscore present but prefix is not a known element, \
+             kept as element verbatim: {}",
+            list.join(", ")
+        );
+    }
 }
 
 #[cfg(test)]
@@ -266,6 +313,71 @@ ITEM: BOX BOUNDS pp pp pp
 ITEM: ATOMS id type element x y z vx vy vz
 1 1 Fe 0.0 0.0 0.0 2.0 0.0 0.0
 ";
+
+    const DUMP_LABELS: &str = "ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+5
+ITEM: BOX BOUNDS pp pp pp
+0 10.0
+0 10.0
+0 10.0
+ITEM: ATOMS id type element x y z
+1 1 P_0     0.0 0.0 0.0
+2 2 O_b_P_P 1.5 0.0 0.0
+3 2 O_f     3.0 0.0 0.0
+4 3 Zn_f    4.5 0.0 0.0
+5 2 O       6.0 0.0 0.0
+";
+
+    const DUMP_BAD_LABEL: &str = "ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10.0
+0 10.0
+0 10.0
+ITEM: ATOMS id type element x y z
+1 1 foo_bar 0.0 0.0 0.0
+2 2 O       1.5 0.0 0.0
+";
+
+    #[test]
+    fn test_label_split_fills_element_and_label() {
+        let traj = read_lammps_dump(&tmp("labels.dump", DUMP_LABELS), LammpsUnits::Real).unwrap();
+        let f = traj.first().unwrap();
+        let got: Vec<(&str, Option<&str>)> = f.atoms.iter()
+            .map(|a| (a.element.as_str(), a.label.as_deref()))
+            .collect();
+        assert_eq!(got, vec![
+            ("P",  Some("P_0")),
+            ("O",  Some("O_b_P_P")),   // 后缀含下划线，只在第一个处拆
+            ("O",  Some("O_f")),
+            ("Zn", Some("Zn_f")),
+            ("O",  None),              // 普通符号：label 保持 None
+        ]);
+    }
+
+    #[test]
+    fn test_plain_element_column_leaves_label_none() {
+        // 普通轨迹不受拆分影响
+        let traj = read_lammps_dump(&tmp("plain.dump", DUMP_ORTHO), LammpsUnits::Real).unwrap();
+        for atom in &traj.first().unwrap().atoms {
+            assert_eq!(atom.element, "Fe");
+            assert!(atom.label.is_none(), "plain symbol should not produce a label");
+        }
+    }
+
+    #[test]
+    fn test_unknown_prefix_kept_verbatim_as_element() {
+        let traj = read_lammps_dump(&tmp("bad.dump", DUMP_BAD_LABEL), LammpsUnits::Real).unwrap();
+        let f = traj.first().unwrap();
+        // 前缀非法 → 整串当元素、label 为 None（告警走 stderr）
+        assert_eq!(f.atom(0).element, "foo_bar");
+        assert!(f.atom(0).label.is_none());
+        assert_eq!(f.atom(1).element, "O");
+    }
 
     #[test]
     fn test_multiframe() {
