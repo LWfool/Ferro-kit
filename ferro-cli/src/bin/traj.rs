@@ -9,8 +9,8 @@ use ferro::{
 use ferro_io::LammpsUnits;
 use ferro_analysis::{
     calc_angle, calc_gr, calc_msd, calc_sq_from_gr,
-    write_angle, write_cn, write_gr, write_msd, write_sq,
-    AngleParams, GrParams, MsdParams, SqParams,
+    write_angle, write_gr, write_msd, write_sq,
+    AngleParams, GrParams, GroupBy, MsdParams, SqParams,
 };
 use std::path::{Path, PathBuf};
 
@@ -55,10 +55,6 @@ struct Cli {
     #[arg(long, default_value = "0.01")]
     dr: f64,
 
-    /// [gr] CN integration cutoff [Å]
-    #[arg(long, default_value = "2.3")]
-    r_cut: f64,
-
     // ── sq ──────────────────────────────────────────────────────────────────
 
     /// [sq] Max q [Å⁻¹]
@@ -93,17 +89,29 @@ struct Cli {
 
     // ── pair / triplet filter ────────────────────────────────────────────────
 
-    /// [gr] Element A of the pair (e.g. O); [angle] end atom A — requires -b
+    /// [gr/sq] Centre element (e.g. P); [angle] end atom A — by element, requires -b
     #[arg(short = 'a', long)]
     atom_a: Option<String>,
 
-    /// [gr] Element B of the pair (e.g. P); [angle] center atom B — requires -a
+    /// [gr/sq] Neighbour element (e.g. O); [angle] centre atom B — by element, requires -a
     #[arg(short = 'b', long)]
     atom_b: Option<String>,
 
-    /// [angle] End atom C (e.g. O); corresponds to --r-cut-bc — requires -a -b
+    /// [angle] End atom C by element; corresponds to --r-cut-bc — requires -a -b
     #[arg(short = 'c', long)]
     atom_c: Option<String>,
+
+    /// [gr/sq] Centre site label (e.g. P_0); [angle] end atom A — by label, requires -y
+    #[arg(short = 'x', long)]
+    label_x: Option<String>,
+
+    /// [gr/sq] Neighbour site label (e.g. O_b_P_P); [angle] centre atom B — by label, requires -x
+    #[arg(short = 'y', long)]
+    label_y: Option<String>,
+
+    /// [angle] End atom C by site label; corresponds to --r-cut-bc — requires -x -y
+    #[arg(short = 'z', long)]
+    label_z: Option<String>,
 
     // ── angle ───────────────────────────────────────────────────────────────
 
@@ -168,58 +176,80 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
-    match (&args.atom_a, &args.atom_b) {
-        (Some(_), None) | (None, Some(_)) =>
-            return Err(anyhow!("GR pair filter: -a and -b must be specified together")),
-        _ => {}
+/// 解析选择参数：`-a/-b/-c` 按 element，`-x/-y/-z` 按 label，两组互斥。
+///
+/// 返回分组模式与三个槽位（angle 用满三个，gr/sq 只用前两个）。
+fn resolve_selection(args: &Cli) -> Result<(GroupBy, [Option<String>; 3])> {
+    let by_elem = [&args.atom_a, &args.atom_b, &args.atom_c];
+    let by_label = [&args.label_x, &args.label_y, &args.label_z];
+    let n_elem = by_elem.iter().filter(|x| x.is_some()).count();
+    let n_label = by_label.iter().filter(|x| x.is_some()).count();
+
+    if n_elem > 0 && n_label > 0 {
+        return Err(anyhow!(
+            "-a/-b/-c (by element) and -x/-y/-z (by label) are mutually exclusive; use one group"
+        ));
     }
+    let slots = if n_label > 0 { by_label } else { by_elem };
+    let mode = if n_label > 0 { GroupBy::Label } else { GroupBy::Element };
+    Ok((mode, [slots[0].clone(), slots[1].clone(), slots[2].clone()]))
+}
+
+/// gr / sq 的配对选择：要么两个都不给，要么中心与近邻都给。
+fn resolve_pair(args: &Cli) -> Result<(GroupBy, Option<(String, String)>)> {
+    let (mode, slots) = resolve_selection(args)?;
+    if slots[2].is_some() {
+        return Err(anyhow!("-c / -z applies to -m angle only"));
+    }
+    match (&slots[0], &slots[1]) {
+        (Some(a), Some(b)) => Ok((mode, Some((a.clone(), b.clone())))),
+        (None, None) => Ok((mode, None)),
+        _ => Err(anyhow!(
+            "pair filter needs both members: -a CENTRE -b NEIGHBOUR (by element) \
+             or -x CENTRE -y NEIGHBOUR (by label)"
+        )),
+    }
+}
+
+fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+    let (group_by, pair) = resolve_pair(args)?;
 
     let params = GrParams {
         r_max: args.r_max,
         dr: args.dr,
-        r_cut: args.r_cut,
+        group_by,
         ..GrParams::default()
     };
-    let mut result = calc_gr(traj, &params)?;
-
-    // 指定原子对时过滤输出列，保留 total
-    if let (Some(a), Some(b)) = (&args.atom_a, &args.atom_b) {
-        let ab = format!("{a}-{b}");
-        let ba = format!("{b}-{a}");
-        let keep_sym = |k: &str| k == "total" || k == ab || k == ba;
-        result.gr.retain(|k, _| keep_sym(k));
-        result.cn.retain(|k, _| keep_sym(k));
-        result.pair_stats.retain(|k, _| keep_sym(k));
-        if result.gr.len() <= 1 {
-            return Err(anyhow!("pair '{ab}' not found in trajectory (check element symbols)"));
-        }
-    }
+    let result = calc_gr(traj, &params)?;
 
     let out = args.output.as_deref().unwrap_or(Path::new("gr.dat"));
     let out_str = out.to_str().unwrap_or("gr.dat");
-    write_gr(&result, out_str)?;
-
-    // 同时输出配位数文件
-    let cn_path = sibling_path(out, "_cn");
-    write_cn(&result, &cn_path)?;
-
-    println!("GR  -> {out_str}");
-    println!("CN  -> {cn_path}");
+    let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
+    write_gr(&result, out_str, pair_ref)?;
+    println!("GR/CN -> {out_str}");
 
     if args.plot {
-        let png = plot_gr(&result, out_str)?;
-        println!("Plot-> {png}");
-        open_plot(&png);
+        match pair_ref {
+            Some((a, b)) => {
+                let png = plot_gr(&result, out_str, a, b)?;
+                println!("Plot  -> {png}");
+                open_plot(&png);
+            }
+            None => println!(
+                "Note  : --plot needs a pair; add -a CENTRE -b NEIGHBOUR (or -x/-y) to plot one"
+            ),
+        }
     }
     Ok(())
 }
 
 fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+    let (group_by, pair) = resolve_pair(args)?;
+
     let gr_params = GrParams {
         r_max: args.r_max,
         dr: args.dr,
-        r_cut: args.r_cut,
+        group_by,
         ..GrParams::default()
     };
     let gr = calc_gr(traj, &gr_params)?;
@@ -234,7 +264,8 @@ fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
 
     let out = args.output.as_deref().unwrap_or(Path::new("sq.dat"));
     let out_str = out.to_str().unwrap_or("sq.dat");
-    write_sq(&gr, &sq, out_str)?;
+    let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
+    write_sq(&gr, &sq, out_str, pair_ref)?;
     println!("SQ  -> {out_str}");
 
     if args.plot {
@@ -292,28 +323,33 @@ fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
 }
 
 fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
-    let n_filter = [&args.atom_a, &args.atom_b, &args.atom_c].iter().filter(|x| x.is_some()).count();
-    if n_filter > 0 && n_filter < 3 {
-        return Err(anyhow!("Angle filter: -a (end A), -b (center B), -c (end C) must all be specified together"));
+    let (group_by, slots) = resolve_selection(args)?;
+    let n_given = slots.iter().filter(|x| x.is_some()).count();
+    if n_given > 0 && n_given < 3 {
+        return Err(anyhow!(
+            "angle filter needs all three: -a END_A -b CENTRE -c END_C (by element) \
+             or -x END_A -y CENTRE -z END_C (by label)"
+        ));
     }
 
     let params = AngleParams {
         r_cut_ab: args.r_cut_ab,
         r_cut_bc: args.r_cut_bc,
         d_angle: args.d_angle,
+        group_by,
     };
     let mut result = calc_angle(traj, &params)
         .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
 
-    // 指定三元组时过滤输出列（key 格式 "A-Center-C"，端原子按 Z 排序，两种顺序均检查）
-    if let (Some(a), Some(b), Some(c)) = (&args.atom_a, &args.atom_b, &args.atom_c) {
+    // 指定三元组时过滤输出列（key 格式 "A-Centre-C"，端原子已规范排序，两种顺序均检查）
+    if let [Some(a), Some(b), Some(c)] = &slots {
         let key1 = format!("{a}-{b}-{c}");
         let key2 = format!("{c}-{b}-{a}");
         result.hist.retain(|k, _| k == &key1 || k == &key2);
         result.stats.retain(|k, _| k == &key1 || k == &key2);
         if result.hist.is_empty() {
             return Err(anyhow!(
-                "triplet '{key1}' not found (check element symbols and that -b is the center atom)"
+                "triplet '{key1}' not found (check the symbols and that the centre is the middle one)"
             ));
         }
     }
@@ -329,16 +365,4 @@ fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         open_plot(&png);
     }
     Ok(())
-}
-
-/// Build a sibling output path: `gr.dat` + `_cn` → `gr_cn.dat`
-fn sibling_path(base: &Path, suffix: &str) -> String {
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("gr");
-    let ext  = base.extension().and_then(|e| e.to_str()).unwrap_or("dat");
-    let dir  = base.parent().map(|p| p.to_str().unwrap_or("")).unwrap_or("");
-    if dir.is_empty() {
-        format!("{stem}{suffix}.{ext}")
-    } else {
-        format!("{dir}/{stem}{suffix}.{ext}")
-    }
 }
