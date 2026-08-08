@@ -142,6 +142,50 @@ pub fn symbol_to_z(symbol: &str) -> u8 {
     255
 }
 
+/// Result of splitting a site string into a chemical element and an optional type label.
+///
+/// See [`split_element_label`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelSplit<'a> {
+    /// No underscore — the whole string is the element symbol.
+    Plain(&'a str),
+    /// Underscore present and the prefix is a real element symbol.
+    Split { element: &'a str, label: &'a str },
+    /// Underscore present but the prefix is not a known element symbol.
+    ///
+    /// The caller should warn and fall back to treating the whole string as the element.
+    Unknown(&'a str),
+}
+
+/// Split a site string into `(element, label)` at the **first** underscore.
+///
+/// Convention for pseudo-element / site-type labels: `<Element>_<suffix>`, where the
+/// suffix may itself contain underscores (`O_b_P_P` → element `O`, label `O_b_P_P`).
+///
+/// ```text
+/// "O"          → Plain("O")                                   element O, no label
+/// "Zn_f"       → Split { element: "Zn", label: "Zn_f" }        element Zn, label Zn_f
+/// "O_b_P_P"    → Split { element: "O",  label: "O_b_P_P" }     element O,  label O_b_P_P
+/// "foo_bar"    → Unknown("foo_bar")                            warn; treat whole as element
+/// ```
+///
+/// Splitting on an explicit separator — rather than greedily matching the longest
+/// element prefix — avoids silently reading `Pb` as lead(82) when "P bridging" was
+/// meant. Plain trajectories (`O`, `P`, `Zn`) are unaffected.
+///
+/// Note this is deliberately *not* the rule used by the CIF / CP2K / QE readers, whose
+/// native site names (`Fe1`, `O2`) carry no separator and are correctly handled by an
+/// alphabetic-prefix rule instead.
+pub fn split_element_label(s: &str) -> LabelSplit<'_> {
+    match s.split_once('_') {
+        None => LabelSplit::Plain(s),
+        Some((prefix, _)) if by_symbol(prefix).is_some() => {
+            LabelSplit::Split { element: prefix, label: s }
+        }
+        Some(_) => LabelSplit::Unknown(s),
+    }
+}
+
 /// IUPAC 族号 (1–18)。
 ///
 /// - s/p 区按标准周期表返回 1, 2, 13–18。
@@ -192,6 +236,54 @@ pub fn is_transition_metal(z: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_split_element_label_plain_passthrough() {
+        // 普通轨迹（无下划线）零影响
+        for s in ["O", "P", "Zn", "Fe", "Al"] {
+            assert_eq!(split_element_label(s), LabelSplit::Plain(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn test_split_element_label_underscore_forms() {
+        assert_eq!(
+            split_element_label("Zn_f"),
+            LabelSplit::Split { element: "Zn", label: "Zn_f" }
+        );
+        assert_eq!(
+            split_element_label("P_0"),
+            LabelSplit::Split { element: "P", label: "P_0" }
+        );
+        // 后缀内含下划线：只在第一个下划线处拆
+        assert_eq!(
+            split_element_label("O_b_P_P"),
+            LabelSplit::Split { element: "O", label: "O_b_P_P" }
+        );
+        assert_eq!(
+            split_element_label("O_n_P"),
+            LabelSplit::Split { element: "O", label: "O_n_P" }
+        );
+    }
+
+    #[test]
+    fn test_split_element_label_unknown_prefix() {
+        // 前缀不是合法元素 → 调用方应告警并按整串当元素
+        assert_eq!(split_element_label("foo_bar"), LabelSplit::Unknown("foo_bar"));
+        assert_eq!(split_element_label("On_P"), LabelSplit::Unknown("On_P"));
+        assert_eq!(split_element_label("_x"), LabelSplit::Unknown("_x"));
+    }
+
+    #[test]
+    fn test_split_element_label_no_greedy_misread() {
+        // 分隔符规则的要点：不会把 "P bridging" 之类的意图误读成真元素
+        assert_eq!(split_element_label("Pb"), LabelSplit::Plain("Pb"));   // 铅，不拆
+        assert_eq!(split_element_label("Po"), LabelSplit::Plain("Po"));   // 钋，不拆
+        assert_eq!(
+            split_element_label("P_b"),
+            LabelSplit::Split { element: "P", label: "P_b" }
+        );
+    }
 
     #[test]
     fn test_group_number_main_group() {
