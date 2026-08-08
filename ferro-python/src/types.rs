@@ -7,7 +7,11 @@ use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 
 /// 轨迹对象（单帧文件也用此类型）。
-#[pyclass(name = "Trajectory")]
+///
+/// `skip_from_py_object`：所有绑定函数都按 `&PyTrajectory` 借用，没有按值提取的场景。
+/// pyo3 0.29 起 `#[pyclass]` + `Clone` 的隐式 `FromPyObject` 需显式选择，
+/// 而隐式实现会在每次提取时克隆整条轨迹 —— 对大轨迹是不该发生的深拷贝。
+#[pyclass(name = "Trajectory", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyTrajectory {
     pub(crate) inner: Trajectory,
