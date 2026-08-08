@@ -7,7 +7,7 @@ use rand::RngExt;
 
 use ferro_core::atom::Atom;
 use ferro_core::cell::Cell;
-use ferro_core::data::compounds;
+use ferro_core::data::{compounds, elements};
 use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
 
@@ -19,50 +19,142 @@ pub struct Component {
     pub n_molecules: usize,
 }
 
-/// Parse a simple chemical formula into element counts.
+/// Read an optional multiplicity at `*i`, advancing past it. Absent digits mean 1.
 ///
-/// Supports formulas without parentheses: H2O, P2O5, ZnO, CH3OH, CCl4.
-/// Elements are one uppercase letter optionally followed by one lowercase letter.
-/// Count defaults to 1 if omitted.
+/// Rejects an explicit zero: `Ca0` and `(PO4)0` are almost certainly typos, and silently
+/// dropping the group would leave the caller with a box missing a whole component.
+fn read_count(bytes: &[u8], i: &mut usize, formula: &str) -> Result<usize> {
+    let start = *i;
+    while *i < bytes.len() && bytes[*i].is_ascii_digit() {
+        *i += 1;
+    }
+    if start == *i {
+        return Ok(1);
+    }
+    let text = &formula[start..*i];
+    let count: usize = text.parse().map_err(|_| {
+        ChemError::ParseError(format!("invalid count '{}' in '{}'", text, formula))
+    })?;
+    if count == 0 {
+        return Err(ChemError::ParseError(format!(
+            "zero multiplicity at position {} in '{}'",
+            start, formula
+        )));
+    }
+    Ok(count)
+}
+
+/// Parse a chemical formula into element counts.
+///
+/// Supports nested groups in round or square brackets, which must be balanced and
+/// correctly paired: `Ca3(PO4)2`, `(NH4)2SO4`, `K4[Fe(CN)6]`, `Mg[Al(OH)4]2`.
+/// Elements are one uppercase letter optionally followed by lowercase letters; a count
+/// following an element or a closing bracket defaults to 1 when omitted.
+///
+/// Hydrate dot notation (`CuSO4·5H2O`) is *not* accepted — write it out as `CuSO9H10`
+/// only if that is genuinely what you mean, or list the water as a separate component,
+/// which is what the box builder wants anyway.
 fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
+    if formula.is_empty() {
+        return Err(ChemError::ParseError("empty formula".into()));
+    }
     let bytes = formula.as_bytes();
     let n = bytes.len();
     let mut i = 0;
 
+    // 每层一个计数表；栈底是整个式子，每遇到左括号压入一层
+    let mut stack: Vec<HashMap<String, usize>> = vec![HashMap::new()];
+    // 与 stack 平行，记录每层是被哪个字符打开的，用来拒绝 `[..)` 这类错配
+    let mut open: Vec<(u8, usize)> = Vec::new();
+
     while i < n {
-        // 解析元素符号：大写字母 + 可选小写字母
-        if !bytes[i].is_ascii_uppercase() {
+        let b = bytes[i];
+        if b == b'(' || b == b'[' {
+            open.push((b, i));
+            stack.push(HashMap::new());
+            i += 1;
+        } else if b == b')' || b == b']' {
+            let Some((opener, open_pos)) = open.pop() else {
+                return Err(ChemError::ParseError(format!(
+                    "unmatched '{}' at position {} in '{}'",
+                    b as char, i, formula
+                )));
+            };
+            let expected = if opener == b'(' { b')' } else { b']' };
+            if b != expected {
+                return Err(ChemError::ParseError(format!(
+                    "'{}' at position {} closed by '{}' at position {} in '{}'",
+                    opener as char, open_pos, b as char, i, formula
+                )));
+            }
+            let group = stack.pop().expect("stack depth tracks open brackets");
+            if group.is_empty() {
+                return Err(ChemError::ParseError(format!(
+                    "empty group at position {} in '{}'",
+                    open_pos, formula
+                )));
+            }
+            i += 1;
+            let mult = read_count(bytes, &mut i, formula)?;
+            let outer = stack.last_mut().expect("bottom frame is never popped");
+            for (elem, c) in group {
+                *outer.entry(elem).or_insert(0) += c * mult;
+            }
+        } else if b.is_ascii_uppercase() {
+            let start = i;
+            i += 1;
+            while i < n && bytes[i].is_ascii_lowercase() {
+                i += 1;
+            }
+            let elem = formula[start..i].to_string();
+            let count = read_count(bytes, &mut i, formula)?;
+            *stack.last_mut().expect("bottom frame is never popped")
+                .entry(elem).or_insert(0) += count;
+        } else {
             return Err(ChemError::ParseError(format!(
-                "expected uppercase letter at position {} in '{}'",
-                i, formula
+                "unexpected character '{}' at position {} in '{}'",
+                b as char, i, formula
             )));
         }
-        let start = i;
-        i += 1;
-        while i < n && bytes[i].is_ascii_lowercase() {
-            i += 1;
-        }
-        let elem = &formula[start..i];
-
-        // 解析数字（可选，默认 1）
-        let mut count_str = String::new();
-        while i < n && bytes[i].is_ascii_digit() {
-            count_str.push(bytes[i] as char);
-            i += 1;
-        }
-        let count: usize = if count_str.is_empty() {
-            1
-        } else {
-            count_str.parse().map_err(|_| {
-                ChemError::ParseError(format!("invalid count '{}' in '{}'", count_str, formula))
-            })?
-        };
-
-        *counts.entry(elem.to_string()).or_insert(0) += count;
     }
 
+    if let Some((opener, pos)) = open.pop() {
+        return Err(ChemError::ParseError(format!(
+            "unclosed '{}' at position {} in '{}'",
+            opener as char, pos, formula
+        )));
+    }
+    let counts = stack.pop().expect("bottom frame is never popped");
+    if counts.is_empty() {
+        return Err(ChemError::ParseError(format!("no elements in '{}'", formula)));
+    }
     Ok(counts)
+}
+
+/// Resolve a component spec into its element counts and molar mass (g/mol).
+///
+/// The COMPOUNDS database is tried first, by name or formula, so the curated
+/// `molecular_mass` values keep being used verbatim for known compounds. Anything not in
+/// the database is parsed as a chemical formula and its mass summed from atomic weights —
+/// that fallback is what lets callers ask for `Ca3(PO4)2` without the database knowing it.
+fn resolve_component(spec: &str) -> Result<(HashMap<String, usize>, f64)> {
+    if let Some(cd) = compounds::find(spec) {
+        return Ok((parse_formula(cd.formula)?, cd.molecular_mass));
+    }
+    let counts = parse_formula(spec).map_err(|e| {
+        ChemError::ValidationError(format!(
+            "'{}' is neither a known compound nor a valid formula ({})",
+            spec, e
+        ))
+    })?;
+    let mut mass = 0.0_f64;
+    for (elem, count) in &counts {
+        let ed = elements::by_symbol(elem).ok_or_else(|| {
+            ChemError::ValidationError(format!("unknown element '{}' in formula '{}'", elem, spec))
+        })?;
+        mass += ed.atomic_mass * *count as f64;
+    }
+    Ok((counts, mass))
 }
 
 /// Estimate the cubic box edge length (Å) for a mixed-compound system.
@@ -84,10 +176,8 @@ pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64
         if comp.n_molecules == 0 {
             continue;
         }
-        let cd = compounds::find(&comp.compound).ok_or_else(|| {
-            ChemError::ValidationError(format!("compound '{}' not found", comp.compound))
-        })?;
-        total_mass += comp.n_molecules as f64 * cd.molecular_mass;
+        let (_, molar_mass) = resolve_component(&comp.compound)?;
+        total_mass += comp.n_molecules as f64 * molar_mass;
     }
 
     if total_mass == 0.0 {
@@ -132,10 +222,7 @@ pub fn build_box(
         if comp.n_molecules == 0 {
             continue;
         }
-        let cd = compounds::find(&comp.compound).ok_or_else(|| {
-            ChemError::ValidationError(format!("compound '{}' not found", comp.compound))
-        })?;
-        let formula_counts = parse_formula(cd.formula)?;
+        let (formula_counts, _) = resolve_component(&comp.compound)?;
         for (elem, count) in formula_counts {
             *element_counts.entry(elem).or_insert(0) += count * comp.n_molecules;
         }
@@ -363,8 +450,99 @@ mod tests {
 
     #[test]
     fn test_parse_formula_empty() {
-        let counts = parse_formula("").unwrap();
-        assert!(counts.is_empty());
+        // 空串不是合法化学式。旧实现返回 Ok(空表)，把报错推迟到 build_box 的
+        // "no atoms to place"，错误信息离病因更远。
+        assert!(parse_formula("").is_err());
+    }
+
+    // ── 括号 ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_formula_parenthesised_group() {
+        let counts = parse_formula("Ca3(PO4)2").unwrap();
+        assert_eq!(counts["Ca"], 3);
+        assert_eq!(counts["P"], 2);
+        assert_eq!(counts["O"], 8);
+        assert_eq!(counts.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_formula_leading_group() {
+        let counts = parse_formula("(NH4)2SO4").unwrap();
+        assert_eq!(counts["N"], 2);
+        assert_eq!(counts["H"], 8);
+        assert_eq!(counts["S"], 1);
+        assert_eq!(counts["O"], 4);
+    }
+
+    #[test]
+    fn test_parse_formula_nested_groups() {
+        // 嵌套：内层 (CN)6 先归并进 [Fe...] 层，再整体乘 1
+        let counts = parse_formula("K4[Fe(CN)6]").unwrap();
+        assert_eq!(counts["K"], 4);
+        assert_eq!(counts["Fe"], 1);
+        assert_eq!(counts["C"], 6);
+        assert_eq!(counts["N"], 6);
+    }
+
+    #[test]
+    fn test_parse_formula_nested_with_outer_multiplier() {
+        // 外层乘数必须传播到内层：Al 2、O 8、H 8
+        let counts = parse_formula("Mg[Al(OH)4]2").unwrap();
+        assert_eq!(counts["Mg"], 1);
+        assert_eq!(counts["Al"], 2);
+        assert_eq!(counts["O"], 8);
+        assert_eq!(counts["H"], 8);
+    }
+
+    #[test]
+    fn test_parse_formula_group_merges_with_outer_element() {
+        // 同一元素既在组内又在组外时必须累加，而不是相互覆盖
+        let counts = parse_formula("O(O2)3").unwrap();
+        assert_eq!(counts["O"], 7);
+        assert_eq!(counts.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_formula_bracket_errors() {
+        for bad in ["Ca3(PO4", "Ca3PO4)2", "Ca3(PO4]2", "Ca3()2", "Ca0", "(PO4)0", "ca3"] {
+            assert!(parse_formula(bad).is_err(), "'{bad}' should be rejected");
+        }
+    }
+
+    // ── 数据库外公式回退 ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_known_compound_uses_curated_mass() {
+        let (counts, mass) = resolve_component("water").unwrap();
+        assert_eq!(counts["H"], 2);
+        assert_eq!(counts["O"], 1);
+        assert_eq!(mass, compounds::find("water").unwrap().molecular_mass);
+    }
+
+    #[test]
+    fn test_resolve_unknown_formula_sums_atomic_masses() {
+        // Ca3(PO4)2 不在化合物库中，走公式回退；分子量 310.18 g/mol
+        let (counts, mass) = resolve_component("Ca3(PO4)2").unwrap();
+        assert_eq!(counts["Ca"], 3);
+        assert_eq!(counts["O"], 8);
+        assert!((mass - 310.18).abs() < 0.5, "molar mass {mass} off expected 310.18");
+    }
+
+    #[test]
+    fn test_resolve_rejects_unknown_element() {
+        let err = resolve_component("Xx2O3").unwrap_err();
+        assert!(format!("{err}").contains("unknown element"), "got: {err}");
+    }
+
+    #[test]
+    fn test_build_box_accepts_formula_outside_database() {
+        // 端到端：库外带括号公式一路走到建盒
+        let comps = vec![Component { compound: "Ca3(PO4)2".to_string(), n_molecules: 8 }];
+        let frame = build_box(&comps, 3.0, 1.5, 20).unwrap();
+        assert_eq!(frame.atoms.iter().filter(|a| a.element == "Ca").count(), 24);
+        assert_eq!(frame.atoms.iter().filter(|a| a.element == "P").count(), 16);
+        assert_eq!(frame.atoms.iter().filter(|a| a.element == "O").count(), 64);
     }
 
     #[test]
