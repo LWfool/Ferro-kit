@@ -205,10 +205,13 @@ fn weights_from_factors(
 ) -> BTreeMap<String, f64> {
     let mut w: BTreeMap<String, f64> = BTreeMap::new();
     if denom.abs() < 1e-30 { return w; }
+    // 上三角遍历（ib 从 ia 起），每个对称对只访问一次，异种对乘 (2−δᵢⱼ)。
+    // 与参考实现 code2/dump2sq.c:326-338 的 `for k=j` 循环一致。
+    // 全 n² 遍历会让异种对被累加两次（w_ij 翻倍、Σw > 1、加权总 S(q) 整体偏大）。
     for (ia, (ea, ca, _)) in elems.iter().enumerate() {
-        for (ib, (eb, cb, _)) in elems.iter().enumerate() {
-            // 仅处理对称对 key（Z(a) ≤ Z(b)，或 a==b）
-            let key = canonical_pair_key(ea, eb, elems[ia].2, elems[ib].2);
+        for (ib, (eb, cb, _)) in elems.iter().enumerate().skip(ia) {
+            // `elems` 与 `GrResult.elements` 同序，故 ia ≤ ib 时 "ea-eb" 即 g(r) 的对称对 key
+            let key = format!("{ea}-{eb}");
             if !gr_gr.contains_key(&key) { continue; }
             let factor = if ia == ib { 1.0 } else { 2.0 };
             *w.entry(key).or_insert(0.0) +=
@@ -216,15 +219,6 @@ fn weights_from_factors(
         }
     }
     w
-}
-
-/// Compute the canonical symmetric pair key "El1-El2" with Z(El1) ≤ Z(El2).
-fn canonical_pair_key(ea: &str, eb: &str, za: usize, zb: usize) -> String {
-    if za < zb || (za == zb && ea <= eb) {
-        format!("{}-{}", ea, eb)
-    } else {
-        format!("{}-{}", eb, ea)
-    }
 }
 
 /// Evaluate Σ_pairs w_pair · S_pair[qi] for a single q index.
@@ -398,6 +392,90 @@ mod tests {
         let tot = &sq_res.sq["total"];
         let max_diff = neu.iter().zip(tot.iter()).map(|(a,b)| (a-b).abs()).fold(0.0_f64, f64::max);
         assert!(max_diff < 0.01, "single-element neutron total should match unweighted total, diff={:.4}", max_diff);
+    }
+
+    /// 构造多组分晶体（元素按 (i+j+k) % n_elems 轮换，a=3.0 Å）
+    fn make_multi_crystal(n: usize, elems: &[&str]) -> Frame {
+        let a = 3.0_f64;
+        let side = n as f64 * a;
+        let cell = Cell::from_lengths_angles(side, side, side, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..n {
+                    let pos = Vector3::new(i as f64 * a, j as f64 * a, k as f64 * a);
+                    frame.add_atom(Atom::new(elems[(i + j + k) % elems.len()], pos));
+                }
+            }
+        }
+        frame
+    }
+
+    /// 复现 `calc_sq_from_gr` 内部的 `elems` 构造（浓度 + 原子序数）
+    fn build_elems(gr: &ferro_core::Result<crate::GrResult>) -> Vec<(&str, f64, usize)> {
+        let gr = gr.as_ref().unwrap();
+        let n_total: usize = gr.element_counts.values().sum();
+        gr.elements.iter()
+            .map(|e| {
+                let c = gr.element_counts.get(e).copied().unwrap_or(0) as f64 / n_total as f64;
+                (e.as_str(), c, elem_z_local(e))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_faber_ziman_weights_sum_to_one() {
+        // Faber-Ziman 归一化：Σ_{i≤j} w_ij = (Σ cᵢfᵢ)² / <f>² = 1。
+        // 回归保护：曾因全 n² 遍历 + factor=2.0 让异种对被累加两次，Σw > 1，
+        // 导致 total_xrd / total_neutron 整体偏大（二元体系约 1.4 倍）。
+        for elems_list in [&["O", "Si"][..], &["O", "P", "Zn"][..]] {
+            let traj = Trajectory::from_frame(make_multi_crystal(4, elems_list));
+            let gr_res = calc_gr(&traj, &GrParams {
+                r_min: 0.1, r_max: 5.9, dr: 0.01, r_cut: 3.0,
+            });
+            let elems = build_elems(&gr_res);
+            let gr_gr = &gr_res.as_ref().unwrap().gr;
+
+            let neu = build_neutron_weights(&elems, gr_gr);
+            let neu_sum: f64 = neu.values().sum();
+            assert!(
+                (neu_sum - 1.0).abs() < 1e-10,
+                "{elems_list:?}: Σ neutron w_ij = {neu_sum:.6}, expected 1"
+            );
+
+            for q in [0.5_f64, 2.0, 5.0, 12.0, 25.0] {
+                let xrd = build_xrd_weights_at_q(&elems, q, gr_gr);
+                let xrd_sum: f64 = xrd.values().sum();
+                assert!(
+                    (xrd_sum - 1.0).abs() < 1e-10,
+                    "{elems_list:?}: Σ XRD w_ij(q={q}) = {xrd_sum:.6}, expected 1"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_hetero_pair_weight_not_double_counted() {
+        // 二元体系异种对权重应为 2·c_A·c_B·f_A·f_B/<f>²，而非其两倍。
+        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
+        let gr_res = calc_gr(&traj, &GrParams {
+            r_min: 0.1, r_max: 5.9, dr: 0.01, r_cut: 3.0,
+        });
+        let elems = build_elems(&gr_res);
+        let w = build_neutron_weights(&elems, &gr_res.as_ref().unwrap().gr);
+
+        let (_, c_o, z_o) = elems[0];
+        let (_, c_si, z_si) = elems[1];
+        let b_o = neutron_bcoh(z_o);
+        let b_si = neutron_bcoh(z_si);
+        let b_avg = c_o * b_o + c_si * b_si;
+        let expected = 2.0 * c_o * c_si * b_o * b_si / (b_avg * b_avg);
+
+        let got = w["O-Si"];
+        assert!(
+            (got - expected).abs() < 1e-12,
+            "w(O-Si) = {got:.6}, expected {expected:.6} (2× 说明异种对被重复累加)"
+        );
     }
 
     #[test]
