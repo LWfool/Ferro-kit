@@ -18,7 +18,7 @@ license = "MIT"
 
 [workspace.dependencies]
 # 线性代数库,用于处理坐标、矩阵计算
-nalgebra = "0.34"
+nalgebra = "0.35"
 # 多维数组,用于大规模数据处理
 ndarray = "0.17"
 # 并行计算库
