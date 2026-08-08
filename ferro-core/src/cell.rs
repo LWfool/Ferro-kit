@@ -99,6 +99,34 @@ impl Cell {
         self.matrix.determinant().abs()
     }
 
+    /// Interplanar spacings d₁, d₂, d₃ \[Å\] — the perpendicular distances between
+    /// the pairs of cell faces normal to each reciprocal-lattice direction.
+    ///
+    /// `dᵢ = 1 / ‖(Mᵀ)⁻¹.row(i)‖`, where the rows of `(Mᵀ)⁻¹` are the reciprocal
+    /// lattice vectors.
+    ///
+    /// This — not `lengths()` — is the correct geometric bound for the minimum-image
+    /// convention: MIC is valid only for `r < min(d)/2`. For non-orthogonal cells
+    /// `d < L`, so using `lengths()` overestimates the usable cutoff.
+    ///
+    /// Returns `Err` when the cell matrix is singular.
+    pub fn interplanar_spacings(&self) -> Result<[f64; 3]> {
+        let inv = self.matrix.transpose().try_inverse()
+            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
+        let d = |i: usize| {
+            let n = inv.row(i).norm();
+            if n > 0.0 { 1.0 / n } else { f64::INFINITY }
+        };
+        Ok([d(0), d(1), d(2)])
+    }
+
+    /// Upper bound on a cutoff radius compatible with the minimum-image convention:
+    /// half the smallest interplanar spacing.
+    pub fn minimum_image_cutoff(&self) -> Result<f64> {
+        let d = self.interplanar_spacings()?;
+        Ok(d[0].min(d[1]).min(d[2]) * 0.5)
+    }
+
     // ── 坐标转换 ──────────────────────────────────────────────────────────────
 
     /// 分数坐标 → Cartesian 坐标（Å）。
@@ -164,6 +192,54 @@ mod tests {
     fn test_cubic_volume() {
         let cell = cubic(10.0);
         assert!((cell.volume() - 1000.0).abs() < 1e-8);
+    }
+
+    #[test]
+    fn test_interplanar_spacings_cubic_equal_lengths() {
+        // 正交晶胞：面间距 = 边长
+        let cell = cubic(10.0);
+        let d = cell.interplanar_spacings().unwrap();
+        for di in d {
+            assert!((di - 10.0).abs() < 1e-10, "d = {di}, expected 10");
+        }
+        assert!((cell.minimum_image_cutoff().unwrap() - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_interplanar_spacings_smaller_than_lengths_when_skewed() {
+        // 三斜晶胞：面间距严格小于边长 —— 这正是 MIC 上界不能用 lengths() 的原因
+        let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 60.0, 70.0, 80.0).unwrap();
+        let l = cell.lengths();
+        let d = cell.interplanar_spacings().unwrap();
+        for i in 0..3 {
+            assert!(
+                d[i] < l[i] - 1e-6,
+                "axis {i}: d = {:.6} should be < L = {:.6}", d[i], l[i]
+            );
+        }
+        // MIC 上界随之小于 min(L)/2
+        let l_min_half = l.iter().cloned().fold(f64::INFINITY, f64::min) * 0.5;
+        assert!(cell.minimum_image_cutoff().unwrap() < l_min_half);
+    }
+
+    #[test]
+    fn test_interplanar_spacings_matches_volume_over_area() {
+        // d_i = V / |a_j × a_k|，与倒格矢定义一致
+        let cell = Cell::from_lengths_angles(7.0, 9.0, 11.0, 75.0, 85.0, 95.0).unwrap();
+        let row = |i: usize| Vector3::new(cell.matrix[(i, 0)], cell.matrix[(i, 1)], cell.matrix[(i, 2)]);
+        let v = cell.volume();
+        let d = cell.interplanar_spacings().unwrap();
+        let expect = [
+            v / row(1).cross(&row(2)).norm(),
+            v / row(2).cross(&row(0)).norm(),
+            v / row(0).cross(&row(1)).norm(),
+        ];
+        for i in 0..3 {
+            assert!(
+                (d[i] - expect[i]).abs() < 1e-9,
+                "axis {i}: got {:.9}, expected {:.9}", d[i], expect[i]
+            );
+        }
     }
 
     #[test]
