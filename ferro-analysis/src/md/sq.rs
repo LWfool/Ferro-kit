@@ -134,14 +134,24 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> SqResult {
         .collect();
 
     // ── 计算各 partial S_ij(q) ────────────────────────────────────────────────
+    //
+    // 参考实现（code2/dump2sq.c）在帧循环内部用**该帧的** ρ_f 与 g_f 各做一次变换，
+    // 最后才时间平均（`CalcSq` 逐帧调用 + `TimeAverage`）。直接对时间平均后的 g 变换
+    // 并不等价：NPT 下会丢掉 Cov(ρ_f, FT[g_f])。
+    //
+    // 但变换对 g 是线性的，而被积函数里的 ρ_f·g_f 中体积恰好抵消，于是
+    //     ⟨ρ_f·(g_f − 1)⟩ = ⟨ρ_f·g_f⟩ − ⟨ρ_f⟩ = gr.rho_g − gr.rho
+    // 逐帧变换的结果可以由两个时间平均量精确重构，只做一次变换即可 —— 与逐帧实现
+    // 严格相等（测试 `test_folded_matches_literal_per_frame_transform` 钉住这一点），
+    // 而非近似。NVT 下 `rho_g ≡ rho·gr`，整个表达式退化回 `4πρ/q·∫r(g−1)sin(qr)dr`。
     let mut sq_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     for label in &canonical {
-        let gr_vals = &gr.gr[label];
+        let rho_g_vals = &gr.rho_g[label];
         let sq_vals: Vec<f64> = q_vals.par_iter().map(|&qi| {
             if qi.abs() < 1e-10 { return 1.0; }
-            let prefactor = pi4 * rho / qi;
-            let integral: f64 = gr.r.iter().zip(gr_vals.iter())
-                .map(|(&ri, &gri)| ri * (gri - 1.0) * (qi * ri).sin() * dr)
+            let prefactor = pi4 / qi;
+            let integral: f64 = gr.r.iter().zip(rho_g_vals.iter())
+                .map(|(&ri, &rg)| ri * (rg - rho) * (qi * ri).sin() * dr)
                 .sum();
             1.0 + prefactor * integral
         }).collect();
@@ -345,7 +355,7 @@ pub fn write_sq(
     writeln!(w, "# r_max   = {} Ang", gr.params.r_max)?;
     writeln!(w, "# dr      = {} Ang", gr.params.dr)?;
     writeln!(w, "# frames  = {}", gr.n_frames)?;
-    writeln!(w, "# volume  = {:.3} Ang^3", gr.avg_volume)?;
+    writeln!(w, "# volume  = {:.3} +/- {:.3} Ang^3", gr.avg_volume, gr.volume_std)?;
     writeln!(w, "# density = {:.6e} Ang^-3", gr.rho)?;
     writeln!(w, "# atoms:")?;
     for elem in &gr.elements {
@@ -660,6 +670,83 @@ mod tests {
 
     fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
         a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).fold(0.0_f64, f64::max)
+    }
+
+    /// 合成 NPT 轨迹：同一晶体逐帧按 `scales` 缩放，体积随之变化。
+    fn make_npt_traj(n: usize, elems: &[&str], scales: &[f64]) -> Trajectory {
+        let base = make_multi_crystal(n, elems);
+        let base_cell = base.cell.as_ref().unwrap().matrix;
+        let mut traj = Trajectory::new();
+        for &s in scales {
+            let mut f = Frame::with_cell(Cell::from_matrix(base_cell * s), [true; 3]);
+            for a in &base.atoms {
+                f.add_atom(Atom::new(&a.element, a.position * s));
+            }
+            traj.add_frame(f);
+        }
+        traj
+    }
+
+    #[test]
+    fn test_folded_matches_literal_per_frame_transform() {
+        // 参考实现 code2/dump2sq.c 在帧循环内逐帧做傅里叶变换（`CalcSq` 每帧一次，
+        // 末尾 `TimeAverage`）。本实现只做一次变换，靠 ⟨ρ_f·g_f⟩ 重构 —— 这里证明
+        // 两者严格相等，而非近似。
+        //
+        // 单帧调用 calc_gr + calc_sq_from_gr 就是「该帧的 g_f 与 ρ_f 各变换一次」，
+        // 对全部帧取算术平均即得字面逐帧结果。
+        let traj = make_npt_traj(4, &["O", "Si"], &[1.0, 1.09, 0.93, 1.13, 0.90]);
+        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+        let sp = SqParams { q_min: 0.5, q_max: 12.0, dq: 0.1, ..Default::default() };
+
+        let folded = calc_sq_from_gr(&calc_gr(&traj, &gp).unwrap(), &sp);
+
+        let mut literal: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        for frame in &traj.frames {
+            let single = Trajectory::from_frame(frame.clone());
+            let s = calc_sq_from_gr(&calc_gr(&single, &gp).unwrap(), &sp);
+            for (k, v) in &s.sq {
+                let e = literal.entry(k.clone()).or_insert_with(|| vec![0.0; v.len()]);
+                for (a, b) in e.iter_mut().zip(v.iter()) { *a += b; }
+            }
+        }
+        let nf = traj.frames.len() as f64;
+        for v in literal.values_mut() { for x in v.iter_mut() { *x /= nf; } }
+
+        assert_eq!(folded.sq.len(), literal.len());
+        for (k, v) in &folded.sq {
+            let d = max_abs_diff(v, &literal[k]);
+            assert!(d < 1e-12, "pair {k}: folded vs literal per-frame S(q) differs by {d:.3e}");
+        }
+    }
+
+    #[test]
+    fn test_npt_transform_differs_from_average_volume_shortcut() {
+        // 反向断言：对时间平均后的 g 直接变换（旧口径 4πρ/q·∫r(g−1)sin(qr)dr，
+        // ρ=N/⟨V⟩）与逐帧口径**不同**。没有这条，上面的对拍在两种口径恰好等价时
+        // 也会通过。
+        let traj = make_npt_traj(4, &["O", "Si"], &[1.0, 1.09, 0.93, 1.13, 0.90]);
+        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+        let sp = SqParams { q_min: 0.5, q_max: 12.0, dq: 0.1, ..Default::default() };
+        let gr = calc_gr(&traj, &gp).unwrap();
+        let folded = calc_sq_from_gr(&gr, &sp);
+
+        let pi4 = 4.0 * std::f64::consts::PI;
+        let rho_old = gr.element_counts.values().sum::<usize>() as f64 / gr.avg_volume;
+        let mut worst = 0.0_f64;
+        for (k, gr_vals) in &gr.gr {
+            if !folded.sq.contains_key(k) { continue; }
+            let old: Vec<f64> = folded.q.iter().map(|&qi| {
+                if qi.abs() < 1e-10 { return 1.0; }
+                let integral: f64 = gr.r.iter().zip(gr_vals.iter())
+                    .map(|(&ri, &g)| ri * (g - 1.0) * (qi * ri).sin() * gp.dr)
+                    .sum();
+                1.0 + pi4 * rho_old / qi * integral
+            }).collect();
+            worst = worst.max(max_abs_diff(&folded.sq[k], &old));
+        }
+        assert!(worst > 1e-6,
+            "per-frame and average-volume S(q) must differ under NPT (max diff {worst:.3e})");
     }
 
     #[test]

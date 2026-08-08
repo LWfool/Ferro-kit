@@ -137,6 +137,14 @@ pub struct GrResult {
     pub gr: BTreeMap<String, Vec<f64>>,
     /// Directed cumulative CN(r), key `"centre-neighbour"` (all n² ordered pairs)
     pub cn: BTreeMap<String, Vec<f64>>,
+    /// Per-frame average of `ρ_f · g_f(r)`, key `"A-B"` (all n² ordered pairs).
+    ///
+    /// This is the quantity S(q) actually needs, and it is *not* `rho * gr` under NPT:
+    /// `g_f ∝ V_f` while `ρ_f ∝ 1/V_f`, so the box volume cancels out of the product and
+    /// `⟨ρ_f·g_f⟩` reduces to a plain (volume-free) pair count. Keeping it separate is what
+    /// lets `calc_sq_from_gr` reproduce a strictly per-frame transform from time-averaged
+    /// data alone. Under NVT it degenerates to exactly `rho * gr`.
+    pub rho_g: BTreeMap<String, Vec<f64>>,
     /// Grouping keys present (elements or site labels), sorted by (Z, string)
     pub elements: Vec<String>,
     /// Atom count per grouping key (from the first frame)
@@ -144,15 +152,50 @@ pub struct GrResult {
     /// How `elements` was derived
     pub group_by: GroupBy,
     pub n_frames: usize,
-    /// Average box volume \[Å³\]
+    /// Mean box volume ⟨V⟩ \[Å³\] — reported only; normalisation is per-frame
     pub avg_volume: f64,
-    /// Total number density N/V \[Å⁻³\]
+    /// Population standard deviation of the box volume \[Å³\] (0 for NVT)
+    pub volume_std: f64,
+    /// Mean number density ⟨ρ_f⟩ = N·⟨1/V⟩ \[Å⁻³\].
+    ///
+    /// Note this is the average of the per-frame densities, **not** `N/⟨V⟩` — the two
+    /// differ by an O(σ_V²/⟨V⟩²) term whenever the box fluctuates.
     pub rho: f64,
     /// Parameters actually used (`r_max` reflects the applied clamp)
     pub params: GrParams,
 }
 
 // ─── 计算函数 ────────────────────────────────────────────────────────────────
+
+/// Per-thread fold accumulator for [`calc_gr`].
+struct Acc {
+    /// `Σ_f count` — volume-free counts, feeding CN(r) and `⟨ρ_f·g_f⟩`
+    plain: Vec<Vec<f64>>,
+    /// `Σ_f count · V_f` — volume-weighted counts, feeding g(r)
+    vol_w: Vec<Vec<f64>>,
+    /// Scratch buffer holding one frame's counts; reused across frames
+    cr: Vec<Vec<f64>>,
+}
+
+impl Acc {
+    fn new(n_upairs: usize, n_bins: usize) -> Self {
+        Acc {
+            plain: vec![vec![0.0f64; n_bins]; n_upairs],
+            vol_w: vec![vec![0.0f64; n_bins]; n_upairs],
+            cr:    vec![vec![0.0f64; n_bins]; n_upairs],
+        }
+    }
+
+    fn merge(mut a: Self, b: Self) -> Self {
+        for p in 0..a.plain.len() {
+            for i in 0..a.plain[p].len() {
+                a.plain[p][i] += b.plain[p][i];
+                a.vol_w[p][i] += b.vol_w[p][i];
+            }
+        }
+        a
+    }
+}
 
 /// Compute partial g(r) and directed CN(r) for every ordered pair of types.
 ///
@@ -167,11 +210,13 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // 单个 cell，最小镜像在该距离以上失效，会让 g(r) 尾部被错误压向 0。用面间距而非
     // 边长：非正交晶胞 d < L，用边长会高估可用截断。
     let mut mic_max = f64::INFINITY;
+    let mut volumes: Vec<f64> = Vec::with_capacity(traj.frames.len());
     for frame in &traj.frames {
         let cell = frame.cell.as_ref().ok_or_else(|| {
             ChemError::ValidationError("all frames must have a periodic cell".into())
         })?;
         mic_max = mic_max.min(cell.minimum_image_cutoff()?);
+        volumes.push(cell.volume());
     }
     let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };
 
@@ -204,15 +249,57 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         pair_lookup[j][i] = pidx;
     }
 
-    // 并行逐帧计数：每个线程独立维护 (hist, volume)，最后 reduce 合并
+    // ── 粒子数守恒校验 ───────────────────────────────────────────────────────
+    // 归一化把 N_A / N_B / N 当作常数提出求和号，这只有在粒子数逐帧不变时成立。
+    // 不校验的话，把两个不同体系拼成的轨迹喂进来会静默算出垃圾：下面主循环的
+    // `else { continue }` 会把首帧没见过的类型悄悄丢掉，结果看着正常却完全错误。
+    let count_types = |frame: &ferro_core::Frame| -> Vec<usize> {
+        let mut c = vec![0usize; n_types];
+        for atom in &frame.atoms {
+            if let Some(&ti) = type_idx.get(group_key(atom, by)) { c[ti] += 1; }
+        }
+        c
+    };
+    let first_counts = count_types(first_frame);
+    for (fi, frame) in traj.frames.iter().enumerate().skip(1) {
+        if frame.atoms.len() != first_frame.atoms.len() {
+            return Err(ChemError::ValidationError(format!(
+                "atom count changes across the trajectory (frame 0 has {}, frame {} has {}); \
+                 g(r) normalisation assumes a fixed particle number",
+                first_frame.atoms.len(), fi, frame.atoms.len()
+            )));
+        }
+        if count_types(frame) != first_counts {
+            return Err(ChemError::ValidationError(format!(
+                "per-type atom counts change at frame {fi}; \
+                 g(r) normalisation assumes a fixed particle number per type"
+            )));
+        }
+    }
+
+    let type_counts: Vec<f64> = first_counts.iter().map(|&c| c as f64).collect();
+    let element_counts: BTreeMap<String, usize> = types
+        .iter().cloned().zip(first_counts.iter().copied())
+        .filter(|&(_, c)| c > 0)
+        .collect();
+    let n_total = first_frame.atoms.len() as f64;
+
+    // 并行逐帧计数：每个线程独立维护两份直方图与三个体积标量，最后 reduce 合并
     // 使用 linked-cell list 将帧内原子对遍历从 O(N²) 降至 O(N)
-    let init = || (vec![vec![0.0f64; n_bins]; n_upairs], 0.0f64);
-    let (hist, total_volume) = traj.frames.par_iter()
-        .fold(init, |(mut h, mut v), frame| {
+    //
+    // 为什么是两份直方图：g(r) 要的是 ⟨hist·V_f⟩（逐帧归一化后再时间平均，见 code1/gr.c
+    // 的「1ステップ毎にgrの計算」），而 CN(r) 与 ⟨ρ_f·g_f⟩ 要的是不带体积权重的纯计数。
+    // NVT 下两者互为常数倍，NPT 下则相差一个 Cov(hist, V) 项。
+    let init = || Acc::new(n_upairs, n_bins);
+    let acc = traj.frames.par_iter()
+        .fold(init, |mut acc, frame| {
             let cell = frame.cell.as_ref().unwrap();
-            v += cell.volume();
+            let vol = cell.volume();
             let n_atoms = frame.atoms.len();
             let cl = CellList::build(frame, cell, r_max);
+            // 帧内纯计数缓冲（对应 code1 的 cr / code2 的 cn_），帧末一次性加权归并 ——
+            // 比在每次命中处累加两份直方图便宜得多（命中数 ≫ bin 数）
+            for row in acc.cr.iter_mut() { row.fill(0.0); }
             for i in 0..n_atoms {
                 let Some(&ti) = type_idx.get(group_key(&frame.atoms[i], by)) else { continue; };
                 for (j, r_val, _) in cl.neighbors_of(i, r_max) {
@@ -221,36 +308,33 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
                     let bin = ((r_val - params.r_min) / params.dr) as usize;
                     if bin >= n_bins { continue; }
                     let Some(&tj) = type_idx.get(group_key(&frame.atoms[j], by)) else { continue; };
-                    h[pair_lookup[ti][tj]][bin] += 1.0;
+                    acc.cr[pair_lookup[ti][tj]][bin] += 1.0;
                 }
             }
-            (h, v)
-        })
-        .reduce(init, |(mut ha, va), (hb, vb)| {
-            for p in 0..ha.len() {
-                for b in 0..ha[p].len() { ha[p][b] += hb[p][b]; }
+            for p in 0..n_upairs {
+                for b in 0..n_bins {
+                    let c = acc.cr[p][b];
+                    if c != 0.0 {
+                        acc.plain[p][b] += c;
+                        acc.vol_w[p][b] += c * vol;
+                    }
+                }
             }
-            (ha, va + vb)
-        });
+            acc
+        })
+        .reduce(init, Acc::merge);
 
     // ── normalisation ───────────────────────────────────────────────────────
     let n_frames = traj.frames.len();
-    let avg_volume = total_volume / n_frames as f64;
+    let nf = n_frames as f64;
+    let avg_volume = volumes.iter().sum::<f64>() / nf;
     if avg_volume <= 0.0 {
         return Err(ChemError::ValidationError("average cell volume is zero or negative".into()));
     }
-
-    // atom counts per type from first frame
-    let mut type_counts = vec![0.0f64; n_types];
-    let mut element_counts: BTreeMap<String, usize> = BTreeMap::new();
-    for atom in &first_frame.atoms {
-        if let Some(&ti) = type_idx.get(group_key(atom, by)) {
-            type_counts[ti] += 1.0;
-            *element_counts.entry(types[ti].clone()).or_insert(0) += 1;
-        }
-    }
-    let n_total = first_frame.atoms.len() as f64;
-    let rho = n_total / avg_volume;
+    // 两遍算法：⟨V²⟩−⟨V⟩² 在 V≈6e4 时抵消误差会放大到 1e-3 量级，定容轨迹也报不出 0
+    let volume_std = (volumes.iter().map(|v| (v - avg_volume).powi(2)).sum::<f64>() / nf).sqrt();
+    // ⟨ρ_f⟩ = N·⟨1/V⟩ —— 逐帧密度的平均，不是 N/⟨V⟩
+    let rho = n_total * volumes.iter().map(|v| 1.0 / v).sum::<f64>() / nf;
 
     let r_centers: Vec<f64> = (0..n_bins)
         .map(|i| params.r_min + (i as f64 + 0.5) * params.dr)
@@ -259,13 +343,16 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     let pi4 = 4.0 * std::f64::consts::PI;
     let mut gr_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     let mut cn_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    let mut rho_g_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
     // ── 展开为 n² 个有序对 ───────────────────────────────────────────────
-    // g(r) 归一化（code2 CalcGr）：
-    //   同种 (A=A): g = 2·cr / (4πr²Δr·(N_A−1)/V·N_A·steps)
-    //   异种 (A-B): g = cr  / (4πr²Δr·N_B/V·N_A·steps)      —— 对调 A,B 数值不变
-    // 有向 CN：
-    //   CN(A→B) = Σ_bins ni·count_AB / (N_A·steps)，同种 ni=2，异种 ni=1
+    // 逐帧归一化后时间平均（code1/gr.c:139-146、code2/dump2sq.c CalcGr）：
+    //   同种 (A=A): g_f = 2·cr_f·V_f / (4πr²Δr·N_A·(N_A−1))
+    //   异种 (A-B): g_f =   cr_f·V_f / (4πr²Δr·N_A·N_B)     —— 对调 A,B 数值不变
+    //   g = ⟨g_f⟩ —— NPT 下 ≠ ⟨cr⟩·⟨V⟩/…，两者相差一个 Cov(cr, V) 项
+    // 有向 CN（与体积无关）：
+    //   CN(A→B) = Σ_bins ni·⟨count_AB⟩ / N_A，同种 ni=2，异种 ni=1
+    // S(q) 用的 ⟨ρ_f·g_f⟩：ρ_f = N/V_f 与 g_f ∝ V_f 相乘后体积消去，只剩纯计数
     for ti in 0..n_types {
         for tj in 0..n_types {
             let n_a = type_counts[ti];
@@ -279,17 +366,21 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
 
             let mut gr_vec = vec![0.0f64; n_bins];
             let mut cn_vec = vec![0.0f64; n_bins];
+            let mut rho_g_vec = vec![0.0f64; n_bins];
             let mut running = 0.0f64;
             for (i, &r_c) in r_centers.iter().enumerate() {
-                let bunbo = pi4 * r_c * r_c * params.dr * n_neighbor / avg_volume * n_a;
+                // 几何 + 计数因子，不含体积
+                let bunbo = pi4 * r_c * r_c * params.dr * n_neighbor * n_a;
                 if bunbo > 0.0 {
-                    gr_vec[i] = ni * hist[pidx][i] / (bunbo * n_frames as f64);
+                    gr_vec[i] = ni * acc.vol_w[pidx][i] / (bunbo * nf);
+                    rho_g_vec[i] = ni * n_total * acc.plain[pidx][i] / (bunbo * nf);
                 }
-                running += ni * hist[pidx][i] / (n_a * n_frames as f64);
+                running += ni * acc.plain[pidx][i] / (n_a * nf);
                 cn_vec[i] = running;
             }
             gr_map.insert(key.clone(), gr_vec);
-            cn_map.insert(key, cn_vec);
+            cn_map.insert(key.clone(), cn_vec);
+            rho_g_map.insert(key, rho_g_vec);
         }
     }
 
@@ -297,11 +388,13 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         r: r_centers,
         gr: gr_map,
         cn: cn_map,
+        rho_g: rho_g_map,
         elements: types,
         element_counts,
         group_by: by,
         n_frames,
         avg_volume,
+        volume_std,
         rho,
         params: GrParams { r_max, ..params.clone() },
     })
@@ -322,7 +415,7 @@ fn write_header(w: &mut impl Write, result: &GrResult) -> std::io::Result<()> {
     writeln!(w, "# r_max   = {} Ang", result.params.r_max)?;
     writeln!(w, "# dr      = {} Ang", result.params.dr)?;
     writeln!(w, "# frames  = {}", result.n_frames)?;
-    writeln!(w, "# volume  = {:.3} Ang^3", result.avg_volume)?;
+    writeln!(w, "# volume  = {:.3} +/- {:.3} Ang^3", result.avg_volume, result.volume_std)?;
     writeln!(w, "# density = {:.6e} Ang^-3", result.rho)?;
     writeln!(w, "# grouped by {what}:")?;
     for elem in &result.elements {
@@ -421,6 +514,144 @@ mod tests {
             }
         }
         frame
+    }
+
+    /// 构造合成 NPT 轨迹：同一 O/Si 晶体逐帧按 `scales` 缩放，晶胞与坐标同比变化，
+    /// 故每帧都是合法晶体而体积逐帧不同。用于检验体积归一化口径。
+    fn make_npt_traj(n: usize, scales: &[f64]) -> Trajectory {
+        let base = make_o_si_crystal(n);
+        let base_cell = base.cell.as_ref().unwrap().matrix;
+        let mut traj = Trajectory::new();
+        for &s in scales {
+            let mut f = Frame::with_cell(Cell::from_matrix(base_cell * s), [true; 3]);
+            for a in &base.atoms {
+                f.add_atom(Atom::new(&a.element, a.position * s));
+            }
+            traj.add_frame(f);
+        }
+        traj
+    }
+
+    /// 逐帧归一化后时间平均 —— 即 code1/code2 字面意义上的做法，作为对拍基准。
+    ///
+    /// 单帧调用 `calc_gr` 恰好就是「用该帧体积归一化」，所以对每帧各算一次再取
+    /// 算术平均，就是参考实现的逐帧循环。
+    fn literal_per_frame(traj: &Trajectory, gp: &GrParams) -> BTreeMap<String, Vec<f64>> {
+        let mut acc: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        for frame in &traj.frames {
+            let single = Trajectory::from_frame(frame.clone());
+            let g = calc_gr(&single, gp).unwrap();
+            for (k, v) in &g.gr {
+                let e = acc.entry(k.clone()).or_insert_with(|| vec![0.0; v.len()]);
+                for (a, b) in e.iter_mut().zip(v.iter()) { *a += b; }
+            }
+        }
+        let nf = traj.frames.len() as f64;
+        for v in acc.values_mut() { for x in v.iter_mut() { *x /= nf; } }
+        acc
+    }
+
+    #[test]
+    fn test_gr_matches_literal_per_frame_normalisation() {
+        // g(r) 必须等于「逐帧归一化再平均」，而不是「先平均计数再乘 ⟨V⟩」。
+        // r_max 取得足够小，使各帧都不触发最小镜像 clamp，否则单帧与全轨迹的
+        // bin 数会不一致而无法逐点比较。
+        let traj = make_npt_traj(4, &[1.0, 1.08, 0.94, 1.12, 0.90]);
+        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+
+        let folded = calc_gr(&traj, &gp).unwrap();
+        let literal = literal_per_frame(&traj, &gp);
+
+        assert_eq!(folded.gr.len(), literal.len());
+        for (k, v) in &folded.gr {
+            let l = &literal[k];
+            let d = v.iter().zip(l.iter())
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0_f64, f64::max);
+            assert!(d < 1e-12, "pair {k}: folded vs literal per-frame differs by {d:.3e}");
+        }
+    }
+
+    #[test]
+    fn test_gr_differs_from_average_volume_normalisation_under_npt() {
+        // 反向断言：若仍用 ⟨hist⟩·⟨V⟩ 归一化，结果与逐帧法**不同**。
+        // 没有这条，上面的对拍测试在两种实现恰好等价时也会通过，失去意义。
+        let traj = make_npt_traj(4, &[1.0, 1.08, 0.94, 1.12, 0.90]);
+        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+        let folded = calc_gr(&traj, &gp).unwrap();
+
+        // 用平均体积重算（旧口径）：g_old = g_new · ⟨V⟩·Σhist / Σ(hist·V)
+        // 直接从 rho_g 反推 Σhist 的比例即可 —— rho_g ∝ Σhist、gr ∝ Σ(hist·V)
+        let key = folded.gr.keys().next().unwrap().clone();
+        let gr_v = &folded.gr[key.as_str()];
+        let rg_v = &folded.rho_g[key.as_str()];
+        // 若体积恒定则 gr/rho_g 处处为常数 1/rho；NPT 下该比值随 bin 漂移
+        let ratios: Vec<f64> = gr_v.iter().zip(rg_v.iter())
+            .filter(|(g, r)| **g > 1e-9 && **r > 1e-9)
+            .map(|(g, r)| g / r)
+            .collect();
+        assert!(ratios.len() > 2, "need several populated bins for this check");
+        let spread = ratios.iter().cloned().fold(f64::MIN, f64::max)
+            / ratios.iter().cloned().fold(f64::MAX, f64::min) - 1.0;
+        assert!(spread > 1e-6,
+            "under NPT g(r) and <rho*g> must not stay proportional (spread {spread:.3e}); \
+             if they do, the volume weighting was lost");
+    }
+
+    #[test]
+    fn test_rho_g_degenerates_to_rho_times_gr_under_nvt() {
+        // NVT（体积恒定）下 ⟨ρ_f·g_f⟩ 必须精确等于 ρ·g —— 这正是本次改动
+        // 在定容轨迹上零影响的原因。
+        let traj = make_npt_traj(4, &[1.0, 1.0, 1.0]);
+        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+        let g = calc_gr(&traj, &gp).unwrap();
+        assert!(g.volume_std / g.avg_volume < 1e-14,
+            "constant-volume trajectory must report a negligible spread");
+        for (k, v) in &g.gr {
+            for (i, &gv) in v.iter().enumerate() {
+                let expect = g.rho * gv;
+                assert!((g.rho_g[k][i] - expect).abs() <= 1e-9 * (1.0 + expect.abs()),
+                    "pair {k} bin {i}: rho_g {} != rho*gr {}", g.rho_g[k][i], expect);
+            }
+        }
+    }
+
+    #[test]
+    fn test_volume_statistics_reported() {
+        let traj = make_npt_traj(3, &[1.0, 2.0]);
+        let gp = GrParams { r_min: 0.1, r_max: 4.0, dr: 0.05, ..Default::default() };
+        let g = calc_gr(&traj, &gp).unwrap();
+        let v1 = 9.0_f64.powi(3);
+        let v2 = 18.0_f64.powi(3);
+        assert!((g.avg_volume - (v1 + v2) / 2.0).abs() < 1e-6);
+        assert!((g.volume_std - (v2 - v1) / 2.0).abs() < 1e-6);
+        // rho = N·⟨1/V⟩，不是 N/⟨V⟩
+        let n = 27.0_f64;
+        assert!((g.rho - n * (1.0 / v1 + 1.0 / v2) / 2.0).abs() < 1e-12);
+        assert!((g.rho - n / g.avg_volume).abs() > 1e-9, "rho must not be N/<V>");
+    }
+
+    #[test]
+    fn test_changing_atom_count_is_rejected() {
+        let f1 = make_o_si_crystal(3);
+        let mut f2 = f1.clone();
+        f2.add_atom(Atom::new("O", Vector3::new(1.5, 1.5, 1.5)));
+        let mut traj = Trajectory::from_frame(f1);
+        traj.add_frame(f2);
+        let err = calc_gr(&traj, &GrParams::default()).unwrap_err();
+        assert!(format!("{err}").contains("atom count changes"), "got: {err}");
+    }
+
+    #[test]
+    fn test_changing_per_type_counts_is_rejected() {
+        // 总原子数不变但组成变了 —— 这类轨迹拼接最容易被静默接受
+        let f1 = make_o_si_crystal(3);
+        let mut f2 = f1.clone();
+        f2.atoms[0].element = "Si".to_string();
+        let mut traj = Trajectory::from_frame(f1);
+        traj.add_frame(f2);
+        let err = calc_gr(&traj, &GrParams::default()).unwrap_err();
+        assert!(format!("{err}").contains("per-type atom counts change"), "got: {err}");
     }
 
     #[test]
