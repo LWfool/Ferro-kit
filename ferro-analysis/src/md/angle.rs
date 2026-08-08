@@ -19,7 +19,7 @@ use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::io::{BufWriter, Write};
 use ferro_core::Trajectory;
-use super::gr::{VERSION, elem_z};
+use super::gr::{GroupBy, VERSION, elem_z, group_key, sorted_types};
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
@@ -156,11 +156,13 @@ pub struct AngleParams {
     pub r_cut_bc: f64,
     /// Histogram bin width \[degrees\] (default: 0.1, same as code1 180/1800 split)
     pub d_angle: f64,
+    /// Whether triplets are resolved over elements or site labels (default: `Element`)
+    pub group_by: GroupBy,
 }
 
 impl Default for AngleParams {
     fn default() -> Self {
-        AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 0.1 }
+        AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 0.1, group_by: GroupBy::default() }
     }
 }
 
@@ -191,7 +193,7 @@ pub struct AngleResult {
     pub stats: BTreeMap<String, AngleStats>,
     pub n_frames: usize,
     pub params: AngleParams,
-    /// Element types present, sorted by atomic number
+    /// Types present (elements or site labels), sorted by (Z, string)
     pub elements: Vec<String>,
 }
 
@@ -221,12 +223,11 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
     let n_bins = (180.0 / params.d_angle).ceil() as usize;
     let n_frames = traj.frames.len();
 
-    // 元素列表（按 Z 排序，用于文件头）
+    // 类型列表（元素或位点标签），按 (Z, 字符串) 排序：字符串二级比较使同 Z 的
+    // 多个标签（O_f / O_b_P_P）顺序可复现，而非随 HashSet 迭代序漂移。
     let first_frame = traj.frames.first()?;
-    let mut elem_set = std::collections::HashSet::new();
-    for a in &first_frame.atoms { elem_set.insert(a.element.clone()); }
-    let mut elements: Vec<String> = elem_set.into_iter().collect();
-    elements.sort_by_key(|e| elem_z(e));
+    let by = params.group_by;
+    let elements = sorted_types(first_frame, by);
 
     let max_rcut = params.r_cut_ab.max(params.r_cut_bc);
 
@@ -242,7 +243,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
             let cl = CellList::build(frame, cell, max_rcut);
 
             for b_idx in 0..n {
-                let b_elem = frame.atoms[b_idx].element.as_str();
+                let b_elem = group_key(&frame.atoms[b_idx], by);
 
                 // 只搜索 27 个相邻 cell，平均 ~30 个原子而非全部 N 个
                 let neighbors = cl.neighbors_of(b_idx, max_rcut);
@@ -254,13 +255,16 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
                         let (a_idx, a_dist, a_vec) = neighbors[ai];
                         let (c_idx, c_dist, c_vec) = neighbors[ci];
 
-                        let a_elem = frame.atoms[a_idx].element.as_str();
-                        let c_elem = frame.atoms[c_idx].element.as_str();
+                        let a_elem = group_key(&frame.atoms[a_idx], by);
+                        let c_elem = group_key(&frame.atoms[c_idx], by);
 
                         // 规范排序：低 Z 端 → rcut_ab，高 Z 端 → rcut_bc
                         // 相同元素两端使用 min(rcut_ab, rcut_bc)
+                        // 与 canonical_triplet 用同一套 (Z, 字符串) 比较，
+                        // 否则同 Z 不同标签的两端谁拿 r_cut_ab 取决于邻居枚举顺序
+                        let a_first = (elem_z(a_elem), a_elem) <= (elem_z(c_elem), c_elem);
                         let (lo_elem, lo_dist, lo_vec, hi_elem, hi_dist, hi_vec) =
-                            if elem_z(a_elem) <= elem_z(c_elem) {
+                            if a_first {
                                 (a_elem, a_dist, a_vec, c_elem, c_dist, c_vec)
                             } else {
                                 (c_elem, c_dist, c_vec, a_elem, a_dist, a_vec)
@@ -336,7 +340,10 @@ pub fn write_angle(result: &AngleResult, path: &str) -> std::io::Result<()> {
     writeln!(w, "# r_cut_bc = {} Ang  (high-Z end to center)", result.params.r_cut_bc)?;
     writeln!(w, "# d_angle  = {} deg", result.params.d_angle)?;
     writeln!(w, "# frames   = {}", result.n_frames)?;
-    writeln!(w, "# atoms:")?;
+    writeln!(w, "# grouped by {}:", match result.params.group_by {
+        GroupBy::Element => "element",
+        GroupBy::Label => "label",
+    })?;
     for elem in &result.elements { writeln!(w, "#   {}", elem)?; }
     writeln!(w, "# [statistics]")?;
     let keys = sort_triplet_keys(&result.hist);
@@ -396,7 +403,7 @@ mod tests {
     #[test]
     fn test_angle_90deg() {
         let traj = make_90deg_angle();
-        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0 };
+        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params).unwrap();
 
         // 键 "O-Si-O"：Z(O)=8 < Z(Si)=14，规范 key 为 "O-Si-O"
@@ -412,7 +419,7 @@ mod tests {
     #[test]
     fn test_angle_180deg() {
         let traj = make_180deg_angle();
-        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0 };
+        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params).unwrap();
 
         let stats = &res.stats["O-Si-O"];
@@ -452,7 +459,7 @@ mod tests {
         frame.add_atom(Atom::new("O",  Vector3::new(0.0, 4.0, 0.0))); // 超出截断
         let traj = Trajectory::from_frame(frame);
 
-        let params = AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 1.0 };
+        let params = AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params);
 
         // 只有 1 个 O 在截断内，无法形成三元组 → 结果为 None 或 O-Si-O 计数为 0
@@ -491,5 +498,63 @@ mod tests {
         assert!(content.starts_with("# ferro v"));
         assert!(content.contains("# angle[deg]"));
         assert!(content.contains("center"));
+    }
+
+    #[test]
+    fn test_angle_group_by_label_resolves_sites() {
+        // 同一元素的两个位点标签应产生独立的三元组 key
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        let mut push = |elem: &str, label: Option<&str>, x: f64, y: f64| {
+            let mut a = Atom::new(elem, Vector3::new(x, y, 0.0));
+            a.label = label.map(|s| s.to_string());
+            frame.add_atom(a);
+        };
+        // O_f — P — O_b_P_P，两条键都在 2.3 Å 内
+        push("P", Some("P_0"), 0.0, 0.0);
+        push("O", Some("O_f"), 1.6, 0.0);
+        push("O", Some("O_b_P_P"), 0.0, 1.6);
+        let traj = Trajectory::from_frame(frame);
+
+        let by_elem = calc_angle(&traj, &AngleParams {
+            group_by: GroupBy::Element, ..Default::default()
+        }).unwrap();
+        assert!(by_elem.hist.contains_key("O-P-O"), "element mode key");
+
+        let by_label = calc_angle(&traj, &AngleParams {
+            group_by: GroupBy::Label, ..Default::default()
+        }).unwrap();
+        assert!(
+            by_label.hist.contains_key("O_b_P_P-P_0-O_f"),
+            "label mode keys: {:?}", by_label.hist.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(by_label.elements, vec!["O_b_P_P", "O_f", "P_0"]);
+    }
+
+    #[test]
+    fn test_angle_same_z_label_order_is_deterministic() {
+        // 同 Z 的多个标签必须每次给出相同的类型顺序与三元组 key
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        let mut push = |elem: &str, label: &str, x: f64, y: f64| {
+            let mut a = Atom::new(elem, Vector3::new(x, y, 0.0));
+            a.label = Some(label.to_string());
+            frame.add_atom(a);
+        };
+        push("P", "P_0", 0.0, 0.0);
+        push("O", "O_x", 1.6, 0.0);
+        push("O", "O_f", 0.0, 1.6);
+        push("O", "O_b_P_P", -1.6, 0.0);
+        let traj = Trajectory::from_frame(frame);
+        let params = AngleParams { group_by: GroupBy::Label, ..Default::default() };
+
+        let expected_types = vec!["O_b_P_P", "O_f", "O_x", "P_0"];
+        let first = calc_angle(&traj, &params).unwrap();
+        let expected_keys: Vec<String> = first.hist.keys().cloned().collect();
+        for _ in 0..8 {
+            let res = calc_angle(&traj, &params).unwrap();
+            assert_eq!(res.elements, expected_types);
+            assert_eq!(res.hist.keys().cloned().collect::<Vec<_>>(), expected_keys);
+        }
     }
 }
