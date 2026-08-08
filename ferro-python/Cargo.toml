@@ -18,4 +18,4 @@ ferro-core      = { path = "../ferro-core" }
 ferro-io        = { path = "../ferro-io" }
 ferro-structure = { path = "../ferro-structure" }
 ferro-analysis  = { path = "../ferro-analysis" }
-pyo3 = { version = "0.21", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
