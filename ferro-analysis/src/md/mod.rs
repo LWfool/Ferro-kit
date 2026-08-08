@@ -20,7 +20,7 @@ pub mod cube_radius;
 pub mod cube_sdf;
 pub mod scattering_data;
 
-pub use gr::{GrParams, GrResult, PairStats, calc_gr, write_gr, write_cn};
+pub use gr::{GrParams, GrResult, GroupBy, calc_gr, write_gr};
 pub use sq::{SqParams, SqResult, SqWeighting, calc_sq_from_gr, write_sq};
 pub use msd::{MsdParams, MsdResult, calc_msd, write_msd};
 pub use angle::{AngleParams, AngleResult, AngleStats, calc_angle, write_angle};
