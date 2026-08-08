@@ -16,7 +16,7 @@ pub use ferro_core::{TypeParams, CutoffTable};
 pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult,
               ChgSdfParams, ChgSdfResult, ChgSdfFamily, ChgRmsdStats, calc_chg_sdf};
 pub use md::{
-    GrParams, GrResult, PairStats, calc_gr, write_gr, write_cn,
+    GrParams, GrResult, GroupBy, calc_gr, write_gr,
     SqParams, SqResult, SqWeighting, calc_sq_from_gr, write_sq,
     MsdParams, MsdResult, calc_msd, write_msd,
     AngleParams, AngleResult, AngleStats, calc_angle, write_angle,
