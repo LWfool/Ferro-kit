@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use nalgebra::Vector3;
-use rand::Rng;
+use rand::RngExt;
 
 use ferro_core::atom::Atom;
 use ferro_core::cell::Cell;
@@ -152,14 +152,14 @@ pub fn build_box(
     let cell = Cell::from_lengths_angles(box_len, box_len, box_len, 90.0, 90.0, 90.0)?;
 
     // ── 步骤 3：随机放置原子 ─────────────────────────────────────────────────
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut atoms: Vec<Atom> = Vec::new();
     for (elem, count) in &element_counts {
         for _ in 0..*count {
             let pos = Vector3::new(
-                rng.gen_range(0.0..box_len),
-                rng.gen_range(0.0..box_len),
-                rng.gen_range(0.0..box_len),
+                rng.random_range(0.0..box_len),
+                rng.random_range(0.0..box_len),
+                rng.random_range(0.0..box_len),
             );
             atoms.push(Atom::new(elem, pos));
         }
