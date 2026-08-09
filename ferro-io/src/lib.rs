@@ -19,4 +19,5 @@ pub use writers::{
     write_lammps_data, write_lammps_dump,
     write_qe_input,
     write_cube,
+    write_table, TableFormat,
 };

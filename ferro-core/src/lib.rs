@@ -14,6 +14,7 @@ pub mod charge_grid;
 pub mod frame;
 pub mod trajectory;
 pub mod cube_data;
+pub mod table;
 pub mod data;
 pub mod units;
 pub mod error;
@@ -28,6 +29,7 @@ pub use charge_grid::ChargeGrid;
 pub use frame::Frame;
 pub use trajectory::{Trajectory, TrajectoryMetadata};
 pub use cube_data::CubeData;
+pub use table::{Column, Table};
 pub use error::{ChemError, Result};
 pub use spin::{
     assign_oxidation_states, guess_spin, parity_min_multiplicity,
