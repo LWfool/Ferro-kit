@@ -199,7 +199,7 @@ pub fn print_fe_traj_overview() {
         r#"fe-traj — Trajectory structural analysis
 
 Usage:
-  fe-traj -m <MODE> -i <FILE> [OPTIONS]
+  fe-traj -m <MODE> -i <FILE> [FILE ...] [OPTIONS]
   fe-traj -m <MODE>              show mode-specific parameters
 
 Modes:
@@ -209,12 +209,19 @@ Modes:
   angle   Bond angle distribution P(θ) for A-B-C triplets
 
 Common options:
-  -i, --input  PATH     Input trajectory file (xyz, dump, extxyz, pdb, …)
-  -o, --output PATH     Output file (default name depends on mode)
+  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed — quote them
+                        so the shell leaves them alone: -i 'runs/*/prod.dump'
+  -o, --output SUFFIX   Output name suffix → <mode>[_<table>]_<suffix>.csv
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
-      --plot            Generate a PNG plot and open it after calculation
+      --plot            Write a PNG next to the data file
       --metal-units     LAMMPS metal units (velocities in Å/ps)
+
+Multiple inputs:
+  Every input is analysed on its own and the results are stacked into ONE csv with
+  a `file` column, so `df.groupby("file")` just works. A failed input is reported,
+  skipped, listed in the [inputs] block of the output, and makes the exit code 1.
+  One input is not a special case — the output has the same shape either way.
 
 Selecting types (gr / sq / angle):
   -a -b -c              by chemical element   (e.g. -a P -b O)
@@ -238,7 +245,7 @@ pub fn print_fe_corr_overview() {
         r#"fe-corr — Correlation functions
 
 Usage:
-  fe-corr -m <MODE> -i <FILE> [OPTIONS]
+  fe-corr -m <MODE> -i <FILE> [FILE ...] [OPTIONS]
   fe-corr -m <MODE>              show mode-specific parameters
 
 Modes:
@@ -247,8 +254,8 @@ Modes:
   vanhove   Van Hove self-correlation Gs(r, τ)
 
 Common options:
-  -i, --input  PATH     Input trajectory file (dump, xyz, extxyz, …)
-  -o, --output PATH     Output file (default name depends on mode)
+  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
+  -o, --output SUFFIX   Output name suffix → <mode>_<suffix>.csv
       --last-n N        Use only the last N frames
       --dt     FLOAT    Timestep between frames [fs]  (default: 1.0)
       --shift  INT      Time-origin stride            (default: 1)
@@ -261,7 +268,7 @@ pub fn print_fe_cube_overview() {
         r#"fe-cube — Spatial distribution maps
 
 Usage:
-  fe-cube -m <MODE> -i <FILE> [OPTIONS]
+  fe-cube -m <MODE> -i <FILE> [FILE ...] [OPTIONS]
   fe-cube -m <MODE>              show mode-specific parameters
 
 Modes:
@@ -272,11 +279,16 @@ Modes:
   sdf       Cluster spatial distribution function (Qn-type, Kabsch alignment)
 
 Common options:
-  -i, --input  PATH     Input trajectory file (dump, xyz, extxyz, …)
-  -o, --output PATH     Output cube file / stem (default depends on mode)
+  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
+  -o, --output STEM     Output file stem (default depends on mode)
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
-      --metal-units     LAMMPS metal units (velocities in Å/ps)"#
+      --metal-units     LAMMPS metal units (velocities in Å/ps)
+
+Multiple inputs:
+  Unlike the table-producing binaries, cube output is one 3-D grid file per input —
+  there is nothing to stack. File names therefore carry the input stem
+  (density_<stem>.cube) so several inputs cannot overwrite each other."#
     );
 }
 
@@ -327,17 +339,20 @@ Parameters:
   --dr     FLOAT          Histogram bin width [Å]                default: 0.002
   --last-n INT            Use only the last N frames
   --ncore  INT            Parallel threads (default: all cores)
-  -o PATH                 Output file                            default: gr.dat
-  --plot                  Generate PNG and open in viewer (needs a pair)
+  -o SUFFIX               Output suffix -> gr_<suffix>.csv        default: gr.csv
+  --plot                  PNG next to the data file (needs a pair)
 
-Output columns:
-  pair given   r[Ang]  A-B_gr  A-B_cn
-  no pair      r[Ang]  then every ordered pair as an adjacent _gr / _cn duplet,
-               grouped by centre type
+Output — long format, one row per (file, r, pair):
+  file  r  center  neighbor  gr  cn
+
+  The pair lives in data columns, not column names, so runs with different element
+  sets stack without any column alignment. Omitting -a/-b just adds rows (every
+  ordered pair), never columns. gr is symmetric; cn is directed (center -> neighbor).
 
 Example:
   fe-traj -m gr -i traj.dump
   fe-traj -m gr -i traj.dump -a P -b O --r-max 8.0 --plot
+  fe-traj -m gr -i 'runs/*/prod.dump' -a P -b O -o scan     # 一次跑一批
   fe-traj -m gr -i traj.dump -x P_0 -y O_b_P_P --last-n 500"#
     );
 }
@@ -372,12 +387,20 @@ Parameters:
   --dr         FLOAT  g(r) bin width [Å]           default: 0.002
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads (used in g(r) step)
-  -o PATH             Output file                   default: sq.dat
-  --plot              Generate PNG and open in viewer (weighted totals only)
+  -o SUFFIX           Output suffix -> sq_<suffix>.csv   default: sq.csv
+  --plot              PNG next to the data file (weighted totals only)
+
+Output — wide format, one row per (file, q):
+  file  q  total_xrd  total_neutron  then three columns per pair
+
+  Wide, not long like gr: the primary product here is the pair of totals, which are
+  one value per q. Inputs with different element sets contribute different pair
+  columns; the gaps are left empty (NaN), never filled in.
 
 Example:
   fe-traj -m sq -i traj.dump
-  fe-traj -m sq -i traj.dump --weighting xrd --q-max 20.0 -o sq_xrd.dat
+  fe-traj -m sq -i traj.dump --weighting xrd --q-max 20.0 -o xrd
+  fe-traj -m sq -i 'runs/*/prod.dump' -o scan
   fe-traj -m sq -i traj.dump -x P_0 -y O_b_P_P"#
     );
 }
@@ -398,7 +421,7 @@ Parameters:
   --last-n    INT        Use only the last N frames
   --ncore     INT        Parallel threads
   --plot                 Generate PNG and open in viewer
-  -o PATH                Output file                    default: msd.dat
+  -o SUFFIX              Output suffix -> msd_<suffix>.csv   default: msd.csv
 
 Example:
   fe-traj -m msd -i traj.xyz --dt 2.0
@@ -431,7 +454,7 @@ Parameters:
   --d-angle  FLOAT              Histogram bin width [°]         default: 0.1
   --last-n   INT                Use only the last N frames
   --ncore    INT                Parallel threads
-  -o PATH                       Output file                     default: angle.dat
+  -o SUFFIX                     Output suffix -> angle_<suffix>.csv  default: angle.csv
   --plot                        Generate PNG and open in viewer
 
 Example:
@@ -462,7 +485,7 @@ Parameters:
   --shift    INT        Time-origin stride             default: 1
   --elements Fe,O,...   Include only these elements    default: all
   --last-n   INT        Use only the last N frames
-  -o PATH               Output file                   default: vacf.dat
+  -o SUFFIX             Output suffix -> vacf_<suffix>.csv   default: vacf.csv
 
 Example:
   fe-corr -m vacf -i traj.dump --dt 2.0
@@ -483,7 +506,7 @@ Parameters:
   --dt        FLOAT   Timestep [fs]                     default: 1.0
   --shift     INT     Time-origin stride                default: 1
   --last-n    INT     Use only the last N frames
-  -o PATH             Output file                       default: rotcorr.dat
+  -o SUFFIX           Output suffix -> rotcorr_<suffix>.csv  default: rotcorr.csv
 
 Example:
   fe-corr -m rotcorr -i traj.xyz --center O --neighbor H
@@ -505,7 +528,7 @@ Parameters:
   --dr       FLOAT      Bin width [Å]                  default: 0.01
   --elements Fe,O,...   Track only these elements       default: all
   --last-n   INT        Use only the last N frames
-  -o PATH               Output file                    default: vanhove.dat
+  -o SUFFIX             Output suffix -> vanhove_<suffix>.csv  default: vanhove.csv
 
 Example:
   fe-corr -m vanhove -i traj.xyz --tau 100

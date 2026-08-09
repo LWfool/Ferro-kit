@@ -20,6 +20,7 @@ cargo run --bin fe-convert -- -i input.xyz -o output.pdb
 cargo run --bin fe-info    -- -i input.xyz
 cargo run --bin fe-job     -- -i input.xyz -s gaussian -m B3LYP -o job.gjf
 cargo run --bin fe-traj    -- -m gr  -i traj.dump
+cargo run --bin fe-traj    -- -m gr  -i 'runs/*/prod.dump' -a P -b O -o scan   # batch
 cargo run --bin fe-cube    -- -m sdf -i traj.dump --qn 3 --modifier Zn
 
 # Python bindings (requires maturin; ferro-python not yet in workspace)
@@ -64,12 +65,12 @@ lets its io module import its analysis module.
 
 | Crate | Role |
 |---|---|
-| `ferro-core` | `Atom`, `Frame`, `Trajectory`, `Cell`; static element/compound data; error types; unit conversion |
-| `ferro-io` | Format readers (`read_xyz`, `read_pdb`, ...) and writers; returns/accepts `Trajectory` |
+| `ferro-core` | `Atom`, `Frame`, `Trajectory`, `Cell`, `Table`; static element/compound data; error types; unit conversion |
+| `ferro-io` | Format readers (`read_xyz`, `read_pdb`, ...) and writers; returns/accepts `Trajectory`. `write_table` is the single exit point for analysis results |
 | `ferro-structure` | Supercell, vacuum layer, merge, initial box estimation from compound data |
-| `ferro-analysis` | Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `dft/` (future), `ml/` (future) |
+| `ferro-analysis` | Pure computation — no filesystem. Results expose `to_tables() -> Vec<(String, Table)>`. Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `dft/` (future), `ml/` (future) |
 | `ferro-workflow` | QC input file builders: `GaussianJobBuilder`, `GromacsTopologyBuilder`, etc. |
-| `ferro-cli` | CLI + REPL + batch mode (shared interpreter) |
+| `ferro-cli` | CLI + REPL + batch mode (shared interpreter); `batch.rs` drives multi-input runs, generic over the result type |
 | `ferro-python` | PyO3 wrappers only; pure Rust libs have zero Python awareness |
 
 ---
@@ -297,6 +298,17 @@ ferro-analysis  = { path = "../ferro-analysis" }
 
 Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--metal-units`.
 
+**Batch input.** `-i` takes one or more files and expands glob patterns itself
+(`-i 'runs/*/prod.dump'` — quote it so the shell leaves it alone; `{a,b}` braces are
+*not* supported, let the shell do those). There is **one code path**: each input is
+analysed independently and the results are stacked into a single CSV with a `file`
+column. A single input is the N=1 case, not a special mode — dispatching on the number
+of inputs would make the output shape depend on what a glob happened to match that day.
+
+A failing input is reported, skipped, listed in the output's `[inputs]` block with its
+reason, and makes the **exit code 1**. Parameter errors still fail fast, before the
+first file is read.
+
 **fe-traj help system** (two-level):
 - `fe-traj` / `fe-traj -h` → overview: available modes + common flags
 - `fe-traj -m <MODE>` (no `-i`) → mode-specific parameters + examples
@@ -334,8 +346,12 @@ Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--me
 --d-angle  FLOAT   bin width [°]           default 0.1
 
 # plot (gr / sq / angle / msd)
---plot   write PNG next to output file and open with system viewer
+--plot   write PNG next to the data file (opened in a viewer only for a single input)
 ```
+
+**`-o` is a name suffix, not a path**: results land in `<mode>[_<table>]_<suffix>.csv`
+(`gr_run1.csv`, `network_qn_run1.csv`). Per-input files are not produced — the batch
+summary is the product.
 
 **element vs. label.** `Atom::element` is the chemical element; `Atom::label` is an
 optional site type. The LAMMPS dump reader splits an `element` column entry written as
@@ -345,32 +361,55 @@ Plain symbols pass through untouched with `label = None`. `-a/-b/-c` select by e
 `-x/-y/-z` by label; only `ferro-io`'s CIF / CP2K / QE readers also populate `label`,
 from their native site names.
 
-**`gr` output** — one file, `g(r)` and `CN(r)` side by side:
-- `g(r)` is **symmetric**: `A-B` and `B-A` are pointwise identical.
-- `CN(r)` is **directed**: `A-B` is the average number of B around each A, so the order
-  of `-a`/`-b` matters.
-- pair given → three columns `r[Ang]  A-B_gr  A-B_cn`
-- no pair → wide table: `r[Ang]` then every ordered pair (n² of them) as an adjacent
-  `_gr` / `_cn` duplet, ordered by (Z_centre, centre, Z_neighbour, neighbour) so all
-  columns sharing a centre stay together
+### Output format
 
-**`sq` output** — only the canonical half of the pairs (S(q) has no directed counterpart):
-- columns `q[Ang^-1]`, `total_xrd`, `total_neutron`, then per pair `_sq` (unweighted),
-  `_xrd`, `_neutron`
-- the weighted partials are `w_ij(q)·S_ij(q)` and sum over pairs to the corresponding
-  total, so they decompose the experimentally comparable curve pair by pair
-- pair given → only that pair's three columns next to the totals; recommended in label
-  mode, where the pair count grows quadratically with the number of labels
-- label-resolved totals match element-resolved ones up to an O(1/N) term: same-type
-  partials normalise by `N_A(N_A−1)` whereas summing label partials reconstructs `N_A²`
+Every table-producing mode writes **one CSV**, with a `#` comment block above the data
+holding the shared parameters and an `[inputs]` table (one row per input: frames, atoms,
+volume, the clamped `r_max`, composition, status). That block is for humans —
+`pandas.read_csv(comment="#")` drops it, so anything a script must parse is a column.
 
-**Plot behaviour:**
-- `gr`: needs a pair — g(r) solid on the left axis, CN(r) lighter on the right axis.
-  Without a pair the wide table would be a dozen-plus curves, so plotting is skipped
-  with a note.
-- `sq`: only `total_xrd` ("XRD") and `total_neutron` ("Neutron") curves shown
-- `angle`: normalised histograms with mean ± std in legend
-- `msd`: total MSD + a/b/c components; with `--fit-range` overlays the linear fit and prints D = slope/6 + R²
+**The table's shape follows its primary product's granularity.** That is why `gr` and
+`sq` differ:
+
+**`gr` / `angle` — long format.** `file, r, center, neighbor, gr, cn` (and
+`file, angle, end_a, center, end_c, count, p`). Types live in *data columns*, so runs
+with different element sets stack with no column alignment; omitting `-a/-b` adds rows,
+never columns. `g(r)` is symmetric (`A-B` == `B-A`); `CN(r)` is directed, which the
+`center`/`neighbor` split writes into the table structure rather than a doc comment.
+`angle` keeps a raw `count` alongside the normalised `p` because the integer histogram
+is what `scripts/compare_angle.py` checks against dump2analysis bin for bin.
+
+**`sq` — wide format.** `file, q, total_xrd, total_neutron`, then `_sq` / `_xrd` /
+`_neutron` per pair (canonical half only — S(q) has no directed counterpart). The
+primary product is the pair of totals, which are one value per `q`; the weighted
+partials `w_ij(q)·S_ij(q)` are a diagnostic decomposition that sums back to the totals.
+Inputs with different element sets contribute different pair columns: the union is
+taken and **gaps are left empty (NaN), never interpolated or zero-filled**.
+
+Label-resolved totals match element-resolved ones up to an O(1/N) term: same-type
+partials normalise by `N_A(N_A−1)` whereas summing label partials reconstructs `N_A²`.
+
+**Plot behaviour** — one PNG split into panels, **one panel per quantity, one curve per
+input file**; colours are per file and consistent across panels, and only the first
+panel carries a legend:
+- `gr`: two panels (g(r) | CN(r)); needs a named pair, otherwise skipped with a note
+- `sq`: two panels (XRD | Neutron) — different quantities, so no shared axis
+- `angle`: one panel for the named triplet, mean ± std in the legend
+- `msd`: 2×2 (total | a | b | c); `--fit-range` prints D = slope/6 and R² per input
+
+`--plot` is **frozen at self-check quality** and will not chase matplotlib. The data is
+long-format CSV, so a real figure is one line of seaborn
+(`sns.lineplot(data=df, x="r", y="gr", hue="file")`); log axes, error bars and themes
+belong in Python.
+
+**`fe-cube` is the one exception** to the batch output rules: its product is a 3-D grid
+file, so there is nothing to stack and nothing to plot. It still shares the traversal and
+failure handling (error handling should not exist in two versions), but writes one
+`.cube` per input, and the file name **must** carry the input stem
+(`density_<stem>.cube`) or a second input would overwrite the first.
+
+`fe-bader`'s `write_acf` / `write_bcf` / `write_avf` are likewise untouched: ACF.dat is
+the Henkelman-group bader format that external tools parse.
 
 ### `fe-cube -m sdf` — Cluster SDF
 
