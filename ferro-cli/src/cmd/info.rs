@@ -1,25 +1,23 @@
 use anyhow::Result;
-use clap::Parser;
-use ferro::io_dispatch::read_trajectory;
+use clap::Args;
+use crate::io_dispatch::read_trajectory;
 use ferro_core::Frame;
 use ferro_io::LammpsUnits;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[derive(Parser)]
-#[command(name = "fe-info", about = "Display structure/trajectory information")]
-struct Cli {
+#[derive(Args, Debug)]
+pub struct InfoCmd {
     /// Input file (format auto-detected)
     #[arg(short, long)]
-    input: PathBuf,
+    pub input: PathBuf,
 
     /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
     #[arg(long)]
-    metal_units: bool,
+    pub metal_units: bool,
 }
 
-fn main() -> Result<()> {
-    let args = Cli::parse();
+pub fn run(args: &InfoCmd) -> Result<()> {
     let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
     let traj = read_trajectory(&args.input, units)?;
     let n = traj.frames.len();

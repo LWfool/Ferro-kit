@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Result};
-use clap::Parser;
-use ferro::help::{print_fe_job_overview, print_job_help};
-use ferro::io_dispatch::read_trajectory;
+use clap::Args;
+use crate::help::{print_fe_job_overview, print_job_help};
+use crate::io_dispatch::read_trajectory;
 use ferro_core::{guess_spin, SpinMethod};
 use ferro_io::LammpsUnits;
 use ferro_workflow::{
@@ -12,162 +12,158 @@ use ferro_workflow::{
 };
 use std::path::PathBuf;
 
-#[derive(Parser)]
-#[command(
-    name = "fe-job",
-    about = "Generate QC software input files  (gaussian | cp2k)",
-    disable_help_flag = true,
-)]
-struct Cli {
+#[derive(Args, Clone, Debug)]
+pub struct JobCmd {
     /// Show help: overview when -s is absent, software-specific when -s is given
     #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
-    help: bool,
+    pub help: bool,
 
     /// Input structure file (omit to show software-specific help)
     #[arg(short, long)]
-    input: Option<PathBuf>,
+    pub input: Option<PathBuf>,
 
     /// Target software: gaussian | cp2k  (omit to see overview)
     #[arg(short, long)]
-    software: Option<String>,
+    pub software: Option<String>,
 
     /// Output file (default: job.gjf / job.inp)
     #[arg(short, long)]
-    output: Option<PathBuf>,
+    pub output: Option<PathBuf>,
 
     /// Use LAMMPS metal units for dump files
     #[arg(long)]
-    metal_units: bool,
+    pub metal_units: bool,
 
     // ── Charge / spin (shared) ───────────────────────────────────────────────
     /// Override total system charge
     #[arg(long)]
-    charge: Option<i32>,
+    pub charge: Option<i32>,
 
     /// Override spin multiplicity 2S+1 (1=singlet, 2=doublet, …)
     #[arg(long)]
-    multiplicity: Option<u32>,
+    pub multiplicity: Option<u32>,
 
     /// Auto-guess multiplicity from structure (magmom → oxidation state → parity)
     #[arg(long)]
-    auto_spin: bool,
+    pub auto_spin: bool,
 
     // ── Gaussian ─────────────────────────────────────────────────────────────
     /// DFT method  [gaussian]
     #[arg(short = 'm', long)]
-    method: Option<String>,
+    pub method: Option<String>,
 
     /// Basis set  [gaussian]
     #[arg(short = 'b', long)]
-    basis: Option<String>,
+    pub basis: Option<String>,
 
     // ── CP2K shared ──────────────────────────────────────────────────────────
     /// Task type  [cp2k]  energy|force|geo-opt|cell-opt|md|freq
     #[arg(long, default_value = "energy")]
-    task: String,
+    pub task: String,
 
     /// DFT functional  [cp2k]  pbe|blyp|pbe0|b3lyp|revpbe|pbesol|scan|r2scan|hse06
     #[arg(long, default_value = "pbe")]
-    functional: String,
+    pub functional: String,
 
     /// Basis set  [cp2k]  dzvp-molopt-sr|tzvp-molopt|tzv2p-molopt|dzvp-gth|tzvp-gth
     #[arg(long, default_value = "dzvp-molopt-sr")]
-    cp2k_basis: String,
+    pub cp2k_basis: String,
 
     /// Dispersion correction  [cp2k]  none|d3|d3bj
     #[arg(long, default_value = "none")]
-    dispersion: String,
+    pub dispersion: String,
 
     /// SCF solver  [cp2k]  diag|ot
     #[arg(long, default_value = "diag")]
-    scf: String,
+    pub scf: String,
 
     /// PBC direction  [cp2k]  xyz|z|none  (auto-detected from cell if omitted)
     #[arg(long)]
-    pbc: Option<String>,
+    pub pbc: Option<String>,
 
     /// k-point mesh  [cp2k]  e.g. --kpoints 2 2 2
     #[arg(long, num_args = 3, value_names = ["K1","K2","K3"])]
-    kpoints: Option<Vec<u32>>,
+    pub kpoints: Option<Vec<u32>>,
 
     /// Plane-wave cutoff [Ry]  [cp2k]
     #[arg(long, default_value = "400")]
-    cutoff: u32,
+    pub cutoff: u32,
 
     /// Relative cutoff [Ry]  [cp2k]
     #[arg(long, default_value = "50")]
-    rel_cutoff: u32,
+    pub rel_cutoff: u32,
 
     /// Enable Fermi-Dirac smearing  [cp2k]
     #[arg(long)]
-    smear: bool,
+    pub smear: bool,
 
     // ── CP2K output ───────────────────────────────────────────────────────────
     /// Atomic charge scheme  [cp2k]  none|mulliken|hirshfeld|hirshfeld-i
     #[arg(long, default_value = "none")]
-    atom_charge: String,
+    pub atom_charge: String,
 
     /// Export cube file  [cp2k]  none|density|elf|hartree
     #[arg(long, default_value = "none")]
-    cube: String,
+    pub cube: String,
 
     /// Export Molden file  [cp2k]
     #[arg(long)]
-    molden: bool,
+    pub molden: bool,
 
     /// Project name  [cp2k]
     #[arg(long, default_value = "ferro")]
-    project: String,
+    pub project: String,
 
     // ── CP2K MD ───────────────────────────────────────────────────────────────
     /// MD steps  [cp2k]
     #[arg(long, default_value = "10000")]
-    md_steps: u32,
+    pub md_steps: u32,
 
     /// MD timestep [fs]  [cp2k]
     #[arg(long, default_value = "1.0")]
-    md_timestep: f64,
+    pub md_timestep: f64,
 
     /// MD temperature [K]  [cp2k]
     #[arg(long, default_value = "298.15")]
-    temperature: f64,
+    pub temperature: f64,
 
     /// Thermostat  [cp2k]  csvr|nose|langevin|none
     #[arg(long, default_value = "csvr")]
-    thermostat: String,
+    pub thermostat: String,
 
     /// MD trajectory write frequency  [cp2k]
     #[arg(long, default_value = "100")]
-    traj_freq: u32,
+    pub traj_freq: u32,
 
     /// Enable NPT barostat  [cp2k]
     #[arg(long)]
-    barostat: bool,
+    pub barostat: bool,
 
     // ── Quantum ESPRESSO ─────────────────────────────────────────────────────
     /// Calculation type  [qe]  scf|nscf|bands|relax|vc-relax|md|vc-md
     #[arg(long, default_value = "scf")]
-    qe_task: String,
+    pub qe_task: String,
 
     /// DFT functional  [qe]  pbe|pbesol|revpbe|blyp|scan|r2scan|pbe0|hse06
     #[arg(long, default_value = "pbe")]
-    qe_functional: String,
+    pub qe_functional: String,
 
     /// Plane-wave cutoff ecutwfc [Ry]  [qe]
     #[arg(long, default_value = "50")]
-    ecutwfc: f64,
+    pub ecutwfc: f64,
 
     /// Smearing  [qe]  none|gaussian|mp|mv|fd
     #[arg(long, default_value = "none")]
-    smearing: String,
+    pub smearing: String,
 
     /// Pseudopotential directory  [qe]
     #[arg(long, default_value = "./pseudo")]
-    pseudo_dir: String,
+    pub pseudo_dir: String,
 }
 
-fn main() -> Result<()> {
-    let args = Cli::parse();
+pub fn run(args: &JobCmd) -> Result<()> {
+    // 原实现按值消费各字段;克隆一份保持函数体不变
+    let args = args.clone();
 
     // 无 -s → 概览
     let software = match args.software.as_deref() {

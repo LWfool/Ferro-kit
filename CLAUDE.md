@@ -15,19 +15,19 @@ cargo fmt
 cargo clippy
 cargo check
 
-# CLI (dev)
-cargo run --bin fe-convert -- -i input.xyz -o output.pdb
-cargo run --bin fe-info    -- -i input.xyz
-cargo run --bin fe-job     -- -i input.xyz -s gaussian -m B3LYP -o job.gjf
-cargo run --bin fe-traj    -- -m gr  -i traj.dump
-cargo run --bin fe-traj    -- -m gr  -i 'runs/*/prod.dump' -a P -b O -o scan   # batch
-cargo run --bin fe-cube    -- -m sdf -i traj.dump --qn 3 --modifier Zn
+# CLI (dev) — one binary, subcommands grouped by what they produce
+cargo run --bin ferro -- traj gr -i traj.dump -a P -b O
+cargo run --bin ferro -- traj gr -i 'runs/*/prod.dump' -a P -b O -o scan   # batch
+cargo run --bin ferro -- map density -i traj.dump
+cargo run --bin ferro -- net qn -i traj.dump --P-O=2.3
+cargo run --bin ferro -- convert -i input.xyz -o output.pdb
+cargo run --bin ferro -- job -i input.xyz -s gaussian -m B3LYP -o job.gjf
 
 # Python bindings (requires maturin; ferro-python not yet in workspace)
 cd ferro-python && maturin develop
 ```
 
-Test fixtures: `tests/` (water.xyz, water.pdb, water.cif)
+Test fixtures: `tests/` (two 5-frame LAMMPS trajectories — one NPT, one NVT — plus `Experiment.xlsx`)
 
 ---
 
@@ -235,25 +235,31 @@ echo -e "read water.xyz\nsupercell 2 2 1\nwrite POSCAR" | ferro
 ### ferro-cli internal structure
 ```
 ferro-cli/src/
-├── main.rs              # REPL / batch mode detection (placeholder)
-├── lib.rs               # re-exports args, help, io_dispatch, plot
+├── main.rs              # the ferro binary: subcommand tree + dispatch
+├── lib.rs               # re-exports args, batch, cmd, help, io_dispatch, plot
 ├── args/
-│   ├── common.rs
-│   ├── traj.rs          # TrajMode, SqWeightingCli
+│   ├── common.rs        # CommonArgs (-i/-o/--last-n/--ncore/--metal-units) + SelectArgs (-a..-z)
+│   ├── traj.rs          # SqWeightingCli
 │   ├── corr.rs
-│   └── cube.rs
-├── help.rs              # print_fe_traj_overview / print_traj_help / print_corr_help / print_cube_help
-├── io_dispatch.rs       # read_trajectory (format detection)
-├── plot.rs              # plot_gr / plot_angle / plot_sq / open_plot  (plotters)
-└── bin/
-    ├── convert.rs
-    ├── info.rs
-    ├── job.rs
-    ├── traj.rs
-    ├── corr.rs
-    ├── cube.rs
-    └── network.rs
+│   └── cube.rs          # CubeCliMode (still the analysis-facing enum)
+├── batch.rs             # multi-input driving, generic over the result type
+├── cmd/
+│   ├── traj.rs          # gr/sq/msd/angle/vacf/rotcorr/vanhove — one Args struct each
+│   ├── map.rs           # density/velocity/force/radius/sdf/chg-sdf
+│   ├── net.rs           # qn/type + the --P-O=2.3 argv pre-pass
+│   ├── bader.rs, convert.rs, info.rs, job.rs
+│   └── mod.rs
+├── help.rs              # print_overview / print_*_overview / per-command help text
+├── io_dispatch.rs       # read_trajectory / read_trajectory_tail (format detection)
+└── plot.rs              # Panel/Series + render; plot_gr / plot_sq / plot_msd / plot_angle
 ```
+
+`batch.rs` is the multi-input driver and is **generic over the result type** —
+`map_inputs<T>(inputs, f) -> (Vec<(PathBuf, T)>, Vec<Failure>)`. It owns indexing,
+looping, skipping and reporting; it never names `GrResult` or any other analysis type,
+and the analysis crates never learn that batching exists. Deciding *which* scalars are
+worth summarising is analysis semantics, so that stays in `cmd/`.
+
 
 ---
 
@@ -286,15 +292,25 @@ ferro-analysis  = { path = "../ferro-analysis" }
 
 ## CLI Binaries Reference
 
-| Binary | Mode / flag | Purpose |
+**One binary, `ferro`.** Subcommands are grouped by **what they produce**, not by which
+crate implements them — the `fe-*` binaries are gone.
+
+| Command | Purpose | Product |
 |---|---|---|
-| `fe-convert` | `-i <in> -o <out>` | Format conversion |
-| `fe-info` | `-i <file>` | Print structure info |
-| `fe-job` | `-i <file> -s gaussian [-m B3LYP] [-b 6-31G*]` | Generate QC input file |
-| `fe-traj` | `-m gr\|sq\|msd\|angle` | Structural analysis |
-| `fe-corr` | `-m vacf\|rotcorr\|vanhove` | Correlation functions |
-| `fe-cube` | `-m density\|velocity\|force\|sdf` | Spatial distribution maps |
-| `fe-network` | `--P-O=2.3 [--format csv\|xlsx]` | Glass network analysis |
+| `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
+| `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | Spatial distribution maps | one `.cube` grid **per input** |
+| `ferro net qn\|type` | Glass network topology (`--P-O=2.3`) | distribution tables / labelled structure |
+| `ferro bader` | Bader charge partitioning | ACF/BCF/AVF (Henkelman format) |
+| `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
+
+`traj` merges the old `ferro traj` + `ferro traj`: all seven share one output pipeline, and the
+"structural vs dynamic" line never held anyway (`msd` is a time correlation that sat on
+the structural side). `-m` is gone everywhere — position is the mode. Each subcommand
+owns its own argument struct, so `--dt` can mean different things for `msd` and `vacf`
+without sharing a field; `CommonArgs` / `SelectArgs` are `#[command(flatten)]`-ed in.
+
+**Help is three levels**: `ferro` → the groups; `ferro traj` → that group's commands;
+`ferro traj gr` (no `-i`) → that command's parameters, output columns and examples.
 
 Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--metal-units`.
 
@@ -309,11 +325,7 @@ A failing input is reported, skipped, listed in the output's `[inputs]` block wi
 reason, and makes the **exit code 1**. Parameter errors still fail fast, before the
 first file is read.
 
-**fe-traj help system** (two-level):
-- `fe-traj` / `fe-traj -h` → overview: available modes + common flags
-- `fe-traj -m <MODE>` (no `-i`) → mode-specific parameters + examples
-
-### `fe-traj` — detailed flags
+### `ferro traj` — detailed flags
 
 ```
 # type selection — two mutually exclusive groups
@@ -402,16 +414,16 @@ long-format CSV, so a real figure is one line of seaborn
 (`sns.lineplot(data=df, x="r", y="gr", hue="file")`); log axes, error bars and themes
 belong in Python.
 
-**`fe-cube` is the one exception** to the batch output rules: its product is a 3-D grid
+**`ferro map` is the one exception** to the batch output rules: its product is a 3-D grid
 file, so there is nothing to stack and nothing to plot. It still shares the traversal and
 failure handling (error handling should not exist in two versions), but writes one
 `.cube` per input, and the file name **must** carry the input stem
 (`density_<stem>.cube`) or a second input would overwrite the first.
 
-`fe-bader`'s `write_acf` / `write_bcf` / `write_avf` are likewise untouched: ACF.dat is
+`ferro bader`'s `write_acf` / `write_bcf` / `write_avf` are likewise untouched: ACF.dat is
 the Henkelman-group bader format that external tools parse.
 
-### `fe-cube -m sdf` — Cluster SDF
+### `ferro map sdf` — Cluster SDF
 
 Identifies Qn-type clusters (connected components of network-former atoms sharing bridging ligands), aligns each to a reference via Kabsch + permutation enumeration, and outputs per-atom-type 3D probability density as Gaussian cube files.
 

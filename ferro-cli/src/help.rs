@@ -1,12 +1,11 @@
-use crate::args::{corr::CorrMode, cube::CubeCliMode, traj::TrajMode};
 
 pub fn print_fe_job_overview() {
     println!(
-        r#"fe-job — Generate QC software input files
+        r#"ferro job — Generate QC software input files
 
 Usage:
-  fe-job -s <SOFTWARE> -i <FILE> [OPTIONS]
-  fe-job -s <SOFTWARE>              show software-specific parameters
+  ferro job -s <SOFTWARE> -i <FILE> [OPTIONS]
+  ferro job -s <SOFTWARE>              show software-specific parameters
 
 Supported software:
   gaussian   Gaussian 16/09 input file (.gjf)
@@ -31,7 +30,7 @@ pub fn print_job_help(software: &str) {
 
 fn print_job_qe() {
     println!(
-        r#"fe-job -s qe — Quantum ESPRESSO pw.x input file
+        r#"ferro job -s qe — Quantum ESPRESSO pw.x input file
 
 Parameters — task:
   --qe-task STR     Calculation type                    default: scf
@@ -67,16 +66,16 @@ Notes:
   Pseudopotentials referenced as <Element>.UPF in --pseudo-dir.
 
 Examples:
-  fe-job -s qe -i crystal.cif
-  fe-job -s qe -i metal.cif --smearing mp --kpoints 8 8 8
-  fe-job -s qe -i slab.xyz --qe-task relax --qe-functional scan
-  fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4 -o pw.in"#
+  ferro job -s qe -i crystal.cif
+  ferro job -s qe -i metal.cif --smearing mp --kpoints 8 8 8
+  ferro job -s qe -i slab.xyz --qe-task relax --qe-functional scan
+  ferro job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4 -o pw.in"#
     );
 }
 
 fn print_job_gaussian() {
     println!(
-        r#"fe-job -s gaussian — Gaussian 16/09 input file
+        r#"ferro job -s gaussian — Gaussian 16/09 input file
 
 Parameters:
   -m, --method  STR   DFT functional           default: B3LYP
@@ -90,16 +89,16 @@ Charge / spin (shared):
                         magmom 求和 → 氧化态+Hund → 电子数奇偶下限
 
 Example:
-  fe-job -s gaussian -i mol.xyz
-  fe-job -s gaussian -i mol.xyz -m PBE0 -b def2-TZVP -o sp.gjf
-  fe-job -s gaussian -i FeCl3.xyz --auto-spin            # 推断高自旋多重度
-  fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2"#
+  ferro job -s gaussian -i mol.xyz
+  ferro job -s gaussian -i mol.xyz -m PBE0 -b def2-TZVP -o sp.gjf
+  ferro job -s gaussian -i FeCl3.xyz --auto-spin            # 推断高自旋多重度
+  ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2"#
     );
 }
 
 fn print_job_cp2k() {
     println!(
-        r#"fe-job -s cp2k — CP2K input file (GPW/DFT, periodic systems)
+        r#"ferro job -s cp2k — CP2K input file (GPW/DFT, periodic systems)
 
 Parameters — task:
   --task STR        Calculation type                    default: energy
@@ -174,148 +173,153 @@ Parameters — MD (--task md):
 
 Examples:
   # Single-point PBE on a periodic glass structure
-  fe-job -s cp2k -i glass.xyz
+  ferro job -s cp2k -i glass.xyz
 
   # Geometry optimisation with DFT-D3(BJ)
-  fe-job -s cp2k -i glass.xyz --task geo-opt --dispersion d3bj -o opt.inp
+  ferro job -s cp2k -i glass.xyz --task geo-opt --dispersion d3bj -o opt.inp
 
   # AIMD at 1500 K, NVT-CSVR, PBE-D3
-  fe-job -s cp2k -i glass.xyz --task md --dispersion d3 \
+  ferro job -s cp2k -i glass.xyz --task md --dispersion d3 \
          --temperature 1500 --md-steps 50000 --traj-freq 50 -o aimd.inp
 
   # Cell optimisation with PBE0 / OT / no dispersion
-  fe-job -s cp2k -i crystal.cif --task cell-opt --functional pbe0 --scf ot
+  ferro job -s cp2k -i crystal.cif --task cell-opt --functional pbe0 --scf ot
 
   # Mulliken charges + electron density cube
-  fe-job -s cp2k -i mol.xyz --atom-charge mulliken --cube density
+  ferro job -s cp2k -i mol.xyz --atom-charge mulliken --cube density
 
   # Auto-guess spin for a transition-metal oxide (high-spin estimate)
-  fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear"#
+  ferro job -s cp2k -i Fe2O3.cif --auto-spin --smear"#
     );
 }
 
-pub fn print_fe_traj_overview() {
+/// Top-level `ferro` help: the command families, grouped by what they produce.
+pub fn print_overview() {
     println!(
-        r#"fe-traj — Trajectory structural analysis
+        r#"ferro — Computational Chemistry Toolkit  v{}
 
 Usage:
-  fe-traj -m <MODE> -i <FILE> [FILE ...] [OPTIONS]
-  fe-traj -m <MODE>              show mode-specific parameters
+  ferro <GROUP> <COMMAND> [OPTIONS]
+  ferro <GROUP>                    list that group's commands
+  ferro <GROUP> <COMMAND>          show that command's parameters
 
-Modes:
-  gr      Radial distribution function g(r) and coordination number CN(r)
-  sq      Structure factor S(q) via Fourier transform of g(r)
-  msd     Mean square displacement MSD(t), time-shift averaged
-  angle   Bond angle distribution P(θ) for A-B-C triplets
+Trajectory analysis      one stacked csv per run, `file` as a column; --plot for a look
+  traj gr        Radial distribution g(r) + coordination number CN(r)
+  traj sq        Structure factor S(q)
+  traj msd       Mean square displacement + self-diffusion D
+  traj angle     Bond angle distribution P(theta)
+  traj vacf      Velocity autocorrelation + Green-Kubo diffusion
+  traj rotcorr   Rotational correlation C2(t)
+  traj vanhove   Van Hove self-correlation Gs(r,tau)
+
+Spatial maps             one .cube grid file per input — no summary table, no plot
+  map density | velocity | force | radius | sdf | chg-sdf
+
+Topology & charges
+  net qn         Qn species / oxygen type / coordination number distributions
+  net type       Per-atom type labels for one frame
+  bader          Bader charge partitioning (ACF/BCF/AVF)
+
+Structure I/O
+  convert        Format conversion (xyz, pdb, cif, POSCAR, extxyz, lammps, qe, ...)
+  info           Structure / trajectory information
+  job            Quantum-chemistry input files (gaussian | cp2k | qe)
+
+Batch input:
+  -i takes several files and expands glob patterns itself — quote them:
+    ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan
+  Each input is analysed on its own; results stack into ONE csv with a `file` column.
+  A failed input is skipped, listed in the output's [inputs] block, and sets exit code 1."#,
+        env!("CARGO_PKG_VERSION")
+    );
+}
+
+/// `ferro traj` with no subcommand.
+pub fn print_traj_overview() {
+    println!(
+        r#"ferro traj — Trajectory analysis
+
+Usage:
+  ferro traj <COMMAND> -i <FILE> [FILE ...] [OPTIONS]
+  ferro traj <COMMAND>             show that command's parameters
+
+Commands:
+  gr        Radial distribution function g(r) and coordination number CN(r)
+  sq        Structure factor S(q) via Fourier transform of g(r)
+  msd       Mean square displacement MSD(t), time-shift averaged
+  angle     Bond angle distribution P(theta) for A-B-C triplets
+  vacf      Velocity autocorrelation function + Green-Kubo diffusion
+  rotcorr   Rotational correlation C2(t) for molecular bond vectors
+  vanhove   Van Hove self-correlation Gs(r, tau)
 
 Common options:
-  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed — quote them
-                        so the shell leaves them alone: -i 'runs/*/prod.dump'
-  -o, --output SUFFIX   Output name suffix → <mode>[_<table>]_<suffix>.csv
+  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
+  -o, --output SUFFIX   Output name suffix -> <command>[_<table>]_<suffix>.csv
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
-      --plot            Write a PNG next to the data file
-      --metal-units     LAMMPS metal units (velocities in Å/ps)
-
-Multiple inputs:
-  Every input is analysed on its own and the results are stacked into ONE csv with
-  a `file` column, so `df.groupby("file")` just works. A failed input is reported,
-  skipped, listed in the [inputs] block of the output, and makes the exit code 1.
-  One input is not a special case — the output has the same shape either way.
+      --metal-units     LAMMPS metal units (velocities in A/ps)
 
 Selecting types (gr / sq / angle):
   -a -b -c              by chemical element   (e.g. -a P -b O)
   -x -y -z              by site label         (e.g. -x P_0 -y O_b_P_P)
-  The two groups are mutually exclusive. For gr and sq the first is the centre
-  and the second the neighbour, and the order matters for CN."#
+  The two groups are mutually exclusive. For gr and sq the first is the centre and the
+  second the neighbour, and the order matters for CN."#
     );
 }
 
-pub fn print_traj_help(mode: &TrajMode) {
-    match mode {
-        TrajMode::Gr    => print_gr(),
-        TrajMode::Sq    => print_sq(),
-        TrajMode::Msd   => print_msd(),
-        TrajMode::Angle => print_angle(),
-    }
-}
-
-pub fn print_fe_corr_overview() {
+/// `ferro map` with no subcommand.
+pub fn print_map_overview() {
     println!(
-        r#"fe-corr — Correlation functions
+        r#"ferro map — Spatial distribution maps
 
 Usage:
-  fe-corr -m <MODE> -i <FILE> [FILE ...] [OPTIONS]
-  fe-corr -m <MODE>              show mode-specific parameters
+  ferro map <COMMAND> -i <FILE> [FILE ...] [OPTIONS]
+  ferro map <COMMAND>              show that command's parameters
 
-Modes:
-  vacf      Velocity autocorrelation function C_v(t) + Green-Kubo diffusion
-  rotcorr   Rotational correlation C₂(t) for molecular bond vectors
-  vanhove   Van Hove self-correlation Gs(r, τ)
-
-Common options:
-  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output SUFFIX   Output name suffix → <mode>_<suffix>.csv
-      --last-n N        Use only the last N frames
-      --dt     FLOAT    Timestep between frames [fs]  (default: 1.0)
-      --shift  INT      Time-origin stride            (default: 1)
-      --metal-units     LAMMPS metal units (velocities in Å/ps)"#
-    );
-}
-
-pub fn print_fe_cube_overview() {
-    println!(
-        r#"fe-cube — Spatial distribution maps
-
-Usage:
-  fe-cube -m <MODE> -i <FILE> [FILE ...] [OPTIONS]
-  fe-cube -m <MODE>              show mode-specific parameters
-
-Modes:
-  density   Time-averaged number density [atoms/Å³] per voxel
+Commands:
+  density   Time-averaged number density [atoms/A^3] per voxel
   velocity  Time-averaged speed |v| per voxel  (needs frame velocities)
   force     Time-averaged force magnitude |f| per voxel  (needs frame forces)
   radius    Hard-sphere spatial occupancy map
   sdf       Cluster spatial distribution function (Qn-type, Kabsch alignment)
+  chg-sdf   Charge-density cluster SDF from QE pp.x cube files (--cubes, not -i)
 
 Common options:
   -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output STEM     Output file stem (default depends on mode)
+  -o, --output STEM     Output file stem (default depends on the command)
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
-      --metal-units     LAMMPS metal units (velocities in Å/ps)
+      --metal-units     LAMMPS metal units (velocities in A/ps)
 
 Multiple inputs:
-  Unlike the table-producing binaries, cube output is one 3-D grid file per input —
-  there is nothing to stack. File names therefore carry the input stem
-  (density_<stem>.cube) so several inputs cannot overwrite each other."#
+  Unlike ferro traj, the product is one 3-D grid file per input — there is nothing to
+  stack. File names therefore carry the input stem (density_<stem>.cube) so several
+  inputs cannot overwrite each other. No summary table, no plot."#
     );
 }
 
-pub fn print_corr_help(mode: &CorrMode) {
-    match mode {
-        CorrMode::Vacf    => print_vacf(),
-        CorrMode::Rotcorr => print_rotcorr(),
-        CorrMode::Vanhove => print_vanhove(),
-    }
-}
-
-pub fn print_cube_help(mode: &CubeCliMode) {
-    match mode {
-        CubeCliMode::Density  => print_cube_density(),
-        CubeCliMode::Velocity => print_cube_velocity(),
-        CubeCliMode::Force    => print_cube_force(),
-        CubeCliMode::Radius   => print_cube_radius(),
-        CubeCliMode::Sdf      => print_cube_sdf(),
-        CubeCliMode::ChgSdf   => print_cube_chg_sdf(),
-    }
-}
-
-// ─── fe-traj modes ──────────────────────────────────────────────────────────
-
-fn print_gr() {
+/// `ferro net` with no subcommand.
+pub fn print_net_overview() {
     println!(
-        r#"fe-traj -m gr — Radial Distribution Function and Coordination Number
+        r#"ferro net — Glass network topology
+
+Usage:
+  ferro net <COMMAND> -i <FILE> --<Former>-<Ligand>=<cutoff> [OPTIONS]
+
+Commands:
+  qn        Qn species / oxygen type / coordination number distributions (time averaged)
+  type      Per-atom type labels for one frame; writes a structure file with -o
+
+Cutoffs are given as flags naming the element pair, e.g. --P-O=2.3 --Zn-O=2.8.
+Run `ferro net qn` without -i for the full option list and examples."#
+    );
+}
+
+// ─── ferro traj: gr / sq / msd / angle ──────────────────────────────────────
+
+pub fn print_gr() {
+    println!(
+        r#"ferro traj gr — Radial Distribution Function and Coordination Number
   Computes g(r) and CN(r) for every ordered pair of types, into one file.
   Requires periodic cell (PBC) in the input file.
 
@@ -350,16 +354,16 @@ Output — long format, one row per (file, r, pair):
   ordered pair), never columns. gr is symmetric; cn is directed (center -> neighbor).
 
 Example:
-  fe-traj -m gr -i traj.dump
-  fe-traj -m gr -i traj.dump -a P -b O --r-max 8.0 --plot
-  fe-traj -m gr -i 'runs/*/prod.dump' -a P -b O -o scan     # 一次跑一批
-  fe-traj -m gr -i traj.dump -x P_0 -y O_b_P_P --last-n 500"#
+  ferro traj gr -i traj.dump
+  ferro traj gr -i traj.dump -a P -b O --r-max 8.0 --plot
+  ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan     # 一次跑一批
+  ferro traj gr -i traj.dump -x P_0 -y O_b_P_P --last-n 500"#
     );
 }
 
-fn print_sq() {
+pub fn print_sq() {
     println!(
-        r#"fe-traj -m sq — Structure Factor S(q)
+        r#"ferro traj sq — Structure Factor S(q)
   Computes S(q) via Fourier transform of g(r) (Faber-Ziman formalism),
   weighted by XRD (Waasmaier-Kirfel) form factors or neutron scattering lengths.
 
@@ -398,16 +402,16 @@ Output — wide format, one row per (file, q):
   columns; the gaps are left empty (NaN), never filled in.
 
 Example:
-  fe-traj -m sq -i traj.dump
-  fe-traj -m sq -i traj.dump --weighting xrd --q-max 20.0 -o xrd
-  fe-traj -m sq -i 'runs/*/prod.dump' -o scan
-  fe-traj -m sq -i traj.dump -x P_0 -y O_b_P_P"#
+  ferro traj sq -i traj.dump
+  ferro traj sq -i traj.dump --weighting xrd --q-max 20.0 -o xrd
+  ferro traj sq -i 'runs/*/prod.dump' -o scan
+  ferro traj sq -i traj.dump -x P_0 -y O_b_P_P"#
     );
 }
 
-fn print_msd() {
+pub fn print_msd() {
     println!(
-        r#"fe-traj -m msd — Mean Square Displacement
+        r#"ferro traj msd — Mean Square Displacement
   Computes MSD(t) = <|r(t₀+t) − r(t₀)|²> averaged over time origins.
   Outputs total MSD and per-axis (a/b/c) components.
 
@@ -424,15 +428,15 @@ Parameters:
   -o SUFFIX              Output suffix -> msd_<suffix>.csv   default: msd.csv
 
 Example:
-  fe-traj -m msd -i traj.xyz --dt 2.0
-  fe-traj -m msd -i traj.dump --elements Li --dt 1.0 --last-n 2000
-  fe-traj -m msd -i traj.dump --dt 1.0 --fit-range 0.3,0.8 --plot"#
+  ferro traj msd -i traj.xyz --dt 2.0
+  ferro traj msd -i traj.dump --elements Li --dt 1.0 --last-n 2000
+  ferro traj msd -i traj.dump --dt 1.0 --fit-range 0.3,0.8 --plot"#
     );
 }
 
-fn print_angle() {
+pub fn print_angle() {
     println!(
-        r#"fe-traj -m angle — Bond Angle Distribution
+        r#"ferro traj angle — Bond Angle Distribution
   Computes P(θ) for all A-B-C triplets within cutoff distances.
   B is the central atom; A and C are its neighbours.
 
@@ -458,10 +462,10 @@ Parameters:
   --plot                        Generate PNG and open in viewer
 
 Example:
-  fe-traj -m angle -i traj.dump
-  fe-traj -m angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
-  fe-traj -m angle -i traj.dump -x O_b_P_P -y P_0 -z O_f
-  fe-traj -m angle -i traj.dump -a O -b P -c O --angle-min 90 --angle-max 130
+  ferro traj angle -i traj.dump
+  ferro traj angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
+  ferro traj angle -i traj.dump -x O_b_P_P -y P_0 -z O_f
+  ferro traj angle -i traj.dump -a O -b P -c O --angle-min 90 --angle-max 130
 
 Counting: each geometric angle once (a PO4 tetrahedron gives 6 O-P-O angles, not 12).
   code1/dump2analysis enumerates ordered end pairs, so its histogram is exactly twice
@@ -471,11 +475,11 @@ Counting: each geometric angle once (a PO4 tetrahedron gives 6 O-P-O angles, not
     );
 }
 
-// ─── fe-corr modes ──────────────────────────────────────────────────────────
+// ─── ferro traj: vacf / rotcorr / vanhove ───────────────────────────────────
 
-fn print_vacf() {
+pub fn print_vacf() {
     println!(
-        r#"fe-corr -m vacf — Velocity Autocorrelation Function
+        r#"ferro traj vacf — Velocity Autocorrelation Function
   Computes C_v(t) = <v(t₀)·v(t₀+t)> / <v²(t₀)>, averaged over origins.
   Also outputs running integral (Green-Kubo diffusion coefficient).
   Requires frame.velocities in the input file.
@@ -488,14 +492,14 @@ Parameters:
   -o SUFFIX             Output suffix -> vacf_<suffix>.csv   default: vacf.csv
 
 Example:
-  fe-corr -m vacf -i traj.dump --dt 2.0
-  fe-corr -m vacf -i traj.dump --elements O --last-n 1000"#
+  ferro traj vacf -i traj.dump --dt 2.0
+  ferro traj vacf -i traj.dump --elements O --last-n 1000"#
     );
 }
 
-fn print_rotcorr() {
+pub fn print_rotcorr() {
     println!(
-        r#"fe-corr -m rotcorr — Rotational Correlation Function
+        r#"ferro traj rotcorr — Rotational Correlation Function
   Computes C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors.
   --center and --neighbor are required to define the bond direction.
 
@@ -509,14 +513,14 @@ Parameters:
   -o SUFFIX           Output suffix -> rotcorr_<suffix>.csv  default: rotcorr.csv
 
 Example:
-  fe-corr -m rotcorr -i traj.xyz --center O --neighbor H
-  fe-corr -m rotcorr -i traj.dump --center O --neighbor H --dt 2.0"#
+  ferro traj rotcorr -i traj.xyz --center O --neighbor H
+  ferro traj rotcorr -i traj.dump --center O --neighbor H --dt 2.0"#
     );
 }
 
-fn print_vanhove() {
+pub fn print_vanhove() {
     println!(
-        r#"fe-corr -m vanhove — Van Hove Self-Correlation Function
+        r#"ferro traj vanhove — Van Hove Self-Correlation Function
   Computes Gs(r, τ) = probability distribution of atomic displacements
   over a fixed time lag τ.
 
@@ -531,16 +535,16 @@ Parameters:
   -o SUFFIX             Output suffix -> vanhove_<suffix>.csv  default: vanhove.csv
 
 Example:
-  fe-corr -m vanhove -i traj.xyz --tau 100
-  fe-corr -m vanhove -i traj.dump --elements Li --tau 500 --dt 2.0"#
+  ferro traj vanhove -i traj.xyz --tau 100
+  ferro traj vanhove -i traj.dump --elements Li --tau 500 --dt 2.0"#
     );
 }
 
-// ─── fe-cube modes ──────────────────────────────────────────────────────────
+// ─── ferro map ──────────────────────────────────────────────────────────────
 
-fn print_cube_density() {
+pub fn print_cube_density() {
     println!(
-        r#"fe-cube -m density — Spatial Number Density
+        r#"ferro map density — Spatial Number Density
   Divides the simulation box into nx×ny×nz voxels and computes
   the time-averaged atom number density [atoms/Å³] per voxel.
   Output is a Gaussian cube file (readable by VESTA / VMD).
@@ -555,14 +559,14 @@ Parameters:
   -o PATH             Output cube file            default: density.cube
 
 Example:
-  fe-cube -m density -i traj.dump
-  fe-cube -m density -i traj.dump --nx 100 --ny 100 --nz 100 --elements Li"#
+  ferro map density -i traj.dump
+  ferro map density -i traj.dump --nx 100 --ny 100 --nz 100 --elements Li"#
     );
 }
 
-fn print_cube_velocity() {
+pub fn print_cube_velocity() {
     println!(
-        r#"fe-cube -m velocity — Spatial Velocity Distribution
+        r#"ferro map velocity — Spatial Velocity Distribution
   Computes the time-averaged speed |v| per voxel [Å/fs].
   Requires frame.velocities in the input file.
 
@@ -576,13 +580,13 @@ Parameters:
   -o PATH             Output cube file            default: velocity.cube
 
 Example:
-  fe-cube -m velocity -i traj.dump --nx 80 --ny 80 --nz 80"#
+  ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80"#
     );
 }
 
-fn print_cube_force() {
+pub fn print_cube_force() {
     println!(
-        r#"fe-cube -m force — Spatial Force Distribution
+        r#"ferro map force — Spatial Force Distribution
   Computes the time-averaged force magnitude |f| per voxel [eV/Å].
   Requires frame.forces in the input file.
 
@@ -596,13 +600,13 @@ Parameters:
   -o PATH             Output cube file            default: force.cube
 
 Example:
-  fe-cube -m force -i traj.dump --elements O"#
+  ferro map force -i traj.dump --elements O"#
     );
 }
 
-fn print_cube_radius() {
+pub fn print_cube_radius() {
     println!(
-        r#"fe-cube -m radius — Hard-Sphere Spatial Occupancy Map
+        r#"ferro map radius — Hard-Sphere Spatial Occupancy Map
   For each voxel, counts how many (frame, atom) pairs have the selected
   atom within --radius Å of the voxel centre.  Applies the minimum-image
   convention for periodic cells.  Output is a Gaussian cube file.
@@ -621,14 +625,14 @@ Parameters:
   -o PATH             Output cube file            default: radius.cube
 
 Example:
-  fe-cube -m radius -i traj.dump --elements Li --radius 0.7
-  fe-cube -m radius -i traj.dump --elements Li --radius 1.0 --nx 100 --ny 100 --nz 100"#
+  ferro map radius -i traj.dump --elements Li --radius 0.7
+  ferro map radius -i traj.dump --elements Li --radius 1.0 --nx 100 --ny 100 --nz 100"#
     );
 }
 
-fn print_cube_sdf() {
+pub fn print_cube_sdf() {
     println!(
-        r#"fe-cube -m sdf — Cluster Spatial Distribution Function
+        r#"ferro map sdf — Cluster Spatial Distribution Function
   Identifies Qn-type clusters (connected components of network-former atoms
   linked by bridging ligands), aligns each cluster to a reference via
   Kabsch rotation, and accumulates per-atom-type 3D probability density maps.
@@ -660,15 +664,15 @@ Parameters:
   -o PATH             Output stem (no extension)              default: sdf
 
 Example:
-  fe-cube -m sdf -i traj.dump --qn 3
-  fe-cube -m sdf -i traj.dump --qn 2 --modifier Zn --cutoff-ml 2.8 -o q2_sdf
-  fe-cube -m sdf -i traj.dump --qn 1 --grid-res 0.05 --sigma 2.0 --last-n 500"#
+  ferro map sdf -i traj.dump --qn 3
+  ferro map sdf -i traj.dump --qn 2 --modifier Zn --cutoff-ml 2.8 -o q2_sdf
+  ferro map sdf -i traj.dump --qn 1 --grid-res 0.05 --sigma 2.0 --last-n 500"#
     );
 }
 
-fn print_cube_chg_sdf() {
+pub fn print_cube_chg_sdf() {
     println!(
-        r#"fe-cube -m chg_sdf — Averaged Charge-Density Cluster SDF
+        r#"ferro map chg-sdf — Averaged Charge-Density Cluster SDF
   Reads multiple QE pp.x cube files (one per MD frame), identifies Qn
   clusters with the same logic as -m sdf, extracts a cubic sub-grid of
   the charge density centered on the cluster anchor, applies the Kabsch
@@ -696,7 +700,7 @@ Parameters:
   -o PATH               Output stem (no extension)             default: chg_sdf
 
 Example:
-  fe-cube -m chg_sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
-  fe-cube -m chg_sdf --cubes f1.cube f2.cube --qn 0 --chg-padding 5.0"#
+  ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
+  ferro map chg-sdf --cubes f1.cube f2.cube --qn 0 --chg-padding 5.0"#
     );
 }
