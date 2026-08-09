@@ -321,6 +321,7 @@ Selecting a pair (centre first, neighbour second):
   label on read, so -a/-b keep working on the plain element.
 
 Parameters:
+  --r-min  FLOAT          Min cutoff radius [Å]                  default: 0.005
   --r-max  FLOAT          Max cutoff radius [Å]                  default: 10.005
                           (clamped to half the smallest interplanar spacing)
   --dr     FLOAT          Histogram bin width [Å]                default: 0.01
@@ -362,9 +363,11 @@ Selecting a pair:
   With a pair given only that pair's three columns are written, next to the totals.
 
 Parameters:
+  --q-min      FLOAT  Min q [Å⁻¹]                  default: 0.1
   --q-max      FLOAT  Max q [Å⁻¹]                  default: 25.0
   --dq         FLOAT  q bin width [Å⁻¹]            default: 0.05
   --weighting  ENUM   none | xrd | neutron | both   default: both
+  --r-min      FLOAT  g(r) lower cutoff [Å]        default: 0.005
   --r-max      FLOAT  g(r) cutoff [Å]              default: 10.005
   --dr         FLOAT  g(r) bin width [Å]           default: 0.01
   --last-n     INT    Use only the last N frames
@@ -416,8 +419,15 @@ Selecting a triplet (all three required):
   (the two groups are mutually exclusive)
 
 Parameters:
-  --r-cut-ab FLOAT              A-to-centre-B bond cutoff [Å]   default: 2.3
-  --r-cut-bc FLOAT              Centre-B-to-C bond cutoff [Å]   default: 2.3
+  --r-cut-ab FLOAT              End-A-to-centre-B cutoff [Å]    default: 2.3
+  --r-cut-bc FLOAT              End-C-to-centre-B cutoff [Å]    default: 2.3
+                                A is the atom given by -a / -x, C the one by -c / -z.
+                                Without a named triplet the two fall back to the
+                                canonical (Z, symbol) order; when both ends are the
+                                same type, min(ab, bc) applies to both.
+  --angle-min FLOAT             Histogram lower edge [°]        default: 0.0
+  --angle-max FLOAT             Histogram upper edge [°]        default: 180.0
+                                Angles outside the window are discarded, not hidden.
   --d-angle  FLOAT              Histogram bin width [°]         default: 0.1
   --last-n   INT                Use only the last N frames
   --ncore    INT                Parallel threads
@@ -427,7 +437,14 @@ Parameters:
 Example:
   fe-traj -m angle -i traj.dump
   fe-traj -m angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
-  fe-traj -m angle -i traj.dump -x O_b_P_P -y P_0 -z O_f"#
+  fe-traj -m angle -i traj.dump -x O_b_P_P -y P_0 -z O_f
+  fe-traj -m angle -i traj.dump -a O -b P -c O --angle-min 90 --angle-max 130
+
+Counting: each geometric angle once (a PO4 tetrahedron gives 6 O-P-O angles, not 12).
+  code1/dump2analysis enumerates ordered end pairs, so its histogram is exactly twice
+  this one when both ends are the same element; mean, std and peak positions agree.
+  Its bins are also offset by half a bin — reproduce with --angle-min 0.05
+  --angle-max 180.05 --d-angle 0.1."#
     );
 }
 

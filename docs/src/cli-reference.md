@@ -147,30 +147,34 @@ fe-traj -m <mode> -i traj.dump [flags] -o output
 Computes partial and total $g(r)$ plus coordination numbers $\text{CN}(r)$.
 
 ```bash
-fe-traj -m gr -i traj.dump --r-max 10.0 --dr 0.01 --r-cut 2.3 -o gr.dat
+fe-traj -m gr -i traj.dump --r-min 0.005 --r-max 10.0 --dr 0.01 -o gr.dat
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--r-max` | 10.005 | Maximum radius [Å] |
+| `--r-min` | 0.005 | Minimum radius [Å] |
+| `--r-max` | 10.005 | Maximum radius [Å]; clamped to half the smallest interplanar spacing |
 | `--dr` | 0.01 | Bin width [Å] |
-| `--r-cut` | 2.3 | CN integration cutoff [Å] |
 
-Output: `<stem>.dat` (g(r)) and `<stem>_cn.dat` (coordination numbers)
+Output: a single file with $g(r)$ and $CN(r)$ side by side.
 
 #### `sq` — Structure Factor
 
 Computes $S(q)$ via Fourier transform of $g(r)$.
 
 ```bash
-fe-traj -m sq -i traj.dump --q-max 25.0 --dq 0.05 --weighting xrd -o sq.dat
+fe-traj -m sq -i traj.dump --q-min 0.1 --q-max 25.0 --dq 0.05 --weighting xrd -o sq.dat
 ```
 
 | Flag | Default | Description |
 |---|---|---|
+| `--q-min` | 0.1 | Minimum $q$ [Å⁻¹] |
 | `--q-max` | 25.0 | Maximum $q$ [Å⁻¹] |
 | `--dq` | 0.05 | $q$ bin width [Å⁻¹] |
 | `--weighting` | `both` | `xrd`, `neutron`, or `both` |
+
+The `gr` flags (`--r-min`, `--r-max`, `--dr`) also apply — they set the range of the
+$g(r)$ that is transformed.
 
 #### `msd` — Mean Squared Displacement
 
@@ -196,9 +200,18 @@ fe-traj -m angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 --d-angle 0.1 -o ang
 
 | Flag | Default | Description |
 |---|---|---|
-| `--r-cut-ab` | 2.3 | A–B bond cutoff [Å] |
-| `--r-cut-bc` | 2.3 | C–B bond cutoff [Å] |
+| `--r-cut-ab` | 2.3 | Cutoff from end A to centre B [Å] — A is the atom given by `-a`/`-x` |
+| `--r-cut-bc` | 2.3 | Cutoff from end C to centre B [Å] — C is the atom given by `-c`/`-z` |
+| `--angle-min` | 0.0 | Histogram lower edge [°] |
+| `--angle-max` | 180.0 | Histogram upper edge [°] |
 | `--d-angle` | 0.1 | Histogram bin width [°] |
+
+Without a named triplet the two cutoffs fall back to the canonical (Z, symbol) order.
+When both ends are the same type, `min(--r-cut-ab, --r-cut-bc)` is used for both.
+Angles outside `[--angle-min, --angle-max]` are **discarded**, not merely hidden.
+
+Each geometric angle is counted once; see
+[Bond Angle Distribution](analysis/angle.md) for the comparison with `dump2analysis`.
 
 ---
 
