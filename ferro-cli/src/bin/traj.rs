@@ -47,6 +47,10 @@ struct Cli {
 
     // ── gr / sq shared ──────────────────────────────────────────────────────
 
+    /// [gr/sq] Min cutoff radius [Å]
+    #[arg(long, default_value = "0.005")]
+    r_min: f64,
+
     /// [gr/sq] Max cutoff radius [Å]
     #[arg(long, default_value = "10.005")]
     r_max: f64,
@@ -56,6 +60,10 @@ struct Cli {
     dr: f64,
 
     // ── sq ──────────────────────────────────────────────────────────────────
+
+    /// [sq] Min q [Å⁻¹]
+    #[arg(long, default_value = "0.1")]
+    q_min: f64,
 
     /// [sq] Max q [Å⁻¹]
     #[arg(long, default_value = "25.0")]
@@ -122,6 +130,14 @@ struct Cli {
     /// [angle] Cutoff for center-B-to-C bond [Å]; C is the atom given by -c
     #[arg(long, default_value = "2.3")]
     r_cut_bc: f64,
+
+    /// [angle] Histogram lower edge [°]
+    #[arg(long, default_value = "0.0")]
+    angle_min: f64,
+
+    /// [angle] Histogram upper edge [°]
+    #[arg(long, default_value = "180.0")]
+    angle_max: f64,
 
     /// [angle] Histogram bin width [°]
     #[arg(long, default_value = "0.1")]
@@ -215,10 +231,10 @@ fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
     let (group_by, pair) = resolve_pair(args)?;
 
     let params = GrParams {
+        r_min: args.r_min,
         r_max: args.r_max,
         dr: args.dr,
         group_by,
-        ..GrParams::default()
     };
     let result = calc_gr(traj, &params)?;
 
@@ -247,18 +263,18 @@ fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
     let (group_by, pair) = resolve_pair(args)?;
 
     let gr_params = GrParams {
+        r_min: args.r_min,
         r_max: args.r_max,
         dr: args.dr,
         group_by,
-        ..GrParams::default()
     };
     let gr = calc_gr(traj, &gr_params)?;
 
     let sq_params = SqParams {
+        q_min: args.q_min,
         q_max: args.q_max,
         dq: args.dq,
         weighting: args.weighting.clone().into(),
-        ..SqParams::default()
     };
     let sq = calc_sq_from_gr(&gr, &sq_params);
 
@@ -332,11 +348,21 @@ fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         ));
     }
 
+    // 点名三元组时把端原子顺序原样传下去：--r-cut-ab 归 -a/-x 写的那一端，
+    // --r-cut-bc 归 -c/-z 的那一端，不再按原子序数派发（见 AngleParams::ends）
+    let ends = match (&slots[0], &slots[2]) {
+        (Some(a), Some(c)) => Some((a.clone(), c.clone())),
+        _ => None,
+    };
+
     let params = AngleParams {
         r_cut_ab: args.r_cut_ab,
         r_cut_bc: args.r_cut_bc,
+        angle_min: args.angle_min,
+        angle_max: args.angle_max,
         d_angle: args.d_angle,
         group_by,
+        ends,
     };
     let mut result = calc_angle(traj, &params)
         .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
