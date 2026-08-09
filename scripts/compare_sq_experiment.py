@@ -13,15 +13,10 @@ nq_70 / SQn_70 / xq_70 / SQx_70 正是同一组分的中子与 X 射线总结构
 S(q) 定义里的 +1；fe-traj 与实验数据都是 q→∞ 趋于 1 的标准形式。默认给 dump2sq
 整条曲线 +1 补到同一基准，`--raw` 可关掉。
 
-**这条轨迹为什么值得单独跑**：dump2sq 的 `InitializeType` 只在第 0 帧写入
-`data[i].type_new`，而 `ReadDataLammpstrj` 之后从不更新它，于是原子类型按**数组
-下标**而非实际元素归类。dump 若未按 id 排序，第 1 帧起 partial 归类即失效。
-examples/43Z43P15A_NPT.lammpstrj 正是这种未排序轨迹（帧间同位置同 id 仅 210/2004），
-其 10 条 partial 相互相关系数高达 0.959、XRD 与中子总曲线几乎重合 —— 那份对比里
-S(q) 峰位对不上，根源在此，与傅里叶变换本身无关。
-
-本轨迹按 id 排序且帧间顺序完全稳定（5003/5003），bug 不触发，因此这是一次干净的
-三方对照。脚本会自动检查排序稳定性并把结果打印出来。
+**这条轨迹为什么值得单独跑**：dump2sq 只在第 0 帧写入原子类型，dump 未按 id 排序时
+其 partial 归类会从第 1 帧起失效 —— 成因、实测数据与反证见 scripts/trajcheck.py。
+本轨迹按 id 排序且帧间顺序完全稳定（5003/5003），bug 不触发，因此是一次干净的三方
+对照。脚本每次运行都会做这项自检并把结论打印出来。
 
 用法:
     python compare_sq_experiment.py [--traj FILE] [--outdir DIR] [--raw]
@@ -37,6 +32,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import openpyxl
+
+from trajcheck import partial_independence, report_order_stability, scan_traj
 
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
 R_MIN = 0.005   # fe-traj 固定值，dump2sq 向它对齐
@@ -117,40 +114,6 @@ def d2sq_columns(path):
 
 def fe_version(path):
     return Path(path).read_text().splitlines()[0].lstrip("# ").strip()
-
-
-# ── 轨迹自检 ──────────────────────────────────────────────────────────────────
-
-def scan_traj(traj, n_probe=3):
-    """读前几帧，返回 (盒子边长, 原子数, 元素计数, 帧间同位置同 id 的比例)。
-
-    最后一项直接决定 dump2sq 的 partial 是否可信（见模块 docstring）。
-    """
-    order, box, elems = [], None, None
-    with open(traj) as f:
-        for _ in range(n_probe):
-            for _ in range(3):
-                if not f.readline():
-                    break
-            line = f.readline()
-            if not line:
-                break
-            n = int(line)
-            f.readline()                                   # ITEM: BOX BOUNDS
-            b = [[float(v) for v in f.readline().split()] for _ in range(3)]
-            f.readline()                                   # ITEM: ATOMS
-            rows = [f.readline().split() for _ in range(n)]
-            order.append([r[0] for r in rows])
-            if box is None:
-                box = [hi - lo for lo, hi, *_ in b]
-                elems = {}
-                for r in rows:
-                    elems[r[2]] = elems.get(r[2], 0) + 1
-    stable = min(
-        sum(a == b for a, b in zip(order[0], o)) / len(order[0])
-        for o in order[1:]
-    ) if len(order) > 1 else float("nan")
-    return box, len(order[0]), elems, stable
 
 
 def load_experiment(xlsx):
@@ -326,22 +289,15 @@ def main():
     print(f"参数   : r {R_MIN}–{r_max} step {DR}   q {Q_MIN}–{Q_MAX} step {DQ}")
     print(f"对齐   : {'无（--raw）' if args.raw else f'dump2sq + {SQ_SHIFT_REF:g}'}\n")
 
-    print(f"轨迹排序自检: 帧间同位置同 id = {stable:.4f}")
-    if stable < 0.999:
-        print("  ⚠ dump 未按 id 排序 —— dump2sq 的 type_new 只在第 0 帧写入，")
-        print("    其后各帧的 partial 归类失效，partial 与加权总曲线均不可信。")
-    else:
-        print("  ✓ 顺序稳定，dump2sq 的 type_new 陈旧问题不触发。\n")
+    report_order_stability(stable)
+    print()
 
     data = compute(traj, outdir, r_max, args.fe_traj, args.dump2sq)
     exp = load_experiment(xlsx)
 
     # partial 相互独立性：全部雷同即为归类失效的直接证据
-    m = data["q"] > 2.0
-    part = data["ref_partials"][m]
-    c = np.corrcoef(part.T)
-    n = c.shape[0]
-    print(f"dump2sq {n} 条 partial 平均非对角相关 (q>2) = {(c.sum() - n) / (n * n - n):+.3f}"
+    c = partial_independence(data["ref_partials"][data["q"] > 2.0])
+    print(f"dump2sq partial 平均非对角相关 (q>2) = {c:+.3f}"
           "    （接近 1 说明归类已失效）\n")
 
     q = data["q"]

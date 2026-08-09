@@ -16,15 +16,26 @@
    dump2sq 而不是从 fe-traj 减，是因为 S(q) 的定义要求大 q 极限趋于 1，
    fe-traj 已是该标准形式。加 `--raw` 可关掉这个补偿、看两侧的原始输出。
 
-2. dump2sq 自带的那份 g(r) 与 dump2analysis / fe-traj 的不一致：它的每一条
-   partial g(r) 都叠加了一个位于 P-O 键长（约 1.48 Å）处的伪峰 —— 全部 10 条
-   partial 的全域最大值都落在 1.48~1.53 Å，而各自 r>1.8 之后的峰位却完全正常。
-   最干净的证据是 O-O：该处本应严格为 0（O-O 最近邻在 2.48 Å），fe-traj 与
-   dump2analysis 都给 0，只有 dump2sq 给出约 4.5。
+2. **本脚本默认那条轨迹上，dump2sq 的输出不可信**，差异不构成对 fe-traj 的质疑。
 
-   S(q) 是 g(r) 的傅里叶变换，上游 g(r) 不同则 S(q) 必然不同。因此本图第三行
-   并排画出三方的 O-O g(r)，使 S(q) 的差异可以直接归因到上游，而不至于被误读
-   成 fe-traj 的变换有问题。
+   成因是 dump2sq 的一个源码缺陷（早先版本的本文件把它描述成"伪峰"，那只是
+   症状不是成因，已更正）：`InitializeType` 只在第 0 帧写入 `data[i].type_new`，
+   而 `ReadDataLammpstrj` 的 sscanf 此后只更新 id/type/elem/x/y/z，**从不更新
+   type_new**，于是原子类型按**数组下标**而非实际元素归类。examples 下这条
+   43Z 轨迹没加 `dump_modify sort id`，帧间同位置同 id 仅 210/2004，第 1 帧起
+   partial 归类即失效 —— 全部 10 条 partial 相互相关系数 0.959，XRD 与中子
+   总曲线相关 0.9986，Faber-Ziman 加权被完全冲掉。两条总曲线都退化成总 g(r)
+   的傅里叶变换（与 FT[dump2sq 自身 total g(r)] 相关 0.9987 / 0.9999，而
+   `.gr` 的 Total 列不经过 type_new，正是全文件里唯一干净的一列）。
+
+   反证：换成按 id 排序的 tests/70Z30P00A_NVT.lammpstrj（5003/5003），同样
+   两个程序、同样参数，fe-traj 与 dump2sq 的总曲线 max|Δ| 降到 8e-4 ~ 2.7e-3。
+   见 scripts/compare_sq_experiment.py。
+
+   脚本每次运行都做这项自检并把结论标在图上。第三行并排的三方 O-O g(r) 是同一
+   缺陷在实空间的表现：该处本应严格为 0（O-O 最近邻在 2.48 Å），fe-traj 与
+   dump2analysis 都给 0，只有 dump2sq 给出约 4.5。dump2analysis 每帧按元素重新
+   选原子，不受影响。
 
 用法:
     python compare_sq.py [--traj FILE] [--outdir DIR]
@@ -39,6 +50,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+
+from trajcheck import partial_independence, report_order_stability, scan_traj
 
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
 R_MIN = 0.005   # fe-traj 固定值，其余工具向它对齐
@@ -137,6 +150,8 @@ def compute(traj, outdir, fe_bin, d2sq_bin, d2a_bin):
         "q": fe[:n, 0],
         "XRD": (fe[:n, fe_names.index("total_xrd")], ref[:n, ref_names.index("Sq-XRD")]),
         "Neutron": (fe[:n, fe_names.index("total_neutron")], ref[:n, ref_names.index("Sq-ND")]),
+        # dump2sq 的 partial 列（Sq-XRD 之前的全部），用于归类失效体检
+        "partials": ref[:n, 1:ref_names.index("Sq-XRD")],
         "version": fe_version(fe_sq),
         "n_fe": len(fe),
         "n_ref": len(ref),
@@ -160,7 +175,7 @@ def compute(traj, outdir, fe_bin, d2sq_bin, d2a_bin):
     return sq, gr
 
 
-def plot(sq, gr, traj, png, shift):
+def plot(sq, gr, traj, png, shift, order_ok):
     fig, axes = plt.subplots(3, 2, figsize=(13, 12))
     q = sq["q"]
     ref_label = "dump2sq{}".format(f" + {shift:g}" if shift else "")
@@ -223,10 +238,19 @@ def plot(sq, gr, traj, png, shift):
         f"q: {Q_MIN}–{Q_MAX} step {DQ}   |   {shift_note}",
         fontsize=12)
     fig.text(0.5, 0.005,
-             "Only the constant offset is compensated. The remaining low-q deviation comes from "
-             "dump2sq's own g(r), which carries a spurious peak at the P-O bond length (bottom row).",
+             "Only the constant offset is compensated. The remaining deviation comes from "
+             "dump2sq's own g(r) (bottom row), not from the transform.",
              ha="center", fontsize=8, style="italic")
-    fig.tight_layout(rect=(0, 0.02, 1, 0.94))
+
+    # 未排序的 dump 会让 dump2sq 的归类从第 1 帧起失效，此时整张图的"差异"都不
+    # 应读作 fe-traj 的问题 —— 直接印在图上，避免脱离终端输出后被误读
+    if not order_ok:
+        fig.text(0.5, 0.955,
+                 "⚠ This dump is not written in a stable atom order: dump2sq classifies atoms by "
+                 "array index (type_new is set on frame 0 only),\nso its partials and both weighted "
+                 "totals are meaningless here. The differences below are NOT evidence against fe-traj.",
+                 ha="center", va="top", fontsize=9, color="crimson", weight="bold")
+    fig.tight_layout(rect=(0, 0.02, 1, 0.94 if order_ok else 0.90))
     fig.savefig(png, dpi=140)
     print(f"\n图已写入 {png}")
 
@@ -255,7 +279,16 @@ def main():
     print(f"参数   : r {R_MIN}–{R_MAX} step {DR}   q {Q_MIN}–{Q_MAX} step {DQ}")
     print(f"对齐   : {'无（--raw）' if args.raw else f'dump2sq + {SQ_SHIFT_REF:g}'}\n")
 
+    _, _, _, stable = scan_traj(traj)
+    order_ok = report_order_stability(stable)
+    print()
+
     sq, gr = compute(traj, outdir, args.fe_traj, args.dump2sq, args.dump2analysis)
+
+    if "partials" in sq:
+        c = partial_independence(sq["partials"][sq["q"] > 2.0])
+        print(f"dump2sq partial 平均非对角相关 (q>2) = {c:+.3f}"
+              "    （接近 1 说明归类已失效）")
 
     q = sq["q"]
     # 先报告未补偿的残差尾部 —— 它是「偏移确为常数 1」这一判断的依据
@@ -283,7 +316,7 @@ def main():
     print(f"  dump2analysis {gr['d2a'][k]:.4f}")
     print(f"  dump2sq       {gr['d2sq'][k]:.4f}")
 
-    plot(sq, gr, traj, outdir / "compare_sq.png", shift)
+    plot(sq, gr, traj, outdir / "compare_sq.png", shift, order_ok)
 
 
 if __name__ == "__main__":
