@@ -3,16 +3,17 @@ use clap::Parser;
 use ferro::{
     args::traj::{SqWeightingCli, TrajMode},
     help::{print_fe_traj_overview, print_traj_help},
-    io_dispatch::read_trajectory,
+    io_dispatch::read_trajectory_tail,
     plot::{open_plot, plot_angle, plot_gr, plot_msd, plot_sq},
 };
 use ferro_io::LammpsUnits;
 use ferro_analysis::{
     calc_angle, calc_gr, calc_msd, calc_sq_from_gr,
-    write_angle, write_gr, write_msd, write_sq,
-    AngleParams, GrParams, GroupBy, MsdParams, SqParams,
+    AngleParams, AngleResult, GrParams, GrResult, GroupBy, MsdParams, MsdResult,
+    SqParams, SqResult,
 };
-use std::path::{Path, PathBuf};
+use ferro::batch::{self, Summary};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
@@ -29,13 +30,13 @@ struct Cli {
     #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
     help: bool,
 
-    /// Input trajectory file
-    #[arg(short, long)]
-    input: Option<PathBuf>,
+    /// Input trajectory file(s); glob patterns allowed (quote them)
+    #[arg(short, long, num_args = 1.., value_name = "FILE")]
+    input: Vec<PathBuf>,
 
-    /// Output file
-    #[arg(short, long)]
-    output: Option<PathBuf>,
+    /// Output name suffix: results go to <mode>[_<table>]_<suffix>.csv
+    #[arg(short, long, value_name = "SUFFIX")]
+    output: Option<String>,
 
     /// Use only the last N frames
     #[arg(long)]
@@ -147,7 +148,7 @@ struct Cli {
     #[arg(long)]
     metal_units: bool,
 
-    /// Generate a PNG plot and open it after calculation
+    /// Generate a PNG plot next to the data file
     #[arg(long)]
     plot: bool,
 }
@@ -165,31 +166,38 @@ fn main() -> Result<()> {
     };
 
     // -h 或无 -i → 模式专属帮助
-    if args.help || args.input.is_none() {
+    if args.help || args.input.is_empty() {
         print_traj_help(&mode);
         return Ok(());
     }
-
-    let input = args.input.as_ref().unwrap().clone();
 
     if let Some(n) = args.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
 
-    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let mut traj = read_trajectory(&input, units)?;
-    if let Some(n) = args.last_n {
-        traj = traj.tail(n);
-    }
+    // 索引在前:模式串拼错、文件名写错要在读第一个文件之前就报出来
+    let inputs = batch::expand_inputs(&args.input)?;
+    println!("Inputs: {} file(s)", inputs.len());
 
-    match mode {
-        TrajMode::Gr    => run_gr(&args, &traj)?,
-        TrajMode::Sq    => run_sq(&args, &traj)?,
-        TrajMode::Msd   => run_msd(&args, &traj)?,
-        TrajMode::Angle => run_angle(&args, &traj)?,
-    }
+    let failures = match mode {
+        TrajMode::Gr    => run_gr(&args, &inputs)?,
+        TrajMode::Sq    => run_sq(&args, &inputs)?,
+        TrajMode::Msd   => run_msd(&args, &inputs)?,
+        TrajMode::Angle => run_angle(&args, &inputs)?,
+    };
 
+    if failures > 0 {
+        // 退出码非零:否则 shell 里 `fe-traj ... && next-step` 会把批内失败当成功
+        eprintln!("{failures} input(s) failed; see the [inputs] block in the output file");
+        std::process::exit(1);
+    }
     Ok(())
+}
+
+/// 读一条轨迹并按 --last-n 裁剪。
+fn load(args: &Cli, path: &std::path::Path) -> Result<ferro_core::Trajectory> {
+    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
+    read_trajectory_tail(path, units, args.last_n)
 }
 
 /// 解析选择参数：`-a/-b/-c` 按 element，`-x/-y/-z` 按 label，两组互斥。
@@ -227,72 +235,135 @@ fn resolve_pair(args: &Cli) -> Result<(GroupBy, Option<(String, String)>)> {
     }
 }
 
-fn run_gr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_gr(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let (group_by, pair) = resolve_pair(args)?;
-
     let params = GrParams {
         r_min: args.r_min,
         r_max: args.r_max,
         dr: args.dr,
         group_by,
     };
-    let result = calc_gr(traj, &params)?;
 
-    let out = args.output.as_deref().unwrap_or(Path::new("gr.dat"));
-    let out_str = out.to_str().unwrap_or("gr.dat");
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        Ok(calc_gr(&traj, &params)?)
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
+    }
+
     let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
-    write_gr(&result, out_str, pair_ref)?;
-    println!("GR/CN -> {out_str}");
+    let tables = batch::stack(&results, |r: &GrResult| Ok(r.to_tables(pair_ref)?))?;
+
+    // r_max 逐文件 clamp 到各自盒子的最小面间距,值可能不同,所以进清单
+    let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
+    for (path, r) in &results {
+        let atoms: usize = r.element_counts.values().sum();
+        summary.ok(
+            batch::label_of(path),
+            r.n_frames,
+            atoms,
+            &[r.avg_volume, r.volume_std, r.params.r_max],
+        );
+        summary.note("composition", r.composition());
+    }
+    summary.failed(&failures);
+
+    let meta_params = results[0].1.meta_lines();
+    let data_path = batch::write_all(
+        "gr",
+        "Radial Distribution Function g(r) and Coordination Number CN(r)",
+        &meta_params,
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
 
     if args.plot {
         match pair_ref {
             Some((a, b)) => {
-                let png = plot_gr(&result, out_str, a, b)?;
-                println!("Plot  -> {png}");
-                open_plot(&png);
+                let refs: Vec<(String, &GrResult)> =
+                    results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
+                let png = plot_gr(&refs, &data_path, a, b)?;
+                println!("Plot    -> {png}");
+                if results.len() == 1 {
+                    open_plot(&png);
+                }
             }
             None => println!(
                 "Note  : --plot needs a pair; add -a CENTRE -b NEIGHBOUR (or -x/-y) to plot one"
             ),
         }
     }
-    Ok(())
+    Ok(failures.len())
 }
 
-fn run_sq(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_sq(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let (group_by, pair) = resolve_pair(args)?;
-
     let gr_params = GrParams {
         r_min: args.r_min,
         r_max: args.r_max,
         dr: args.dr,
         group_by,
     };
-    let gr = calc_gr(traj, &gr_params)?;
-
     let sq_params = SqParams {
         q_min: args.q_min,
         q_max: args.q_max,
         dq: args.dq,
         weighting: args.weighting.clone().into(),
     };
-    let sq = calc_sq_from_gr(&gr, &sq_params);
 
-    let out = args.output.as_deref().unwrap_or(Path::new("sq.dat"));
-    let out_str = out.to_str().unwrap_or("sq.dat");
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        let gr = calc_gr(&traj, &gr_params)?;
+        let sq = calc_sq_from_gr(&gr, &sq_params);
+        Ok((gr, sq))
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
+    }
+
     let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
-    write_sq(&gr, &sq, out_str, pair_ref)?;
-    println!("SQ  -> {out_str}");
+    let tables = batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| {
+        Ok(sq.to_tables(gr, pair_ref)?)
+    })?;
+
+    let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
+    for (path, (gr, _)) in &results {
+        let atoms: usize = gr.element_counts.values().sum();
+        summary.ok(
+            batch::label_of(path),
+            gr.n_frames,
+            atoms,
+            &[gr.avg_volume, gr.volume_std, gr.params.r_max],
+        );
+        summary.note("composition", gr.composition());
+    }
+    summary.failed(&failures);
+
+    let meta_params = results[0].1 .1.meta_lines(&results[0].1 .0);
+    let data_path = batch::write_all(
+        "sq",
+        "Structure Factor S(q) [computed from g(r) via Fourier sine transform]",
+        &meta_params,
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
 
     if args.plot {
-        let png = plot_sq(&sq, out_str)?;
-        println!("Plot-> {png}");
-        open_plot(&png);
+        let refs: Vec<(String, &SqResult)> =
+            results.iter().map(|(p, (_, sq))| (batch::label_of(p), sq)).collect();
+        let png = plot_sq(&refs, &data_path)?;
+        println!("Plot    -> {png}");
+        if results.len() == 1 {
+            open_plot(&png);
+        }
     }
-    Ok(())
+    Ok(failures.len())
 }
 
-fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_msd(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let fit_range = match &args.fit_range {
         None => None,
         Some(v) if v.len() == 2 => Some((v[0], v[1])),
@@ -301,7 +372,6 @@ fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
             v.len()
         )),
     };
-
     let params = MsdParams {
         dt: args.dt,
         shift: args.shift,
@@ -309,36 +379,64 @@ fn run_msd(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         fit_range,
         ..MsdParams::default()
     };
-    let result = calc_msd(traj, &params)?;
 
-    let out = args.output.as_deref().unwrap_or(Path::new("msd.dat"));
-    let out_str = out.to_str().unwrap_or("msd.dat");
-    write_msd(&result, out_str)?;
-    println!("MSD -> {out_str}");
-
-    if let Some(f) = &result.fit {
-        println!(
-            "Fit  range [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs  ({} pts)",
-            f.frac_lo, f.frac_hi, f.t_lo, f.t_hi, f.n_points
-        );
-        println!(
-            "D (total) = {:.6e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
-            f.d_ang2_per_fs,
-            f.d_ang2_per_fs * 0.1,
-            f.d_ang2_per_fs * 1e-5,
-            f.r2
-        );
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        Ok(calc_msd(&traj, &params)?)
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
     }
+
+    let tables = batch::stack(&results, |r: &MsdResult| Ok(r.to_tables()))?;
+
+    // D 与 R² 逐文件不同,是这个模式里最该横向比的两个数
+    let mut summary = Summary::new(&["origins", "d_ang2_per_fs", "r2"]);
+    for (path, r) in &results {
+        let (d, r2) = match &r.fit {
+            Some(f) => (f.d_ang2_per_fs, f.r2),
+            None => (f64::NAN, f64::NAN),
+        };
+        summary.ok(batch::label_of(path), r.time.len(), r.n_atoms, &[r.n_origins as f64, d, r2]);
+    }
+    summary.failed(&failures);
+
+    for (path, r) in &results {
+        if let Some(f) = &r.fit {
+            println!(
+                "{}: D = {:.6e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
+                batch::label_of(path),
+                f.d_ang2_per_fs,
+                f.d_ang2_per_fs * 0.1,
+                f.d_ang2_per_fs * 1e-5,
+                f.r2
+            );
+        }
+    }
+
+    let meta_params = results[0].1.meta_lines();
+    let data_path = batch::write_all(
+        "msd",
+        "Mean Squared Displacement (MSD)",
+        &meta_params,
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
 
     if args.plot {
-        let png = plot_msd(&result, out_str)?;
-        println!("Plot -> {png}");
-        open_plot(&png);
+        let refs: Vec<(String, &MsdResult)> =
+            results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
+        let png = plot_msd(&refs, &data_path)?;
+        println!("Plot    -> {png}");
+        if results.len() == 1 {
+            open_plot(&png);
+        }
     }
-    Ok(())
+    Ok(failures.len())
 }
 
-fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_angle(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let (group_by, slots) = resolve_selection(args)?;
     let n_given = slots.iter().filter(|x| x.is_some()).count();
     if n_given > 0 && n_given < 3 {
@@ -354,7 +452,6 @@ fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         (Some(a), Some(c)) => Some((a.clone(), c.clone())),
         _ => None,
     };
-
     let params = AngleParams {
         r_cut_ab: args.r_cut_ab,
         r_cut_bc: args.r_cut_bc,
@@ -364,31 +461,68 @@ fn run_angle(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         group_by,
         ends,
     };
-    let mut result = calc_angle(traj, &params)
-        .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
 
-    // 指定三元组时过滤输出列（key 格式 "A-Centre-C"，端原子已规范排序，两种顺序均检查）
-    if let [Some(a), Some(b), Some(c)] = &slots {
-        let key1 = format!("{a}-{b}-{c}");
-        let key2 = format!("{c}-{b}-{a}");
-        result.hist.retain(|k, _| k == &key1 || k == &key2);
-        result.stats.retain(|k, _| k == &key1 || k == &key2);
-        if result.hist.is_empty() {
-            return Err(anyhow!(
-                "triplet '{key1}' not found (check the symbols and that the centre is the middle one)"
-            ));
+    let triplet_keys = slots.iter().all(|s| s.is_some()).then(|| {
+        let (a, b, c) = (slots[0].as_ref().unwrap(), slots[1].as_ref().unwrap(), slots[2].as_ref().unwrap());
+        (format!("{a}-{b}-{c}"), format!("{c}-{b}-{a}"))
+    });
+
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        let mut result = calc_angle(&traj, &params)
+            .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
+        // 指定三元组时过滤输出（端原子已规范排序，两种顺序均检查）
+        if let Some((key1, key2)) = &triplet_keys {
+            result.hist.retain(|k, _| k == key1 || k == key2);
+            result.stats.retain(|k, _| k == key1 || k == key2);
+            if result.hist.is_empty() {
+                return Err(anyhow!(
+                    "triplet '{key1}' not found (check the symbols and that the centre is the middle one)"
+                ));
+            }
         }
+        Ok(result)
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
     }
 
-    let out = args.output.as_deref().unwrap_or(Path::new("angle.dat"));
-    let out_str = out.to_str().unwrap_or("angle.dat");
-    write_angle(&result, out_str)?;
-    println!("Angle -> {out_str}");
+    let tables = batch::stack(&results, |r: &AngleResult| Ok(r.to_tables()))?;
+
+    let mut summary = Summary::new(&["triplets"]);
+    for (path, r) in &results {
+        let atoms = r.elements.len();
+        summary.ok(batch::label_of(path), r.n_frames, atoms, &[r.hist.len() as f64]);
+    }
+    summary.failed(&failures);
+
+    let meta_params = results[0].1.meta_lines();
+    let data_path = batch::write_all(
+        "angle",
+        "Bond Angle Distribution A-B-C  (B = center)",
+        &meta_params,
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
 
     if args.plot {
-        let png = plot_angle(&result, out_str)?;
-        println!("Plot -> {png}");
-        open_plot(&png);
+        match &triplet_keys {
+            Some((key1, key2)) => {
+                let refs: Vec<(String, &AngleResult)> =
+                    results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
+                // 端原子可能被规范排序反转,两个 key 都试
+                let key = if refs.iter().any(|(_, r)| r.hist.contains_key(key1)) { key1 } else { key2 };
+                let png = plot_angle(&refs, &data_path, key)?;
+                println!("Plot    -> {png}");
+                if results.len() == 1 {
+                    open_plot(&png);
+                }
+            }
+            None => println!(
+                "Note  : --plot needs a triplet; add -a END_A -b CENTRE -c END_C (or -x/-y/-z)"
+            ),
+        }
     }
-    Ok(())
+    Ok(failures.len())
 }

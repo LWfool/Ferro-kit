@@ -22,9 +22,8 @@
 use nalgebra::{Matrix3, Vector3};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
-use std::io::{BufWriter, Write};
-use ferro_core::Trajectory;
-use super::gr::{GroupBy, VERSION, elem_z, group_key, sorted_types};
+use ferro_core::{Table, Trajectory};
+use super::gr::{GroupBy, elem_z, group_key, sorted_types};
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
@@ -391,56 +390,93 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
 /// Write bond angle distribution to a tab-separated text file (`.angle`).
 ///
 /// Each column (after the angle axis) contains the raw count histogram for one
-/// triplet.  The header reports mean and standard deviation per triplet.
-pub fn write_angle(result: &AngleResult, path: &str) -> std::io::Result<()> {
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
+impl AngleResult {
+    /// Projects the histogram into the long-format table the writers consume.
+    ///
+    /// One row per `(angle, triplet)`: columns `angle, end_a, center, end_c, count, p`.
+    /// Same reasoning as `GrResult::to_tables` — the triplet becomes data, not column
+    /// names, so trajectories with different compositions stack without alignment.
+    ///
+    /// Both a raw `count` and a normalised `p` are emitted. `count` is kept because the
+    /// integer histogram is what `scripts/compare_angle.py` checks against
+    /// dump2analysis bin for bin; `p` is what any plot actually wants.
+    pub fn to_tables(&self) -> Vec<(String, Table)> {
+        let keys = sort_triplet_keys(&self.hist);
+        let n = self.angle.len();
+        let rows = n * keys.len();
 
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# Bond Angle Distribution A-B-C  (B = center)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    // cutoff 归属：点名三元组时按用户写的 -a/-c 顺序，否则按规范 (Z, 符号) 顺序
-    let (end_a, end_c) = match &result.params.ends {
-        Some((a, c)) => (format!("end A = {a}"), format!("end C = {c}")),
-        None => ("low-Z end".to_string(), "high-Z end".to_string()),
-    };
-    writeln!(w, "# r_cut_ab = {} Ang  ({end_a} to center)", result.params.r_cut_ab)?;
-    writeln!(w, "# r_cut_bc = {} Ang  ({end_c} to center)", result.params.r_cut_bc)?;
-    writeln!(w, "# angle    = {} .. {} deg", result.params.angle_min, result.params.angle_max)?;
-    writeln!(w, "# d_angle  = {} deg", result.params.d_angle)?;
-    writeln!(w, "# counting : each geometric angle once  \
-                 (code1/dump2analysis counts A-B-C twice when both ends are the same type)")?;
-    writeln!(w, "# frames   = {}", result.n_frames)?;
-    writeln!(w, "# grouped by {}:", match result.params.group_by {
-        GroupBy::Element => "element",
-        GroupBy::Label => "label",
-    })?;
-    for elem in &result.elements { writeln!(w, "#   {}", elem)?; }
-    writeln!(w, "# [statistics]")?;
-    let keys = sort_triplet_keys(&result.hist);
-    for key in &keys {
-        if let Some(s) = result.stats.get(key) {
-            writeln!(w, "# {:<14}: mean={:7.3}  std={:6.3}  count={}",
-                key, s.mean, s.std, s.count)?;
-        }
-    }
-    writeln!(w, "# {}", "-".repeat(60))?;
-    write!(w, "# angle[deg]")?;
-    for k in &keys { write!(w, "\t{}", k)?; }
-    writeln!(w)?;
+        let mut angle_col = Vec::with_capacity(rows);
+        let mut a_col     = Vec::with_capacity(rows);
+        let mut b_col     = Vec::with_capacity(rows);
+        let mut c_col     = Vec::with_capacity(rows);
+        let mut cnt_col   = Vec::with_capacity(rows);
+        let mut p_col     = Vec::with_capacity(rows);
 
-    let n = result.angle.len();
-    for i in 0..n {
-        write!(w, "{:.4}", result.angle[i])?;
-        for k in &keys {
-            let v = result.hist.get(k).map(|h| h[i]).unwrap_or(0);
-            write!(w, "\t{}", v)?;
+        for key in &keys {
+            let (ea, centre, ec) = split_triplet(key);
+            let h = self.hist.get(key);
+            let total: f64 = h.map(|v| v.iter().sum::<u64>() as f64).unwrap_or(0.0);
+            for i in 0..n {
+                let c = h.map(|v| v[i]).unwrap_or(0);
+                angle_col.push(self.angle[i]);
+                a_col.push(ea.to_string());
+                b_col.push(centre.to_string());
+                c_col.push(ec.to_string());
+                cnt_col.push(c as f64);
+                p_col.push(if total > 0.0 { c as f64 / total } else { f64::NAN });
+            }
         }
-        writeln!(w)?;
+
+        let mut t = Table::new();
+        t.push_num("angle", angle_col)
+            .push_text("end_a", a_col)
+            .push_text("center", b_col)
+            .push_text("end_c", c_col)
+            .push_num("count", cnt_col)
+            .push_num("p", p_col);
+        vec![("angle".to_string(), t)]
     }
-    Ok(())
+
+    /// Parameter block plus the per-triplet mean/std/count summary.
+    pub fn meta_lines(&self) -> Vec<String> {
+        let (end_a, end_c) = match &self.params.ends {
+            Some((a, c)) => (format!("end A = {a}"), format!("end C = {c}")),
+            None => ("low-Z end".to_string(), "high-Z end".to_string()),
+        };
+        let mut v = vec![
+            format!("r_cut_ab = {} Ang  ({end_a} to center)", self.params.r_cut_ab),
+            format!("r_cut_bc = {} Ang  ({end_c} to center)", self.params.r_cut_bc),
+            format!("angle    = {} .. {} deg", self.params.angle_min, self.params.angle_max),
+            format!("d_angle  = {} deg", self.params.d_angle),
+            "counting : each geometric angle once  \
+             (code1/dump2analysis counts A-B-C twice when both ends are the same type)"
+                .to_string(),
+            format!("grouped by {}:", match self.params.group_by {
+                GroupBy::Element => "element",
+                GroupBy::Label => "label",
+            }),
+        ];
+        for elem in &self.elements { v.push(format!("  {elem}")); }
+        v.push("[statistics]".to_string());
+        for key in sort_triplet_keys(&self.hist) {
+            if let Some(s) = self.stats.get(&key) {
+                v.push(format!(
+                    "{key:<14}: mean={:7.3}  std={:6.3}  count={}",
+                    s.mean, s.std, s.count
+                ));
+            }
+        }
+        v
+    }
 }
 
-// ─── 测试 ────────────────────────────────────────────────────────────────────
+/// Split an `"A-B-C"` triplet key into its three type names.
+fn split_triplet(key: &str) -> (&str, &str, &str) {
+    match key.split_once('-').and_then(|(a, rest)| rest.split_once('-').map(|(b, c)| (a, b, c))) {
+        Some(t) => t,
+        None => (key, "", ""),
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -556,18 +592,45 @@ mod tests {
     }
 
     #[test]
-    fn test_write_angle() {
-        use std::io::Read;
+    fn test_to_tables_long_format_splits_triplet() {
         let traj = make_90deg_angle();
         let res = calc_angle(&traj, &AngleParams::default()).unwrap();
-        let path = "/tmp/test_ferro.angle";
-        write_angle(&res, path).expect("write_angle failed");
+        let (name, t) = res.to_tables().remove(0);
+        assert_eq!(name, "angle");
+        assert_eq!(t.names(), vec!["angle", "end_a", "center", "end_c", "count", "p"]);
+        assert_eq!(t.n_rows(), res.angle.len() * res.hist.len());
+        assert!(t.validate().is_ok());
+    }
 
-        let mut content = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.starts_with("# ferro v"));
-        assert!(content.contains("# angle[deg]"));
-        assert!(content.contains("center"));
+    #[test]
+    fn test_to_tables_probability_normalises_per_triplet() {
+        let traj = make_90deg_angle();
+        let res = calc_angle(&traj, &AngleParams::default()).unwrap();
+        let (_, t) = res.to_tables().remove(0);
+        let (counts, ps) = match (t.column("count").unwrap(), t.column("p").unwrap()) {
+            (ferro_core::Column::Num(c), ferro_core::Column::Num(p)) => (c.clone(), p.clone()),
+            _ => panic!("count/p must be numeric"),
+        };
+        // 每个三元组段内 p 之和为 1（有计数时）
+        let n = res.angle.len();
+        for chunk in 0..res.hist.len() {
+            let lo = chunk * n;
+            let total: f64 = counts[lo..lo + n].iter().sum();
+            if total > 0.0 {
+                let psum: f64 = ps[lo..lo + n].iter().sum();
+                assert!((psum - 1.0).abs() < 1e-12, "p 未按三元组归一: {psum}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_meta_lines_keep_stats_and_counting_convention() {
+        let traj = make_90deg_angle();
+        let res = calc_angle(&traj, &AngleParams::default()).unwrap();
+        let meta = res.meta_lines().join("\n");
+        assert!(meta.contains("[statistics]"));
+        assert!(meta.contains("mean="));
+        assert!(meta.contains("each geometric angle once"), "计数约定差异必须留在头里");
     }
 
     #[test]

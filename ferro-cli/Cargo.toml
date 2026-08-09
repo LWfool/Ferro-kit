@@ -54,3 +54,4 @@ rust_xlsxwriter  = "0.97"
 plotters         = { version = "0.3", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "ttf", "full_palette", "line_series"] }
 anyhow.workspace = true
 rayon.workspace  = true
+glob.workspace   = true

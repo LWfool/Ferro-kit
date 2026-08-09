@@ -12,9 +12,7 @@
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use rayon::prelude::*;
-use std::io::{BufWriter, Write};
-use ferro_core::Trajectory;
-use super::gr::VERSION;
+use ferro_core::{Table, Trajectory};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -198,32 +196,34 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> Option<RotCorr
 
 /// Write rotational autocorrelation function to a tab-separated text file (`.rotcorr`).
 ///
-/// Columns: `time[fs]`, `C(t)`, `integral[fs]`
-pub fn write_rotcorr(result: &RotCorrResult, path: &str) -> std::io::Result<()> {
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
-
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# Rotational Autocorrelation Function C(t) = <P2(cos theta)>")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# center   = {}", result.params.center)?;
-    writeln!(w, "# neighbor = {}", result.params.neighbor)?;
-    writeln!(w, "# r_cut    = {} Ang", result.params.r_cut)?;
-    writeln!(w, "# tau      = {} frames", result.time.len())?;
-    writeln!(w, "# shift    = {} frames", result.params.shift)?;
-    writeln!(w, "# dt       = {} fs", result.params.dt)?;
-    writeln!(w, "# molecules = {}", result.n_molecules)?;
-    writeln!(w, "# origins   = {}", result.n_origins)?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# time[fs]\tC(t)\tintegral[fs]")?;
-
-    for i in 0..result.time.len() {
-        writeln!(w, "{:.6e}\t{:.6e}\t{:.6e}",
-            result.time[i], result.rotcorr[i], result.integral[i])?;
+impl RotCorrResult {
+    /// Projects the result into the table the writers consume.
+    ///
+    /// Rotational correlation C2(t): `time, c2, integral`.
+    /// The `file` column is added by the caller when stacking several inputs
+    /// (see `ferro_core::Table::concat_union`).
+    pub fn to_tables(&self) -> Vec<(String, Table)> {
+        let mut t = Table::new();
+        t.push_num("time", self.time.clone())
+            .push_num("c2", self.rotcorr.clone())
+            .push_num("integral", self.integral.clone());
+        vec![("rotcorr".to_string(), t)]
     }
-    Ok(())
-}
 
-// ─── 测试 ────────────────────────────────────────────────────────────────────
+    /// Parameter block for the comment header above the data.
+    pub fn meta_lines(&self) -> Vec<String> {
+        vec![
+            format!("center   = {}", self.params.center),
+            format!("neighbor = {}", self.params.neighbor),
+            format!("r_cut    = {} Ang", self.params.r_cut),
+            format!("tau      = {} frames", self.time.len()),
+            format!("shift    = {} frames", self.params.shift),
+            format!("dt       = {} fs", self.params.dt),
+            format!("molecules = {}", self.n_molecules),
+            format!("origins   = {}", self.n_origins),
+        ]
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -347,19 +347,14 @@ mod tests {
     }
 
     #[test]
-    fn test_write_rotcorr() {
-        use std::io::Read;
+    fn test_to_tables_columns() {
         let traj = make_fixed_orientation(8);
-        let params = RotCorrParams { tau: Some(4), ..Default::default() };
-        let res = calc_rotcorr(&traj, &params).unwrap();
-        let path = "/tmp/test_ferro.rotcorr";
-        write_rotcorr(&res, path).expect("write_rotcorr failed");
-
-        let mut content = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.starts_with("# ferro v"), "missing version header");
-        assert!(content.contains("Rotational"), "missing title");
-        assert!(content.contains("# time[fs]"), "missing column header");
-        assert!(content.contains("integral"), "missing integral column");
+        let res = calc_rotcorr(&traj, &RotCorrParams::default()).unwrap();
+        let (name, t) = res.to_tables().remove(0);
+        assert_eq!(name, "rotcorr");
+        assert_eq!(t.names(), vec!["time", "c2", "integral"]);
+        assert_eq!(t.n_rows(), res.time.len());
+        assert!(t.validate().is_ok());
+        assert!(res.meta_lines().join("\n").contains("r_cut"));
     }
 }

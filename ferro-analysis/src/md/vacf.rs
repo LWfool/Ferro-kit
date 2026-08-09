@@ -19,9 +19,7 @@
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
-use std::io::{BufWriter, Write};
-use ferro_core::Trajectory;
-use super::gr::VERSION;
+use ferro_core::{Table, Trajectory};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -194,38 +192,36 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> Option<VacfResult> {
 /// The velocity unit depends on the source trajectory.  For trajectories read
 /// from LAMMPS metal-unit dump files, velocities are in Å/ps (not yet converted
 /// to the internal standard Å/fs); this will be fixed when IO unit normalisation
-/// is implemented.
-pub fn write_vacf(result: &VacfResult, path: &str) -> std::io::Result<()> {
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
-
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# Velocity Autocorrelation Function (VACF)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# tau     = {} frames", result.time.len())?;
-    writeln!(w, "# shift   = {} frames", result.params.shift)?;
-    writeln!(w, "# dt      = {} fs", result.params.dt)?;
-    writeln!(w, "# atoms   = {}", result.n_atoms)?;
-    writeln!(w, "# origins = {}", result.n_origins)?;
-    write!(w,   "# elements:")?;
-    for e in &result.elements { write!(w, " {}", e)?; }
-    writeln!(w)?;
-    writeln!(w, "# NOTE: velocity unit matches source file (see IO unit normalisation TODO)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# time[fs]\tvacf[v^2]\tvacf_x[v^2]\tvacf_y[v^2]\tvacf_z[v^2]\tdiffusion[v^2*fs]")?;
-
-    for i in 0..result.time.len() {
-        writeln!(w, "{:.6e}\t{:.6e}\t{:.6e}\t{:.6e}\t{:.6e}\t{:.6e}",
-            result.time[i],
-            result.vacf[i],
-            result.vacf_x[i],
-            result.vacf_y[i],
-            result.vacf_z[i],
-            result.diffusion[i])?;
+impl VacfResult {
+    /// Projects the result into the table the writers consume.
+    ///
+    /// Velocity autocorrelation: `time, vacf, vacf_x, vacf_y, vacf_z, diffusion`.
+    /// The `file` column is added by the caller when stacking several inputs
+    /// (see `ferro_core::Table::concat_union`).
+    pub fn to_tables(&self) -> Vec<(String, Table)> {
+        let mut t = Table::new();
+        t.push_num("time", self.time.clone())
+            .push_num("vacf", self.vacf.clone())
+            .push_num("vacf_x", self.vacf_x.clone())
+            .push_num("vacf_y", self.vacf_y.clone())
+            .push_num("vacf_z", self.vacf_z.clone())
+            .push_num("diffusion", self.diffusion.clone());
+        vec![("vacf".to_string(), t)]
     }
-    Ok(())
-}
 
-// ─── 测试 ────────────────────────────────────────────────────────────────────
+    /// Parameter block for the comment header above the data.
+    pub fn meta_lines(&self) -> Vec<String> {
+        vec![
+            format!("tau     = {} frames", self.time.len()),
+            format!("shift   = {} frames", self.params.shift),
+            format!("dt      = {} fs", self.params.dt),
+            format!("atoms   = {}", self.n_atoms),
+            format!("origins = {}", self.n_origins),
+            format!("elements: {}", self.elements.join(" ")),
+            "NOTE: velocity unit matches source file (see IO unit normalisation TODO)".to_string(),
+        ]
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -382,18 +378,14 @@ mod tests {
     }
 
     #[test]
-    fn test_write_vacf() {
-        use std::io::Read;
+    fn test_to_tables_columns() {
         let traj = make_const_vel_traj(1.0, 0.0, 0.0, 8);
-        let res = calc_vacf(&traj, &VacfParams { tau: Some(4), ..Default::default() }).unwrap();
-        let path = "/tmp/test_ferro.vacf";
-        write_vacf(&res, path).expect("write_vacf failed");
-
-        let mut content = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.starts_with("# ferro v"), "missing version header");
-        assert!(content.contains("VACF"), "missing VACF title");
-        assert!(content.contains("# time[fs]"), "missing column header");
-        assert!(content.contains("diffusion"), "missing diffusion column");
+        let res = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        let (name, t) = res.to_tables().remove(0);
+        assert_eq!(name, "vacf");
+        assert_eq!(t.names(), vec!["time", "vacf", "vacf_x", "vacf_y", "vacf_z", "diffusion"]);
+        assert_eq!(t.n_rows(), res.time.len());
+        assert!(t.validate().is_ok());
+        assert!(res.meta_lines().join("\n").contains("origins"));
     }
 }

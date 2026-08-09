@@ -11,10 +11,8 @@
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
-use std::io::{BufWriter, Write};
-use ferro_core::Trajectory;
+use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
-use super::gr::VERSION;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -457,44 +455,50 @@ fn build_result(
 /// Columns: `time[fs]`, `msd[Ang^2]`, `msd_a[Ang^2]`, `msd_b[Ang^2]`, `msd_c[Ang^2]`
 ///
 /// For periodic trajectories a/b/c are the crystal-axis directions.
-/// For non-periodic trajectories a/b/c correspond to Cartesian x/y/z.
-pub fn write_msd(result: &MsdResult, path: &str) -> std::io::Result<()> {
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
-
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# Mean Squared Displacement (MSD)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# tau     = {} frames", result.time.len())?;
-    writeln!(w, "# shift   = {} frames", result.params.shift)?;
-    writeln!(w, "# dt      = {} fs", result.params.dt)?;
-    writeln!(w, "# atoms   = {}", result.n_atoms)?;
-    writeln!(w, "# origins = {}", result.n_origins)?;
-    write!(w,   "# elements:")?;
-    for e in &result.elements { write!(w, " {}", e)?; }
-    writeln!(w)?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    if let Some(f) = &result.fit {
-        writeln!(w, "# fit range  = [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs",
-            f.frac_lo, f.frac_hi, f.t_lo, f.t_hi)?;
-        writeln!(w, "# points     = {}", f.n_points)?;
-        writeln!(w, "# slope      = {:.6e} Ang^2/fs", f.slope)?;
-        writeln!(w, "# D (total)  = {:.6e} Ang^2/fs", f.d_ang2_per_fs)?;
-        writeln!(w, "#            = {:.6e} cm^2/s = {:.6e} m^2/s",
-            f.d_ang2_per_fs * 0.1, f.d_ang2_per_fs * 1e-5)?;
-        writeln!(w, "# R^2        = {:.6}", f.r2)?;
-        writeln!(w, "# {}", "-".repeat(60))?;
+impl MsdResult {
+    /// Projects the result into the table the writers consume.
+    ///
+    /// Mean squared displacement: `time, msd, msd_a, msd_b, msd_c`.
+    /// The `file` column is added by the caller when stacking several inputs
+    /// (see `ferro_core::Table::concat_union`).
+    pub fn to_tables(&self) -> Vec<(String, Table)> {
+        let mut t = Table::new();
+        t.push_num("time", self.time.clone())
+            .push_num("msd", self.msd.clone())
+            .push_num("msd_a", self.msd_a.clone())
+            .push_num("msd_b", self.msd_b.clone())
+            .push_num("msd_c", self.msd_c.clone());
+        vec![("msd".to_string(), t)]
     }
-    writeln!(w, "# time[fs]\tmsd[Ang^2]\tmsd_a[Ang^2]\tmsd_b[Ang^2]\tmsd_c[Ang^2]")?;
 
-    for i in 0..result.time.len() {
-        writeln!(w, "{:.6e}\t{:.6e}\t{:.6e}\t{:.6e}\t{:.6e}",
-            result.time[i], result.msd[i],
-            result.msd_a[i], result.msd_b[i], result.msd_c[i])?;
+    /// Parameter block for the comment header above the data.
+    pub fn meta_lines(&self) -> Vec<String> {
+        let mut v = vec![
+            format!("tau     = {} frames", self.time.len()),
+            format!("shift   = {} frames", self.params.shift),
+            format!("dt      = {} fs", self.params.dt),
+            format!("atoms   = {}", self.n_atoms),
+            format!("origins = {}", self.n_origins),
+            format!("elements: {}", self.elements.join(" ")),
+        ];
+        if let Some(f) = &self.fit {
+            v.push(format!(
+                "fit range  = [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs",
+                f.frac_lo, f.frac_hi, f.t_lo, f.t_hi
+            ));
+            v.push(format!("points     = {}", f.n_points));
+            v.push(format!("slope      = {:.6e} Ang^2/fs", f.slope));
+            v.push(format!("D (total)  = {:.6e} Ang^2/fs", f.d_ang2_per_fs));
+            v.push(format!(
+                "           = {:.6e} cm^2/s = {:.6e} m^2/s",
+                f.d_ang2_per_fs * 0.1,
+                f.d_ang2_per_fs * 1e-5
+            ));
+            v.push(format!("R^2        = {:.6}", f.r2));
+        }
+        v
     }
-    Ok(())
 }
-
-// ─── 测试 ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -644,18 +648,14 @@ mod tests {
     }
 
     #[test]
-    fn test_write_msd() {
-        use std::io::Read;
+    fn test_to_tables_columns() {
         let traj = make_traj_linear(10.0, 0.2, 5);
         let result = calc_msd(&traj, &MsdParams::default()).unwrap();
-        let path = "/tmp/test_ferro.msd";
-        write_msd(&result, path).expect("write_msd failed");
-
-        let mut content = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.starts_with("# ferro v"), "missing version header");
-        assert!(content.contains("# time[fs]"), "missing column header");
-        assert!(content.contains("MSD"), "missing MSD title");
+        let (name, t) = result.to_tables().remove(0);
+        assert_eq!(name, "msd");
+        assert_eq!(t.names(), vec!["time", "msd", "msd_a", "msd_b", "msd_c"]);
+        assert_eq!(t.n_rows(), result.time.len());
+        assert!(t.validate().is_ok());
     }
 
     #[test]
@@ -719,21 +719,19 @@ mod tests {
     }
 
     #[test]
-    fn test_write_msd_with_fit() {
-        use std::io::Read;
+    fn test_meta_lines_carry_fit_results() {
         let traj = make_traj_linear(10.0, 0.2, 6);
         let result = calc_msd(&traj, &MsdParams {
             fit_range: Some((0.0, 1.0)),
             ..MsdParams::default()
         }).unwrap();
-        let path = "/tmp/test_ferro_fit.msd";
-        write_msd(&result, path).expect("write_msd failed");
+        let meta = result.meta_lines().join("\n");
+        assert!(meta.contains("D (total)"), "missing D line:\n{meta}");
+        assert!(meta.contains("cm^2/s"), "missing cm^2/s conversion");
+        assert!(meta.contains("R^2"), "missing R^2 line");
 
-        let mut content = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.contains("# D (total)"), "missing D line:\n{content}");
-        assert!(content.contains("cm^2/s"), "missing cm^2/s conversion");
-        assert!(content.contains("# R^2"), "missing R^2 line");
-        assert!(content.contains("# time[fs]"), "column header lost");
+        // 没给 fit_range 时不应凭空出现拟合块
+        let plain = calc_msd(&traj, &MsdParams::default()).unwrap();
+        assert!(!plain.meta_lines().join("\n").contains("D (total)"));
     }
 }

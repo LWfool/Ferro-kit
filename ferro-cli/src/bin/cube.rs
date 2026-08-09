@@ -3,7 +3,8 @@ use clap::Parser;
 use ferro::{
     args::cube::CubeCliMode,
     help::{print_cube_help, print_fe_cube_overview},
-    io_dispatch::read_trajectory,
+    batch,
+    io_dispatch::read_trajectory_tail,
 };
 use ferro_analysis::{
     calc_cube_density, CubeDensityParams,
@@ -12,7 +13,7 @@ use ferro_analysis::{
     calc_chg_sdf, ChgSdfParams,
 };
 use ferro_io::{read_cube_as_chg, write_cube, LammpsUnits};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
@@ -29,9 +30,9 @@ struct Cli {
     #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
     help: bool,
 
-    /// Input trajectory file (omit to show mode-specific help)
-    #[arg(short, long)]
-    input: Option<PathBuf>,
+    /// Input trajectory file(s); glob patterns allowed (quote them) (omit to show mode-specific help)
+    #[arg(short, long, num_args = 1.., value_name = "FILE")]
+    input: Vec<PathBuf>,
 
     /// Output file stem (density/velocity/force) or stem prefix (sdf)
     #[arg(short, long)]
@@ -149,33 +150,64 @@ fn main() -> Result<()> {
     }
 
     // -h 或无 -i → 模式专属帮助
-    if args.help || args.input.is_none() {
+    if args.help || args.input.is_empty() {
         print_cube_help(&mode);
         return Ok(());
     }
-
-    let input = args.input.as_ref().unwrap().clone();
 
     if let Some(n) = args.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
 
-    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let mut traj = read_trajectory(&input, units)?;
-    if let Some(n) = args.last_n {
-        traj = traj.tail(n);
-    }
+    let inputs = batch::expand_inputs(&args.input)?;
+    println!("Inputs: {} file(s)", inputs.len());
 
-    match mode {
-        CubeCliMode::Sdf    => run_sdf(&args, &traj),
-        CubeCliMode::Radius => run_radius(&args, &traj),
-        ref m               => run_density(m, &args, &traj),
+    // cube 是本框架里唯一的例外：产物是三维网格文件，没有表可汇总，也没有可叠加的
+    // 曲线。遍历与失败跳过仍然共用一套（错误处理不该有两份），但每个输入各出各的
+    // .cube，文件名**必须**带输入 stem，否则多输入会互相覆盖。
+    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
+    let multi = inputs.len() > 1;
+    let (_ok, failures) = batch::map_inputs(&inputs, |p| {
+        let traj = read_trajectory_tail(p, units, args.last_n)?;
+        let stem = cube_stem(&args, p, multi);
+        match mode {
+            CubeCliMode::Sdf    => run_sdf(&args, &traj, &stem),
+            CubeCliMode::Radius => run_radius(&args, &traj, &stem),
+            ref m               => run_density(m, &args, &traj, &stem),
+        }
+    });
+
+    if !failures.is_empty() {
+        eprintln!("{} input(s) failed", failures.len());
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// 输出文件名前缀：`<-o 或模式名>[_<输入 stem>]`。
+///
+/// 单输入时保持原来的简洁名字；多输入时必须掺入 stem，否则第二个文件会盖掉第一个。
+fn cube_stem(args: &Cli, path: &std::path::Path, multi: bool) -> String {
+    let base = args.output.as_deref().and_then(|p| p.to_str()).unwrap_or("");
+    let base = if base.is_empty() { String::new() } else { format!("{base}_") };
+    if multi {
+        format!("{base}{}", batch::label_of(path))
+    } else {
+        base.trim_end_matches('_').to_string()
     }
 }
 
-fn run_density(mode: &CubeCliMode, args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
-    let default_name = format!("{}.cube", mode_name(mode));
-    let out = args.output.as_deref().unwrap_or(Path::new(&default_name));
+fn run_density(
+    mode: &CubeCliMode,
+    args: &Cli,
+    traj: &ferro_core::Trajectory,
+    stem: &str,
+) -> Result<()> {
+    let out = if stem.is_empty() {
+        format!("{}.cube", mode_name(mode))
+    } else {
+        format!("{}_{}.cube", mode_name(mode), stem)
+    };
 
     let params = CubeDensityParams {
         nx: args.nx,
@@ -188,19 +220,23 @@ fn run_density(mode: &CubeCliMode, args: &Cli, traj: &ferro_core::Trajectory) ->
     let result = calc_cube_density(traj, &params)
         .ok_or_else(|| anyhow!("Cube calc failed (missing cell, velocities, or forces?)"))?;
 
-    write_cube(out.to_str().unwrap_or(&default_name), &result.cube)?;
+    write_cube(&out, &result.cube)?;
     println!(
         "Cube ({}) -> {}  [{} frames, {} atoms]",
         mode_name(mode),
-        out.display(),
+        out,
         result.n_frames,
         result.n_atoms,
     );
     Ok(())
 }
 
-fn run_radius(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
-    let out = args.output.as_deref().unwrap_or(std::path::Path::new("radius.cube"));
+fn run_radius(args: &Cli, traj: &ferro_core::Trajectory, stem: &str) -> Result<()> {
+    let out = if stem.is_empty() {
+        "radius.cube".to_string()
+    } else {
+        format!("radius_{stem}.cube")
+    };
 
     let params = CubeRadiusParams {
         nx: args.nx,
@@ -213,18 +249,18 @@ fn run_radius(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
     let result = calc_cube_radius(traj, &params)
         .ok_or_else(|| anyhow!("Cube radius calc failed (missing cell?)"))?;
 
-    write_cube(out.to_str().unwrap_or("radius.cube"), &result.cube)?;
+    write_cube(&out, &result.cube)?;
     println!(
         "Cube (radius={:.3}Å) -> {}  [{} frames, {} atoms]",
         params.radius,
-        out.display(),
+        out,
         result.n_frames,
         result.n_atoms,
     );
     Ok(())
 }
 
-fn run_sdf(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_sdf(args: &Cli, traj: &ferro_core::Trajectory, stem: &str) -> Result<()> {
     let params = ClusterSdfParams {
         former: args.former.clone(),
         ligand: args.ligand.clone(),
@@ -241,9 +277,7 @@ fn run_sdf(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
     let result = calc_cluster_sdf(traj, &params)
         .ok_or_else(|| anyhow!("No Q{} clusters found in trajectory", args.qn))?;
 
-    let stem = args.output.as_deref()
-        .and_then(|p| p.to_str())
-        .unwrap_or("sdf");
+    let stem = if stem.is_empty() { "sdf" } else { stem };
 
     let multi_family = result.families.len() > 1;
 
