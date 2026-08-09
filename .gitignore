@@ -44,6 +44,5 @@ config/secrets.yml
 /examples
 .claude/
 CLAUDE.md
-dev/
 # 比较脚本的输出（scripts/compare_*.py）
 cmp_out/
