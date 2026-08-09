@@ -7,9 +7,14 @@
 //!   - B is always the center; endpoints sorted by atomic number, Z(A) ≤ Z(C).
 //!   - Symmetric pairs (e.g. Si-O-Si) are not double-counted: enumeration requires A_idx < C_idx.
 //!
-//! `rcut_ab`: cutoff from the lower-Z end atom (A) to center.
-//! `rcut_bc`: cutoff from the higher-Z end atom (C) to center.
-//! When both end atoms are the same element, `min(rcut_ab, rcut_bc)` is used.
+//! `rcut_ab`: cutoff from end atom A to center; `rcut_bc`: from end atom C to center.
+//! Which physical end is "A" comes from `AngleParams::ends` — the order the caller wrote
+//! `-a`/`-c` — falling back to the canonical (Z, symbol) order when the triplet was not
+//! named. When both end atoms are the same type, `min(rcut_ab, rcut_bc)` is used for both.
+//!
+//! Counting: each geometric angle once (a PO₄ tetrahedron gives 6 O-P-O angles, not 12).
+//! `code1/dump2analysis` enumerates ordered end pairs instead, so its histogram is exactly
+//! twice this one whenever both ends are the same type; mean/std/peak positions are equal.
 //!
 //! Parallelism: per-frame `par_iter().fold().reduce()`, same pattern as gr.rs.
 //! Algorithm reference: code1/angle.c (`EstimateAngle`).
@@ -150,19 +155,45 @@ impl CellList {
 /// Parameters for bond angle distribution calculation.
 #[derive(Debug, Clone)]
 pub struct AngleParams {
-    /// Distance cutoff for the lower-Z end atom (A) to center (B) \[Å\] (default: 2.3)
+    /// Distance cutoff from end atom A to the center B \[Å\] (default: 2.3).
+    ///
+    /// Which physical end counts as "A" is decided by `ends`: when the caller names the
+    /// triplet, A is the end they wrote first; otherwise A is the lower-Z end.
     pub r_cut_ab: f64,
-    /// Distance cutoff for the higher-Z end atom (C) to center (B) \[Å\] (default: 2.3)
+    /// Distance cutoff from end atom C to the center B \[Å\] (default: 2.3). See `r_cut_ab`.
     pub r_cut_bc: f64,
+    /// Lower edge of the histogram \[degrees\] (default: 0.0)
+    pub angle_min: f64,
+    /// Upper edge of the histogram \[degrees\] (default: 180.0)
+    pub angle_max: f64,
     /// Histogram bin width \[degrees\] (default: 0.1, same as code1 180/1800 split)
     pub d_angle: f64,
     /// Whether triplets are resolved over elements or site labels (default: `Element`)
     pub group_by: GroupBy,
+    /// End-atom order exactly as the caller wrote it — `(A, C)` from `-a`/`-c` (or `-x`/`-z`).
+    ///
+    /// `r_cut_ab` is applied to A and `r_cut_bc` to C. Without this the two cutoffs would
+    /// be handed out by the canonical (Z, symbol) order, which silently ignores the order
+    /// the caller typed: `-a Zn -b O -c P --r-cut-ab 2.5 --r-cut-bc 2.0` would give 2.5 to
+    /// P, because Z(P)=15 < Z(Zn)=30.
+    ///
+    /// `None` (the default, and the only option when scanning every triplet at once) falls
+    /// back to the canonical order. Ignored when both ends are the same type — see
+    /// `calc_angle`.
+    pub ends: Option<(String, String)>,
 }
 
 impl Default for AngleParams {
     fn default() -> Self {
-        AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 0.1, group_by: GroupBy::default() }
+        AngleParams {
+            r_cut_ab: 2.3,
+            r_cut_bc: 2.3,
+            angle_min: 0.0,
+            angle_max: 180.0,
+            d_angle: 0.1,
+            group_by: GroupBy::default(),
+            ends: None,
+        }
     }
 }
 
@@ -212,15 +243,29 @@ pub struct AngleResult {
 /// # Canonical key and counting convention
 /// For a given B center, its neighbors are enumerated as unordered pairs
 /// `(α, β)` with `α_global_index < β_global_index` to avoid double-counting.
-/// The canonical key uses Z(ElemA) ≤ Z(ElemC); when both ends are the same
-/// element the cutoff applied is `min(r_cut_ab, r_cut_bc)`.
+/// The canonical key uses Z(ElemA) ≤ Z(ElemC).
+///
+/// Each geometric angle is therefore counted **once**: a PO₄ tetrahedron contributes 6
+/// O-P-O angles, not 12. `code1/dump2analysis -m angle` instead enumerates ordered end
+/// pairs and counts (O₁,P,O₂) and (O₂,P,O₁) separately, so its histogram is exactly
+/// twice this one whenever the two ends are the same type (for A ≠ C the two agree).
+/// The factor cancels out of `mean`, `std` and the peak positions.
+///
+/// # Cutoff assignment
+/// `r_cut_ab` goes to end A and `r_cut_bc` to end C, where A/C are taken from
+/// `params.ends` when the caller named the triplet, and from the canonical (Z, symbol)
+/// order otherwise. When both ends are the same type, which one is "A" would depend on
+/// the neighbour enumeration order, so `min(r_cut_ab, r_cut_bc)` is applied to both —
+/// the only assignment that gives a reproducible result.
 pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult> {
     if traj.frames.is_empty() { return None; }
 
     // 校验所有帧都有 cell
     if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
 
-    let n_bins = (180.0 / params.d_angle).ceil() as usize;
+    if params.angle_max <= params.angle_min || params.d_angle <= 0.0 { return None; }
+    let n_bins = ((params.angle_max - params.angle_min) / params.d_angle).ceil() as usize;
+    if n_bins == 0 { return None; }
     let n_frames = traj.frames.len();
 
     // 类型列表（元素或位点标签），按 (Z, 字符串) 排序：字符串二级比较使同 Z 的
@@ -271,10 +316,21 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
                             };
 
                         let (rcut_lo, rcut_hi) = if lo_elem == hi_elem {
+                            // 两端同类型时谁被排成 lo 取决于邻居枚举顺序，
+                            // 只有取两者较小值才能给出可复现的结果
                             let m = params.r_cut_ab.min(params.r_cut_bc);
                             (m, m)
                         } else {
-                            (params.r_cut_ab, params.r_cut_bc)
+                            match &params.ends {
+                                // 调用方点名了三元组：--r-cut-ab 归它写在前面的那一端。
+                                // 仅当用户的 A 落在 hi 端时才需要互换。
+                                Some((ea, ec))
+                                    if hi_elem == ea.as_str() && lo_elem == ec.as_str() =>
+                                {
+                                    (params.r_cut_bc, params.r_cut_ab)
+                                }
+                                _ => (params.r_cut_ab, params.r_cut_bc),
+                            }
                         };
 
                         if lo_dist >= rcut_lo || hi_dist >= rcut_hi { continue; }
@@ -283,7 +339,13 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
                         let dot = lo_vec[0]*hi_vec[0] + lo_vec[1]*hi_vec[1] + lo_vec[2]*hi_vec[2];
                         let cos_a = (dot / (lo_dist * hi_dist)).clamp(-1.0, 1.0);
                         let angle_deg = cos_a.acos().to_degrees();
-                        let bin = ((angle_deg / params.d_angle) as usize).min(n_bins - 1);
+                        // 直方图区间可由调用方收窄，区间外的角丢弃。上界取闭区间：
+                        // 完全共线的三元组 acos(-1) 恰为 180.0，半开区间会把它整个丢掉
+                        if angle_deg < params.angle_min || angle_deg > params.angle_max {
+                            continue;
+                        }
+                        let bin = (((angle_deg - params.angle_min) / params.d_angle) as usize)
+                            .min(n_bins - 1);
 
                         // lo_elem 已是低 Z 端，直接调用 canonical_triplet 确保一致性
                         let key = canonical_triplet(lo_elem, b_elem, hi_elem);
@@ -305,7 +367,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
 
     // 角度轴（bin 中心）
     let angle: Vec<f64> = (0..n_bins)
-        .map(|i| (i as f64 + 0.5) * params.d_angle)
+        .map(|i| params.angle_min + (i as f64 + 0.5) * params.d_angle)
         .collect();
 
     // 从直方图计算 mean 和 std（加权平均）
@@ -336,9 +398,17 @@ pub fn write_angle(result: &AngleResult, path: &str) -> std::io::Result<()> {
     writeln!(w, "# ferro v{}", VERSION)?;
     writeln!(w, "# Bond Angle Distribution A-B-C  (B = center)")?;
     writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# r_cut_ab = {} Ang  (low-Z end to center)", result.params.r_cut_ab)?;
-    writeln!(w, "# r_cut_bc = {} Ang  (high-Z end to center)", result.params.r_cut_bc)?;
+    // cutoff 归属：点名三元组时按用户写的 -a/-c 顺序，否则按规范 (Z, 符号) 顺序
+    let (end_a, end_c) = match &result.params.ends {
+        Some((a, c)) => (format!("end A = {a}"), format!("end C = {c}")),
+        None => ("low-Z end".to_string(), "high-Z end".to_string()),
+    };
+    writeln!(w, "# r_cut_ab = {} Ang  ({end_a} to center)", result.params.r_cut_ab)?;
+    writeln!(w, "# r_cut_bc = {} Ang  ({end_c} to center)", result.params.r_cut_bc)?;
+    writeln!(w, "# angle    = {} .. {} deg", result.params.angle_min, result.params.angle_max)?;
     writeln!(w, "# d_angle  = {} deg", result.params.d_angle)?;
+    writeln!(w, "# counting : each geometric angle once  \
+                 (code1/dump2analysis counts A-B-C twice when both ends are the same type)")?;
     writeln!(w, "# frames   = {}", result.n_frames)?;
     writeln!(w, "# grouped by {}:", match result.params.group_by {
         GroupBy::Element => "element",
@@ -555,6 +625,106 @@ mod tests {
             let res = calc_angle(&traj, &params).unwrap();
             assert_eq!(res.elements, expected_types);
             assert_eq!(res.hist.keys().cloned().collect::<Vec<_>>(), expected_keys);
+        }
+    }
+
+    // ── Q6: cutoff 按调用方给的端原子顺序分配 ────────────────────────────────
+
+    /// Zn-O-P：中心 O，Zn 在 2.4 Å、P 在 2.0 Å。
+    ///
+    /// Z(P)=15 < Z(Zn)=30，所以规范顺序里 P 是 lo 端、Zn 是 hi 端 —— 与用户写的
+    /// `-a Zn -c P` 正好相反。取 r_cut_ab=2.5 / r_cut_bc=2.2 时两种分配给出
+    /// 完全不同的结果，足以把这个行为钉死。
+    fn make_zn_o_p() -> Trajectory {
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        frame.add_atom(Atom::new("O",  Vector3::new(0.0, 0.0, 0.0)));
+        frame.add_atom(Atom::new("Zn", Vector3::new(2.4, 0.0, 0.0)));
+        frame.add_atom(Atom::new("P",  Vector3::new(0.0, 2.0, 0.0)));
+        Trajectory::from_frame(frame)
+    }
+
+    #[test]
+    fn test_cutoff_follows_caller_end_order() {
+        let traj = make_zn_o_p();
+        let base = AngleParams { r_cut_ab: 2.5, r_cut_bc: 2.2, d_angle: 1.0, ..Default::default() };
+
+        // 用户写 -a Zn -c P：Zn 拿 2.5（2.4 < 2.5 ✓），P 拿 2.2（2.0 < 2.2 ✓）→ 计入
+        let named = AngleParams {
+            ends: Some(("Zn".to_string(), "P".to_string())), ..base.clone()
+        };
+        let res = calc_angle(&traj, &named).unwrap();
+        assert_eq!(res.stats["P-O-Zn"].count, 1, "端原子顺序应由 ends 决定");
+
+        // 反过来写 -a P -c Zn：P 拿 2.5（✓），Zn 拿 2.2（2.4 > 2.2 ✗）→ 落选
+        let flipped = AngleParams {
+            ends: Some(("P".to_string(), "Zn".to_string())), ..base.clone()
+        };
+        assert!(calc_angle(&traj, &flipped).is_none(),
+            "调换 -a/-c 应当改变 cutoff 归属");
+
+        // 未点名三元组时退回规范 (Z, 符号) 顺序：lo=P 拿 2.5，hi=Zn 拿 2.2 → 落选
+        assert!(calc_angle(&traj, &base).is_none(),
+            "ends=None 时应沿用规范顺序");
+    }
+
+    #[test]
+    fn test_symmetric_ends_ignore_order() {
+        // 两端同类型时 ends 不生效，始终取 min(r_cut_ab, r_cut_bc)：
+        // 谁被排成 lo 端取决于邻居枚举顺序，否则结果不可复现
+        let traj = make_90deg_angle();
+        let p = AngleParams {
+            r_cut_ab: 2.0, r_cut_bc: 1.5, d_angle: 1.0,
+            ends: Some(("O".to_string(), "O".to_string())), ..Default::default()
+        };
+        // 两个 O 都在 1.6 Å，min(2.0, 1.5) = 1.5 → 全部落选
+        assert!(calc_angle(&traj, &p).is_none());
+    }
+
+    // ── Q3: 直方图上下界可调 ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_angle_window_is_configurable() {
+        let traj = make_90deg_angle();   // 唯一一个角是 90°
+
+        // 收窄到 [80, 100)：角度轴从 80 起、bin 中心带 angle_min 偏移
+        let inside = AngleParams {
+            angle_min: 80.0, angle_max: 100.0, d_angle: 1.0,
+            r_cut_ab: 2.0, r_cut_bc: 2.0, ..Default::default()
+        };
+        let res = calc_angle(&traj, &inside).unwrap();
+        assert_eq!(res.angle.len(), 20);
+        assert!((res.angle[0] - 80.5).abs() < 1e-12, "bin 中心应为 angle_min + (i+0.5)*d");
+        assert_eq!(res.stats["O-Si-O"].count, 1);
+        assert!((res.stats["O-Si-O"].mean - 90.0).abs() < 1.0);
+
+        // 窗口挪开后该角被丢弃，没有任何三元组留下
+        let outside = AngleParams {
+            angle_min: 100.0, angle_max: 180.0, d_angle: 1.0,
+            r_cut_ab: 2.0, r_cut_bc: 2.0, ..Default::default()
+        };
+        assert!(calc_angle(&traj, &outside).is_none());
+    }
+
+    #[test]
+    fn test_180deg_stays_in_last_bin() {
+        // acos(-1) 恰好是 180.0；上界若按半开区间处理会把共线三元组整个丢掉
+        let traj = make_180deg_angle();
+        let p = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
+        let res = calc_angle(&traj, &p).unwrap();
+        let bins = &res.hist["O-Si-O"];
+        assert_eq!(bins[bins.len() - 1], 1, "180° 应落在最后一个 bin");
+    }
+
+    #[test]
+    fn test_invalid_window_rejected() {
+        let traj = make_90deg_angle();
+        for p in [
+            AngleParams { angle_min: 100.0, angle_max: 100.0, ..Default::default() },
+            AngleParams { angle_min: 100.0, angle_max: 50.0, ..Default::default() },
+            AngleParams { d_angle: 0.0, ..Default::default() },
+        ] {
+            assert!(calc_angle(&traj, &p).is_none());
         }
     }
 }
