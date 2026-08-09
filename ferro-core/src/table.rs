@@ -112,6 +112,66 @@ impl Table {
         Ok(())
     }
 
+    /// Stacks per-input tables into one, prepending a `label` column.
+    ///
+    /// Columns are unioned in first-seen order. A part missing a column contributes
+    /// empty cells there (`NaN` for numbers) — never a fabricated value. This is what
+    /// lets trajectories with **different element sets** share one wide table: a
+    /// Zn-P-O run simply has no `Al-O_sq` values, and that reads back as missing
+    /// rather than as zero.
+    ///
+    /// Errors if two parts disagree on a column's kind, which would otherwise write
+    /// text into a numeric column.
+    pub fn concat_union(label: &str, parts: Vec<(String, Table)>) -> Result<Table, String> {
+        let mut names: Vec<String> = Vec::new();
+        let mut is_text: Vec<bool> = Vec::new();
+        for (_, t) in &parts {
+            for (name, col) in &t.cols {
+                let text = matches!(col, Column::Text(_));
+                match names.iter().position(|n| n == name) {
+                    Some(i) if is_text[i] != text => {
+                        return Err(format!("column '{name}' is numeric in one input and text in another"));
+                    }
+                    Some(_) => {}
+                    None => {
+                        names.push(name.clone());
+                        is_text.push(text);
+                    }
+                }
+            }
+        }
+
+        let mut labels: Vec<String> = Vec::new();
+        let mut nums: Vec<Vec<f64>>    = vec![Vec::new(); names.len()];
+        let mut texts: Vec<Vec<String>> = vec![Vec::new(); names.len()];
+
+        for (tag, t) in &parts {
+            t.validate()?;
+            let rows = t.n_rows();
+            labels.extend(std::iter::repeat_n(tag.clone(), rows));
+            for (ci, name) in names.iter().enumerate() {
+                match t.column(name) {
+                    Some(Column::Num(v))  => nums[ci].extend_from_slice(v),
+                    Some(Column::Text(v)) => texts[ci].extend_from_slice(v),
+                    // 该输入没有这一列:补空,不补零
+                    None if is_text[ci] => texts[ci].extend(std::iter::repeat_n(String::new(), rows)),
+                    None                => nums[ci].extend(std::iter::repeat_n(f64::NAN, rows)),
+                }
+            }
+        }
+
+        let mut out = Table::new();
+        out.push_text(label, labels);
+        for (ci, name) in names.into_iter().enumerate() {
+            if is_text[ci] {
+                out.push_text(name, std::mem::take(&mut texts[ci]));
+            } else {
+                out.push_num(name, std::mem::take(&mut nums[ci]));
+            }
+        }
+        Ok(out)
+    }
+
     /// Renders the whole table as space-aligned plain-text lines, header included.
     ///
     /// Used to embed a small table (the per-input metadata summary) inside another
@@ -213,6 +273,63 @@ mod tests {
         let pos = |s: &str, pat: &str| s.find(pat).unwrap();
         assert_eq!(pos(&lines[0], "status"), pos(&lines[1], "ok"));
         assert_eq!(pos(&lines[1], "ok"), pos(&lines[2], "failed"));
+    }
+
+    fn part(tag: &str, cols: &[(&str, Vec<f64>)]) -> (String, Table) {
+        let mut t = Table::new();
+        for (n, v) in cols { t.push_num(*n, v.clone()); }
+        (tag.to_string(), t)
+    }
+
+    #[test]
+    fn test_concat_prepends_label_and_stacks_rows() {
+        let out = Table::concat_union(
+            "file",
+            vec![part("a", &[("r", vec![1.0, 2.0])]), part("b", &[("r", vec![3.0])])],
+        )
+        .unwrap();
+        assert_eq!(out.names(), vec!["file", "r"]);
+        assert_eq!(out.n_rows(), 3);
+        match out.column("file").unwrap() {
+            Column::Text(v) => assert_eq!(v, &vec!["a".to_string(), "a".into(), "b".into()]),
+            _ => panic!("label column must be text"),
+        }
+    }
+
+    #[test]
+    fn test_concat_unions_columns_and_leaves_missing_empty() {
+        // Zn-P-O 与 Al-P-O 同批:各自缺对方的配对列
+        let out = Table::concat_union(
+            "file",
+            vec![
+                part("znpo", &[("q", vec![1.0]), ("Zn-O_sq", vec![0.5])]),
+                part("alpo", &[("q", vec![1.0]), ("Al-O_sq", vec![0.7])]),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out.names(), vec!["file", "q", "Zn-O_sq", "Al-O_sq"],
+                   "列按首见顺序取并集");
+        let zn = out.column("Zn-O_sq").unwrap();
+        assert_eq!(zn.cell(0), format!("{:.6e}", 0.5));
+        assert_eq!(zn.cell(1), "", "缺失必须留空,不能是 0");
+    }
+
+    #[test]
+    fn test_concat_rejects_kind_conflict() {
+        let mut a = Table::new();
+        a.push_num("x", vec![1.0]);
+        let mut b = Table::new();
+        b.push_text("x", vec!["one".into()]);
+        let err = Table::concat_union("file", vec![("a".into(), a), ("b".into(), b)]).unwrap_err();
+        assert!(err.contains("'x'"), "{err}");
+    }
+
+    #[test]
+    fn test_concat_of_single_part_is_the_n_equals_one_case() {
+        // N=1 不是特例:结构与多文件完全一致,只是 file 列取值唯一
+        let out = Table::concat_union("file", vec![part("only", &[("r", vec![1.0, 2.0])])]).unwrap();
+        assert_eq!(out.names(), vec!["file", "r"]);
+        assert_eq!(out.n_rows(), 2);
     }
 
     #[test]
