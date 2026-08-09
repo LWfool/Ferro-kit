@@ -23,7 +23,7 @@ cargo run --bin ferro -- net qn -i traj.dump --P-O=2.3
 cargo run --bin ferro -- convert -i input.xyz -o output.pdb
 cargo run --bin ferro -- job -i input.xyz -s gaussian -m B3LYP -o job.gjf
 
-# Python bindings (requires maturin; ferro-python not yet in workspace)
+# Python bindings (separate workspace, requires maturin; currently does not compile)
 cd ferro-python && maturin develop
 ```
 
@@ -128,6 +128,12 @@ ferro-core/src/
 ├── cell.rs
 ├── frame.rs
 ├── trajectory.rs
+├── table.rs         # Table / Column — analysis results on their way to ferro-io
+├── charge_grid.rs   # ChargeGrid (Bader)
+├── cube_data.rs     # CubeData (3-D grids)
+├── cluster.rs       # build_network_graph / connected_components (shared primitive)
+├── network_type.rs  # TypeParams / classify_frame
+├── spin.rs          # guess_spin / oxidation states
 ├── data/
 │   ├── mod.rs
 │   ├── elements.rs  # static: symbol, atomic number, mass, oxidation states, electron config
@@ -209,28 +215,22 @@ Box estimation logic (V = Σ n_i·M_i / ρ_mix·Nₐ) lives in `ferro-structure`
 
 ## Execution Modes
 
-### 1. One-shot CLI
+**Implemented:** one-shot CLI only.
+
 ```bash
-ferro convert -i a.xyz -o b.pdb
+ferro traj gr -i traj.dump -a P -b O          # one input
+ferro traj gr -i 'runs/*/prod.dump' -o scan   # many, stacked into one csv
 ```
 
-### 2. Interactive REPL (rustyline)
-```bash
-ferro
-ferro> read water.xyz
-ferro> supercell 2 2 1
-ferro> write POSCAR
-```
+**Not implemented** — `main.rs` is a subcommand dispatcher; bare `ferro` prints the
+overview. The REPL / script interpreter (`rustyline`, `ferro -f workflow.mf`, piped
+stdin, bare `ferro` entering an interactive session on a tty) is the next large feature;
+see `dev/plan.md`. It must link every command into one process — a stateful
+`read` → `gr` → `sq` session cannot shell out per command without re-reading the
+trajectory — which is also why 0.2.0 collapsed the `fe-*` binaries into one.
 
-### 3. Batch / script mode
-Same interpreter as REPL, non-interactive. For shell script integration.
-```bash
-ferro -f workflow.mf
-echo -e "read water.xyz\nsupercell 2 2 1\nwrite POSCAR" | ferro
-```
-
-### 4. Python library
-`import ferro` via PyO3 in `ferro-python`.
+**Python library:** `import ferro` via PyO3 in `ferro-python` — **currently does not
+compile**, see the Python Bindings section below.
 
 ### ferro-cli internal structure
 ```
@@ -265,6 +265,12 @@ worth summarising is analysis semantics, so that stays in `cmd/`.
 
 ## Python Bindings (ferro-python)
 
+> **Currently broken.** `analysis.rs` still calls the `write_gr` path that 0.2.0 removed,
+> so `cd ferro-python && cargo check` fails. `ferro-python` is a **separate workspace**
+> with its own lockfile, so the main workspace's `cargo build`/`test`/`clippy` skip it
+> entirely — that is exactly how it drifted. Run its `cargo check` after touching any
+> public API in `ferro-analysis` or `ferro-core`.
+
 All PyO3 glue lives here. Library crates have zero Python awareness.
 
 ```
@@ -281,7 +287,7 @@ Return types: `Vec<f64>`, `HashMap<String, Vec<f64>>` — PyO3 converts automati
 ```toml
 # ferro-python/Cargo.toml — minimal deps
 [dependencies]
-pyo3 = { version = "0.21", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
 ferro-core      = { path = "../ferro-core" }
 ferro-io        = { path = "../ferro-io" }
 ferro-structure = { path = "../ferro-structure" }
@@ -290,7 +296,7 @@ ferro-analysis  = { path = "../ferro-analysis" }
 
 ---
 
-## CLI Binaries Reference
+## CLI Reference
 
 **One binary, `ferro`.** Subcommands are grouped by **what they produce**, not by which
 crate implements them — the `fe-*` binaries are gone.
@@ -472,23 +478,28 @@ Output: `<stem>_<label>.cube` per atom type (multi-family: `<stem>_fam<N>_<label
 1. `ferro-io/src/readers/<fmt>.rs` — return `Result<Trajectory>`
 2. `ferro-io/src/writers/<fmt>.rs`
 3. Export from `readers/mod.rs`, `writers/mod.rs`
-4. Add format detection in `ferro-cli/src/commands/io.rs`
+4. Add format detection in `ferro-cli/src/io_dispatch.rs` (both `read_trajectory` and `write_trajectory`)
 5. Add wrapper in `ferro-python/src/io.rs`
 
 ### Add a structure operation
 1. Implement in `ferro-structure/src/` — takes/returns `Trajectory`
-2. `ferro-cli/src/commands/structure.rs`
-3. `ferro-python/src/structure.rs`
+2. `ferro-python/src/structure.rs`
+3. No CLI surface yet (`box_builder` is library-only too)
 
 ### Add an analysis method
-1. Implement in `ferro-analysis/src/<domain>/`
-2. `ferro-cli/src/commands/analysis.rs`
-3. `ferro-python/src/analysis.rs`
+1. Implement in `ferro-analysis/src/<domain>/` — **pure computation, no file I/O**
+2. Give the result type `to_tables() -> Vec<(String, Table)>` and `meta_lines() -> Vec<String>`.
+   Put only batch-wide parameters in `meta_lines`; anything that varies per input belongs
+   in the `[inputs]` summary, or it will masquerade as a global fact
+3. Add a subcommand arm in `ferro-cli/src/cmd/<group>.rs`: build params (validating before
+   any file is read) → `batch::map_inputs` → `batch::stack` → `batch::write_all`
+4. Add the help text in `ferro-cli/src/help.rs` and list it in `print_overview`
+5. `ferro-python/src/analysis.rs`
 
 ### Add a QC software target
 1. Builder in `ferro-workflow/src/job_builder.rs`
 2. Templates in `ferro-workflow/src/templates.rs`
-3. CLI branch in `ferro-cli/src/commands/`
+3. CLI branch in `ferro-cli/src/cmd/job.rs`
 
 ---
 
@@ -502,5 +513,6 @@ Output: `<stem>_<label>.cube` per atom type (multi-family: `<stem>_fam<N>_<label
 | `thiserror` | Derive macros for `ChemError` |
 | `anyhow` | Error propagation in CLI |
 | `clap` | CLI argument parsing |
-| `rustyline` | Readline-style input for REPL (to be added to workspace deps) |
+| `glob` | Input pattern expansion for batch runs (`ferro-cli`) |
+| `rustyline` | REPL input — **not a dependency yet**; add when the REPL lands |
 | `pyo3` | Python bindings (ferro-python only) |
