@@ -57,6 +57,48 @@ pub enum SqWeighting {
 }
 ```
 
+| CLI flag | Field | Default |
+|---|---|---|
+| `--q-min` | `q_min` | 0.1 |
+| `--q-max` | `q_max` | 25.0 |
+| `--dq` | `dq` | 0.05 |
+| `--weighting` | `weighting` | `both` |
+
+The $g(r)$ that feeds the transform is controlled by the `gr` flags — `--r-min`, `--r-max`,
+`--dr` — which therefore set the integration range and hence the truncation ripple.
+
+## Comparison with `code2/dump2sq`
+
+ferro follows `dump2sq`'s formula, with one deliberate difference and one caveat about its
+input.
+
+**The `+1`.** `dump2sq`'s `CalcSq` computes only
+$\frac{4\pi\rho}{q}\sum_r r[g(r)-1]\sin(qr)\,\Delta r$ and omits the leading $1$ of the
+definition, so its curves sit one unit low and do not approach 1 at large $q$. ferro writes
+the standard form. Measured on a full trajectory, the residual is a pure constant:
+1.00031 (XRD) / 1.00018 (neutron) for $q > 15$, with standard deviations 0.014 / 0.002.
+
+**Atom ordering in the input dump.** `dump2sq.c:InitializeType` writes `data[i].type_new` on
+frame 0 only; `ReadDataLammpstrj` never refreshes it, so atoms are classified by **array
+index** rather than by element. If the dump was written without `dump_modify sort id`, its
+partials — and both weighted totals — are meaningless from frame 1 onwards. Symptoms: all
+partials collapse onto one another (mean pairwise correlation 0.959 on a 2004-atom test
+case) and the XRD and neutron totals become nearly identical (correlation 0.9986), because
+the Faber-Ziman weighting is washed out and both totals degenerate into the Fourier
+transform of the *total* $g(r)$.
+
+On an id-sorted dump the two programs agree closely. Measured on a 5003-atom,
+50-frame NVT trajectory with identical parameters:
+
+| | max&#124;Δ&#124; vs `dump2sq` | rms vs experiment |
+|---|---|---|
+| Neutron | 0.0027 | 0.0194 (both) |
+| X-ray | 0.0008 | 0.0277 (both) |
+
+`scripts/compare_sq.py` and `scripts/compare_sq_experiment.py` run this check automatically
+and refuse to let an unsorted dump be read as evidence against ferro; the shared logic lives
+in `scripts/trajcheck.py`.
+
 ## Output
 
 ```bash

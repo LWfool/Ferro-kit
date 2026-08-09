@@ -51,44 +51,56 @@ This is correct for orthorhombic and triclinic cells as long as $r_\text{max} < 
 
 ```rust
 pub struct GrParams {
-    pub r_min: f64,   // default: 0.005 Å
-    pub r_max: f64,   // default: 10.005 Å  (use with_auto_rmax for safety)
-    pub dr: f64,      // default: 0.01 Å
-    pub r_cut: f64,   // default: 2.3 Å  (for short-range bond statistics)
+    pub r_min: f64,       // default: 0.005 Å
+    pub r_max: f64,       // default: 10.005 Å  (use with_auto_rmax for safety)
+    pub dr: f64,          // default: 0.01 Å
+    pub group_by: GroupBy, // resolve partials over elements or site labels
 }
 ```
 
-`r_max` must satisfy $r_\text{max} < L_\text{min}/2$.  Use `GrParams::with_auto_rmax(&traj)` to set it automatically from the first frame.
+| CLI flag | Field | Default |
+|---|---|---|
+| `--r-min` | `r_min` | 0.005 |
+| `--r-max` | `r_max` | 10.005 |
+| `--dr` | `dr` | 0.01 |
+| `-a`/`-b` (element) or `-x`/`-y` (label) | `group_by` | all pairs |
+
+`r_max` must satisfy $r_\text{max} < L_\text{min}/2$; it is clamped internally to half the
+smallest interplanar spacing seen across all frames.  Use `GrParams::with_auto_rmax(&traj)`
+to set it from the first frame.
+
+Bin $i$ covers $[r_\text{min} + i\,\Delta r,\ r_\text{min} + (i{+}1)\Delta r)$ and is labelled
+at its centre.  With the defaults this puts bin centres at 0.01, 0.02, … — the same grid as
+`code1/gr.c` and `code2/dump2sq.c` when they are given `--rmin 0.005 --dr 0.01`.
 
 ## Output
 
-| File | Content |
-|---|---|
-| `.gr` | Columns: `r[Å]`, then symmetric partial g(r) in periodic-table order, `total` last |
-| `.cn` | Columns: `r[Å]`, then directed CN pairs in (Z_center, Z_neighbor) order |
+One file holds $g(r)$ and $CN(r)$ side by side.
+
+- With a pair given (`-a`/`-b` or `-x`/`-y`): three columns, `r[Ang]`, `A-B_gr`, `A-B_cn`.
+- Without: a wide table — `r[Ang]` followed by every ordered pair as an adjacent
+  `_gr` / `_cn` duplet, ordered by (Z_centre, centre, Z_neighbour, neighbour).
+
+$g(r)$ is **symmetric** — `A-B` and `B-A` are pointwise identical.  $CN(r)$ is **directed** —
+`A-B` is the average number of B around each A, so the order of `-a` / `-b` matters.
 
 Header lines record all parameters, atom counts, average volume, and number density.
-
-### Bond Statistics
-
-Within `r_cut`, the mean and standard deviation of pair distances are computed and printed in the `.cn` header:
-
-$$\bar{d} = \frac{1}{N_\text{bonds}} \sum_k d_k, \quad \sigma = \sqrt{\frac{1}{N_\text{bonds}} \sum_k (d_k - \bar{d})^2}$$
 
 ## Usage
 
 ```bash
-fe-traj -m gr -i traj.dump -o output
-# writes output.gr, output.cn
+fe-traj -m gr -i traj.dump -o output.gr
+
+# one pair, narrowed range
+fe-traj -m gr -a P -b O -i traj.dump --r-min 0.005 --r-max 15.0 --dr 0.01 -o po.gr
 ```
 
 ```rust
-use ferro_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
+use ferro_analysis::md::{GrParams, calc_gr, write_gr};
 
 let params = GrParams::with_auto_rmax(&traj);
 let result = calc_gr(&traj, &params).unwrap();
-write_gr(&result, "output.gr").unwrap();
-write_cn(&result, "output.cn").unwrap();
+write_gr(&result, "output.gr", None).unwrap();
 ```
 
 ## Implementation Notes
