@@ -6,11 +6,12 @@
 //! Formula (Faber-Ziman, from code2/dump2sq.c CalcSq):
 //!   S_ij(q) = 1 + (4πρ/q) Σ_r r[g_ij(r)−1] sin(qr) Δr
 
-use super::gr::{sorted_keys, GrResult, VERSION};
+use super::gr::{sorted_keys, GrResult};
+use ferro_core::error::ChemError;
+use ferro_core::Table;
 use super::scattering_data::{form_factor_xrd, neutron_bcoh};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
-use std::io::{BufWriter, Write};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -317,91 +318,77 @@ fn weights_from_factors(
 /// - `pair = None` → every canonical pair.
 /// - `pair = Some((a, b))` → only that pair. Used with label-resolved partials, where
 ///   the pair count grows quadratically in the number of site labels and a full table
-///   would run to hundreds of columns.
-pub fn write_sq(
-    gr: &GrResult,
-    sq: &SqResult,
-    path: &str,
-    pair: Option<(&str, &str)>,
-) -> std::io::Result<()> {
-    let keys: Vec<String> = match pair {
-        Some((a, b)) => {
-            let ab = format!("{a}-{b}");
-            let ba = format!("{b}-{a}");
-            let key = if sq.sq.contains_key(&ab) {
-                ab
-            } else if sq.sq.contains_key(&ba) {
-                ba
-            } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("pair '{ab}' not present in the trajectory"),
-                ));
-            };
-            vec![key]
-        }
-        None => sorted_keys(&sq.sq),
-    };
+impl SqResult {
+    /// Projects the result into the wide table the writers consume.
+    ///
+    /// Columns: `q, total_xrd, total_neutron`, then `<pair>_sq / _xrd / _neutron` per pair.
+    ///
+    /// Wide rather than long — the mirror image of `GrResult::to_tables` — because the
+    /// **primary product here is the pair of totals**, which are one value per `q`.
+    /// The partials are a diagnostic decomposition (`Σ_pairs w_ij·S_ij == total`), so they
+    /// spread sideways rather than forcing the totals to repeat once per pair. Trajectories
+    /// with different element sets end up with different pair columns; stacking them takes
+    /// the column union and leaves the gaps empty (`ferro_core::Table::concat_union`).
+    ///
+    /// `pair = Some((a, b))` keeps only that pair's three columns next to the totals;
+    /// the pair is matched in either order, since S(q) has no directed counterpart.
+    pub fn to_tables(
+        &self,
+        gr: &GrResult,
+        pair: Option<(&str, &str)>,
+    ) -> Result<Vec<(String, Table)>, ChemError> {
+        let _ = gr;
+        let keys: Vec<String> = match pair {
+            Some((a, b)) => {
+                let ab = format!("{a}-{b}");
+                let ba = format!("{b}-{a}");
+                if self.sq.contains_key(&ab) {
+                    vec![ab]
+                } else if self.sq.contains_key(&ba) {
+                    vec![ba]
+                } else {
+                    return Err(ChemError::ValidationError(format!(
+                        "pair '{ab}' not present in the trajectory"
+                    )));
+                }
+            }
+            None => sorted_keys(&self.sq),
+        };
 
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
+        let mut t = Table::new();
+        t.push_num("q", self.q.clone());
+        if let Some(v) = &self.total_xrd { t.push_num("total_xrd", v.clone()); }
+        if let Some(v) = &self.total_neutron { t.push_num("total_neutron", v.clone()); }
 
-    // 文件头
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# Structure Factor S(q) [computed from g(r) via Fourier sine transform]")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    // g(r) 计算参数
-    writeln!(w, "# [g(r) parameters]")?;
-    writeln!(w, "# r_min   = {} Ang", gr.params.r_min)?;
-    writeln!(w, "# r_max   = {} Ang", gr.params.r_max)?;
-    writeln!(w, "# dr      = {} Ang", gr.params.dr)?;
-    writeln!(w, "# frames  = {}", gr.n_frames)?;
-    writeln!(w, "# volume  = {:.3} +/- {:.3} Ang^3", gr.avg_volume, gr.volume_std)?;
-    writeln!(w, "# density = {:.6e} Ang^-3", gr.rho)?;
-    writeln!(w, "# atoms:")?;
-    for elem in &gr.elements {
-        let count = gr.element_counts.get(elem).copied().unwrap_or(0);
-        writeln!(w, "#   {:<10}: {}", elem, count)?;
-    }
-    // S(q) 参数
-    writeln!(w, "# [S(q) parameters]")?;
-    writeln!(w, "# q_min   = {} Ang^-1", sq.params.q_min)?;
-    writeln!(w, "# q_max   = {} Ang^-1", sq.params.q_max)?;
-    writeln!(w, "# dq      = {} Ang^-1", sq.params.dq)?;
-    writeln!(w, "# partials: <A>-<B>_sq unweighted; _xrd / _neutron are w_ij(q)*S_ij(q),")?;
-    writeln!(w, "#           which sum over pairs to total_xrd / total_neutron")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-
-    // 列标题
-    write!(w, "# q[Ang^-1]")?;
-    if sq.total_xrd.is_some() { write!(w, "\ttotal_xrd")?; }
-    if sq.total_neutron.is_some() { write!(w, "\ttotal_neutron")?; }
-    for k in &keys {
-        write!(w, "\t{k}_sq")?;
-        if sq.total_xrd.is_some() { write!(w, "\t{k}_xrd")?; }
-        if sq.total_neutron.is_some() { write!(w, "\t{k}_neutron")?; }
-    }
-    writeln!(w)?;
-
-    // 数据
-    for i in 0..sq.q.len() {
-        write!(w, "{:.6e}", sq.q[i])?;
-        if let Some(v) = &sq.total_xrd { write!(w, "\t{:.6e}", v[i])?; }
-        if let Some(v) = &sq.total_neutron { write!(w, "\t{:.6e}", v[i])?; }
+        let n = self.q.len();
+        let take = |m: &BTreeMap<String, Vec<f64>>, k: &str| -> Vec<f64> {
+            m.get(k).cloned().unwrap_or_else(|| vec![f64::NAN; n])
+        };
         for k in &keys {
-            write!(w, "\t{:.6e}", sq.sq.get(k).map(|v| v[i]).unwrap_or(0.0))?;
-            if sq.total_xrd.is_some() {
-                write!(w, "\t{:.6e}", sq.sq_xrd.get(k).map(|v| v[i]).unwrap_or(0.0))?;
+            t.push_num(format!("{k}_sq"), take(&self.sq, k));
+            if self.total_xrd.is_some() {
+                t.push_num(format!("{k}_xrd"), take(&self.sq_xrd, k));
             }
-            if sq.total_neutron.is_some() {
-                write!(w, "\t{:.6e}", sq.sq_neutron.get(k).map(|v| v[i]).unwrap_or(0.0))?;
+            if self.total_neutron.is_some() {
+                t.push_num(format!("{k}_neutron"), take(&self.sq_neutron, k));
             }
         }
-        writeln!(w)?;
+        Ok(vec![("sq".to_string(), t)])
     }
-    Ok(())
-}
 
-// ─── 测试 ────────────────────────────────────────────────────────────────────
+    /// Parameter block for the comment header, including the g(r) it was transformed from.
+    pub fn meta_lines(&self, gr: &GrResult) -> Vec<String> {
+        let mut v = vec!["[g(r) parameters]".to_string()];
+        v.extend(gr.meta_lines());
+        v.push("[S(q) parameters]".to_string());
+        v.push(format!("q_min   = {} Ang^-1", self.params.q_min));
+        v.push(format!("q_max   = {} Ang^-1", self.params.q_max));
+        v.push(format!("dq      = {} Ang^-1", self.params.dq));
+        v.push("partials: <A>-<B>_sq unweighted; _xrd / _neutron are w_ij(q)*S_ij(q),".to_string());
+        v.push("          which sum over pairs to total_xrd / total_neutron".to_string());
+        v
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -778,8 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_sq_pair_selection_columns() {
-        use std::io::Read;
+    fn test_to_tables_pair_selection_columns() {
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.1, r_max: 5.9, dr: 0.05, ..Default::default()
@@ -789,29 +775,54 @@ mod tests {
         });
 
         // 指定单对：q + 2 条 total + 该对 3 列 = 6 列，参数顺序无关
-        let p1 = "/tmp/test_ferro_pair.sq";
-        write_sq(&gr_res, &sq, p1, Some(("Si", "O"))).unwrap();
-        let mut s = String::new();
-        std::fs::File::open(p1).unwrap().read_to_string(&mut s).unwrap();
-        assert!(s.contains("# q[Ang^-1]\ttotal_xrd\ttotal_neutron\tO-Si_sq\tO-Si_xrd\tO-Si_neutron\n"));
-        let row = s.lines().find(|l| !l.starts_with('#')).unwrap();
-        assert_eq!(row.split('\t').count(), 6);
+        let (_, t) = sq.to_tables(&gr_res, Some(("Si", "O"))).unwrap().remove(0);
+        assert_eq!(
+            t.names(),
+            vec!["q", "total_xrd", "total_neutron", "O-Si_sq", "O-Si_xrd", "O-Si_neutron"]
+        );
+        assert_eq!(t.n_rows(), sq.q.len(), "宽表 → 一行一个 q");
+        assert!(t.validate().is_ok());
 
         // 全部对：q + 2 条 total + 3 对 × 3 列 = 12 列
-        let p2 = "/tmp/test_ferro_all.sq";
-        write_sq(&gr_res, &sq, p2, None).unwrap();
-        let mut s2 = String::new();
-        std::fs::File::open(p2).unwrap().read_to_string(&mut s2).unwrap();
-        let row2 = s2.lines().find(|l| !l.starts_with('#')).unwrap();
-        assert_eq!(row2.split('\t').count(), 12);
-        assert!(!s2.contains("\ttotal\t") && !s2.trim_end().ends_with("\ttotal"));
+        let (_, t2) = sq.to_tables(&gr_res, None).unwrap().remove(0);
+        assert_eq!(t2.n_cols(), 12);
+        assert_eq!(t2.n_rows(), sq.q.len(), "配对增多只加列,不加行");
+        assert!(!t2.names().contains(&"total"), "未加权 total 不该复活");
 
-        assert!(write_sq(&gr_res, &sq, "/tmp/test_ferro_bad.sq", Some(("Zn", "O"))).is_err());
+        assert!(sq.to_tables(&gr_res, Some(("Zn", "O"))).is_err());
     }
 
     #[test]
-    fn test_write_sq() {
-        use std::io::Read;
+    fn test_partials_sum_to_total_in_the_table() {
+        // 0.1.10 立起来的恒等式必须在导出层依然成立
+        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
+        let gr_res = calc_gr(&traj, &GrParams {
+            r_min: 0.1, r_max: 5.9, dr: 0.05, ..Default::default()
+        }).unwrap();
+        let sq = calc_sq_from_gr(&gr_res, &SqParams {
+            q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
+        });
+        let (_, t) = sq.to_tables(&gr_res, None).unwrap().remove(0);
+
+        let col = |name: &str| match t.column(name).unwrap() {
+            ferro_core::Column::Num(v) => v.clone(),
+            _ => panic!("{name} must be numeric"),
+        };
+        let total = col("total_xrd");
+        let parts: Vec<Vec<f64>> = t
+            .names()
+            .iter()
+            .filter(|n| n.ends_with("_xrd") && **n != "total_xrd")
+            .map(|n| col(n))
+            .collect();
+        for i in 0..total.len() {
+            let sum: f64 = parts.iter().map(|p| p[i]).sum();
+            assert!((sum - total[i]).abs() < 1e-9, "q index {i}: {sum} != {}", total[i]);
+        }
+    }
+
+    #[test]
+    fn test_meta_lines_carry_both_parameter_blocks() {
         let traj = Trajectory::from_frame(make_sc_fe(2));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default()
@@ -819,13 +830,8 @@ mod tests {
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, ..Default::default()
         });
-        let sq_path = "/tmp/test_ferro.sq";
-        write_sq(&gr_res, &sq_res, sq_path, None).expect("write_sq failed");
-
-        let mut content = String::new();
-        std::fs::File::open(sq_path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.starts_with("# ferro v"));
-        assert!(content.contains("# q[Ang^-1]"));
-        assert!(content.contains("Fourier sine transform"));
+        let meta = sq_res.meta_lines(&gr_res).join("\n");
+        assert!(meta.contains("[g(r) parameters]") && meta.contains("[S(q) parameters]"));
+        assert!(meta.contains("q_max") && meta.contains("dr"));
     }
 }

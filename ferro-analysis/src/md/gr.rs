@@ -12,11 +12,10 @@
 //!   - `cn` — directed: `"A-B"` is the average number of B around each A, so
 //!     `"A-B"` and `"B-A"` generally differ
 
-use ferro_core::Trajectory;
+use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
-use std::io::{BufWriter, Write};
 use super::angle::CellList;
 
 /// ferro package version (from Cargo.toml)
@@ -403,75 +402,94 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
 /// Write header lines shared by the `.dat` output.
-fn write_header(w: &mut impl Write, result: &GrResult) -> std::io::Result<()> {
-    let what = match result.group_by {
-        GroupBy::Element => "element",
-        GroupBy::Label => "label",
-    };
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# Radial Distribution Function g(r) and Coordination Number CN(r)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# r_min   = {} Ang", result.params.r_min)?;
-    writeln!(w, "# r_max   = {} Ang", result.params.r_max)?;
-    writeln!(w, "# dr      = {} Ang", result.params.dr)?;
-    writeln!(w, "# frames  = {}", result.n_frames)?;
-    writeln!(w, "# volume  = {:.3} +/- {:.3} Ang^3", result.avg_volume, result.volume_std)?;
-    writeln!(w, "# density = {:.6e} Ang^-3", result.rho)?;
-    writeln!(w, "# grouped by {what}:")?;
-    for elem in &result.elements {
-        let count = result.element_counts.get(elem).copied().unwrap_or(0);
-        writeln!(w, "#   {:<10}: {}", elem, count)?;
-    }
-    writeln!(w, "# pairs: <A>-<B>_gr is symmetric, <A>-<B>_cn is directed (centre=A, neighbour=B)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    Ok(())
-}
-
-/// Write g(r) and CN(r) to a single tab-separated text file.
-///
-/// - `pair = Some((a, b))` → three columns: `r[Ang]`, `a-b_gr`, `a-b_cn`.
-/// - `pair = None` → wide table: `r[Ang]` then every ordered pair as an adjacent
-///   `_gr` / `_cn` column duplet, ordered by (Z_centre, centre, Z_neighbour, neighbour)
-///   so all columns sharing a centre stay together.
-pub fn write_gr(
-    result: &GrResult,
-    path: &str,
-    pair: Option<(&str, &str)>,
-) -> std::io::Result<()> {
-    let keys: Vec<String> = match pair {
-        Some((a, b)) => {
-            let key = format!("{a}-{b}");
-            if !result.gr.contains_key(&key) {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("pair '{key}' not present in the trajectory"),
-                ));
+impl GrResult {
+    /// Projects the result into the long-format table the writers consume.
+    ///
+    /// One row per `(r, pair)`: columns `r, center, neighbor, gr, cn`.
+    ///
+    /// Long rather than wide because **different trajectories can have different
+    /// element sets** — a Zn-P-O run and an Al-P-O run stack without any column
+    /// alignment, whereas a pair-per-column layout would need a column union with
+    /// holes. Splitting the pair into `center`/`neighbor` also writes CN's
+    /// directedness into the table structure instead of leaving it to a doc comment.
+    ///
+    /// `pair = Some((a, b))` restricts the output to that ordered pair.
+    /// The caller adds the `file` column when stacking several inputs
+    /// (see `ferro_core::Table::concat_union`).
+    pub fn to_tables(&self, pair: Option<(&str, &str)>) -> Result<Vec<(String, Table)>, ChemError> {
+        let keys: Vec<String> = match pair {
+            Some((a, b)) => {
+                let key = format!("{a}-{b}");
+                if !self.gr.contains_key(&key) {
+                    return Err(ChemError::ValidationError(format!(
+                        "pair '{key}' not present in the trajectory"
+                    )));
+                }
+                vec![key]
             }
-            vec![key]
+            None => sorted_keys(&self.gr),
+        };
+
+        let n = self.r.len();
+        let rows = n * keys.len();
+        let mut r_col        = Vec::with_capacity(rows);
+        let mut centre_col   = Vec::with_capacity(rows);
+        let mut neighbour_col = Vec::with_capacity(rows);
+        let mut gr_col       = Vec::with_capacity(rows);
+        let mut cn_col       = Vec::with_capacity(rows);
+
+        for key in &keys {
+            let (centre, neighbour) = split_pair(key);
+            let g = self.gr.get(key);
+            let c = self.cn.get(key);
+            for i in 0..n {
+                r_col.push(self.r[i]);
+                centre_col.push(centre.to_string());
+                neighbour_col.push(neighbour.to_string());
+                gr_col.push(g.map(|v| v[i]).unwrap_or(f64::NAN));
+                cn_col.push(c.map(|v| v[i]).unwrap_or(f64::NAN));
+            }
         }
-        None => sorted_keys(&result.gr),
-    };
 
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
-    write_header(&mut w, result)?;
-
-    write!(w, "# r[Ang]")?;
-    for k in &keys { write!(w, "\t{k}_gr\t{k}_cn")?; }
-    writeln!(w)?;
-
-    for i in 0..result.r.len() {
-        write!(w, "{:.6e}", result.r[i])?;
-        for k in &keys {
-            let g = result.gr.get(k).map(|v| v[i]).unwrap_or(0.0);
-            let c = result.cn.get(k).map(|v| v[i]).unwrap_or(0.0);
-            write!(w, "\t{g:.6e}\t{c:.6e}")?;
-        }
-        writeln!(w)?;
+        let mut t = Table::new();
+        t.push_num("r", r_col)
+            .push_text("center", centre_col)
+            .push_text("neighbor", neighbour_col)
+            .push_num("gr", gr_col)
+            .push_num("cn", cn_col);
+        Ok(vec![("gr".to_string(), t)])
     }
-    Ok(())
-}
 
-// ─── 测试 ────────────────────────────────────────────────────────────────────
+    /// The analysis parameters, as `key = value` strings for the comment block.
+    ///
+    /// **Shared across a batch only.** Anything that varies per input — the composition,
+    /// the clamped `r_max` — belongs in the per-input summary instead, where it cannot
+    /// be mistaken for a global fact. Deliberately not machine-readable; anything a
+    /// script must parse belongs in a column.
+    pub fn meta_lines(&self) -> Vec<String> {
+        let what = match self.group_by {
+            GroupBy::Element => "element",
+            GroupBy::Label => "label",
+        };
+        vec![
+            format!("r_min   = {} Ang", self.params.r_min),
+            format!("r_max   = {} Ang (requested; clamped per input, see [inputs])", self.params.r_max),
+            format!("dr      = {} Ang", self.params.dr),
+            format!("grouped by {what}"),
+            "gr is symmetric; cn is directed (center -> neighbor)".to_string(),
+        ]
+    }
+
+    /// Per-input composition, e.g. `O:1314 P:372 Zn:186` — a summary column, not a
+    /// header line, because it differs from input to input.
+    pub fn composition(&self) -> String {
+        self.elements
+            .iter()
+            .map(|e| format!("{e}:{}", self.element_counts.get(e).copied().unwrap_or(0)))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -761,52 +779,62 @@ mod tests {
     }
 
     #[test]
-    fn test_write_gr_pair_three_columns() {
-        use std::io::Read;
+    fn test_to_tables_pair_long_format() {
         let traj = Trajectory::from_frame(make_o_si_crystal(3));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
 
-        let path = "/tmp/test_ferro_pair.dat";
-        write_gr(&res, path, Some(("Si", "O"))).expect("write_gr failed");
+        let tables = res.to_tables(Some(("Si", "O"))).unwrap();
+        assert_eq!(tables.len(), 1);
+        let (name, t) = &tables[0];
+        assert_eq!(name, "gr");
+        assert_eq!(t.names(), vec!["r", "center", "neighbor", "gr", "cn"]);
+        assert_eq!(t.n_rows(), res.r.len(), "点名一对 → 行数 = r 网格长度");
+        assert!(t.validate().is_ok());
 
-        let mut s = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut s).unwrap();
-        assert!(s.starts_with("# ferro v"));
-        assert!(s.contains("# r[Ang]\tSi-O_gr\tSi-O_cn\n"), "header columns wrong");
-        assert!(!s.contains("r_cut"), "r_cut should be gone from the header");
-        assert!(!s.contains("pair stats"), "pair stats block should be gone");
-        assert!(!s.contains("total"), "no total column or row");
-        // 数据行恰好 3 列
-        let first_data = s.lines().find(|l| !l.starts_with('#')).unwrap();
-        assert_eq!(first_data.split('\t').count(), 3);
+        // center/neighbor 按调用方给的顺序写死,不按 Z 重排
+        match t.column("center").unwrap() {
+            ferro_core::Column::Text(v) => assert!(v.iter().all(|x| x == "Si")),
+            _ => panic!("center must be text"),
+        }
     }
 
     #[test]
-    fn test_write_gr_wide_table_column_count() {
-        use std::io::Read;
+    fn test_to_tables_all_pairs_stacks_rows_not_columns() {
         let traj = Trajectory::from_frame(make_o_si_crystal(3));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
 
-        let path = "/tmp/test_ferro_wide.dat";
-        write_gr(&res, path, None).expect("write_gr failed");
-
-        let mut s = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut s).unwrap();
-        // 2 个类型 → 4 个有序对 → r + 4×2 = 9 列
-        let first_data = s.lines().find(|l| !l.starts_with('#')).unwrap();
-        assert_eq!(first_data.split('\t').count(), 9);
-        assert!(s.contains("O-O_gr\tO-O_cn\tO-Si_gr\tO-Si_cn\tSi-O_gr"));
+        let tables = res.to_tables(None).unwrap();
+        let (_, t) = &tables[0];
+        // 2 个类型 → 4 个有序对;长表下列数恒为 5,行数才随配对数增长
+        assert_eq!(t.n_cols(), 5, "长表列数与体系组成无关");
+        assert_eq!(t.n_rows(), 4 * res.r.len());
+        assert!(t.validate().is_ok());
     }
 
     #[test]
-    fn test_write_gr_unknown_pair_errors() {
+    fn test_to_tables_unknown_pair_errors() {
         let traj = Trajectory::from_frame(make_sc_fe(2));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
-        let err = write_gr(&res, "/tmp/test_ferro_missing.dat", Some(("Zn", "O")));
-        assert!(err.is_err(), "unknown pair should be rejected, not silently zero-filled");
+        assert!(
+            res.to_tables(Some(("Zn", "O"))).is_err(),
+            "unknown pair should be rejected, not silently zero-filled"
+        );
+    }
+
+    #[test]
+    fn test_meta_lines_report_clamped_rmax_and_composition() {
+        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
+        let res = calc_gr(&traj, &params).unwrap();
+        let meta = res.meta_lines().join("\n");
+        assert!(meta.contains("r_max"));
+        assert!(meta.contains("clamped per input"), "r_max 是逐文件 clamp 的,头里要说清");
+        assert!(!meta.contains("Si:"), "逐文件的组成不能混进共享参数块");
+        assert!(res.composition().contains("Si:"), "组成走 composition()");
+        assert!(!meta.contains("total"), "no total anywhere");
     }
 
     #[test]

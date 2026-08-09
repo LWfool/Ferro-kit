@@ -29,6 +29,8 @@ serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 anyhow = "1.0"
 rand = "0.10"
+# 文件名模式展开（批处理输入索引）
+glob = "0.3"
 
 [profile.release]
 opt-level = 3        # 默认就是 3，最高优化

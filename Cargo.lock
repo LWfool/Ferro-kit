@@ -357,6 +357,7 @@ dependencies = [
  "ferro-io",
  "ferro-structure",
  "ferro-workflow",
+ "glob",
  "plotters",
  "rayon",
  "rust_xlsxwriter",
@@ -568,6 +569,12 @@ name = "glam"
 version = "0.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7360bd2cd76e0cd9032d42cf2922155cecea2685b0cfa4630c3246df030bcfd6"
+
+[[package]]
+name = "glob"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "hashbrown"

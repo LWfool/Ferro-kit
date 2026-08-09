@@ -2,16 +2,16 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use ferro::{
     args::corr::CorrMode,
+    batch::{self, Summary},
     help::{print_corr_help, print_fe_corr_overview},
-    io_dispatch::read_trajectory,
+    io_dispatch::read_trajectory_tail,
 };
 use ferro_io::LammpsUnits;
 use ferro_analysis::{
     calc_rotcorr, calc_vacf, calc_vanhove,
-    write_rotcorr, write_vacf, write_vanhove,
-    RotCorrParams, VacfParams, VanHoveParams,
+    RotCorrParams, RotCorrResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
@@ -28,13 +28,13 @@ struct Cli {
     #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
     help: bool,
 
-    /// Input trajectory file (omit to show mode-specific help)
-    #[arg(short, long)]
-    input: Option<PathBuf>,
+    /// Input trajectory file(s); glob patterns allowed (quote them)
+    #[arg(short, long, num_args = 1.., value_name = "FILE")]
+    input: Vec<PathBuf>,
 
-    /// Output file
-    #[arg(short, long)]
-    output: Option<PathBuf>,
+    /// Output name suffix: results go to <mode>_<suffix>.csv
+    #[arg(short, long, value_name = "SUFFIX")]
+    output: Option<String>,
 
     /// Use only the last N frames
     #[arg(long)]
@@ -102,45 +102,69 @@ fn main() -> Result<()> {
     };
 
     // -h 或无 -i → 模式专属帮助
-    if args.help || args.input.is_none() {
+    if args.help || args.input.is_empty() {
         print_corr_help(&mode);
         return Ok(());
     }
 
-    let input = args.input.as_ref().unwrap().clone();
+    let inputs = batch::expand_inputs(&args.input)?;
+    println!("Inputs: {} file(s)", inputs.len());
 
-    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let mut traj = read_trajectory(&input, units)?;
-    if let Some(n) = args.last_n {
-        traj = traj.tail(n);
+    let failures = match mode {
+        CorrMode::Vacf    => run_vacf(&args, &inputs)?,
+        CorrMode::Rotcorr => run_rotcorr(&args, &inputs)?,
+        CorrMode::Vanhove => run_vanhove(&args, &inputs)?,
+    };
+
+    if failures > 0 {
+        eprintln!("{failures} input(s) failed; see the [inputs] block in the output file");
+        std::process::exit(1);
     }
-
-    match mode {
-        CorrMode::Vacf    => run_vacf(&args, &traj)?,
-        CorrMode::Rotcorr => run_rotcorr(&args, &traj)?,
-        CorrMode::Vanhove => run_vanhove(&args, &traj)?,
-    }
-
     Ok(())
 }
 
-fn run_vacf(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+/// 读一条轨迹并按 --last-n 裁剪。
+fn load(args: &Cli, path: &std::path::Path) -> Result<ferro_core::Trajectory> {
+    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
+    read_trajectory_tail(path, units, args.last_n)
+}
+
+fn run_vacf(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let params = VacfParams {
         dt: args.dt,
         shift: args.shift,
         tau: args.tau,
         elements: args.elements.clone(),
     };
-    let result = calc_vacf(traj, &params)
-        .ok_or_else(|| anyhow!("VACF calc failed (missing velocities or empty trajectory?)"))?;
 
-    let out = args.output.as_deref().unwrap_or(Path::new("vacf.dat"));
-    write_vacf(&result, out.to_str().unwrap_or("vacf.dat"))?;
-    println!("VACF -> {}", out.display());
-    Ok(())
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        calc_vacf(&traj, &params)
+            .ok_or_else(|| anyhow!("VACF calc failed (missing velocities or empty trajectory?)"))
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
+    }
+
+    let tables = batch::stack(&results, |r: &VacfResult| Ok(r.to_tables()))?;
+    let mut summary = Summary::new(&["origins"]);
+    for (path, r) in &results {
+        summary.ok(batch::label_of(path), r.time.len(), r.n_atoms, &[r.n_origins as f64]);
+    }
+    summary.failed(&failures);
+
+    batch::write_all(
+        "vacf",
+        "Velocity Autocorrelation Function (VACF)",
+        &results[0].1.meta_lines(),
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
+    Ok(failures.len())
 }
 
-fn run_rotcorr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_rotcorr(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let center = args.center.clone()
         .ok_or_else(|| anyhow!("--center is required for rotcorr (run without -i to see help)"))?;
     let neighbor = args.neighbor.clone()
@@ -154,16 +178,35 @@ fn run_rotcorr(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         shift: args.shift,
         tau: args.tau,
     };
-    let result = calc_rotcorr(traj, &params)
-        .ok_or_else(|| anyhow!("RotCorr calc failed (no matching atom pairs found?)"))?;
 
-    let out = args.output.as_deref().unwrap_or(Path::new("rotcorr.dat"));
-    write_rotcorr(&result, out.to_str().unwrap_or("rotcorr.dat"))?;
-    println!("RotCorr -> {}", out.display());
-    Ok(())
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        calc_rotcorr(&traj, &params)
+            .ok_or_else(|| anyhow!("RotCorr calc failed (no matching atom pairs found?)"))
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
+    }
+
+    let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
+    let mut summary = Summary::new(&["origins"]);
+    for (path, r) in &results {
+        summary.ok(batch::label_of(path), r.time.len(), r.n_molecules, &[r.n_origins as f64]);
+    }
+    summary.failed(&failures);
+
+    batch::write_all(
+        "rotcorr",
+        "Rotational Autocorrelation Function C(t) = <P2(cos theta)>",
+        &results[0].1.meta_lines(),
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
+    Ok(failures.len())
 }
 
-fn run_vanhove(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
+fn run_vanhove(args: &Cli, inputs: &[PathBuf]) -> Result<usize> {
     let params = VanHoveParams {
         tau: args.tau,
         dt: args.dt,
@@ -173,11 +216,36 @@ fn run_vanhove(args: &Cli, traj: &ferro_core::Trajectory) -> Result<()> {
         elements: args.elements.clone(),
         ..VanHoveParams::default()
     };
-    let result = calc_vanhove(traj, &params)
-        .ok_or_else(|| anyhow!("VanHove calc failed (trajectory too short?)"))?;
 
-    let out = args.output.as_deref().unwrap_or(Path::new("vanhove.dat"));
-    write_vanhove(&result, out.to_str().unwrap_or("vanhove.dat"))?;
-    println!("VanHove -> {}", out.display());
-    Ok(())
+    let (results, failures) = batch::map_inputs(inputs, |p| {
+        let traj = load(args, p)?;
+        calc_vanhove(&traj, &params)
+            .ok_or_else(|| anyhow!("VanHove calc failed (trajectory too short?)"))
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
+    }
+
+    let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
+    // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼
+    let mut summary = Summary::new(&["tau_frames", "time_fs", "origins"]);
+    for (path, r) in &results {
+        summary.ok(
+            batch::label_of(path),
+            r.r.len(),
+            r.n_atoms,
+            &[r.tau_frames as f64, r.time, r.n_origins as f64],
+        );
+    }
+    summary.failed(&failures);
+
+    batch::write_all(
+        "vanhove",
+        "van Hove Self-Correlation Function Gs(r, tau)",
+        &results[0].1.meta_lines(),
+        &summary.into_table(),
+        tables,
+        args.output.as_deref(),
+    )?;
+    Ok(failures.len())
 }

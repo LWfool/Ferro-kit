@@ -30,6 +30,22 @@ pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Traject
     }
 }
 
+/// Reads a trajectory and keeps only its last `n` frames when `last_n` is given.
+///
+/// The `--last-n` skip-equilibration step every analysis binary performs, in one place
+/// so the batch loop stays a one-liner in each of them.
+pub fn read_trajectory_tail(
+    path: &Path,
+    lammps_units: LammpsUnits,
+    last_n: Option<usize>,
+) -> Result<Trajectory> {
+    let mut traj = read_trajectory(path, lammps_units)?;
+    if let Some(n) = last_n {
+        traj = traj.tail(n);
+    }
+    Ok(traj)
+}
+
 pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnits) -> Result<()> {
     let s = path.to_str().unwrap_or_default();
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();

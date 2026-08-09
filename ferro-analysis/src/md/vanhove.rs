@@ -14,9 +14,7 @@
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
-use std::io::{BufWriter, Write};
-use ferro_core::Trajectory;
-use super::gr::VERSION;
+use ferro_core::{Table, Trajectory};
 use super::msd::unwrap_frac;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
@@ -209,34 +207,34 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
 /// Write van Hove self-correlation function to a tab-separated text file (`.vanhove`).
 ///
 /// Two columns: `r[Å]` and `Gs(r,tau)`.  Values are normalised so that
-/// the discrete sum over all bins equals 1.0.
-pub fn write_vanhove(result: &VanHoveResult, path: &str) -> std::io::Result<()> {
-    let mut w = BufWriter::new(std::fs::File::create(path)?);
-
-    writeln!(w, "# ferro v{}", VERSION)?;
-    writeln!(w, "# van Hove Self-Correlation Function Gs(r, tau)")?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# tau     = {} frames", result.tau_frames)?;
-    writeln!(w, "# time    = {} fs", result.time)?;
-    writeln!(w, "# shift   = {} frames", result.params.shift)?;
-    writeln!(w, "# dr      = {} Ang", result.params.dr)?;
-    writeln!(w, "# r_min   = {} Ang", result.params.r_min)?;
-    writeln!(w, "# r_max   = {} Ang", result.params.r_max)?;
-    writeln!(w, "# atoms   = {}", result.n_atoms)?;
-    writeln!(w, "# origins = {}", result.n_origins)?;
-    write!(w,   "# elements:")?;
-    for e in &result.elements { write!(w, " {}", e)?; }
-    writeln!(w)?;
-    writeln!(w, "# {}", "-".repeat(60))?;
-    writeln!(w, "# r[Ang]\tGs(r,tau)")?;
-
-    for (r, gs) in result.r.iter().zip(result.gs.iter()) {
-        writeln!(w, "{:.6e}\t{:.6e}", r, gs)?;
+impl VanHoveResult {
+    /// Projects the result into the table the writers consume.
+    ///
+    /// Van Hove self-correlation at one tau: `r, gs`. The tau itself is metadata for now.
+    /// The `file` column is added by the caller when stacking several inputs
+    /// (see `ferro_core::Table::concat_union`).
+    pub fn to_tables(&self) -> Vec<(String, Table)> {
+        let mut t = Table::new();
+        t.push_num("r", self.r.clone())
+            .push_num("gs", self.gs.clone());
+        vec![("vanhove".to_string(), t)]
     }
-    Ok(())
-}
 
-// ─── 测试 ────────────────────────────────────────────────────────────────────
+    /// Parameter block for the comment header above the data.
+    pub fn meta_lines(&self) -> Vec<String> {
+        vec![
+            format!("tau     = {} frames", self.tau_frames),
+            format!("time    = {} fs", self.time),
+            format!("shift   = {} frames", self.params.shift),
+            format!("dr      = {} Ang", self.params.dr),
+            format!("r_min   = {} Ang", self.params.r_min),
+            format!("r_max   = {} Ang", self.params.r_max),
+            format!("atoms   = {}", self.n_atoms),
+            format!("origins = {}", self.n_origins),
+            format!("elements: {}", self.elements.join(" ")),
+        ]
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -413,18 +411,15 @@ mod tests {
     }
 
     #[test]
-    fn test_write_vanhove() {
-        use std::io::Read;
-        let traj = make_linear_traj(50.0, 0.1, 10);
-        let params = VanHoveParams { tau: Some(5), ..Default::default() };
-        let res = calc_vanhove(&traj, &params).unwrap();
-        let path = "/tmp/test_ferro.vanhove";
-        write_vanhove(&res, path).expect("write_vanhove failed");
-
-        let mut content = String::new();
-        std::fs::File::open(path).unwrap().read_to_string(&mut content).unwrap();
-        assert!(content.starts_with("# ferro v"), "missing version header");
-        assert!(content.contains("van Hove"), "missing title");
-        assert!(content.contains("# r[Ang]"), "missing column header");
+    fn test_to_tables_columns() {
+        let traj = make_static_traj(10);
+        let res = calc_vanhove(&traj, &VanHoveParams::default()).unwrap();
+        let (name, t) = res.to_tables().remove(0);
+        assert_eq!(name, "vanhove");
+        assert_eq!(t.names(), vec!["r", "gs"]);
+        assert_eq!(t.n_rows(), res.r.len());
+        assert!(t.validate().is_ok());
+        // tau 目前是元信息而非列（见 dev/plan.md 搁置项）
+        assert!(res.meta_lines().join("\n").contains("tau"));
     }
 }
