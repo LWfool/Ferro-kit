@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """把 fe-traj 与 dump2sq 算出的 S(q) 和实验数据画在一起。
 
-轨迹默认用 tests/70Z30P00A_NVT.lammpstrj（70ZnO-30P2O5，无 Al），实验数据取
-tests/Experiment.xlsx 的 Sheet1 —— 该表的四列 nq_70 / SQn_70 / xq_70 / SQx_70
-正是同一组分的中子与 X 射线总结构因子。
+轨迹默认用 70ZnO-30P2O5（无 Al）的 NVT 轨迹：优先 tests/70Z30P00A_NVT.lammpstrj
+（50 帧，8 MB，未入库），缺席时退到 tests/70Z30P00A_NVT_5.lammpstrj（5 帧，已入库）。
+实验数据取 tests/Experiment.xlsx 的 Sheet1 —— 该表的四列
+nq_70 / SQn_70 / xq_70 / SQx_70 正是同一组分的中子与 X 射线总结构因子。
 
 除下面这一处已被实测证实为纯常数的定义差之外，三方曲线**不做任何缩放或平移**，
 差异如实呈现。
@@ -48,8 +49,22 @@ DQ = 0.05       # 与实验 q 网格同步长，且 0.1+0.05k 恰好命中实验
 SQ_SHIFT_REF = 1.0
 
 REPO = Path(__file__).resolve().parent.parent
-DEFAULT_TRAJ = REPO / "tests" / "70Z30P00A_NVT.lammpstrj"
 DEFAULT_XLSX = REPO / "tests" / "Experiment.xlsx"
+
+# 优先用完整的 50 帧轨迹（8 MB，未入库）；没有就退到已入库的 5 帧子集。
+# 两者结论一致：50 帧 rms(fe−exp)=0.0194/0.0277，5 帧 0.0197/0.0282，
+# fe 与 dump2sq 的一致性同样在 1e-3 量级，FSDP 峰位相同。
+TRAJ_CANDIDATES = [
+    REPO / "tests" / "70Z30P00A_NVT.lammpstrj",
+    REPO / "tests" / "70Z30P00A_NVT_5.lammpstrj",
+]
+
+
+def default_traj():
+    for p in TRAJ_CANDIDATES:
+        if p.exists():
+            return p
+    return TRAJ_CANDIDATES[-1]
 
 # Experiment.xlsx / Sheet1 的列（0 起）: nq_70 SQn_70 xq_70 SQx_70
 EXP_SHEET = "Sheet1"
@@ -281,7 +296,7 @@ def plot(data, exp, traj, png, shift, info):
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--traj", default=str(DEFAULT_TRAJ))
+    p.add_argument("--traj", default=str(default_traj()))
     p.add_argument("--xlsx", default=str(DEFAULT_XLSX))
     p.add_argument("--outdir", default="./cmp_out/exp")
     p.add_argument("--fe-traj", default="fe-traj")
@@ -348,6 +363,7 @@ def main():
 
     info = {"box": box, "natoms": natoms, "elems": elems, "r_max": r_max}
     plot(data, exp, traj, outdir / "compare_sq_experiment.png", shift, info)
+    plot(data, exp, traj, outdir / "compare_sq_experiment.pdf", shift, info)
 
 
 if __name__ == "__main__":
