@@ -45,7 +45,7 @@ $S(q)$ characterises structural correlations at length scale $2\pi/q$. Key featu
 pub struct SqParams {
     pub q_min: f64,              // default: 0.1 Å⁻¹
     pub q_max: f64,              // default: 25.0 Å⁻¹
-    pub dq: f64,                 // default: 0.05 Å⁻¹
+    pub dq: f64,                 // default: 0.02 Å⁻¹
     pub weighting: SqWeighting,  // default: None
 }
 
@@ -61,7 +61,7 @@ pub enum SqWeighting {
 |---|---|---|
 | `--q-min` | `q_min` | 0.1 |
 | `--q-max` | `q_max` | 25.0 |
-| `--dq` | `dq` | 0.05 |
+| `--dq` | `dq` | 0.02 |
 | `--weighting` | `weighting` | `both` |
 
 The $g(r)$ that feeds the transform is controlled by the `gr` flags — `--r-min`, `--r-max`,

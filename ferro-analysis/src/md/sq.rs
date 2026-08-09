@@ -36,7 +36,7 @@ pub struct SqParams {
     pub q_min: f64,
     /// Maximum q value \[Å⁻¹\] (default: 25.0)
     pub q_max: f64,
-    /// q step size \[Å⁻¹\] (default: 0.05)
+    /// q step size \[Å⁻¹\] (default: 0.02)
     pub dq: f64,
     /// Scattering factor weighting for weighted total S(q) (default: None)
     pub weighting: SqWeighting,
@@ -44,7 +44,7 @@ pub struct SqParams {
 
 impl Default for SqParams {
     fn default() -> Self {
-        SqParams { q_min: 0.1, q_max: 25.0, dq: 0.05, weighting: SqWeighting::None }
+        SqParams { q_min: 0.1, q_max: 25.0, dq: 0.02, weighting: SqWeighting::None }
     }
 }
 

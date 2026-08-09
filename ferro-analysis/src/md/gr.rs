@@ -92,12 +92,12 @@ pub fn sorted_keys(map: &BTreeMap<String, Vec<f64>>) -> Vec<String> {
 /// Parameters for g(r) calculation.
 #[derive(Debug, Clone)]
 pub struct GrParams {
-    /// Minimum distance \[Å\] (default: 0.005)
+    /// Minimum distance \[Å\] (default: 0.001)
     pub r_min: f64,
     /// Maximum distance \[Å\]. Clamped internally to half the smallest interplanar
     /// spacing across all frames — the minimum-image upper bound (default: 10.005)
     pub r_max: f64,
-    /// Distance bin width \[Å\] (default: 0.01)
+    /// Distance bin width \[Å\] (default: 0.002)
     pub dr: f64,
     /// Whether partials are resolved over elements or site labels (default: `Element`)
     pub group_by: GroupBy,
@@ -105,7 +105,7 @@ pub struct GrParams {
 
 impl Default for GrParams {
     fn default() -> Self {
-        GrParams { r_min: 0.005, r_max: 10.005, dr: 0.01, group_by: GroupBy::default() }
+        GrParams { r_min: 0.001, r_max: 10.005, dr: 0.002, group_by: GroupBy::default() }
     }
 }
 

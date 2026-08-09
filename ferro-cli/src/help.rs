@@ -321,10 +321,10 @@ Selecting a pair (centre first, neighbour second):
   label on read, so -a/-b keep working on the plain element.
 
 Parameters:
-  --r-min  FLOAT          Min cutoff radius [Å]                  default: 0.005
+  --r-min  FLOAT          Min cutoff radius [Å]                  default: 0.001
   --r-max  FLOAT          Max cutoff radius [Å]                  default: 10.005
                           (clamped to half the smallest interplanar spacing)
-  --dr     FLOAT          Histogram bin width [Å]                default: 0.01
+  --dr     FLOAT          Histogram bin width [Å]                default: 0.002
   --last-n INT            Use only the last N frames
   --ncore  INT            Parallel threads (default: all cores)
   -o PATH                 Output file                            default: gr.dat
@@ -365,11 +365,11 @@ Selecting a pair:
 Parameters:
   --q-min      FLOAT  Min q [Å⁻¹]                  default: 0.1
   --q-max      FLOAT  Max q [Å⁻¹]                  default: 25.0
-  --dq         FLOAT  q bin width [Å⁻¹]            default: 0.05
+  --dq         FLOAT  q bin width [Å⁻¹]            default: 0.02
   --weighting  ENUM   none | xrd | neutron | both   default: both
-  --r-min      FLOAT  g(r) lower cutoff [Å]        default: 0.005
+  --r-min      FLOAT  g(r) lower cutoff [Å]        default: 0.001
   --r-max      FLOAT  g(r) cutoff [Å]              default: 10.005
-  --dr         FLOAT  g(r) bin width [Å]           default: 0.01
+  --dr         FLOAT  g(r) bin width [Å]           default: 0.002
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads (used in g(r) step)
   -o PATH             Output file                   default: sq.dat

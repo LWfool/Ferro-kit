@@ -48,7 +48,7 @@ struct Cli {
     // ── gr / sq shared ──────────────────────────────────────────────────────
 
     /// [gr/sq] Min cutoff radius [Å]
-    #[arg(long, default_value = "0.005")]
+    #[arg(long, default_value = "0.001")]
     r_min: f64,
 
     /// [gr/sq] Max cutoff radius [Å]
@@ -56,7 +56,7 @@ struct Cli {
     r_max: f64,
 
     /// [gr/sq] Histogram bin width [Å]
-    #[arg(long, default_value = "0.01")]
+    #[arg(long, default_value = "0.002")]
     dr: f64,
 
     // ── sq ──────────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ struct Cli {
     q_max: f64,
 
     /// [sq] q bin width [Å⁻¹]
-    #[arg(long, default_value = "0.05")]
+    #[arg(long, default_value = "0.02")]
     dq: f64,
 
     /// [sq] Scattering weighting scheme

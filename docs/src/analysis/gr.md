@@ -51,18 +51,18 @@ This is correct for orthorhombic and triclinic cells as long as $r_\text{max} < 
 
 ```rust
 pub struct GrParams {
-    pub r_min: f64,       // default: 0.005 Å
+    pub r_min: f64,       // default: 0.001 Å
     pub r_max: f64,       // default: 10.005 Å  (use with_auto_rmax for safety)
-    pub dr: f64,          // default: 0.01 Å
+    pub dr: f64,          // default: 0.002 Å
     pub group_by: GroupBy, // resolve partials over elements or site labels
 }
 ```
 
 | CLI flag | Field | Default |
 |---|---|---|
-| `--r-min` | `r_min` | 0.005 |
+| `--r-min` | `r_min` | 0.001 |
 | `--r-max` | `r_max` | 10.005 |
-| `--dr` | `dr` | 0.01 |
+| `--dr` | `dr` | 0.002 |
 | `-a`/`-b` (element) or `-x`/`-y` (label) | `group_by` | all pairs |
 
 `r_max` must satisfy $r_\text{max} < L_\text{min}/2$; it is clamped internally to half the
@@ -70,8 +70,11 @@ smallest interplanar spacing seen across all frames.  Use `GrParams::with_auto_r
 to set it from the first frame.
 
 Bin $i$ covers $[r_\text{min} + i\,\Delta r,\ r_\text{min} + (i{+}1)\Delta r)$ and is labelled
-at its centre.  With the defaults this puts bin centres at 0.01, 0.02, … — the same grid as
-`code1/gr.c` and `code2/dump2sq.c` when they are given `--rmin 0.005 --dr 0.01`.
+at its centre, $r_i = r_\text{min} + (i + \tfrac{1}{2})\Delta r$.
+
+To land on the same grid as `code1/gr.c` and `code2/dump2sq.c`, pass the same values on both
+sides — e.g. `--r-min 0.005 --dr 0.01` here against `--rmin 0.005 --dr 0.01` there puts bin
+centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than that.
 
 ## Output
 
@@ -92,7 +95,7 @@ Header lines record all parameters, atom counts, average volume, and number dens
 fe-traj -m gr -i traj.dump -o output.gr
 
 # one pair, narrowed range
-fe-traj -m gr -a P -b O -i traj.dump --r-min 0.005 --r-max 15.0 --dr 0.01 -o po.gr
+fe-traj -m gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -o po.gr
 ```
 
 ```rust

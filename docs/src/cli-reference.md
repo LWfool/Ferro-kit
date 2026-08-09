@@ -147,14 +147,14 @@ fe-traj -m <mode> -i traj.dump [flags] -o output
 Computes partial and total $g(r)$ plus coordination numbers $\text{CN}(r)$.
 
 ```bash
-fe-traj -m gr -i traj.dump --r-min 0.005 --r-max 10.0 --dr 0.01 -o gr.dat
+fe-traj -m gr -i traj.dump --r-min 0.001 --r-max 10.0 --dr 0.002 -o gr.dat
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--r-min` | 0.005 | Minimum radius [Å] |
+| `--r-min` | 0.001 | Minimum radius [Å] |
 | `--r-max` | 10.005 | Maximum radius [Å]; clamped to half the smallest interplanar spacing |
-| `--dr` | 0.01 | Bin width [Å] |
+| `--dr` | 0.002 | Bin width [Å] |
 
 Output: a single file with $g(r)$ and $CN(r)$ side by side.
 
@@ -163,14 +163,14 @@ Output: a single file with $g(r)$ and $CN(r)$ side by side.
 Computes $S(q)$ via Fourier transform of $g(r)$.
 
 ```bash
-fe-traj -m sq -i traj.dump --q-min 0.1 --q-max 25.0 --dq 0.05 --weighting xrd -o sq.dat
+fe-traj -m sq -i traj.dump --q-min 0.1 --q-max 25.0 --dq 0.02 --weighting xrd -o sq.dat
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `--q-min` | 0.1 | Minimum $q$ [Å⁻¹] |
 | `--q-max` | 25.0 | Maximum $q$ [Å⁻¹] |
-| `--dq` | 0.05 | $q$ bin width [Å⁻¹] |
+| `--dq` | 0.02 | $q$ bin width [Å⁻¹] |
 | `--weighting` | `both` | `xrd`, `neutron`, or `both` |
 
 The `gr` flags (`--r-min`, `--r-max`, `--dr`) also apply — they set the range of the
