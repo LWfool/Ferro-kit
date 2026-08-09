@@ -43,6 +43,23 @@ ferro-cli / ferro-python        ← only layer that combines multiple crates
     └── ferro-workflow  → core    ← QC software input file builders
 ```
 
+**Shared types go down, not sideways.** The rule above forbids `ferro-io → ferro-analysis`,
+but it never forbade the two from *sharing* types — the sharing point is `ferro-core`.
+
+> A type belongs in `ferro-core` **iff two or more middle layers need to name it.**
+
+Two worked examples, one per direction of data flow:
+
+| Direction | Shared type | Producer | Consumer |
+|---|---|---|---|
+| structures in | `Trajectory` | `ferro-io` | `ferro-analysis` |
+| results out | `Table` | `ferro-analysis` | `ferro-io` |
+
+Analysis-private intermediates (`GrResult`, `SqResult`, …) stay in `ferro-analysis`;
+only their serialisable projection (`Table`, via `to_tables()`) crosses a layer boundary.
+This is the same pattern as pymatgen's `MSONable` and OVITO's `DataTable` — neither
+lets its io module import its analysis module.
+
 ### Crate responsibilities
 
 | Crate | Role |
