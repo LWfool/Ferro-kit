@@ -1,14 +1,20 @@
 #!/usr/bin/env python
 """比较 fe-traj 与 dump2sq 计算的结构因子 S(q)（XRD 与中子加权总曲线）。
 
-两侧输出的**原始数值一律不做任何平移或缩放**，差异如实呈现，由使用者自行判断。
+除下述那个已被实测证实为纯常数的定义差之外，两侧输出**不做任何缩放**，
+差异如实呈现，由使用者自行判断。
 
 读图前需要知道的两件事（均为源码事实，不是推断）：
 
 1. 两者对 S(q) 的定义相差一个常数项。dump2sq 的 `CalcSq` 计算的是
    `4πρ/q · Σ_r r[g(r)−1] sin(qr) Δr`，**不含 +1**；fe-traj 的
-   `calc_sq_from_gr` 写作 `1.0 + prefactor * integral`。故预期残差在大 q 处
-   趋近 +1。这里不做任何修正，让偏移直接显示。
+   `calc_sq_from_gr` 写作 `1.0 + prefactor * integral`。
+
+   完整轨迹实测：残差在 q>15 处稳定为 1.0003（XRD）/ 1.0002（中子），确认这
+   就是一个纯常数偏移。**默认把 dump2sq 的曲线整体 +1** 补成标准 S(q)，两条
+   曲线才落在同一基准上、残差图才能反映真实差异而不是被常数淹没。选择加到
+   dump2sq 而不是从 fe-traj 减，是因为 S(q) 的定义要求大 q 极限趋于 1，
+   fe-traj 已是该标准形式。加 `--raw` 可关掉这个补偿、看两侧的原始输出。
 
 2. dump2sq 自带的那份 g(r) 与 dump2analysis / fe-traj 的不一致：它的每一条
    partial g(r) 都叠加了一个位于 P-O 键长（约 1.48 Å）处的伪峰 —— 全部 10 条
@@ -41,6 +47,9 @@ DR = 0.01
 Q_MIN = 0.1     # fe-traj 固定值，dump2sq 向它对齐
 Q_MAX = 25.0
 DQ = 0.05
+
+# dump2sq 的 CalcSq 不含 S(q) 的 +1 项，补上后两侧才在同一基准（见模块 docstring）
+SQ_SHIFT_REF = 1.0
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
@@ -151,31 +160,33 @@ def compute(traj, outdir, fe_bin, d2sq_bin, d2a_bin):
     return sq, gr
 
 
-def plot(sq, gr, traj, png):
+def plot(sq, gr, traj, png, shift):
     fig, axes = plt.subplots(3, 2, figsize=(13, 12))
     q = sq["q"]
+    ref_label = "dump2sq{}".format(f" + {shift:g}" if shift else "")
 
     for col, key in enumerate(["XRD", "Neutron"]):
         fe, ref = sq[key]
+        ref = ref + shift
         diff = fe - ref
 
         ax = axes[0][col]
         ax.plot(q, fe, lw=1.0, label=f"fe-traj  total_{key.lower()}")
-        ax.plot(q, ref, lw=1.0, ls="--", label=f"dump2sq  Sq-{'XRD' if key == 'XRD' else 'ND'}")
-        ax.axhline(0.0, color="k", lw=0.5)
+        ax.plot(q, ref, lw=1.0, ls="--",
+                label=f"{ref_label}  Sq-{'XRD' if key == 'XRD' else 'ND'}")
         ax.axhline(1.0, color="gray", lw=0.5, ls=":")
-        ax.set_title(f"{key}-weighted total S(q)   (raw output, no shift)", fontsize=11)
+        note = f"dump2sq shifted by +{shift:g}" if shift else "raw output, no shift"
+        ax.set_title(f"{key}-weighted total S(q)   ({note})", fontsize=11)
         ax.set_ylabel("S(q)")
         ax.legend(fontsize=8)
         ax.grid(alpha=0.3)
 
         axd = axes[1][col]
         axd.plot(q, diff, lw=0.9, color="crimson")
-        axd.axhline(1.0, color="gray", lw=0.8, ls=":")
         axd.axhline(0.0, color="k", lw=0.6)
         tail = diff[q > 15]
-        axd.set_title(f"fe-traj − dump2sq    mean over q>15 = {tail.mean():.4f}   "
-                      f"(dotted line: +1)", fontsize=9)
+        axd.set_title(f"fe-traj − {ref_label}    mean over q>15 = {tail.mean():.5f}   "
+                      f"max|Δ| = {np.abs(diff).max():.4f}", fontsize=9)
         axd.set_ylabel("Δ S(q)")
         axd.set_xlabel("q [Å⁻¹]")
         axd.grid(alpha=0.3)
@@ -204,14 +215,16 @@ def plot(sq, gr, traj, png):
                 xy=(1.48, gr["d2sq"][k]), xytext=(1.9, gr["d2sq"][k] * 0.9),
                 fontsize=8, arrowprops=dict(arrowstyle="->", lw=0.8))
 
+    shift_note = (f"dump2sq shifted by +{shift:g} (its CalcSq omits the +1 of S(q))"
+                  if shift else "raw values, no shift")
     fig.suptitle(
         f"S(q):  fe-traj ({sq['version']})  vs  dump2sq\n"
         f"{Path(traj).name}   |   r: {R_MIN}–{R_MAX} step {DR}   "
-        f"q: {Q_MIN}–{Q_MAX} step {DQ}   |   raw values, no shift",
+        f"q: {Q_MIN}–{Q_MAX} step {DQ}   |   {shift_note}",
         fontsize=12)
     fig.text(0.5, 0.005,
-             "dump2sq's CalcSq omits the +1 term of S(q); its internal g(r) also carries a "
-             "spurious peak at the P-O bond length (bottom row).",
+             "Only the constant offset is compensated. The remaining low-q deviation comes from "
+             "dump2sq's own g(r), which carries a spurious peak at the P-O bond length (bottom row).",
              ha="center", fontsize=8, style="italic")
     fig.tight_layout(rect=(0, 0.02, 1, 0.94))
     fig.savefig(png, dpi=140)
@@ -226,7 +239,10 @@ def main():
     p.add_argument("--fe-traj", default="fe-traj")
     p.add_argument("--dump2sq", default="dump2sq")
     p.add_argument("--dump2analysis", default="dump2analysis")
+    p.add_argument("--raw", action="store_true",
+                   help=f"不给 dump2sq 补 +{SQ_SHIFT_REF:g}，显示两侧的原始输出")
     args = p.parse_args()
+    shift = 0.0 if args.raw else SQ_SHIFT_REF
 
     traj = Path(args.traj).resolve()
     if not traj.exists():
@@ -236,19 +252,30 @@ def main():
 
     print(f"轨迹   : {traj}")
     print(f"输出   : {outdir}")
-    print(f"参数   : r {R_MIN}–{R_MAX} step {DR}   q {Q_MIN}–{Q_MAX} step {DQ}\n")
+    print(f"参数   : r {R_MIN}–{R_MAX} step {DR}   q {Q_MIN}–{Q_MAX} step {DQ}")
+    print(f"对齐   : {'无（--raw）' if args.raw else f'dump2sq + {SQ_SHIFT_REF:g}'}\n")
 
     sq, gr = compute(traj, outdir, args.fe_traj, args.dump2sq, args.dump2analysis)
 
-    print("\nS(q) 数值摘要（原始值，未做任何平移）")
-    print(f"{'weighting':>10}{'fe 均值':>11}{'ref 均值':>11}{'Δ 全域均值':>13}"
-          f"{'Δ (q>15)':>11}{'max|Δ|':>11}")
     q = sq["q"]
+    # 先报告未补偿的残差尾部 —— 它是「偏移确为常数 1」这一判断的依据
+    print("\n常数偏移核验（未补偿时的 fe − dump2sq）")
     for key in ["XRD", "Neutron"]:
         fe, ref = sq[key]
         d = fe - ref
+        print(f"  {key:<8} q>15 均值 = {d[q > 15].mean():.5f}   "
+              f"q>15 标准差 = {d[q > 15].std():.5f}")
+
+    tag = "原始值" if args.raw else f"dump2sq 已 +{SQ_SHIFT_REF:g}"
+    print(f"\nS(q) 数值摘要（{tag}）")
+    print(f"{'weighting':>10}{'fe 均值':>11}{'ref 均值':>11}{'Δ 全域均值':>13}"
+          f"{'Δ (q>15)':>11}{'max|Δ|':>11}")
+    for key in ["XRD", "Neutron"]:
+        fe, ref = sq[key]
+        ref = ref + shift
+        d = fe - ref
         print(f"{key:>10}{fe.mean():>11.4f}{ref.mean():>11.4f}{d.mean():>13.4f}"
-              f"{d[q > 15].mean():>11.4f}{np.abs(d).max():>11.4f}")
+              f"{d[q > 15].mean():>11.5f}{np.abs(d).max():>11.4f}")
 
     r, k = gr["r"], int(np.argmin(np.abs(gr["r"] - 1.48)))
     print(f"\nO-O g(r) 在 r={r[k]:.2f} Å（O-O 最近邻在 2.48 Å，此处应为 0）")
@@ -256,7 +283,7 @@ def main():
     print(f"  dump2analysis {gr['d2a'][k]:.4f}")
     print(f"  dump2sq       {gr['d2sq'][k]:.4f}")
 
-    plot(sq, gr, traj, outdir / "compare_sq.png")
+    plot(sq, gr, traj, outdir / "compare_sq.png", shift)
 
 
 if __name__ == "__main__":
