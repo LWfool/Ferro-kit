@@ -11,38 +11,6 @@ path = "src/lib.rs"
 name = "ferro"
 path = "src/main.rs"
 
-[[bin]]
-name = "fe-convert"
-path = "src/bin/convert.rs"
-
-[[bin]]
-name = "fe-info"
-path = "src/bin/info.rs"
-
-[[bin]]
-name = "fe-job"
-path = "src/bin/job.rs"
-
-[[bin]]
-name = "fe-traj"
-path = "src/bin/traj.rs"
-
-[[bin]]
-name = "fe-corr"
-path = "src/bin/corr.rs"
-
-[[bin]]
-name = "fe-cube"
-path = "src/bin/cube.rs"
-
-[[bin]]
-name = "fe-network"
-path = "src/bin/network.rs"
-
-[[bin]]
-name = "fe-bader"
-path = "src/bin/bader.rs"
-
 [dependencies]
 ferro-core      = { path = "../ferro-core" }
 ferro-io        = { path = "../ferro-io" }

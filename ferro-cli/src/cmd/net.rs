@@ -1,6 +1,11 @@
+//! `ferro net` — glass network topology.
+//!
+//! Cutoffs are given as `--<Former>-<Ligand>=<Å>` (e.g. `--P-O=2.3`), which clap cannot
+//! model as a fixed flag set: the element pair is part of the flag name. `main` strips
+//! those out of argv before clap parses and hands them here.
+
 use anyhow::{bail, Result};
-use clap::{CommandFactory, Parser, ValueEnum};
-use ferro::io_dispatch::read_trajectory;
+use clap::{Args, Subcommand};
 use ferro_analysis::{calc_network, NetworkResult};
 use ferro_core::TypeParams;
 use ferro_io::{write_xyz, LammpsUnits};
@@ -8,60 +13,130 @@ use ferro_structure::apply_type_labels;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, ValueEnum)]
-enum NetworkMode {
-    /// Qn 物种占比 + 氧类型占比 + CN 分布（多帧时间平均）
-    Qn,
-    /// 每个原子的类型标签（单帧，默认最后一帧）
-    Type,
+use crate::io_dispatch::read_trajectory;
+
+#[derive(Subcommand, Debug)]
+pub enum NetCmd {
+    /// Qn species, oxygen-type and coordination-number distributions (time averaged)
+    Qn(QnCmd),
+    /// Per-atom type labels for one frame; writes a structure file when -o is given
+    Type(TypeCmd),
 }
 
-#[derive(Parser)]
-#[command(
-    name = "fe-network",
-    about = "Glass network analysis: atom type labeling and Qn/CN/oxygen-type statistics",
-    long_about = None,
-    after_help = HELP_EXTRA,
-)]
-struct Cli {
-    /// Input trajectory file (omit to show help with examples)
+/// Options shared by both network subcommands.
+#[derive(Args, Clone, Debug)]
+pub struct NetCommon {
+    /// Input trajectory file
     #[arg(short, long)]
-    input: Option<PathBuf>,
+    pub input: Option<PathBuf>,
 
-    /// Analysis mode
-    #[arg(short, long = "mode", value_enum)]
-    mode: Option<NetworkMode>,
-
-    /// Output file.
-    ///   -m Qn   → CSV/XLSX statistics (default: network.csv / network.xlsx)
-    ///   -m type → structure file with type labels (omit to print to screen only)
+    /// Output file
     #[arg(short, long)]
-    output: Option<PathBuf>,
-
-    /// Output format for -m Qn: csv | xlsx  (default: csv)
-    #[arg(long, default_value = "csv")]
-    format: String,
+    pub output: Option<PathBuf>,
 
     /// Use only the last N frames (default: all)
     #[arg(long)]
-    last_n: Option<usize>,
-
-    /// Frame index for -m type (0-based; default: last frame)
-    #[arg(long)]
-    frame: Option<usize>,
+    pub last_n: Option<usize>,
 
     /// Parallel threads (default: all cores)
     #[arg(long)]
-    ncore: Option<usize>,
+    pub ncore: Option<usize>,
 
     /// Use LAMMPS metal units for dump files
     #[arg(long)]
-    metal_units: bool,
+    pub metal_units: bool,
 
-    /// Modifier cation elements, comma-separated (e.g. Zn or Zn,Na).
-    /// Supply their cutoffs via the same --Elem-O=cutoff syntax.
+    /// Modifier elements, comma separated (e.g. Zn,Na)
     #[arg(long)]
-    modifier: Option<String>,
+    pub modifier: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct QnCmd {
+    #[command(flatten)]
+    pub common: NetCommon,
+    /// Output format: csv | xlsx
+    #[arg(long, default_value = "csv")]
+    pub format: String,
+}
+
+#[derive(Args, Debug)]
+pub struct TypeCmd {
+    #[command(flatten)]
+    pub common: NetCommon,
+    /// Frame index (0-based; default: last frame)
+    #[arg(long)]
+    pub frame: Option<usize>,
+}
+
+fn common_of(cmd: &NetCmd) -> &NetCommon {
+    match cmd {
+        NetCmd::Qn(c) => &c.common,
+        NetCmd::Type(c) => &c.common,
+    }
+}
+
+pub fn wants_help(cmd: &NetCmd) -> bool {
+    common_of(cmd).input.is_none()
+}
+
+pub fn print_help() {
+    println!("{}", HELP_EXTRA);
+}
+
+/// Runs a network analysis. `pair_args` are the `--P-O=2.3`-style cutoffs `main`
+/// pulled out of argv.
+pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
+    if pair_args.is_empty() {
+        bail!("No pair cutoffs specified. Use --Former-Ligand=cutoff, e.g. --P-O=2.3");
+    }
+    let common = common_of(cmd).clone();
+    let input = common.input.clone().expect("checked by wants_help");
+
+    let all_pairs = parse_pairs(pair_args)?;
+    let modifier_elems: std::collections::HashSet<String> = common
+        .modifier
+        .as_deref()
+        .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    let mut cutoffs = BTreeMap::new();
+    let mut modifier_cutoffs = BTreeMap::new();
+    for ((elem, ligand), cutoff) in all_pairs {
+        if modifier_elems.contains(&elem) {
+            modifier_cutoffs.insert((elem, ligand), cutoff);
+        } else {
+            cutoffs.insert((elem, ligand), cutoff);
+        }
+    }
+
+    if let Some(n) = common.ncore {
+        rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
+    }
+
+    let units = if common.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
+    let mut traj = read_trajectory(&input, units)?;
+    if let Some(n) = common.last_n {
+        traj = traj.tail(n);
+    }
+
+    let params = TypeParams { cutoffs, modifier_cutoffs };
+
+    match cmd {
+        NetCmd::Qn(c)   => run_qn(&traj, &params, c.common.output.as_deref(), &c.format)?,
+        NetCmd::Type(c) => run_type(&traj, &params, c.common.output.as_deref(), c.frame)?,
+    }
+    Ok(0)
+}
+
+/// Splits `--Former-Ligand=cutoff` arguments out of argv; the rest goes to clap.
+pub fn split_pair_args(all: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut pairs = Vec::new();
+    let mut clap  = Vec::new();
+    for arg in all {
+        if is_pair_arg(arg) { pairs.push(arg.clone()); } else { clap.push(arg.clone()); }
+    }
+    (pairs, clap)
 }
 
 const HELP_EXTRA: &str = "\
@@ -97,62 +172,6 @@ EXAMPLES:
   fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn -m Qn
   fe-network -i traj.dump --P-O=2.3 -m type
   fe-network -i traj.dump --P-O=2.3 -m type -o typed.xyz";
-
-fn main() -> Result<()> {
-    let all_args: Vec<String> = std::env::args().collect();
-    let (pair_args, clap_args) = split_pair_args(&all_args);
-    let cli = Cli::parse_from(clap_args);
-
-    if cli.input.is_none() || cli.mode.is_none() {
-        println!("{}", Cli::command().render_long_help());
-        return Ok(());
-    }
-
-    if pair_args.is_empty() {
-        bail!("No pair cutoffs specified. Use --Former-Ligand=cutoff, e.g. --P-O=2.3");
-    }
-
-    // 解构 cli，避免后续部分移动问题
-    let Cli { input, mode, output, format, last_n, frame, ncore, metal_units, modifier } = cli;
-    let input  = input.unwrap();
-    let mode   = mode.unwrap();
-
-    let all_pairs = parse_pairs(&pair_args)?;
-    let modifier_elems: std::collections::HashSet<String> = modifier
-        .as_deref()
-        .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
-        .unwrap_or_default();
-
-    let mut cutoffs = BTreeMap::new();
-    let mut modifier_cutoffs = BTreeMap::new();
-    for ((elem, ligand), cutoff) in all_pairs {
-        if modifier_elems.contains(&elem) {
-            modifier_cutoffs.insert((elem, ligand), cutoff);
-        } else {
-            cutoffs.insert((elem, ligand), cutoff);
-        }
-    }
-
-    if let Some(n) = ncore {
-        rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
-    }
-
-    let units = if metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let mut traj = read_trajectory(&input, units)?;
-    if let Some(n) = last_n {
-        traj = traj.tail(n);
-    }
-
-    let params = TypeParams { cutoffs, modifier_cutoffs };
-
-    match mode {
-        NetworkMode::Qn   => run_qn(&traj, &params, output.as_deref(), &format)?,
-        NetworkMode::Type => run_type(&traj, &params, output.as_deref(), frame)?,
-    }
-    Ok(())
-}
-
-// ─── -m Qn ───────────────────────────────────────────────────────────────────
 
 fn run_qn(
     traj: &ferro_core::Trajectory,
@@ -413,15 +432,6 @@ fn write_qn_xlsx(result: &NetworkResult, params: &TypeParams, base: &Path) -> Re
 }
 
 // ─── Pair 参数解析 ────────────────────────────────────────────────────────────
-
-fn split_pair_args(all: &[String]) -> (Vec<String>, Vec<String>) {
-    let mut pairs = Vec::new();
-    let mut clap  = Vec::new();
-    for arg in all {
-        if is_pair_arg(arg) { pairs.push(arg.clone()); } else { clap.push(arg.clone()); }
-    }
-    (pairs, clap)
-}
 
 fn is_pair_arg(s: &str) -> bool {
     if !s.starts_with("--") { return false; }

@@ -1,27 +1,25 @@
 use anyhow::{bail, Result};
-use clap::Parser;
-use ferro::io_dispatch::{read_trajectory, supported_formats, write_trajectory};
+use clap::Args;
+use crate::io_dispatch::{read_trajectory, supported_formats, write_trajectory};
 use ferro_io::LammpsUnits;
 use std::path::PathBuf;
 
-#[derive(Parser)]
-#[command(name = "fe-convert", about = "Convert between structure/trajectory formats")]
-struct Cli {
+#[derive(Args, Debug)]
+pub struct ConvertCmd {
     /// Input file (format auto-detected)
     #[arg(short, long)]
-    input: PathBuf,
+    pub input: PathBuf,
 
     /// Output file (format auto-detected)
     #[arg(short, long)]
-    output: PathBuf,
+    pub output: PathBuf,
 
     /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
     #[arg(long)]
-    metal_units: bool,
+    pub metal_units: bool,
 }
 
-fn main() -> Result<()> {
-    let args = Cli::parse();
+pub fn run(args: &ConvertCmd) -> Result<()> {
 
     if args.input == args.output {
         bail!("Input and output paths are identical");

@@ -1,34 +1,29 @@
 use anyhow::{bail, Result};
-use clap::Parser;
+use clap::Args;
 use ferro_io::{read_chgcar, read_cube_as_chg};
 use ferro_analysis::{BaderAnalyzer, BaderMethod};
 use std::path::PathBuf;
 
-#[derive(Parser)]
-#[command(
-    name = "fe-bader",
-    about = "Bader charge analysis from VASP CHGCAR or Gaussian cube (QE pp.x)"
-)]
-struct Cli {
+#[derive(Args, Debug)]
+pub struct BaderCmd {
     /// Input file: CHGCAR (VASP) or .cube (Gaussian / QE pp.x)
     #[arg(short, long)]
-    input: PathBuf,
+    pub input: PathBuf,
 
     /// Bader method: ongrid | neargrid | offgrid | weight
     #[arg(short, long, default_value = "neargrid")]
-    method: String,
+    pub method: String,
 
     /// Edge refinement: -1 = auto, -2 = single pass, N = N passes
     #[arg(short, long, default_value_t = -1)]
-    refine: i32,
+    pub refine: i32,
 
     /// Vacuum density threshold (e/Å³)
     #[arg(short, long, default_value_t = 1e-3)]
-    vacval: f64,
+    pub vacval: f64,
 }
 
-fn main() -> Result<()> {
-    let args = Cli::parse();
+pub fn run(args: &BaderCmd) -> Result<()> {
     let path = args.input.to_str().unwrap_or_default();
 
     let is_cube = args.input
