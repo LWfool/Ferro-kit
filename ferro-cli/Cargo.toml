@@ -19,7 +19,8 @@ ferro-structure = { path = "../ferro-structure" }
 ferro-workflow  = { path = "../ferro-workflow" }
 clap             = { version = "4.5", features = ["derive"] }
 rust_xlsxwriter  = "0.97"
-plotters         = { version = "0.3", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "ttf", "full_palette", "line_series"] }
+plotters         = { version = "0.3", default-features = false, features = ["svg_backend", "ttf", "full_palette", "line_series"] }
+svg2pdf          = { version = "0.13", default-features = false, features = ["text"] }
 anyhow.workspace = true
 rayon.workspace  = true
 glob.workspace   = true

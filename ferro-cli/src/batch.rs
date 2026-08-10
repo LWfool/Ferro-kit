@@ -315,7 +315,7 @@ mod tests {
     fn test_expand_glob_sorted_and_deduplicated() {
         let dir = fixture_dir();
         let pattern = dir.join("*.lammpstrj");
-        let by_glob = expand_inputs(&[pattern.clone()]).unwrap();
+        let by_glob = expand_inputs(std::slice::from_ref(&pattern)).unwrap();
         assert!(by_glob.len() >= 2, "fixtures should provide several trajectories");
         let mut sorted = by_glob.clone();
         sorted.sort();

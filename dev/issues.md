@@ -287,6 +287,20 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 多输入下的 `.cube` | 文件名不带 stem 时第二个输入直接覆盖第一个 | `ferro map` 的文件名必须掺输入 stem（`density_<stem>.cube`） |
 | plotters 子图 | `root.split_evenly((rows, cols))` 后每格要各自 `ChartBuilder`，且没有 figure 级图例 | 颜色按文件分配保证跨格一致，图例只画第一格 |
 
+## 矢量 PDF 绘图陷阱（2026-08-10）
+
+`--plot` 的产物由 PNG 改为矢量 PDF：plotters `SVGBackend` → `svg2pdf::to_pdf`。
+plotters **没有** PDF backend（只有 bitmap 与 svg），所以这不是换扩展名的事。
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `svg_to_pdf` 字体 | `usvg` 解析不到 `font-family` 时**静默丢弃文字**，不报错。产物仍是合法 PDF，只是没有标题/轴标注/图例——最难发现的失败 | `opt.fontdb_mut().load_system_fonts()` 后显式 `is_empty()` 检查；测试 `test_render_writes_vector_pdf_with_text` 断言 PDF 里出现 `FontFile`（内嵌字体子集），把「文字被丢掉」钉死 |
+| `DPI` 常量 | 矢量图没有画质意义上的 DPI，把它当「分辨率」调会得到错误直觉 | `svg2pdf` 按 `page = px × 72/DPI` 定尺寸。要保持物理页面大小不变，画布须放大 `DPI/BASE_DPI`（300/96 = 3.125）倍，**且每个长度都过 `px()`**。只改 `DPI` 不放大画布 = 图整体缩小到 32% |
+| plotters legend 区宽 | `legend_area_size` 默认 30px 是**固定值**，不随画布缩放；色条长度 `px(18)=56` 会伸出去压在标签文字上 | 显式 `.legend_area_size(px(30))`，与色条同比缩放 |
+| 字体大小 | `caption` 的字号跟着 `px()` 放大了，但 `configure_mesh` 的刻度/轴标题字号有独立默认值，不放大就会小到几乎看不见 | `.axis_desc_style(("sans-serif", px(14)))` + `.label_style(("sans-serif", px(12)))` 显式给全 |
+| `svg2pdf` features | 默认 features 含 `image` + `filters`，拉进 `image` crate 与 `tiny-skia` | 绘图 SVG 里没有位图也没有滤镜，用 `default-features = false, features = ["text"]` |
+| `usvg::Options::fontdb` | 读取是**字段** `opt.fontdb`，写入才是方法 `opt.fontdb_mut()` | 检查用 `opt.fontdb.is_empty()`，`opt.fontdb()` 不存在 |
+
 ## 分析产物为什么不进 ferro-io（2026-08-09 定案）
 
 `ferro-io` 只依赖 `ferro-core`，而 `write_gr` 的入参 `GrResult` 在 `ferro-analysis`

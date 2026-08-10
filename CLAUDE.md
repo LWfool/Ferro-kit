@@ -303,7 +303,7 @@ crate implements them — the `fe-*` binaries are gone.
 
 | Command | Purpose | Product |
 |---|---|---|
-| `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
+| `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PDF |
 | `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | Spatial distribution maps | one `.cube` grid **per input** |
 | `ferro net qn\|type` | Glass network topology (`--P-O=2.3`) | distribution tables / labelled structure |
 | `ferro bader` | Bader charge partitioning | ACF/BCF/AVF (Henkelman format) |
@@ -364,7 +364,7 @@ first file is read.
 --d-angle  FLOAT   bin width [°]           default 0.1
 
 # plot (gr / sq / angle / msd)
---plot   write PNG next to the data file (opened in a viewer only for a single input)
+--plot   write a vector PDF next to the data file (opened in a viewer only for a single input)
 ```
 
 **`-o` is a name suffix, not a path**: results land in `<mode>[_<table>]_<suffix>.csv`
@@ -407,13 +407,19 @@ taken and **gaps are left empty (NaN), never interpolated or zero-filled**.
 Label-resolved totals match element-resolved ones up to an O(1/N) term: same-type
 partials normalise by `N_A(N_A−1)` whereas summing label partials reconstructs `N_A²`.
 
-**Plot behaviour** — one PNG split into panels, **one panel per quantity, one curve per
-input file**; colours are per file and consistent across panels, and only the first
-panel carries a legend:
+**Plot behaviour** — one **vector PDF** split into panels, **one panel per quantity, one
+curve per input file**; colours are per file and consistent across panels, and only the
+first panel carries a legend:
 - `gr`: two panels (g(r) | CN(r)); needs a named pair, otherwise skipped with a note
 - `sq`: two panels (XRD | Neutron) — different quantities, so no shared axis
 - `angle`: one panel for the named triplet, mean ± std in the legend
 - `msd`: 2×2 (total | a | b | c); `--fit-range` prints D = slope/6 and R² per input
+
+Output goes through `plotters`' SVG backend and is converted by `svg2pdf`, so curves and
+text are true vector art. `plot.rs`'s `DPI` (300) therefore sets the **scale**, not the
+quality: `svg2pdf` sizes the page as `px × 72/DPI`, so the canvas is drawn `DPI/96`
+times larger in pixels and every length is scaled by `px()` to match. Changing `DPI`
+alone keeps the layout and the physical page size identical.
 
 `--plot` is **frozen at self-check quality** and will not chase matplotlib. The data is
 long-format CSV, so a real figure is one line of seaborn
