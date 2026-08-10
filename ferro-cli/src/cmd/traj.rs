@@ -1,7 +1,7 @@
 //! `ferro traj` — the seven trajectory analyses that share one output pipeline.
 //!
 //! Grouped together because they produce the **same product**: a long- or wide-format
-//! CSV with a `file` column plus an optional quick-look PDF. The old `fe-traj` /
+//! CSV with a `file` column plus an optional quick-look PNG. The old `fe-traj` /
 //! `fe-corr` split tried to separate "structural" from "dynamic", but `msd` is a time
 //! correlation and sat on the structural side, so the line never held.
 //!
@@ -73,7 +73,7 @@ pub struct GrCmd {
     pub select: SelectArgs,
     #[command(flatten)]
     pub knobs: GrKnobs,
-    /// Write a vector PDF next to the data file (needs a pair)
+    /// Write a PNG next to the data file (needs a pair)
     #[arg(long)]
     pub plot: bool,
 }
@@ -99,7 +99,7 @@ pub struct SqCmd {
     /// Scattering weighting scheme
     #[arg(long, value_enum, default_value = "both")]
     pub weighting: SqWeightingCli,
-    /// Write a vector PDF next to the data file
+    /// Write a PNG next to the data file
     #[arg(long)]
     pub plot: bool,
 }
@@ -121,7 +121,7 @@ pub struct MsdCmd {
     /// Linear-fit window as trajectory fractions FMIN,FMAX (e.g. 0.3,0.8) -> D
     #[arg(long, value_delimiter = ',')]
     pub fit_range: Option<Vec<f64>>,
-    /// Write a vector PDF next to the data file
+    /// Write a PNG next to the data file
     #[arg(long)]
     pub plot: bool,
 }
@@ -148,7 +148,7 @@ pub struct AngleCmd {
     /// Histogram bin width [°]
     #[arg(long, default_value = "0.1")]
     pub d_angle: f64,
-    /// Write a vector PDF next to the data file (needs a triplet)
+    /// Write a PNG next to the data file (needs a triplet)
     #[arg(long)]
     pub plot: bool,
 }
@@ -304,10 +304,10 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
             Some((a, b)) => {
                 let refs: Vec<(String, &GrResult)> =
                     results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
-                let pdf = plot_gr(&refs, &data_path, a, b)?;
-                println!("Plot    -> {pdf}");
+                let png = plot_gr(&refs, &data_path, a, b)?;
+                println!("Plot    -> {png}");
                 if results.len() == 1 {
-                    open_plot(&pdf);
+                    open_plot(&png);
                 }
             }
             None => println!(
@@ -371,10 +371,10 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
     if c.plot {
         let refs: Vec<(String, &SqResult)> =
             results.iter().map(|(p, (_, sq))| (batch::label_of(p), sq)).collect();
-        let pdf = plot_sq(&refs, &data_path)?;
-        println!("Plot    -> {pdf}");
+        let png = plot_sq(&refs, &data_path)?;
+        println!("Plot    -> {png}");
         if results.len() == 1 {
-            open_plot(&pdf);
+            open_plot(&png);
         }
     }
     Ok(failures.len())
@@ -446,10 +446,10 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
     if c.plot {
         let refs: Vec<(String, &MsdResult)> =
             results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
-        let pdf = plot_msd(&refs, &data_path)?;
-        println!("Plot    -> {pdf}");
+        let png = plot_msd(&refs, &data_path)?;
+        println!("Plot    -> {png}");
         if results.len() == 1 {
-            open_plot(&pdf);
+            open_plot(&png);
         }
     }
     Ok(failures.len())
@@ -530,10 +530,10 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
                     results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
                 // 端原子可能被规范排序反转,两个 key 都试
                 let key = if refs.iter().any(|(_, r)| r.hist.contains_key(key1)) { key1 } else { key2 };
-                let pdf = plot_angle(&refs, &data_path, key)?;
-                println!("Plot    -> {pdf}");
+                let png = plot_angle(&refs, &data_path, key)?;
+                println!("Plot    -> {png}");
                 if results.len() == 1 {
-                    open_plot(&pdf);
+                    open_plot(&png);
                 }
             }
             None => println!(

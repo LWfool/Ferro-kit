@@ -287,19 +287,33 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 多输入下的 `.cube` | 文件名不带 stem 时第二个输入直接覆盖第一个 | `ferro map` 的文件名必须掺输入 stem（`density_<stem>.cube`） |
 | plotters 子图 | `root.split_evenly((rows, cols))` 后每格要各自 `ChartBuilder`，且没有 figure 级图例 | 颜色按文件分配保证跨格一致，图例只画第一格 |
 
-## 矢量 PDF 绘图陷阱（2026-08-10）
+## 高 DPI 绘图陷阱（2026-08-10）
 
-`--plot` 的产物由 PNG 改为矢量 PDF：plotters `SVGBackend` → `svg2pdf::to_pdf`。
-plotters **没有** PDF backend（只有 bitmap 与 svg），所以这不是换扩展名的事。
+`--plot` 仍出 PNG，但分辨率由 96 dpi 提到 **500 dpi**（一格 2708×2083 px）。
+版式在 96 dpi 像素下编写，统一经 `px()` 缩放，故改 `DPI` 只整体放缩、不重排。
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `svg_to_pdf` 字体 | `usvg` 解析不到 `font-family` 时**静默丢弃文字**，不报错。产物仍是合法 PDF，只是没有标题/轴标注/图例——最难发现的失败 | `opt.fontdb_mut().load_system_fonts()` 后显式 `is_empty()` 检查；测试 `test_render_writes_vector_pdf_with_text` 断言 PDF 里出现 `FontFile`（内嵌字体子集），把「文字被丢掉」钉死 |
-| `DPI` 常量 | 矢量图没有画质意义上的 DPI，把它当「分辨率」调会得到错误直觉 | `svg2pdf` 按 `page = px × 72/DPI` 定尺寸。要保持物理页面大小不变，画布须放大 `DPI/BASE_DPI`（300/96 = 3.125）倍，**且每个长度都过 `px()`**。只改 `DPI` 不放大画布 = 图整体缩小到 32% |
-| plotters legend 区宽 | `legend_area_size` 默认 30px 是**固定值**，不随画布缩放；色条长度 `px(18)=56` 会伸出去压在标签文字上 | 显式 `.legend_area_size(px(30))`，与色条同比缩放 |
-| 字体大小 | `caption` 的字号跟着 `px()` 放大了，但 `configure_mesh` 的刻度/轴标题字号有独立默认值，不放大就会小到几乎看不见 | `.axis_desc_style(("sans-serif", px(14)))` + `.label_style(("sans-serif", px(12)))` 显式给全 |
-| `svg2pdf` features | 默认 features 含 `image` + `filters`，拉进 `image` crate 与 `tiny-skia` | 绘图 SVG 里没有位图也没有滤镜，用 `default-features = false, features = ["text"]` |
-| `usvg::Options::fontdb` | 读取是**字段** `opt.fontdb`，写入才是方法 `opt.fontdb_mut()` | 检查用 `opt.fontdb.is_empty()`，`opt.fontdb()` 不存在 |
+| 只放大画布 | 画布放大了但字号/线宽/边距留在原值，图会变成「巨大画布上一堆蚂蚁字」——比不放大更难看 | **每个长度都要过 `px()`**：`caption`、`margin`、`x/y_label_area_size`、`stroke_width`、legend 色条 |
+| `configure_mesh` 字号 | 刻度与轴标题字号有**独立默认值**，不跟随 `caption`；漏掉就小到看不清 | 显式 `.axis_desc_style(("sans-serif", px(14)))` + `.label_style(("sans-serif", px(12)))` |
+| plotters legend 区宽 | `legend_area_size` 默认 30px 是**固定值**，不随画布缩放；`px(18)` 的色条会伸出去压在标签文字上 | 显式 `.legend_area_size(px(30))`，与色条同比缩放 |
+| 内存与体积 | 2×2 的 msd 图是 5416×4166 px，RGB 缓冲约 68 MB，PNG 约 675 KB | 目前可接受；再往上调 `DPI` 前先算 `w×h×3` |
+| 验证「分辨率真的生效了」 | 像素数写错时，扩展名、格式、肉眼缩略图全都看不出来 | 测试 `test_render_writes_png_at_full_resolution` 直接从 PNG 的 IHDR 读宽高（偏移 16/20，大端）断言等于 `px(520)`/`px(400)` |
+
+### 为什么没有采用矢量输出（2026-08-10 定案）
+
+曾实装矢量 PDF（plotters `SVGBackend` → `svg2pdf::to_pdf`，提交 `a4c3c11`）并验证可用：
+真矢量、字体内嵌、放大无损。**因依赖成本回退**——`svg2pdf` 会拉进
+usvg / resvg / fontdb / tiny-skia 等约 40 个 crate，与计算无关，不值得为一个自检图付。
+
+若将来重新考虑，已知结论存档：
+
+- plotters **没有** PDF backend（只有 bitmap 与 svg），换矢量不是改扩展名的事
+- `svg2pdf` 只需 `default-features = false, features = ["text"]`（绘图 SVG 无位图无滤镜）
+- `usvg` 解析不到 `font-family` 时**静默丢弃全部文字**、不报错，产物仍是合法 PDF 却没有
+  任何标注——必须显式检查 `opt.fontdb.is_empty()`（读是字段，写才是 `fontdb_mut()`）
+- 矢量下 `DPI` 不再是画质而是尺度：`svg2pdf` 按 `page = px × 72/DPI` 定页面大小
+- 500 dpi 位图约可清晰放大到 5×，够读峰形；需要超出这个范围的，正途是走 Python 出图
 
 ## 分析产物为什么不进 ferro-io（2026-08-09 定案）
 
