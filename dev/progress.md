@@ -221,13 +221,13 @@ ferro bader | convert | info | job
 - 失败跳过 + `[inputs]` 留原因 + **退出码非零**（否则 shell 里 `&&` 串联会把批内失败
   当成功）
 - `-o` 是**文件名后缀**：`<mode>[_<子表>]_<后缀>.csv`
-- **`plot.rs` 重写为面板模型**：`Panel`/`Series` + 通用 `render`，一张图分格，
+- **`plot.rs` 重写为面板模型**：`Panel`/`Series` + 通用 `render`，一张 PNG 分格，
   一格一个量、一条曲线一个文件，颜色按文件跨格一致，图例只画第一格。
   gr 的双 Y 轴已删（g(r) 与 CN 各占一格）
-- **绘图产物为矢量 PDF**（`gr_run1.csv` → `gr_run1.pdf`）：plotters `SVGBackend`
-  写进字符串缓冲 → `svg2pdf::to_pdf`。`DPI = 300` 是**尺度**不是画质
-  （矢量无画质概念）：`svg2pdf` 按 `px × 72/DPI` 定页面大小，故画布放大 `DPI/96`
-  倍、所有长度过 `px()` 同比缩放，物理页面维持在设计尺寸（单格 5.42×4.17 in）
+- **绘图分辨率 500 dpi**（0.2.1）：一格 2708×2083 px，约可清晰放大到 5×。
+  版式按 96 dpi 像素编写、统一过 `px()` 缩放，改 `DPI` 只整体放缩不重排——
+  但**每个长度都必须过 `px()`**（含字号与 `legend_area_size`），漏掉就留在未缩放的
+  默认值上。矢量 PDF 方案已验证可用但**因依赖成本回退**，见 `dev/issues.md`
 - **类型选择**（`traj` 的 gr/sq/angle）：`-a/-b/-c` 按 element、`-x/-y/-z` 按 label，
   两组互斥；`-a`/`-x` 为中心、`-b`/`-y` 为近邻，顺序影响 CN
 - `plot_gr` 单配对（修复原先只画低 Z 作中心那一向 CN 的 bug）
@@ -263,8 +263,7 @@ ferro bader | convert | info | job
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 issues.md |
 | `clap` | 4.5 | ferro-cli | derive |
 | `rust_xlsxwriter` | 0.97 | ferro-cli | 0.80→0.97 零代码改动 |
-| `plotters` | 0.3 | ferro-cli | `default-features = false` + 必须保留 `ttf`；backend 由 `bitmap` 换为 `svg` |
-| `svg2pdf` | 0.13 | ferro-cli | `default-features=false, features=["text"]`（不要 image/filters）；拉入 usvg/resvg/fontdb |
+| `plotters` | 0.3 | ferro-cli | `default-features = false` + 必须保留 `ttf`；backend 为 `bitmap` |
 | `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；**运行时未验证** |
 
 `cargo update` 在主 workspace 与 ferro-python 均已无可更新项。

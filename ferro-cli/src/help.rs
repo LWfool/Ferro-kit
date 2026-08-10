@@ -344,7 +344,7 @@ Parameters:
   --last-n INT            Use only the last N frames
   --ncore  INT            Parallel threads (default: all cores)
   -o SUFFIX               Output suffix -> gr_<suffix>.csv        default: gr.csv
-  --plot                  Vector PDF next to the data file (needs a pair)
+  --plot                  PNG next to the data file (needs a pair)
 
 Output — long format, one row per (file, r, pair):
   file  r  center  neighbor  gr  cn
@@ -392,7 +392,7 @@ Parameters:
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads (used in g(r) step)
   -o SUFFIX           Output suffix -> sq_<suffix>.csv   default: sq.csv
-  --plot              Vector PDF next to the data file (weighted totals only)
+  --plot              PNG next to the data file (weighted totals only)
 
 Output — wide format, one row per (file, q):
   file  q  total_xrd  total_neutron  then three columns per pair
@@ -424,7 +424,7 @@ Parameters:
                          (Einstein, 3-D) and R²
   --last-n    INT        Use only the last N frames
   --ncore     INT        Parallel threads
-  --plot                 Generate a vector PDF and open in viewer
+  --plot                 Generate PNG and open in viewer
   -o SUFFIX              Output suffix -> msd_<suffix>.csv   default: msd.csv
 
 Example:
@@ -459,7 +459,7 @@ Parameters:
   --last-n   INT                Use only the last N frames
   --ncore    INT                Parallel threads
   -o SUFFIX                     Output suffix -> angle_<suffix>.csv  default: angle.csv
-  --plot                        Generate a vector PDF and open in viewer
+  --plot                        Generate PNG and open in viewer
 
 Example:
   ferro traj angle -i traj.dump
