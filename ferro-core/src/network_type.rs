@@ -12,18 +12,29 @@
 //!
 //! # Label scheme
 //!
+//! Every label is `<element>_<suffix>`, split at the **first** underscore — the same
+//! convention the LAMMPS dump reader uses, so a labelled trajectory round-trips and
+//! its labels can be selected with `-x/-y/-z`.
+//!
 //! | Atom role | Label |
 //! |-----------|-------|
-//! | Network former (Qn) | `P0`, `P1`, `Al2`, … |
-//! | Free oxygen (0 NF) | `Of` |
-//! | Non-bridging oxygen (1 NF) | `On_P`, `On_Al`, … |
-//! | Bridging oxygen (2 NF) | `Ob_Al_P`, `Ob_P_P`, … (alphabetical) |
-//! | Over-bridging oxygen (≥3 NF) | `X` |
-//! | Modifier – free | `Zn_f`, `Na_f`, … |
-//! | Modifier – terminal (1 NBO) | `Zn_t`, … |
-//! | Modifier – bridging (2 NBO) | `Zn_b`, … |
-//! | Modifier – over (≥3 NBO) | `X` |
+//! | Network former | `P_0`, `P_3`, `Al_2`, … (digit = bridging ligands) |
+//! | Free ligand (0 NF) | `O_f` |
+//! | Non-bridging ligand (1 NF) | `O_n` |
+//! | Bridging ligand (2 NF) | `O_b` |
+//! | Tricluster ligand (≥3 NF) | `O_t` |
+//! | Modifier | element symbol unchanged (`Zn`) |
 //! | Other atoms | element symbol unchanged |
+//!
+//! Ligand labels carry no partner suffix: which formers a bridge joins is a
+//! *statistic*, reported through [`AtomType::Ligand::partners`] as data columns,
+//! not encoded into the label text.
+//!
+//! Modifiers carry no role suffix either.  The former `Zn_f`/`Zn_t`/`Zn_b`/`X`
+//! scheme binned by non-bridging-ligand count 0/1/2/≥3, which for a modifier of
+//! ordinary coordination puts almost everything in the ≥3 catch-all (97 % of Zn in
+//! the reference trajectory), so it carried no resolving power.  Modifiers are now
+//! described by their coordination number instead.
 
 use crate::{Cell, Frame};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -82,11 +93,12 @@ pub enum AtomType {
     /// elements where Qn applies); `cn` = total ligands within cutoff.
     Former { elem: String, bridging: u32, cn: u32 },
     /// Ligand (oxygen).  `partners` = elements of the formers bonded to it, sorted;
-    /// its length is the classification (0 free, 1 non-bridging, 2 bridging, ≥3 over).
+    /// its length is the classification (0 free, 1 non-bridging, 2 bridging,
+    /// ≥3 tricluster).
     Ligand { elem: String, partners: Vec<String> },
-    /// Network modifier.  `nbo` = non-bridging ligands within reach; `cn` = total
-    /// ligands within cutoff.
-    Modifier { elem: String, nbo: u32, cn: u32 },
+    /// Network modifier: counted for coordination, but excluded from the bridging
+    /// count and from ligand classification.  `cn` = ligands within cutoff.
+    Modifier { elem: String, cn: u32 },
     /// Any atom none of the cutoff tables mentions.
     Other { elem: String },
 }
@@ -105,48 +117,36 @@ impl AtomType {
     /// Render as a site label.  **The only place a type becomes text.**
     pub fn label(&self) -> String {
         match self {
-            AtomType::Former { elem, bridging, .. } => format!("{elem}{bridging}"),
-            AtomType::Ligand { partners, .. } => match partners.len() {
-                0 => "Of".to_string(),
-                1 => format!("On_{}", partners[0]),
-                2 => format!("Ob_{}_{}", partners[0], partners[1]),
-                _ => "X".to_string(),
-            },
-            AtomType::Modifier { elem, nbo, .. } => match nbo {
+            AtomType::Former { elem, bridging, .. } => format!("{elem}_{bridging}"),
+            AtomType::Ligand { elem, partners } => match partners.len() {
                 0 => format!("{elem}_f"),
-                1 => format!("{elem}_t"),
+                1 => format!("{elem}_n"),
                 2 => format!("{elem}_b"),
-                _ => "X".to_string(),
+                _ => format!("{elem}_t"),
             },
-            AtomType::Other { elem } => elem.clone(),
+            AtomType::Modifier { elem, .. } | AtomType::Other { elem } => elem.clone(),
         }
     }
 
     /// Sort rank *within one distribution table* (all rows share a role).
     ///
-    /// Oxygen: `Of` < `On_*` < `Ob_*` < `X`.  Modifier: `_f` < `_t` < `_b` < `X`.
+    /// Ligand: `_f` < `_n` < `_b` < `_t`.
     pub fn class_rank(&self) -> u8 {
         match self {
             AtomType::Former { bridging, .. } => (*bridging).min(u8::MAX as u32) as u8,
             AtomType::Ligand { partners, .. } => partners.len().min(3) as u8,
-            AtomType::Modifier { nbo, .. } => (*nbo).min(3) as u8,
-            AtomType::Other { .. } => 0,
+            AtomType::Modifier { .. } | AtomType::Other { .. } => 0,
         }
     }
 
     /// Sort rank when every role is printed in *one* table:
-    /// formers, then oxygen (free → non-bridging → bridging), then modifiers,
-    /// then the over-coordinated `X` bucket, then everything else.
+    /// formers, then ligands (free → non-bridging → bridging → tricluster),
+    /// then modifiers, then everything else.
     pub fn display_rank(&self) -> u8 {
         match self {
             AtomType::Former { .. } => 0,
-            AtomType::Ligand { partners, .. } => match partners.len() {
-                0 => 1,
-                1 => 2,
-                2 => 3,
-                _ => 5,
-            },
-            AtomType::Modifier { nbo, .. } => if *nbo <= 2 { 4 } else { 5 },
+            AtomType::Ligand { partners, .. } => 1 + partners.len().min(3) as u8,
+            AtomType::Modifier { .. } => 5,
             AtomType::Other { .. } => 6,
         }
     }
@@ -167,13 +167,7 @@ pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Vec<At
     // 1. 配体原子的 NF 邻居表（ligand_idx → Vec<(former_elem, former_idx)>）
     let nf_map = build_nf_map(frame, cell, params, &elem_map);
 
-    // 2. NBO 集合（恰好 1 个 NF 邻居的配体原子）
-    let nbo_set: HashSet<usize> = nf_map.iter()
-        .filter(|(_, nf)| nf.len() == 1)
-        .map(|(&idx, _)| idx)
-        .collect();
-
-    // 3. 组装：默认 Other，再依次被配体 / 形成子 / 修饰子覆盖（顺序同旧实现）
+    // 2. 组装：默认 Other，再依次被配体 / 形成子 / 修饰子覆盖（顺序同旧实现）
     let mut types: Vec<AtomType> = frame.atoms.iter()
         .map(|a| AtomType::Other { elem: a.element.clone() })
         .collect();
@@ -186,7 +180,7 @@ pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Vec<At
     for (idx, t) in classify_formers(frame, cell, params, &elem_map, &nf_map) {
         types[idx] = t;
     }
-    for (idx, t) in classify_modifiers_inner(frame, cell, params, &elem_map, &nbo_set) {
+    for (idx, t) in classify_modifiers_inner(frame, cell, params, &elem_map) {
         types[idx] = t;
     }
     types
@@ -290,38 +284,24 @@ fn classify_formers(
     result
 }
 
+/// Modifier classification: coordination number only.  A modifier never enters the
+/// ligands' NF list, so it neither carries a bridging count nor affects how a ligand
+/// is classified — that separation is the whole point of `--modifier`.
 fn classify_modifiers_inner(
     frame: &Frame,
     cell: &Cell,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,
-    nbo_set: &HashSet<usize>,
 ) -> Vec<(usize, AtomType)> {
     let mut result: Vec<(usize, AtomType)> = Vec::new();
 
     for mod_elem in params.modifiers() {
         let Some(mod_idxs) = elem_map.get(&mod_elem) else { continue };
-        // NBO 计数用该修饰子的最大截断半径（与逐配体截断的 cn 口径不同,
-        // 但 nbo 只服务于 `Zn_f`/`Zn_t`/`Zn_b` 角色标签,该标签即将退役）
-        let max_cut = params.modifier_cutoffs.iter()
-            .filter(|((m, _), _)| *m == mod_elem)
-            .map(|(_, &c)| c)
-            .fold(0.0_f64, f64::max);
-        let max_cut2 = max_cut * max_cut;
 
         for &ma_idx in mod_idxs {
             let ma_pos = frame.atoms[ma_idx].position;
-            let nbo_count = nbo_set.iter()
-                .filter(|&&nbo_idx| {
-                    if nbo_idx == ma_idx { return false; }
-                    let diff = cell.minimum_image(frame.atoms[nbo_idx].position - ma_pos)
-                        .expect("cell must be non-singular");
-                    diff.norm_squared() < max_cut2
-                })
-                .count() as u32;
-
-            // 总配位数：逐配体截断
             let mut cn = 0u32;
+
             for ((m, ligand), &cutoff) in &params.modifier_cutoffs {
                 if m != &mod_elem { continue; }
                 let c2 = cutoff * cutoff;
@@ -334,9 +314,7 @@ fn classify_modifiers_inner(
                 }
             }
 
-            result.push((ma_idx, AtomType::Modifier {
-                elem: mod_elem.clone(), nbo: nbo_count, cn,
-            }));
+            result.push((ma_idx, AtomType::Modifier { elem: mod_elem.clone(), cn }));
         }
     }
     result
@@ -365,67 +343,83 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_labels_match_legacy_scheme() {
-        let f = |b| AtomType::Former { elem: "P".into(), bridging: b, cn: 4 };
-        assert_eq!(f(0).label(), "P0");
-        assert_eq!(f(3).label(), "P3");
+    fn test_every_label_splits_at_first_underscore() {
+        // 全部标签必须形如 <元素>_<后缀>（或裸元素），否则 LAMMPS dump 读回来
+        // 拆不出正确的 element，`-a P` 就选不中导出的结构
+        let cases: Vec<(AtomType, &str, &str)> = vec![
+            (AtomType::Former { elem: "P".into(), bridging: 0, cn: 4 }, "P_0", "P"),
+            (AtomType::Former { elem: "P".into(), bridging: 3, cn: 4 }, "P_3", "P"),
+            (AtomType::Former { elem: "Al".into(), bridging: 2, cn: 5 }, "Al_2", "Al"),
+            (AtomType::Ligand { elem: "O".into(), partners: vec![] }, "O_f", "O"),
+            (AtomType::Ligand { elem: "O".into(), partners: vec!["P".into()] }, "O_n", "O"),
+            (AtomType::Ligand {
+                elem: "O".into(), partners: vec!["Al".into(), "P".into()],
+            }, "O_b", "O"),
+            (AtomType::Ligand {
+                elem: "O".into(), partners: vec!["Al".into(), "Al".into(), "P".into()],
+            }, "O_t", "O"),
+            (AtomType::Modifier { elem: "Zn".into(), cn: 5 }, "Zn", "Zn"),
+            (AtomType::Other { elem: "Ar".into() }, "Ar", "Ar"),
+        ];
+        for (t, expect, elem) in cases {
+            let label = t.label();
+            assert_eq!(label, expect);
+            assert_eq!(label.split('_').next().unwrap(), elem,
+                       "{label} 的首段必须是元素符号");
+            assert_eq!(t.element(), elem);
+        }
+    }
 
+    #[test]
+    fn test_ligand_label_carries_no_partner_suffix() {
+        // 伙伴元素是统计量,不进标签 —— 不同伙伴的桥氧共用一个标签
         let lig = |p: &[&str]| AtomType::Ligand {
             elem: "O".into(),
             partners: p.iter().map(|s| s.to_string()).collect(),
         };
-        assert_eq!(lig(&[]).label(), "Of");
-        assert_eq!(lig(&["P"]).label(), "On_P");
-        assert_eq!(lig(&["Al", "P"]).label(), "Ob_Al_P");
-        assert_eq!(lig(&["Al", "P", "P"]).label(), "X");
-
-        let m = |n| AtomType::Modifier { elem: "Zn".into(), nbo: n, cn: 5 };
-        assert_eq!(m(0).label(), "Zn_f");
-        assert_eq!(m(1).label(), "Zn_t");
-        assert_eq!(m(2).label(), "Zn_b");
-        assert_eq!(m(3).label(), "X");
-
-        assert_eq!(AtomType::Other { elem: "Ar".into() }.label(), "Ar");
+        assert_eq!(lig(&["P", "P"]).label(), lig(&["Al", "P"]).label());
+        assert_eq!(lig(&["Al", "Al"]).label(), "O_b");
+        // 但 partners 本身仍在类型里,统计层能拿到
+        let AtomType::Ligand { partners, .. } = lig(&["Al", "P"]) else { unreachable!() };
+        assert_eq!(partners, vec!["Al".to_string(), "P".to_string()]);
     }
 
     #[test]
-    fn test_class_rank_orders_oxygen_and_modifier() {
+    fn test_class_rank_orders_ligands() {
         let lig = |n: usize| AtomType::Ligand {
             elem: "O".into(),
             partners: vec!["P".to_string(); n],
         };
-        // Of < On_* < Ob_* < X，且 ≥3 全部落在同一档
+        // _f < _n < _b < _t，且 ≥3 全部落在 _t 一档
         assert!(lig(0).class_rank() < lig(1).class_rank());
         assert!(lig(1).class_rank() < lig(2).class_rank());
         assert!(lig(2).class_rank() < lig(3).class_rank());
         assert_eq!(lig(3).class_rank(), lig(5).class_rank());
-
-        let m = |n| AtomType::Modifier { elem: "Zn".into(), nbo: n, cn: 4 };
-        assert!(m(0).class_rank() < m(1).class_rank());
-        assert!(m(2).class_rank() < m(3).class_rank());
-        assert_eq!(m(3).class_rank(), m(9).class_rank());
+        assert_eq!(lig(4).label(), "O_t");
     }
 
     #[test]
-    fn test_display_rank_puts_both_x_buckets_together() {
-        // 过配位氧与过配位修饰子都渲染成 "X"，混排时必须落在同一档，
-        // 否则同名两行会在类型统计表里分开出现
-        let over_o = AtomType::Ligand {
-            elem: "O".into(),
-            partners: vec!["P".into(), "P".into(), "P".into()],
-        };
-        let over_m = AtomType::Modifier { elem: "Zn".into(), nbo: 4, cn: 6 };
-        assert_eq!(over_o.label(), over_m.label());
-        assert_eq!(over_o.display_rank(), over_m.display_rank());
-
+    fn test_display_rank_orders_all_roles() {
         let former = AtomType::Former { elem: "P".into(), bridging: 2, cn: 4 };
-        let free_o = AtomType::Ligand { elem: "O".into(), partners: vec![] };
-        let modif = AtomType::Modifier { elem: "Zn".into(), nbo: 1, cn: 4 };
+        let lig = |n: usize| AtomType::Ligand {
+            elem: "O".into(),
+            partners: vec!["P".to_string(); n],
+        };
+        let modif = AtomType::Modifier { elem: "Zn".into(), cn: 4 };
         let other = AtomType::Other { elem: "Ar".into() };
-        assert!(former.display_rank() < free_o.display_rank());
-        assert!(free_o.display_rank() < modif.display_rank());
-        assert!(modif.display_rank() < over_o.display_rank());
-        assert!(over_o.display_rank() < other.display_rank());
+
+        let ranks = [
+            former.display_rank(),
+            lig(0).display_rank(), lig(1).display_rank(),
+            lig(2).display_rank(), lig(3).display_rank(),
+            modif.display_rank(),
+            other.display_rank(),
+        ];
+        assert!(ranks.windows(2).all(|w| w[0] < w[1]), "混排顺序必须严格递增: {ranks:?}");
+
+        // 旧方案里过配位氧与过配位修饰子都叫 "X" 而合并成一行；
+        // 现在 O_t 与 Zn 是两个标签,不再塌缩
+        assert_ne!(lig(3).label(), modif.label());
     }
 
     #[test]
