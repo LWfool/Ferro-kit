@@ -364,31 +364,53 @@ partial 只是附属，才保留宽表（并接受列并集留空）。
   多一列文本直接 `ValueError`）—— 本次不改；2026-08-11 已提为高优先级，见下
 - 所有现存的 `.dat` 产物与依赖它们的个人脚本
 
+### scripts/ 四个对拍脚本修复（2026-08-11 已实施）
+
+0.2.0 的输出变更（`.dat` 退役 → csv、宽表 → 长表、新增 `file` 文本列、顶部 `#` 元信息块）
+让四个对拍脚本全部失效。典型断点：`compare_rdf.py` 的
+`[float(x) for x in line.split()]` 遇到 `file` 文本列直接 `ValueError`。
+
+**新增 `scripts/ferrocmp.py`** 收拢共用逻辑 —— 四个脚本各有一份几乎相同的
+`run` / `load_columns` / `fe_version` / 列名行解析，形状一变就要改四遍：
+
+| 函数 | 作用 |
+|---|---|
+| `run_ferro(bin, argv, outdir, product)` | **以 outdir 为工作目录**跑 ferro（`-o` 是后缀不是路径），跑前删同名残留，查退出码 + 查产物 |
+| `read` / `one_file` / `pick` / `column` | `read_csv(comment="#")`；断言单输入并丢 `file` 列；长表按数据列选行；宽表按列名取列 |
+| `meta_lines` / `version` | `#` 块（mean/std 这类只在注释里的量仍需解析文本） |
+| `load_legacy` / `legacy_header` / `same_grid` | 参考程序侧（格式未变）+ 横轴对齐校验 |
+| `run` | C 程序专用：dump2analysis / dump2sq 报错也 exit(0)，退出码不可信，只能验产物 |
+
+要点：
+
+- `-o` 是**后缀不是路径**是本次最大的形状变化：不改工作目录的话产物会散落在
+  脚本的启动目录里，而不是 `--outdir`
+- 长表取一条曲线是 `pick(df, path, "r", center="P", neighbor="O")`；选空时把该表
+  实际有哪些组合打出来（元素名拼错时最需要看到的就是这个）
+- `one_file` 显式拒绝多输入：静默取第一个会让后面所有数字都对不上，且图上看不出来
+- `--r-min` 自 0.1.15 已上 CLI，两侧显式传 0.005 对齐，旧脚本里那条
+  「fe-traj 的 r_min 固定 0.005，CLI 未暴露」的不对称说明随之删除
+- `--fe-traj` 参数改名 `--ferro`；`trajcheck.py` 里的 `fe-traj` 字样一并更新
+
+复跑验证（数值与 `dev/issues.md` 记录逐项吻合，说明改的只是读法不是口径）：
+
+| 脚本 | 结果 |
+|---|---|
+| `compare_rdf.py` | P-O / Al-O 的 g(r)、CN(r) 峰值与峰位完全相同，max\|Δ\| 5e-5 / 5e-4 —— 仍是 dump2analysis `%12g` 的量化台阶 |
+| `compare_angle.py` | Σfe/Σref = 0.5000（×2 计数约定）；`--align-binning` 下 1800 个 bin **整数零差** |
+| `compare_sq.py` | 未补偿残差 q>15 均值 1.00031 / 1.00018（+1 常数）；partial 互相关 +0.959（type_new 失效） |
+| `compare_sq_experiment.py` | 50 帧 rms(fe−exp) 0.0194/0.0277、max\|fe−ref\| 0.0027/0.0008、FSDP 1.95/2.05；5 帧回退 0.0197/0.0282 |
+
+顺带修：`compare_sq_experiment.py` 的 `TRAJ_CANDIDATES` 首选指向
+`tests/70Z30P00A_NVT.lammpstrj`，该文件**不存在**（50 帧的那条在 `examples/` 下），
+一直在静默回退到 5 帧子集。改为 `examples/70Z30P00A_NVT.lammpstrj`。
+
 ---
 
 ## 优先级高
 
-> 2026-08-11 重排。四项的依赖顺序：**net type 标签重做 → net 接入批处理**（否则表里
-> 的 `type` 值要改两次）；`scripts/` 与 `chg-sdf` 与前两项无耦合，可并行。
-
-### scripts/ 四个 Python 脚本修复（2026-08-11 提为高）
-
-0.2.0 的输出变更（`.dat` 退役 → csv、宽表 → 长表、新增 `file` 文本列、顶部 `#` 元信息块）
-让 `scripts/` 下四个对拍脚本全部失效。典型断点：`compare_rdf.py:69` 的
-`[float(x) for x in line.split()]` 遇到 `file` 文本列直接 `ValueError`。
-
-要点：
-
-- 统一改走 `pandas.read_csv(comment="#")`，不再手写逐行 split —— `#` 块能被 pandas
-  一行丢弃，正是当初接受「元信息压在数据文件顶部」的前提
-- 长表下取一条曲线是 `df[(df.center=="P") & (df.neighbor=="O")]`，不再是按列名取列；
-  `sq` 仍是宽表，两者读法不同
-- 多输入产物带 `file` 列：脚本要么按 `file` 分组画多条，要么显式断言唯一值
-- `compare_sq.py` / `compare_sq_experiment.py` 对 dump2sq 的两项补偿**必须保留**：
-  +1 常数、以及 `type_new` 陈旧导致 partial 归类失效的警示
-  （见 `dev/issues.md`「外部参考工具的差异与缺陷」）
-- `compare_angle.py` 依赖整数 `count` 列逐 bin 对拍，不能改用归一化的 `p`
-  —— `angle` 表当初多留 `count` 这一列就是为了它
+> 2026-08-11 重排。三项的依赖顺序：**net type 标签重做 → net 接入批处理**（否则表里
+> 的 `type` 值要改两次）；`chg-sdf` 与前两项无耦合，可并行。
 
 ### ferro net type 标签体系重做（2026-08-11 提为高，先于下一项做）
 

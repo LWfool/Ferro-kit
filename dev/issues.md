@@ -287,6 +287,16 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 多输入下的 `.cube` | 文件名不带 stem 时第二个输入直接覆盖第一个 | `ferro map` 的文件名必须掺输入 stem（`density_<stem>.cube`） |
 | plotters 子图 | `root.split_evenly((rows, cols))` 后每格要各自 `ChartBuilder`，且没有 figure 级图例 | 颜色按文件分配保证跨格一致，图例只画第一格 |
 
+## 外部脚本调用 ferro 的陷阱（2026-08-11，`scripts/ferrocmp.py`）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `-o` 的语义 | 它是**文件名后缀不是路径**。`subprocess.run([... "-o", str(outdir/"x")])` 会写出 `gr_<绝对路径>.csv` 这种文件名，或直接失败 | 以 outdir 为**工作目录**调用（`cwd=outdir`），输入路径转绝对；产物名自己拼 `<mode>[_<表>]_<后缀>.csv` |
+| 复跑的残留 | 上一轮的产物若还在，新一轮参数写错导致 ferro 没写文件时，脚本会拿旧文件当本轮结果，数字全对但结论是错的 | 调用前 `unlink()` 预期产物，再验存在 |
+| 退出码 | dump2analysis / dump2sq 参数校验失败走 `exit(0)`，退出码不可信；**ferro 的可信**（批内失败也置 1） | 两种检查分开：C 程序只验产物，ferro 同时查 `returncode` |
+| 读长表 | 按列名取列的老写法在长表下取不到东西；直接 `df.iloc[:, 4]` 又会在列顺序变化时静默错位 | 按数据列选行（`center` / `neighbor` / `end_a`…），选空时把该表实际有的组合打印出来 |
+| `file` 列 | 单输入脚本遇到多输入产物时静默取第一个，后面所有数字都对不上且图上看不出来 | 断言 `df.file.nunique() == 1` 后再丢列 |
+
 ## 高 DPI 绘图陷阱（2026-08-10）
 
 `--plot` 仍出 PNG，但分辨率由 96 dpi 提到 **500 dpi**（一格 2708×2083 px）。
@@ -349,7 +359,6 @@ analysis（io 没理由认识它），跨层的只有它的可序列化投影。
 - `ferro traj sq` 的 `--q-min` 只影响输出 q 网格，g(r) 的积分范围由 `--r-min` /
   `--r-max` 决定；两者不要混淆
 - `ferro-cli/main.rs`：REPL 未实现（现为子命令分发器，裸 `ferro` 打印总览）
-- `scripts/` 四个 Python 脚本因 `.dat` 退役 + 列结构变化全部失效（本次有意不改）
 - `ferro net` 与 `ferro-python` 未跟进批处理/长表重构
 - `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋
 - `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化静态表

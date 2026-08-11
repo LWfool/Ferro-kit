@@ -1,25 +1,30 @@
 #!/usr/bin/env python
-"""比较 fe-traj 与 dump2analysis 计算的 g(r) 与 CN(r)。
+"""比较 `ferro traj gr` 与 dump2analysis 计算的 g(r) 与 CN(r)。
 
 对比 P-O 与 Al-O 两个对。两侧输出的**原始数值一律不做任何缩放或平移**，
 差异如实呈现，由使用者自行判断。
 
-参数选择上的两个不对称（无法回避，只能靠调另一侧对齐）：
-  * fe-traj 的 r_min 固定 0.005，CLI 未暴露 → dump2analysis 显式传 --rmin 0.005
+参数选择上的一个不对称（无法回避，只能靠调另一侧对齐）：
   * dump2analysis 的 --rmax 默认是 20.005（其 -h 里写的 10.005 已过时），
-    且它不做最小镜像截断；fe-traj 会把 r_max clamp 到最小面间距的一半。
-    取 15.0 是因为它同时小于 fe-traj 的 clamp 上界（本轨迹 15.16）。
+    且它不做最小镜像截断；ferro 会把 r_max clamp 到最小面间距的一半。
+    取 15.0 是因为它同时小于 ferro 的 clamp 上界（本轨迹 15.16）。
+
+`--r-min` 自 0.1.15 起已上 CLI（默认 0.001），本脚本显式传 0.005 与 dump2analysis
+对齐 —— ferro 的 bin 中心是 `r_min + (i+0.5)·dr`，两侧同 r_min 同 dr 即逐点重合。
 
 另一处需要留意：dump2analysis 的 --rcut 只用于其输出头部那行
-`# distance: mean +/- std`，不进入 g(r)/CN(r)。fe-traj 在 0.1.11 已删除对应的
+`# distance: mean +/- std`，不进入 g(r)/CN(r)。ferro 在 0.1.11 已删除对应的
 PairStats，故此参数无对应物，这里显式传 2.3 但不使用其结果。
+
+**0.2.0 的产物形状**（详见 ferrocmp.py 的模块 docstring）：
+  * `-o` 是文件名后缀不是路径 → 以 outdir 为工作目录调用
+  * gr 是长表 `file,r,center,neighbor,gr,cn` → 按 center/neighbor 选行，不按列名取列
 
 用法:
     python compare_rdf.py [--traj FILE] [--outdir DIR]
 """
 
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 
@@ -28,8 +33,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+import ferrocmp as fc
+
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
-R_MIN = 0.005   # fe-traj 固定值，其余工具向它对齐
+R_MIN = 0.005   # 两侧显式对齐（ferro 默认 0.001，dump2analysis 默认 0.0）
 R_MAX = 15.0
 DR = 0.01
 R_CUT = 2.3     # 仅 dump2analysis 的键长统计用，不影响曲线
@@ -40,97 +47,47 @@ REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
 
 
-def run(cmd, expect):
-    """执行外部命令并确认它真的产出了文件。
-
-    dump2analysis 的参数校验失败走 exit(0)，退出码不可信，只能验产物。
-    """
-    print("  $", " ".join(str(c) for c in cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    expect = Path(expect)
-    if not expect.exists() or expect.stat().st_size == 0:
-        sys.exit(
-            f"命令未产出 {expect}\n"
-            f"  exit={proc.returncode}\n  stdout={proc.stdout[-800:]}\n  stderr={proc.stderr[-800:]}"
-        )
-    return expect
-
-
-def load_columns(path):
-    """读取以 '#' 为注释、空白分隔的数值表，跳过空行。
-
-    dump2analysis 的 gr 输出在表头后有一个空行；fe-traj 用制表符分隔且写
-    `1.0e-2` 这类指数格式 —— float() 两者都能吃下。
-    """
-    rows = []
-    for line in Path(path).read_text().splitlines():
-        if line.startswith("#") or not line.strip():
-            continue
-        rows.append([float(x) for x in line.split()])
-    if not rows:
-        sys.exit(f"{path} 中没有数值行")
-    width = len(rows[0])
-    if any(len(r) != width for r in rows):
-        sys.exit(f"{path} 各行列数不一致")
-    return np.array(rows)
-
-
-def fe_header_columns(path):
-    """取出 fe-traj 输出的列名行（最后一个以 '#' 开头且含 '[' 的行）。"""
-    names = None
-    for line in Path(path).read_text().splitlines():
-        if line.startswith("#") and "[" in line:
-            names = line.lstrip("# ").split("\t")
-    if names is None:
-        sys.exit(f"{path} 中找不到列名行")
-    return [n.strip() for n in names]
-
-
-def fe_version(path):
-    first = Path(path).read_text().splitlines()[0]
-    return first.lstrip("# ").strip()
-
-
-def compute(traj, outdir, fe_bin, d2a_bin):
+def compute(traj, outdir, ferro_bin, d2a_bin):
     """跑两侧程序，返回 {pair: dict} 。"""
     results = {}
     for a, b in PAIRS:
         tag = f"{a}-{b}"
         print(f"[{tag}]")
 
-        # fe-traj：-a/-b 是【元素】
-        fe_out = outdir / f"fe_{tag}.gr.dat"
-        run([fe_bin, "-m", "gr", "-a", a, "-b", b,
-             "-i", str(traj), "-o", str(fe_out),
-             "--r-max", str(R_MAX), "--dr", str(DR)], fe_out)
+        # ferro：-a 是中心元素、-b 是近邻元素；-o 给的是后缀，产物落在 outdir 下
+        fe_out = fc.run_ferro(
+            ferro_bin,
+            ["traj", "gr", "-a", a, "-b", b, "-i", traj, "-o", tag,
+             "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR],
+            outdir, f"gr_{tag}.csv")
 
         # dump2analysis：-x/-y 才是【元素】，-a/-b 是原子 id
         d2a_out = outdir / f"d2a_{tag}.gr"
-        run([d2a_bin, "-m", "gr", "-x", a, "-y", b,
-             "--rmin", str(R_MIN), "--rmax", str(R_MAX), "--dr", str(DR),
-             "--rcut", str(R_CUT),
-             "-i", str(traj), "-o", str(d2a_out)], d2a_out)
+        fc.run([d2a_bin, "-m", "gr", "-x", a, "-y", b,
+                "--rmin", str(R_MIN), "--rmax", str(R_MAX), "--dr", str(DR),
+                "--rcut", str(R_CUT),
+                "-i", str(traj), "-o", str(d2a_out)], d2a_out)
 
-        fe = load_columns(fe_out)
-        names = fe_header_columns(fe_out)
-        d2a = load_columns(d2a_out)
+        # 长表：按 center/neighbor 选出这一对。给了 -a/-b 时表里本就只有这一对，
+        # 仍显式选一次 —— 元素名拼错时 pick() 会把表里实际有的组合列出来
+        fe = fc.pick(fc.one_file(fc.read(fe_out), fe_out), fe_out, "r",
+                     center=a, neighbor=b)
+        d2a = fc.load_legacy(d2a_out)
 
         # dump2analysis 额外写了一行 r=0（gr.c 的 OutputGr 固定输出 "0 0 0"），
         # 去掉后两侧的 bin 中心逐点一致
         d2a = d2a[d2a[:, 0] > 0]
 
-        n = min(len(fe), len(d2a))
-        dr_max = np.abs(fe[:n, 0] - d2a[:n, 0]).max()
-        if dr_max > 1e-9:
-            sys.exit(f"{tag}: r 网格不一致，最大偏差 {dr_max:.3e} —— 参数未对齐")
+        r_fe = fe["r"].to_numpy()
+        n = fc.same_grid(r_fe, d2a[:, 0], tag)
 
         results[tag] = {
-            "r": fe[:n, 0],
-            "fe_gr": fe[:n, names.index(f"{a}-{b}_gr")],
-            "fe_cn": fe[:n, names.index(f"{a}-{b}_cn")],
+            "r": r_fe[:n],
+            "fe_gr": fe["gr"].to_numpy()[:n],
+            "fe_cn": fe["cn"].to_numpy()[:n],
             "d2a_gr": d2a[:n, 1],
             "d2a_cn": d2a[:n, 2],
-            "version": fe_version(fe_out),
+            "version": fc.version(fe_out),
             "n_fe": len(fe),
             "n_d2a": len(d2a),
         }
@@ -151,7 +108,7 @@ def plot(results, traj, png):
             diff = fe - ref
 
             ax = axes[2 * row][col]
-            ax.plot(r, fe, lw=1.2, label=f"fe-traj  {tag}")
+            ax.plot(r, fe, lw=1.2, label=f"ferro  {tag}")
             ax.plot(r, ref, lw=1.0, ls="--", label=f"dump2analysis  {tag}")
             ax.set_ylabel(label)
             ax.set_title(f"{tag}   {label}", fontsize=11)
@@ -175,7 +132,7 @@ def plot(results, traj, png):
             axd.set_ylabel(f"Δ {label}")
             mx = np.abs(diff).max()
             rms = float(np.sqrt(np.mean(diff ** 2)))
-            axd.set_title(f"fe-traj − dump2analysis    max|Δ|={mx:.3e}   rms={rms:.3e}",
+            axd.set_title(f"ferro − dump2analysis    max|Δ|={mx:.3e}   rms={rms:.3e}",
                           fontsize=9)
             axd.grid(alpha=0.3)
 
@@ -183,7 +140,7 @@ def plot(results, traj, png):
         ax.set_xlabel("r [Å]")
 
     fig.suptitle(
-        f"g(r) / CN(r):  fe-traj ({ver})  vs  dump2analysis\n"
+        f"g(r) / CN(r):  {ver}  vs  dump2analysis\n"
         f"{Path(traj).name}   |   r_min={R_MIN}, r_max={R_MAX}, dr={DR}   |   "
         f"raw values, no rescaling",
         fontsize=12)
@@ -203,7 +160,7 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--traj", default=str(DEFAULT_TRAJ), help="LAMMPS dump 轨迹")
     p.add_argument("--outdir", default="./cmp_out", help="输出目录（保留全部中间文件）")
-    p.add_argument("--fe-traj", default="fe-traj")
+    p.add_argument("--ferro", default="ferro")
     p.add_argument("--dump2analysis", default="dump2analysis")
     args = p.parse_args()
 
@@ -217,7 +174,7 @@ def main():
     print(f"输出   : {outdir}")
     print(f"参数   : r_min={R_MIN}  r_max={R_MAX}  dr={DR}\n")
 
-    results = compute(traj, outdir, args.fe_traj, args.dump2analysis)
+    results = compute(traj, outdir, args.ferro, args.dump2analysis)
 
     print("\n数值摘要（原始值，未做任何修正）")
     print(f"{'pair':>6}{'量':>6}{'fe 峰值':>12}{'ref 峰值':>12}{'峰位差[Å]':>12}"

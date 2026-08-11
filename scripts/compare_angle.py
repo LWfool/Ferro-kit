@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""比较 fe-traj 与 dump2analysis 计算的键角分布 P(θ)。
+"""比较 `ferro traj angle` 与 dump2analysis 计算的键角分布 P(θ)。
 
 对比 O-P-O 与 O-Al-O 两个三元组。两侧输出的**原始计数一律不做归一化**，
 差异如实呈现，由使用者自行判断。
@@ -7,7 +7,7 @@
 两处必须知道的约定差异（都不修改数据，只影响读图）：
 
 1. 计数相差恰好 2 倍。dump2analysis 的 EstimateAngle 对端原子集合 a、c 分别遍历，
-   两端同元素时把 (O₁,P,O₂) 与 (O₂,P,O₁) 各数一次；fe-traj 枚举的是中心原子邻居
+   两端同元素时把 (O₁,P,O₂) 与 (O₂,P,O₁) 各数一次；ferro 枚举的是中心原子邻居
    表里的无序对，每个几何角只数一次 —— 一个 PO₄ 四面体就是 6 个 O-P-O 角，不是 12
    个。两端**不同**元素时（如 O-P-Zn）两者都只数一次，比值为 1。该因子不影响
    mean / std / 峰位。这里**不做归一化**，倍率直接显示在叠加图上。
@@ -15,25 +15,29 @@
 2. **bin 区间真的错开半格**，不是标注方式不同（早先版本的本文件写成"横轴标注
    约定不同、同一索引覆盖同一区间"，那是错的，已更正）。dump2analysis 的
    OutputAngle 取 min_angle = 0.05、`j = floor((d − 0.05)/0.1)`，其 bin k 覆盖
-   [0.05+0.1k, 0.15+0.1k)；fe-traj 的 bin k 覆盖 [0.1k, 0.1k+0.1)。两者错开半个
+   [0.05+0.1k, 0.15+0.1k)；ferro 的 bin k 覆盖 [0.1k, 0.1k+0.1)。两者错开半个
    bin。（顺带一提，dump2analysis 那套会把 <0.05° 的角写到 a[-1]，越界；上界也
-   延到 180.05°。fe-traj 不采用它作默认。）
+   延到 180.05°。ferro 不采用它作默认。）
 
-   自 v0.1.15 起 fe-traj 的 --angle-min / --angle-max 可调，加
+   自 v0.1.15 起 ferro 的 --angle-min / --angle-max 可调，加
    `--angle-min 0.05 --angle-max 180.05` 即可逐点对齐；默认关闭。本脚本用
-   ALIGN_BINNING 控制，开启时残差可按横轴直接相减，关闭时按 **bin 索引**对齐
+   --align-binning 控制，开启时残差可按横轴直接相减，关闭时按 **bin 索引**对齐
    —— 否则在半高宽仅数度、bin 宽 0.1° 的峰上，相邻 bin 相减会产生纯属错位的
    巨大伪残差，把真实差异完全淹没。
 
-dump2analysis 的角度 bin 宽度固定 0.1°（无对应参数），故 fe-traj 显式传
+dump2analysis 的角度 bin 宽度固定 0.1°（无对应参数），故 ferro 显式传
 --d-angle 0.1 与之对齐。
 
+**用 `count` 列而不是 `p` 列。** ferro 的 angle 长表同时给出整数直方图 `count`
+与归一化的 `p`；逐 bin 对拍只有整数计数能做到零差（对齐分箱后实测 1800 个 bin
+整数零差），归一化会把上述 ×2 因子和分母差异混进来。
+
 用法:
-    python compare_angle.py [--traj FILE] [--outdir DIR]
+    python compare_angle.py [--traj FILE] [--outdir DIR] [--align-binning]
 """
 
 import argparse
-import subprocess
+import re
 import sys
 from pathlib import Path
 
@@ -42,13 +46,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+import ferrocmp as fc
+
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
 R_CUT_AB = 2.3
 R_CUT_BC = 2.3
-D_ANGLE = 0.1   # dump2analysis 固定 0.1°，fe-traj 显式对齐
+D_ANGLE = 0.1   # dump2analysis 固定 0.1°，ferro 显式对齐
 
-# 是否让 fe-traj 采用 dump2analysis 那套错开半格的 bin（见模块 docstring 第 2 条）。
-# 开启后两侧逐点可比；默认关闭，展示 fe-traj 的原生分箱。--align-binning 可开启。
+# 是否让 ferro 采用 dump2analysis 那套错开半格的 bin（见模块 docstring 第 2 条）。
+# 开启后两侧逐点可比；默认关闭，展示 ferro 的原生分箱。--align-binning 可开启。
 ALIGN_BINNING_MIN, ALIGN_BINNING_MAX = 0.05, 180.05
 
 TRIPLETS = [("O", "P", "O"), ("O", "Al", "O")]
@@ -56,51 +62,22 @@ TRIPLETS = [("O", "P", "O"), ("O", "Al", "O")]
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
 
+# ferro 的 `[statistics]` 块：`O-P-O  : mean=109.320  std= 6.072  count=25740`
+FE_STATS_RE = re.compile(
+    r"^(?P<tag>\S+)\s*:\s*mean=\s*(?P<mean>[-\d.eE+]+)\s+"
+    r"std=\s*(?P<std>[-\d.eE+]+)\s+count=\s*(?P<count>[-\d.eE+]+)")
 
-def run(cmd, expect):
-    """执行外部命令并确认它真的产出了文件。
 
-    dump2analysis 的参数校验失败走 exit(0)，退出码不可信，只能验产物。
+def fe_stats(path, tag):
+    """抽出 ferro 注释块里该三元组那行 mean / std / count。
+
+    这三个量只在给人看的 `#` 块里（表里是逐 bin 的 count/p），故仍需解析文本；
+    找不到时返回 None 而不是猜，由调用方决定怎么显示。
     """
-    print("  $", " ".join(str(c) for c in cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    expect = Path(expect)
-    if not expect.exists() or expect.stat().st_size == 0:
-        sys.exit(
-            f"命令未产出 {expect}\n"
-            f"  exit={proc.returncode}\n  stdout={proc.stdout[-800:]}\n  stderr={proc.stderr[-800:]}"
-        )
-    return expect
-
-
-def load_columns(path):
-    rows = []
-    for line in Path(path).read_text().splitlines():
-        if line.startswith("#") or not line.strip():
-            continue
-        rows.append([float(x) for x in line.split()])
-    if not rows:
-        sys.exit(f"{path} 中没有数值行")
-    return np.array(rows)
-
-
-def fe_version(path):
-    return Path(path).read_text().splitlines()[0].lstrip("# ").strip()
-
-
-def fe_stats(path):
-    """抽出 fe-traj 头部的 `# O-P-O : mean=... std=... count=...` 一行。"""
-    for line in Path(path).read_text().splitlines():
-        if not line.startswith("#") or "mean=" not in line:
-            continue
-        body = line.lstrip("# ")
-        try:
-            mean = float(body.split("mean=")[1].split()[0])
-            std = float(body.split("std=")[1].split()[0])
-            count = float(body.split("count=")[1].split()[0])
-            return mean, std, count
-        except (IndexError, ValueError):
-            continue
+    for line in fc.meta_lines(path):
+        m = FE_STATS_RE.match(line)
+        if m and m.group("tag") == tag:
+            return float(m["mean"]), float(m["std"]), float(m["count"])
     return None
 
 
@@ -118,51 +95,53 @@ def d2a_stats(path):
     return mean, std, count
 
 
-def compute(traj, outdir, fe_bin, d2a_bin, align_binning=False):
+def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
     results = {}
     for a, b, c in TRIPLETS:
         tag = f"{a}-{b}-{c}"
         print(f"[{tag}]")
 
-        # fe-traj：-a/-b/-c 是【元素】，-b 为中心原子
-        fe_out = outdir / f"fe_{tag}.angle.dat"
-        fe_cmd = [fe_bin, "-m", "angle", "-a", a, "-b", b, "-c", c,
-                  "-i", str(traj), "-o", str(fe_out),
-                  "--r-cut-ab", str(R_CUT_AB), "--r-cut-bc", str(R_CUT_BC),
-                  "--d-angle", str(D_ANGLE)]
+        # ferro：-a/-b/-c 是【元素】，-b 为中心原子；-o 是后缀，产物落在 outdir 下
+        fe_argv = ["traj", "angle", "-a", a, "-b", b, "-c", c,
+                   "-i", traj, "-o", tag,
+                   "--r-cut-ab", R_CUT_AB, "--r-cut-bc", R_CUT_BC,
+                   "--d-angle", D_ANGLE]
         if align_binning:
-            fe_cmd += ["--angle-min", str(ALIGN_BINNING_MIN),
-                       "--angle-max", str(ALIGN_BINNING_MAX)]
-        run(fe_cmd, fe_out)
+            fe_argv += ["--angle-min", ALIGN_BINNING_MIN,
+                        "--angle-max", ALIGN_BINNING_MAX]
+        fe_out = fc.run_ferro(ferro_bin, fe_argv, outdir, f"angle_{tag}.csv")
 
         # dump2analysis：-x/-y/-z 才是【元素】，-a/-b/-c 是原子 id
         d2a_out = outdir / f"d2a_{tag}.angle"
-        run([d2a_bin, "-m", "angle", "-x", a, "-y", b, "-z", c,
-             "--rcut_ab", str(R_CUT_AB), "--rcut_bc", str(R_CUT_BC),
-             "-i", str(traj), "-o", str(d2a_out)], d2a_out)
+        fc.run([d2a_bin, "-m", "angle", "-x", a, "-y", b, "-z", c,
+                "--rcut_ab", str(R_CUT_AB), "--rcut_bc", str(R_CUT_BC),
+                "-i", str(traj), "-o", str(d2a_out)], d2a_out)
 
-        fe = load_columns(fe_out)
-        d2a = load_columns(d2a_out)
+        # 长表：按 end_a / center / end_c 选出这个三元组，取整数 count 列
+        fe = fc.pick(fc.one_file(fc.read(fe_out), fe_out), fe_out, "angle",
+                     end_a=a, center=b, end_c=c)
+        d2a = fc.load_legacy(d2a_out)
 
-        n = min(len(fe), len(d2a))
+        x_fe = fe["angle"].to_numpy()
+        y_fe = fe["count"].to_numpy()
+        n = min(len(x_fe), len(d2a))
+
         # 按 bin 索引对齐（见模块 docstring 第 2 条）；先确认两侧确实是同宽度的 bin
-        step_fe = float(np.median(np.diff(fe[:, 0])))
+        step_fe = float(np.median(np.diff(x_fe)))
         step_ref = float(np.median(np.diff(d2a[:, 0])))
         if abs(step_fe - step_ref) > 1e-9 or abs(step_fe - D_ANGLE) > 1e-9:
             sys.exit(f"{tag}: bin 宽度不一致 fe={step_fe} ref={step_ref}")
         if align_binning:
-            dx = float(np.abs(fe[:n, 0] - d2a[:n, 0]).max())
-            if dx > 1e-9:
-                sys.exit(f"{tag}: --align-binning 下横轴仍不一致，最大偏差 {dx:.3e}")
+            fc.same_grid(x_fe, d2a[:, 0], f"{tag}（--align-binning）")
 
         results[tag] = {
-            "x_fe": fe[:n, 0],
+            "x_fe": x_fe[:n],
             "x_ref": d2a[:n, 0],
-            "y_fe": fe[:n, 1],
+            "y_fe": y_fe[:n],
             "y_ref": d2a[:n, 1],
-            "fe_stats": fe_stats(fe_out),
+            "fe_stats": fe_stats(fe_out, tag),
             "ref_stats": d2a_stats(d2a_out),
-            "version": fe_version(fe_out),
+            "version": fc.version(fe_out),
         }
     return results
 
@@ -179,7 +158,7 @@ def plot(results, traj, png):
 
         # 叠加：各用自己的原始横轴，原始计数
         ax = axes[0][col]
-        ax.plot(d["x_fe"], fe, lw=1.0, label="fe-traj")
+        ax.plot(d["x_fe"], fe, lw=1.0, label="ferro")
         ax.plot(d["x_ref"], ref, lw=1.0, ls="--", label="dump2analysis")
         ax.set_title(f"{tag}   raw counts   Σfe/Σref = {ratio:.4f}", fontsize=11)
         ax.set_ylabel("count")
@@ -208,13 +187,13 @@ def plot(results, traj, png):
         axd.grid(alpha=0.3)
 
     fig.suptitle(
-        f"Bond angle distribution:  fe-traj ({ver})  vs  dump2analysis\n"
+        f"Bond angle distribution:  {ver}  vs  dump2analysis\n"
         f"{Path(traj).name}   |   r_cut_ab={R_CUT_AB}, r_cut_bc={R_CUT_BC}, "
         f"d_angle={D_ANGLE}   |   raw counts, NOT normalised",
         fontsize=12)
     fig.text(0.5, 0.005,
              "dump2analysis counts each A-B-C twice when both ends are the same element "
-             "(O1-P-O2 and O2-P-O1); fe-traj counts each geometric angle once. "
+             "(O1-P-O2 and O2-P-O1); ferro counts each geometric angle once. "
              "Counts are left unscaled on purpose.",
              ha="center", fontsize=8, style="italic")
     fig.tight_layout(rect=(0, 0.03, 1, 0.93))
@@ -227,10 +206,10 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--traj", default=str(DEFAULT_TRAJ))
     p.add_argument("--outdir", default="./cmp_out")
-    p.add_argument("--fe-traj", default="fe-traj")
+    p.add_argument("--ferro", default="ferro")
     p.add_argument("--dump2analysis", default="dump2analysis")
     p.add_argument("--align-binning", action="store_true",
-                   help="让 fe-traj 采用 dump2analysis 错开半格的 bin，两侧逐点可比")
+                   help="让 ferro 采用 dump2analysis 错开半格的 bin，两侧逐点可比")
     args = p.parse_args()
 
     traj = Path(args.traj).resolve()
@@ -242,9 +221,9 @@ def main():
     print(f"轨迹   : {traj}")
     print(f"输出   : {outdir}")
     print(f"参数   : r_cut_ab={R_CUT_AB}  r_cut_bc={R_CUT_BC}  d_angle={D_ANGLE}")
-    print(f"分箱   : {'对齐 dump2analysis（错开半格）' if args.align_binning else 'fe-traj 原生（bin 原点 0°）'}\n")
+    print(f"分箱   : {'对齐 dump2analysis（错开半格）' if args.align_binning else 'ferro 原生（bin 原点 0°）'}\n")
 
-    results = compute(traj, outdir, args.fe_traj, args.dump2analysis,
+    results = compute(traj, outdir, args.ferro, args.dump2analysis,
                       align_binning=args.align_binning)
 
     print("\n数值摘要（原始计数，未归一化）")
@@ -252,6 +231,8 @@ def main():
           f"{'mean fe':>11}{'mean ref':>11}{'std fe':>10}{'std ref':>10}")
     for tag, d in results.items():
         fs, rs = d["fe_stats"], d["ref_stats"]
+        if fs is None:
+            fs = (float("nan"), float("nan"), float("nan"))
         print(f"{tag:>10}{d['y_fe'].sum():>12.0f}{d['y_ref'].sum():>12.0f}"
               f"{d['y_fe'].sum() / d['y_ref'].sum():>11.4f}"
               f"{fs[0]:>11.4f}{rs[0]:>11.4f}{fs[1]:>10.4f}{rs[1]:>10.4f}")
