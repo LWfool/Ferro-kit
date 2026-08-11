@@ -8,11 +8,8 @@ pub mod dft;
 
 pub use geometry::*;
 pub use trajectory_analysis::*;
-pub use network::{
-    NetworkResult, calc_network,
-    oxygen_label_order, modifier_label_order, former_label_order,
-};
-pub use ferro_core::{TypeParams, CutoffTable};
+pub use network::{NetworkResult, calc_network};
+pub use ferro_core::{AtomType, CutoffTable, TypeParams};
 pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult,
               ChgSdfParams, ChgSdfResult, ChgSdfFamily, ChgRmsdStats, calc_chg_sdf};
 pub use md::{

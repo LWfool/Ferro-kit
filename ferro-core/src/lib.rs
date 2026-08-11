@@ -35,10 +35,7 @@ pub use spin::{
     assign_oxidation_states, guess_spin, parity_min_multiplicity,
     total_electron_count, SpinGuess, SpinMethod,
 };
-pub use network_type::{
-    TypeParams, CutoffTable, classify_frame,
-    oxygen_label_order, modifier_label_order, former_label_order,
-};
+pub use network_type::{AtomType, CutoffTable, TypeParams, classify_frame};
 pub use cluster::{
     build_network_graph, connected_components, LigandKind, NetworkGraph,
 };
