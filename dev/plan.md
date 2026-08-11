@@ -281,8 +281,6 @@
 
 ---
 
-## 优先级高
-
 ### 批处理 + Table 长表 + 单二进制重构（2026-08-09，**已完成，0.2.0**）
 
 锚点 tag：**`v0.1.15`** —— 单文件输入、`.dat` 宽表、writer 位于 ferro-analysis 的
@@ -363,23 +361,40 @@ partial 只是附属，才保留宽表（并接受列并集留空）。
 #### 已知会破的东西
 
 - `scripts/` 四个 Python 脚本（`compare_rdf.py:69` 是 `[float(x) for x in line.split()]`，
-  多一列文本直接 `ValueError`）—— **本次不改**，等输出稳定后一次性重写
+  多一列文本直接 `ValueError`）—— 本次不改；2026-08-11 已提为高优先级，见下
 - 所有现存的 `.dat` 产物与依赖它们的个人脚本
 
-### 搁置项（本次重构记录，待实测后确定）
+---
 
-- **`ferro map chg-sdf` 的 `--cubes` 拆成单文件**：现在是多 cube 聚合成一张 SDF
-  （`cmd/map.rs::run_chg_sdf`），与「多文件 → 多结果」语义相反。拆分需要新定义带计数的
-  中间产物格式（否则跨文件加权平均不可交换），故与批处理分开做
-- **`ferro net qn` 三张分布表的长表化**：三张表的 `type` 列含义不同
-  （`P0..P3` / `Of/On_P/Ob_P_P` / 整数配位数），并成一列会让 `groupby("type")` 无意义，
-  倾向各自加 `file` 列保持三张；待实测时确定
-- **`vanhove` 加 `tau` 列**：现在一次只算一个 τ、写在 `#` 头里。加列后将来支持多 τ 是
-  加行而非改列结构；待实测时确定
+## 优先级高
 
-### ferro net type 标签体系重做（2026-08-08 记录，**暂缓**）
+> 2026-08-11 重排。四项的依赖顺序：**net type 标签重做 → net 接入批处理**（否则表里
+> 的 `type` 值要改两次）；`scripts/` 与 `chg-sdf` 与前两项无耦合，可并行。
 
-用户后续在此模块还有其他修改需求，故本次不实施，仅记录方案。
+### scripts/ 四个 Python 脚本修复（2026-08-11 提为高）
+
+0.2.0 的输出变更（`.dat` 退役 → csv、宽表 → 长表、新增 `file` 文本列、顶部 `#` 元信息块）
+让 `scripts/` 下四个对拍脚本全部失效。典型断点：`compare_rdf.py:69` 的
+`[float(x) for x in line.split()]` 遇到 `file` 文本列直接 `ValueError`。
+
+要点：
+
+- 统一改走 `pandas.read_csv(comment="#")`，不再手写逐行 split —— `#` 块能被 pandas
+  一行丢弃，正是当初接受「元信息压在数据文件顶部」的前提
+- 长表下取一条曲线是 `df[(df.center=="P") & (df.neighbor=="O")]`，不再是按列名取列；
+  `sq` 仍是宽表，两者读法不同
+- 多输入产物带 `file` 列：脚本要么按 `file` 分组画多条，要么显式断言唯一值
+- `compare_sq.py` / `compare_sq_experiment.py` 对 dump2sq 的两项补偿**必须保留**：
+  +1 常数、以及 `type_new` 陈旧导致 partial 归类失效的警示
+  （见 `dev/issues.md`「外部参考工具的差异与缺陷」）
+- `compare_angle.py` 依赖整数 `count` 列逐 bin 对拍，不能改用归一化的 `p`
+  —— `angle` 表当初多留 `count` 这一列就是为了它
+
+### ferro net type 标签体系重做（2026-08-11 提为高，先于下一项做）
+
+**为什么值得先做**：现格式不符下划线约定 → `net type` 导出的结构**无法被 `-x/-y/-z`
+选中**，拓扑分类与 g(r)/角度分析之间是断的。改完即可
+`ferro net type` 导出 → `ferro traj gr -x P_3 -y O_b_P_P` 直接串起来。
 
 现有标签只有修饰子那一组符合"下划线分隔"约定：
 
@@ -409,7 +424,38 @@ partial 只是附属，才保留宽表（并接受列并集留空）。
 顺带修既有缺陷：`:236` 与 `:246` 都返回字面 `"X"`，导致 ≥3 配位的氧与 ≥3 NBO 的 Zn
 **塌缩成同一标签、事后不可区分**；`label_rank`（`:257`）的 `label == "X"` 需改为后缀判断。
 
-### ferro-cli：REPL / 脚本模式（0.2.0 后的下一件大事）
+不加旧标签（`P0` / `Ob` / `On_P`）的读取兼容层 —— 重跑一次 `ferro net type` 即为新格式，
+加格式猜测反而可能把真元素误判成旧标签。
+
+### ferro net 接入批处理 + 长表化（2026-08-11 提为高，在标签重做之后）
+
+`ferro net qn` / `net type` 是唯一没跟上 0.2.0 批处理/长表重构的命令组：
+`-i` 仍是单文件，产物不带 `file` 列，走不了 `batch::map_inputs`。
+
+`qn` 的三张分布表 `type` 列含义各不相同（`P0..P3` / `Of/On_P/Ob_P_P` / 整数配位数），
+并成一张会让 `groupby("type")` 无意义。倾向**保持三张表、各自加 `file` 列**，
+命名 `network_<子表>_<后缀>.csv` —— `batch::stack` 本就按表名分组，天然支持。
+
+一并确认的两点：
+
+- `net` 保留着自己的 `--format csv|xlsx`（其余命令 0.2.0 已移除）：接批处理时决定去留
+- `net type` 有 `-o` 时导出 XYZ 结构，属「逐输入一个产物」，与 `ferro map` 同类
+  —— 文件名必须掺输入 stem，否则第二个输入覆盖第一个
+
+### ferro map chg-sdf 的 --cubes 拆成单文件（2026-08-11 提为高）
+
+现在是多个 cube 聚合成**一张** SDF（`cmd/map.rs::run_chg_sdf`），与 `ferro map` 其余
+模式「一个输入 → 一个 `.cube`」的语义相反，`--cubes` 也是 `-i` 之外唯一的输入参数。
+
+阻塞点不在遍历而在**中间产物格式**：跨文件加权平均不可交换，逐文件出产物之后若还想
+聚合，产物里必须带样本计数（否则 5 帧的 SDF 与 500 帧的 SDF 被等权平均）。
+故顺序是：先定义带计数的中间格式 → 再拆 `--cubes` → 再接批处理遍历。
+
+---
+
+## 优先级中
+
+### ferro-cli：REPL / 脚本模式（2026-08-11 由高降中）
 
 `main.rs` 现在是子命令分发器，裸 `ferro` 打印分类总览。REPL 落地时改为
 **tty 进 REPL、管道读 stdin**（`python`/`node`/`irb` 的惯例；`isatty` 判断，CI 里
@@ -423,15 +469,22 @@ partial 只是附属，才保留宽表（并接受列并集留空）。
   参数结构体），不要另起一套
 - 注意与「批处理输入」是两件事：这里是**命令**的批处理（一个脚本跑多条命令），
   那里是**输入文件**的批处理（一条命令跑多个轨迹）。两者可叠加但互不依赖
+- 降为中级的理由：子命令树刚在 0.2.0 定型，脚本语法要建在它上面；先让上面四项
+  高优先级把 `net` / `scripts` / 标签体系的形状敲定，避免 REPL 复用到一半又改
 
----
+### ferro-python（2026-08-11 全部归为中级）
 
-## 优先级中
+两件事，第一件是第二件的前提。
 
-### ferro-python：pyo3 0.29 运行时验证（未完成，2026-08-09 由高降中）
+**1. 修复编译断裂。** `analysis.rs` 仍调用 0.2.0 删除的 `write_gr` 路径，
+`cd ferro-python && cargo check` 直接失败。根因是它**是独立 workspace**，
+主 workspace 的 `cargo build/test/clippy` 全部跳过它 —— 改完之后，每次动
+`ferro-analysis` / `ferro-core` 公共 API 都要补跑一次它的 `cargo check`。
+顺带跟进 0.2.0 的产物模型：绑定层应返回 `to_tables()` 的投影或纯 `dict`，
+不该再有任何 `write_*` 调用（分析层已不碰文件系统）。
 
-pyo3 0.21 → 0.29 只做了类型层验证。本机无 maturin，`cargo build` 在 macOS link
-阶段过不了（`extension-module` 需 `-undefined dynamic_lookup`）。待办：
+**2. pyo3 0.29 运行时验证。** 0.21 → 0.29 只做了类型层验证。本机无 maturin，
+`cargo build` 在 macOS link 阶段过不了（`extension-module` 需 `-undefined dynamic_lookup`）：
 
 ```bash
 pip install maturin
@@ -441,6 +494,11 @@ pip install target/wheels/*.whl
 
 冒烟测试要覆盖：读 xyz/cif/lammpstrj、`supercell`、`write`、
 **新拆的 `gr_pair` / `gr_all`（含 `by="label"`）**、`msd`。
+
+### 搁置项（待实测后确定）
+
+- **`vanhove` 加 `tau` 列**：现在一次只算一个 τ、写在 `#` 头里。加列后将来支持多 τ 是
+  加行而非改列结构
 
 ### 是否采用 rustfmt（待定，暂缓，2026-08-09 由高降中）
 
