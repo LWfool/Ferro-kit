@@ -38,7 +38,7 @@ impl ClusterResult {
 /// Returns `None` if `frame.cell` is missing.
 pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult> {
     let cell = frame.cell.as_ref()?;
-    let labels = classify_frame(frame, cell, params);
+    let types = classify_frame(frame, cell, params);
 
     // 1. 找到所有形成子原子的索引
     let formers = params.formers();
@@ -55,7 +55,7 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
         .map(|(li, &ai)| (ai, li))
         .collect();
 
-    // 3. 找桥氧：标签以 "Ob_" 开头
+    // 3. 找桥氧：恰好连接两个形成子的配体
     //    对每个桥氧，找其 NF 邻居，合并这些 NF 所属的连通分量
     let mut elem_map: HashMap<&str, Vec<usize>> = HashMap::new();
     for (idx, atom) in frame.atoms.iter().enumerate() {
@@ -63,8 +63,8 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
     }
 
     let mut edges: Vec<(usize, usize)> = Vec::new();
-    for (la_idx, label) in labels.iter().enumerate() {
-        if !label.starts_with("Ob_") { continue; }
+    for (la_idx, atom_type) in types.iter().enumerate() {
+        if !atom_type.is_bridging() { continue; }
         // 收集该桥氧在截断内的所有形成子邻居
         let la_pos = frame.atoms[la_idx].position;
         let mut nf_locals: Vec<usize> = Vec::new();

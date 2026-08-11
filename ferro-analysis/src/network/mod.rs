@@ -14,14 +14,23 @@
 //! let result = calc_network(&traj, &params).unwrap();
 //! ```
 
-pub use ferro_core::{
-    TypeParams, CutoffTable,
-    oxygen_label_order, modifier_label_order, former_label_order,
-};
+pub use ferro_core::{AtomType, CutoffTable, TypeParams};
 
 use ferro_core::{classify_frame, Frame, Trajectory};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+/// Distribution key: `(sort rank, rendered label)`.
+///
+/// The rank comes from [`AtomType::class_rank`], so a `BTreeMap` keyed on this is
+/// sorted by construction — no post-hoc `sort_by` that re-derives the order from
+/// the label text.  Labels that collide (`X` covers both an over-coordinated
+/// oxygen and an over-coordinated modifier) share one entry, as they always have.
+type LabelKey = (u8, String);
+
+fn label_key(t: &AtomType) -> LabelKey {
+    (t.class_rank(), t.label())
+}
 
 // ─── 结果结构体 ───────────────────────────────────────────────────────────────
 
@@ -36,21 +45,21 @@ pub struct NetworkResult {
     pub cn_dist: HashMap<String, Vec<(u32, usize, f64)>>,
     /// former_elem → 平均总 CN
     pub mean_cn: HashMap<String, f64>,
-    /// 氧类型分布：`(type_label, count, fraction)`，按 oxygen_label_order 排序
+    /// 氧类型分布：`(type_label, count, fraction)`，按 `AtomType::class_rank` 排序
     pub oxy_dist: Vec<(String, usize, f64)>,
-    /// modifier_elem → 角色分布：`(role_label, count, fraction)`，按 modifier_label_order 排序
+    /// modifier_elem → 角色分布：`(role_label, count, fraction)`，按 `AtomType::class_rank` 排序
     pub modifier_dist: HashMap<String, Vec<(String, usize, f64)>>,
 }
 
 // ─── 逐帧中间数据 ─────────────────────────────────────────────────────────────
 
 struct FrameData {
-    /// former_elem → Vec<(qn_value, cn_value)>，长度 = 该元素的原子数
+    /// former_elem → Vec<(bridging, cn)>，长度 = 该元素的原子数
     former_stats: HashMap<String, Vec<(u32, u32)>>,
-    /// 各氧标签的计数：label → count
-    oxy_counts: HashMap<String, usize>,
-    /// modifier_elem → Vec<role_label>
-    modifier_labels: HashMap<String, Vec<String>>,
+    /// 各氧标签的计数
+    oxy_counts: HashMap<LabelKey, usize>,
+    /// modifier_elem → 各角色标签的计数
+    modifier_counts: HashMap<String, HashMap<LabelKey, usize>>,
 }
 
 // ─── 顶层入口 ─────────────────────────────────────────────────────────────────
@@ -84,10 +93,10 @@ fn compute_frame(
     cell: &ferro_core::Cell,
     params: &TypeParams,
 ) -> Option<FrameData> {
-    // 1. 获取每个原子的类型标签
-    let labels = classify_frame(frame, cell, params);
+    // 1. 每个原子的结构化类型
+    let types = classify_frame(frame, cell, params);
 
-    // 2. 建立元素索引（用于 CN 计算）
+    // 2. 建立元素索引
     let mut elem_atoms: HashMap<&str, Vec<usize>> = HashMap::new();
     for (idx, atom) in frame.atoms.iter().enumerate() {
         elem_atoms.entry(atom.element.as_str()).or_default().push(idx);
@@ -97,64 +106,40 @@ fn compute_frame(
     let ligands = params.ligands();
     let modifiers = params.modifiers();
 
-    // 3. 提取形成子统计（Qn + 总 CN）
+    // 3. 形成子统计：桥氧数与总 CN 都由 classify_frame 一并算出，
+    //    此处不再重扫一遍邻居
     let mut former_stats: HashMap<String, Vec<(u32, u32)>> = HashMap::new();
     for former_elem in &formers {
         let Some(fa_idxs) = elem_atoms.get(former_elem.as_str()) else { continue };
-        let stats: Vec<(u32, u32)> = fa_idxs.iter().map(|&fa_idx| {
-            // 从标签提取 Qn（标签格式 "P0"、"Al3" 等）
-            let qn = extract_qn(&labels[fa_idx]);
-
-            // 计算总 CN（所有配体类型中截断内的邻居数之和）
-            let total_cn: u32 = ligands.iter().map(|ligand_elem| {
-                let Some(&cutoff) = params.cutoffs.get(
-                    &(former_elem.clone(), ligand_elem.clone())
-                ) else { return 0u32 };
-                let c2 = cutoff * cutoff;
-                let fa_pos = frame.atoms[fa_idx].position;
-                let Some(la_idxs) = elem_atoms.get(ligand_elem.as_str()) else { return 0u32 };
-                la_idxs.iter().filter(|&&la_idx| {
-                    if la_idx == fa_idx { return false; }
-                    let diff = cell.minimum_image(frame.atoms[la_idx].position - fa_pos)
-                        .expect("cell is non-singular");
-                    diff.norm_squared() < c2
-                }).count() as u32
-            }).sum();
-
-            (qn, total_cn)
-        }).collect();
+        let stats: Vec<(u32, u32)> = fa_idxs.iter()
+            .filter_map(|&fa_idx| match &types[fa_idx] {
+                AtomType::Former { bridging, cn, .. } => Some((*bridging, *cn)),
+                _ => None,
+            })
+            .collect();
         former_stats.insert(former_elem.clone(), stats);
     }
 
     // 4. 统计氧标签
-    let mut oxy_counts: HashMap<String, usize> = HashMap::new();
+    let mut oxy_counts: HashMap<LabelKey, usize> = HashMap::new();
     for ligand_elem in &ligands {
         let Some(la_idxs) = elem_atoms.get(ligand_elem.as_str()) else { continue };
         for &la_idx in la_idxs {
-            *oxy_counts.entry(labels[la_idx].clone()).or_insert(0) += 1;
+            *oxy_counts.entry(label_key(&types[la_idx])).or_insert(0) += 1;
         }
     }
 
-    // 5. 提取修饰子标签
-    let mut modifier_labels: HashMap<String, Vec<String>> = HashMap::new();
+    // 5. 统计修饰子角色
+    let mut modifier_counts: HashMap<String, HashMap<LabelKey, usize>> = HashMap::new();
     for mod_elem in &modifiers {
         let Some(ma_idxs) = elem_atoms.get(mod_elem.as_str()) else { continue };
-        let role_labels: Vec<String> = ma_idxs.iter()
-            .map(|&ma_idx| labels[ma_idx].clone())
-            .collect();
-        modifier_labels.insert(mod_elem.clone(), role_labels);
+        let entry = modifier_counts.entry(mod_elem.clone()).or_default();
+        for &ma_idx in ma_idxs {
+            *entry.entry(label_key(&types[ma_idx])).or_insert(0) += 1;
+        }
     }
 
-    Some(FrameData { former_stats, oxy_counts, modifier_labels })
-}
-
-/// 从形成子标签提取 Qn 数字（"P3" → 3，"Al12" → 12，解析失败 → 0）
-fn extract_qn(label: &str) -> u32 {
-    label.chars()
-        .skip_while(|c| c.is_alphabetic())
-        .collect::<String>()
-        .parse()
-        .unwrap_or(0)
+    Some(FrameData { former_stats, oxy_counts, modifier_counts })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
@@ -164,18 +149,18 @@ struct Accumulator {
     qn: HashMap<String, HashMap<u32, usize>>,
     /// former_elem → { cn → count }
     cn: HashMap<String, HashMap<u32, usize>>,
-    /// oxygen_label → count
-    oxy: HashMap<String, usize>,
-    /// modifier_elem → { role_label → count }
-    modifier: HashMap<String, HashMap<String, usize>>,
+    /// 氧标签 → count（BTreeMap：键含 rank，天然有序）
+    oxy: BTreeMap<LabelKey, usize>,
+    /// modifier_elem → { 角色标签 → count }
+    modifier: HashMap<String, BTreeMap<LabelKey, usize>>,
 }
 
 impl Accumulator {
     fn new(params: &TypeParams) -> Self {
         let qn = params.formers().into_iter().map(|f| (f, HashMap::new())).collect();
         let cn = params.formers().into_iter().map(|f| (f, HashMap::new())).collect();
-        let oxy = HashMap::new();
-        let modifier = params.modifiers().into_iter().map(|m| (m, HashMap::new())).collect();
+        let oxy = BTreeMap::new();
+        let modifier = params.modifiers().into_iter().map(|m| (m, BTreeMap::new())).collect();
         Accumulator { qn, cn, oxy, modifier }
     }
 
@@ -188,12 +173,12 @@ impl Accumulator {
                 *cm.entry(cn).or_insert(0) += 1;
             }
         }
-        for (label, &count) in &fd.oxy_counts {
-            *self.oxy.entry(label.clone()).or_insert(0) += count;
+        for (key, &count) in &fd.oxy_counts {
+            *self.oxy.entry(key.clone()).or_insert(0) += count;
         }
-        for (mod_elem, labels) in &fd.modifier_labels {
+        for (mod_elem, counts) in &fd.modifier_counts {
             let mm = self.modifier.entry(mod_elem.clone()).or_default();
-            for lbl in labels { *mm.entry(lbl.clone()).or_insert(0) += 1; }
+            for (key, &count) in counts { *mm.entry(key.clone()).or_insert(0) += count; }
         }
     }
 
@@ -239,29 +224,25 @@ impl Accumulator {
         let mean_cn: HashMap<_, _> = self.cn.iter()
             .map(|(f, m)| (f.clone(), mean_of(m))).collect();
 
-        // 氧类型分布（排序：Of < On_* < Ob_* < X）
+        // 氧类型分布（BTreeMap 的键是 (class_rank, label)，已按 Of < On_* < Ob_* < X 排好）
         let oxy_total: usize = self.oxy.values().sum();
-        let mut oxy_dist: Vec<(String, usize, f64)> = self.oxy.iter()
-            .map(|(lbl, &c)| (
+        let oxy_dist: Vec<(String, usize, f64)> = self.oxy.iter()
+            .map(|((_, lbl), &c)| (
                 lbl.clone(), c,
                 if oxy_total > 0 { c as f64 / oxy_total as f64 } else { 0.0 },
             ))
             .collect();
-        oxy_dist.sort_by(|a, b| {
-            oxygen_label_order(&a.0).cmp(&oxygen_label_order(&b.0)).then(a.0.cmp(&b.0))
-        });
 
-        // 修饰子分布
+        // 修饰子分布（同样已按 _f < _t < _b < X 排好）
         let modifier_dist: HashMap<_, _> = self.modifier.iter()
             .map(|(mod_elem, counts)| {
                 let total: usize = counts.values().sum();
-                let mut rows: Vec<(String, usize, f64)> = counts.iter()
-                    .map(|(lbl, &c)| (
+                let rows: Vec<(String, usize, f64)> = counts.iter()
+                    .map(|((_, lbl), &c)| (
                         lbl.clone(), c,
                         if total > 0 { c as f64 / total as f64 } else { 0.0 },
                     ))
                     .collect();
-                rows.sort_by_key(|r| modifier_label_order(&r.0));
                 (mod_elem.clone(), rows)
             })
             .collect();

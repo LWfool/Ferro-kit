@@ -7,7 +7,7 @@
 use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 use ferro_analysis::{calc_network, NetworkResult};
-use ferro_core::TypeParams;
+use ferro_core::{AtomType, TypeParams};
 use ferro_io::{write_xyz, LammpsUnits};
 use ferro_structure::apply_type_labels;
 use std::collections::BTreeMap;
@@ -213,10 +213,11 @@ fn run_type(
     let cell = frame.cell.as_ref()
         .ok_or_else(|| anyhow::anyhow!("Frame {frame_idx} has no cell (PBC required)"))?;
 
-    let labels = ferro_core::classify_frame(frame, cell, params);
-    print_type_table(&labels, frame_idx, traj.frames.len());
+    let types = ferro_core::classify_frame(frame, cell, params);
+    print_type_table(&types, frame_idx, traj.frames.len());
 
     if let Some(out) = output {
+        let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
         let typed_frame = apply_type_labels(frame, &labels);
         let typed_traj = ferro_core::Trajectory {
             frames: vec![typed_frame],
@@ -230,38 +231,22 @@ fn run_type(
     Ok(())
 }
 
-fn print_type_table(labels: &[String], frame_idx: usize, total_frames: usize) {
-    use std::collections::HashMap;
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for lbl in labels { *counts.entry(lbl.as_str()).or_insert(0) += 1; }
+fn print_type_table(types: &[AtomType], frame_idx: usize, total_frames: usize) {
+    use std::collections::BTreeMap;
+    // 键 = (display_rank, label)，BTreeMap 天然有序：
+    // 形成子 → Of → On_* → Ob_* → 修饰子 → X → 其他。
+    // 过配位氧与过配位修饰子都渲染成 "X" 且 rank 相同，因此仍合并为一行。
+    let mut counts: BTreeMap<(u8, String), usize> = BTreeMap::new();
+    for t in types { *counts.entry((t.display_rank(), t.label())).or_insert(0) += 1; }
 
-    let total = labels.len();
+    let total = types.len();
     println!("Frame {frame_idx}/{total_frames}  |  {total} atoms");
     println!("{:<18} {:>8} {:>10}", "Type", "Count", "Fraction");
     println!("{}", "-".repeat(38));
 
-    // 排序：形成子先（Pn、Aln…），然后氧（Of→On→Ob→X），然后修饰子，然后其他
-    let mut types: Vec<(&str, usize)> = counts.into_iter().collect();
-    types.sort_by(|a, b| {
-        type_sort_key(a.0).cmp(&type_sort_key(b.0)).then(a.0.cmp(b.0))
-    });
-    for (lbl, cnt) in &types {
+    for ((_, lbl), cnt) in &counts {
         println!("{:<18} {:>8} {:>10.4}", lbl, cnt, *cnt as f64 / total as f64);
     }
-}
-
-/// 排序键：0=形成子(Qn), 1=Of, 2=On, 3=Ob, 4=修饰子(_f/_t/_b), 5=X, 6=其他
-fn type_sort_key(label: &str) -> u8 {
-    if label == "Of"               { return 1; }
-    if label.starts_with("On_")    { return 2; }
-    if label.starts_with("Ob_")    { return 3; }
-    if label == "X"                { return 5; }
-    if label.ends_with("_f") || label.ends_with("_t") || label.ends_with("_b") { return 4; }
-    // 形成子：以字母开头，接数字
-    if label.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
-        && label.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false)
-    { return 0; }
-    6
 }
 
 // ─── CSV 输出（-m Qn）────────────────────────────────────────────────────────
