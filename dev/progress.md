@@ -272,9 +272,6 @@ ferro bader | convert | info | job
 
 ## 已知限制
 
-- **`scripts/` 四个 Python 脚本已全部失效**（`.dat` 退役 + 列结构变化；
-  `compare_rdf.py:69` 的 `[float(x) for x in line.split()]` 遇到 `file` 文本列直接
-  `ValueError`）。**优先级高**（2026-08-11）
 - **`ferro net` 尚未接入批处理**：三张分布表倾向各自加 `file` 列保持三张。
   **优先级高**（2026-08-11），但排在「`net type` 标签体系重做」之后 —— 先改标签，
   否则表里的 `type` 值要改两次
