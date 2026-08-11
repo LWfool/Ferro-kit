@@ -146,23 +146,26 @@ PAIR ARGUMENTS:
     --Al-O=2.0 --Al-F=2.1
 
 MODIFIER:
-  --modifier Zn       classify Zn as modifier; supply cutoff via --Zn-O=3.5
-  Modifier labels (by NBO count): Zn_f (0), Zn_t (1), Zn_b (2), X (≥3)
+  --modifier Zn       Zn counts towards coordination numbers but takes no part in
+                      the bridging count or in ligand classification;
+                      supply its cutoff via --Zn-O=2.6
 
 MODES:
   -m Qn   Time-averaged statistics over all frames:
             • Qn species distribution per former
-            • Oxygen type distribution (Of / On_X / Ob_X_Y / X)
-            • Total CN distribution per former
+            • Ligand type distribution (O_f / O_n / O_b / O_t)
+            • Total CN distribution per element (formers and modifiers)
           Output: <stem>_qn.csv, <stem>_oxy.csv, <stem>_cn.csv  (or single xlsx)
 
   -m type  Per-atom type labels for one frame (default: last frame):
-            Former → P0 P1 P2 …   (digit = bridging-O count)
-            Free O → Of
-            NBO    → On_P  On_Al …
-            BO     → Ob_P_P  Ob_Al_P …
-            Over-BO → X
-            Modifier → Zn_f  Zn_t  Zn_b  X
+            Former    → P_0 P_1 P_2 …   (digit = bridging-ligand count)
+            Free O    → O_f
+            NBO       → O_n
+            BO        → O_b
+            Tricluster→ O_t            (≥3 formers)
+            Modifier  → Zn             (element symbol, no role suffix)
+           Every label splits at the first underscore into element + label, so an
+           exported structure can be selected with -a/-b (element) or -x/-y (label).
            If -o is given, writes a structure file with labels as element names.
            If -o is omitted, prints the type table to stdout.
 
@@ -262,11 +265,6 @@ fn write_qn_csv(result: &NetworkResult, params: &TypeParams, base: &Path) -> Res
     println!("Qn      → {prefix}_qn.csv");
     println!("Oxygen  → {prefix}_oxy.csv");
     println!("CN      → {prefix}_cn.csv");
-
-    if !result.modifier_dist.is_empty() {
-        write_modifier_table(result, &format!("{prefix}_modifier.csv"))?;
-        println!("Modifier→ {prefix}_modifier.csv");
-    }
     let _ = params;
     Ok(())
 }
@@ -275,6 +273,7 @@ fn write_qn_table(result: &NetworkResult, path: &str) -> Result<()> {
     use std::io::Write;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
     writeln!(f, "Former,Qn,Count,Fraction,MeanQn")?;
+    // 只有形成子进这张表；修饰子没有桥氧数，只在 CN 表里出现
     let mut formers: Vec<&String> = result.qn_dist.keys().collect();
     formers.sort();
     for former in formers {
@@ -304,32 +303,19 @@ fn write_oxy_table(result: &NetworkResult, path: &str) -> Result<()> {
 fn write_cn_table(result: &NetworkResult, path: &str) -> Result<()> {
     use std::io::Write;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    writeln!(f, "Former,CN,Count,Fraction,MeanCN")?;
-    let mut formers: Vec<&String> = result.cn_dist.keys().collect();
-    formers.sort();
-    for former in formers {
-        let rows = &result.cn_dist[former];
-        let mean = result.mean_cn.get(former).copied().unwrap_or(0.0);
+    // 形成子与修饰子都在这张表里,故表头是 Element 而不是 Former
+    writeln!(f, "Element,CN,Count,Fraction,MeanCN")?;
+    let mut elems: Vec<&String> = result.cn_dist.keys().collect();
+    elems.sort();
+    for elem in elems {
+        let rows = &result.cn_dist[elem];
+        let mean = result.mean_cn.get(elem).copied().unwrap_or(0.0);
         for (i, &(cn, cnt, frac)) in rows.iter().enumerate() {
             if i == 0 {
-                writeln!(f, "{former},{cn},{cnt},{frac:.6},{mean:.4}")?;
+                writeln!(f, "{elem},{cn},{cnt},{frac:.6},{mean:.4}")?;
             } else {
-                writeln!(f, "{former},{cn},{cnt},{frac:.6},")?;
+                writeln!(f, "{elem},{cn},{cnt},{frac:.6},")?;
             }
-        }
-    }
-    Ok(())
-}
-
-fn write_modifier_table(result: &NetworkResult, path: &str) -> Result<()> {
-    use std::io::Write;
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    writeln!(f, "Modifier,Role,Count,Fraction")?;
-    let mut mods: Vec<&String> = result.modifier_dist.keys().collect();
-    mods.sort();
-    for mod_elem in mods {
-        for (lbl, cnt, frac) in &result.modifier_dist[mod_elem] {
-            writeln!(f, "{mod_elem},{lbl},{cnt},{frac:.6}")?;
         }
     }
     Ok(())
@@ -375,17 +361,17 @@ fn write_qn_xlsx(result: &NetworkResult, params: &TypeParams, base: &Path) -> Re
         }
     }
 
-    // Sheet: CN
+    // Sheet: CN（形成子 + 修饰子）
     {
         let ws = wb.add_worksheet(); ws.set_name("CN")?;
-        ws.write_row(0, 0, ["Former", "CN", "Count", "Fraction", "MeanCN"])?;
+        ws.write_row(0, 0, ["Element", "CN", "Count", "Fraction", "MeanCN"])?;
         let mut row = 1u32;
-        let mut formers: Vec<&String> = result.cn_dist.keys().collect(); formers.sort();
-        for former in formers {
-            let rows = &result.cn_dist[former];
-            let mean = result.mean_cn.get(former).copied().unwrap_or(0.0);
+        let mut elems: Vec<&String> = result.cn_dist.keys().collect(); elems.sort();
+        for elem in elems {
+            let rows = &result.cn_dist[elem];
+            let mean = result.mean_cn.get(elem).copied().unwrap_or(0.0);
             for (i, &(cn, cnt, frac)) in rows.iter().enumerate() {
-                ws.write_row(row, 0, [former.as_str()])?;
+                ws.write_row(row, 0, [elem.as_str()])?;
                 ws.write(row, 1, cn)?; ws.write(row, 2, cnt as u32)?; ws.write(row, 3, frac)?;
                 if i == 0 { ws.write(row, 4, mean)?; }
                 row += 1;
@@ -393,25 +379,8 @@ fn write_qn_xlsx(result: &NetworkResult, params: &TypeParams, base: &Path) -> Re
         }
     }
 
-    // Sheet: Modifier (optional)
-    if !result.modifier_dist.is_empty() {
-        let ws = wb.add_worksheet(); ws.set_name("Modifier")?;
-        ws.write_row(0, 0, ["Modifier", "Role", "Count", "Fraction"])?;
-        let mut row = 1u32;
-        let mut mods: Vec<&String> = result.modifier_dist.keys().collect(); mods.sort();
-        for mod_elem in mods {
-            for (lbl, cnt, frac) in &result.modifier_dist[mod_elem] {
-                ws.write_row(row, 0, [mod_elem.as_str(), lbl.as_str()])?;
-                ws.write(row, 2, *cnt as u32)?; ws.write(row, 3, *frac)?;
-                row += 1;
-            }
-        }
-    }
-
-    let sheets = if result.modifier_dist.is_empty() { "Qn, Oxygen, CN" }
-                 else { "Qn, Oxygen, CN, Modifier" };
     wb.save(&path)?;
-    println!("Network → {path}  (sheets: {sheets})");
+    println!("Network → {path}  (sheets: Qn, Oxygen, CN)");
     let _ = params;
     Ok(())
 }

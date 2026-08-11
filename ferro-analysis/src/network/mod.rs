@@ -41,14 +41,13 @@ pub struct NetworkResult {
     pub qn_dist: HashMap<String, Vec<(u32, usize, f64)>>,
     /// former_elem → 平均 Qn
     pub mean_qn: HashMap<String, f64>,
-    /// former_elem → 总 CN 分布（所有配体类型之和）：`(cn_value, count, fraction)`
+    /// 元素 → 总 CN 分布（所有配体类型之和）：`(cn_value, count, fraction)`。
+    /// **含修饰子** —— 修饰子没有桥氧数，配位数就是描述它的全部。
     pub cn_dist: HashMap<String, Vec<(u32, usize, f64)>>,
-    /// former_elem → 平均总 CN
+    /// 元素 → 平均总 CN（含修饰子）
     pub mean_cn: HashMap<String, f64>,
-    /// 氧类型分布：`(type_label, count, fraction)`，按 `AtomType::class_rank` 排序
+    /// 配体类型分布：`(type_label, count, fraction)`，按 `AtomType::class_rank` 排序
     pub oxy_dist: Vec<(String, usize, f64)>,
-    /// modifier_elem → 角色分布：`(role_label, count, fraction)`，按 `AtomType::class_rank` 排序
-    pub modifier_dist: HashMap<String, Vec<(String, usize, f64)>>,
 }
 
 // ─── 逐帧中间数据 ─────────────────────────────────────────────────────────────
@@ -56,10 +55,10 @@ pub struct NetworkResult {
 struct FrameData {
     /// former_elem → Vec<(bridging, cn)>，长度 = 该元素的原子数
     former_stats: HashMap<String, Vec<(u32, u32)>>,
-    /// 各氧标签的计数
+    /// modifier_elem → Vec<cn>，长度 = 该元素的原子数
+    modifier_cn: HashMap<String, Vec<u32>>,
+    /// 各配体标签的计数
     oxy_counts: HashMap<LabelKey, usize>,
-    /// modifier_elem → 各角色标签的计数
-    modifier_counts: HashMap<String, HashMap<LabelKey, usize>>,
 }
 
 // ─── 顶层入口 ─────────────────────────────────────────────────────────────────
@@ -120,7 +119,20 @@ fn compute_frame(
         former_stats.insert(former_elem.clone(), stats);
     }
 
-    // 4. 统计氧标签
+    // 4. 修饰子：只有配位数
+    let mut modifier_cn: HashMap<String, Vec<u32>> = HashMap::new();
+    for mod_elem in &modifiers {
+        let Some(ma_idxs) = elem_atoms.get(mod_elem.as_str()) else { continue };
+        let cns: Vec<u32> = ma_idxs.iter()
+            .filter_map(|&ma_idx| match &types[ma_idx] {
+                AtomType::Modifier { cn, .. } => Some(*cn),
+                _ => None,
+            })
+            .collect();
+        modifier_cn.insert(mod_elem.clone(), cns);
+    }
+
+    // 5. 统计配体标签
     let mut oxy_counts: HashMap<LabelKey, usize> = HashMap::new();
     for ligand_elem in &ligands {
         let Some(la_idxs) = elem_atoms.get(ligand_elem.as_str()) else { continue };
@@ -129,56 +141,43 @@ fn compute_frame(
         }
     }
 
-    // 5. 统计修饰子角色
-    let mut modifier_counts: HashMap<String, HashMap<LabelKey, usize>> = HashMap::new();
-    for mod_elem in &modifiers {
-        let Some(ma_idxs) = elem_atoms.get(mod_elem.as_str()) else { continue };
-        let entry = modifier_counts.entry(mod_elem.clone()).or_default();
-        for &ma_idx in ma_idxs {
-            *entry.entry(label_key(&types[ma_idx])).or_insert(0) += 1;
-        }
-    }
-
-    Some(FrameData { former_stats, oxy_counts, modifier_counts })
+    Some(FrameData { former_stats, modifier_cn, oxy_counts })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
 
 struct Accumulator {
-    /// former_elem → { qn → count }
+    /// former_elem → { bridging → count }
     qn: HashMap<String, HashMap<u32, usize>>,
-    /// former_elem → { cn → count }
+    /// 元素 → { cn → count }（形成子 + 修饰子）
     cn: HashMap<String, HashMap<u32, usize>>,
-    /// 氧标签 → count（BTreeMap：键含 rank，天然有序）
+    /// 配体标签 → count（BTreeMap：键含 rank，天然有序）
     oxy: BTreeMap<LabelKey, usize>,
-    /// modifier_elem → { 角色标签 → count }
-    modifier: HashMap<String, BTreeMap<LabelKey, usize>>,
 }
 
 impl Accumulator {
     fn new(params: &TypeParams) -> Self {
         let qn = params.formers().into_iter().map(|f| (f, HashMap::new())).collect();
-        let cn = params.formers().into_iter().map(|f| (f, HashMap::new())).collect();
-        let oxy = BTreeMap::new();
-        let modifier = params.modifiers().into_iter().map(|m| (m, BTreeMap::new())).collect();
-        Accumulator { qn, cn, oxy, modifier }
+        let cn = params.formers().into_iter().chain(params.modifiers())
+            .map(|e| (e, HashMap::new())).collect();
+        Accumulator { qn, cn, oxy: BTreeMap::new() }
     }
 
     fn push(&mut self, fd: &FrameData) {
         for (former, stats) in &fd.former_stats {
             let qm = self.qn.entry(former.clone()).or_default();
             let cm = self.cn.entry(former.clone()).or_default();
-            for &(qn, cn) in stats {
-                *qm.entry(qn).or_insert(0) += 1;
+            for &(bridging, cn) in stats {
+                *qm.entry(bridging).or_insert(0) += 1;
                 *cm.entry(cn).or_insert(0) += 1;
             }
         }
+        for (mod_elem, cns) in &fd.modifier_cn {
+            let cm = self.cn.entry(mod_elem.clone()).or_default();
+            for &cn in cns { *cm.entry(cn).or_insert(0) += 1; }
+        }
         for (key, &count) in &fd.oxy_counts {
             *self.oxy.entry(key.clone()).or_insert(0) += count;
-        }
-        for (mod_elem, counts) in &fd.modifier_counts {
-            let mm = self.modifier.entry(mod_elem.clone()).or_default();
-            for (key, &count) in counts { *mm.entry(key.clone()).or_insert(0) += count; }
         }
     }
 
@@ -193,10 +192,6 @@ impl Accumulator {
         }
         for (label, c) in other.oxy {
             *self.oxy.entry(label).or_insert(0) += c;
-        }
-        for (k, inner) in other.modifier {
-            let m = self.modifier.entry(k).or_default();
-            for (lbl, c) in inner { *m.entry(lbl).or_insert(0) += c; }
         }
     }
 
@@ -224,7 +219,7 @@ impl Accumulator {
         let mean_cn: HashMap<_, _> = self.cn.iter()
             .map(|(f, m)| (f.clone(), mean_of(m))).collect();
 
-        // 氧类型分布（BTreeMap 的键是 (class_rank, label)，已按 Of < On_* < Ob_* < X 排好）
+        // 配体类型分布（BTreeMap 的键是 (class_rank, label)，已按 _f < _n < _b < _t 排好）
         let oxy_total: usize = self.oxy.values().sum();
         let oxy_dist: Vec<(String, usize, f64)> = self.oxy.iter()
             .map(|((_, lbl), &c)| (
@@ -233,21 +228,7 @@ impl Accumulator {
             ))
             .collect();
 
-        // 修饰子分布（同样已按 _f < _t < _b < X 排好）
-        let modifier_dist: HashMap<_, _> = self.modifier.iter()
-            .map(|(mod_elem, counts)| {
-                let total: usize = counts.values().sum();
-                let rows: Vec<(String, usize, f64)> = counts.iter()
-                    .map(|((_, lbl), &c)| (
-                        lbl.clone(), c,
-                        if total > 0 { c as f64 / total as f64 } else { 0.0 },
-                    ))
-                    .collect();
-                (mod_elem.clone(), rows)
-            })
-            .collect();
-
-        NetworkResult { qn_dist, mean_qn, cn_dist, mean_cn, oxy_dist, modifier_dist }
+        NetworkResult { qn_dist, mean_qn, cn_dist, mean_cn, oxy_dist }
     }
 }
 
@@ -295,11 +276,11 @@ mod tests {
         assert_eq!(qn_p[0].0, 1); // Qn=1
         assert_eq!(qn_p[0].1, 2); // 2 个原子
 
-        // 氧分布：1 桥氧(Ob_P_P) + 2 NBO(On_P)
+        // 氧分布：1 桥氧(O_b) + 2 非桥氧(O_n)
         let oxy: HashMap<&str, usize> = res.oxy_dist.iter()
             .map(|(l, c, _)| (l.as_str(), *c)).collect();
-        assert_eq!(oxy["Ob_P_P"], 1);
-        assert_eq!(oxy["On_P"], 2);
+        assert_eq!(oxy["O_b"], 1);
+        assert_eq!(oxy["O_n"], 2);
     }
 
     /// 孤立 PO4（Q0）
@@ -321,7 +302,63 @@ mod tests {
         let qn_p = &res.qn_dist["P"];
         assert_eq!(qn_p[0].0, 0); // Qn=0
 
-        // 所有氧都是 NBO
-        assert!(res.oxy_dist.iter().all(|(l, _, _)| l == "On_P"));
+        // 所有氧都是非桥氧
+        assert!(res.oxy_dist.iter().all(|(l, _, _)| l == "O_n"));
+    }
+
+    /// 异质桥（P–O–Al）与同质桥（P–O–P）共用标签 `O_b`，合并成一行。
+    /// 伙伴元素是统计量，不再编码进标签 —— 这是标签方案里唯一有信息损失的地方，
+    /// 由 linkage 表补回。
+    #[test]
+    fn test_hetero_and_homo_bridges_share_one_label() {
+        let atoms = vec![
+            atom("P",  0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0), // P–O–Al 桥
+            atom("Al", 3.2, 0.0, 0.0),
+            atom("P",  0.0, 5.0, 0.0),
+            atom("O",  1.6, 5.0, 0.0), // P–O–P 桥
+            atom("P",  3.2, 5.0, 0.0),
+        ];
+        let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 20.0)));
+        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let traj = Trajectory { frames: vec![frame], metadata: Default::default() };
+
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let res = calc_network(&traj, &params).unwrap();
+
+        assert_eq!(res.oxy_dist.len(), 1, "两种桥氧必须并成一行: {:?}", res.oxy_dist);
+        assert_eq!(res.oxy_dist[0].0, "O_b");
+        assert_eq!(res.oxy_dist[0].1, 2);
+    }
+
+    /// 修饰子只进 CN 表，且**不影响配体分类** —— 挨着修饰子的非桥氧仍是 `O_n`，
+    /// 不会因为多了个 Zn 邻居而变成桥氧。这正是 `--modifier` 存在的理由。
+    #[test]
+    fn test_modifier_counts_cn_only() {
+        let atoms = vec![
+            atom("P",   0.0, 0.0, 0.0),
+            atom("O",   1.6, 0.0, 0.0),
+            atom("O",  -1.6, 0.0, 0.0),
+            atom("Zn",  1.6, 2.0, 0.0), // 距 O(1.6,0,0) 2.0 Å，距另一个 O 3.8 Å
+        ];
+        let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 20.0)));
+        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let traj = Trajectory { frames: vec![frame], metadata: Default::default() };
+
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        let mut modifier_cutoffs = BTreeMap::new();
+        modifier_cutoffs.insert(("Zn".to_string(), "O".to_string()), 2.6);
+        let params = TypeParams { cutoffs, modifier_cutoffs };
+        let res = calc_network(&traj, &params).unwrap();
+
+        assert_eq!(res.cn_dist["Zn"], vec![(1, 1, 1.0)], "Zn 进 CN 表");
+        assert!(!res.qn_dist.contains_key("Zn"), "Zn 不进 Qn 表 —— 修饰子没有桥氧数");
+        assert!(res.oxy_dist.iter().all(|(l, _, _)| l == "O_n"),
+                "Zn 不能把非桥氧变成桥氧: {:?}", res.oxy_dist);
+        assert_eq!(res.qn_dist["P"][0].0, 0, "P 仍是 Q0");
     }
 }
