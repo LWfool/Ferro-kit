@@ -274,11 +274,13 @@ ferro bader | convert | info | job
 
 - **`scripts/` 四个 Python 脚本已全部失效**（`.dat` 退役 + 列结构变化；
   `compare_rdf.py:69` 的 `[float(x) for x in line.split()]` 遇到 `file` 文本列直接
-  `ValueError`）。本次有意不改，等输出稳定后一次性重写
-- **`ferro net` 尚未接入批处理**：其三张分布表的长表化方案待定（见 plan.md 搁置项），
-  形状没定之前接批处理是本末倒置
+  `ValueError`）。**优先级高**（2026-08-11）
+- **`ferro net` 尚未接入批处理**：三张分布表倾向各自加 `file` 列保持三张。
+  **优先级高**（2026-08-11），但排在「`net type` 标签体系重做」之后 —— 先改标签，
+  否则表里的 `type` 值要改两次
 - `ferro-python` 未跟进本次重构：`gr_pair`/`gr_all` 仍走已删除的旧路径，
-  `cd ferro-python && cargo check` 会断
+  `cd ferro-python && cargo check` 会断。**优先级中**（2026-08-11，与 pyo3 0.29
+  运行时验证合为一项）
 
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入
 - `box_builder` 无 CLI / Python 入口，目前只能作为库函数调用
@@ -292,4 +294,8 @@ ferro bader | convert | info | job
 - `cube_density.rs:188` 用参考帧体积归一化，NPT 下同类偏差；需先定义「NPT 下 3D 密度图
   指什么」再动（见 `dev/issues.md`「NPT 逐帧体积归一化」的「明确不做」）
 - `ferro net type` 的标签仍是旧格式（`P0`/`Of`/`On_P`/`X`），不符合下划线约定，
-  故其导出结果暂时无法被 `-x/-y/-z` 选中；重做方案见 `dev/plan.md`（暂缓）
+  故其导出结果暂时无法被 `-x/-y/-z` 选中；重做方案见 `dev/plan.md`，
+  **优先级高**（2026-08-11，由暂缓提起）
+- `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
+  「一输入一产物」相反；拆分需先定义带样本计数的中间产物格式。
+  **优先级高**（2026-08-11）
