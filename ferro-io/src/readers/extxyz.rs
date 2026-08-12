@@ -105,6 +105,11 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
             if let Some(c) = find("magmoms") {
                 atom.magmom = cols[c].parse().ok();
             }
+            // 位点标签走自己的一列,species 保持纯元素 —— 不像 LAMMPS dump
+            // 那样需要按下划线拆分,故这里不做任何猜测
+            if let Some(c) = find("label") {
+                atom.label = Some(cols[c].to_string());
+            }
             frame.add_atom(atom);
 
             if let Some(c) = find("forces") {
