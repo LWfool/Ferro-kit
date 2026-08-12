@@ -1,11 +1,12 @@
 # Glass Network Analysis (`ferro net`)
 
 `ferro net` 对 MD 轨迹逐帧建立玻璃网络拓扑，把每个原子归入一个**结构化的类型**，
-再在全轨迹上累加成分布。产物是五张长表，外加可选的标注轨迹。
+再在全轨迹上累加成分布。产物是六张长表，外加可选的标注轨迹。
 
 | 量 | 表 | 含义 |
 |---|---|---|
-| 桥接配体数 | `bridge` | 形成子连了几个桥联配体（P 的即 Qn），可按伙伴元素分解 |
+| 桥接配体数 | `bridge` | 形成子连了几个桥联配体 —— **P 的这几行就是 Qn 分布** |
+| 异核桥分解 | `partner` | 上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$ |
 | 配体分类 | `oxy` | `O_f` / `O_n` / `O_b` / `O_t`，伙伴元素以数据列给出 |
 | 配位数 | `cn` | 形成子与修饰子的总配位数分布 |
 | 均值 | `mean` | 一元素一行的平均桥接数与平均配位数 |
@@ -72,11 +73,15 @@ $\sum(\text{桥接数}) \neq 2 \times |\text{O\_b}|$，因为一个 `O_t` 被三
 
 ### 异核桥分解 $Q^n(m\mathrm{Al})$
 
-`bridge` 表另有 `m_<X>` 列：桥接数中通向元素 X 的那部分，即文献（Brow、Eckert 等）
-的 $Q^n(m\mathrm{Al})$ 记号。
+`partner` 表在 `bridge` 之上多一维：`m_<X>` 是桥接数中通向元素 X 的那部分，即文献
+（Brow、Eckert 等）的 $Q^n(m\mathrm{Al})$ 记号。
 
 - `n_bridge=2, m_Al=1, m_P=1` → $Q^2(1\mathrm{Al})$
-- `groupby("n_bridge")` 即退回简单 Qn 分布
+- `bridge` 就是它对伙伴维度的**边际**
+
+两者是**两张表而不是一张加 `groupby`**：简单 Qn 分布是主产物，必须打开文件就能读到，
+不能要求先做聚合。这与 `mean` 独立成表是同一条判据——粒度不同就该分表。
+`sd` 也必须各自累加而不是相加：相关项之和的方差不等于方差之和。
 
 只对**恰好两个形成子**的配体成立：三配位配体没有唯一对端，计入 `n_bridge` 但不进任何
 `m_<X>`，故 $\sum m \le n_\text{bridge}$，差额就是三配位桥的数目——在表里可见而非隐藏。
@@ -166,20 +171,21 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 
 ## 输出
 
-五张 CSV，各带 `file` 列，`#` 注释块里是共享参数与 `[inputs]` 清单
+六张 CSV，各带 `file` 列，`#` 注释块里是共享参数与 `[inputs]` 清单
 （`pandas.read_csv(comment="#")` 会自动丢掉）。
 
 | 文件 | 列 | 一行一个 |
 |---|---|---|
-| `network_bridge.csv` | `file, former, n_bridge, m_<X>…, count, fraction, sd` | (形成子, 桥接数, 伙伴分解) |
+| `network_bridge.csv` | `file, former, n_bridge, count, fraction, sd` | (形成子, 桥接数) |
+| `network_partner.csv` | `file, former, n_bridge, m_<X>…, count, fraction, sd` | (形成子, 桥接数, 伙伴分解) |
 | `network_oxy.csv` | `file, type, former_a, former_b, count, fraction, sd` | (配体类型, 伙伴对) |
 | `network_cn.csv` | `file, element, cn, count, fraction, sd` | (元素, 配位数) |
 | `network_mean.csv` | `file, element, mean_n_bridge, mean_cn` | 元素 |
 | `network_linkage.csv` | `file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` | 桥的两端状态组合 |
 
-三张分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让
-`groupby` 无意义，故保持三张。`mean` 是「一元素一行」的另一种粒度，故独立成表，
-而不是在每行重复一个稀疏列。
+分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让 `groupby`
+无意义，故各自成表。`bridge` 与 `partner`、以及 `mean`，都是**粒度不同故分表**：
+简单 Qn 分布要打开文件就能读到，一元素一行的均值也不该在每行重复成稀疏列。
 
 批处理时元素集不同的输入取**列并集，缺的留空（NaN），不补零、不插值**——没有 Al
 的体系其 `m_Al` 列为空，而不是 0。

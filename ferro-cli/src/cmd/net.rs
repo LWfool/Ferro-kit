@@ -304,7 +304,8 @@ LABELS:
   Selecting by element works over any number of frames.
 
 OUTPUT — stacked CSVs, each with a `file` column:
-  network_bridge.csv   file, former, n_bridge, m_<X>..., count, fraction, sd
+  network_bridge.csv   file, former, n_bridge, count, fraction, sd
+  network_partner.csv  file, former, n_bridge, m_<X>..., count, fraction, sd
   network_oxy.csv      file, type, former_a, former_b, count, fraction, sd
   network_cn.csv       file, element, cn, count, fraction, sd
   network_mean.csv     file, element, mean_n_bridge, mean_cn
@@ -314,8 +315,13 @@ OUTPUT — stacked CSVs, each with a `file` column:
 
   n_bridge is the number of bridging ligands. For P that is Qn; Al has no Qn in
   the literature, so the column is named for what it counts and Al is described
-  by the cn table instead. m_<X> splits n_bridge by partner element — the
-  Q^n(mAl) notation. `groupby(\"n_bridge\")` collapses back to plain Qn.
+  by the cn table instead. THE BRIDGE TABLE IS THE PLAIN Qn DISTRIBUTION —
+  one row per (former, n_bridge), readable as-is.
+
+  The partner table adds one dimension: m_<X> splits n_bridge by partner element,
+  the Q^n(mAl) notation. It is the same data at a finer granularity, so bridge is
+  its marginal — a separate table rather than a groupby, because the plain
+  distribution is a primary product and must be readable by opening the file.
 
   The oxy table keeps the partner elements as data columns, not in the label:
   P-O-P and P-O-Al are both labelled O_b but are separate rows (former_a/_b).
