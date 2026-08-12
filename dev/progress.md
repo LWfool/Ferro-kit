@@ -165,9 +165,9 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
 - 参数类型另带 `qn_elements`（默认 `{B,P,Si}`，来自 `ferro_core::data::qn_elements`），
   由 `--qn` 整体替换。约定随参数走而不是渲染时查表 —— 一个类型必须携带它是在哪套
   约定下产生的，否则同一批次两个文件里 `Al_4` 含义不同
-- 结果：`NetworkResult`（`qn_dist` / `mean_qn` / `cn_dist` / `mean_cn` /
-  `oxy_dist` / `qn_partner_dist` / `linkage`），`to_tables()` 出六张长表
-  （`qn` / `qn_partner` / `ligand_type` / `coordination` / `average` / `linkage`）
+- 结果：`NetworkResult`（`qn_dist` / `qn_partner_dist` / `mean_qn` / `cn_dist` /
+  `mean_cn` / `oxy_dist` / `ligand_dist` / `linkage`），`to_tables()` 出六张长表
+  （`composition` / `qn` / `qn_partner` / `ligand_type` / `coordination` / `linkage`）
 - **`Bin { count, fraction, sd }`**：`fraction` 是**逐帧比例的平均**，`sd` 是同一序列的
   样本标准差（ddof=1），缺席帧按 f=0 计入。`sd` **不是标准误** —— MD 相邻帧强相关，
   既不按 1/√N 收缩也不估计物理涨落
