@@ -100,7 +100,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     let mut summary = Summary::new(&[]);
     for (path, r) in &results {
         summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[]);
-        summary.note("mean_n_bridge", fmt_means(&r.mean_bridge, &r.bridge_dist));
+        summary.note("mean_qn", fmt_means(&r.mean_qn, &r.qn_dist));
         summary.note("mean_cn", fmt_means(&r.mean_cn, &r.cn_dist));
     }
     summary.failed(&failures);
