@@ -79,7 +79,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     let mut summary = Summary::new(&[]);
     for (path, r) in &results {
         summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[]);
-        summary.note("mean_qn", fmt_means(&r.mean_qn, &r.qn_dist));
+        summary.note("mean_n_bridge", fmt_means(&r.mean_bridge, &r.bridge_dist));
         summary.note("mean_cn", fmt_means(&r.mean_cn, &r.cn_dist));
     }
     summary.failed(&failures);
@@ -245,11 +245,23 @@ LABELS:
     ferro traj gr -i run_types.lammpstrj -a P -b O     (by element)
     ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b (by label)
 
-OUTPUT — four stacked CSVs, each with a `file` column:
-  network_qn.csv    file, former, qn, count, fraction      one row per former × Qn
-  network_oxy.csv   file, type, count, fraction            one row per ligand type
-  network_cn.csv    file, element, cn, count, fraction     formers and modifiers
-  network_mean.csv  file, element, mean_qn, mean_cn        one row per element
+OUTPUT — stacked CSVs, each with a `file` column:
+  network_bridge.csv  file, former, n_bridge, count, fraction, sd
+  network_oxy.csv     file, type, former_a, former_b, count, fraction, sd
+  network_cn.csv      file, element, cn, count, fraction, sd
+  network_mean.csv    file, element, mean_n_bridge, mean_cn
+
+  n_bridge is the number of bridging ligands. For P that is Qn; Al has no Qn in
+  the literature, so the column is named for what it counts and Al is described
+  by the cn table instead.
+
+  The oxy table keeps the partner elements as data columns, not in the label:
+  P-O-P and P-O-Al are both labelled O_b but are separate rows (former_a/_b).
+  A tricluster (O_t) leaves them empty — its pairs are in the linkage table.
+
+  fraction is the mean over frames of that frame's fraction; sd is the sample
+  standard deviation (ddof=1) of the same quantity. Consecutive MD frames are
+  correlated, so sd is a spread between snapshots, NOT a standard error.
 
 EXAMPLES:
   ferro net -i traj.lammpstrj --P-O=2.4
