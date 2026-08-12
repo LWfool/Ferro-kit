@@ -5,14 +5,19 @@
 
 | 量 | 表 | 含义 |
 |---|---|---|
-| 桥接配体数 | `bridge` | 形成子连了几个桥联配体 —— **P 的这几行就是 Qn 分布** |
-| 异核桥分解 | `partner` | 上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$ |
-| 配体分类 | `oxy` | `O_f` / `O_n` / `O_b` / `O_t`，伙伴元素以数据列给出 |
-| 配位数 | `cn` | 形成子与修饰子的总配位数分布 |
-| 均值 | `mean` | 一元素一行的平均桥接数与平均配位数 |
-| 桥联统计 | `linkage` | 每座桥两端的位点状态（元素 + 桥接数 + 配位数） |
+| Qn 分布 | `qn` | Qn 形成子连了几个桥联配体 —— 打开文件就能读的那张 |
+| 异核桥分解 | `qn_partner` | 上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$ |
+| 配体分类 | `ligand_type` | `O_f` / `O_n` / `O_b` / `O_t`，伙伴元素以数据列给出 |
+| 配位数 | `coordination` | 形成子与修饰子的总配位数分布 |
+| 均值 | `average` | 一元素一行的平均 Qn 与平均配位数 |
+| 桥联统计 | `linkage` | 每座桥的配体元素与两端位点状态 |
 
-> **0.2.1 起命令形状变了。** `ferro net qn` 与 `ferro net type` 已合并为叶子命令
+> **Qn 只报给 Qn 元素。** Qn 是四面体形成子的记号，默认只有 `B` / `P` / `Si`
+> 出现在 `qn` 与 `qn_partner` 两张表里；**Al 之类的形成子由配位数刻画**
+> （文献写作 Al[4] / Al[5] / Al[6]），它们仍然参与桥氧判定、`ligand_type` 与
+> `linkage`，退出的只是这两张表的「行」。用 `--qn` 可以整体替换这个名单。
+
+> **命令形状。** `ferro net qn` 与 `ferro net type` 已合并为叶子命令
 > `ferro net`；导出退化为开关 `--export-traj`。旧标签（`P0` / `Of` / `On_P` /
 > `Ob_P_P` / `X` / `Zn_f`）已全部替换，不留读取兼容层。
 
@@ -58,50 +63,81 @@ $$d_{ij} = \bigl|\mathbf{r}_{ij} - \mathbf{M} \cdot \text{round}\!\left(\mathbf{
 `former_a` / `former_b` **数据列**。标签保持朴素、统计保持完整，两件事解耦：标签是
 给结构文件用的，伙伴分解是给分析用的。
 
-### 桥接配体数（P 的 Qn）
+### 两个必须分清的量：桥接数与配位数
 
-对每个形成子原子 $i$，桥接数为其邻居中被分类为 `O_b` 或 `O_t` 的配体个数：
+对每个形成子原子 $i$：
 
-$$n_i = \bigl|\{k \in \text{neighbors}(i) : n_k \ge 2\}\bigr|$$
+$$n_i^\text{bridge} = \bigl|\{k \in \text{neighbors}(i) : n_k \ge 2\}\bigr|,
+\qquad
+\mathrm{CN}_i = \bigl|\text{neighbors}(i)\bigr|$$
 
-三配位配体**计入**（它确实把该形成子连进了网络）。代价是
-$\sum(\text{桥接数}) \neq 2 \times |\text{O\_b}|$，因为一个 `O_t` 被三边各数一次。
+**桥接数只数桥联配体，配位数数截断内的全部配体**，含非桥配体。三配位配体计入桥接数
+（它确实把该形成子连进了网络），代价是
+$\sum(\text{桥接数}) \neq 2 \times |\text{O\_b}|$——一个 `O_t` 被三边各数一次。
 
-列名是 `n_bridge` 而不是 `qn`：这个计数对每个形成子都有定义，但 Qn 记号是四面体
-形成子的惯例——**Al 没有 Qn 这一说**，描述 Al 请看 `cn` 表。对 P 而言 `n_bridge`
-就是 Qn。
+> **两者相等是体系的性质，不是定义。** 一个不带非桥配体的形成子会让
+> $n^\text{bridge} = \mathrm{CN}$ 处处成立。参考轨迹里的 Al 正是如此（`ligand_type`
+> 表中没有任何 `O_n, Al` 行），于是两张分布表逐档相同。换一个 Al 带非桥氧的体系，
+> 两者立刻分叉。凡是读到「Al 的配位数」，认准 `coordination` 表。
+
+### Qn 只给 Qn 形成子
+
+$Q^n$ 是四面体形成子的记号：在配位数基本固定的位点上，一个数字就说尽了它的连接
+状况。Al 不满足这个前提——它的配位数本身就是要报的量。因此：
+
+| | 出现在 `qn` / `qn_partner` | 标签数字 | 由什么刻画 |
+|---|---|---|---|
+| Qn 形成子（默认 B, P, Si） | 是 | Qn（桥接数） | Qn 分布 |
+| 其他形成子（Al, …） | **否** | **配位数** | `coordination` 表 |
+| 修饰子（Zn, …） | 否 | 无后缀 | `coordination` 表 |
+
+名单是**默认值**，`--qn Si,Al` 会整体替换它（不是叠加）——某个元素算不算 Qn 形成子
+是体系的性质：铝硅酸盐里人们确实会报 Al 的 $Q^n(m\mathrm{Si})$。
 
 ### 异核桥分解 $Q^n(m\mathrm{Al})$
 
-`partner` 表在 `bridge` 之上多一维：`m_<X>` 是桥接数中通向元素 X 的那部分，即文献
+`qn_partner` 表在 `qn` 之上多一维：`m_<X>` 是桥接数中通向元素 X 的那部分，即文献
 （Brow、Eckert 等）的 $Q^n(m\mathrm{Al})$ 记号。
 
-- `n_bridge=2, m_Al=1, m_P=1` → $Q^2(1\mathrm{Al})$
-- `bridge` 就是它对伙伴维度的**边际**
+- `qn=2, m_Al=1, m_P=1` → $Q^2(1\mathrm{Al})$
+- `qn` 就是它对伙伴维度的**边际**
+
+注意 Al 在这里是**伙伴而非主语**：它没有自己的行，但 `m_Al` 列照常存在。
 
 两者是**两张表而不是一张加 `groupby`**：简单 Qn 分布是主产物，必须打开文件就能读到，
-不能要求先做聚合。这与 `mean` 独立成表是同一条判据——粒度不同就该分表。
-`sd` 也必须各自累加而不是相加：相关项之和的方差不等于方差之和。
+不能要求先做聚合。这与 `average` 独立成表是同一条判据——粒度不同就该分表。
+`sd` 也必须各自累加而不是相加：相关项之和的方差不等于方差之和。实测参考轨迹
+P 的 `qn=2` 一行，正确 `sd` 为 5.574e-3，而把 `qn_partner` 对应各行的 `sd` 相加得
+9.966e-3，差近一倍。
 
-只对**恰好两个形成子**的配体成立：三配位配体没有唯一对端，计入 `n_bridge` 但不进任何
-`m_<X>`，故 $\sum m \le n_\text{bridge}$，差额就是三配位桥的数目——在表里可见而非隐藏。
+只对**恰好两个形成子**的配体成立：三配位配体没有唯一对端，计入 `qn` 但不进任何
+`m_<X>`，故 $\sum m \le n_\text{qn}$，差额就是三配位桥的数目——在表里可见而非隐藏。
 
 这个分解**无法从 `linkage` 表反推**：两座 P–O–Al 桥可能来自一个 $m_\mathrm{Al}=2$ 的 P，
-也可能来自两个 $m_\mathrm{Al}=1$ 的 P。`linkage` 数的是桥，`bridge` 数的是原子。
+也可能来自两个 $m_\mathrm{Al}=1$ 的 P。`linkage` 数的是桥，`qn` 数的是原子。
 
 ### 桥联统计
 
-每个连接 ≥2 个形成子的配体，把两端形成子的**位点状态**记下来：
+每个连接 ≥2 个形成子的配体，记下一条
 
-$$\text{site} = (\text{元素},\; n_\text{bridge},\; \text{CN})$$
+$$(\underbrace{\text{元素},\; n_\text{bridge},\; \text{CN}}_{\text{A 端}}),\;
+  (\underbrace{\text{元素},\; n_\text{bridge},\; \text{CN}}_{\text{B 端}}),\;
+  \text{配体元素},\; n_\text{formers}$$
 
-两端**都**带这三个字段。这一点与常见实现不同：那些实现按元素只存一个数（P 存 Qn、
+两端**都**带三个字段。这一点与常见实现不同：那些实现按元素只存一个数（P 存 Qn、
 Al 存 CN），于是「4 配位 Al 的桥接数是多少」问不出来。
 
+- **`linkage` 展示列**：`Al_4-O-P_2` 这样的人可读形式，数字按各自约定（Qn 形成子取
+  Qn，其余取配位数），与导出轨迹的标签同一套词汇。**筛选请用数值列**，不要正则拆
+  这一列。
+- **`ligand` 列**：桥中间那个原子的元素。多配体体系里 `Al-O-P` 与 `Al-F-P` 是两种桥，
+  永不共用一行——合并计数会报出一个实验无法对应的数。
 - **规范半边**：桥联无方向，两端按 `(元素, 桥接数, CN)` 排序后小的在前，每对只存一次。
   故**行和不等于该位点的总参与度**，要算参与度得把 `_a` 与 `_b` 两列都数一遍。
 - **`n_formers` 列**：普通桥氧为 2；三配位配体展开成 $C(3,2)=3$ 行并标 3。
   它们不被丢弃，因为「三配位氧连的是谁」在含 Al 体系里正是要研究的东西。
+- **`n_bridge_a/b` 保留此名而不叫 `qn_a/b`**：桥接数对每个形成子都有定义，Qn 只对
+  一部分成立。这是 `linkage` 里唯一还需要给「非 Qn 形成子的桥接数」命名的地方。
 
 ### 统计口径：`fraction` 与 `sd`
 
@@ -165,35 +201,55 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 | `--ncore N` | 全部核心 | 并行线程数 |
 | `--metal-units` | 关 | LAMMPS metal 单位。统计不读速度/力，**只对 `--export-traj extxyz` 有影响** |
 | `--modifier E,E` | — | 只计配位数的元素，逗号分隔。须同时给出各自的截断 |
+| `--qn E,E` | `B,P,Si` | 报 Qn 的形成子，逗号分隔。**替换**默认名单而非叠加 |
 | `--export-traj [FMT]` | — | 另写标注轨迹，`lammpstrj`（默认）或 `extxyz` |
 
 ---
 
 ## 输出
 
-六张 CSV，各带 `file` 列，`#` 注释块里是共享参数与 `[inputs]` 清单
-（`pandas.read_csv(comment="#")` 会自动丢掉）。
+六张 CSV，各带 `file` 列。每个文件的 `#` 注释块里是共享参数、`[inputs]` 清单，
+**以及这张表自己的逐列说明**（`pandas.read_csv(comment="#")` 会自动丢掉整块）。
+所以下表只需记住哪个文件装什么，列的含义打开文件即可。
 
-| 文件 | 列 | 一行一个 |
+| 文件 | 一行一个 | 列 |
 |---|---|---|
-| `network_bridge.csv` | `file, former, n_bridge, count, fraction, sd` | (形成子, 桥接数) |
-| `network_partner.csv` | `file, former, n_bridge, m_<X>…, count, fraction, sd` | (形成子, 桥接数, 伙伴分解) |
-| `network_oxy.csv` | `file, type, former_a, former_b, count, fraction, sd` | (配体类型, 伙伴对) |
-| `network_cn.csv` | `file, element, cn, count, fraction, sd` | (元素, 配位数) |
-| `network_mean.csv` | `file, element, mean_n_bridge, mean_cn` | 元素 |
-| `network_linkage.csv` | `file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` | 桥的两端状态组合 |
+| `network_qn.csv` | (形成子, Qn) | `label, former, qn, count, fraction, sd` |
+| `network_qn_partner.csv` | (形成子, Qn, 伙伴分解) | `label, former, qn, m_<X>…, count, fraction, sd` |
+| `network_ligand_type.csv` | (配体类型, 伙伴对) | `label, former_a, former_b, count, fraction, sd` |
+| `network_coordination.csv` | (元素, 配位数) | `element, cn, count, fraction, sd` |
+| `network_average.csv` | 元素 | `element, mean_qn, mean_cn` |
+| `network_linkage.csv` | (配体, 两端状态) | `linkage, ligand, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
 
-分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让 `groupby`
-无意义，故各自成表。`bridge` 与 `partner`、以及 `mean`，都是**粒度不同故分表**：
-简单 Qn 分布要打开文件就能读到，一元素一行的均值也不该在每行重复成稀疏列。
+`label` 列是给人读的锚点，`former` / `qn` / `cn` 等数值列是给筛选和画图用的——两者
+并存而非二选一，否则「筛出 Qn ≥ 3 的」就得去切字符串。
+
+分布表的值列语义各不相同（Qn / 类型标签 / 配位数），并成一张会让 `groupby` 无意义，
+故各自成表。`qn` 与 `qn_partner`、以及 `average`，都是**粒度不同故分表**。
+
+**没有 Qn 形成子时，前两个文件整个不出**，屏幕上打印原因。只有表头的 CSV 读起来像
+「测了，结果是零」，而实情是压根没测。
 
 批处理时元素集不同的输入取**列并集，缺的留空（NaN），不补零、不插值**——没有 Al
 的体系其 `m_Al` 列为空，而不是 0。
 
-### 示例：`oxy` 表
+### 示例：`network_qn.csv`
 
 ```csv
-file,type,former_a,former_b,count,fraction,sd
+file,label,former,qn,count,fraction,sd
+43Z43P15A,P_0,P,0,25,1.344086e-2,0.000000e0
+43Z43P15A,P_1,P,1,276,1.483871e-1,2.249086e-3
+43Z43P15A,P_2,P,2,653,3.510753e-1,5.574312e-3
+43Z43P15A,P_3,P,3,751,4.037634e-1,2.944745e-3
+43Z43P15A,P_4,P,4,155,8.333333e-2,1.900825e-3
+```
+
+Al 不在其中——同一次运行里它出现在 `network_coordination.csv` 的 `cn` 4/5/6 三行。
+
+### 示例：`network_ligand_type.csv`
+
+```csv
+file,label,former_a,former_b,count,fraction,sd
 43Z43P15A,O_n,P,,2985,4.543379e-1,1.203302e-3
 43Z43P15A,O_b,Al,Al,10,1.522070e-3,0.000000e0
 43Z43P15A,O_b,Al,P,2693,4.098935e-1,1.154167e-3
@@ -202,6 +258,20 @@ file,type,former_a,former_b,count,fraction,sd
 ```
 
 `O_t` 的伙伴列留空——它不是一对，其配对关系由 `linkage` 表的 `n_formers=3` 行给出。
+注意这里**没有 `O_n, Al` 行**：这个体系的 Al 不带非桥氧，正是它的桥接数与配位数
+处处相等的原因。
+
+### 示例：`network_linkage.csv`
+
+```csv
+file,linkage,ligand,elem_a,n_bridge_a,cn_a,elem_b,n_bridge_b,cn_b,n_formers,count,...
+43Z43P15A,Al_4-O-Al_4,O,Al,4,4,Al,4,4,2,10,...
+43Z43P15A,Al_4-O-P_3,O,Al,4,4,P,3,4,2,1277,...
+43Z43P15A,Al_5-O-P_2,O,Al,5,5,P,2,4,2,83,...
+```
+
+`Al_4` 里的 4 是**配位数**，`P_3` 里的 3 是 **Qn**——这是文献自己的约定（Al[4] 对
+Q³），逐文件的 `#` 头会写明。
 
 ### 用 pandas 分析 `linkage`
 
@@ -212,17 +282,29 @@ d = pd.read_csv("network_linkage.csv", comment="#")
 # 按元素对汇总
 d.groupby(["elem_a", "elem_b"])["count"].sum()
 
-# Al-O-Al 发生在哪种配位的 Al 之间
-al = d.query("elem_a == 'Al' and elem_b == 'Al'")
+# Al-O-Al 发生在哪种配位的 Al 之间 —— 与 NMR 的 Al[4]/Al[5]/Al[6] 直接对照
+al = d.query("elem_a == 'Al' and elem_b == 'Al' and n_formers == 2")
 al.pivot_table(index="cn_a", columns="cn_b", values="count", aggfunc="sum")
 
 # P-O-P 的 Qn–Qn 连接矩阵
 d.query("elem_a == 'P' and elem_b == 'P'").pivot_table(
     index="n_bridge_a", columns="n_bridge_b", values="count", aggfunc="sum")
 
+# 某种配位的 Al 更爱连哪种 Qn 的 P
+d.query("elem_a == 'Al' and elem_b == 'P'").pivot_table(
+    index="cn_a", columns="n_bridge_b", values="count", aggfunc="sum")
+
 # 只看真桥，排除三配位配体
 d.query("n_formers == 2")
+
+# 多配体体系：O 桥与 F 桥分开看
+d.groupby("ligand")["count"].sum()
 ```
+
+> **交叉核对。** `linkage` 里 `Al-O-Al` 的 `n_formers=2` 计数应等于
+> `ligand_type` 表 `O_b, Al, Al` 那一行；差额来自三配位氧的贡献。
+> $\sum(m_\mathrm{Al} \times \text{count})$（取自 `qn_partner`）应等于 `linkage`
+> 里 `Al-O-P` 的真桥计数。两条都不对时，先查截断是不是给漏了。
 
 ---
 
@@ -233,18 +315,26 @@ d.query("n_formers == 2")
 
 ### 标签
 
-| 角色 | 标签 |
-|---|---|
-| 形成子 | `P_0` `P_1` … `Al_2`（数字 = 桥接配体数） |
-| 自由配体 | `O_f` |
-| 非桥配体 | `O_n` |
-| 桥联配体 | `O_b` |
-| 三配位配体 | `O_t` |
-| 修饰子 | `Zn`（元素符号，无角色后缀） |
+| 角色 | 标签 | 数字是 |
+|---|---|---|
+| Qn 形成子 | `P_0` `P_1` … `Si_4` | **Qn**（桥接配体数） |
+| 其他形成子 | `Al_4` `Al_5` `Al_6` | **配位数** |
+| 自由配体 | `O_f` | — |
+| 非桥配体 | `O_n` | — |
+| 桥联配体 | `O_b` | — |
+| 三配位配体 | `O_t` | — |
+| 修饰子 | `Zn` | 无后缀 |
+
+运行 `ferro net` 时这张表会按本次参数填好元素打印一次，因为哪个元素报 Qn、哪个报
+配位数取决于 `--qn` 和给了哪些截断。
 
 全部合 `<元素>_<后缀>` 约定，按**首个下划线**拆分。修饰子不带角色后缀：旧方案
 按非桥配体数 0/1/2/≥3 分档，而修饰子的实际配位数在 3–6，实测参考轨迹 97% 落进
 兜底桶，没有分辨力。
+
+> **同样长相的数字，含义按元素而变。** 这是文献自己的读法（$Q^2$ 与 Al[4] 没人会
+> 混），代价是在 Al 不带非桥氧的体系里两种口径给出同一个数字，错了也看不出来——所以
+> 约定在分类时就写进类型里，而不是渲染时查表，`--qn` 换了名单，标签跟着换。
 
 ### 两种格式的差别
 
@@ -268,6 +358,9 @@ ferro traj gr -i run_types.lammpstrj -a P -b O
 
 # 按标签选 —— 需要单帧
 ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1
+
+# 五配位 Al 周围的桥氧 —— Al-O-Al 定位研究的入口
+ferro traj gr -i run_types.lammpstrj -x Al_5 -y O_b --last-n 1
 ```
 
 > **按标签选型只在单帧成立。** `g(r)` 要求逐类型的粒子数守恒，而标签是动态的——
@@ -275,9 +368,12 @@ ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1
 > 149 / 152 / 150 / 150 / 150）。对多帧标注轨迹按标签选型会被
 > 「per-type atom counts change」错误拒绝，这是守卫而非缺陷。多帧请按元素选。
 
-标注轨迹与统计表是互相独立的产物：想验证分类是否自洽，可对导出轨迹跑
-`ferro traj gr -x P_3 -y O_b --last-n 1`，第一壳层 CN 应恰为 3——分类层说
-「这个 P 有 3 个桥氧」，独立的 CN 积分路径应当数回 3。
+标注轨迹与统计表是互相独立的产物，可以互相验证：
+
+- `traj gr -x P_3 -y O_b --last-n 1` 的第一壳层 CN 应**恰为 3**——分类层说「这个 P
+  有 3 个桥氧」，独立的 CN 积分路径应当数回 3。
+- `traj gr -x Al_5 -y O_b --last-n 1` 实测参考轨迹得 4.933 而非 5.000：差的 0.067
+  是一个三配位氧，它标 `O_t` 而不是 `O_b`。对得上，说明标签的数字确实是配位数。
 
 ---
 
