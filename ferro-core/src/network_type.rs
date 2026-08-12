@@ -90,8 +90,13 @@ impl TypeParams {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AtomType {
     /// Network former.  `bridging` = number of bridging ligands (the Qn value for
-    /// elements where Qn applies); `cn` = total ligands within cutoff.
-    Former { elem: String, bridging: u32, cn: u32 },
+    /// elements where Qn applies); `cn` = total ligands within cutoff;
+    /// `bridges_to` = how many of those bridging ligands lead to each partner
+    /// element, counting only ligands shared by **exactly two** formers.
+    ///
+    /// `Σ bridges_to ≤ bridging`, the shortfall being ligands shared by three or
+    /// more formers: those count as one bridge each but have no single partner.
+    Former { elem: String, bridging: u32, cn: u32, bridges_to: BTreeMap<String, u32> },
     /// Ligand (oxygen).  `partners` = elements of the formers bonded to it, sorted;
     /// its length is the classification (0 free, 1 non-bridging, 2 bridging,
     /// ≥3 tricluster).
@@ -159,8 +164,31 @@ impl AtomType {
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
+/// Classification of one frame, plus the adjacency it was derived from.
+///
+/// [`AtomType`] describes each atom on its own; statistics about *pairs* of formers
+/// (which site bridges to which) need the graph as well, and recomputing the
+/// neighbour search to recover it would repeat the most expensive part of the work.
+#[derive(Debug, Clone)]
+pub struct FrameTypes {
+    /// One type per atom, same order as `frame.atoms`.
+    pub types: Vec<AtomType>,
+    /// Ligand atom index → indices of the former atoms bonded to it, ascending.
+    /// Every ligand atom has an entry, including those bonded to no former.
+    pub ligand_formers: HashMap<usize, Vec<usize>>,
+}
+
 /// Classify every atom in one frame.  Returns one type per atom (same order as `frame.atoms`).
 pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Vec<AtomType> {
+    classify_frame_detailed(frame, cell, params).types
+}
+
+/// [`classify_frame`] plus the ligand→former adjacency, for pairwise statistics.
+pub fn classify_frame_detailed(
+    frame: &Frame,
+    cell: &Cell,
+    params: &TypeParams,
+) -> FrameTypes {
     // 按元素建立索引
     let elem_map = build_elem_map(frame);
 
@@ -172,10 +200,15 @@ pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Vec<At
         .map(|a| AtomType::Other { elem: a.element.clone() })
         .collect();
 
+    let mut ligand_formers: HashMap<usize, Vec<usize>> = HashMap::with_capacity(nf_map.len());
     for (&idx, nf) in &nf_map {
         let mut partners: Vec<String> = nf.iter().map(|(e, _)| e.clone()).collect();
         partners.sort_unstable();
         types[idx] = AtomType::Ligand { elem: frame.atoms[idx].element.clone(), partners };
+
+        let mut idxs: Vec<usize> = nf.iter().map(|(_, i)| *i).collect();
+        idxs.sort_unstable();
+        ligand_formers.insert(idx, idxs);
     }
     for (idx, t) in classify_formers(frame, cell, params, &elem_map, &nf_map) {
         types[idx] = t;
@@ -183,7 +216,7 @@ pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Vec<At
     for (idx, t) in classify_modifiers_inner(frame, cell, params, &elem_map) {
         types[idx] = t;
     }
-    types
+    FrameTypes { types, ligand_formers }
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -257,6 +290,7 @@ fn classify_formers(
             let fa_pos = frame.atoms[fa_idx].position;
             let mut bridging = 0u32;
             let mut cn = 0u32;
+            let mut bridges_to: BTreeMap<String, u32> = BTreeMap::new();
 
             for ligand_elem in params.ligands() {
                 let Some(&cutoff) = params.cutoffs.get(&(former_elem.clone(), ligand_elem.clone()))
@@ -268,16 +302,25 @@ fn classify_formers(
                     if la_idx == fa_idx { continue; }
                     let diff = cell.minimum_image(frame.atoms[la_idx].position - fa_pos)
                         .expect("cell must be non-singular");
-                    if diff.norm_squared() < c2 {
-                        cn += 1;
-                        // 桥接判断：该配体有 ≥2 个 NF 邻居
-                        let nf_cnt = nf_map.get(&la_idx).map(|v| v.len()).unwrap_or(0);
-                        if nf_cnt >= 2 { bridging += 1; }
+                    if diff.norm_squared() >= c2 { continue; }
+                    cn += 1;
+
+                    // 桥接判断：该配体有 ≥2 个 NF 邻居
+                    let nf = nf_map.get(&la_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+                    if nf.len() < 2 { continue; }
+                    bridging += 1;
+
+                    // 伙伴分解只对「恰好两个形成子」的配体成立；三配位配体
+                    // 没有唯一对端，计入 bridging 但不计入任何 bridges_to
+                    if nf.len() == 2 {
+                        if let Some((partner, _)) = nf.iter().find(|(_, i)| *i != fa_idx) {
+                            *bridges_to.entry(partner.clone()).or_insert(0) += 1;
+                        }
                     }
                 }
             }
             result.push((fa_idx, AtomType::Former {
-                elem: former_elem.clone(), bridging, cn,
+                elem: former_elem.clone(), bridging, cn, bridges_to,
             }));
         }
     }
@@ -342,14 +385,20 @@ fn unique_keys_right(table: &CutoffTable) -> Vec<String> {
 mod tests {
     use super::*;
 
+    fn former(elem: &str, bridging: u32, cn: u32) -> AtomType {
+        AtomType::Former {
+            elem: elem.to_string(), bridging, cn, bridges_to: BTreeMap::new(),
+        }
+    }
+
     #[test]
     fn test_every_label_splits_at_first_underscore() {
         // 全部标签必须形如 <元素>_<后缀>（或裸元素），否则 LAMMPS dump 读回来
         // 拆不出正确的 element，`-a P` 就选不中导出的结构
         let cases: Vec<(AtomType, &str, &str)> = vec![
-            (AtomType::Former { elem: "P".into(), bridging: 0, cn: 4 }, "P_0", "P"),
-            (AtomType::Former { elem: "P".into(), bridging: 3, cn: 4 }, "P_3", "P"),
-            (AtomType::Former { elem: "Al".into(), bridging: 2, cn: 5 }, "Al_2", "Al"),
+            (former("P", 0, 4), "P_0", "P"),
+            (former("P", 3, 4), "P_3", "P"),
+            (former("Al", 2, 5), "Al_2", "Al"),
             (AtomType::Ligand { elem: "O".into(), partners: vec![] }, "O_f", "O"),
             (AtomType::Ligand { elem: "O".into(), partners: vec!["P".into()] }, "O_n", "O"),
             (AtomType::Ligand {
@@ -400,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_display_rank_orders_all_roles() {
-        let former = AtomType::Former { elem: "P".into(), bridging: 2, cn: 4 };
+        let former = former("P", 2, 4);
         let lig = |n: usize| AtomType::Ligand {
             elem: "O".into(),
             partners: vec!["P".to_string(); n],

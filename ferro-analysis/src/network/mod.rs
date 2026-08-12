@@ -27,9 +27,28 @@
 
 pub use ferro_core::{AtomType, CutoffTable, TypeParams};
 
-use ferro_core::{classify_frame, Frame, Table, Trajectory};
+use ferro_core::{classify_frame_detailed, Frame, Table, Trajectory};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
+
+/// Bridging distribution key: total bridging ligands, plus how many of them lead to
+/// each partner element.  `(2, {Al: 1, P: 1})` is the Q²(1Al) of the NMR literature.
+///
+/// Keeping the decomposition per *atom* rather than per bridge is what makes it
+/// irrecoverable from the linkage table: two P–O–Al bridges could come from one P
+/// with `m_Al = 2` or from two P atoms with `m_Al = 1` each.
+pub type BridgeKey = (u32, BTreeMap<String, u32>);
+
+/// One end of a bridge: `(element, bridging count, coordination number)`.
+///
+/// Both numbers are kept for both ends.  The reference Python stores one number per
+/// element — Qn for P, CN for Al — which answers "what Qn of P does a 4-coordinate Al
+/// bond to" but not "what is the bridging count of that 4-coordinate Al".
+pub type SiteState = (String, u32, u32);
+
+/// Linkage key: the two ends in canonical order, and how many formers the shared
+/// ligand joins (2 for a true bridge, ≥3 for a tricluster).
+pub type LinkKey = (SiteState, SiteState, usize);
 
 /// Ligand distribution key: `(sort rank, label, partner elements)`.
 ///
@@ -137,8 +156,8 @@ pub struct Bin {
 /// 网络分析时间平均结果。
 #[derive(Debug, Clone)]
 pub struct NetworkResult {
-    /// former_elem → 桥接配体数分布（P 的即 Qn），按数值升序
-    pub bridge_dist: HashMap<String, Vec<(u32, Bin)>>,
+    /// former_elem → 桥接配体数分布（P 的即 Qn），按 `(n_bridge, 伙伴分解)` 升序
+    pub bridge_dist: HashMap<String, Vec<(BridgeKey, Bin)>>,
     /// former_elem → 平均桥接配体数
     pub mean_bridge: HashMap<String, f64>,
     /// 元素 → 总配位数分布（所有配体类型之和）。**含修饰子** ——
@@ -148,6 +167,9 @@ pub struct NetworkResult {
     pub mean_cn: HashMap<String, f64>,
     /// 配体类型分布：`(label, partner_elements, bin)`，按 `AtomType::class_rank` 排序
     pub oxy_dist: Vec<(String, Vec<String>, Bin)>,
+    /// 桥联统计：每个桥联配体贡献一条「两端位点状态」的观测，
+    /// 只存规范半边（两端按 `SiteState` 排序，小的在前）
+    pub linkage: Vec<(LinkKey, Bin)>,
     /// 参与统计的帧数
     pub n_frames: usize,
     /// 每帧原子数
@@ -204,18 +226,34 @@ impl NetworkResult {
         let mut elems: Vec<&String> = self.cn_dist.keys().collect();
         elems.sort();
 
-        // bridge：只有形成子有桥接数
+        // bridge：只有形成子有桥接数。`m_<X>` 给出按伙伴元素的分解 ——
+        // 文献的 Q^n(mAl) 记号，`groupby("n_bridge")` 即退回简单 Qn
+        let partner_elems: Vec<String> = {
+            let mut s: Vec<String> = self.bridge_dist.values()
+                .flat_map(|rows| rows.iter().flat_map(|((_, to), _)| to.keys().cloned()))
+                .collect();
+            s.sort();
+            s.dedup();
+            s
+        };
         let (mut f_col, mut v_col) = (Vec::new(), Vec::new());
+        let mut m_cols: Vec<Vec<f64>> = vec![Vec::new(); partner_elems.len()];
         let mut bins = Vec::new();
         for former in &formers {
-            for (v, b) in &self.bridge_dist[*former] {
+            for ((n, to), b) in &self.bridge_dist[*former] {
                 f_col.push((*former).clone());
-                v_col.push(*v as f64);
+                v_col.push(*n as f64);
+                for (i, p) in partner_elems.iter().enumerate() {
+                    m_cols[i].push(to.get(p).copied().unwrap_or(0) as f64);
+                }
                 bins.push(*b);
             }
         }
         let mut t = Table::new();
         t.push_text("former", f_col).push_num("n_bridge", v_col);
+        for (p, col) in partner_elems.iter().zip(m_cols) {
+            t.push_num(format!("m_{p}"), col);
+        }
         push_bins(&mut t, &bins);
         out.push(("bridge".to_string(), t));
 
@@ -262,6 +300,33 @@ impl NetworkResult {
             .push_num("mean_cn", mc_col);
         out.push(("mean".to_string(), t));
 
+        // linkage：一行一种「两端位点状态」的组合
+        let mut cols: [Vec<String>; 2] = [Vec::new(), Vec::new()];
+        let mut nums: [Vec<f64>; 5] = Default::default();
+        let mut bins = Vec::new();
+        for (((ea, na, ca), (eb, nb, cb), n_formers), b) in &self.linkage {
+            cols[0].push(ea.clone());
+            nums[0].push(*na as f64);
+            nums[1].push(*ca as f64);
+            cols[1].push(eb.clone());
+            nums[2].push(*nb as f64);
+            nums[3].push(*cb as f64);
+            nums[4].push(*n_formers as f64);
+            bins.push(*b);
+        }
+        let [c_a, c_b] = cols;
+        let [n_a, cn_a, n_b, cn_b, nf] = nums;
+        let mut t = Table::new();
+        t.push_text("elem_a", c_a)
+            .push_num("n_bridge_a", n_a)
+            .push_num("cn_a", cn_a)
+            .push_text("elem_b", c_b)
+            .push_num("n_bridge_b", n_b)
+            .push_num("cn_b", cn_b)
+            .push_num("n_formers", nf);
+        push_bins(&mut t, &bins);
+        out.push(("linkage".to_string(), t));
+
         out
     }
 }
@@ -277,13 +342,17 @@ fn push_bins(t: &mut Table, bins: &[Bin]) {
 /// One frame's histograms with the denominators that turn them into fractions.
 struct FrameData {
     /// 元素 → (桥接数直方图, 该元素原子数)
-    bridge: HashMap<String, (HashMap<u32, usize>, usize)>,
+    bridge: HashMap<String, (HashMap<BridgeKey, usize>, usize)>,
     /// 元素 → (配位数直方图, 该元素原子数)，形成子与修饰子共用
     cn: HashMap<String, (HashMap<u32, usize>, usize)>,
     /// 配体类型 → 计数
     oxy: HashMap<OxyKey, usize>,
     /// 配体原子总数（oxy 的分母）
     n_ligand: usize,
+    /// 桥联组合 → 计数
+    linkage: HashMap<LinkKey, usize>,
+    /// 本帧的桥联观测总数（linkage 的分母）
+    n_links: usize,
 }
 
 // ─── 顶层入口 ─────────────────────────────────────────────────────────────────
@@ -318,9 +387,10 @@ fn compute_frame(
     cell: &ferro_core::Cell,
     params: &TypeParams,
 ) -> Option<FrameData> {
-    let types = classify_frame(frame, cell, params);
+    let ft = classify_frame_detailed(frame, cell, params);
+    let types = &ft.types;
 
-    let mut bridge: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
+    let mut bridge: HashMap<String, (HashMap<BridgeKey, usize>, usize)> = HashMap::new();
     let mut cn: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
     let mut oxy: HashMap<OxyKey, usize> = HashMap::new();
     let mut n_ligand = 0usize;
@@ -329,9 +399,9 @@ fn compute_frame(
 
     for (idx, t) in types.iter().enumerate() {
         match t {
-            AtomType::Former { elem, bridging, cn: c } => {
+            AtomType::Former { elem, bridging, cn: c, bridges_to } => {
                 let b = bridge.entry(elem.clone()).or_default();
-                *b.0.entry(*bridging).or_insert(0) += 1;
+                *b.0.entry((*bridging, bridges_to.clone())).or_insert(0) += 1;
                 b.1 += 1;
                 let e = cn.entry(elem.clone()).or_default();
                 *e.0.entry(*c).or_insert(0) += 1;
@@ -353,50 +423,84 @@ fn compute_frame(
         }
     }
 
-    Some(FrameData { bridge, cn, oxy, n_ligand })
+    // 桥联：每个连 ≥2 个形成子的配体，把两端形成子的位点状态两两记下。
+    // 三配位配体贡献 C(3,2)=3 条记录，靠 n_formers 列区分,不静默丢掉
+    let site = |i: usize| -> Option<SiteState> {
+        match &types[i] {
+            AtomType::Former { elem, bridging, cn, .. } => {
+                Some((elem.clone(), *bridging, *cn))
+            }
+            _ => None,
+        }
+    };
+    let mut linkage: HashMap<LinkKey, usize> = HashMap::new();
+    let mut n_links = 0usize;
+    for formers in ft.ligand_formers.values() {
+        if formers.len() < 2 { continue; }
+        let n_formers = formers.len();
+        for i in 0..n_formers {
+            for j in (i + 1)..n_formers {
+                let (Some(a), Some(b)) = (site(formers[i]), site(formers[j])) else { continue };
+                // 规范半边：桥联无方向，A-O-B 与 B-O-A 是同一条观测
+                let key = if a <= b { (a, b, n_formers) } else { (b, a, n_formers) };
+                *linkage.entry(key).or_insert(0) += 1;
+                n_links += 1;
+            }
+        }
+    }
+
+    Some(FrameData { bridge, cn, oxy, n_ligand, linkage, n_links })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
 
 #[derive(Default)]
 struct Accumulator {
-    /// 元素 → { 桥接数 → 矩 }
-    bridge: HashMap<String, HashMap<u32, Moments>>,
+    /// 元素 → { (桥接数, 伙伴分解) → 矩 }
+    bridge: HashMap<String, BTreeMap<BridgeKey, Moments>>,
     /// 元素 → { 配位数 → 矩 }
-    cn: HashMap<String, HashMap<u32, Moments>>,
-    /// 配体类型 → 矩（BTreeMap：键含 rank，天然有序）
+    cn: HashMap<String, BTreeMap<u32, Moments>>,
+    /// 配体类型 → 矩（键含 rank，天然有序）
     oxy: BTreeMap<OxyKey, Moments>,
+    /// 桥联组合 → 矩
+    linkage: BTreeMap<LinkKey, Moments>,
     /// 元素 → (Σ值·计数, Σ计数)，用于池化均值
     bridge_sum: HashMap<String, (f64, usize)>,
     cn_sum: HashMap<String, (f64, usize)>,
 }
 
 /// Folds one frame's histogram into `dst`, converting counts to fractions with
-/// `total` as the denominator, and updating the pooled sum for the mean.
-fn push_hist(
-    dst: &mut HashMap<String, HashMap<u32, Moments>>,
+/// `total` as the denominator, and updating the pooled sum via `value_of`.
+fn push_hist<K: Ord + Clone>(
+    dst: &mut HashMap<String, BTreeMap<K, Moments>>,
     sums: &mut HashMap<String, (f64, usize)>,
     elem: &str,
-    hist: &HashMap<u32, usize>,
+    hist: &HashMap<K, usize>,
     total: usize,
+    value_of: impl Fn(&K) -> f64,
 ) {
     if total == 0 { return; }
     let slot = dst.entry(elem.to_string()).or_default();
     let sum = sums.entry(elem.to_string()).or_insert((0.0, 0));
-    for (&v, &c) in hist {
-        slot.entry(v).or_default().push(c, c as f64 / total as f64);
-        sum.0 += v as f64 * c as f64;
+    for (k, &c) in hist {
+        slot.entry(k.clone()).or_default().push(c, c as f64 / total as f64);
+        sum.0 += value_of(k) * c as f64;
         sum.1 += c;
     }
+}
+
+fn merge_keyed<K: Ord>(dst: &mut BTreeMap<K, Moments>, src: BTreeMap<K, Moments>) {
+    for (k, mo) in src { dst.entry(k).or_default().merge(&mo); }
 }
 
 impl Accumulator {
     fn push(&mut self, fd: &FrameData) {
         for (elem, (hist, total)) in &fd.bridge {
-            push_hist(&mut self.bridge, &mut self.bridge_sum, elem, hist, *total);
+            push_hist(&mut self.bridge, &mut self.bridge_sum, elem, hist, *total,
+                      |(n, _)| *n as f64);
         }
         for (elem, (hist, total)) in &fd.cn {
-            push_hist(&mut self.cn, &mut self.cn_sum, elem, hist, *total);
+            push_hist(&mut self.cn, &mut self.cn_sum, elem, hist, *total, |v| *v as f64);
         }
         if fd.n_ligand > 0 {
             for (key, &c) in &fd.oxy {
@@ -404,39 +508,36 @@ impl Accumulator {
                     .push(c, c as f64 / fd.n_ligand as f64);
             }
         }
+        if fd.n_links > 0 {
+            for (key, &c) in &fd.linkage {
+                self.linkage.entry(key.clone()).or_default()
+                    .push(c, c as f64 / fd.n_links as f64);
+            }
+        }
     }
 
     fn merge(&mut self, other: Self) {
-        let merge_nested = |dst: &mut HashMap<String, HashMap<u32, Moments>>,
-                            src: HashMap<String, HashMap<u32, Moments>>| {
-            for (k, inner) in src {
-                let m = dst.entry(k).or_default();
-                for (v, mo) in inner { m.entry(v).or_default().merge(&mo); }
-            }
-        };
-        let merge_sums = |dst: &mut HashMap<String, (f64, usize)>,
-                          src: HashMap<String, (f64, usize)>| {
+        for (k, inner) in other.bridge {
+            merge_keyed(self.bridge.entry(k).or_default(), inner);
+        }
+        for (k, inner) in other.cn {
+            merge_keyed(self.cn.entry(k).or_default(), inner);
+        }
+        merge_keyed(&mut self.oxy, other.oxy);
+        merge_keyed(&mut self.linkage, other.linkage);
+        for (dst, src) in [(&mut self.bridge_sum, other.bridge_sum),
+                           (&mut self.cn_sum, other.cn_sum)] {
             for (k, (s, n)) in src {
                 let e = dst.entry(k).or_insert((0.0, 0));
                 e.0 += s;
                 e.1 += n;
             }
-        };
-        merge_nested(&mut self.bridge, other.bridge);
-        merge_nested(&mut self.cn, other.cn);
-        merge_sums(&mut self.bridge_sum, other.bridge_sum);
-        merge_sums(&mut self.cn_sum, other.cn_sum);
-        for (key, mo) in other.oxy {
-            self.oxy.entry(key).or_default().merge(&mo);
         }
     }
 
     fn finalize(self, n_frames: usize, n_atoms: usize, params: TypeParams) -> NetworkResult {
-        let to_dist = |m: &HashMap<u32, Moments>| -> Vec<(u32, Bin)> {
-            let mut rows: Vec<(u32, Bin)> =
-                m.iter().map(|(&v, mo)| (v, mo.finish(n_frames))).collect();
-            rows.sort_by_key(|r| r.0);
-            rows
+        let to_dist = |m: &BTreeMap<u32, Moments>| -> Vec<(u32, Bin)> {
+            m.iter().map(|(&v, mo)| (v, mo.finish(n_frames))).collect()
         };
         let mean_of = |sums: &HashMap<String, (f64, usize)>, k: &String| -> f64 {
             match sums.get(k) {
@@ -448,7 +549,11 @@ impl Accumulator {
         // 只保留轨迹里真正出现过的元素。参数里点名但不存在的元素若留下,
         // 均值会算成 0.0,把「不存在」伪装成「平均值为零」;长表下缺席就是不出行
         let bridge_dist: HashMap<_, _> = self.bridge.iter()
-            .map(|(e, m)| (e.clone(), to_dist(m))).collect();
+            .map(|(e, m)| {
+                let rows = m.iter().map(|(k, mo)| (k.clone(), mo.finish(n_frames))).collect();
+                (e.clone(), rows)
+            })
+            .collect();
         let mean_bridge: HashMap<_, _> = self.bridge.keys()
             .map(|e| (e.clone(), mean_of(&self.bridge_sum, e))).collect();
         let cn_dist: HashMap<_, _> = self.cn.iter()
@@ -462,8 +567,12 @@ impl Accumulator {
             })
             .collect();
 
+        let linkage: Vec<(LinkKey, Bin)> = self.linkage.iter()
+            .map(|(k, mo)| (k.clone(), mo.finish(n_frames)))
+            .collect();
+
         NetworkResult {
-            bridge_dist, mean_bridge, cn_dist, mean_cn, oxy_dist,
+            bridge_dist, mean_bridge, cn_dist, mean_cn, oxy_dist, linkage,
             n_frames, n_atoms, params,
         }
     }
@@ -519,8 +628,9 @@ mod tests {
 
         let bp = &res.bridge_dist["P"];
         assert_eq!(bp.len(), 1);
-        assert_eq!(bp[0].0, 1);          // 桥接数 = 1
-        assert_eq!(bp[0].1.count, 2);    // 两个 P
+        assert_eq!(bp[0].0.0, 1);                     // 桥接数 = 1
+        assert_eq!(bp[0].0.1["P"], 1);                // 该桥通向一个 P
+        assert_eq!(bp[0].1.count, 2);                 // 两个 P
 
         let oxy = oxy_counts(&res);
         assert_eq!(oxy["O_b"], 1);
@@ -538,7 +648,8 @@ mod tests {
             atom("O",  0.0,-1.6, 0.0),
         ]);
         let res = calc_network(&traj_of(vec![frame]), &make_params(2.3)).unwrap();
-        assert_eq!(res.bridge_dist["P"][0].0, 0);
+        assert_eq!(res.bridge_dist["P"][0].0.0, 0);
+        assert!(res.bridge_dist["P"][0].0.1.is_empty(), "Q0 没有任何桥");
         assert!(res.oxy_dist.iter().all(|(l, _, _)| l == "O_n"));
     }
 
@@ -692,6 +803,64 @@ mod tests {
         for _ in 0..3 { b.push(25, frac); }
         a.merge(&b);
         assert_eq!(a.finish(5).sd, 0.0, "归并后仍须精确为 0");
+    }
+
+    /// 桥联表：两端各带元素 / 桥接数 / 配位数，且只存规范半边。
+    #[test]
+    fn test_linkage_records_both_ends_once() {
+        // Al–O–P 一座桥，两端各带一个非桥氧
+        let frame = cube(vec![
+            atom("Al", 0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0), // 桥
+            atom("P",  3.2, 0.0, 0.0),
+            atom("O",  0.0, 1.6, 0.0), // Al 的非桥氧
+            atom("O",  3.2, 1.6, 0.0), // P 的非桥氧
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
+
+        assert_eq!(res.linkage.len(), 1, "一座桥只存一行: {:?}", res.linkage);
+        let ((a, b, n_formers), bin) = &res.linkage[0];
+        assert_eq!(*n_formers, 2, "普通桥氧连两个形成子");
+        assert_eq!(bin.count, 1);
+        // 规范半边：Al < P，故 Al 在前。两端都带 (元素, 桥接数, 配位数)
+        assert_eq!(*a, ("Al".to_string(), 1, 2));
+        assert_eq!(*b, ("P".to_string(), 1, 2));
+    }
+
+    /// 三配位氧不是一对，展开成 C(3,2)=3 条记录，靠 `n_formers` 列区分。
+    /// 参考 Python 把它们整体丢进一个计数器，Al 连的是谁就此丢失。
+    #[test]
+    fn test_tricluster_expands_into_three_pairs() {
+        // 一个 O 同时被 3 个 Al 包围（正三角形中心）
+        let r = 1.8;
+        let frame = cube(vec![
+            atom("O",  0.0, 0.0, 0.0),
+            atom("Al", r, 0.0, 0.0),
+            atom("Al", -r / 2.0,  r * 0.8660254, 0.0),
+            atom("Al", -r / 2.0, -r * 0.8660254, 0.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
+
+        assert_eq!(res.oxy_dist.len(), 1);
+        assert_eq!(res.oxy_dist[0].0, "O_t");
+        // 三个 Al 位点状态完全相同 → 三条记录合成一行,计数 3
+        let total: usize = res.linkage.iter().map(|(_, b)| b.count).sum();
+        assert_eq!(total, 3, "C(3,2) = 3 对: {:?}", res.linkage);
+        assert!(res.linkage.iter().all(|((_, _, n), _)| *n == 3),
+                "n_formers 必须标出这是三配位配体");
+
+        // 桥接数计入(R1),但伙伴分解不计入 —— 三配位配体没有唯一对端
+        let bal = &res.bridge_dist["Al"];
+        assert_eq!(bal.len(), 1);
+        assert_eq!(bal[0].0.0, 1, "该 Al 有 1 个桥接配体");
+        assert!(bal[0].0.1.is_empty(), "三配位配体不进 bridges_to");
     }
 
     /// 缺席帧按 f = 0 计入，而不是被当作缺失值跳过。

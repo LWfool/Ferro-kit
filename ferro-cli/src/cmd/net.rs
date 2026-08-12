@@ -246,22 +246,40 @@ LABELS:
     ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b (by label)
 
 OUTPUT — stacked CSVs, each with a `file` column:
-  network_bridge.csv  file, former, n_bridge, count, fraction, sd
-  network_oxy.csv     file, type, former_a, former_b, count, fraction, sd
-  network_cn.csv      file, element, cn, count, fraction, sd
-  network_mean.csv    file, element, mean_n_bridge, mean_cn
+  network_bridge.csv   file, former, n_bridge, m_<X>..., count, fraction, sd
+  network_oxy.csv      file, type, former_a, former_b, count, fraction, sd
+  network_cn.csv       file, element, cn, count, fraction, sd
+  network_mean.csv     file, element, mean_n_bridge, mean_cn
+  network_linkage.csv  file, elem_a, n_bridge_a, cn_a,
+                             elem_b, n_bridge_b, cn_b, n_formers,
+                             count, fraction, sd
 
   n_bridge is the number of bridging ligands. For P that is Qn; Al has no Qn in
   the literature, so the column is named for what it counts and Al is described
-  by the cn table instead.
+  by the cn table instead. m_<X> splits n_bridge by partner element — the
+  Q^n(mAl) notation. `groupby(\"n_bridge\")` collapses back to plain Qn.
 
   The oxy table keeps the partner elements as data columns, not in the label:
   P-O-P and P-O-Al are both labelled O_b but are separate rows (former_a/_b).
   A tricluster (O_t) leaves them empty — its pairs are in the linkage table.
 
+  The linkage table is one row per bridge, both ends carrying element, bridging
+  count AND coordination number. Each pair is stored ONCE, canonically ordered,
+  so a row sum is not a site's total involvement. n_formers is 2 for a true
+  bridge, 3+ for a tricluster (which contributes C(n,2) rows).
+
   fraction is the mean over frames of that frame's fraction; sd is the sample
   standard deviation (ddof=1) of the same quantity. Consecutive MD frames are
   correlated, so sd is a spread between snapshots, NOT a standard error.
+
+ANALYSING THE LINKAGE TABLE (pandas):
+  d = pd.read_csv('network_linkage.csv', comment='#')
+  al = d.query(\"elem_a=='Al' and elem_b=='Al'\")           # Al-O-Al only
+  al.pivot_table(index='cn_a', columns='cn_b',
+                 values='count', aggfunc='sum')            # which Al coordination
+  d.query(\"elem_a=='P' and elem_b=='P'\").pivot_table(
+      index='n_bridge_a', columns='n_bridge_b',
+      values='count', aggfunc='sum')                       # Qn-Qn connectivity
 
 EXAMPLES:
   ferro net -i traj.lammpstrj --P-O=2.4
