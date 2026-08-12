@@ -35,7 +35,7 @@
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | `network_type.rs` `build_nf_map` | 若形成子元素同时也是配体元素（如 Si-O 且 O-O），同一原子会同时出现在 former 和 ligand 中 | 当前跳过 `fa_idx == la_idx`；实际体系不会出现，无需处理 |
-| `classify_frame` 形成子标签 | Qn 数字来自桥氧计数，桥氧定义为 NF 邻居数 ≥ 2（含 X 类氧） | 不要用氧标签字符串回推，直接在 `classify_formers` 中通过 `nf_map` 计数 |
+| `classify_frame` 形成子标签 | 桥接数来自桥氧计数，桥氧定义为 NF 邻居数 ≥ 2（含三配位氧 `O_t`） | 0.2.2 起由 `AtomType::Former.bridging` 直接携带；**任何从标签字符串回推数字的写法都不要写**，这正是 0.2.2 重构消除的五处缺陷 |
 | `ferro-cli` 解构 `cli` | `let Some(x) = cli.field` 是部分移动，后续不能再借用 `cli` | 用 `let Cli { field1, field2, .. } = cli;` 一次性解构，再分别传参 |
 | `cluster.rs` Union-Find | `find()` 需要 `&mut Vec`，不能与 `local_cluster` 构建同时进行 | 先用 `(0..n).map(|li| find(...))` 收集，再组装 `Vec` |
 
@@ -102,7 +102,7 @@
 | `gr.rs` `sorted_keys` | 无条件 `push("total")` → 移除 total 后会写出全 0 幽灵列 | **已修 0.1.11**（total 已整体移除，`sorted_keys` 变为纯配对排序） |
 | `gr.rs` 归一化 | **NPT 下所有帧共用 `avg_volume`** | **已修 0.1.13**，详见下节。注：原记录「应逐帧 `hist/V_frame`」方向写反了，正确是 `hist·V_frame` |
 | `angle.rs` `neighbors_of` | 每对被枚举两次后靠 `j<=i` 丢一半，2× 计算浪费（不影响正确性） | 不处理 |
-| `network_type.rs:236,246` | 兜底标签均为字面 `"X"`，≥3 配位的氧与 ≥3 NBO 的修饰子**塌缩成同一标签** | 暂缓（见 plan.md「ferro net type 标签体系重做」） |
+| `network_type.rs:236,246` | 兜底标签均为字面 `"X"`，≥3 配位的氧与 ≥3 NBO 的修饰子**塌缩成同一标签** | **已修（0.2.2）**：氧的兜底成为独立类型 `O_t`（tricluster），修饰子角色分类整体删除。实测单帧 `X = 181` 中 180 个是 Zn、1 个是氧 |
 
 ## NPT 逐帧体积归一化（2026-08-08 已修，0.1.13）
 
@@ -196,7 +196,7 @@ S(q) 一侧；g(r) 一侧基本是正确性洁癖。** 0.1.12 及更早跑出的
 | 三处元素提取 | `symbol_to_z`（精确→两字节→首字节）与 `cp2k.rs:221`/`qe.rs:193` 的 `extract_element`、`cif.rs:463` 的 `element_from_label`（字母前缀 + 首字母大写）**规则不一致** | 对 `ZnA`：前者 → `Zn`，后者 → `Zna`。新增的下划线拆分规则只作用于 LAMMPS dump，不动这三处（它们处理 `Fe1`/`O2` 原生命名，字母前缀规则对其正确） |
 | `symbol_to_z` 贪婪匹配 | `Pb`→铅(82)、`Po`→钋(84)、`Os`→锇(76) 会盖过"P bridging"这类伪标签意图 | 这是选择「按第一个下划线拆分」而非贪婪前缀匹配的主要理由 |
 | `typing.rs:22-23` | `apply_type_labels` 把类型标签写进 **`element`** 字段而非 `label` | 伪元素轨迹即由此产生；`elem_z` 的前缀匹配就是为它服务的 |
-| `cif.rs` 位点 | `Fe1`/`Fe2` 的 `element` 均为 `Fe`，g(r) 无法分辨不等价位点 | 需分辨只能走 `ferro net type` 覆写 `element` 的路径 |
+| `cif.rs` 位点 | `Fe1`/`Fe2` 的 `element` 均为 `Fe`，g(r) 无法分辨不等价位点 | 用 `-x/-y` 按 `label` 选（CIF reader 已填 `label`）。注意 `Fe1` 不合 `<元素>_<后缀>` 约定，导出 LAMMPS dump 时**不会**被折进 element 列（0.2.2 的守卫），走 extxyz 的 `label:S:1` 列才无损 |
 
 ---
 
@@ -363,3 +363,17 @@ analysis（io 没理由认识它），跨层的只有它的可序列化投影。
 - `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋
 - `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化静态表
 - QE 赝势仅占位 `<El>.UPF`（UPF 与 CP2K GTH 库不通用，由用户提供 `pseudo_dir`）
+
+## network 重构（0.2.2）编码陷阱
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `AtomType` 的消费 | 从 `label()` 的字符串反解析数字 | 直接读字段。0.2.2 前有五处这样的解析器，散在四个 crate，改标签格式要同步改六处，漏一处即静默错数据（`extract_qn` 对 `"P_3"` 解析失败后 `unwrap_or(0)`，所有 P 变 Q0） |
+| `Moments` 的 sd | 用 `Σf² − N·mean²` 求方差 | 用 Welford。恒定序列下两遍求和给出 ~2e-10 的抵消噪声，而 `sd` 列里的假抖动会被读者当成物理。rayon 是归并不是顺序折叠，故需 Chan/Golub/LeVeque 成对合并 |
+| `Moments` 的缺席帧 | 只累加出现过的帧 | 缺席帧按 `f = 0` 计入，在 `finish(n_frames)` 里按同一条合并公式补进来。否则 5 帧里只出现 1 次的 bin 会被当成「比例 1.0」 |
+| `Accumulator::new` 预置 | 按参数预置每个元素的空条目 | 参数里点名但轨迹里没有的元素必须在 `finalize` 丢掉，否则均值算成 `0.0`，把「不存在」伪装成「平均值为零」（实测 70Z30P00A 的 mean 表里冒出 `Al=0.00`） |
+| `write_lammps_dump` 的 type 列 | 在帧循环内按首见顺序重建 | 整条轨迹确定一次。元素只有几种时逐帧碰巧稳定，写位点标签后某帧恰好没有 `P_4`，同一编号就在不同帧指向不同的东西 |
+| label 折进 element 列 | 无条件折叠 | 只折 `<element>_…` 形式的标签。CIF/CP2K/QE 的位点名（`O1`、`Fe1`）折进去后读回来就是不存在的元素 `O1`；不合约定的要跳过并计数告警 |
+| 按标签跑 g(r) | 以为标注轨迹能直接多帧分析 | 只在单帧成立。`calc_gr` 要求逐类型粒子数守恒，而标签 population 逐帧在变（实测 `P_3`：149/152/150/150/150）。多帧请按元素选 |
+| linkage 的规范半边 | 按行求和当作某位点的总参与度 | 每对只存一次（两端按 `(元素, 桥接数, 配位数)` 排序），行和不是总参与度；要算参与度得把 `_a` 与 `_b` 两列都数一遍 |
+| `bridges_to` 与三配位配体 | 期待 `Σm == n_bridge` | 三配位配体计入 `n_bridge` 但没有唯一对端，不进 `bridges_to`，故 `Σm ≤ n_bridge`，差额即三配位桥数 |

@@ -270,13 +270,20 @@ OPTIONS:
   -o, --output SUFFIX   Output name suffix: network_<table>_<suffix>.csv
       --last-n N        Use only the last N frames (skip equilibration)
       --ncore N         Parallel threads (default: all cores)
-      --metal-units     LAMMPS metal units; only affects velocities/forces, which
-                        this analysis does not read
+      --metal-units     LAMMPS metal units. The statistics never read velocities
+                        or forces; this only matters for --export-traj extxyz,
+                        which writes them in internal units without conversion
       --modifier E,E    Elements counted for coordination only: they take no part
                         in bridging counts or ligand classification.
                         Supply each one's cutoff too, e.g. --Zn-O=2.6
-      --export-traj     Also write the classified trajectory, one file per input:
-                        <input stem>_types[_<suffix>].lammpstrj
+      --export-traj [FMT]
+                        Also write the classified trajectory, one file per input:
+                        <input stem>_types[_<suffix>].<ext>
+                          lammpstrj  (default) label replaces the element column;
+                                     the dump reader splits it back apart, so no
+                                     downstream tool sees a new column
+                          extxyz     label gets its own label:S:1 column and
+                                     species stays a pure element — lossless
 
 LABELS:
   Former      P_0 P_1 P_2 …    digit = number of bridging ligands (Qn for P)
@@ -285,10 +292,16 @@ LABELS:
   Bridge      O_b              bonded to two formers
   Tricluster  O_t              bonded to three or more
   Modifier    Zn               element symbol, no role suffix
+
   Every label splits at the first underscore into element + label, so an exported
   trajectory can be selected either way:
-    ferro traj gr -i run_types.lammpstrj -a P -b O     (by element)
-    ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b (by label)
+    ferro traj gr -i run_types.lammpstrj -a P -b O                (by element)
+    ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1 (by label)
+
+  NOTE: selecting by label needs a SINGLE frame. g(r) requires a fixed particle
+  count per type, and labels are dynamic — a P changes its Qn as the run evolves,
+  so a multi-frame labelled trajectory is rejected with a per-type-count error.
+  Selecting by element works over any number of frames.
 
 OUTPUT — stacked CSVs, each with a `file` column:
   network_bridge.csv   file, former, n_bridge, m_<X>..., count, fraction, sd
@@ -330,7 +343,8 @@ EXAMPLES:
   ferro net -i traj.lammpstrj --P-O=2.4
   ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
   ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
-  ferro net -i traj.lammpstrj --P-O=2.4 --last-n 50 --export-traj";
+  ferro net -i traj.lammpstrj --P-O=2.4 --last-n 50 --export-traj
+  ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz";
 
 #[cfg(test)]
 mod tests {
