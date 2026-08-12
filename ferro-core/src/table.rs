@@ -161,6 +161,9 @@ impl Table {
         }
 
         let mut out = Table::new();
+        // 表的自述属于「这类表」,不属于某个输入 —— 各部分的说明是同一段静态文本,
+        // 取第一份即可;拼接会把同一段话重复 N 遍
+        out.meta = parts.first().map(|(_, t)| t.meta.clone()).unwrap_or_default();
         out.push_text(label, labels);
         for (ci, name) in names.into_iter().enumerate() {
             if is_text[ci] {

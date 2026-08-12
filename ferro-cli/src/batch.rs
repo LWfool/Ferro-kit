@@ -179,6 +179,12 @@ pub fn meta_block(title: &str, params: &[String], summary: &Table) -> Vec<String
 
 /// Writes each stacked table, all sharing one comment block. Returns the first path
 /// (the one a plot is named after).
+///
+/// The shared block is **prepended to**, not substituted for, whatever the analysis
+/// already put in `Table::meta`. A per-table description is the only place a column's
+/// meaning can be stated at the point of use — help text scrolls away, a manual is
+/// somewhere else, but the `#` header travels with the file. Overwriting here would
+/// silently discard it.
 pub fn write_all(
     mode: &str,
     title: &str,
@@ -190,10 +196,17 @@ pub fn write_all(
     let meta = meta_block(title, params, summary);
     let mut first = String::new();
     for (name, mut table) in tables {
-        table.meta = meta.clone();
+        if table.meta.is_empty() {
+            table.meta = meta.clone();
+        } else {
+            let own = std::mem::take(&mut table.meta);
+            table.meta = meta.clone();
+            table.meta.extend(own);
+            table.meta.push("-".repeat(60));
+        }
         let path = out_path(mode, &name, suffix);
         write_table(&table, &path, TableFormat::Csv)?;
-        println!("{:<8}-> {path}", name.to_uppercase());
+        println!("{:<12} -> {path}", name.to_uppercase());
         if first.is_empty() {
             first = path;
         }

@@ -31,6 +31,11 @@ pub struct NetCmd {
     #[arg(long)]
     pub modifier: Option<String>,
 
+    /// Formers reported as a Qn speciation, comma separated. REPLACES the default
+    /// list (B,P,Si); every other former is described by its coordination number
+    #[arg(long)]
+    pub qn: Option<String>,
+
     /// Also write the classified trajectory, one file per input:
     /// <input stem>_types[_<suffix>].<ext>. Defaults to lammpstrj
     #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "lammpstrj")]
@@ -72,7 +77,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     if pair_args.is_empty() {
         bail!("No pair cutoffs specified. Use --Former-Ligand=cutoff, e.g. --P-O=2.3");
     }
-    let params = build_params(pair_args, cmd.modifier.as_deref())?;
+    let params = build_params(pair_args, cmd.modifier.as_deref(), cmd.qn.as_deref())?;
     if params.cutoffs.is_empty() {
         bail!("Every cutoff names a modifier element; at least one former is required");
     }
@@ -80,6 +85,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     let inputs = batch::expand_inputs(&cmd.common.input)?;
     cmd.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
+    print_label_scheme(&params);
 
     let (results, failures) = batch::map_inputs(&inputs, |p| {
         let traj = cmd.common.load(p)?;
@@ -96,6 +102,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     }
 
     let tables = batch::stack(&results, |r: &NetworkResult| Ok(r.to_tables()))?;
+    note_missing_qn_tables(&params);
 
     let mut summary = Summary::new(&[]);
     for (path, r) in &results {
@@ -115,6 +122,50 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     )?;
 
     Ok(failures.len())
+}
+
+/// Prints the label scheme once per run, with this run's elements filled in.
+///
+/// It lives here rather than in the help text because it is **derived from the
+/// arguments**: which element gets a Qn and which gets a coordination number depends
+/// on `--qn` and on the cutoffs given, so a static block in `--help` would have to
+/// describe every case in the abstract. Printed once, above the results, it says what
+/// the labels in *this* run's files mean.
+fn print_label_scheme(params: &TypeParams) {
+    let join = |v: Vec<String>| -> String {
+        if v.is_empty() { "-".to_string() } else { v.join(",") }
+    };
+    let qn: Vec<String> = params.qn_formers();
+    let cn_formers: Vec<String> = params.formers().into_iter()
+        .filter(|e| !params.is_qn_former(e)).collect();
+
+    println!("Labels:");
+    println!("  {:<10} <elem>_<Qn>   digit = bridging ligands (Qn)", join(qn));
+    if !cn_formers.is_empty() {
+        println!("  {:<10} <elem>_<CN>   digit = COORDINATION number, not Qn",
+                 join(cn_formers));
+    }
+    println!("  {:<10} _f free  _n non-bridging  _b bridging  _t tricluster",
+             join(params.ligands()));
+    if !params.modifiers().is_empty() {
+        println!("  {:<10} bare element symbol, no role suffix",
+                 join(params.modifiers()));
+    }
+}
+
+/// Warns when the Qn tables will not be written, and why.
+///
+/// A run whose formers are all coordination-described produces four tables instead of
+/// six. Silence would read as a bug; an empty `network_qn.csv` would read as "measured,
+/// and the answer was zero".
+fn note_missing_qn_tables(params: &TypeParams) {
+    if !params.qn_formers().is_empty() { return; }
+    println!(
+        "        note: no former is a Qn element ({} given, default list is B,P,Si), \n\
+         \x20             so network_qn.csv and network_qn_partner.csv are not written.\n\
+         \x20             Use --qn <ELEM> to report one of them as a Qn speciation.",
+        params.formers().join(",")
+    );
 }
 
 /// `Zn=3.98 P=4.00` — per-input, so it belongs in the `[inputs]` block rather than
@@ -213,10 +264,18 @@ fn is_pair_arg(s: &str) -> bool {
     inner.starts_with(|c: char| c.is_ascii_uppercase()) && inner.contains('=')
 }
 
-fn build_params(pair_args: &[String], modifier: Option<&str>) -> Result<TypeParams> {
-    let modifier_elems: std::collections::HashSet<String> = modifier
-        .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
-        .unwrap_or_default();
+fn split_elems(s: Option<&str>) -> Vec<String> {
+    s.map(|s| s.split(',').map(|e| e.trim().to_string()).filter(|e| !e.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+fn build_params(
+    pair_args: &[String],
+    modifier: Option<&str>,
+    qn: Option<&str>,
+) -> Result<TypeParams> {
+    let modifier_elems: std::collections::HashSet<String> =
+        split_elems(modifier).into_iter().collect();
 
     let mut cutoffs = BTreeMap::new();
     let mut modifier_cutoffs = BTreeMap::new();
@@ -234,7 +293,28 @@ fn build_params(pair_args: &[String], modifier: Option<&str>) -> Result<TypePara
             bail!("--modifier names {m} but no --{m}-<Ligand>=<cutoff> was given");
         }
     }
-    Ok(TypeParams::new(cutoffs, modifier_cutoffs))
+
+    let mut params = TypeParams::new(cutoffs, modifier_cutoffs);
+    // --qn 替换默认列表而不是叠加:「本体系里 B 不当形成子」是真实需求,
+    // 追加式标志没法把默认项摘出去
+    if let Some(list) = qn {
+        let elems = split_elems(Some(list));
+        if elems.is_empty() { bail!("--qn was given an empty element list"); }
+        // 两条静默失败的路都堵死,理由同 --modifier:错的分类不会报错,只会给出
+        // 一份看着正常的错数据
+        for e in &elems {
+            if modifier_elems.contains(e) {
+                bail!("--qn names {e}, but --modifier already claims it; \
+                       a modifier has no bridging count, so it can have no Qn");
+            }
+            if !params.cutoffs.keys().any(|(f, _)| f == e) {
+                bail!("--qn names {e} but no --{e}-<Ligand>=<cutoff> was given, \
+                       so {e} is not a former in this run");
+            }
+        }
+        params = params.with_qn_elements(elems);
+    }
+    Ok(params)
 }
 
 fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> {
@@ -371,7 +451,7 @@ mod tests {
 
     #[test]
     fn test_modifier_cutoffs_are_routed_out_of_the_former_table() {
-        let p = build_params(&args(&["--P-O=2.4", "--Zn-O=2.6"]), Some("Zn")).unwrap();
+        let p = build_params(&args(&["--P-O=2.4", "--Zn-O=2.6"]), Some("Zn"), None).unwrap();
         assert_eq!(p.formers(), vec!["P".to_string()]);
         assert_eq!(p.modifiers(), vec!["Zn".to_string()]);
     }
@@ -379,8 +459,28 @@ mod tests {
     #[test]
     fn test_modifier_without_its_cutoff_is_rejected() {
         // 静默通过的话 Zn 会被当成形成子,氧的分类整体错位
-        let err = build_params(&args(&["--P-O=2.4"]), Some("Zn")).unwrap_err();
+        let err = build_params(&args(&["--P-O=2.4"]), Some("Zn"), None).unwrap_err();
         assert!(err.to_string().contains("--modifier names Zn"), "{err}");
+    }
+
+    #[test]
+    fn test_qn_replaces_the_default_list_rather_than_adding_to_it() {
+        let p = build_params(&args(&["--P-O=2.4", "--Al-O=2.4"]), None, Some("Al")).unwrap();
+        assert_eq!(p.qn_formers(), vec!["Al".to_string()], "P 必须被替换掉,不是叠加");
+        // 不给 --qn 时走默认表:P 有 Qn,Al 没有
+        let d = build_params(&args(&["--P-O=2.4", "--Al-O=2.4"]), None, None).unwrap();
+        assert_eq!(d.qn_formers(), vec!["P".to_string()]);
+    }
+
+    #[test]
+    fn test_qn_rejects_a_non_former_and_a_modifier() {
+        // 点名了不是形成子的元素:静默忽略会让人以为报了 Qn 而其实没有
+        let err = build_params(&args(&["--P-O=2.4"]), None, Some("Ti")).unwrap_err();
+        assert!(err.to_string().contains("not a former"), "{err}");
+        // 点名了修饰子:修饰子没有桥接数,给它 Qn 是自相矛盾
+        let err = build_params(&args(&["--P-O=2.4", "--Zn-O=2.6"]), Some("Zn"), Some("Zn"))
+            .unwrap_err();
+        assert!(err.to_string().contains("--modifier already claims it"), "{err}");
     }
 
     #[test]
