@@ -63,6 +63,15 @@ pub type LinkKey = (SiteState, SiteState, String, usize);
 /// its pairs being reported by the linkage table.
 type OxyKey = (String, u8, String, Vec<String>);
 
+/// Ligand type key: `(class rank, label)`.  The rank leads so a `BTreeMap` orders
+/// `_f` < `_n` < `_b` < `_t` by construction rather than alphabetically by label.
+type LigandKey = (u8, String);
+
+/// Per-frame ligand histogram: ligand element → (type histogram, that element's atom
+/// count).  The count is the denominator, and it is **per element** — see
+/// [`NetworkResult::ligand_dist`].
+type LigandHist = HashMap<String, (HashMap<LigandKey, usize>, usize)>;
+
 fn oxy_key(t: &AtomType) -> OxyKey {
     let partners = match t {
         AtomType::Ligand { partners, .. } if partners.len() <= 2 => partners.clone(),
@@ -582,7 +591,7 @@ struct FrameData {
     /// 配体元素 → (类型直方图, 该元素原子数) —— composition 的配体部分,
     /// 且是 oxy 的分母来源。逐元素而非全体配体:「桥氧占全部氧的比例」是文献的
     /// BO fraction 口径,「桥氧占 O+F 的比例」不对应任何常用量
-    ligand: HashMap<String, (HashMap<(u8, String), usize>, usize)>,
+    ligand: LigandHist,
     /// 桥联组合 → 计数
     linkage: HashMap<LinkKey, usize>,
     /// 本帧的桥联观测总数（linkage 的分母）
@@ -628,7 +637,7 @@ fn compute_frame(
     let mut partner: HashMap<String, (HashMap<BridgeKey, usize>, usize)> = HashMap::new();
     let mut cn: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
     let mut oxy: HashMap<OxyKey, usize> = HashMap::new();
-    let mut ligand: HashMap<String, (HashMap<(u8, String), usize>, usize)> = HashMap::new();
+    let mut ligand: LigandHist = HashMap::new();
 
     let ligands = params.ligands();
 
@@ -715,7 +724,7 @@ struct Accumulator {
     oxy: BTreeMap<OxyKey, Moments>,
     /// 配体元素 → { 类型标签 → 矩 }。**独立累加**,不是把 oxy 的行相加 ——
     /// 相关项之和的方差不等于方差之和,`O_b` 的 sd 只能逐帧重算
-    ligand: HashMap<String, BTreeMap<(u8, String), Moments>>,
+    ligand: HashMap<String, BTreeMap<LigandKey, Moments>>,
     /// 桥联组合 → 矩
     linkage: BTreeMap<LinkKey, Moments>,
     /// 元素 → (Σ值·计数, Σ计数)，用于池化均值

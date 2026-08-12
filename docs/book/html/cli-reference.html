@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8015e3d7.js";
+            window.path_to_searchindex_js = "searchindex-7f67bd7f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-974254eb.js"></script>
@@ -675,11 +675,11 @@ ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 <tr><th>文件</th><th>装什么</th></tr>
 </thead>
 <tbody>
+<tr><td><code>network_composition.csv</code></td><td><strong>结构组成一览</strong>：<code>P-Q2</code> <code>Al_4</code> <code>O_b</code> <code>Zn_4</code>，各占其元素的比例（每元素求和为 1）</td></tr>
 <tr><td><code>network_qn.csv</code></td><td>Qn 分布，打开文件即可读</td></tr>
 <tr><td><code>network_qn_partner.csv</code></td><td>同上按伙伴元素拆开，即 $Q^n(m\mathrm{Al})$</td></tr>
-<tr><td><code>network_ligand_type.csv</code></td><td>配体分类 <code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code> 及其伙伴</td></tr>
+<tr><td><code>network_ligand_type.csv</code></td><td>配体分类，<code>label</code> 读作 <code>Al-O_b-P</code></td></tr>
 <tr><td><code>network_coordination.csv</code></td><td>配位数分布（形成子 + 修饰子）</td></tr>
-<tr><td><code>network_average.csv</code></td><td>逐元素的平均 Qn 与平均配位数</td></tr>
 <tr><td><code>network_linkage.csv</code></td><td>桥的连接情况：配体元素 + 两端位点状态</td></tr>
 </tbody>
 </table>
@@ -687,9 +687,11 @@ ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 <p><strong>Qn 只报给 Qn 形成子</strong>（默认 <code>B,P,Si</code>）。Al 之类的形成子由配位数刻画，不出现在前两
 个文件的行里，但仍在 <code>m_Al</code> 列、<code>ligand_type</code> 与 <code>linkage</code> 中。没有 Qn 形成子时前两
 个文件整个不写，屏幕打印原因。</p>
-<p>标签：Qn 形成子 <code>P_0</code>…<code>P_4</code>（数字 = Qn）、其他形成子 <code>Al_4</code> <code>Al_5</code>（数字 = <strong>配位
-数</strong>）、<code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>、修饰子为裸元素符号。全部合 <code>&lt;元素&gt;_&lt;后缀&gt;</code>
-约定，运行时按本次参数打印一次。</p>
+<p>标签有<strong>两套词汇</strong>：分布表（<code>composition</code> / <code>qn</code> / <code>qn_partner</code>）用<strong>单元</strong>词汇
+<code>P-Q2</code>，因为它们数的是结构单元；<code>linkage</code> 与导出轨迹用<strong>原子</strong>词汇 <code>P_2</code> / <code>Al_4</code>，
+因为桥联连的是原子、轨迹标签又必须能拆回 element。非 Qn 形成子两者相同（<code>Al_4</code>，
+数字是<strong>配位数</strong>）。配体 <code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>，修饰子裸元素符号。
+运行时按本次参数打印一次。<strong>下游 <code>-x/-y</code> 认原子词汇</strong>。</p>
 <p><code>--export-traj</code> 逐输入写 <code>&lt;输入 stem&gt;_types[_&lt;后缀&gt;].&lt;ext&gt;</code>。</p>
 <p>详细说明（口径、<code>sd</code> 的含义、pandas 分析范例、两种导出格式的差别、按标签选型的
 单帧限制）见 <a href="analysis/network.html">Glass Network Analysis</a>。</p>
