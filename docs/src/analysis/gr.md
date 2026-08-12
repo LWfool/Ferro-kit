@@ -78,11 +78,23 @@ centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than t
 
 ## Output
 
-One file holds $g(r)$ and $CN(r)$ side by side.
+`gr[_<suffix>].csv`，**长表**：
 
-- With a pair given (`-a`/`-b` or `-x`/`-y`): three columns, `r[Ang]`, `A-B_gr`, `A-B_cn`.
-- Without: a wide table — `r[Ang]` followed by every ordered pair as an adjacent
-  `_gr` / `_cn` duplet, ordered by (Z_centre, centre, Z_neighbour, neighbour).
+| 列 | 含义 |
+|---|---|
+| `file` | 输入文件 stem |
+| `r` | 半径 [Å] |
+| `center` / `neighbor` | 该行属于哪一个有序对 |
+| `gr` | $g(r)$ |
+| `cn` | $CN(r)$ |
+
+类型进**数据列**而不是列名：元素集不同的轨迹可直接堆叠而不需要对列，不给 `-a/-b`
+是加行而不是加列。`gr` 对称（`A-B` 与 `B-A` 逐点相同），`cn` 有向
+（`CN(A→B) = Σ hist/(N_A·steps)`）——这个区别写进了表结构而不是文档注脚。
+
+所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+
 
 $g(r)$ is **symmetric** — `A-B` and `B-A` are pointwise identical.  $CN(r)$ is **directed** —
 `A-B` is the average number of B around each A, so the order of `-a` / `-b` matters.
@@ -92,10 +104,10 @@ Header lines record all parameters, atom counts, average volume, and number dens
 ## Usage
 
 ```bash
-fe-traj -m gr -i traj.dump -o output.gr
+ferro traj gr -i traj.dump -o run1
 
 # one pair, narrowed range
-fe-traj -m gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -o po.gr
+ferro traj gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -o po
 ```
 
 ```rust

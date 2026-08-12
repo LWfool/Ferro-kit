@@ -109,11 +109,11 @@ All cube files within a family share the same grid origin and spacing, enabling 
 
 ```bash
 # Q3 phosphate clusters with Zn modifier
-fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+ferro map sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
          --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
 
 # Q0 isolated tetrahedra (no modifier)
-fe-cube -m sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
+ferro map sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
 ```
 
 ```rust

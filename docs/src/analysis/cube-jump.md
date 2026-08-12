@@ -1,5 +1,10 @@
 # Jump Distance Distribution
 
+> **仅库函数，没有 CLI 入口。** `ferro_analysis::md::cube_jump` 实现完整（含 10 个
+> 单元测试）并已导出，但 0.2.0 把八个 `fe-*` 合并成单个 `ferro` 时，`fe-cube -m jump`
+> 这一分支没有接回 `ferro map` 的子命令表。下面的 Rust API 可用；命令行用法要等
+> `map jump` 补上。
+
 ## Theory
 
 The jump distribution map identifies spatial hotspots of large atomic displacements (jump events).  For each atom and each time window $[t,\, t+\tau]$, the true Cartesian displacement is computed from unwrapped fractional coordinates.  If the displacement exceeds a threshold $d_\text{min}$, the event is recorded at a voxel position on the 3-D grid.
@@ -65,13 +70,17 @@ A Gaussian cube file with raw jump-event counts per voxel.  Typical post-process
 
 ## Usage
 
+命令行入口尚未接回（见页首说明）。当 `ferro map jump` 补上后，用法预计为：
+
 ```bash
 # Jump origins for Li, lag = 1 frame, threshold = 1.0 Å
-fe-cube -m jump -i traj.dump --elements Li --tau 1 --threshold 1.0 -o jump.cube
+ferro map jump -i traj.lammpstrj --elements Li --tau 1 --threshold 1.0 -o run1
 
 # Jump midpoints (migration pathway visualisation)
-fe-cube -m jump -i traj.dump --elements Li --record-at midpoint -o jump_mid.cube
+ferro map jump -i traj.lammpstrj --elements Li --record-at midpoint -o run1
 ```
+
+目前只能走 Rust API：
 
 ```rust
 use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};

@@ -58,12 +58,20 @@ pub struct MsdParams {
 
 ## Output
 
-Columns: `time[fs]`, `msd[Å²]`, `msd_a[Å²]`, `msd_b[Å²]`, `msd_c[Å²]`
+`msd[_<suffix>].csv`：`file, time, msd, msd_a, msd_b, msd_c`
+（时间 fs，位移平方 Å²）。
+
+给了 `--fit-range FMIN,FMAX` 时，自扩散系数 $D = \text{slope}/6$ 与 $R^2$ 打印到
+stdout 并写进 `#` 头块（同时给出 Å²/fs、cm²/s、m²/s 三种单位）。
+
+所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+
 
 ## Usage
 
 ```bash
-fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 -o output.msd
+ferro traj msd -i traj.dump --dt 2.0 --shift 10 -o run1
 ```
 
 ```rust

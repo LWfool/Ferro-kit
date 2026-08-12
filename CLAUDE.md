@@ -23,7 +23,7 @@ cargo run --bin ferro -- net -i traj.dump --P-O=2.3 --Zn-O=2.6 --modifier Zn
 cargo run --bin ferro -- convert -i input.xyz -o output.pdb
 cargo run --bin ferro -- job -i input.xyz -s gaussian -m B3LYP -o job.gjf
 
-# Python bindings (separate workspace, requires maturin; currently does not compile)
+# Python bindings (separate workspace: its own lockfile, skipped by the root cargo)
 cd ferro-python && maturin develop
 ```
 

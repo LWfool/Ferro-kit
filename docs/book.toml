@@ -8,6 +8,7 @@ src = "src"
 mathjax-support = true
 
 [output.pandoc]
+optional = true
 hosted-html = "https://ferro.github.io/ferro"
 
 [output.pandoc.profile.pdf]

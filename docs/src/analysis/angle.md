@@ -23,7 +23,7 @@ named on the command line, `--r-cut-ab` goes to the atom given by `-a` / `-x` an
 
 ```bash
 # Zn gets 2.5, P gets 2.0 — exactly as written
-fe-traj -m angle -a Zn -b O -c P -i traj.dump --r-cut-ab 2.5 --r-cut-bc 2.0
+ferro traj angle -a Zn -b O -c P -i traj.dump --r-cut-ab 2.5 --r-cut-bc 2.0
 ```
 
 > **Changed in v0.1.15.** Earlier versions handed the two cutoffs out by atomic number,
@@ -68,7 +68,7 @@ The bin offset is half a bin; `dump2analysis`'s grid misses $[0, 0.05)$ (angles 
 can be reproduced exactly when needed:
 
 ```bash
-fe-traj -m angle -a O -b P -c O -i traj.dump \
+ferro traj angle -a O -b P -c O -i traj.dump \
         --angle-min 0.05 --angle-max 180.05 --d-angle 0.1
 ```
 
@@ -107,18 +107,23 @@ pub struct AngleParams {
 
 ## Output
 
-Columns: `angle[deg]`, then one column per triplet key in (Z_center, Z_left, Z_right) order.
+`angle[_<suffix>].csv`，**长表**：`file, angle, end_a, center, end_c, count, p`。
 
-The header lists mean, standard deviation, and total count per triplet.
+三元组进**数据列**，故元素集不同的轨迹可直接堆叠。同时保留整数 `count` 与归一化 `p`
+两列：整数直方图是与 `dump2analysis` 逐 bin 对拍的依据，只留 `p` 就对不了。
+
+所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+
 
 ## Usage
 
 ```bash
-fe-traj -m angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -o output.angle
+ferro traj angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -o run1
 
 # one triplet, narrowed to the tetrahedral region
-fe-traj -m angle -a O -b P -c O -i traj.dump \
-        --angle-min 90 --angle-max 130 --d-angle 0.2 -o opo.angle
+ferro traj angle -a O -b P -c O -i traj.dump \
+        --angle-min 90 --angle-max 130 --d-angle 0.2 -o opo
 ```
 
 ```rust

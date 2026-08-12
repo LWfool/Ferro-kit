@@ -53,7 +53,12 @@ pub struct VacfParams {
 
 ## Output
 
-Columns: `time[fs]`, `vacf[v²]`, `vacf_x[v²]`, `vacf_y[v²]`, `vacf_z[v²]`, `diffusion[v²·fs]`
+`vacf[_<suffix>].csv`：`file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
+（时间 fs，`diffusion` 为 Green-Kubo running integral）。
+
+所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+
 
 ### Unit Note
 
@@ -66,7 +71,7 @@ This conversion will be applied automatically in a future IO unit normalisation 
 ## Usage
 
 ```bash
-fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li -o output.vacf
+ferro traj vacf -i traj.dump --dt 2.0 --elements Li -o run1
 ```
 
 ```rust

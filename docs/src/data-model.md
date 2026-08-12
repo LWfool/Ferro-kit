@@ -97,16 +97,49 @@ pub struct Trajectory {
 
 NPT trajectories (variable box per frame) are handled naturally: each `Frame` carries its own `Cell`.
 
-## Pseudo-Element Labels
+## Element vs. Label
 
-ferro supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):
+`Atom::element` 是**化学元素**；`Atom::label` 是可选的**位点类型**。两者分开存放，
+所以一个原子既能按元素选也能按位点选，而不必二选一：
 
-| Label | Meaning |
+```rust
+Atom { element: "P".into(), label: Some("P_3".into()), .. }
+```
+
+分析命令的两组选择参数互斥：`-a/-b/-c` 按 `element`，`-x/-y/-z` 按 `label`。
+
+### 标签约定
+
+位点标签一律形如 `<元素>_<后缀>`，按**首个下划线**拆分。后缀里再有下划线不影响
+（`O_b_P_P` 的元素仍是 `O`）。
+
+| 标签 | 含义 |
 |---|---|
-| `P0/P1/P2/P3` | Phosphorus with Qn connectivity |
-| `Of` | Free oxygen (0 P neighbours) |
-| `On` | Non-bridging oxygen (1 P neighbour) |
-| `Ob` | Bridging oxygen (≥2 P neighbours) |
-| `Zn`, `Na`, … | Modifier cation symbols |
+| `P_0` … `P_4`、`Al_2` | 形成子，数字 = 桥接配体数（P 的即 Qn） |
+| `O_f` | 自由配体（不连任何形成子） |
+| `O_n` | 非桥配体（连 1 个） |
+| `O_b` | 桥联配体（连 2 个） |
+| `O_t` | 三配位配体（连 ≥3 个，tricluster） |
+| `Zn`、`Na`… | 修饰子，裸元素符号，无角色后缀 |
 
-Atomic-number lookup (`elem_z`) resolves pseudo-labels by stripping suffixes: `"P3"` → P (Z=15), `"Ob"` → O (Z=8).
+> 0.2.1 之前的旧格式（`P0` / `Of` / `On_P` / `Ob_P_P` / `X` / `Zn_f`）已全部替换，
+> **不留读取兼容层**：重跑一次 `ferro net --export-traj` 即为新格式，而加格式猜测
+> 反而可能把真元素误判成旧标签。
+
+### 谁会填 `label`
+
+| 来源 | 说明 |
+|---|---|
+| LAMMPS dump reader | `element` 列写成 `P_3` 时拆成 `element="P"` + `label="P_3"`，读完打印一次映射表 |
+| extxyz reader | 独立的 `label:S:1` 列 |
+| CIF / CP2K / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
+| `ferro net --export-traj` | 分类结果写进 `label`，`element` 保持元素 |
+
+### 谁会写出 `label`
+
+**writer 从不自作主张把 `label` 折进元素列。** `ferro convert` 无论标签如何都写干净的
+元素符号。只有 `ferro net --export-traj` 折叠，且只对 LAMMPS dump——那个格式只有一列
+名字放得下第二个名字；extxyz 走独立的 `label:S:1` 列，两个方向都无损。
+
+折叠带守卫：标签不形如 `<元素>_…` 时不折并计数告警。CIF 的 `O1` 折进去后再读回来，
+就是一个不存在的元素 `O1`。

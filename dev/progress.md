@@ -50,7 +50,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   - 供 `ferro-structure::find_clusters` 与 `ferro-analysis::cube_sdf` 复用，消除重复
 - `Frame::unique_elements()`：按首现顺序去重元素（替代 5 处重复实现）
 - **`network_type.rs`**：`AtomType`、`TypeParams`、`classify_frame[_detailed]`
-  - **`enum AtomType`（0.2.2）**：`Former { elem, bridging, cn, bridges_to }` /
+  - **`enum AtomType`（0.2.1）**：`Former { elem, bridging, cn, bridges_to }` /
     `Ligand { elem, partners }` / `Modifier { elem, cn }` / `Other { elem }`
     —— 分类结果不再是字符串。此前 `classify_frame` 把算出的数字渲染成标签就丢弃,
     下游各自写解析器猜回来,全项目共五个这样的反解析点(`extract_qn`、三个
@@ -58,7 +58,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
     `starts_with("Ob_")`),改标签格式需同时改六处,漏一处即静默错数据
   - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` / `display_rank()`
     取代三个 `*_label_order` 与 `type_sort_key`；`is_bridging()` 取代前缀匹配
-  - 标签(0.2.2 起,全部合 `<元素>_<后缀>` 约定)：
+  - 标签(0.2.1 起,全部合 `<元素>_<后缀>` 约定)：
     形成子 `P_0`/`Al_2`（数字 = 桥接配体数）、`O_f`/`O_n`/`O_b`/`O_t`、修饰子裸元素符号
   - `classify_frame_detailed` 另返回 ligand→former 邻接（`FrameTypes`），供 linkage
     统计使用；配对统计需要图而不只是逐原子类型,重算一遍邻居搜索会把最贵的一步做两次
@@ -72,10 +72,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`lammps_dump.rs`**：`element` 列写位点标签（`P_0`/`O_b`/`Al_2`）时拆成
   element + label，读取结束打印一次映射表；前缀非法元素时整串当元素并告警。
   普通符号原样通过、`label = None`
-  - writer 的整数 `type` 列**在整条轨迹上确定一次**（0.2.2）。原先在帧循环内按
+  - writer 的整数 `type` 列**在整条轨迹上确定一次**（0.2.1）。原先在帧循环内按
     「该帧首次出现的名字顺序」重建：元素只有几种时碰巧稳定，写位点标签后某帧
     恰好没有 `P_4`，同一个 type 编号就会在不同帧指向不同的东西
-- **`extxyz.rs`**：`label:S:1` 列（0.2.2，读写两侧）。extxyz 的列是自描述的，
+- **`extxyz.rs`**：`label:S:1` 列（0.2.1，读写两侧）。extxyz 的列是自描述的，
   故标签走自己一列、`species` 保持纯元素 —— 与 dump「没地方放第二个名字只能折进
   element 列」相反，两个方向都无损
 - **`cube.rs`（重构）**：
@@ -264,7 +264,7 @@ ferro bader | convert | info | job
 - **类型选择**（`traj` 的 gr/sq/angle）：`-a/-b/-c` 按 element、`-x/-y/-z` 按 label，
   两组互斥；`-a`/`-x` 为中心、`-b`/`-y` 为近邻，顺序影响 CN
 - `plot_gr` 单配对（修复原先只画低 Z 作中心那一向 CN 的 bug）
-- **`ferro net`（0.2.2 起为叶子命令）**：`net qn` / `net type` 合并。两者从来不是
+- **`ferro net`（0.2.1 起为叶子命令）**：`net qn` / `net type` 合并。两者从来不是
   两个分析——都对每帧每个原子做同一次分类，`type` 只是把结果写出去而不是汇总。
   导出退化为开关 `--export-traj [lammpstrj|extxyz]`，统计恒定执行
   - 接 `CommonArgs` + `batch::map_inputs`：`-i` 多值 + glob，五张长表带 `file` 列
@@ -309,9 +309,11 @@ ferro bader | convert | info | job
 
 ## 已知限制
 
-- `ferro-python` 未跟进本次重构：`gr_pair`/`gr_all` 仍走已删除的旧路径，
-  `cd ferro-python && cargo check` 会断。**优先级中**（2026-08-11，与 pyo3 0.29
-  运行时验证合为一项）
+- `ferro-python` **能编译**（2026-08-12 复核：`cargo clean && cargo check` 干净通过，
+  clippy 零警告，版本已同步至 0.2.1）。此前记录里的「编译断裂」经查不成立。
+  真问题是它作为独立 workspace 被主 workspace 的 `cargo build/test/clippy` 全部跳过，
+  断裂不会被自动发现；改公共 API 后须手动补跑。
+  待办仍是 **pyo3 0.29 的运行时验证**（本机无 maturin），**优先级中**
 
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入
 - `box_builder` 无 CLI / Python 入口，目前只能作为库函数调用

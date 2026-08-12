@@ -13,17 +13,20 @@ cd ferro
 cargo build --release
 ```
 
-The compiled CLI binaries are placed in `target/release/`:
+The build produces **one** binary, `target/release/ferro`. (Before 0.2.0 there were
+eight `fe-*` binaries; they are gone, with no compatibility shims — see
+[CLI Reference](cli-reference.md) for the migration table.)
 
-| Binary | Purpose |
-|---|---|
-| `fe-convert` | Format conversion |
-| `fe-info` | Print structure information |
-| `fe-job` | Generate QC input files |
-| `fe-traj` | Structural analysis (g(r), S(q), MSD, angle) |
-| `fe-corr` | Correlation functions (VACF, rotcorr, van Hove) |
-| `fe-cube` | 3-D spatial maps (density, jump, radius, SDF) |
-| `fe-network` | Glass network analysis (Qn, CN, ligand classification) |
+| Command group | Purpose | Product |
+|---|---|---|
+| `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
+| `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | 3-D spatial maps | one `.cube` per input |
+| `ferro net` | Glass network topology | five stacked CSVs + optional labelled trajectory |
+| `ferro bader` | Bader charge partitioning | ACF/BCF/AVF |
+| `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
+
+Run `ferro` with no arguments for the overview, `ferro <group>` for that group's
+commands, and `ferro <group> <command>` without `-i` for its parameters.
 
 ## Python Bindings
 

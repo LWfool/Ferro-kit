@@ -1,8 +1,8 @@
 # Averaged Charge-Density SDF (`chg-sdf`)
 
-`fe-cube -m chg_sdf` computes the **averaged electron-density spatial distribution function** over a set of Qn-type network clusters.  Given a collection of QE `pp.x` charge-density cube files (one per MD snapshot), the tool:
+`ferro map chg-sdf` computes the **averaged electron-density spatial distribution function** over a set of Qn-type network clusters.  Given a collection of QE `pp.x` charge-density cube files (one per MD snapshot), the tool:
 
-1. Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as `fe-cube -m sdf`.
+1. Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as `ferro map sdf`.
 2. Extracts a cubic sub-grid of the electron density centred on the cluster anchor atom, interpolating the raw charge-density grid with trilinear interpolation (PBC-safe).
 3. Rotates the sub-grid to align with the first-encountered reference cluster via the Kabsch rotation matrix, using "pull" interpolation (`output[r] = input[R⁻¹ r]`).
 4. Accumulates rotated sub-grids; divides by the cluster count to obtain the averaged density.
@@ -22,13 +22,13 @@ Charge-density cube files must be produced by QE `pp.x` (or any program that out
 
 ```bash
 # Basic: average charge density around Q2 clusters (P–O system)
-fe-cube -m chg_sdf \
+ferro map chg-sdf \
     --cubes frame_000.cube frame_001.cube frame_002.cube \
     --qn 2 --former P --ligand O --cutoff-fl 2.4 \
     -o chg_sdf
 
 # With modifier cation (e.g. Zn2+ in Zn-phosphate glass)
-fe-cube -m chg_sdf \
+ferro map chg-sdf \
     --cubes *.cube \
     --qn 2 --former P --ligand O --cutoff-fl 2.4 \
     --modifier Zn --cutoff-ml 2.8 \
@@ -36,7 +36,7 @@ fe-cube -m chg_sdf \
     -o chg_sdf_Q2
 
 # Tighter sub-grid / multiple threads
-fe-cube -m chg_sdf \
+ferro map chg-sdf \
     --cubes *.cube \
     --qn 3 --former P --ligand O \
     --chg-padding 5.0 --rmsd-warn 0.3 \
@@ -96,7 +96,7 @@ ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
 ## Algorithm Details
 
 ### Cluster identification
-Identical to `fe-cube -m sdf`: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.
+Identical to `ferro map sdf`: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.
 
 ### Sub-grid extraction
 For each cluster anchor position `c` (Cartesian, Å):
@@ -125,5 +125,5 @@ output[r_out] = input[ R⁻¹ · (r_out − centre) + centre ]
 
 ## Related Commands
 
-- [`fe-cube -m sdf`](cube-sdf.md) — atom-type SDF (no charge density required)
-- [`fe-bader`](../cli-reference.md#fe-bader) — Bader charge decomposition from CHGCAR / cube files
+- [`ferro map sdf`](cube-sdf.md) — atom-type SDF (no charge density required)
+- [`ferro bader`](../cli-reference.md#ferro bader) — Bader charge decomposition from CHGCAR / cube files

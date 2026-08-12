@@ -20,6 +20,16 @@ pip install target/wheels/ferro-*.whl
 > `cargo build` from the workspace root does **not** build this crate (and a
 > standalone `cargo build` fails at the macOS link step on undefined Python
 > symbols — that is expected; maturin supplies the correct link flags).
+>
+> Because it is a separate workspace with its own lockfile, the root
+> `cargo build` / `test` / `clippy` skip it entirely — a break in the bindings is
+> not caught by the main test suite.  After changing any public API in
+> `ferro-core` or `ferro-analysis`, run `cd ferro-python && cargo check`.
+>
+> **Status (0.2.1):** type-level checks pass cleanly (`cargo clean && cargo check`,
+> clippy zero warnings).  The pyo3 0.21 → 0.29 upgrade has **not** been verified at
+> runtime — this machine has no maturin, so module initialisation and the
+> `#[pyfunction]` signatures are unconfirmed in practice.
 
 ## Quick start
 
@@ -32,7 +42,7 @@ print(len(t), t.n_atoms(), t.elements())
 sc = ferro.supercell(t, 2, 2, 1)
 ferro.write(sc, "POSCAR")
 
-g = ferro.gr(t, r_max=10.0, dr=0.02)        # dict[str, list[float]]
+g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)   # dict[str, list[float]]
 d = ferro.msd(t, dt=2.0, elements=["Li"])
 ```
 
@@ -90,21 +100,33 @@ Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`, `in`/`qe`,
 Analysis functions return `dict[str, list[float]]` (PyO3 converts the Rust
 `HashMap<String, Vec<f64>>` automatically — no NumPy dependency).
 
-### `gr(traj, r_max=None, dr=0.01, r_cut=2.3, r_min=0.005)`
+### `gr_pair(traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005)`
+### `gr_all(traj, by="element", r_max=None, dr=0.01, r_min=0.005)`
 
-Radial distribution function and coordination number.  `r_max=None`
-auto-selects half the shortest cell vector of the first frame.
+Radial distribution function and coordination number.  `gr_pair` computes one
+named pair, `gr_all` every ordered pair in a single pass.  `r_max=None`
+auto-selects the minimum-image bound (half the smallest **interplanar spacing**,
+not the shortest cell vector — the two differ for non-orthogonal cells).
+
+`by="element"` groups on `Atom::element`, `by="label"` on `Atom::label`.
 
 Returned keys:
 
 - `"r"` — bin-centre radii [Å]
-- `"gr:<El1-El2>"`, `"gr:total"` — partial / total g(r)
-- `"cn:<center-neighbor>"` — directed cumulative CN(r)
+- `"<A>-<B>_gr"` — partial g(r); symmetric, `A-B` equals `B-A`
+- `"<A>-<B>_cn"` — directed cumulative CN(A→B)
+
+`gr_all` gives n² ordered pairs for n types.  There is **no total**: an unweighted
+total is the degenerate `f_i ≡ 1` case, corresponds to no experimental probe, and
+was removed in 0.1.11.
 
 ```python
-g = ferro.gr(t, r_max=8.0, dr=0.05)
+g = ferro.gr_pair(t, "P", "O", r_max=8.0, dr=0.05)
 import matplotlib.pyplot as plt
-plt.plot(g["r"], g["gr:total"])
+plt.plot(g["r"], g["P-O_gr"])
+
+# 按位点标签分组（标注轨迹）
+g = ferro.gr_pair(t, "P_3", "O_b", by="label", r_max=5.0)
 ```
 
 ### `msd(traj, dt=1.0, shift=1, tau=None, elements=None)`
