@@ -162,27 +162,52 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
 ### ferro-analysis / network（已重构）
 - 单文件 `mod.rs`，依赖 `ferro_core::classify_frame_detailed`
 - 参数类型：`TypeParams`（来自 ferro-core，`cutoffs` + `modifier_cutoffs`）
-- 结果：`NetworkResult`（`bridge_dist` / `mean_bridge` / `cn_dist` / `mean_cn` /
-  `oxy_dist` / `partner_dist` / `linkage`），`to_tables()` 出六张长表
+- 参数类型另带 `qn_elements`（默认 `{B,P,Si}`，来自 `ferro_core::data::qn_elements`），
+  由 `--qn` 整体替换。约定随参数走而不是渲染时查表 —— 一个类型必须携带它是在哪套
+  约定下产生的，否则同一批次两个文件里 `Al_4` 含义不同
+- 结果：`NetworkResult`（`qn_dist` / `mean_qn` / `cn_dist` / `mean_cn` /
+  `oxy_dist` / `qn_partner_dist` / `linkage`），`to_tables()` 出六张长表
+  （`qn` / `qn_partner` / `ligand_type` / `coordination` / `average` / `linkage`）
 - **`Bin { count, fraction, sd }`**：`fraction` 是**逐帧比例的平均**，`sd` 是同一序列的
   样本标准差（ddof=1），缺席帧按 f=0 计入。`sd` **不是标准误** —— MD 相邻帧强相关，
   既不按 1/√N 收缩也不估计物理涨落
   - 用 Welford 而非 `Σf`/`Σf²`：两遍求和对恒定序列给出 ~2e-10 的抵消噪声
     （实测 P 的 Q0 档逐帧恒为 5 个），而 sd 列里的假抖动会被当成物理。
     rayon 是归并而非顺序折叠，故用 Chan/Golub/LeVeque 成对合并公式
-- **`linkage` 表**：一行一种「两端位点状态」组合，两端**各带元素、桥接数、配位数**
-  三个字段。参考实现（`private/coord_analysis.py`）按元素只存一个数（P 存 Qn、
+- **Qn 只报给 Qn 形成子**：Al 从 `qn` / `qn_partner` 的**行**里整体退出，仍保留在
+  `m_Al` 伙伴列、`ligand_type`、`coordination`、`linkage`。Qn 是四面体形成子的记号，
+  Al 的表征量是配位数（Al[4]/Al[5]/Al[6]），给它报 Qn 等于发明一个文献里没有的量。
+  非 Qn 形成子的 **label 数字改取配位数**（`Al_4` = 四配位），`AtomType::Former.qn:
+  Option<u32>` 既是标志也是取值
+  - **测试盲区**：参考轨迹的 Al 不带非桥氧（`ligand_type` 无 `O_n, Al` 行），故逐
+    原子 `bridging == cn`，两种口径的分叉从未被触发。已补
+    `test_non_qn_former_labels_by_coordination_not_bridging` 造出分叉构型
+  - 两张 Qn 表在没有 Qn 形成子时**整个不写**并打印原因：只有表头的 CSV 读起来像
+    「测了，结果是零」
+- **`linkage` 表**：一行一种「配体元素 × 两端位点状态」组合，两端**各带元素、桥接数、
+  配位数**三个字段，外加人可读的 `linkage` 展示列（`Al_4-O-P_2`，经
+  `AtomType::label` 渲染，与导出轨迹同一套词汇）。参考实现（`private/coord_analysis.py`）按元素只存一个数（P 存 Qn、
   Al 存 CN，由 `QnEle` 列表决定），故「4 配位 Al 的桥接数」问不出来
   - 规范半边：桥联无方向，两端按 `(元素, 桥接数, 配位数)` 排序后小的在前，
     每对只存一次（与 sq 只做规范半边同理）。行和不等于该位点的总参与度
   - `n_formers` 列：普通桥氧为 2，三配位氧展开成 C(3,2)=3 行并标 3
-- **`bridge` 与 `partner` 是两张表**（0.2.2 修）：前者是桥接数的边际分布（P 的即
-  Qn 分布，打开文件即可读），后者多一维伙伴分解。0.2.1 曾合成一张，理由是
-  「`groupby` 能退回去」——结果是用户打开 `network_bridge.csv` **看不到 Qn 占比**，
-  它散在 14 行里。粒度不同就该分表，与 `mean` 独立成表同理；`sd` 必须各自累加，
-  相关项之和的方差不等于方差之和
+  - **`ligand` 进键**（0.2.1 后补）：此前双配体体系（`--Al-O` + `--Al-F`）会把 Al-O-P
+    与 Al-F-P 静默合并成一行，报出的计数无法与实验对应
+  - `n_bridge_a/b` 保留此名而非 `qn_a/b`：桥接数对每个形成子都有定义，Qn 只对一部分
+    成立。这是唯一还需要给「非 Qn 形成子的桥接数」命名的地方
+- **`qn` 与 `qn_partner` 是两张表**（0.2.1 后修）：前者是 Qn 的边际分布（打开文件即可
+  读），后者多一维伙伴分解。0.2.1 曾合成一张，理由是「`groupby` 能退回去」——结果是
+  打开文件**看不到 Qn 占比**，它散在 14 行里。粒度不同就该分表，与 `average` 独立成
+  表同理；`sd` 必须各自累加，相关项之和的方差不等于方差之和（实测 P 的 `qn=2`：
+  正确 5.574e-3，partner 各行相加 9.966e-3）
+- **每张表自带 `#` 头**（表意 + 逐列 + 该表的坑）。为此 `batch::write_all` 由覆盖
+  `Table::meta` 改为拼接，`Table::concat_union` 同步保留各部分 meta（取第一份），
+  否则说明在 `stack` 阶段就丢了。帮助文本删掉的内容落在这里
+- **`label` 列与数值列并存**，不是二选一：label 给人读，`former`/`qn`/`cn` 给筛选和
+  画图。删掉数值列会让「筛出 Qn ≥ 3」退化成字符串切分 —— 正是这次重构从五处调用点
+  消灭掉的反向解析
 - **`m_<X>` 分解**（`bridges_to`）：Q^n(mAl) 记号。只对「恰好两个形成子」的配体成立，
-  故 `Σm ≤ n_bridge`，差额即三配位桥数。**无法从 linkage 反推** —— 两座 P-O-Al 桥
+  故 `Σm ≤ qn`，差额即三配位桥数。**无法从 linkage 反推** —— 两座 P-O-Al 桥
   可能来自一个 m_Al=2 的 P，也可能来自两个 m_Al=1 的 P；linkage 数桥，这里数原子
 - 修饰子角色分类（`Zn_f`/`Zn_t`/`Zn_b`/`X`）已删除：实测参考轨迹 97.1% 落进 ≥3
   兜底桶（0 / 1 / 26 / 903），无分辨力。改用配位数描述，Zn 进 CN 表

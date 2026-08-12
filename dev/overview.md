@@ -73,3 +73,8 @@ ferro bader | convert | info | job
 **已知例外**：`v0.2.1`（2026-08-12，net 重构）含破坏性改动（`net qn`/`net type`
 删除、标签格式全变、表名与列结构全变），按上面的规则本应是 0.3.0，但按用户当时的
 明确要求走了 patch 位。翻 git 历史时注意：**0.2.0 → 0.2.1 之间有 breaking change**。
+
+`v0.2.1` **之后**（尚未发版）还有第二批 net 破坏性改动：六张表全部改名
+（`bridge`→`qn`、`partner`→`qn_partner`、`oxy`→`ligand_type`、`cn`→`coordination`、
+`mean`→`average`）、Al 退出 Qn 表、非 Qn 形成子的 label 数字由桥接数改为配位数、
+`linkage` 加 `linkage`/`ligand` 两列。下次发版时这些一并计入。
