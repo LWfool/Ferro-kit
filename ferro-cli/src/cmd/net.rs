@@ -1,133 +1,156 @@
 //! `ferro net` — glass network topology.
 //!
+//! A leaf command, not a subcommand group. The old `net qn` / `net type` split was
+//! never two analyses: both classify every atom of every frame the same way, and
+//! `type` merely wrote the classification out instead of summarising it. So the
+//! export is a **flag**, `--export-traj`, and the statistics always run.
+//!
 //! Cutoffs are given as `--<Former>-<Ligand>=<Å>` (e.g. `--P-O=2.3`), which clap cannot
 //! model as a fixed flag set: the element pair is part of the flag name. `main` strips
 //! those out of argv before clap parses and hands them here.
 
-use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
+use anyhow::{anyhow, bail, Result};
+use clap::Args;
 use ferro_analysis::{calc_network, NetworkResult};
-use ferro_core::{AtomType, TypeParams};
-use ferro_io::{write_xyz, LammpsUnits};
-use ferro_structure::apply_type_labels;
+use ferro_core::{Trajectory, TypeParams};
+use ferro_io::write_lammps_dump;
+use ferro_structure::{apply_type_labels, classify_trajectory};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::io_dispatch::read_trajectory;
+use crate::args::common::CommonArgs;
+use crate::batch::{self, Summary};
 
-#[derive(Subcommand, Debug)]
-pub enum NetCmd {
-    /// Qn species, oxygen-type and coordination-number distributions (time averaged)
-    Qn(QnCmd),
-    /// Per-atom type labels for one frame; writes a structure file when -o is given
-    Type(TypeCmd),
-}
+#[derive(Args, Debug)]
+pub struct NetCmd {
+    #[command(flatten)]
+    pub common: CommonArgs,
 
-/// Options shared by both network subcommands.
-#[derive(Args, Clone, Debug)]
-pub struct NetCommon {
-    /// Input trajectory file
-    #[arg(short, long)]
-    pub input: Option<PathBuf>,
-
-    /// Output file
-    #[arg(short, long)]
-    pub output: Option<PathBuf>,
-
-    /// Use only the last N frames (default: all)
-    #[arg(long)]
-    pub last_n: Option<usize>,
-
-    /// Parallel threads (default: all cores)
-    #[arg(long)]
-    pub ncore: Option<usize>,
-
-    /// Use LAMMPS metal units for dump files
-    #[arg(long)]
-    pub metal_units: bool,
-
-    /// Modifier elements, comma separated (e.g. Zn,Na)
+    /// Modifier elements, comma separated (e.g. Zn,Na). They count towards
+    /// coordination numbers but take no part in bridging counts or ligand types
     #[arg(long)]
     pub modifier: Option<String>,
-}
 
-#[derive(Args, Debug)]
-pub struct QnCmd {
-    #[command(flatten)]
-    pub common: NetCommon,
-    /// Output format: csv | xlsx
-    #[arg(long, default_value = "csv")]
-    pub format: String,
-}
-
-#[derive(Args, Debug)]
-pub struct TypeCmd {
-    #[command(flatten)]
-    pub common: NetCommon,
-    /// Frame index (0-based; default: last frame)
+    /// Also write the classified trajectory to <input>_types[_<suffix>].lammpstrj
     #[arg(long)]
-    pub frame: Option<usize>,
-}
-
-fn common_of(cmd: &NetCmd) -> &NetCommon {
-    match cmd {
-        NetCmd::Qn(c) => &c.common,
-        NetCmd::Type(c) => &c.common,
-    }
+    pub export_traj: bool,
 }
 
 pub fn wants_help(cmd: &NetCmd) -> bool {
-    common_of(cmd).input.is_none()
+    cmd.common.input.is_empty()
 }
 
 pub fn print_help() {
     println!("{}", HELP_EXTRA);
 }
 
-/// Runs a network analysis. `pair_args` are the `--P-O=2.3`-style cutoffs `main`
+/// Runs the network analysis. `pair_args` are the `--P-O=2.3`-style cutoffs `main`
 /// pulled out of argv.
 pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
+    // 参数错误在读第一个文件之前就失败
     if pair_args.is_empty() {
         bail!("No pair cutoffs specified. Use --Former-Ligand=cutoff, e.g. --P-O=2.3");
     }
-    let common = common_of(cmd).clone();
-    let input = common.input.clone().expect("checked by wants_help");
+    let params = build_params(pair_args, cmd.modifier.as_deref())?;
+    if params.cutoffs.is_empty() {
+        bail!("Every cutoff names a modifier element; at least one former is required");
+    }
 
-    let all_pairs = parse_pairs(pair_args)?;
-    let modifier_elems: std::collections::HashSet<String> = common
-        .modifier
-        .as_deref()
-        .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
-        .unwrap_or_default();
+    let inputs = batch::expand_inputs(&cmd.common.input)?;
+    cmd.common.init_threads();
+    println!("Inputs: {} file(s)", inputs.len());
 
-    let mut cutoffs = BTreeMap::new();
-    let mut modifier_cutoffs = BTreeMap::new();
-    for ((elem, ligand), cutoff) in all_pairs {
-        if modifier_elems.contains(&elem) {
-            modifier_cutoffs.insert((elem, ligand), cutoff);
-        } else {
-            cutoffs.insert((elem, ligand), cutoff);
+    let (results, failures) = batch::map_inputs(&inputs, |p| {
+        let traj = cmd.common.load(p)?;
+        let result = calc_network(&traj, &params).ok_or_else(|| {
+            anyhow!("no usable frame (every frame is missing a cell; PBC required)")
+        })?;
+        if cmd.export_traj {
+            export_labelled(&traj, &params, p, cmd.common.suffix())?;
         }
+        Ok(result)
+    });
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
     }
 
-    if let Some(n) = common.ncore {
-        rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
-    }
+    let tables = batch::stack(&results, |r: &NetworkResult| Ok(r.to_tables()))?;
 
-    let units = if common.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let mut traj = read_trajectory(&input, units)?;
-    if let Some(n) = common.last_n {
-        traj = traj.tail(n);
+    let mut summary = Summary::new(&[]);
+    for (path, r) in &results {
+        summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[]);
+        summary.note("mean_qn", fmt_means(&r.mean_qn, &r.qn_dist));
+        summary.note("mean_cn", fmt_means(&r.mean_cn, &r.cn_dist));
     }
+    summary.failed(&failures);
 
-    let params = TypeParams { cutoffs, modifier_cutoffs };
+    batch::write_all(
+        "network",
+        "Glass Network Topology — Qn speciation, ligand types, coordination numbers",
+        &results[0].1.meta_lines(),
+        &summary.into_table(),
+        tables,
+        cmd.common.suffix(),
+    )?;
 
-    match cmd {
-        NetCmd::Qn(c)   => run_qn(&traj, &params, c.common.output.as_deref(), &c.format)?,
-        NetCmd::Type(c) => run_type(&traj, &params, c.common.output.as_deref(), c.frame)?,
-    }
-    Ok(0)
+    Ok(failures.len())
 }
+
+/// `Zn=3.98 P=4.00` — per-input, so it belongs in the `[inputs]` block rather than
+/// the shared parameter block.
+fn fmt_means<T>(
+    means: &std::collections::HashMap<String, f64>,
+    present: &std::collections::HashMap<String, T>,
+) -> String {
+    let mut elems: Vec<&String> = present.keys().collect();
+    elems.sort();
+    elems.iter()
+        .filter_map(|e| means.get(*e).map(|v| format!("{e}={v:.2}")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+// ─── 标注轨迹导出 ─────────────────────────────────────────────────────────────
+
+/// Writes the classified trajectory as `<input stem>_types[_<suffix>].lammpstrj`.
+///
+/// The name carries the input stem because this is a **one product per input**
+/// product, like `ferro map`'s cubes — a fixed output path would make the second
+/// input overwrite the first.
+fn export_labelled(
+    traj: &Trajectory,
+    params: &TypeParams,
+    input: &Path,
+    suffix: Option<&str>,
+) -> Result<()> {
+    let per_frame = classify_trajectory(traj, params);
+    if per_frame.len() != traj.frames.len() {
+        bail!(
+            "cannot export: {} of {} frames have no cell",
+            traj.frames.len() - per_frame.len(),
+            traj.frames.len()
+        );
+    }
+
+    let frames = traj.frames.iter().zip(&per_frame)
+        .map(|(frame, types)| {
+            let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
+            apply_type_labels(frame, &labels)
+        })
+        .collect();
+    let labelled = Trajectory { frames, metadata: traj.metadata.clone() };
+
+    let stem = batch::label_of(input);
+    let path = match suffix {
+        Some(s) if !s.is_empty() => format!("{stem}_types_{s}.lammpstrj"),
+        _ => format!("{stem}_types.lammpstrj"),
+    };
+    write_lammps_dump(&labelled, &path, ferro_io::LammpsUnits::Real)?;
+    println!("        traj -> {path}");
+    Ok(())
+}
+
+// ─── Pair 参数解析 ────────────────────────────────────────────────────────────
 
 /// Splits `--Former-Ligand=cutoff` arguments out of argv; the rest goes to clap.
 pub fn split_pair_args(all: &[String]) -> (Vec<String>, Vec<String>) {
@@ -139,258 +162,34 @@ pub fn split_pair_args(all: &[String]) -> (Vec<String>, Vec<String>) {
     (pairs, clap)
 }
 
-const HELP_EXTRA: &str = "\
-PAIR ARGUMENTS:
-  Specify cutoff radii with --Former-Ligand=<cutoff>:
-    --P-O=2.3         P former, O ligand, cutoff 2.3 Å
-    --Al-O=2.0 --Al-F=2.1
-
-MODIFIER:
-  --modifier Zn       Zn counts towards coordination numbers but takes no part in
-                      the bridging count or in ligand classification;
-                      supply its cutoff via --Zn-O=2.6
-
-MODES:
-  -m Qn   Time-averaged statistics over all frames:
-            • Qn species distribution per former
-            • Ligand type distribution (O_f / O_n / O_b / O_t)
-            • Total CN distribution per element (formers and modifiers)
-          Output: <stem>_qn.csv, <stem>_oxy.csv, <stem>_cn.csv  (or single xlsx)
-
-  -m type  Per-atom type labels for one frame (default: last frame):
-            Former    → P_0 P_1 P_2 …   (digit = bridging-ligand count)
-            Free O    → O_f
-            NBO       → O_n
-            BO        → O_b
-            Tricluster→ O_t            (≥3 formers)
-            Modifier  → Zn             (element symbol, no role suffix)
-           Every label splits at the first underscore into element + label, so an
-           exported structure can be selected with -a/-b (element) or -x/-y (label).
-           If -o is given, writes a structure file with labels as element names.
-           If -o is omitted, prints the type table to stdout.
-
-EXAMPLES:
-  fe-network -i traj.dump --P-O=2.3 -m Qn
-  fe-network -i traj.dump --P-O=2.3 -m Qn -o result.xlsx --format xlsx
-  fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn -m Qn
-  fe-network -i traj.dump --P-O=2.3 -m type
-  fe-network -i traj.dump --P-O=2.3 -m type -o typed.xyz";
-
-fn run_qn(
-    traj: &ferro_core::Trajectory,
-    params: &TypeParams,
-    output: Option<&Path>,
-    format: &str,
-) -> Result<()> {
-    let result = calc_network(traj, params)
-        .ok_or_else(|| anyhow::anyhow!(
-            "Network analysis failed — trajectory empty or frames missing cell (PBC required)"
-        ))?;
-
-    let out_base = output.unwrap_or_else(|| Path::new("network"));
-    match format.to_lowercase().as_str() {
-        "csv"  => write_qn_csv(&result, params, out_base)?,
-        "xlsx" => write_qn_xlsx(&result, params, out_base)?,
-        other  => bail!("Unknown format '{other}'. Use csv or xlsx."),
-    }
-    Ok(())
-}
-
-// ─── -m type ─────────────────────────────────────────────────────────────────
-
-fn run_type(
-    traj: &ferro_core::Trajectory,
-    params: &TypeParams,
-    output: Option<&Path>,
-    frame_arg: Option<usize>,
-) -> Result<()> {
-    if traj.frames.is_empty() {
-        bail!("Trajectory is empty");
-    }
-
-    let frame_idx = frame_arg.unwrap_or(traj.frames.len() - 1);
-    if frame_idx >= traj.frames.len() {
-        bail!("Frame index {frame_idx} out of range (trajectory has {} frames)", traj.frames.len());
-    }
-    let frame = &traj.frames[frame_idx];
-    let cell = frame.cell.as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Frame {frame_idx} has no cell (PBC required)"))?;
-
-    let types = ferro_core::classify_frame(frame, cell, params);
-    print_type_table(&types, frame_idx, traj.frames.len());
-
-    if let Some(out) = output {
-        let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
-        let typed_frame = apply_type_labels(frame, &labels);
-        let typed_traj = ferro_core::Trajectory {
-            frames: vec![typed_frame],
-            metadata: traj.metadata.clone(),
-        };
-        let out_str = out.to_str()
-            .ok_or_else(|| anyhow::anyhow!("Output path is not valid UTF-8"))?;
-        write_xyz(&typed_traj, out_str)?;
-        println!("Structure → {}", out.display());
-    }
-    Ok(())
-}
-
-fn print_type_table(types: &[AtomType], frame_idx: usize, total_frames: usize) {
-    use std::collections::BTreeMap;
-    // 键 = (display_rank, label)，BTreeMap 天然有序：
-    // 形成子 → Of → On_* → Ob_* → 修饰子 → X → 其他。
-    // 过配位氧与过配位修饰子都渲染成 "X" 且 rank 相同，因此仍合并为一行。
-    let mut counts: BTreeMap<(u8, String), usize> = BTreeMap::new();
-    for t in types { *counts.entry((t.display_rank(), t.label())).or_insert(0) += 1; }
-
-    let total = types.len();
-    println!("Frame {frame_idx}/{total_frames}  |  {total} atoms");
-    println!("{:<18} {:>8} {:>10}", "Type", "Count", "Fraction");
-    println!("{}", "-".repeat(38));
-
-    for ((_, lbl), cnt) in &counts {
-        println!("{:<18} {:>8} {:>10.4}", lbl, cnt, *cnt as f64 / total as f64);
-    }
-}
-
-// ─── CSV 输出（-m Qn）────────────────────────────────────────────────────────
-
-fn write_qn_csv(result: &NetworkResult, params: &TypeParams, base: &Path) -> Result<()> {
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("network");
-    let dir  = base.parent().map(|p| p.to_str().unwrap_or("")).unwrap_or("");
-    let prefix = if dir.is_empty() { stem.to_string() } else { format!("{dir}/{stem}") };
-
-    write_qn_table(result, &format!("{prefix}_qn.csv"))?;
-    write_oxy_table(result, &format!("{prefix}_oxy.csv"))?;
-    write_cn_table(result, &format!("{prefix}_cn.csv"))?;
-    println!("Qn      → {prefix}_qn.csv");
-    println!("Oxygen  → {prefix}_oxy.csv");
-    println!("CN      → {prefix}_cn.csv");
-    let _ = params;
-    Ok(())
-}
-
-fn write_qn_table(result: &NetworkResult, path: &str) -> Result<()> {
-    use std::io::Write;
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    writeln!(f, "Former,Qn,Count,Fraction,MeanQn")?;
-    // 只有形成子进这张表；修饰子没有桥氧数，只在 CN 表里出现
-    let mut formers: Vec<&String> = result.qn_dist.keys().collect();
-    formers.sort();
-    for former in formers {
-        let rows = &result.qn_dist[former];
-        let mean = result.mean_qn.get(former).copied().unwrap_or(0.0);
-        for (i, &(qn, cnt, frac)) in rows.iter().enumerate() {
-            if i == 0 {
-                writeln!(f, "{former},{qn},{cnt},{frac:.6},{mean:.4}")?;
-            } else {
-                writeln!(f, "{former},{qn},{cnt},{frac:.6},")?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn write_oxy_table(result: &NetworkResult, path: &str) -> Result<()> {
-    use std::io::Write;
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    writeln!(f, "Type,Count,Fraction")?;
-    for (lbl, cnt, frac) in &result.oxy_dist {
-        writeln!(f, "{lbl},{cnt},{frac:.6}")?;
-    }
-    Ok(())
-}
-
-fn write_cn_table(result: &NetworkResult, path: &str) -> Result<()> {
-    use std::io::Write;
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    // 形成子与修饰子都在这张表里,故表头是 Element 而不是 Former
-    writeln!(f, "Element,CN,Count,Fraction,MeanCN")?;
-    let mut elems: Vec<&String> = result.cn_dist.keys().collect();
-    elems.sort();
-    for elem in elems {
-        let rows = &result.cn_dist[elem];
-        let mean = result.mean_cn.get(elem).copied().unwrap_or(0.0);
-        for (i, &(cn, cnt, frac)) in rows.iter().enumerate() {
-            if i == 0 {
-                writeln!(f, "{elem},{cn},{cnt},{frac:.6},{mean:.4}")?;
-            } else {
-                writeln!(f, "{elem},{cn},{cnt},{frac:.6},")?;
-            }
-        }
-    }
-    Ok(())
-}
-
-// ─── XLSX 输出（-m Qn）───────────────────────────────────────────────────────
-
-fn write_qn_xlsx(result: &NetworkResult, params: &TypeParams, base: &Path) -> Result<()> {
-    use rust_xlsxwriter::*;
-
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("network");
-    let dir  = base.parent().map(|p| p.to_str().unwrap_or("")).unwrap_or("");
-    let path = if dir.is_empty() { format!("{stem}.xlsx") } else { format!("{dir}/{stem}.xlsx") };
-
-    let mut wb = Workbook::new();
-
-    // Sheet: Qn
-    {
-        let ws = wb.add_worksheet(); ws.set_name("Qn")?;
-        ws.write_row(0, 0, ["Former", "Qn", "Count", "Fraction", "MeanQn"])?;
-        let mut row = 1u32;
-        let mut formers: Vec<&String> = result.qn_dist.keys().collect(); formers.sort();
-        for former in formers {
-            let rows = &result.qn_dist[former];
-            let mean = result.mean_qn.get(former).copied().unwrap_or(0.0);
-            for (i, &(qn, cnt, frac)) in rows.iter().enumerate() {
-                ws.write_row(row, 0, [former.as_str()])?;
-                ws.write(row, 1, qn)?; ws.write(row, 2, cnt as u32)?; ws.write(row, 3, frac)?;
-                if i == 0 { ws.write(row, 4, mean)?; }
-                row += 1;
-            }
-        }
-    }
-
-    // Sheet: Oxygen
-    {
-        let ws = wb.add_worksheet(); ws.set_name("Oxygen")?;
-        ws.write_row(0, 0, ["Type", "Count", "Fraction"])?;
-        for (row, (lbl, cnt, frac)) in result.oxy_dist.iter().enumerate() {
-            let row = (row + 1) as u32;
-            ws.write(row, 0, lbl.as_str())?;
-            ws.write(row, 1, *cnt as u32)?; ws.write(row, 2, *frac)?;
-        }
-    }
-
-    // Sheet: CN（形成子 + 修饰子）
-    {
-        let ws = wb.add_worksheet(); ws.set_name("CN")?;
-        ws.write_row(0, 0, ["Element", "CN", "Count", "Fraction", "MeanCN"])?;
-        let mut row = 1u32;
-        let mut elems: Vec<&String> = result.cn_dist.keys().collect(); elems.sort();
-        for elem in elems {
-            let rows = &result.cn_dist[elem];
-            let mean = result.mean_cn.get(elem).copied().unwrap_or(0.0);
-            for (i, &(cn, cnt, frac)) in rows.iter().enumerate() {
-                ws.write_row(row, 0, [elem.as_str()])?;
-                ws.write(row, 1, cn)?; ws.write(row, 2, cnt as u32)?; ws.write(row, 3, frac)?;
-                if i == 0 { ws.write(row, 4, mean)?; }
-                row += 1;
-            }
-        }
-    }
-
-    wb.save(&path)?;
-    println!("Network → {path}  (sheets: Qn, Oxygen, CN)");
-    let _ = params;
-    Ok(())
-}
-
-// ─── Pair 参数解析 ────────────────────────────────────────────────────────────
-
 fn is_pair_arg(s: &str) -> bool {
     if !s.starts_with("--") { return false; }
     let inner = &s[2..];
     inner.starts_with(|c: char| c.is_ascii_uppercase()) && inner.contains('=')
+}
+
+fn build_params(pair_args: &[String], modifier: Option<&str>) -> Result<TypeParams> {
+    let modifier_elems: std::collections::HashSet<String> = modifier
+        .map(|s| s.split(',').map(|e| e.trim().to_string()).collect())
+        .unwrap_or_default();
+
+    let mut cutoffs = BTreeMap::new();
+    let mut modifier_cutoffs = BTreeMap::new();
+    for ((elem, ligand), cutoff) in parse_pairs(pair_args)? {
+        if modifier_elems.contains(&elem) {
+            modifier_cutoffs.insert((elem, ligand), cutoff);
+        } else {
+            cutoffs.insert((elem, ligand), cutoff);
+        }
+    }
+
+    // 点名了修饰子却没给它截断:静默当成形成子会让氧的分类整体错位
+    for m in &modifier_elems {
+        if !modifier_cutoffs.keys().any(|(e, _)| e == m) {
+            bail!("--modifier names {m} but no --{m}-<Ligand>=<cutoff> was given");
+        }
+    }
+    Ok(TypeParams { cutoffs, modifier_cutoffs })
 }
 
 fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> {
@@ -398,13 +197,101 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> 
     for arg in pair_args {
         let inner = arg.trim_start_matches('-');
         let (pair, cutoff_str) = inner.split_once('=')
-            .ok_or_else(|| anyhow::anyhow!("Invalid pair argument (missing '='): {arg}"))?;
+            .ok_or_else(|| anyhow!("Invalid pair argument (missing '='): {arg}"))?;
         let (former, ligand) = pair.split_once('-')
-            .ok_or_else(|| anyhow::anyhow!("Invalid pair argument (missing '-'): {arg}"))?;
+            .ok_or_else(|| anyhow!("Invalid pair argument (missing '-'): {arg}"))?;
         let cutoff: f64 = cutoff_str.parse()
-            .map_err(|_| anyhow::anyhow!("Invalid cutoff value in '{arg}'"))?;
+            .map_err(|_| anyhow!("Invalid cutoff value in '{arg}'"))?;
         if cutoff <= 0.0 { bail!("Cutoff must be positive, got {cutoff} in '{arg}'"); }
         map.insert((former.to_string(), ligand.to_string()), cutoff);
     }
     Ok(map)
+}
+
+const HELP_EXTRA: &str = "\
+ferro net — Glass network topology
+
+USAGE:
+  ferro net -i <FILE>... --<Former>-<Ligand>=<cutoff> [OPTIONS]
+
+PAIR ARGUMENTS (required, at least one):
+  --P-O=2.4            P former, O ligand, cutoff 2.4 Å
+  --Al-O=2.4 --Al-F=2.1
+  The element pair lives in the flag name, so these are stripped from argv before
+  clap parses; everything else follows the usual flag rules.
+
+OPTIONS:
+  -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
+  -o, --output SUFFIX   Output name suffix: network_<table>_<suffix>.csv
+      --last-n N        Use only the last N frames (skip equilibration)
+      --ncore N         Parallel threads (default: all cores)
+      --metal-units     LAMMPS metal units; only affects velocities/forces, which
+                        this analysis does not read
+      --modifier E,E    Elements counted for coordination only: they take no part
+                        in bridging counts or ligand classification.
+                        Supply each one's cutoff too, e.g. --Zn-O=2.6
+      --export-traj     Also write the classified trajectory, one file per input:
+                        <input stem>_types[_<suffix>].lammpstrj
+
+LABELS:
+  Former      P_0 P_1 P_2 …    digit = number of bridging ligands (Qn for P)
+  Free        O_f              bonded to no former
+  Non-bridge  O_n              bonded to one former
+  Bridge      O_b              bonded to two formers
+  Tricluster  O_t              bonded to three or more
+  Modifier    Zn               element symbol, no role suffix
+  Every label splits at the first underscore into element + label, so an exported
+  trajectory can be selected either way:
+    ferro traj gr -i run_types.lammpstrj -a P -b O     (by element)
+    ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b (by label)
+
+OUTPUT — four stacked CSVs, each with a `file` column:
+  network_qn.csv    file, former, qn, count, fraction      one row per former × Qn
+  network_oxy.csv   file, type, count, fraction            one row per ligand type
+  network_cn.csv    file, element, cn, count, fraction     formers and modifiers
+  network_mean.csv  file, element, mean_qn, mean_cn        one row per element
+
+EXAMPLES:
+  ferro net -i traj.lammpstrj --P-O=2.4
+  ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
+  ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
+  ferro net -i traj.lammpstrj --P-O=2.4 --last-n 50 --export-traj";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_split_pair_args_keeps_the_rest_for_clap() {
+        let (pairs, rest) = split_pair_args(&args(&[
+            "ferro", "net", "-i", "a.dump", "--P-O=2.4", "--modifier", "Zn", "--Zn-O=2.6",
+        ]));
+        assert_eq!(pairs, args(&["--P-O=2.4", "--Zn-O=2.6"]));
+        assert_eq!(rest, args(&["ferro", "net", "-i", "a.dump", "--modifier", "Zn"]));
+    }
+
+    #[test]
+    fn test_modifier_cutoffs_are_routed_out_of_the_former_table() {
+        let p = build_params(&args(&["--P-O=2.4", "--Zn-O=2.6"]), Some("Zn")).unwrap();
+        assert_eq!(p.formers(), vec!["P".to_string()]);
+        assert_eq!(p.modifiers(), vec!["Zn".to_string()]);
+    }
+
+    #[test]
+    fn test_modifier_without_its_cutoff_is_rejected() {
+        // 静默通过的话 Zn 会被当成形成子,氧的分类整体错位
+        let err = build_params(&args(&["--P-O=2.4"]), Some("Zn")).unwrap_err();
+        assert!(err.to_string().contains("--modifier names Zn"), "{err}");
+    }
+
+    #[test]
+    fn test_bad_cutoffs_are_rejected() {
+        assert!(parse_pairs(&args(&["--P-O=abc"])).is_err());
+        assert!(parse_pairs(&args(&["--P-O=-1.0"])).is_err());
+        assert!(parse_pairs(&args(&["--PO=2.4"])).is_err());
+    }
 }

@@ -216,8 +216,8 @@ Spatial maps             one .cube grid file per input — no summary table, no 
   map density | velocity | force | radius | sdf | chg-sdf
 
 Topology & charges
-  net qn         Qn species / oxygen type / coordination number distributions
-  net type       Per-atom type labels for one frame
+  net            Qn speciation, ligand types, coordination numbers;
+                 --export-traj also writes the classified trajectory
   bader          Bader charge partitioning (ACF/BCF/AVF)
 
 Structure I/O
@@ -295,23 +295,6 @@ Multiple inputs:
   Unlike ferro traj, the product is one 3-D grid file per input — there is nothing to
   stack. File names therefore carry the input stem (density_<stem>.cube) so several
   inputs cannot overwrite each other. No summary table, no plot."#
-    );
-}
-
-/// `ferro net` with no subcommand.
-pub fn print_net_overview() {
-    println!(
-        r#"ferro net — Glass network topology
-
-Usage:
-  ferro net <COMMAND> -i <FILE> --<Former>-<Ligand>=<cutoff> [OPTIONS]
-
-Commands:
-  qn        Qn species / oxygen type / coordination number distributions (time averaged)
-  type      Per-atom type labels for one frame; writes a structure file with -o
-
-Cutoffs are given as flags naming the element pair, e.g. --P-O=2.3 --Zn-O=2.8.
-Run `ferro net qn` without -i for the full option list and examples."#
     );
 }
 
