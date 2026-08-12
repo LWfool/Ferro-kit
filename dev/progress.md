@@ -299,7 +299,6 @@ ferro bader | convert | info | job
 | `anyhow` | 1.0 | workspace | |
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 issues.md |
 | `clap` | 4.5 | ferro-cli | derive |
-| `rust_xlsxwriter` | 0.97 | ferro-cli | 0.80→0.97 零代码改动 |
 | `plotters` | 0.3 | ferro-cli | `default-features = false` + 必须保留 `ttf`；backend 为 `bitmap` |
 | `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；**运行时未验证** |
 
@@ -319,7 +318,8 @@ ferro bader | convert | info | job
 - `box_builder` 无 CLI / Python 入口，目前只能作为库函数调用
 - `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化为静态表（重生成需源文件）
 - QE 赝势仅占位 `<El>.UPF`（QE 用 UPF，与 CP2K GTH 数据库不通用，由用户提供 pseudo_dir）
-- `ferro-cli/main.rs`：REPL 未实现，当前为占位符
+- **REPL / 脚本模式未实现**。`main.rs` 是可用的子命令分发器（不是占位符），
+  裸 `ferro` 打印分类总览；REPL 落地后改为「tty 进 REPL、管道读 stdin」
 - **pyo3 0.29 升级只做了类型层验证**（`cargo check`/`clippy` 零警告）。本机无 maturin，
   `cargo build` 在 macOS link 阶段过不了，模块初始化与 `#[pyfunction]` 签名的运行时
   行为（含新拆的 `gr_pair`/`gr_all`）待 `maturin build` + Python 冒烟测试确认
