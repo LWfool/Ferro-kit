@@ -492,20 +492,22 @@ ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 
 | 文件 | 装什么 |
 |---|---|
+| `network_composition.csv` | **结构组成一览**：`P-Q2` `Al_4` `O_b` `Zn_4`，各占其元素的比例（每元素求和为 1） |
 | `network_qn.csv` | Qn 分布，打开文件即可读 |
 | `network_qn_partner.csv` | 同上按伙伴元素拆开，即 $Q^n(m\mathrm{Al})$ |
-| `network_ligand_type.csv` | 配体分类 `O_f` / `O_n` / `O_b` / `O_t` 及其伙伴 |
+| `network_ligand_type.csv` | 配体分类，`label` 读作 `Al-O_b-P` |
 | `network_coordination.csv` | 配位数分布（形成子 + 修饰子） |
-| `network_average.csv` | 逐元素的平均 Qn 与平均配位数 |
 | `network_linkage.csv` | 桥的连接情况：配体元素 + 两端位点状态 |
 
 **Qn 只报给 Qn 形成子**（默认 `B,P,Si`）。Al 之类的形成子由配位数刻画，不出现在前两
 个文件的行里，但仍在 `m_Al` 列、`ligand_type` 与 `linkage` 中。没有 Qn 形成子时前两
 个文件整个不写，屏幕打印原因。
 
-标签：Qn 形成子 `P_0`…`P_4`（数字 = Qn）、其他形成子 `Al_4` `Al_5`（数字 = **配位
-数**）、`O_f` / `O_n` / `O_b` / `O_t`、修饰子为裸元素符号。全部合 `<元素>_<后缀>`
-约定，运行时按本次参数打印一次。
+标签有**两套词汇**：分布表（`composition` / `qn` / `qn_partner`）用**单元**词汇
+`P-Q2`，因为它们数的是结构单元；`linkage` 与导出轨迹用**原子**词汇 `P_2` / `Al_4`，
+因为桥联连的是原子、轨迹标签又必须能拆回 element。非 Qn 形成子两者相同（`Al_4`，
+数字是**配位数**）。配体 `O_f` / `O_n` / `O_b` / `O_t`，修饰子裸元素符号。
+运行时按本次参数打印一次。**下游 `-x/-y` 认原子词汇**。
 
 `--export-traj` 逐输入写 `<输入 stem>_types[_<后缀>].<ext>`。
 

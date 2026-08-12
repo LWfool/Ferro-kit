@@ -5,12 +5,15 @@
 
 | 量 | 表 | 含义 |
 |---|---|---|
-| Qn 分布 | `qn` | Qn 形成子连了几个桥联配体 —— 打开文件就能读的那张 |
+| **结构组成** | `composition` | 一物种一行：`P-Q2` `Al_4` `O_b` `Zn_4`，各占其元素的比例 |
+| Qn 分布 | `qn` | Qn 形成子连了几个桥联配体 |
 | 异核桥分解 | `qn_partner` | 上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$ |
 | 配体分类 | `ligand_type` | `O_f` / `O_n` / `O_b` / `O_t`，伙伴元素以数据列给出 |
 | 配位数 | `coordination` | 形成子与修饰子的总配位数分布 |
-| 均值 | `average` | 一元素一行的平均 Qn 与平均配位数 |
 | 桥联统计 | `linkage` | 每座桥的配体元素与两端位点状态 |
+
+`composition` 是**其余表的摘要**，不是新的测量：想一眼看完这块玻璃的结构组成就读它，
+要伙伴分解、要两端状态才去翻源表。
 
 > **Qn 只报给 Qn 元素。** Qn 是四面体形成子的记号，默认只有 `B` / `P` / `Si`
 > 出现在 `qn` 与 `qn_partner` 两张表里；**Al 之类的形成子由配位数刻画**
@@ -101,6 +104,12 @@ $Q^n$ 是四面体形成子的记号：在配位数基本固定的位点上，�
 
 - `qn=2, m_Al=1, m_P=1` → $Q^2(1\mathrm{Al})$
 - `qn` 就是它对伙伴维度的**边际**
+
+**伙伴分解不编码进 `label`。** 试过写成 `Q2(1Al)`，行不通：文献的 $Q^n(mX)$ 记号
+表达不了「该桥的配体连了三个形成子」这种情形。参考轨迹里
+`(qn=2, m_Al=1, m_P=0)` 与 `(qn=2, m_Al=1, m_P=1)` 两行都会被写成 `Q2(1Al)`——
+前者有一座桥是三簇氧，$\sum m = 1 < qn$——而没有任何一列能把它们分开。那一维本就
+在 `m_<X>` 列里，标签只写 `P-Q2`。
 
 注意 Al 在这里是**伙伴而非主语**：它没有自己的行，但 `m_Al` 列照常存在。
 
@@ -214,11 +223,11 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 
 | 文件 | 一行一个 | 列 |
 |---|---|---|
+| `network_composition.csv` | 物种 | `label, element, count, fraction, sd` |
 | `network_qn.csv` | (形成子, Qn) | `label, former, qn, count, fraction, sd` |
 | `network_qn_partner.csv` | (形成子, Qn, 伙伴分解) | `label, former, qn, m_<X>…, count, fraction, sd` |
-| `network_ligand_type.csv` | (配体类型, 伙伴对) | `label, former_a, former_b, count, fraction, sd` |
+| `network_ligand_type.csv` | (配体类型, 伙伴对) | `label, type, former_a, former_b, count, fraction, sd` |
 | `network_coordination.csv` | (元素, 配位数) | `element, cn, count, fraction, sd` |
-| `network_average.csv` | 元素 | `element, mean_qn, mean_cn` |
 | `network_linkage.csv` | (配体, 两端状态) | `linkage, ligand, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
 
 `label` 列是给人读的锚点，`former` / `qn` / `cn` 等数值列是给筛选和画图用的——两者
@@ -233,15 +242,49 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 批处理时元素集不同的输入取**列并集，缺的留空（NaN），不补零、不插值**——没有 Al
 的体系其 `m_Al` 列为空，而不是 0。
 
+### 示例：`network_composition.csv`
+
+```csv
+file,label,element,count,fraction,sd
+43Z43P15A,P-Q0,P,25,1.344086e-2,0.000000e0
+43Z43P15A,P-Q1,P,276,1.483871e-1,2.249086e-3
+43Z43P15A,P-Q2,P,653,3.510753e-1,5.574312e-3
+43Z43P15A,P-Q3,P,751,4.037634e-1,2.944745e-3
+43Z43P15A,P-Q4,P,155,8.333333e-2,1.900825e-3
+43Z43P15A,Al_4,Al,590,8.939394e-1,1.417294e-2
+43Z43P15A,Al_5,Al,63,9.545455e-2,1.570943e-2
+43Z43P15A,Al_6,Al,7,1.060606e-2,4.149413e-3
+43Z43P15A,Zn_3,Zn,114,1.225806e-1,4.844680e-2
+43Z43P15A,Zn_4,Zn,723,7.774194e-1,2.860094e-2
+43Z43P15A,Zn_5,Zn,92,9.892473e-2,2.331127e-2
+43Z43P15A,Zn_6,Zn,1,1.075269e-3,2.404374e-3
+43Z43P15A,O_n,O,2985,4.543379e-1,1.203302e-3
+43Z43P15A,O_b,O,3583,5.453577e-1,1.154167e-3
+43Z43P15A,O_t,O,2,3.044140e-4,4.168360e-4
+```
+
+**分母恒为该元素的原子数**：Q2 占全部 P、`Al_4` 占全部 Al、`O_b` 占全部 O。所以
+**每个元素的 `fraction` 求和为 1** —— 这是一条打开文件就能核对的恒等式。
+
+每个元素只出现**一种刻画**：Qn 形成子出 Qn，其余形成子与修饰子出配位数，配体出类型。
+P 在这里没有配位数行（它在 `network_coordination.csv` 里）。
+
+`O_b` 那行是从 `ligand_type` 的三行（Al-Al / Al-P / P-P）聚合来的，`sd` **逐帧重新
+累加**而非把三行相加——相关项之和的方差不等于方差之和。
+
+原来的 `network_average.csv` 已删除。它的两个均值仍在每个文件的 `[inputs]` 块里
+（`mean_qn P=2.40  mean_cn Al=4.12 P=4.00 Zn=3.98`），也可从本表精确复算：
+$\sum_n n \cdot f_n = 2.395161$。
+
 ### 示例：`network_qn.csv`
 
 ```csv
 file,label,former,qn,count,fraction,sd
-43Z43P15A,P_0,P,0,25,1.344086e-2,0.000000e0
-43Z43P15A,P_1,P,1,276,1.483871e-1,2.249086e-3
-43Z43P15A,P_2,P,2,653,3.510753e-1,5.574312e-3
-43Z43P15A,P_3,P,3,751,4.037634e-1,2.944745e-3
-43Z43P15A,P_4,P,4,155,8.333333e-2,1.900825e-3
+43Z43P15A,P-Q0,P,0,25,1.344086e-2,0.000000e0
+43Z43P15A,P-Q1,P,1,276,1.483871e-1,2.249086e-3
+43Z43P15A,P-Q2,P,2,653,3.510753e-1,5.574312e-3
+43Z43P15A,P-Q3,P,3,751,4.037634e-1,2.944745e-3
+43Z43P15A,P-Q4,P,4,155,8.333333e-2,1.900825e-3
 ```
 
 Al 不在其中——同一次运行里它出现在 `network_coordination.csv` 的 `cn` 4/5/6 三行。
@@ -249,17 +292,26 @@ Al 不在其中——同一次运行里它出现在 `network_coordination.csv` �
 ### 示例：`network_ligand_type.csv`
 
 ```csv
-file,label,former_a,former_b,count,fraction,sd
-43Z43P15A,O_n,P,,2985,4.543379e-1,1.203302e-3
-43Z43P15A,O_b,Al,Al,10,1.522070e-3,0.000000e0
-43Z43P15A,O_b,Al,P,2693,4.098935e-1,1.154167e-3
-43Z43P15A,O_b,P,P,880,1.339422e-1,0.000000e0
-43Z43P15A,O_t,,,2,3.044140e-4,4.168360e-4
+file,label,type,former_a,former_b,count,fraction,sd
+43Z43P15A,P-O_n,O_n,P,,2985,4.543379e-1,1.203302e-3
+43Z43P15A,Al-O_b-Al,O_b,Al,Al,10,1.522070e-3,0.000000e0
+43Z43P15A,Al-O_b-P,O_b,Al,P,2693,4.098935e-1,1.154167e-3
+43Z43P15A,P-O_b-P,O_b,P,P,880,1.339422e-1,0.000000e0
+43Z43P15A,O_t,O_t,,,2,3.044140e-4,4.168360e-4
 ```
 
+`label` 把整行读成一句 `<former_a>-<type>-<former_b>`；缺位**不补占位符**，
+所以自由氧就是 `O_f`、非桥氧是 `P-O_n`、三簇氧是 `O_t`。`former_a` / `former_b`
+仍是独立列，Al-O-Al 的查询照旧是
+`query("former_a=='Al' and former_b=='Al'")`，不必去切字符串。
+
 `O_t` 的伙伴列留空——它不是一对，其配对关系由 `linkage` 表的 `n_formers=3` 行给出。
-注意这里**没有 `O_n, Al` 行**：这个体系的 Al 不带非桥氧，正是它的桥接数与配位数
+注意这里**没有 `Al-O_n` 行**：这个体系的 Al 不带非桥氧，正是它的桥接数与配位数
 处处相等的原因。
+
+> **`fraction` 的分母是该配体元素的原子数**，不是全体配体原子。这是文献 BO fraction
+> 的口径；「桥氧占 O+F 的比例」不对应任何常用量。单配体体系两者相同，
+> `--Al-O` + `--Al-F` 的体系才有区别。
 
 ### 示例：`network_linkage.csv`
 
@@ -272,6 +324,9 @@ file,linkage,ligand,elem_a,n_bridge_a,cn_a,elem_b,n_bridge_b,cn_b,n_formers,coun
 
 `Al_4` 里的 4 是**配位数**，`P_3` 里的 3 是 **Qn**——这是文献自己的约定（Al[4] 对
 Q³），逐文件的 `#` 头会写明。
+
+这里用的是**原子词汇**（`P_3` 而不是 `P-Q3`）：桥联描述的是两个原子之间的连接，
+而 Qn 命名的是一个含多个原子的结构单元。与导出轨迹的标签一致。
 
 ### 用 pandas 分析 `linkage`
 
@@ -327,6 +382,22 @@ d.groupby("ligand")["count"].sum()
 
 运行 `ferro net` 时这张表会按本次参数填好元素打印一次，因为哪个元素报 Qn、哪个报
 配位数取决于 `--qn` 和给了哪些截断。
+
+### 两套词汇：单元与原子
+
+| 词汇 | 形如 | 用在 | 为什么 |
+|---|---|---|---|
+| **单元** | `P-Q2`、`Al_4` | `composition` / `qn` / `qn_partner` | 这三张表数的是「有多少个 Q2 单元」，Qn 本就是结构单元的记号 |
+| **原子** | `P_2`、`Al_4` | `linkage`、导出轨迹 | 桥联描述的是**原子之间**的连接，而一个 Qn 单元含多个原子 |
+
+非 Qn 形成子两套词汇恰好相同（都是 `Al_4`），因为 Al 没有单元记号可用。
+
+> **下游选型认原子词汇。** 导出轨迹里那个 P 叫 `P_2`，不叫 `P-Q2`——轨迹标签必须能
+> 被 dump reader 按首个下划线拆回 element，而 `Q2` 里的 `Q` 不是元素。所以是
+> `traj gr -x P_2`，不是 `-x P-Q2`。
+
+带元素前缀（`P-Q2` 而非 `Q2`）是因为双 Qn 形成子体系（硼磷酸盐 B+P、铝硅酸盐
+Si+Al）里 `Q0`…`Q4` 会各出现两遍，而**跨元素重名没有任何相邻列能解**。
 
 全部合 `<元素>_<后缀>` 约定，按**首个下划线**拆分。修饰子不带角色后缀：旧方案
 按非桥配体数 0/1/2/≥3 分档，而修饰子的实际配位数在 3–6，实测参考轨迹 97% 落进

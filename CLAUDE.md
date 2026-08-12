@@ -509,6 +509,21 @@ it is what makes `traj gr -x Al_5 -y O_b` select 5-coordinate Al — the entry p
 the Al-O-Al study. The scheme is printed once per run with this run's elements filled
 in, since which element gets which digit depends on `--qn` and on the cutoffs given.
 
+**Two label vocabularies, deliberately.** Distribution tables (`composition`, `qn`,
+`qn_partner`) name the structural **unit**, `P-Q2` — they count Q2 units, and Qn *is* a
+unit notation. `linkage` and the exported trajectory name the **atom**, `P_2` — a bridge
+joins two atoms while a Qn unit contains several, and a trajectory label must split back
+into an element at the first underscore, which `Q2` cannot. Non-Qn formers render the
+same either way (`Al_4`). `AtomType::label` is the atom form; `species_label` in
+`ferro-analysis` is the unit form and delegates to it for the non-Qn case. `-x/-y`
+select on the atom form.
+
+The element prefix in `P-Q2` is not decoration: a run with two Qn formers (B+P, Si+Al)
+would otherwise repeat `Q0`…`Q4`, and **cross-element collisions have no adjacent column
+to resolve them**. The partner split is deliberately *not* folded in either — the
+literature's `Q^n(mX)` cannot express a bridge whose ligand joins three formers, and the
+reference data really does contain two rows that would both render `Q2(1Al)`.
+
 Ligand labels carry **no partner suffix** and modifiers **no role suffix**. Both were
 tried and dropped: the partner set belongs in data columns (below), and the old
 `Zn_f`/`Zn_t`/`Zn_b`/`X` binning by non-bridging-ligand count 0/1/2/≥3 put 97 % of Zn in
@@ -519,12 +534,21 @@ collapsed over-coordinated oxygen and over-coordinated modifier into one label.
 
 | Table | One row per | Columns |
 |---|---|---|
+| `composition` | species | `label, element, count, fraction, sd` |
 | `qn` | Qn former × Qn | `label, former, qn, count, fraction, sd` |
 | `qn_partner` | Qn former × Qn × partner split | `label, former, qn, m_<X>…, count, fraction, sd` |
-| `ligand_type` | ligand type × partner pair | `label, former_a, former_b, count, fraction, sd` |
+| `ligand_type` | ligand type × partner pair | `label, type, former_a, former_b, count, fraction, sd` |
 | `coordination` | element × coordination number | `element, cn, count, fraction, sd` |
-| `average` | element | `element, mean_qn, mean_cn` |
 | `linkage` | bridge × both site states | `linkage, ligand, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
+
+`composition` is a **digest** of the other tables, one row per species, and the one
+place a reader sees the whole structure at once. Its denominator is always **that
+element's atom count** (Q2 out of all P, `Al_4` out of all Al, `O_b` out of all O), so
+"each element's fractions sum to 1" is a checkable identity — and every element is
+characterised exactly one way, so P has no `cn` rows there. Its ligand rows aggregate
+`ligand_type`'s partner split, and their `sd` is **re-accumulated per frame**, never
+summed from the source rows. It replaced `average`; the means it used to hold live in
+the `[inputs]` block and are recoverable from it (`Σ n·f_n`, verified to 2.395161).
 
 **Every table carries its own `#` header** — one line on what the table is, one per
 column, plus that table's traps. `batch::write_all` prepends the shared block instead of
