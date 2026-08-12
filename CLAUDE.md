@@ -19,7 +19,7 @@ cargo check
 cargo run --bin ferro -- traj gr -i traj.dump -a P -b O
 cargo run --bin ferro -- traj gr -i 'runs/*/prod.dump' -a P -b O -o scan   # batch
 cargo run --bin ferro -- map density -i traj.dump
-cargo run --bin ferro -- net qn -i traj.dump --P-O=2.3
+cargo run --bin ferro -- net -i traj.dump --P-O=2.3 --Zn-O=2.6 --modifier Zn
 cargo run --bin ferro -- convert -i input.xyz -o output.pdb
 cargo run --bin ferro -- job -i input.xyz -s gaussian -m B3LYP -o job.gjf
 
@@ -68,7 +68,7 @@ lets its io module import its analysis module.
 | `ferro-core` | `Atom`, `Frame`, `Trajectory`, `Cell`, `Table`; static element/compound data; error types; unit conversion |
 | `ferro-io` | Format readers (`read_xyz`, `read_pdb`, ...) and writers; returns/accepts `Trajectory`. `write_table` is the single exit point for analysis results |
 | `ferro-structure` | Supercell, vacuum layer, merge, initial box estimation from compound data |
-| `ferro-analysis` | Pure computation — no filesystem. Results expose `to_tables() -> Vec<(String, Table)>`. Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `dft/` (future), `ml/` (future) |
+| `ferro-analysis` | Pure computation — no filesystem. Results expose `to_tables() -> Vec<(String, Table)>`. Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `network/` (bridging speciation, ligand types, CN, linkage), `dft/` (Bader, ChgSDF), `ml/` (future) |
 | `ferro-workflow` | QC input file builders: `GaussianJobBuilder`, `GromacsTopologyBuilder`, etc. |
 | `ferro-cli` | CLI + REPL + batch mode (shared interpreter); `batch.rs` drives multi-input runs, generic over the result type |
 | `ferro-python` | PyO3 wrappers only; pure Rust libs have zero Python awareness |
@@ -132,7 +132,7 @@ ferro-core/src/
 ├── charge_grid.rs   # ChargeGrid (Bader)
 ├── cube_data.rs     # CubeData (3-D grids)
 ├── cluster.rs       # build_network_graph / connected_components (shared primitive)
-├── network_type.rs  # TypeParams / classify_frame
+├── network_type.rs  # AtomType / TypeParams / classify_frame[_detailed]
 ├── spin.rs          # guess_spin / oxidation states
 ├── data/
 │   ├── mod.rs
@@ -305,7 +305,7 @@ crate implements them — the `fe-*` binaries are gone.
 |---|---|---|
 | `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
 | `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | Spatial distribution maps | one `.cube` grid **per input** |
-| `ferro net qn\|type` | Glass network topology (`--P-O=2.3`) | distribution tables / labelled structure |
+| `ferro net` | Glass network topology (`--P-O=2.3`) | five stacked CSVs + optional labelled trajectory |
 | `ferro bader` | Bader charge partitioning | ACF/BCF/AVF (Henkelman format) |
 | `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
 
@@ -368,16 +368,31 @@ first file is read.
 ```
 
 **`-o` is a name suffix, not a path**: results land in `<mode>[_<table>]_<suffix>.csv`
-(`gr_run1.csv`, `network_qn_run1.csv`). Per-input files are not produced — the batch
-summary is the product.
+(`gr_run1.csv`, `network_bridge_run1.csv`). Per-input files are not produced — the
+batch summary is the product, the one exception being products that are inherently
+per-input (`ferro map`'s cubes, `ferro net --export-traj`'s trajectories), whose
+names must carry the input stem or a second input would overwrite the first.
 
 **element vs. label.** `Atom::element` is the chemical element; `Atom::label` is an
 optional site type. The LAMMPS dump reader splits an `element` column entry written as
-`<Element>_<suffix>` (`P_0`, `O_b_P_P`, `Zn_f`) at the **first underscore** — element
+`<Element>_<suffix>` (`P_0`, `O_b`, `Al_2`) at the **first underscore** — element
 prefix into `element`, whole string into `label` — and prints the mapping once on read.
 Plain symbols pass through untouched with `label = None`. `-a/-b/-c` select by element,
-`-x/-y/-z` by label; only `ferro-io`'s CIF / CP2K / QE readers also populate `label`,
-from their native site names.
+`-x/-y/-z` by label; `ferro-io`'s CIF / CP2K / QE readers also populate `label` from
+their native site names, and extxyz carries it in a `label:S:1` column.
+
+**Writers never fold `label` into the element column on their own.** `ferro convert`
+emits clean element symbols whatever the labels say. Only `ferro net --export-traj`
+folds, and only for LAMMPS dump, which has nowhere else to put a second per-atom name;
+extxyz gets the dedicated column instead. The fold is guarded — a label not of the form
+`<element>_…` (CIF's `O1`, CP2K's `Fe1`) is left out and counted, because folding it
+would make the element column read back as the non-existent element `O1`.
+
+**Selecting by label only works frame-by-frame.** `g(r)` requires a fixed particle
+count per type, and label populations drift as the MD evolves (`P_3` was 149/152/150/150/150
+over five frames of the reference trajectory), so `traj gr -x P_3 -y O_b` on a
+multi-frame labelled trajectory is rejected with a per-type-count error. Use
+`--last-n 1`, or select by element.
 
 ### Output format
 
@@ -436,6 +451,72 @@ failure handling (error handling should not exist in two versions), but writes o
 
 `ferro bader`'s `write_acf` / `write_bcf` / `write_avf` are likewise untouched: ACF.dat is
 the Henkelman-group bader format that external tools parse.
+
+### `ferro net` — Glass network topology
+
+A **leaf command**, not a subcommand group: the old `net qn` / `net type` split was
+never two analyses. Both classified every atom of every frame identically; `type` just
+wrote the classification out instead of summarising it. So exporting is a flag.
+
+```bash
+ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
+ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan --export-traj
+ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
+```
+
+Cutoffs are `--<Former>-<Ligand>=<Å>`: the element pair is in the *flag name*, which
+clap cannot model, so `main` strips them from argv before parsing. `--modifier E,E`
+marks elements counted for coordination only — they take no part in bridging counts or
+ligand classification, which is the whole point (a modifier next to a non-bridging
+oxygen must not turn it into a bridge). Naming a modifier without giving it a cutoff is
+an error, not a silent demotion to network former.
+
+**Labels** (`ferro_core::AtomType::label`, the one place a type becomes text):
+
+| Role | Label | Meaning |
+|---|---|---|
+| Former | `P_0`…`P_4`, `Al_2` | digit = number of bridging ligands (Qn, for P) |
+| Free ligand | `O_f` | bonded to no former |
+| Non-bridging | `O_n` | one former |
+| Bridging | `O_b` | two formers |
+| Tricluster | `O_t` | three or more |
+| Modifier | `Zn` | element symbol, no role suffix |
+
+Ligand labels carry **no partner suffix** and modifiers **no role suffix**. Both were
+tried and dropped: the partner set belongs in data columns (below), and the old
+`Zn_f`/`Zn_t`/`Zn_b`/`X` binning by non-bridging-ligand count 0/1/2/≥3 put 97 % of Zn in
+the catch-all, since a modifier's coordination is 3–6. The old `X` fallback also
+collapsed over-coordinated oxygen and over-coordinated modifier into one label.
+
+**Five stacked CSVs**, each with a `file` column:
+
+| Table | One row per | Columns |
+|---|---|---|
+| `bridge` | former × (bridging count, partner split) | `former, n_bridge, m_<X>…, count, fraction, sd` |
+| `oxy` | ligand type × partner pair | `type, former_a, former_b, count, fraction, sd` |
+| `cn` | element × coordination number | `element, cn, count, fraction, sd` |
+| `mean` | element | `element, mean_n_bridge, mean_cn` |
+| `linkage` | bridge × both site states | `elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
+
+`n_bridge`, not `qn`: the count is defined for every former, but Qn is a
+tetrahedral-former convention — Al has no Qn. `m_<X>` splits it by partner element (the
+Q^n(mAl) notation); `groupby("n_bridge")` collapses back to plain Qn. It is **not**
+derivable from `linkage`: two P–O–Al bridges could be one P with `m_Al = 2` or two P
+atoms with `m_Al = 1`. `linkage` counts bridges, `bridge` counts atoms.
+
+`linkage` stores each pair **once**, canonically ordered by `(element, n_bridge, cn)` —
+a bridge has no direction, same reasoning as `sq`'s canonical half — so a row sum is not
+a site's total involvement. Both ends carry *both* numbers, so "what is the bridging
+count of that 4-coordinate Al" is answerable. `n_formers` is 2 for a real bridge; a
+tricluster contributes C(n,2) rows tagged with its own `n_formers`.
+
+`fraction` is the **mean over frames** of that frame's fraction; `sd` is the sample
+standard deviation (ddof = 1) of the same quantity, with absent bins contributing 0.
+It is a spread between snapshots, **not a standard error** — consecutive MD frames are
+correlated. Computed with Welford, because `Σf² − N·mean²` reports ~2e-10 for a
+constant series and a fake wobble in an `sd` column reads as physics.
+
+`--export-traj [FMT]` writes `<input stem>_types[_<suffix>].<ext>`, one per input.
 
 ### `ferro map sdf` — Cluster SDF
 

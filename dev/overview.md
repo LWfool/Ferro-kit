@@ -10,11 +10,12 @@ Rust 重写的计算化学后处理工具链，面向周期性体系（晶体、
 ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
     ├── ferro-core              ← 纯数据结构 + 静态参考数据 + spin（未成对电子推断）
     │                             + Table（分析产物的中立载体）
+    │                             + AtomType（网络分类结果，结构化而非字符串）
     ├── ferro-io       → core   ← 格式读写 + write_table（分析产物的唯一出口）
     ├── ferro-structure→ core   ← 超胞、真空层、合并、初始盒子
     ├── ferro-analysis → core   ← 纯计算，不碰文件系统；结果暴露 to_tables()
     │                             md/（gr、sq、msd、angle、vacf、rotcorr、vanhove、cube）
-    │                             network/（CN、配体分类、Qn、修饰子角色）、dft/（Bader、ChgSDF）
+    │                             network/（桥接数、配体分类、CN、桥联统计）、dft/（Bader、ChgSDF）
     └── ferro-workflow → core   ← QC 输入生成（Gaussian / CP2K / QE，含基组赝势库）
 ```
 
@@ -29,7 +30,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 ```
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net   qn | type                                          → 拓扑分布表
+ferro net                                                      → 五张堆叠 csv
+                                                                 + 可选标注轨迹
 ferro bader | convert | info | job
 ```
 

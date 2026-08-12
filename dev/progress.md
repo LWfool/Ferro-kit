@@ -1,15 +1,15 @@
 # 当前进度
 
-## 测试总数：398 个（全部通过，clippy 零警告）
+## 测试总数：420 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 74 |
-| ferro-io | 63 |
-| ferro-structure | 68 |
-| ferro-analysis | 147 |
+| ferro-core | 79 |
+| ferro-io | 65 |
+| ferro-structure | 70 |
+| ferro-analysis | 156 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 18 + 集成 5） | 23 |
+| ferro-cli（lib 22 + 集成 5） | 27 |
 
 ## 锚点 tag
 
@@ -49,10 +49,19 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   - `connected_components`：通用并查集（分量 ID 按首见根确定）
   - 供 `ferro-structure::find_clusters` 与 `ferro-analysis::cube_sdf` 复用，消除重复
 - `Frame::unique_elements()`：按首现顺序去重元素（替代 5 处重复实现）
-- **`network_type.rs`**：`TypeParams`、`classify_frame`、标签排序辅助函数
-  - 形成子：`P0`、`P1`、`Al2`…（数字 = 桥氧数）
-  - 氧：`Of` / `On_P` / `Ob_P_P` / `X`（≥3 NF）
-  - 修饰子：`Zn_f` / `Zn_t` / `Zn_b` / `X`（≥3 NBO）
+- **`network_type.rs`**：`AtomType`、`TypeParams`、`classify_frame[_detailed]`
+  - **`enum AtomType`（0.2.2）**：`Former { elem, bridging, cn, bridges_to }` /
+    `Ligand { elem, partners }` / `Modifier { elem, cn }` / `Other { elem }`
+    —— 分类结果不再是字符串。此前 `classify_frame` 把算出的数字渲染成标签就丢弃,
+    下游各自写解析器猜回来,全项目共五个这样的反解析点(`extract_qn`、三个
+    `*_label_order`、`cmd/net.rs::type_sort_key`、`structure/cluster.rs` 的
+    `starts_with("Ob_")`),改标签格式需同时改六处,漏一处即静默错数据
+  - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` / `display_rank()`
+    取代三个 `*_label_order` 与 `type_sort_key`；`is_bridging()` 取代前缀匹配
+  - 标签(0.2.2 起,全部合 `<元素>_<后缀>` 约定)：
+    形成子 `P_0`/`Al_2`（数字 = 桥接配体数）、`O_f`/`O_n`/`O_b`/`O_t`、修饰子裸元素符号
+  - `classify_frame_detailed` 另返回 ligand→former 邻接（`FrameTypes`），供 linkage
+    统计使用；配对统计需要图而不只是逐原子类型,重算一遍邻居搜索会把最贵的一步做两次
 
 ### ferro-io
 - **`writers/table.rs`**：`write_table(&Table, path, TableFormat)` —— 分析产物的唯一出口
@@ -60,9 +69,15 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   - ragged 表在**创建文件之前**拒绝，不留半个文件；字段含逗号才加引号
   - `TableFormat` 目前只有 `Csv`；加容器是加 match 分支，不是加调用路径
 - 格式读写：XYZ、PDB、CIF、LAMMPS dump 等
-- **`lammps_dump.rs`**：`element` 列写位点标签（`P_0`/`O_b_P_P`/`Zn_f`）时拆成
+- **`lammps_dump.rs`**：`element` 列写位点标签（`P_0`/`O_b`/`Al_2`）时拆成
   element + label，读取结束打印一次映射表；前缀非法元素时整串当元素并告警。
   普通符号原样通过、`label = None`
+  - writer 的整数 `type` 列**在整条轨迹上确定一次**（0.2.2）。原先在帧循环内按
+    「该帧首次出现的名字顺序」重建：元素只有几种时碰巧稳定，写位点标签后某帧
+    恰好没有 `P_4`，同一个 type 编号就会在不同帧指向不同的东西
+- **`extxyz.rs`**：`label:S:1` 列（0.2.2，读写两侧）。extxyz 的列是自描述的，
+  故标签走自己一列、`species` 保持纯元素 —— 与 dump「没地方放第二个名字只能折进
+  element 列」相反，两个方向都无损
 - **`cube.rs`（重构）**：
   - `read_cube(path) -> Result<CubeData>`：可视化/密度图（原有功能保留）
   - **NEW** `read_cube_as_chg(path) -> Result<(Frame, ChargeGrid)>`：供 Bader 分析用
@@ -145,9 +160,27 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
 - `chg_sdf.rs`：电荷密度团簇 SDF（Kabsch 对齐 + pull 插值旋转子格）
 
 ### ferro-analysis / network（已重构）
-- 单文件 `mod.rs`，依赖 `ferro_core::classify_frame`
+- 单文件 `mod.rs`，依赖 `ferro_core::classify_frame_detailed`
 - 参数类型：`TypeParams`（来自 ferro-core，`cutoffs` + `modifier_cutoffs`）
-- 结果：`NetworkResult`（`qn_dist` / `mean_qn` / `cn_dist` / `mean_cn` / `oxy_dist` / `modifier_dist`）
+- 结果：`NetworkResult`（`bridge_dist` / `mean_bridge` / `cn_dist` / `mean_cn` /
+  `oxy_dist` / `linkage`），`to_tables()` 出五张长表
+- **`Bin { count, fraction, sd }`**：`fraction` 是**逐帧比例的平均**，`sd` 是同一序列的
+  样本标准差（ddof=1），缺席帧按 f=0 计入。`sd` **不是标准误** —— MD 相邻帧强相关，
+  既不按 1/√N 收缩也不估计物理涨落
+  - 用 Welford 而非 `Σf`/`Σf²`：两遍求和对恒定序列给出 ~2e-10 的抵消噪声
+    （实测 P 的 Q0 档逐帧恒为 5 个），而 sd 列里的假抖动会被当成物理。
+    rayon 是归并而非顺序折叠，故用 Chan/Golub/LeVeque 成对合并公式
+- **`linkage` 表**：一行一种「两端位点状态」组合，两端**各带元素、桥接数、配位数**
+  三个字段。参考实现（`private/coord_analysis.py`）按元素只存一个数（P 存 Qn、
+  Al 存 CN，由 `QnEle` 列表决定），故「4 配位 Al 的桥接数」问不出来
+  - 规范半边：桥联无方向，两端按 `(元素, 桥接数, 配位数)` 排序后小的在前，
+    每对只存一次（与 sq 只做规范半边同理）。行和不等于该位点的总参与度
+  - `n_formers` 列：普通桥氧为 2，三配位氧展开成 C(3,2)=3 行并标 3
+- **`m_<X>` 分解**（`bridges_to`）：Q^n(mAl) 记号。只对「恰好两个形成子」的配体成立，
+  故 `Σm ≤ n_bridge`，差额即三配位桥数。**无法从 linkage 反推** —— 两座 P-O-Al 桥
+  可能来自一个 m_Al=2 的 P，也可能来自两个 m_Al=1 的 P；linkage 数桥，这里数原子
+- 修饰子角色分类（`Zn_f`/`Zn_t`/`Zn_b`/`X`）已删除：实测参考轨迹 97.1% 落进 ≥3
+  兜底桶（0 / 1 / 26 / 903），无分辨力。改用配位数描述，Zn 进 CN 表
 - 旧的 `cn.rs`、`ligand_class.rs`、`qn.rs`、`modifier.rs` 已删除（逻辑迁移至 ferro-core）
 
 ### ferro-analysis / dft
@@ -231,9 +264,13 @@ ferro bader | convert | info | job
 - **类型选择**（`traj` 的 gr/sq/angle）：`-a/-b/-c` 按 element、`-x/-y/-z` 按 label，
   两组互斥；`-a`/`-x` 为中心、`-b`/`-y` 为近邻，顺序影响 CN
 - `plot_gr` 单配对（修复原先只画低 Z 作中心那一向 CN 的 bug）
-- **`ferro net`**：
-  - `qn`：Qn 分布 + 氧类型分布 + CN 分布（三表，支持 csv/xlsx）
-  - `type`：单帧原子类型标注，无 `-o` 打印统计，有 `-o` 导出 XYZ
+- **`ferro net`（0.2.2 起为叶子命令）**：`net qn` / `net type` 合并。两者从来不是
+  两个分析——都对每帧每个原子做同一次分类，`type` 只是把结果写出去而不是汇总。
+  导出退化为开关 `--export-traj [lammpstrj|extxyz]`，统计恒定执行
+  - 接 `CommonArgs` + `batch::map_inputs`：`-i` 多值 + glob，五张长表带 `file` 列
+  - `--format`（xlsx）与 `--frame` 删除；`-o` 由「路径基名」改为全项目统一的「文件名后缀」
+  - `--modifier` 点名却没给对应截断时直接报错（静默通过会让该元素被当成形成子，
+    氧的分类整体错位）
 
 ### ferro-python（PyO3 绑定，已完成）
 - 独立 workspace（不进主 workspace，pyo3 0.21 extension-module），用 maturin 构建
@@ -272,9 +309,6 @@ ferro bader | convert | info | job
 
 ## 已知限制
 
-- **`ferro net` 尚未接入批处理**：三张分布表倾向各自加 `file` 列保持三张。
-  **优先级高**（2026-08-11），但排在「`net type` 标签体系重做」之后 —— 先改标签，
-  否则表里的 `type` 值要改两次
 - `ferro-python` 未跟进本次重构：`gr_pair`/`gr_all` 仍走已删除的旧路径，
   `cd ferro-python && cargo check` 会断。**优先级中**（2026-08-11，与 pyo3 0.29
   运行时验证合为一项）
@@ -290,9 +324,11 @@ ferro bader | convert | info | job
 - 代码库未纳入 rustfmt 管理，格式为手工维护（含刻意的列对齐）；是否采用见 dev/plan.md
 - `cube_density.rs:188` 用参考帧体积归一化，NPT 下同类偏差；需先定义「NPT 下 3D 密度图
   指什么」再动（见 `dev/issues.md`「NPT 逐帧体积归一化」的「明确不做」）
-- `ferro net type` 的标签仍是旧格式（`P0`/`Of`/`On_P`/`X`），不符合下划线约定，
-  故其导出结果暂时无法被 `-x/-y/-z` 选中；重做方案见 `dev/plan.md`，
-  **优先级高**（2026-08-11，由暂缓提起）
+- **按标签选型只在单帧成立**：`traj gr -x P_3 -y O_b` 对多帧标注轨迹会被
+  `calc_gr` 的「逐类型粒子数守恒」守卫拒绝——标签 population 逐帧在变
+  （实测 P_3：149/152/150/150/150）。这是 `dev/plan.md` 原先写的动机
+  「导出即可直接串起来」比实际窄的地方。多帧要么按元素选（`-a P -b O`，正常），
+  要么等 g(r) 支持逐帧归一化的类型计数（**未列入计划**，需先定义口径）
 - `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
   「一输入一产物」相反；拆分需先定义带样本计数的中间产物格式。
   **优先级高**（2026-08-11）
