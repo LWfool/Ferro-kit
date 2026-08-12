@@ -457,6 +457,7 @@ ferro net -i traj.lammpstrj --P-O=2.4
 ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
 ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
+ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 ```
 
 ### 配对参数（必需，至少一个）
@@ -481,23 +482,30 @@ ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 | `--ncore N` | 全部核心 | 线程数 |
 | `--metal-units` | 关 | 统计不读速度/力；只对 `--export-traj extxyz` 有影响 |
 | `--modifier E,E` | — | **只计配位数**的元素，不参与桥接计数与配体分类。须同时给出各自的截断，否则报错 |
+| `--qn E,E` | `B,P,Si` | 报 Qn 的形成子。**替换**默认名单而非叠加；点名非形成子或已被 `--modifier` 占用的元素会报错 |
 | `--export-traj [FMT]` | — | 另写标注轨迹：`lammpstrj`（默认）或 `extxyz` |
 
 ### 输出
 
-六张 csv，各带 `file` 列：
+六张 csv，各带 `file` 列。**每个文件的 `#` 头里有它自己的逐列说明**，
+`pandas.read_csv(comment="#")` 会丢掉整块。
 
-| 文件 | 列 |
+| 文件 | 装什么 |
 |---|---|
-| `network_bridge.csv` | `file, former, n_bridge, count, fraction, sd`（**P 的即 Qn 分布**） |
-| `network_partner.csv` | `file, former, n_bridge, m_<X>…, count, fraction, sd` |
-| `network_oxy.csv` | `file, type, former_a, former_b, count, fraction, sd` |
-| `network_cn.csv` | `file, element, cn, count, fraction, sd` |
-| `network_mean.csv` | `file, element, mean_n_bridge, mean_cn` |
-| `network_linkage.csv` | `file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
+| `network_qn.csv` | Qn 分布，打开文件即可读 |
+| `network_qn_partner.csv` | 同上按伙伴元素拆开，即 $Q^n(m\mathrm{Al})$ |
+| `network_ligand_type.csv` | 配体分类 `O_f` / `O_n` / `O_b` / `O_t` 及其伙伴 |
+| `network_coordination.csv` | 配位数分布（形成子 + 修饰子） |
+| `network_average.csv` | 逐元素的平均 Qn 与平均配位数 |
+| `network_linkage.csv` | 桥的连接情况：配体元素 + 两端位点状态 |
 
-标签：`P_0`…`P_4` / `Al_2`（数字 = 桥接配体数）、`O_f` / `O_n` / `O_b` / `O_t`、
-修饰子为裸元素符号。全部合 `<元素>_<后缀>` 约定。
+**Qn 只报给 Qn 形成子**（默认 `B,P,Si`）。Al 之类的形成子由配位数刻画，不出现在前两
+个文件的行里，但仍在 `m_Al` 列、`ligand_type` 与 `linkage` 中。没有 Qn 形成子时前两
+个文件整个不写，屏幕打印原因。
+
+标签：Qn 形成子 `P_0`…`P_4`（数字 = Qn）、其他形成子 `Al_4` `Al_5`（数字 = **配位
+数**）、`O_f` / `O_n` / `O_b` / `O_t`、修饰子为裸元素符号。全部合 `<元素>_<后缀>`
+约定，运行时按本次参数打印一次。
 
 `--export-traj` 逐输入写 `<输入 stem>_types[_<后缀>].<ext>`。
 

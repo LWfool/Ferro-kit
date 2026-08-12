@@ -368,7 +368,7 @@ first file is read.
 ```
 
 **`-o` is a name suffix, not a path**: results land in `<mode>[_<table>]_<suffix>.csv`
-(`gr_run1.csv`, `network_bridge_run1.csv`). Per-input files are not produced — the
+(`gr_run1.csv`, `network_qn_run1.csv`). Per-input files are not produced — the
 batch summary is the product, the one exception being products that are inherently
 per-input (`ferro map`'s cubes, `ferro net --export-traj`'s trajectories), whose
 names must carry the input stem or a second input would overwrite the first.
@@ -471,16 +471,43 @@ ligand classification, which is the whole point (a modifier next to a non-bridgi
 oxygen must not turn it into a bridge). Naming a modifier without giving it a cutoff is
 an error, not a silent demotion to network former.
 
+**Qn is reported only for Qn formers.** Qn is a tetrahedral-former convention: it says
+everything about a site whose coordination is otherwise fixed. Al breaks that premise —
+its coordination *is* what the literature reports (Al[4]/Al[5]/Al[6]). So the default
+list in `ferro-core/src/data/qn_elements.rs` is `{B, P, Si}`, `--qn E,E` **replaces** it
+(never adds to it, because "B is not a former in this system" is a real need), and a
+non-Qn former is described by `coordination` instead. It stays a former everywhere else:
+bridging-oxygen classification, `ligand_type`, `linkage`, and P's `m_Al` partner column
+all still see it. Naming a non-former or a `--modifier` element in `--qn` is an error.
+
+The convention is baked into `AtomType::Former.qn: Option<u32>` at classification time
+rather than looked up when rendering, because `--qn` can override it per run: a type
+must carry the convention it was made under.
+
+**`bridging` and `cn` are different quantities** (`network_type.rs:301-311`): `cn += 1`
+for every ligand inside the cutoff, `bridging += 1` only when that ligand touches a
+second former. They coincide for a former carrying no non-bridging ligand — true of Al
+in the reference trajectory, where `ligand_type` has no `O_n, Al` row at all — which
+makes the distinction invisible there and wrong elsewhere. There is a regression test
+(`test_non_qn_former_labels_by_coordination_not_bridging`) building the case where they
+diverge, because nothing in `tests/` triggers it.
+
 **Labels** (`ferro_core::AtomType::label`, the one place a type becomes text):
 
 | Role | Label | Meaning |
 |---|---|---|
-| Former | `P_0`…`P_4`, `Al_2` | digit = number of bridging ligands (Qn, for P) |
+| Qn former | `P_0`…`P_4`, `Si_4` | digit = Qn (bridging ligands) |
+| Other former | `Al_4`, `Al_5` | digit = **coordination number** |
 | Free ligand | `O_f` | bonded to no former |
 | Non-bridging | `O_n` | one former |
 | Bridging | `O_b` | two formers |
 | Tricluster | `O_t` | three or more |
 | Modifier | `Zn` | element symbol, no role suffix |
+
+Two quantities behind one slot is the literature's own convention (`Q²` vs `Al[4]`), and
+it is what makes `traj gr -x Al_5 -y O_b` select 5-coordinate Al — the entry point for
+the Al-O-Al study. The scheme is printed once per run with this run's elements filled
+in, since which element gets which digit depends on `--qn` and on the cutoffs given.
 
 Ligand labels carry **no partner suffix** and modifiers **no role suffix**. Both were
 tried and dropped: the partner set belongs in data columns (below), and the old
@@ -488,32 +515,51 @@ tried and dropped: the partner set belongs in data columns (below), and the old
 the catch-all, since a modifier's coordination is 3–6. The old `X` fallback also
 collapsed over-coordinated oxygen and over-coordinated modifier into one label.
 
-**Five stacked CSVs**, each with a `file` column:
+**Six stacked CSVs**, each with a `file` column:
 
 | Table | One row per | Columns |
 |---|---|---|
-| `bridge` | former × bridging count | `former, n_bridge, count, fraction, sd` |
-| `partner` | former × bridging count × partner split | `former, n_bridge, m_<X>…, count, fraction, sd` |
-| `oxy` | ligand type × partner pair | `type, former_a, former_b, count, fraction, sd` |
-| `cn` | element × coordination number | `element, cn, count, fraction, sd` |
-| `mean` | element | `element, mean_n_bridge, mean_cn` |
-| `linkage` | bridge × both site states | `elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
+| `qn` | Qn former × Qn | `label, former, qn, count, fraction, sd` |
+| `qn_partner` | Qn former × Qn × partner split | `label, former, qn, m_<X>…, count, fraction, sd` |
+| `ligand_type` | ligand type × partner pair | `label, former_a, former_b, count, fraction, sd` |
+| `coordination` | element × coordination number | `element, cn, count, fraction, sd` |
+| `average` | element | `element, mean_qn, mean_cn` |
+| `linkage` | bridge × both site states | `linkage, ligand, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
 
-`n_bridge`, not `qn`: the count is defined for every former, but Qn is a
-tetrahedral-former convention — Al has no Qn. **`bridge` is the plain distribution**,
-one row per (former, n_bridge) — for P, that is the Qn distribution, readable as-is.
-`partner` adds the `m_<X>` split (the Q^n(mAl) notation) and `bridge` is its marginal;
+**Every table carries its own `#` header** — one line on what the table is, one per
+column, plus that table's traps. `batch::write_all` prepends the shared block instead of
+overwriting `Table::meta`, and `Table::concat_union` carries the first part's meta
+through `stack`, or the description would be lost before it reached the writer. This is
+where the detail deleted from the help text went: the header travels with the file.
+
+A `label` column sits next to the numeric columns rather than replacing them. The label
+is the human anchor; `former`/`qn`/`cn` are what you filter and plot on. Dropping them
+would turn "rows with qn ≥ 3" into string surgery — the same reverse-parsing this
+refactor removed from five call sites.
+
+**`qn` is the plain distribution**, one row per (former, qn), readable as-is.
+`qn_partner` adds the `m_<X>` split (the Q^n(mAl) notation) and `qn` is its marginal;
 they are separate tables rather than one plus a `groupby` because the plain
 distribution is a primary product, and a different granularity earns a different table
-(same reasoning as `mean`). Neither is derivable from `linkage`: two P–O–Al bridges
-could be one P with `m_Al = 2` or two P atoms with `m_Al = 1`. `linkage` counts
-bridges, `bridge`/`partner` count atoms.
+(same reasoning as `average`). `sd` must be re-accumulated at each granularity, never
+summed across partner rows — the variance of a sum is not the sum of variances for
+correlated terms (measured: P `qn=2` gives 5.574e-3, its partner rows sum to 9.966e-3).
+Neither is derivable from `linkage`: two P–O–Al bridges could be one P with `m_Al = 2`
+or two P atoms with `m_Al = 1`. `linkage` counts bridges, `qn`/`qn_partner` count atoms.
+
+Both Qn tables are **omitted entirely** when no former is a Qn element, with a printed
+reason: a header-only CSV reads as "measured, and the answer was zero".
 
 `linkage` stores each pair **once**, canonically ordered by `(element, n_bridge, cn)` —
 a bridge has no direction, same reasoning as `sq`'s canonical half — so a row sum is not
 a site's total involvement. Both ends carry *both* numbers, so "what is the bridging
 count of that 4-coordinate Al" is answerable. `n_formers` is 2 for a real bridge; a
-tricluster contributes C(n,2) rows tagged with its own `n_formers`.
+tricluster contributes C(n,2) rows tagged with its own `n_formers`. The `ligand` column
+is part of the key, not decoration: without it a two-ligand system (`--Al-O` + `--Al-F`)
+silently merges Al–O–P with Al–F–P. `n_bridge_a/b` keeps that name rather than `qn_a/b`
+— the bridging count is defined for every former, `qn` only for some — and the
+`linkage` display column (`Al_4-O-P_2`) renders through `AtomType::label`, so the tables
+and the exported trajectory cannot disagree about what `Al_4` means.
 
 `fraction` is the **mean over frames** of that frame's fraction; `sd` is the sample
 standard deviation (ddof = 1) of the same quantity, with absent bins contributing 0.

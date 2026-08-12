@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ebcc719c.js";
+            window.path_to_searchindex_js = "searchindex-8015e3d7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-974254eb.js"></script>
@@ -638,6 +638,7 @@ ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
 ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
+ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 </code></pre>
 <h3 id="配对参数必需至少一个"><a class="header" href="#配对参数必需至少一个">配对参数（必需，至少一个）</a></h3>
 <p>截断用 <code>--&lt;Former&gt;-&lt;Ligand&gt;=&lt;cutoff&gt;</code> 格式（元素首字母大写）。元素对写在<strong>参数名</strong>
@@ -660,29 +661,35 @@ ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 <tr><td><code>--ncore N</code></td><td>全部核心</td><td>线程数</td></tr>
 <tr><td><code>--metal-units</code></td><td>关</td><td>统计不读速度/力；只对 <code>--export-traj extxyz</code> 有影响</td></tr>
 <tr><td><code>--modifier E,E</code></td><td>—</td><td><strong>只计配位数</strong>的元素，不参与桥接计数与配体分类。须同时给出各自的截断，否则报错</td></tr>
+<tr><td><code>--qn E,E</code></td><td><code>B,P,Si</code></td><td>报 Qn 的形成子。<strong>替换</strong>默认名单而非叠加；点名非形成子或已被 <code>--modifier</code> 占用的元素会报错</td></tr>
 <tr><td><code>--export-traj [FMT]</code></td><td>—</td><td>另写标注轨迹：<code>lammpstrj</code>（默认）或 <code>extxyz</code></td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="输出-1"><a class="header" href="#输出-1">输出</a></h3>
-<p>六张 csv，各带 <code>file</code> 列：</p>
+<p>六张 csv，各带 <code>file</code> 列。<strong>每个文件的 <code>#</code> 头里有它自己的逐列说明</strong>，
+<code>pandas.read_csv(comment="#")</code> 会丢掉整块。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>文件</th><th>列</th></tr>
+<tr><th>文件</th><th>装什么</th></tr>
 </thead>
 <tbody>
-<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, count, fraction, sd</code>（<strong>P 的即 Qn 分布</strong>）</td></tr>
-<tr><td><code>network_partner.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td></tr>
-<tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td></tr>
-<tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td></tr>
-<tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td></tr>
-<tr><td><code>network_linkage.csv</code></td><td><code>file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd</code></td></tr>
+<tr><td><code>network_qn.csv</code></td><td>Qn 分布，打开文件即可读</td></tr>
+<tr><td><code>network_qn_partner.csv</code></td><td>同上按伙伴元素拆开，即 $Q^n(m\mathrm{Al})$</td></tr>
+<tr><td><code>network_ligand_type.csv</code></td><td>配体分类 <code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code> 及其伙伴</td></tr>
+<tr><td><code>network_coordination.csv</code></td><td>配位数分布（形成子 + 修饰子）</td></tr>
+<tr><td><code>network_average.csv</code></td><td>逐元素的平均 Qn 与平均配位数</td></tr>
+<tr><td><code>network_linkage.csv</code></td><td>桥的连接情况：配体元素 + 两端位点状态</td></tr>
 </tbody>
 </table>
 </div>
-<p>标签：<code>P_0</code>…<code>P_4</code> / <code>Al_2</code>（数字 = 桥接配体数）、<code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>、
-修饰子为裸元素符号。全部合 <code>&lt;元素&gt;_&lt;后缀&gt;</code> 约定。</p>
+<p><strong>Qn 只报给 Qn 形成子</strong>（默认 <code>B,P,Si</code>）。Al 之类的形成子由配位数刻画，不出现在前两
+个文件的行里，但仍在 <code>m_Al</code> 列、<code>ligand_type</code> 与 <code>linkage</code> 中。没有 Qn 形成子时前两
+个文件整个不写，屏幕打印原因。</p>
+<p>标签：Qn 形成子 <code>P_0</code>…<code>P_4</code>（数字 = Qn）、其他形成子 <code>Al_4</code> <code>Al_5</code>（数字 = <strong>配位
+数</strong>）、<code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>、修饰子为裸元素符号。全部合 <code>&lt;元素&gt;_&lt;后缀&gt;</code>
+约定，运行时按本次参数打印一次。</p>
 <p><code>--export-traj</code> 逐输入写 <code>&lt;输入 stem&gt;_types[_&lt;后缀&gt;].&lt;ext&gt;</code>。</p>
 <p>详细说明（口径、<code>sd</code> 的含义、pandas 分析范例、两种导出格式的差别、按标签选型的
 单帧限制）见 <a href="analysis/network.html">Glass Network Analysis</a>。</p>
