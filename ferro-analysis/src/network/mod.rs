@@ -54,27 +54,35 @@ pub type SiteState = (String, u32, u32);
 /// Al–F–P would report a count no experiment could reproduce.
 pub type LinkKey = (SiteState, SiteState, String, usize);
 
-/// Ligand distribution key: `(sort rank, label, partner elements)`.
+/// Ligand distribution key: `(element, sort rank, label, partner elements)`.
 ///
-/// The rank comes from [`AtomType::class_rank`], so a `BTreeMap` keyed on this is
-/// sorted by construction — no post-hoc `sort_by` that re-derives the order from the
-/// label text.  Partners are kept only for the 0/1/2-former cases; a tricluster
-/// collapses to one row per label, its pairs being reported by the linkage table.
-type OxyKey = (u8, String, Vec<String>);
+/// Element first so a two-ligand system groups by species; the rank then comes from
+/// [`AtomType::class_rank`], so a `BTreeMap` keyed on this is sorted by construction —
+/// no post-hoc `sort_by` that re-derives the order from the label text.  Partners are
+/// kept only for the 0/1/2-former cases; a tricluster collapses to one row per label,
+/// its pairs being reported by the linkage table.
+type OxyKey = (String, u8, String, Vec<String>);
 
 fn oxy_key(t: &AtomType) -> OxyKey {
     let partners = match t {
         AtomType::Ligand { partners, .. } if partners.len() <= 2 => partners.clone(),
         _ => Vec::new(),
     };
-    (t.class_rank(), t.label(), partners)
+    (t.element().to_string(), t.class_rank(), t.label(), partners)
 }
 
-/// Render a former site as its label, routed through [`AtomType::label`] so the tables
-/// and the exported trajectory cannot disagree about what `Al_4` means.
-///
-/// `qn` carries the convention: `Some(n)` prints the Qn, `None` prints the
-/// coordination number.
+// ─── 两套标签词汇 ─────────────────────────────────────────────────────────────
+//
+// **原子词汇** `P_2` / `Al_4`：指一个原子。用于导出轨迹（必须能被 dump reader 按首个
+// 下划线拆回 element）与 `linkage` 表（它描述的是原子之间的连接）。
+//
+// **单元词汇** `P-Q2` / `Al_4`：指一类结构单元。用于 `qn` / `qn_partner` /
+// `composition` 三张分布表——它们数的是「有多少个 Q2 单元」，不是「哪个原子连着哪个」。
+//
+// 两者对非 Qn 形成子恰好相同（都是 `Al_4`），因为 Al 没有单元记号可用。
+
+/// Atom vocabulary: routed through [`AtomType::label`] so the tables and the exported
+/// trajectory cannot disagree about what `Al_4` means.
 fn former_label(elem: &str, qn: Option<u32>, cn: u32) -> String {
     AtomType::Former {
         elem: elem.to_string(),
@@ -86,9 +94,35 @@ fn former_label(elem: &str, qn: Option<u32>, cn: u32) -> String {
     .label()
 }
 
-/// Label of one bridge end, given the run's Qn convention.
+/// Unit vocabulary: `P-Q2` for a Qn former, the atom label otherwise.
+///
+/// The element is kept in front because `Q2` alone is ambiguous the moment a run has
+/// two Qn formers (B + P, Si + Al): the rows would collide and no adjacent column
+/// could separate two *different* elements sharing a Qn.
+fn species_label(elem: &str, qn: Option<u32>, cn: u32) -> String {
+    match qn {
+        Some(n) => format!("{elem}-Q{n}"),
+        None => former_label(elem, None, cn),
+    }
+}
+
+/// Label of one bridge end, given the run's Qn convention.  Atom vocabulary — a bridge
+/// joins two *atoms*, whereas Qn names a unit that contains several.
 fn site_label(params: &TypeParams, (elem, bridging, cn): &SiteState) -> String {
     former_label(elem, params.is_qn_former(elem).then_some(*bridging), *cn)
+}
+
+/// Ligand row label: the formers it joins, with the ligand's own type in the middle.
+///
+/// `Al-O_b-P`, `P-O_n`, `O_f`, `O_t`.  Missing ends are left off rather than filled
+/// with a placeholder — a free ligand has no formers, and a tricluster has no single
+/// pair (its pairs are in the linkage table).
+fn ligand_row_label(ty: &str, partners: &[String]) -> String {
+    match partners {
+        [a, b] => format!("{a}-{ty}-{b}"),
+        [a] => format!("{a}-{ty}"),
+        _ => ty.to_string(),
+    }
 }
 
 // ─── 逐帧比例的一阶与二阶矩 ────────────────────────────────────────────────────
@@ -198,8 +232,12 @@ pub struct NetworkResult {
     pub cn_dist: HashMap<String, Vec<(u32, Bin)>>,
     /// 元素 → 平均总配位数（含修饰子）
     pub mean_cn: HashMap<String, f64>,
-    /// 配体类型分布：`(label, partner_elements, bin)`，按 `AtomType::class_rank` 排序
+    /// 配体类型分布：`(label, partner_elements, bin)`，按 (元素, `class_rank`) 排序。
+    /// `fraction` 的分母是**该配体元素**的原子数
     pub oxy_dist: Vec<(String, Vec<String>, Bin)>,
+    /// 配体元素 → 类型分布（`O_f`/`O_n`/`O_b`/`O_t`），已对伙伴维度聚合。
+    /// 与 `oxy_dist` 是两个粒度，`sd` 各自累加
+    pub ligand_dist: HashMap<String, Vec<(String, Bin)>>,
     /// 桥联统计：每个桥联配体贡献一条「两端位点状态」的观测，
     /// 只存规范半边（两端按 `SiteState` 排序，小的在前）
     pub linkage: Vec<(LinkKey, Bin)>,
@@ -278,7 +316,7 @@ impl NetworkResult {
             let mut bins = Vec::new();
             for former in &formers {
                 for (n, b) in &self.qn_dist[*former] {
-                    l_col.push(former_label(former, Some(*n), 0));
+                    l_col.push(species_label(former, Some(*n), 0));
                     f_col.push((*former).clone());
                     v_col.push(*n as f64);
                     bins.push(*b);
@@ -290,7 +328,9 @@ impl NetworkResult {
             for line in [
                 "table   : Qn speciation — one row per (former, Qn).",
                 "          Qn = number of bridging ligands on that former.",
-                "label   : site label, <element>_<Qn>; same text ferro net --export-traj writes",
+                "label   : structural unit, <element>-Q<n>.  NOTE this is the UNIT",
+                "          vocabulary; the exported trajectory labels the same site as",
+                "          P_2 (atom vocabulary), which is what -x/-y select on",
                 "former  : network former element",
                 "qn      : bridging ligands on the site",
                 "count   : occurrences summed over all frames",
@@ -320,7 +360,7 @@ impl NetworkResult {
             let mut bins = Vec::new();
             for former in &pf {
                 for ((n, to), b) in &self.qn_partner_dist[*former] {
-                    l_col.push(former_label(former, Some(*n), 0));
+                    l_col.push(species_label(former, Some(*n), 0));
                     f_col.push((*former).clone());
                     v_col.push(*n as f64);
                     for (i, p) in partner_elems.iter().enumerate() {
@@ -338,7 +378,10 @@ impl NetworkResult {
             for line in [
                 "table   : Q^n(mX) — the Qn distribution split by partner element.",
                 "          network_qn.csv is this table's marginal over the m_ columns.",
-                "label   : site label; repeats across the rows that share a Qn",
+                "label   : structural unit, <element>-Q<n>; repeats across the rows",
+                "          that share a Qn.  The partner split is NOT folded into it:",
+                "          Q^n(mX) notation cannot express a bridge whose ligand joins",
+                "          three formers, and two such rows would collide",
                 "qn      : bridging ligands on the site",
                 "m_<X>   : how many of those bridges lead to element X.",
                 "          Sum of m_ ≤ qn: a ligand shared by 3+ formers is one bridge",
@@ -351,27 +394,34 @@ impl NetworkResult {
         }
 
         // ligand_type：伙伴元素以数据列给出,不编码进标签
-        let (mut ty, mut fa, mut fb) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut lbl, mut ty) = (Vec::new(), Vec::new());
+        let (mut fa, mut fb) = (Vec::new(), Vec::new());
         let mut bins = Vec::new();
         for (label, partners, b) in &self.oxy_dist {
+            lbl.push(ligand_row_label(label, partners));
             ty.push(label.clone());
             fa.push(partners.first().cloned().unwrap_or_default());
             fb.push(partners.get(1).cloned().unwrap_or_default());
             bins.push(*b);
         }
         let mut t = Table::new();
-        t.push_text("label", ty).push_text("former_a", fa).push_text("former_b", fb);
+        t.push_text("label", lbl).push_text("type", ty)
+            .push_text("former_a", fa).push_text("former_b", fb);
         push_bins(&mut t, &bins);
         for line in [
             "table   : ligand speciation — how many formers each ligand atom touches.",
-            "label   : <element>_f free (0 formers)   <element>_n non-bridging (1)",
+            "label   : the whole row read as one string, <former_a>-<type>-<former_b>.",
+            "          Missing ends are left off, not padded: O_f, P-O_n, Al-O_b-P, O_t",
+            "type    : <element>_f free (0 formers)   <element>_n non-bridging (1)",
             "          <element>_b bridging (2)       <element>_t tricluster (3+)",
-            "former_a: the formers it bridges, as data columns rather than in the",
-            "former_b: label — O_b covers P-O-P and P-O-Al alike, which are separate",
-            "          rows here.  Both empty for _f, only former_a set for _n.",
-            "          A tricluster leaves both empty: it has no single pair, its",
-            "          pairs are enumerated in network_linkage.csv",
-            "fraction: denominator is all ligand atoms, so the column sums to 1",
+            "former_a: the formers it bridges, kept as their own columns so",
+            "former_b: former_a=='Al' and former_b=='Al' stays a plain query.",
+            "          Both empty for _f, only former_a set for _n.  A tricluster",
+            "          leaves both empty: it has no single pair, its pairs are",
+            "          enumerated in network_linkage.csv",
+            "fraction: denominator is that LIGAND ELEMENT's atom count — the",
+            "          literature's BO-fraction convention.  In a two-ligand system",
+            "          (--Al-O and --Al-F) O_b is a fraction of O, not of O+F",
         ] { t.meta_line(line); }
         out.push(("ligand_type".to_string(), t));
 
@@ -401,26 +451,59 @@ impl NetworkResult {
         ] { t.meta_line(line); }
         out.push(("coordination".to_string(), t));
 
-        // average：一元素一行。非 Qn 形成子与修饰子的 mean_qn 留空(NaN)而不是补 0；
-        // 轨迹里不存在的元素在 finalize 里已被丢掉,这里不会出现
-        let (mut e_col, mut mb_col, mut mc_col) = (Vec::new(), Vec::new(), Vec::new());
+        // composition：一物种一行,分母恒为**该元素**的原子数。
+        // 每个元素只出现一种刻画:Qn 形成子出 Qn,其余形成子与修饰子出配位数,
+        // 配体出类型。故「每个元素的 fraction 求和为 1」是一条可核对的恒等式
+        let (mut l_col, mut e_col) = (Vec::new(), Vec::new());
+        let mut bins = Vec::new();
+        for former in &formers {
+            for (n, b) in &self.qn_dist[*former] {
+                l_col.push(species_label(former, Some(*n), 0));
+                e_col.push((*former).clone());
+                bins.push(*b);
+            }
+        }
         for elem in &elems {
-            e_col.push((*elem).clone());
-            mb_col.push(self.mean_qn.get(*elem).copied().unwrap_or(f64::NAN));
-            mc_col.push(self.mean_cn.get(*elem).copied().unwrap_or(f64::NAN));
+            // Qn 形成子已由上一段给出,不再按配位数重复一遍
+            if self.qn_dist.contains_key(*elem) { continue; }
+            for (v, b) in &self.cn_dist[*elem] {
+                l_col.push(species_label(elem, None, *v));
+                e_col.push((*elem).clone());
+                bins.push(*b);
+            }
+        }
+        let mut ligs: Vec<&String> = self.ligand_dist.keys().collect();
+        ligs.sort();
+        for elem in ligs {
+            for (label, b) in &self.ligand_dist[elem] {
+                l_col.push(label.clone());
+                e_col.push(elem.clone());
+                bins.push(*b);
+            }
         }
         let mut t = Table::new();
-        t.push_text("element", e_col)
-            .push_num("mean_qn", mb_col)
-            .push_num("mean_cn", mc_col);
+        t.push_text("label", l_col).push_text("element", e_col);
+        push_bins(&mut t, &bins);
         for line in [
-            "table   : per-element averages — one row per element, not per value.",
-            "mean_qn : pooled mean Qn over all atoms of that element and all frames.",
-            "          EMPTY for modifiers and for formers described by coordination",
-            "          number (Al, …); an empty cell means undefined, not zero",
-            "mean_cn : pooled mean coordination number, defined for every element here",
+            "table   : structural composition — one row per species, at a glance.",
+            "          A digest of the other tables, not a new measurement.",
+            "label   : P-Q2 (Qn unit)  Al_4 (4-coordinate former)  O_b (bridging",
+            "          ligand)  Zn_4 (4-coordinate modifier)",
+            "element : the element the species belongs to; group on it",
+            "fraction: denominator is that ELEMENT's atom count.  Q2 as a fraction of",
+            "          all P, Al_4 as a fraction of all Al, O_b as a fraction of all O",
+            "          — so each element's rows sum to 1, which is worth checking",
+            "note    : every element is characterised ONE way — Qn formers by Qn,",
+            "          other formers and modifiers by coordination number, ligands by",
+            "          type.  P therefore has no cn rows here; see",
+            "          network_coordination.csv for those",
+            "sd      : re-accumulated per frame at THIS granularity, never summed from",
+            "          the source tables — O_b aggregates three partner rows, and the",
+            "          variance of a sum is not the sum of variances",
+            "means   : mean Qn and mean CN are in the [inputs] block above, one line",
+            "          per input; they are per-input scalars, not rows",
         ] { t.meta_line(line); }
-        out.push(("average".to_string(), t));
+        out.push(("composition".to_string(), t));
 
         // linkage：一行一种「配体 × 两端位点状态」的组合
         let mut txt: [Vec<String>; 4] = Default::default();
@@ -496,8 +579,10 @@ struct FrameData {
     cn: HashMap<String, (HashMap<u32, usize>, usize)>,
     /// 配体类型 → 计数
     oxy: HashMap<OxyKey, usize>,
-    /// 配体原子总数（oxy 的分母）
-    n_ligand: usize,
+    /// 配体元素 → (类型直方图, 该元素原子数) —— composition 的配体部分,
+    /// 且是 oxy 的分母来源。逐元素而非全体配体:「桥氧占全部氧的比例」是文献的
+    /// BO fraction 口径,「桥氧占 O+F 的比例」不对应任何常用量
+    ligand: HashMap<String, (HashMap<(u8, String), usize>, usize)>,
     /// 桥联组合 → 计数
     linkage: HashMap<LinkKey, usize>,
     /// 本帧的桥联观测总数（linkage 的分母）
@@ -543,7 +628,7 @@ fn compute_frame(
     let mut partner: HashMap<String, (HashMap<BridgeKey, usize>, usize)> = HashMap::new();
     let mut cn: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
     let mut oxy: HashMap<OxyKey, usize> = HashMap::new();
-    let mut n_ligand = 0usize;
+    let mut ligand: HashMap<String, (HashMap<(u8, String), usize>, usize)> = HashMap::new();
 
     let ligands = params.ligands();
 
@@ -570,9 +655,11 @@ fn compute_frame(
                 *e.0.entry(*c).or_insert(0) += 1;
                 e.1 += 1;
             }
-            AtomType::Ligand { .. } => {
+            AtomType::Ligand { elem, .. } => {
                 *oxy.entry(oxy_key(t)).or_insert(0) += 1;
-                n_ligand += 1;
+                let l = ligand.entry(elem.clone()).or_default();
+                *l.0.entry((t.class_rank(), t.label())).or_insert(0) += 1;
+                l.1 += 1;
             }
             // 配体元素的原子若被别的角色覆盖（元素同时是配体与形成子）已在上面计入
             AtomType::Other { elem } => {
@@ -610,7 +697,7 @@ fn compute_frame(
         }
     }
 
-    Some(FrameData { qn: bridge, qn_partner: partner, cn, oxy, n_ligand, linkage, n_links })
+    Some(FrameData { qn: bridge, qn_partner: partner, cn, oxy, ligand, linkage, n_links })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
@@ -624,8 +711,11 @@ struct Accumulator {
     qn_partner: HashMap<String, BTreeMap<BridgeKey, Moments>>,
     /// 元素 → { 配位数 → 矩 }
     cn: HashMap<String, BTreeMap<u32, Moments>>,
-    /// 配体类型 → 矩（键含 rank，天然有序）
+    /// 配体类型 × 伙伴对 → 矩（键含元素与 rank，天然有序）
     oxy: BTreeMap<OxyKey, Moments>,
+    /// 配体元素 → { 类型标签 → 矩 }。**独立累加**,不是把 oxy 的行相加 ——
+    /// 相关项之和的方差不等于方差之和,`O_b` 的 sd 只能逐帧重算
+    ligand: HashMap<String, BTreeMap<(u8, String), Moments>>,
     /// 桥联组合 → 矩
     linkage: BTreeMap<LinkKey, Moments>,
     /// 元素 → (Σ值·计数, Σ计数)，用于池化均值
@@ -671,11 +761,14 @@ impl Accumulator {
         for (elem, (hist, total)) in &fd.cn {
             push_hist(&mut self.cn, &mut self.cn_sum, elem, hist, *total, |v| *v as f64);
         }
-        if fd.n_ligand > 0 {
-            for (key, &c) in &fd.oxy {
-                self.oxy.entry(key.clone()).or_default()
-                    .push(c, c as f64 / fd.n_ligand as f64);
-            }
+        for (elem, (hist, total)) in &fd.ligand {
+            push_hist(&mut self.ligand, &mut ignored, elem, hist, *total, |_| 0.0);
+        }
+        // oxy 的分母是该配体元素的原子数,与 ligand 一致
+        for (key, &c) in &fd.oxy {
+            let Some((_, total)) = fd.ligand.get(&key.0) else { continue };
+            if *total == 0 { continue; }
+            self.oxy.entry(key.clone()).or_default().push(c, c as f64 / *total as f64);
         }
         if fd.n_links > 0 {
             for (key, &c) in &fd.linkage {
@@ -696,6 +789,9 @@ impl Accumulator {
             merge_keyed(self.cn.entry(k).or_default(), inner);
         }
         merge_keyed(&mut self.oxy, other.oxy);
+        for (k, inner) in other.ligand {
+            merge_keyed(self.ligand.entry(k).or_default(), inner);
+        }
         merge_keyed(&mut self.linkage, other.linkage);
         for (dst, src) in [(&mut self.qn_sum, other.qn_sum),
                            (&mut self.cn_sum, other.cn_sum)] {
@@ -735,8 +831,17 @@ impl Accumulator {
         let mean_cn: HashMap<_, _> = self.cn.keys()
             .map(|e| (e.clone(), mean_of(&self.cn_sum, e))).collect();
 
+        let ligand_dist: HashMap<_, _> = self.ligand.iter()
+            .map(|(e, m)| {
+                let rows: Vec<(String, Bin)> = m.iter()
+                    .map(|((_, lbl), mo)| (lbl.clone(), mo.finish(n_frames)))
+                    .collect();
+                (e.clone(), rows)
+            })
+            .collect();
+
         let oxy_dist: Vec<(String, Vec<String>, Bin)> = self.oxy.iter()
-            .map(|((_, lbl, partners), mo)| {
+            .map(|((_, _, lbl, partners), mo)| {
                 (lbl.clone(), partners.clone(), mo.finish(n_frames))
             })
             .collect();
@@ -746,8 +851,8 @@ impl Accumulator {
             .collect();
 
         NetworkResult {
-            qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, oxy_dist, linkage,
-            n_frames, n_atoms, params,
+            qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, oxy_dist, ligand_dist,
+            linkage, n_frames, n_atoms, params,
         }
     }
 }
@@ -907,8 +1012,11 @@ mod tests {
             assert!(!res.mean_cn.contains_key(absent));
         }
         let tables = res.to_tables();
-        let mean = &tables.iter().find(|(n, _)| n == "average").unwrap().1;
-        assert_eq!(mean.n_rows(), 1, "只有 P 一行");
+        let comp = &tables.iter().find(|(n, _)| n == "composition").unwrap().1;
+        let c = comp.column("element").unwrap();
+        let elems: Vec<String> = (0..c.len()).map(|i| c.cell(i)).collect();
+        assert!(!elems.contains(&"Al".to_string()) && !elems.contains(&"Zn".to_string()),
+                "参数里点名但轨迹里没有的元素不该出行: {elems:?}");
     }
 
     /// 恒定体系的 sd 必须恰好为 0，单帧必须是 NaN。
@@ -1114,13 +1222,18 @@ mod tests {
         };
         assert!(!col("qn", "former").contains(&"Al".to_string()));
         assert!(col("coordination", "element").contains(&"Al".to_string()));
-        // average 一元素一行,Al 在表内但 mean_qn 空着 —— 空是「未定义」,不是 0
-        let avg = &tables.iter().find(|(n, _)| n == "average").unwrap().1;
-        let i = col("average", "element").iter().position(|e| e == "Al").unwrap();
-        assert!(avg.column("mean_qn").unwrap().cell(i).trim().is_empty()
-                    || avg.column("mean_qn").unwrap().cell(i).contains("NaN"),
-                "Al 的 mean_qn 必须留空,实得 {:?}",
-                avg.column("mean_qn").unwrap().cell(i));
+
+        // composition:P 走单元词汇 P-Q1,Al 走原子词汇 Al_1,两者并存一表
+        let labels = col("composition", "label");
+        assert!(labels.contains(&"P-Q1".to_string()), "{labels:?}");
+        assert!(labels.contains(&"Al_1".to_string()), "{labels:?}");
+        // 每个元素只出现一种刻画:P 不该再有配位数行
+        assert_eq!(labels.iter().filter(|l| l.starts_with("P")).count(), 1,
+                   "P 只应有 Qn 行,不该按配位数再来一遍: {labels:?}");
+
+        // ligand_type 的 label 合并成一行可读的连接式
+        assert_eq!(col("ligand_type", "label"), vec!["Al-O_b-P".to_string()]);
+        assert_eq!(col("ligand_type", "type"), vec!["O_b".to_string()]);
     }
 
     /// 没有任何 Qn 形成子时，两张 Qn 表**整个不出**。只有表头的文件读起来
@@ -1195,6 +1308,78 @@ mod tests {
         let mut rows: Vec<String> = (0..c.len()).map(|i| c.cell(i)).collect();
         rows.sort();
         assert_eq!(rows, vec!["Al_1-F-P_1".to_string(), "Al_1-O-P_1".to_string()]);
+    }
+
+    // ─── composition 表与配体分母 ──────────────────────────────────────────────
+
+    /// composition 表的核心恒等式：**每个元素的 fraction 求和为 1**。
+    /// 分母恒为该元素的原子数——Q2 占全部 P，Al_4 占全部 Al，O_b 占全部 O。
+    #[test]
+    fn test_composition_fractions_sum_to_one_within_each_element() {
+        let frame = cube(vec![
+            atom("P",  0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0),
+            atom("Al", 3.2, 0.0, 0.0),
+            atom("O",  0.0, 1.6, 0.0),   // 只连 P 的非桥氧
+            atom("O",  6.0, 6.0, 6.0),   // 游离氧
+            atom("Zn", 9.0, 9.0, 9.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        let mut modifier_cutoffs = BTreeMap::new();
+        modifier_cutoffs.insert(("Zn".to_string(), "O".to_string()), 2.6);
+        let res = calc_network(&traj_of(vec![frame]),
+                               &TypeParams::new(cutoffs, modifier_cutoffs)).unwrap();
+
+        let tables = res.to_tables();
+        let t = &tables.iter().find(|(n, _)| n == "composition").unwrap().1;
+        let (e, f) = (t.column("element").unwrap(), t.column("fraction").unwrap());
+        let mut sums: std::collections::HashMap<String, f64> = HashMap::new();
+        for i in 0..e.len() {
+            *sums.entry(e.cell(i)).or_insert(0.0) += f.cell(i).parse::<f64>().unwrap();
+        }
+        assert!(sums.contains_key("P") && sums.contains_key("Al")
+                    && sums.contains_key("O") && sums.contains_key("Zn"),
+                "形成子、配体、修饰子都要在表里: {sums:?}");
+        // 容差取 CSV 自己的精度:`Column::cell` 按 {:.6e} 渲染,1/3 写成 3.333333e-1,
+        // 三个相加就是 0.9999999。恒等式在 f64 上是精确的,下面顺带验一遍
+        for (elem, sum) in &sums {
+            assert!((sum - 1.0).abs() < 1e-6, "{elem} 的 fraction 求和为 {sum}, 应为 1");
+        }
+        for (elem, rows) in &res.ligand_dist {
+            let s: f64 = rows.iter().map(|(_, b)| b.fraction).sum();
+            assert!((s - 1.0).abs() < 1e-12, "{elem} 在 f64 上必须精确求和为 1, 实得 {s}");
+        }
+    }
+
+    /// 配体 `fraction` 的分母是**该配体元素**的原子数，不是全体配体原子。
+    /// 「桥氧占全部氧的比例」是文献的 BO fraction；「占 O+F 的比例」不对应任何常用量。
+    #[test]
+    fn test_ligand_fraction_denominator_is_per_element() {
+        // 2 个 O（1 桥 1 非桥）+ 2 个 F（都非桥）。若分母取全体配体，
+        // O_b 会是 1/4 = 0.25；正确答案是 1/2 = 0.5
+        let frame = cube(vec![
+            atom("P",  0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0),
+            atom("Al", 3.2, 0.0, 0.0),
+            atom("O",  0.0, 1.6, 0.0),
+            atom("F", -1.6, 0.0, 0.0),
+            atom("F",  0.0, -1.6, 0.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        for (fm, l) in [("P", "O"), ("Al", "O"), ("P", "F"), ("Al", "F")] {
+            cutoffs.insert((fm.to_string(), l.to_string()), 2.3);
+        }
+        let res = calc_network(&traj_of(vec![frame]),
+                               &TypeParams::new(cutoffs, BTreeMap::new())).unwrap();
+
+        let ob = res.oxy_dist.iter().find(|(l, _, _)| l == "O_b").unwrap();
+        assert!((ob.2.fraction - 0.5).abs() < 1e-12,
+                "O_b 应占全部 O 的 1/2, 实得 {} (取全体配体分母会给 0.25)", ob.2.fraction);
+        let fn_ = res.oxy_dist.iter().find(|(l, _, _)| l == "F_n").unwrap();
+        assert!((fn_.2.fraction - 1.0).abs() < 1e-12,
+                "两个 F 都是非桥, 应为 1.0, 实得 {}", fn_.2.fraction);
     }
 
     /// 缺席帧按 f = 0 计入，而不是被当作缺失值跳过。

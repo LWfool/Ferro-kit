@@ -373,13 +373,19 @@ LABELS:
 OUTPUT — stacked CSVs, each with a `file` column. Every file carries a `#` header
 describing its own columns; `pandas.read_csv(comment='#')` drops it.
 
+  network_composition.csv   every species at a glance: P-Q2, Al_4, O_b, Zn_4 …
+                            each as a fraction of its own element
   network_qn.csv            Qn speciation — the plain distribution, readable as-is
   network_qn_partner.csv    the same, split by partner element: Q^n(mAl)
   network_ligand_type.csv   ligand speciation: free / non-bridging / bridging /
                             tricluster, with the formers each one joins
   network_coordination.csv  coordination number distribution, formers + modifiers
-  network_average.csv       per-element mean Qn and mean coordination number
   network_linkage.csv       bridge connectivity, both ends and the ligand between
+
+  Labels come in two vocabularies. Distribution tables name the structural UNIT
+  (P-Q2); the linkage table and the exported trajectory name the ATOM (P_2, Al_4),
+  because a bridge joins atoms while a Qn unit contains several. -x/-y select on
+  the atom form.
 
   The first two are omitted when no former is a Qn element; a reason is printed.
 
