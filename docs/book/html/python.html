@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-87948516.js";
+            window.path_to_searchindex_js = "searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3dd42c47.js"></script>
+        <script src="toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,6 +194,14 @@ pip install target/wheels/ferro-*.whl
 <p><code>cargo build</code> from the workspace root does <strong>not</strong> build this crate (and a
 standalone <code>cargo build</code> fails at the macOS link step on undefined Python
 symbols — that is expected; maturin supplies the correct link flags).</p>
+<p>Because it is a separate workspace with its own lockfile, the root
+<code>cargo build</code> / <code>test</code> / <code>clippy</code> skip it entirely — a break in the bindings is
+not caught by the main test suite.  After changing any public API in
+<code>ferro-core</code> or <code>ferro-analysis</code>, run <code>cd ferro-python &amp;&amp; cargo check</code>.</p>
+<p><strong>Status (0.2.1):</strong> type-level checks pass cleanly (<code>cargo clean &amp;&amp; cargo check</code>,
+clippy zero warnings).  The pyo3 0.21 → 0.29 upgrade has <strong>not</strong> been verified at
+runtime — this machine has no maturin, so module initialisation and the
+<code>#[pyfunction]</code> signatures are unconfirmed in practice.</p>
 </blockquote>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
 <pre><code class="language-python">import ferro
@@ -204,7 +212,7 @@ print(len(t), t.n_atoms(), t.elements())
 sc = ferro.supercell(t, 2, 2, 1)
 ferro.write(sc, "POSCAR")
 
-g = ferro.gr(t, r_max=10.0, dr=0.02)        # dict[str, list[float]]
+g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)   # dict[str, list[float]]
 d = ferro.msd(t, dt=2.0, elements=["Li"])
 </code></pre>
 <h2 id="trajectory"><a class="header" href="#trajectory"><code>Trajectory</code></a></h2>
@@ -268,18 +276,28 @@ this type too).</p>
 <h2 id="analysis"><a class="header" href="#analysis">Analysis</a></h2>
 <p>Analysis functions return <code>dict[str, list[float]]</code> (PyO3 converts the Rust
 <code>HashMap&lt;String, Vec&lt;f64&gt;&gt;</code> automatically — no NumPy dependency).</p>
-<h3 id="grtraj-r_maxnone-dr001-r_cut23-r_min0005"><a class="header" href="#grtraj-r_maxnone-dr001-r_cut23-r_min0005"><code>gr(traj, r_max=None, dr=0.01, r_cut=2.3, r_min=0.005)</code></a></h3>
-<p>Radial distribution function and coordination number.  <code>r_max=None</code>
-auto-selects half the shortest cell vector of the first frame.</p>
+<h3 id="gr_pairtraj-a-b-byelement-r_maxnone-dr001-r_min0005"><a class="header" href="#gr_pairtraj-a-b-byelement-r_maxnone-dr001-r_min0005"><code>gr_pair(traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005)</code></a></h3>
+<h3 id="gr_alltraj-byelement-r_maxnone-dr001-r_min0005"><a class="header" href="#gr_alltraj-byelement-r_maxnone-dr001-r_min0005"><code>gr_all(traj, by="element", r_max=None, dr=0.01, r_min=0.005)</code></a></h3>
+<p>Radial distribution function and coordination number.  <code>gr_pair</code> computes one
+named pair, <code>gr_all</code> every ordered pair in a single pass.  <code>r_max=None</code>
+auto-selects the minimum-image bound (half the smallest <strong>interplanar spacing</strong>,
+not the shortest cell vector — the two differ for non-orthogonal cells).</p>
+<p><code>by="element"</code> groups on <code>Atom::element</code>, <code>by="label"</code> on <code>Atom::label</code>.</p>
 <p>Returned keys:</p>
 <ul>
 <li><code>"r"</code> — bin-centre radii [Å]</li>
-<li><code>"gr:&lt;El1-El2&gt;"</code>, <code>"gr:total"</code> — partial / total g(r)</li>
-<li><code>"cn:&lt;center-neighbor&gt;"</code> — directed cumulative CN(r)</li>
+<li><code>"&lt;A&gt;-&lt;B&gt;_gr"</code> — partial g(r); symmetric, <code>A-B</code> equals <code>B-A</code></li>
+<li><code>"&lt;A&gt;-&lt;B&gt;_cn"</code> — directed cumulative CN(A→B)</li>
 </ul>
-<pre><code class="language-python">g = ferro.gr(t, r_max=8.0, dr=0.05)
+<p><code>gr_all</code> gives n² ordered pairs for n types.  There is <strong>no total</strong>: an unweighted
+total is the degenerate <code>f_i ≡ 1</code> case, corresponds to no experimental probe, and
+was removed in 0.1.11.</p>
+<pre><code class="language-python">g = ferro.gr_pair(t, "P", "O", r_max=8.0, dr=0.05)
 import matplotlib.pyplot as plt
-plt.plot(g["r"], g["gr:total"])
+plt.plot(g["r"], g["P-O_gr"])
+
+# 按位点标签分组（标注轨迹）
+g = ferro.gr_pair(t, "P_3", "O_b", by="label", r_max=5.0)
 </code></pre>
 <h3 id="msdtraj-dt10-shift1-taunone-elementsnone"><a class="header" href="#msdtraj-dt10-shift1-taunone-elementsnone"><code>msd(traj, dt=1.0, shift=1, tau=None, elements=None)</code></a></h3>
 <p>Mean squared displacement (time-origin averaged, NPT-safe).</p>
@@ -336,11 +354,11 @@ message preserved.</p>
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

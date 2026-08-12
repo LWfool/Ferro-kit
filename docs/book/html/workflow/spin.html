@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -234,13 +234,13 @@ Mn²⁺: group 7, \(n_d = 7 - 2 = 5\) → d⁵ high-spin → <strong>5 unpaired 
 <hr>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <pre><code class="language-bash"># Auto-guess for a transition-metal oxide (CP2K)
-fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear
+ferro job -s cp2k -i Fe2O3.cif --auto-spin --smear
 
 # Auto-guess for QE
-fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
+ferro job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
 
 # Manual override (highest priority — disables auto-spin)
-fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
+ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 </code></pre>
 <p>Priority: explicit <code>--multiplicity</code> &gt; <code>--auto-spin</code> (or builder default) &gt; value from the input file.  In the CP2K and QE builders <code>auto_spin</code> is on by default; passing <code>--multiplicity</code> disables it so the manual value is respected.</p>
 <hr>
@@ -258,7 +258,7 @@ fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="job-builders.html">Job Builders</a> — Gaussian / CP2K / QE input generation</li>
-<li><a href="../cli-reference.html#fe-job">CLI Reference: <code>fe-job</code></a></li>
+<li>[CLI Reference: <code>ferro job</code>](../cli-reference.md#ferro job)</li>
 </ul>
 
                     </main>
@@ -305,11 +305,11 @@ fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

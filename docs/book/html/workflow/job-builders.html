@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -177,10 +177,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="job-builders"><a class="header" href="#job-builders">Job Builders</a></h1>
-<p><code>fe-job</code> generates ready-to-run input files for quantum-chemistry / DFT codes from any structure <code>ferro</code> can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).</p>
-<pre><code class="language-bash">fe-job                                 # overview of supported software
-fe-job -s cp2k                         # CP2K-specific help
-fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
+<p><code>ferro job</code> generates ready-to-run input files for quantum-chemistry / DFT codes from any structure <code>ferro</code> can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).</p>
+<pre><code class="language-bash">ferro job                                 # overview of supported software
+ferro job -s cp2k                         # CP2K-specific help
+ferro job -i struct.cif -s qe -o pw.in    # generate a QE input
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -197,20 +197,20 @@ fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
 <p>All three share charge/spin handling (see <a href="spin.html">Spin Estimation</a>).</p>
 <hr>
 <h2 id="gaussian"><a class="header" href="#gaussian">Gaussian</a></h2>
-<pre><code class="language-bash">fe-job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-fe-job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
+<pre><code class="language-bash">ferro job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+ferro job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
 </code></pre>
 <p><code>-m</code> method and <code>-b</code> basis set are written verbatim into the route section.</p>
 <h2 id="cp2k"><a class="header" href="#cp2k">CP2K</a></h2>
 <p>A full GPW/Quickstep input: <code>&amp;GLOBAL</code>, <code>&amp;FORCE_EVAL</code> (<code>&amp;SUBSYS</code>, <code>&amp;DFT</code>), and a task-specific <code>&amp;MOTION</code>/<code>&amp;VIBRATIONAL_ANALYSIS</code> block.</p>
 <pre><code class="language-bash"># Geometry optimisation, PBE-D3(BJ)
-fe-job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+ferro job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
 
 # AIMD, 1500 K, CSVR thermostat
-fe-job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
+ferro job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
 
 # Hybrid PBE0 with OT, all-electron pob basis
-fe-job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
+ferro job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
 </code></pre>
 <p>Tasks: <code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code>.
 Functionals: PBE/BLYP/revPBE/PBEsol (GGA), PBE0/B3LYP/HSE06 (hybrid, auto <code>&amp;HF</code> block), SCAN/r²SCAN (meta-GGA via LIBXC).</p>
@@ -225,13 +225,13 @@ Functionals: PBE/BLYP/revPBE/PBEsol (GGA), PBE0/B3LYP/HSE06 (hybrid, auto <code>
 <h2 id="quantum-espresso"><a class="header" href="#quantum-espresso">Quantum ESPRESSO</a></h2>
 <p>A complete <code>pw.x</code> input with <code>ibrav = 0</code>: <code>&amp;CONTROL</code>, <code>&amp;SYSTEM</code>, <code>&amp;ELECTRONS</code>, plus <code>&amp;IONS</code>/<code>&amp;CELL</code> for relaxation/MD, then <code>ATOMIC_SPECIES</code>, <code>CELL_PARAMETERS angstrom</code>, <code>ATOMIC_POSITIONS angstrom</code>, <code>K_POINTS</code>.</p>
 <pre><code class="language-bash"># SCF, Gamma point
-fe-job -i crystal.cif -s qe
+ferro job -i crystal.cif -s qe
 
 # Metal: Methfessel-Paxton smearing + k-mesh
-fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+ferro job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
 
 # SCAN relaxation
-fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 </code></pre>
 <p>Tasks: <code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code>.
 Functionals map to <code>input_dft</code> (PBE uses the pseudopotential’s own functional).
@@ -251,7 +251,7 @@ Pseudopotentials are referenced as <code>&lt;Element&gt;.UPF</code> in <code>--p
 </tbody>
 </table>
 </div>
-<p>See the <a href="../cli-reference.html#fe-job">CLI Reference</a> for the complete flag tables.</p>
+<p>See the [CLI Reference](../cli-reference.md#ferro job) for the complete flag tables.</p>
 
                     </main>
 
@@ -297,11 +297,11 @@ Pseudopotentials are referenced as <code>&lt;Element&gt;.UPF</code> in <code>--p
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

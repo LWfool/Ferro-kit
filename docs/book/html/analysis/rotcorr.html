@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -222,9 +222,11 @@
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p>Columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
+<p><code>rotcorr[_&lt;suffix&gt;].csv</code>：<code>file, time, c2, integral</code>（时间 fs）。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
+<pre><code class="language-bash">ferro traj rotcorr -i traj.dump --center P --neighbor O --r-cut 2.4 --dt 2.0 -o run1
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -288,11 +290,11 @@ write_rotcorr(&amp;result, "output.rotcorr").unwrap();
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

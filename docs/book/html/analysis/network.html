@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -176,194 +176,285 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="glass-network-analysis-fe-network"><a class="header" href="#glass-network-analysis-fe-network">Glass Network Analysis (<code>fe-network</code>)</a></h1>
-<p><code>fe-network</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，统计以下四类量并在全轨迹上累加归一化：</p>
+                        <h1 id="glass-network-analysis-ferro-net"><a class="header" href="#glass-network-analysis-ferro-net">Glass Network Analysis (<code>ferro net</code>)</a></h1>
+<p><code>ferro net</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，把每个原子归入一个<strong>结构化的类型</strong>，
+再在全轨迹上累加成分布。产物是五张长表，外加可选的标注轨迹。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>量</th><th>含义</th></tr>
+<tr><th>量</th><th>表</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td>配位数 (CN)</td><td>网络形成子与各配体类型的平均配位数及其分布</td></tr>
-<tr><td>配体分类</td><td>FO / NBO / BO / OBO</td></tr>
-<tr><td>Qn 物种</td><td>网络形成子的桥接度分布</td></tr>
-<tr><td>修饰子角色</td><td>Free / T / B / M（可选）</td></tr>
+<tr><td>桥接配体数</td><td><code>bridge</code></td><td>形成子连了几个桥联配体（P 的即 Qn），可按伙伴元素分解</td></tr>
+<tr><td>配体分类</td><td><code>oxy</code></td><td><code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>，伙伴元素以数据列给出</td></tr>
+<tr><td>配位数</td><td><code>cn</code></td><td>形成子与修饰子的总配位数分布</td></tr>
+<tr><td>均值</td><td><code>mean</code></td><td>一元素一行的平均桥接数与平均配位数</td></tr>
+<tr><td>桥联统计</td><td><code>linkage</code></td><td>每座桥两端的位点状态（元素 + 桥接数 + 配位数）</td></tr>
 </tbody>
 </table>
 </div>
+<blockquote>
+<p><strong>0.2.1 起命令形状变了。</strong> <code>ferro net qn</code> 与 <code>ferro net type</code> 已合并为叶子命令
+<code>ferro net</code>；导出退化为开关 <code>--export-traj</code>。旧标签（<code>P0</code> / <code>Of</code> / <code>On_P</code> /
+<code>Ob_P_P</code> / <code>X</code> / <code>Zn_f</code>）已全部替换，不留读取兼容层。</p>
+</blockquote>
 <hr>
 <h2 id="理论背景"><a class="header" href="#理论背景">理论背景</a></h2>
 <h3 id="键连关系的判定"><a class="header" href="#键连关系的判定">键连关系的判定</a></h3>
-<p>以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小镜像约定（minimum-image convention），支持斜方和三斜晶胞：</p>
+<p>以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小
+镜像约定（minimum-image convention），支持斜方和三斜晶胞：</p>
 <p>$$d_{ij} = \bigl|\mathbf{r}<em>{ij} - \mathbf{M} \cdot \text{round}!\left(\mathbf{M}^{-1}\mathbf{r}</em>{ij}\right)\bigr|$$</p>
-<p>分析要求每帧均存在晶胞（PBC）。</p>
-<h3 id="配位数-cn"><a class="header" href="#配位数-cn">配位数 (CN)</a></h3>
-<p>对每个网络形成子原子 $i$（元素 $\alpha$），其与配体元素 $\beta$ 的配位数为：</p>
-<p>$$\text{CN}^{(\alpha\beta)}<em>i = \bigl|{j : \text{elem}(j)=\beta,; d</em>{ij} &lt; r_{\alpha\beta}^{\text{cut}}}\bigr|$$</p>
-<p>全轨迹统计：对所有帧、所有同类形成子原子的 CN 值做频率直方图，给出 CN 分布和均值。</p>
-<p><strong>总 CN</strong>：对同一形成子原子，将其对所有配体类型的 CN 求和。</p>
+<p>分析要求每帧均存在晶胞（PBC）。缺晶胞的帧被跳过；一帧不剩时该输入报错并跳过。</p>
+<h3 id="三种角色"><a class="header" href="#三种角色">三种角色</a></h3>
+<p>参数把元素分成三类，这个划分是后面一切的前提：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>角色</th><th>来源</th><th>参与</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>形成子</strong> (former)</td><td><code>--&lt;F&gt;-&lt;L&gt;=&lt;Å&gt;</code> 的左侧</td><td>桥接数、配位数、配体分类、桥联统计</td></tr>
+<tr><td><strong>配体</strong> (ligand)</td><td><code>--&lt;F&gt;-&lt;L&gt;=&lt;Å&gt;</code> 的右侧</td><td>配体分类</td></tr>
+<tr><td><strong>修饰子</strong> (modifier)</td><td><code>--modifier</code> 点名，截断同样用 <code>--&lt;M&gt;-&lt;L&gt;=&lt;Å&gt;</code></td><td><strong>只</strong>参与配位数</td></tr>
+</tbody>
+</table>
+</div>
+<p>修饰子被排除在配体分类之外，是这个参数存在的全部理由：一个 Zn 挨着某个非桥氧，
+不能因此把那个氧算成桥氧。点名了修饰子却不给它截断会直接报错——静默通过会让它被
+当成形成子，整套氧分类随之错位。</p>
 <h3 id="配体分类"><a class="header" href="#配体分类">配体分类</a></h3>
-<p>对每个配体原子 $k$（元素 $\beta$），统计其网络形成子邻居数 $n_k$：</p>
+<p>对每个配体原子 $k$，统计其形成子邻居数 $n_k$：</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>$n_k$</th><th>标签</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td><code>FO</code></td><td>Free oxygen（游离氧）</td></tr>
-<tr><td>1</td><td><code>NBO(X)</code></td><td>Non-bridging oxygen（非桥氧），X = 形成子元素</td></tr>
-<tr><td>2</td><td><code>BO(X-Y)</code></td><td>Bridging oxygen（桥氧），X、Y 字母序</td></tr>
-<tr><td>≥3</td><td><code>OBO(X-Y-Z)</code></td><td>Over-bridging oxygen（过桥氧）</td></tr>
+<tr><td>0</td><td><code>O_f</code></td><td>Free，游离配体</td></tr>
+<tr><td>1</td><td><code>O_n</code></td><td>Non-bridging，非桥配体</td></tr>
+<tr><td>2</td><td><code>O_b</code></td><td>Bridging，桥联配体</td></tr>
+<tr><td>≥3</td><td><code>O_t</code></td><td>Tricluster，三配位配体（含 Al 玻璃中的常见结构）</td></tr>
 </tbody>
 </table>
 </div>
-<p>混合形成子体系（如 P + Si）时，标签携带具体元素信息，例如 <code>BO(P-Si)</code> 表示该桥氧连接一个 P 和一个 Si。</p>
-<h3 id="qn-物种分类"><a class="header" href="#qn-物种分类">Qn 物种分类</a></h3>
-<p>对每个网络形成子原子 $i$，$Q_n$ 表示其桥接配体数（即所连配体中被分类为 BO 或 OBO 的数量）：</p>
-<p>$$n_i = \bigl|{k \in \text{neighbors}(i) : \text{label}(k) \in {\text{BO}, \text{OBO}}}\bigr|$$</p>
-<p><strong>异核桥接标注</strong>：若桥接配体 $k$ 的另一侧形成子与 $i$ 不同元素，则在标签中注明，例如：</p>
+<p><strong>标签里不带伙伴元素。</strong> <code>P–O–P</code> 与 <code>P–O–Al</code> 都标 <code>O_b</code>，两者的区分走 <code>oxy</code> 表的
+<code>former_a</code> / <code>former_b</code> <strong>数据列</strong>。标签保持朴素、统计保持完整，两件事解耦：标签是
+给结构文件用的，伙伴分解是给分析用的。</p>
+<h3 id="桥接配体数p-的-qn"><a class="header" href="#桥接配体数p-的-qn">桥接配体数（P 的 Qn）</a></h3>
+<p>对每个形成子原子 $i$，桥接数为其邻居中被分类为 <code>O_b</code> 或 <code>O_t</code> 的配体个数：</p>
+<p>$$n_i = \bigl|{k \in \text{neighbors}(i) : n_k \ge 2}\bigr|$$</p>
+<p>三配位配体<strong>计入</strong>（它确实把该形成子连进了网络）。代价是
+$\sum(\text{桥接数}) \neq 2 \times |\text{O_b}|$，因为一个 <code>O_t</code> 被三边各数一次。</p>
+<p>列名是 <code>n_bridge</code> 而不是 <code>qn</code>：这个计数对每个形成子都有定义，但 Qn 记号是四面体
+形成子的惯例——<strong>Al 没有 Qn 这一说</strong>，描述 Al 请看 <code>cn</code> 表。对 P 而言 <code>n_bridge</code>
+就是 Qn。</p>
+<h3 id="异核桥分解-qnmmathrmal"><a class="header" href="#异核桥分解-qnmmathrmal">异核桥分解 $Q^n(m\mathrm{Al})$</a></h3>
+<p><code>bridge</code> 表另有 <code>m_&lt;X&gt;</code> 列：桥接数中通向元素 X 的那部分，即文献（Brow、Eckert 等）
+的 $Q^n(m\mathrm{Al})$ 记号。</p>
 <ul>
-<li><code>Q3</code> — 3 个桥氧，全为同核（P-O-P）</li>
-<li><code>Q3(2Al)</code> — 3 个桥氧，其中 2 个为 P-O-Al 异核桥</li>
-<li><code>Q4(1Al,1Si)</code> — 4 个桥氧，分别含 1 个 P-O-Al 和 1 个 P-O-Si</li>
+<li><code>n_bridge=2, m_Al=1, m_P=1</code> → $Q^2(1\mathrm{Al})$</li>
+<li><code>groupby("n_bridge")</code> 即退回简单 Qn 分布</li>
 </ul>
-<p>异核元素按字母序排列，格式为 <code>Q{n}({count}{Elem},...)</code>.</p>
-<h3 id="修饰子角色分类"><a class="header" href="#修饰子角色分类">修饰子角色分类</a></h3>
-<p>修饰子（modifier）阳离子（如 Zn²⁺、Na⁺）通过与非桥氧（NBO）配位锚定在网络中。对每个修饰子原子 $m$，统计其在截断半径内的 NBO 邻居数 $p_m$：</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>$p_m$</th><th>角色标签</th><th>物理含义</th></tr>
-</thead>
-<tbody>
-<tr><td>0</td><td><code>Free</code></td><td>未与任何 NBO 配位</td></tr>
-<tr><td>1</td><td><code>T</code></td><td>Terminal（单端连接一个 NBO）</td></tr>
-<tr><td>2</td><td><code>B</code></td><td>Bridging（桥接两个 NBO）</td></tr>
-<tr><td>≥3</td><td><code>M</code></td><td>Multi（连接 3 个或更多 NBO）</td></tr>
-</tbody>
-</table>
-</div>
+<p>只对<strong>恰好两个形成子</strong>的配体成立：三配位配体没有唯一对端，计入 <code>n_bridge</code> 但不进任何
+<code>m_&lt;X&gt;</code>，故 $\sum m \le n_\text{bridge}$，差额就是三配位桥的数目——在表里可见而非隐藏。</p>
+<p>这个分解<strong>无法从 <code>linkage</code> 表反推</strong>：两座 P–O–Al 桥可能来自一个 $m_\mathrm{Al}=2$ 的 P，
+也可能来自两个 $m_\mathrm{Al}=1$ 的 P。<code>linkage</code> 数的是桥，<code>bridge</code> 数的是原子。</p>
+<h3 id="桥联统计"><a class="header" href="#桥联统计">桥联统计</a></h3>
+<p>每个连接 ≥2 个形成子的配体，把两端形成子的<strong>位点状态</strong>记下来：</p>
+<p>$$\text{site} = (\text{元素},; n_\text{bridge},; \text{CN})$$</p>
+<p>两端<strong>都</strong>带这三个字段。这一点与常见实现不同：那些实现按元素只存一个数（P 存 Qn、
+Al 存 CN），于是「4 配位 Al 的桥接数是多少」问不出来。</p>
+<ul>
+<li><strong>规范半边</strong>：桥联无方向，两端按 <code>(元素, 桥接数, CN)</code> 排序后小的在前，每对只存一次。
+故<strong>行和不等于该位点的总参与度</strong>，要算参与度得把 <code>_a</code> 与 <code>_b</code> 两列都数一遍。</li>
+<li><strong><code>n_formers</code> 列</strong>：普通桥氧为 2；三配位配体展开成 $C(3,2)=3$ 行并标 3。
+它们不被丢弃，因为「三配位氧连的是谁」在含 Al 体系里正是要研究的东西。</li>
+</ul>
+<h3 id="统计口径fraction-与-sd"><a class="header" href="#统计口径fraction-与-sd">统计口径：<code>fraction</code> 与 <code>sd</code></a></h3>
+<ul>
+<li><code>count</code>：全轨迹计数之和（整数，精确）</li>
+<li><code>fraction</code>：<strong>逐帧比例的平均</strong>。某帧没有该 bin 时按 0 计入，不是缺失值</li>
+<li><code>sd</code>：同一序列的<strong>样本标准差</strong>（ddof = 1），单帧时为空</li>
+</ul>
+<blockquote>
+<p><strong><code>sd</code> 不是标准误。</strong> MD 相邻帧强相关，它既不按 $1/\sqrt{N}$ 收缩，也不估计物理
+涨落。把它读作「这个数在快照之间摆动多大」。真要误差棒应做分块平均（block
+averaging），本分析不提供。</p>
+</blockquote>
+<p>实现用 Welford 递推而非 $\Sigma f$ / $\Sigma f^2$：后者对恒定序列会给出 ~2e-10 的
+抵消噪声，而 <code>sd</code> 列里的假抖动会被读者当成物理。</p>
 <hr>
 <h2 id="快速入门"><a class="header" href="#快速入门">快速入门</a></h2>
-<pre><code class="language-bash"># P₂O₅ 玻璃，P-O 截断 2.3 Å，输出 CSV
-fe-network -i traj.dump --P-O=2.3
+<pre><code class="language-bash"># P₂O₅ 玻璃，P-O 截断 2.4 Å
+ferro net -i traj.lammpstrj --P-O=2.4
 
-# 混合 P-Si 玻璃，多个配体对
-fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 -o result.csv
+# 铝磷酸盐 + Zn 修饰子
+ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 
-# 含 Zn 修饰子，分析其角色
-fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
-
-# 多修饰子
-fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
-
-# 输出 xlsx（多 sheet）
-fe-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
+# 批处理：一次跑多条轨迹，结果堆成一份带 file 列的 csv
+ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
 
 # 只统计尾部 500 帧，8 线程
-fe-network -i traj.dump --P-O=2.3 --last-n 500 --ncore 8
+ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --ncore 8
+
+# 同时导出标注轨迹
+ferro net -i traj.lammpstrj --P-O=2.4 --export-traj
+ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 </code></pre>
 <hr>
 <h2 id="命令行参数"><a class="header" href="#命令行参数">命令行参数</a></h2>
 <h3 id="必需"><a class="header" href="#必需">必需</a></h3>
-<p><code>fe-network</code> 至少需要一个 <code>--Former-Ligand=cutoff</code> 形式的配对参数（首字母大写）。</p>
-<pre><code>--P-O=2.3        P（形成子）与 O（配体）的截断半径 2.3 Å
+<p>至少一个 <code>--&lt;Former&gt;-&lt;Ligand&gt;=&lt;cutoff&gt;</code> 形式的配对参数（元素首字母大写）：</p>
+<pre><code>--P-O=2.4        P（形成子）与 O（配体）的截断半径 2.4 Å
 --Si-O=1.8       Si-O 截断 1.8 Å
---Al-O=2.0       Al-O 截断 2.0 Å
---Al-F=2.1       Al-F 截断 2.1 Å（同一形成子可有多种配体）
+--Al-O=2.4       Al-O 截断 2.4 Å
+--Al-F=2.1       同一形成子可有多种配体
 </code></pre>
-<h3 id="可选参数"><a class="header" href="#可选参数">可选参数</a></h3>
+<p>元素对写在<strong>参数名</strong>里，clap 建模不了，所以 <code>main</code> 在解析前先把它们从 argv 剥离。</p>
+<h3 id="可选"><a class="header" href="#可选">可选</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>参数</th><th>默认值</th><th>说明</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹文件（缺省时显示帮助）</td></tr>
-<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出文件前缀</td></tr>
-<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>-i &lt;FILE&gt;...</code></td><td>—</td><td>输入轨迹，多值并自展开 glob（引号括起来）。缺省时打印帮助</td></tr>
+<tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>—</td><td>输出<strong>文件名后缀</strong>（不是路径）：<code>network_&lt;表&gt;_&lt;后缀&gt;.csv</code></td></tr>
 <tr><td><code>--last-n N</code></td><td>全部帧</td><td>仅使用尾部 N 帧</td></tr>
 <tr><td><code>--ncore N</code></td><td>全部核心</td><td>并行线程数</td></tr>
-<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位（速度 Å/ps，力 eV/Å）</td></tr>
-<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔，如 <code>Zn</code> 或 <code>Zn,Na</code>）</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位。统计不读速度/力，<strong>只对 <code>--export-traj extxyz</code> 有影响</strong></td></tr>
+<tr><td><code>--modifier E,E</code></td><td>—</td><td>只计配位数的元素，逗号分隔。须同时给出各自的截断</td></tr>
+<tr><td><code>--export-traj [FMT]</code></td><td>—</td><td>另写标注轨迹，<code>lammpstrj</code>（默认）或 <code>extxyz</code></td></tr>
 </tbody>
 </table>
 </div>
-<p><strong>修饰子截断</strong>：通过相同的 <code>--Elem-O=cutoff</code> 语法提供，系统根据 <code>--modifier</code> 列表自动路由。</p>
 <hr>
-<h2 id="输出文件"><a class="header" href="#输出文件">输出文件</a></h2>
-<h3 id="csv-格式默认"><a class="header" href="#csv-格式默认">CSV 格式（默认）</a></h3>
+<h2 id="输出"><a class="header" href="#输出">输出</a></h2>
+<p>五张 CSV，各带 <code>file</code> 列，<code>#</code> 注释块里是共享参数与 <code>[inputs]</code> 清单
+（<code>pandas.read_csv(comment="#")</code> 会自动丢掉）。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>文件</th><th>内容</th></tr>
+<tr><th>文件</th><th>列</th><th>一行一个</th></tr>
 </thead>
 <tbody>
-<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>各 (former, ligand) 配对的 CN 分布及均值，含总 CN</td></tr>
-<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>各配体元素的 FO/NBO/BO/OBO 分布</td></tr>
-<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>各形成子元素的 Qn 物种分布</td></tr>
-<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>各修饰子元素的角色分布（仅指定 <code>--modifier</code> 时生成）</td></tr>
+<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td><td>(形成子, 桥接数, 伙伴分解)</td></tr>
+<tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td><td>(配体类型, 伙伴对)</td></tr>
+<tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td><td>(元素, 配位数)</td></tr>
+<tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td><td>元素</td></tr>
+<tr><td><code>network_linkage.csv</code></td><td><code>file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd</code></td><td>桥的两端状态组合</td></tr>
 </tbody>
 </table>
 </div>
-<h4 id="_cncsv-格式"><a class="header" href="#_cncsv-格式"><code>_cn.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Former,Ligand,CN,Count,Fraction
-P,O,3,120,0.240000
-P,O,4,380,0.760000
-P,O,mean,3.7600,
-P,total,4,500,1.000000
-P,total,mean,3.7600,
+<p>三张分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让
+<code>groupby</code> 无意义，故保持三张。<code>mean</code> 是「一元素一行」的另一种粒度，故独立成表，
+而不是在每行重复一个稀疏列。</p>
+<p>批处理时元素集不同的输入取<strong>列并集，缺的留空（NaN），不补零、不插值</strong>——没有 Al
+的体系其 <code>m_Al</code> 列为空，而不是 0。</p>
+<h3 id="示例oxy-表"><a class="header" href="#示例oxy-表">示例：<code>oxy</code> 表</a></h3>
+<pre><code class="language-csv">file,type,former_a,former_b,count,fraction,sd
+43Z43P15A,O_n,P,,2985,4.543379e-1,1.203302e-3
+43Z43P15A,O_b,Al,Al,10,1.522070e-3,0.000000e0
+43Z43P15A,O_b,Al,P,2693,4.098935e-1,1.154167e-3
+43Z43P15A,O_b,P,P,880,1.339422e-1,0.000000e0
+43Z43P15A,O_t,,,2,3.044140e-4,4.168360e-4
 </code></pre>
-<h4 id="_ligandcsv-格式"><a class="header" href="#_ligandcsv-格式"><code>_ligand.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Ligand,Class,Count,Fraction
-O,FO,50,0.033333
-O,NBO(P),650,0.433333
-O,BO(P-P),800,0.533333
+<p><code>O_t</code> 的伙伴列留空——它不是一对，其配对关系由 <code>linkage</code> 表的 <code>n_formers=3</code> 行给出。</p>
+<h3 id="用-pandas-分析-linkage"><a class="header" href="#用-pandas-分析-linkage">用 pandas 分析 <code>linkage</code></a></h3>
+<pre><code class="language-python">import pandas as pd
+d = pd.read_csv("network_linkage.csv", comment="#")
+
+# 按元素对汇总
+d.groupby(["elem_a", "elem_b"])["count"].sum()
+
+# Al-O-Al 发生在哪种配位的 Al 之间
+al = d.query("elem_a == 'Al' and elem_b == 'Al'")
+al.pivot_table(index="cn_a", columns="cn_b", values="count", aggfunc="sum")
+
+# P-O-P 的 Qn–Qn 连接矩阵
+d.query("elem_a == 'P' and elem_b == 'P'").pivot_table(
+    index="n_bridge_a", columns="n_bridge_b", values="count", aggfunc="sum")
+
+# 只看真桥，排除三配位配体
+d.query("n_formers == 2")
 </code></pre>
-<h4 id="_qncsv-格式"><a class="header" href="#_qncsv-格式"><code>_qn.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Former,Species,Count,Fraction
-P,Q2,120,0.240000
-P,Q3,380,0.760000
-</code></pre>
-<h4 id="_modifiercsv-格式"><a class="header" href="#_modifiercsv-格式"><code>_modifier.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Modifier,Role,Count,Fraction
-Zn,Free,10,0.040000
-Zn,T,120,0.480000
-Zn,B,110,0.440000
-Zn,M,10,0.040000
-</code></pre>
-<h3 id="xlsx-格式"><a class="header" href="#xlsx-格式">XLSX 格式</a></h3>
-<p>使用 <code>--format xlsx</code> 时，所有结果写入同一文件的多个 sheet：</p>
+<hr>
+<h2 id="标注轨迹--export-traj"><a class="header" href="#标注轨迹--export-traj">标注轨迹（<code>--export-traj</code>）</a></h2>
+<p>导出每个输入一个文件：<code>&lt;输入 stem&gt;_types[_&lt;后缀&gt;].&lt;ext&gt;</code>。文件名必须掺输入 stem，
+否则批处理时第二个输入会覆盖第一个（与 <code>ferro map</code> 的 cube 同理）。</p>
+<h3 id="标签"><a class="header" href="#标签">标签</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Sheet</th><th>内容</th></tr>
+<tr><th>角色</th><th>标签</th></tr>
 </thead>
 <tbody>
-<tr><td>CN</td><td>配位数分布</td></tr>
-<tr><td>Ligand</td><td>配体分类分布</td></tr>
-<tr><td>Qn</td><td>Qn 物种分布</td></tr>
-<tr><td>Modifier</td><td>修饰子角色分布（有修饰子时才生成）</td></tr>
+<tr><td>形成子</td><td><code>P_0</code> <code>P_1</code> … <code>Al_2</code>（数字 = 桥接配体数）</td></tr>
+<tr><td>自由配体</td><td><code>O_f</code></td></tr>
+<tr><td>非桥配体</td><td><code>O_n</code></td></tr>
+<tr><td>桥联配体</td><td><code>O_b</code></td></tr>
+<tr><td>三配位配体</td><td><code>O_t</code></td></tr>
+<tr><td>修饰子</td><td><code>Zn</code>（元素符号，无角色后缀）</td></tr>
 </tbody>
 </table>
 </div>
+<p>全部合 <code>&lt;元素&gt;_&lt;后缀&gt;</code> 约定，按<strong>首个下划线</strong>拆分。修饰子不带角色后缀：旧方案
+按非桥配体数 0/1/2/≥3 分档，而修饰子的实际配位数在 3–6，实测参考轨迹 97% 落进
+兜底桶，没有分辨力。</p>
+<h3 id="两种格式的差别"><a class="header" href="#两种格式的差别">两种格式的差别</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th><code>lammpstrj</code>（默认）</th><th><code>extxyz</code></th></tr>
+</thead>
+<tbody>
+<tr><td>标签存放</td><td>折进 <code>element</code> 列</td><td>独立的 <code>label:S:1</code> 列</td></tr>
+<tr><td><code>species</code> / <code>element</code></td><td>是标签（<code>P_2</code>）</td><td>是纯元素（<code>P</code>）</td></tr>
+<tr><td>读回</td><td>reader 按首个下划线拆成 element + label</td><td>直接分列读取，无需猜测</td></tr>
+<tr><td>下游兼容</td><td>不新增列，已有工具照常解析</td><td>新增一列</td></tr>
+</tbody>
+</table>
+</div>
+<p>dump 折叠是因为它只有一列名字放得下第二个名字；extxyz 的列是自描述的，不需要将就。
+<strong>只有 <code>ferro net --export-traj</code> 会折叠</strong>——<code>ferro convert</code> 无论标签如何都写干净的
+元素符号。折叠还带守卫：标签不形如 <code>&lt;元素&gt;_…</code> 时不折并计数告警（CIF 的 <code>O1</code>、CP2K
+的 <code>Fe1</code> 折进去后读回来就是不存在的元素 <code>O1</code>）。</p>
+<h3 id="下游选型"><a class="header" href="#下游选型">下游选型</a></h3>
+<pre><code class="language-bash"># 按元素选 —— 任意帧数都可以
+ferro traj gr -i run_types.lammpstrj -a P -b O
+
+# 按标签选 —— 需要单帧
+ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1
+</code></pre>
+<blockquote>
+<p><strong>按标签选型只在单帧成立。</strong> <code>g(r)</code> 要求逐类型的粒子数守恒，而标签是动态的——
+一个 P 在轨迹推进中会改变自己的 Qn（实测参考轨迹 <code>P_3</code> 逐帧为
+149 / 152 / 150 / 150 / 150）。对多帧标注轨迹按标签选型会被
+「per-type atom counts change」错误拒绝，这是守卫而非缺陷。多帧请按元素选。</p>
+</blockquote>
+<p>标注轨迹与统计表是互相独立的产物：想验证分类是否自洽，可对导出轨迹跑
+<code>ferro traj gr -x P_3 -y O_b --last-n 1</code>，第一壳层 CN 应恰为 3——分类层说
+「这个 P 有 3 个桥氧」，独立的 CN 积分路径应当数回 3。</p>
 <hr>
 <h2 id="典型参数参考"><a class="header" href="#典型参数参考">典型参数参考</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>体系</th><th>形成子</th><th>配体</th><th>参考截断</th></tr>
+<tr><th>体系</th><th>形成子</th><th>修饰子</th><th>参考截断</th></tr>
 </thead>
 <tbody>
-<tr><td>P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å</td></tr>
-<tr><td>SiO₂ 玻璃</td><td>Si</td><td>O</td><td>Si-O: 1.8 Å</td></tr>
-<tr><td>Al₂O₃</td><td>Al</td><td>O</td><td>Al-O: 2.1 Å</td></tr>
-<tr><td>GeO₂ 玻璃</td><td>Ge</td><td>O</td><td>Ge-O: 2.0 Å</td></tr>
-<tr><td>ZnO-P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å，Zn（modifier）: Zn-O: 3.5 Å</td></tr>
+<tr><td>P₂O₅ 玻璃</td><td>P</td><td>—</td><td>P-O: 2.3–2.4 Å</td></tr>
+<tr><td>SiO₂ 玻璃</td><td>Si</td><td>—</td><td>Si-O: 1.8 Å</td></tr>
+<tr><td>Al₂O₃</td><td>Al</td><td>—</td><td>Al-O: 2.1–2.4 Å</td></tr>
+<tr><td>GeO₂ 玻璃</td><td>Ge</td><td>—</td><td>Ge-O: 2.0 Å</td></tr>
+<tr><td>ZnO–P₂O₅ 玻璃</td><td>P</td><td>Zn</td><td>P-O: 2.4 Å，Zn-O: 2.6 Å</td></tr>
+<tr><td>ZnO–Al₂O₃–P₂O₅</td><td>P, Al</td><td>Zn</td><td>P-O: 2.4，Al-O: 2.4，Zn-O: 2.6 Å</td></tr>
 </tbody>
 </table>
 </div>
-<p>截断值应参照 g(r) 第一峰谷位置（<code>fe-traj -m gr</code>）确定。</p>
+<p>截断值应参照 g(r) 第一峰谷位置确定：</p>
+<pre><code class="language-bash">ferro traj gr -i traj.lammpstrj -a P -b O --r-max 5 --plot
+</code></pre>
 
                     </main>
 
@@ -409,11 +500,11 @@ Zn,M,10,0.040000
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

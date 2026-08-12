@@ -1,0 +1,10 @@
+/Users/liuwei/Documents/script/Program/rust/Ferro/ferro-python/target/debug/deps/chacha20-f5814c78d90d8213.d: /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/lib.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/variants.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/backends.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/rng.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/../README.md /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/backends/neon.rs
+
+/Users/liuwei/Documents/script/Program/rust/Ferro/ferro-python/target/debug/deps/libchacha20-f5814c78d90d8213.rmeta: /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/lib.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/variants.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/backends.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/rng.rs /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/../README.md /Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/backends/neon.rs
+
+/Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/lib.rs:
+/Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/variants.rs:
+/Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/backends.rs:
+/Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/rng.rs:
+/Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/../README.md:
+/Users/liuwei/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chacha20-0.10.1/src/backends/neon.rs:

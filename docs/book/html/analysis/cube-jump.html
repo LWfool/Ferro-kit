@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -177,6 +177,12 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="jump-distance-distribution"><a class="header" href="#jump-distance-distribution">Jump Distance Distribution</a></h1>
+<blockquote>
+<p><strong>仅库函数，没有 CLI 入口。</strong> <code>ferro_analysis::md::cube_jump</code> 实现完整（含 10 个
+单元测试）并已导出，但 0.2.0 把八个 <code>fe-*</code> 合并成单个 <code>ferro</code> 时，<code>fe-cube -m jump</code>
+这一分支没有接回 <code>ferro map</code> 的子命令表。下面的 Rust API 可用；命令行用法要等
+<code>map jump</code> 补上。</p>
+</blockquote>
 <h2 id="theory"><a class="header" href="#theory">Theory</a></h2>
 <p>The jump distribution map identifies spatial hotspots of large atomic displacements (jump events).  For each atom and each time window $[t,, t+\tau]$, the true Cartesian displacement is computed from unwrapped fractional coordinates.  If the displacement exceeds a threshold $d_\text{min}$, the event is recorded at a voxel position on the 3-D grid.</p>
 <p>This analysis is particularly useful for characterising ion hopping in glassy or disordered materials: the resulting cube shows <em>where</em> jumps originate, terminate, or pass through, enabling the identification of preferred migration corridors.</p>
@@ -227,12 +233,14 @@
 <li>Normalise by total jump count to obtain the spatial probability distribution.</li>
 </ol>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
+<p>命令行入口尚未接回（见页首说明）。当 <code>ferro map jump</code> 补上后，用法预计为：</p>
 <pre><code class="language-bash"># Jump origins for Li, lag = 1 frame, threshold = 1.0 Å
-fe-cube -m jump -i traj.dump --elements Li --tau 1 --threshold 1.0 -o jump.cube
+ferro map jump -i traj.lammpstrj --elements Li --tau 1 --threshold 1.0 -o run1
 
 # Jump midpoints (migration pathway visualisation)
-fe-cube -m jump -i traj.dump --elements Li --record-at midpoint -o jump_mid.cube
+ferro map jump -i traj.lammpstrj --elements Li --record-at midpoint -o run1
 </code></pre>
+<p>目前只能走 Rust API：</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
@@ -301,11 +309,11 @@ println!("{} jump events recorded", result.n_jumps);
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

@@ -1,11 +1,11 @@
 # Job Builders
 
-`fe-job` generates ready-to-run input files for quantum-chemistry / DFT codes from any structure `ferro` can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).
+`ferro job` generates ready-to-run input files for quantum-chemistry / DFT codes from any structure `ferro` can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).
 
 ```bash
-fe-job                                 # overview of supported software
-fe-job -s cp2k                         # CP2K-specific help
-fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
+ferro job                                 # overview of supported software
+ferro job -s cp2k                         # CP2K-specific help
+ferro job -i struct.cif -s qe -o pw.in    # generate a QE input
 ```
 
 | Target | `-s` value | Output | Notes |
@@ -21,8 +21,8 @@ All three share charge/spin handling (see [Spin Estimation](spin.md)).
 ## Gaussian
 
 ```bash
-fe-job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-fe-job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
+ferro job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+ferro job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
 ```
 
 `-m` method and `-b` basis set are written verbatim into the route section.
@@ -33,13 +33,13 @@ A full GPW/Quickstep input: `&GLOBAL`, `&FORCE_EVAL` (`&SUBSYS`, `&DFT`), and a 
 
 ```bash
 # Geometry optimisation, PBE-D3(BJ)
-fe-job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+ferro job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
 
 # AIMD, 1500 K, CSVR thermostat
-fe-job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
+ferro job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
 
 # Hybrid PBE0 with OT, all-electron pob basis
-fe-job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
+ferro job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
 ```
 
 Tasks: `energy`, `force`, `geo-opt`, `cell-opt`, `md`, `freq`.
@@ -61,13 +61,13 @@ A complete `pw.x` input with `ibrav = 0`: `&CONTROL`, `&SYSTEM`, `&ELECTRONS`, p
 
 ```bash
 # SCF, Gamma point
-fe-job -i crystal.cif -s qe
+ferro job -i crystal.cif -s qe
 
 # Metal: Methfessel-Paxton smearing + k-mesh
-fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+ferro job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
 
 # SCAN relaxation
-fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 ```
 
 Tasks: `scf`, `nscf`, `bands`, `relax`, `vc-relax`, `md`, `vc-md`.
@@ -85,4 +85,4 @@ Pseudopotentials are referenced as `<Element>.UPF` in `--pseudo-dir` (UPF files 
 | `--multiplicity INT` | Force 2S+1 — highest priority, disables auto-spin |
 | `--auto-spin` | Estimate multiplicity from structure ([details](spin.md)) |
 
-See the [CLI Reference](../cli-reference.md#fe-job) for the complete flag tables.
+See the [CLI Reference](../cli-reference.md#ferro job) for the complete flag tables.

@@ -364,7 +364,7 @@ partial 只是附属，才保留宽表（并接受列并集留空）。
   多一列文本直接 `ValueError`）—— 本次不改；2026-08-11 已提为高优先级，见下
 - 所有现存的 `.dat` 产物与依赖它们的个人脚本
 
-### ferro net 重构：结构化类型 + 标签重做 + 合并命令 + linkage（2026-08-12，已完成，0.2.2）
+### ferro net 重构：结构化类型 + 标签重做 + 合并命令 + linkage（2026-08-12，已完成，0.2.1）
 
 原计划的「net type 标签体系重做」与「net 接入批处理 + 长表化」两项，实施时发现
 它们不是两件事的先后，而是同一件事的两层：标签之所以改不动，是因为**分类结果以
@@ -482,12 +482,16 @@ partial 只是附属，才保留宽表（并接受列并集留空）。
 
 两件事，第一件是第二件的前提。
 
-**1. 修复编译断裂。** `analysis.rs` 仍调用 0.2.0 删除的 `write_gr` 路径，
-`cd ferro-python && cargo check` 直接失败。根因是它**是独立 workspace**，
-主 workspace 的 `cargo build/test/clippy` 全部跳过它 —— 改完之后，每次动
-`ferro-analysis` / `ferro-core` 公共 API 都要补跑一次它的 `cargo check`。
-顺带跟进 0.2.0 的产物模型：绑定层应返回 `to_tables()` 的投影或纯 `dict`，
-不该再有任何 `write_*` 调用（分析层已不碰文件系统）。
+**1. ~~修复编译断裂~~ —— 2026-08-12 复核：不存在。** 计划此前写着
+「`analysis.rs` 仍调用 0.2.0 删除的 `write_gr` 路径，`cargo check` 直接失败」，
+实测 `cargo clean && cargo check` **干净通过、clippy 零警告**，`gr_pair` /
+`gr_all` / `msd` 三个 `#[pyfunction]` 都在，没有任何 `write_*` 调用。
+该条目应是 0.2.0 重构当时的推测被写成了事实，未经复核。
+
+留下的真问题仍是**独立 workspace 导致主 workspace 的 `cargo build/test/clippy`
+全部跳过它**：编译断裂不会被发现，只能靠每次改 `ferro-core` / `ferro-analysis`
+公共 API 后补跑 `cd ferro-python && cargo check`。0.2.1 的 net 重构改了这两个
+crate 的公共 API，已复核通过。
 
 **2. pyo3 0.29 运行时验证。** 0.21 → 0.29 只做了类型层验证。本机无 maturin，
 `cargo build` 在 macOS link 阶段过不了（`extension-module` 需 `-undefined dynamic_lookup`）：

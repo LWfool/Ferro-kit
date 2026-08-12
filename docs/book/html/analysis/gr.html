@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -205,41 +205,70 @@ $$g_{\alpha\beta}(r_i) = \frac{C_{\alpha\beta}(r_i)}{4\pi r_i^2 \Delta r \cdot \
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct GrParams {
-    pub r_min: f64,   // default: 0.005 Å
-    pub r_max: f64,   // default: 10.005 Å  (use with_auto_rmax for safety)
-    pub dr: f64,      // default: 0.01 Å
-    pub r_cut: f64,   // default: 2.3 Å  (for short-range bond statistics)
+    pub r_min: f64,       // default: 0.001 Å
+    pub r_max: f64,       // default: 10.005 Å  (use with_auto_rmax for safety)
+    pub dr: f64,          // default: 0.002 Å
+    pub group_by: GroupBy, // resolve partials over elements or site labels
 }
 <span class="boring">}</span></code></pre>
-<p><code>r_max</code> must satisfy $r_\text{max} &lt; L_\text{min}/2$.  Use <code>GrParams::with_auto_rmax(&amp;traj)</code> to set it automatically from the first frame.</p>
-<h2 id="output"><a class="header" href="#output">Output</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>File</th><th>Content</th></tr>
+<tr><th>CLI flag</th><th>Field</th><th>Default</th></tr>
 </thead>
 <tbody>
-<tr><td><code>.gr</code></td><td>Columns: <code>r[Å]</code>, then symmetric partial g(r) in periodic-table order, <code>total</code> last</td></tr>
-<tr><td><code>.cn</code></td><td>Columns: <code>r[Å]</code>, then directed CN pairs in (Z_center, Z_neighbor) order</td></tr>
+<tr><td><code>--r-min</code></td><td><code>r_min</code></td><td>0.001</td></tr>
+<tr><td><code>--r-max</code></td><td><code>r_max</code></td><td>10.005</td></tr>
+<tr><td><code>--dr</code></td><td><code>dr</code></td><td>0.002</td></tr>
+<tr><td><code>-a</code>/<code>-b</code> (element) or <code>-x</code>/<code>-y</code> (label)</td><td><code>group_by</code></td><td>all pairs</td></tr>
 </tbody>
 </table>
 </div>
+<p><code>r_max</code> must satisfy $r_\text{max} &lt; L_\text{min}/2$; it is clamped internally to half the
+smallest interplanar spacing seen across all frames.  Use <code>GrParams::with_auto_rmax(&amp;traj)</code>
+to set it from the first frame.</p>
+<p>Bin $i$ covers $[r_\text{min} + i,\Delta r,\ r_\text{min} + (i{+}1)\Delta r)$ and is labelled
+at its centre, $r_i = r_\text{min} + (i + \tfrac{1}{2})\Delta r$.</p>
+<p>To land on the same grid as <code>code1/gr.c</code> and <code>code2/dump2sq.c</code>, pass the same values on both
+sides — e.g. <code>--r-min 0.005 --dr 0.01</code> here against <code>--rmin 0.005 --dr 0.01</code> there puts bin
+centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than that.</p>
+<h2 id="output"><a class="header" href="#output">Output</a></h2>
+<p><code>gr[_&lt;suffix&gt;].csv</code>，<strong>长表</strong>：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>列</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td><code>file</code></td><td>输入文件 stem</td></tr>
+<tr><td><code>r</code></td><td>半径 [Å]</td></tr>
+<tr><td><code>center</code> / <code>neighbor</code></td><td>该行属于哪一个有序对</td></tr>
+<tr><td><code>gr</code></td><td>$g(r)$</td></tr>
+<tr><td><code>cn</code></td><td>$CN(r)$</td></tr>
+</tbody>
+</table>
+</div>
+<p>类型进<strong>数据列</strong>而不是列名：元素集不同的轨迹可直接堆叠而不需要对列，不给 <code>-a/-b</code>
+是加行而不是加列。<code>gr</code> 对称（<code>A-B</code> 与 <code>B-A</code> 逐点相同），<code>cn</code> 有向
+（<code>CN(A→B) = Σ hist/(N_A·steps)</code>）——这个区别写进了表结构而不是文档注脚。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
+<p>$g(r)$ is <strong>symmetric</strong> — <code>A-B</code> and <code>B-A</code> are pointwise identical.  $CN(r)$ is <strong>directed</strong> —
+<code>A-B</code> is the average number of B around each A, so the order of <code>-a</code> / <code>-b</code> matters.</p>
 <p>Header lines record all parameters, atom counts, average volume, and number density.</p>
-<h3 id="bond-statistics"><a class="header" href="#bond-statistics">Bond Statistics</a></h3>
-<p>Within <code>r_cut</code>, the mean and standard deviation of pair distances are computed and printed in the <code>.cn</code> header:</p>
-<p>$$\bar{d} = \frac{1}{N_\text{bonds}} \sum_k d_k, \quad \sigma = \sqrt{\frac{1}{N_\text{bonds}} \sum_k (d_k - \bar{d})^2}$$</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">fe-traj -m gr -i traj.dump -o output
-# writes output.gr, output.cn
+<pre><code class="language-bash">ferro traj gr -i traj.dump -o run1
+
+# one pair, narrowed range
+ferro traj gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -o po
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use ferro_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
+</span>use ferro_analysis::md::{GrParams, calc_gr, write_gr};
 
 let params = GrParams::with_auto_rmax(&amp;traj);
 let result = calc_gr(&amp;traj, &amp;params).unwrap();
-write_gr(&amp;result, "output.gr").unwrap();
-write_cn(&amp;result, "output.cn").unwrap();
+write_gr(&amp;result, "output.gr", None).unwrap();
 <span class="boring">}</span></code></pre>
 <h2 id="implementation-notes"><a class="header" href="#implementation-notes">Implementation Notes</a></h2>
 <ul>
@@ -292,11 +321,11 @@ write_cn(&amp;result, "output.cn").unwrap();
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

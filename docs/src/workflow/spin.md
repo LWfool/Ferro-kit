@@ -73,13 +73,13 @@ O₃ = −6 ⇒ 2 Fe = +6 ⇒ Fe = +3.  Fe³⁺: \\(n_d = 8 - 3 = 5\\) → 5 unp
 
 ```bash
 # Auto-guess for a transition-metal oxide (CP2K)
-fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear
+ferro job -s cp2k -i Fe2O3.cif --auto-spin --smear
 
 # Auto-guess for QE
-fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
+ferro job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
 
 # Manual override (highest priority — disables auto-spin)
-fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
+ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 ```
 
 Priority: explicit `--multiplicity` > `--auto-spin` (or builder default) > value from the input file.  In the CP2K and QE builders `auto_spin` is on by default; passing `--multiplicity` disables it so the manual value is respected.
@@ -103,4 +103,4 @@ The estimate is an *initial guess*, not a substitute for an electronic-structure
 ## Related
 
 - [Job Builders](job-builders.md) — Gaussian / CP2K / QE input generation
-- [CLI Reference: `fe-job`](../cli-reference.md#fe-job)
+- [CLI Reference: `ferro job`](../cli-reference.md#ferro job)

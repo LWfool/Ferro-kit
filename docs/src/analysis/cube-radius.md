@@ -50,10 +50,10 @@ A Gaussian cube file with raw occupancy counts per voxel.  Values are not normal
 
 ```bash
 # Li occupancy map, 100³ grid, radius 0.7 Å
-fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+ferro map radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
 
 # All-atom occupancy
-fe-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
+ferro map radius -i traj.dump --radius 1.0 -o all_radius.cube
 ```
 
 ```rust

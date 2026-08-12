@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -185,10 +185,55 @@
 <p>The vectors $\overrightarrow{BA}$ and $\overrightarrow{BC}$ use the minimum-image convention for periodic cells.</p>
 <h3 id="selection-criteria"><a class="header" href="#selection-criteria">Selection Criteria</a></h3>
 <p>An atom pair (A, B) forms a bond if $|\overrightarrow{BA}| &lt; r_\text{cut,AB}$.<br>Similarly for (B, C): $|\overrightarrow{BC}| &lt; r_\text{cut,BC}$.</p>
-<p>When both end atoms are the same element: $r_\text{cut} = \min(r_\text{cut,AB}, r_\text{cut,BC})$.</p>
+<p><strong>Which physical end is “A”</strong> is decided by the order <em>you</em> wrote it. When the triplet is
+named on the command line, <code>--r-cut-ab</code> goes to the atom given by <code>-a</code> / <code>-x</code> and
+<code>--r-cut-bc</code> to the one given by <code>-c</code> / <code>-z</code>, regardless of atomic number:</p>
+<pre><code class="language-bash"># Zn gets 2.5, P gets 2.0 — exactly as written
+ferro traj angle -a Zn -b O -c P -i traj.dump --r-cut-ab 2.5 --r-cut-bc 2.0
+</code></pre>
+<blockquote>
+<p><strong>Changed in v0.1.15.</strong> Earlier versions handed the two cutoffs out by atomic number,
+so the command above silently gave 2.5 to P (Z = 15 &lt; Z(Zn) = 30) — the opposite of
+what was written. Results are unaffected whenever the two cutoffs are equal.</p>
+</blockquote>
+<p>Without a named triplet (scanning every triplet at once) there is no user order to follow,
+so the canonical (Z, symbol) order is used: <code>r_cut_ab</code> → lower-Z end, <code>r_cut_bc</code> → higher-Z end.</p>
+<p>When both end atoms are the same type, which one gets sorted first depends on the neighbour
+enumeration order, so $r_\text{cut} = \min(r_\text{cut,AB}, r_\text{cut,BC})$ is applied
+to both — the only assignment that gives a reproducible result.</p>
 <h3 id="canonical-key-convention"><a class="header" href="#canonical-key-convention">Canonical Key Convention</a></h3>
 <p>For each triplet, the key <code>"ElemA-ElemCenter-ElemC"</code> is assigned with $Z(\text{ElemA}) \leq Z(\text{ElemC})$.  When both end atoms have the same Z, lexicographic order on the label string is used.  This ensures each angle type appears exactly once.</p>
-<p><strong>No double-counting</strong>: the enumeration requires $\text{idx}(A) &lt; \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events.</p>
+<p><strong>No double-counting</strong>: the enumeration requires $\text{idx}(A) &lt; \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events. Each <em>geometric</em> angle is therefore counted once — a PO₄ tetrahedron contributes 6 O–P–O angles, not 12.</p>
+<h3 id="histogram-range"><a class="header" href="#histogram-range">Histogram Range</a></h3>
+<p>Counts land in bins of width <code>d_angle</code> starting at <code>angle_min</code>; bin $i$ is labelled at its
+centre, $\theta_i = \text{angle_min} + (i + \tfrac{1}{2}),\Delta\theta$. The upper edge is
+<strong>closed</strong>: a perfectly collinear triplet gives $\arccos(-1) = 180.0$ exactly, which a
+half-open interval would discard entirely.</p>
+<p>Angles outside $[\text{angle_min}, \text{angle_max}]$ are dropped, so narrowing the window
+also narrows what is counted — it is not merely a plotting range.</p>
+<h3 id="comparison-with-dump2analysis--m-angle"><a class="header" href="#comparison-with-dump2analysis--m-angle">Comparison with <code>dump2analysis -m angle</code></a></h3>
+<p>Two convention differences, both documented here so the numbers can be read side by side:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>ferro</th><th><code>dump2analysis</code></th></tr>
+</thead>
+<tbody>
+<tr><td>Counting</td><td>each geometric angle once</td><td>ordered end pairs — <strong>twice</strong> when both ends are the same element (once when they differ)</td></tr>
+<tr><td>Bin $k$ covers</td><td>$[k\Delta\theta,\ (k{+}1)\Delta\theta)$</td><td>$[0.05 + k\Delta\theta,\ 0.15 + k\Delta\theta)$</td></tr>
+</tbody>
+</table>
+</div>
+<p>The factor of two cancels out of the mean, the standard deviation and the peak positions.
+The bin offset is half a bin; <code>dump2analysis</code>’s grid misses $[0, 0.05)$ (angles there index
+<code>a[-1]</code>, out of bounds) and extends past 180°, so ferro does not adopt it as a default. It
+can be reproduced exactly when needed:</p>
+<pre><code class="language-bash">ferro traj angle -a O -b P -c O -i traj.dump \
+        --angle-min 0.05 --angle-max 180.05 --d-angle 0.1
+</code></pre>
+<p>Verified on <code>examples/43Z43P15A_NPT.lammpstrj</code>: after accounting for the ×2 counting
+convention, all 1800 bins of both O–P–O and O–Al–O match <code>dump2analysis</code> as <strong>exact
+integers</strong> (zero differing bins). See <code>scripts/compare_angle.py --align-binning</code>.</p>
 <h3 id="statistics"><a class="header" href="#statistics">Statistics</a></h3>
 <p>From the raw count histogram $h(\theta_i)$:</p>
 <p>$$\bar{\theta} = \frac{\sum_i \theta_i , h_i}{\sum_i h_i}, \quad \sigma = \sqrt{\frac{\sum_i (\theta_i - \bar{\theta})^2 h_i}{\sum_i h_i}}$$</p>
@@ -196,22 +241,53 @@
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct AngleParams {
-    pub r_cut_ab: f64,   // cutoff for lower-Z end to centre [Å]; default: 2.3
-    pub r_cut_bc: f64,   // cutoff for higher-Z end to centre [Å]; default: 2.3
+    pub r_cut_ab: f64,   // cutoff from end A to centre [Å]; default: 2.3
+    pub r_cut_bc: f64,   // cutoff from end C to centre [Å]; default: 2.3
+    pub angle_min: f64,  // histogram lower edge [degrees]; default: 0.0
+    pub angle_max: f64,  // histogram upper edge [degrees]; default: 180.0
     pub d_angle: f64,    // histogram bin width [degrees]; default: 0.1
+    pub group_by: GroupBy,       // resolve triplets over elements or site labels
+    pub ends: Option&lt;(String, String)&gt;,  // (A, C) as the caller wrote them; see above
 }
 <span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>CLI flag</th><th>Field</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-cut-ab</code></td><td><code>r_cut_ab</code></td><td>2.3</td></tr>
+<tr><td><code>--r-cut-bc</code></td><td><code>r_cut_bc</code></td><td>2.3</td></tr>
+<tr><td><code>--angle-min</code></td><td><code>angle_min</code></td><td>0.0</td></tr>
+<tr><td><code>--angle-max</code></td><td><code>angle_max</code></td><td>180.0</td></tr>
+<tr><td><code>--d-angle</code></td><td><code>d_angle</code></td><td>0.1</td></tr>
+<tr><td><code>-a</code>/<code>-b</code>/<code>-c</code> (element) or <code>-x</code>/<code>-y</code>/<code>-z</code> (label)</td><td><code>group_by</code>, <code>ends</code></td><td>all triplets</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p>Columns: <code>angle[deg]</code>, then one column per triplet key in (Z_center, Z_left, Z_right) order.</p>
-<p>The header lists mean, standard deviation, and total count per triplet.</p>
+<p><code>angle[_&lt;suffix&gt;].csv</code>，<strong>长表</strong>：<code>file, angle, end_a, center, end_c, count, p</code>。</p>
+<p>三元组进<strong>数据列</strong>，故元素集不同的轨迹可直接堆叠。同时保留整数 <code>count</code> 与归一化 <code>p</code>
+两列：整数直方图是与 <code>dump2analysis</code> 逐 bin 对拍的依据，只留 <code>p</code> 就对不了。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">fe-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
+<pre><code class="language-bash">ferro traj angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -o run1
+
+# one triplet, narrowed to the tetrahedral region
+ferro traj angle -a O -b P -c O -i traj.dump \
+        --angle-min 90 --angle-max 130 --d-angle 0.2 -o opo
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use ferro_analysis::md::{AngleParams, calc_angle, write_angle};
 
-let params = AngleParams { r_cut_ab: 2.4, r_cut_bc: 2.4, d_angle: 0.5 };
+let params = AngleParams {
+    r_cut_ab: 2.4,
+    r_cut_bc: 2.4,
+    d_angle: 0.5,
+    ..AngleParams::default()
+};
 let result = calc_angle(&amp;traj, &amp;params).unwrap();
 write_angle(&amp;result, "output.angle").unwrap();
 <span class="boring">}</span></code></pre>
@@ -268,11 +344,11 @@ write_angle(&amp;result, "output.angle").unwrap();
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

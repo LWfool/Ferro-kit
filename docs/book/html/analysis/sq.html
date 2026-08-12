@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-2459343d.css">
-        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-87948516.js";
+            window.path_to_searchindex_js = "../searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3dd42c47.js"></script>
+        <script src="../toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,7 +214,7 @@
 </span>pub struct SqParams {
     pub q_min: f64,              // default: 0.1 Å⁻¹
     pub q_max: f64,              // default: 25.0 Å⁻¹
-    pub dq: f64,                 // default: 0.05 Å⁻¹
+    pub dq: f64,                 // default: 0.02 Å⁻¹
     pub weighting: SqWeighting,  // default: None
 }
 
@@ -225,10 +225,61 @@ pub enum SqWeighting {
     Both,     // compute both simultaneously
 }
 <span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>CLI flag</th><th>Field</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--q-min</code></td><td><code>q_min</code></td><td>0.1</td></tr>
+<tr><td><code>--q-max</code></td><td><code>q_max</code></td><td>25.0</td></tr>
+<tr><td><code>--dq</code></td><td><code>dq</code></td><td>0.02</td></tr>
+<tr><td><code>--weighting</code></td><td><code>weighting</code></td><td><code>both</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The $g(r)$ that feeds the transform is controlled by the <code>gr</code> flags — <code>--r-min</code>, <code>--r-max</code>,
+<code>--dr</code> — which therefore set the integration range and hence the truncation ripple.</p>
+<h2 id="comparison-with-code2dump2sq"><a class="header" href="#comparison-with-code2dump2sq">Comparison with <code>code2/dump2sq</code></a></h2>
+<p>ferro follows <code>dump2sq</code>’s formula, with one deliberate difference and one caveat about its
+input.</p>
+<p><strong>The <code>+1</code>.</strong> <code>dump2sq</code>’s <code>CalcSq</code> computes only
+$\frac{4\pi\rho}{q}\sum_r r[g(r)-1]\sin(qr),\Delta r$ and omits the leading $1$ of the
+definition, so its curves sit one unit low and do not approach 1 at large $q$. ferro writes
+the standard form. Measured on a full trajectory, the residual is a pure constant:
+1.00031 (XRD) / 1.00018 (neutron) for $q &gt; 15$, with standard deviations 0.014 / 0.002.</p>
+<p><strong>Atom ordering in the input dump.</strong> <code>dump2sq.c:InitializeType</code> writes <code>data[i].type_new</code> on
+frame 0 only; <code>ReadDataLammpstrj</code> never refreshes it, so atoms are classified by <strong>array
+index</strong> rather than by element. If the dump was written without <code>dump_modify sort id</code>, its
+partials — and both weighted totals — are meaningless from frame 1 onwards. Symptoms: all
+partials collapse onto one another (mean pairwise correlation 0.959 on a 2004-atom test
+case) and the XRD and neutron totals become nearly identical (correlation 0.9986), because
+the Faber-Ziman weighting is washed out and both totals degenerate into the Fourier
+transform of the <em>total</em> $g(r)$.</p>
+<p>On an id-sorted dump the two programs agree closely. Measured on a 5003-atom,
+50-frame NVT trajectory with identical parameters:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>max|Δ| vs <code>dump2sq</code></th><th>rms vs experiment</th></tr>
+</thead>
+<tbody>
+<tr><td>Neutron</td><td>0.0027</td><td>0.0194 (both)</td></tr>
+<tr><td>X-ray</td><td>0.0008</td><td>0.0277 (both)</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>scripts/compare_sq.py</code> and <code>scripts/compare_sq_experiment.py</code> run this check automatically
+and refuse to let an unsorted dump be read as evidence against ferro; the shared logic lives
+in <code>scripts/trajcheck.py</code>.</p>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<pre><code class="language-bash">fe-traj -m sq -i traj.dump -o output
-# writes output.gr, output.sq
-</code></pre>
+<p><code>sq[_&lt;suffix&gt;].csv</code>，<strong>宽表</strong>：<code>file, q, total_xrd, total_neutron</code>，其后每个配对三列
+（<code>&lt;pair&gt;_sq</code> / <code>_xrd</code> / <code>_neutron</code>，只出规范半边——$S(q)$ 没有有向的对应物）。</p>
+<p>主产物是两条 total（一行一个 $q$），加权 partial $w_{ij}(q),S_{ij}(q)$ 是能逐点求和
+还原 total 的诊断分解。元素集不同的输入取列并集，<strong>缺口留空（NaN），不插值不补零</strong>。</p>
+<p><code>sq</code> 不再另写一份 <code>gr</code>；需要 $g(r)$ 就单独跑 <code>ferro traj gr</code>。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <p>The <code>.sq</code> file header records both the g(r) parameters (used as input) and the S(q) parameters.<br>Column ordering matches the <code>.gr</code> file. Additional columns <code>total_xrd</code> and/or <code>total_neutron</code> are appended when weighting is requested.</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -293,11 +344,11 @@ write_sq(&amp;gr, &amp;sq, "output.sq").unwrap();
 
         <script src="../elasticlunr-ef4e11c1.min.js"></script>
         <script src="../mark-09e88c2c.min.js"></script>
-        <script src="../searcher-c2a407aa.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-a0b12cfe.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

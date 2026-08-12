@@ -54,14 +54,19 @@ pub struct VanHoveParams {
 
 ## Output
 
-Columns: `r[Å]`, `Gs(r,tau)` (normalised so sum = 1).
+`vanhove[_<suffix>].csv`：`file, r, gs`（归一化为 $\sum g_s = 1$）。
 
-The header records the lag time $\tau$ in both frames and physical time (fs).
+滞后时间 $\tau$ 只在 `#` 头块里记录（帧数与 fs 各一份）。一次只算一个 $\tau$；
+将来支持多 $\tau$ 时会加 `tau` 列——那是加行而不是改列结构。
+
+所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+
 
 ## Usage
 
 ```bash
-fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
+ferro traj vanhove -i traj.dump --tau 500 --dt 2.0 -o run1
 ```
 
 ```rust

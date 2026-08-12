@@ -16,8 +16,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -38,10 +38,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-87948516.js";
+            window.path_to_searchindex_js = "searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3dd42c47.js"></script>
+        <script src="toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -240,23 +240,25 @@
 cd ferro
 cargo build --release
 </code></pre>
-<p>The compiled CLI binaries are placed in <code>target/release/</code>:</p>
+<p>The build produces <strong>one</strong> binary, <code>target/release/ferro</code>. (Before 0.2.0 there were
+eight <code>fe-*</code> binaries; they are gone, with no compatibility shims — see
+<a href="#cli-reference">CLI Reference</a> for the migration table.)</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Binary</th><th>Purpose</th></tr>
+<tr><th>Command group</th><th>Purpose</th><th>Product</th></tr>
 </thead>
 <tbody>
-<tr><td><code>fe-convert</code></td><td>Format conversion</td></tr>
-<tr><td><code>fe-info</code></td><td>Print structure information</td></tr>
-<tr><td><code>fe-job</code></td><td>Generate QC input files</td></tr>
-<tr><td><code>fe-traj</code></td><td>Structural analysis (g(r), S(q), MSD, angle)</td></tr>
-<tr><td><code>fe-corr</code></td><td>Correlation functions (VACF, rotcorr, van Hove)</td></tr>
-<tr><td><code>fe-cube</code></td><td>3-D spatial maps (density, jump, radius, SDF)</td></tr>
-<tr><td><code>fe-network</code></td><td>Glass network analysis (Qn, CN, ligand classification)</td></tr>
+<tr><td><code>ferro traj gr|sq|msd|angle|vacf|rotcorr|vanhove</code></td><td>Trajectory analysis</td><td>one stacked CSV + optional PNG</td></tr>
+<tr><td><code>ferro map density|velocity|force|radius|sdf|chg-sdf</code></td><td>3-D spatial maps</td><td>one <code>.cube</code> per input</td></tr>
+<tr><td><code>ferro net</code></td><td>Glass network topology</td><td>five stacked CSVs + optional labelled trajectory</td></tr>
+<tr><td><code>ferro bader</code></td><td>Bader charge partitioning</td><td>ACF/BCF/AVF</td></tr>
+<tr><td><code>ferro convert</code> / <code>info</code> / <code>job</code></td><td>Structure I/O, info, QC input files</td><td>files / stdout</td></tr>
 </tbody>
 </table>
 </div>
+<p>Run <code>ferro</code> with no arguments for the overview, <code>ferro &lt;group&gt;</code> for that group’s
+commands, and <code>ferro &lt;group&gt; &lt;command&gt;</code> without <code>-i</code> for its parameters.</p>
 <h2 id="python-bindings"><a class="header" href="#python-bindings">Python Bindings</a></h2>
 <p><code>ferro-python</code> is its own workspace and is built with maturin (not the root
 <code>cargo build</code>).  <code>maturin develop</code> needs an active virtualenv / conda env:</p>
@@ -359,23 +361,57 @@ c\cos\beta &amp; c(\cos\alpha - \cos\beta\cos\gamma)/\sin\gamma &amp; c\sqrt{1 -
 }
 <span class="boring">}</span></code></pre>
 <p>NPT trajectories (variable box per frame) are handled naturally: each <code>Frame</code> carries its own <code>Cell</code>.</p>
-<h2 id="pseudo-element-labels"><a class="header" href="#pseudo-element-labels">Pseudo-Element Labels</a></h2>
-<p>ferro supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):</p>
+<h2 id="element-vs-label"><a class="header" href="#element-vs-label">Element vs. Label</a></h2>
+<p><code>Atom::element</code> 是<strong>化学元素</strong>；<code>Atom::label</code> 是可选的<strong>位点类型</strong>。两者分开存放，
+所以一个原子既能按元素选也能按位点选，而不必二选一：</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Atom { element: "P".into(), label: Some("P_3".into()), .. }
+<span class="boring">}</span></code></pre>
+<p>分析命令的两组选择参数互斥：<code>-a/-b/-c</code> 按 <code>element</code>，<code>-x/-y/-z</code> 按 <code>label</code>。</p>
+<h3 id="标签约定"><a class="header" href="#标签约定">标签约定</a></h3>
+<p>位点标签一律形如 <code>&lt;元素&gt;_&lt;后缀&gt;</code>，按<strong>首个下划线</strong>拆分。后缀里再有下划线不影响
+（<code>O_b_P_P</code> 的元素仍是 <code>O</code>）。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Label</th><th>Meaning</th></tr>
+<tr><th>标签</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td><code>P0/P1/P2/P3</code></td><td>Phosphorus with Qn connectivity</td></tr>
-<tr><td><code>Of</code></td><td>Free oxygen (0 P neighbours)</td></tr>
-<tr><td><code>On</code></td><td>Non-bridging oxygen (1 P neighbour)</td></tr>
-<tr><td><code>Ob</code></td><td>Bridging oxygen (≥2 P neighbours)</td></tr>
-<tr><td><code>Zn</code>, <code>Na</code>, …</td><td>Modifier cation symbols</td></tr>
+<tr><td><code>P_0</code> … <code>P_4</code>、<code>Al_2</code></td><td>形成子，数字 = 桥接配体数（P 的即 Qn）</td></tr>
+<tr><td><code>O_f</code></td><td>自由配体（不连任何形成子）</td></tr>
+<tr><td><code>O_n</code></td><td>非桥配体（连 1 个）</td></tr>
+<tr><td><code>O_b</code></td><td>桥联配体（连 2 个）</td></tr>
+<tr><td><code>O_t</code></td><td>三配位配体（连 ≥3 个，tricluster）</td></tr>
+<tr><td><code>Zn</code>、<code>Na</code>…</td><td>修饰子，裸元素符号，无角色后缀</td></tr>
 </tbody>
 </table>
 </div>
-<p>Atomic-number lookup (<code>elem_z</code>) resolves pseudo-labels by stripping suffixes: <code>"P3"</code> → P (Z=15), <code>"Ob"</code> → O (Z=8).</p>
+<blockquote>
+<p>0.2.1 之前的旧格式（<code>P0</code> / <code>Of</code> / <code>On_P</code> / <code>Ob_P_P</code> / <code>X</code> / <code>Zn_f</code>）已全部替换，
+<strong>不留读取兼容层</strong>：重跑一次 <code>ferro net --export-traj</code> 即为新格式，而加格式猜测
+反而可能把真元素误判成旧标签。</p>
+</blockquote>
+<h3 id="谁会填-label"><a class="header" href="#谁会填-label">谁会填 <code>label</code></a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>来源</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td>LAMMPS dump reader</td><td><code>element</code> 列写成 <code>P_3</code> 时拆成 <code>element="P"</code> + <code>label="P_3"</code>，读完打印一次映射表</td></tr>
+<tr><td>extxyz reader</td><td>独立的 <code>label:S:1</code> 列</td></tr>
+<tr><td>CIF / CP2K / QE reader</td><td>各自的位点名（<code>O1</code>、<code>Fe1</code>）——注意这些<strong>不合</strong> <code>&lt;元素&gt;_&lt;后缀&gt;</code> 约定</td></tr>
+<tr><td><code>ferro net --export-traj</code></td><td>分类结果写进 <code>label</code>，<code>element</code> 保持元素</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="谁会写出-label"><a class="header" href="#谁会写出-label">谁会写出 <code>label</code></a></h3>
+<p><strong>writer 从不自作主张把 <code>label</code> 折进元素列。</strong> <code>ferro convert</code> 无论标签如何都写干净的
+元素符号。只有 <code>ferro net --export-traj</code> 折叠，且只对 LAMMPS dump——那个格式只有一列
+名字放得下第二个名字；extxyz 走独立的 <code>label:S:1</code> 列，两个方向都无损。</p>
+<p>折叠带守卫：标签不形如 <code>&lt;元素&gt;_…</code> 时不折并计数告警。CIF 的 <code>O1</code> 折进去后再读回来，
+就是一个不存在的元素 <code>O1</code>。</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="radial-distribution-function-gr"><a class="header" href="#radial-distribution-function-gr">Radial Distribution Function g(r)</a></h1>
 <h2 id="theory"><a class="header" href="#theory">Theory</a></h2>
@@ -406,41 +442,70 @@ $$g_{\alpha\beta}(r_i) = \frac{C_{\alpha\beta}(r_i)}{4\pi r_i^2 \Delta r \cdot \
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct GrParams {
-    pub r_min: f64,   // default: 0.005 Å
-    pub r_max: f64,   // default: 10.005 Å  (use with_auto_rmax for safety)
-    pub dr: f64,      // default: 0.01 Å
-    pub r_cut: f64,   // default: 2.3 Å  (for short-range bond statistics)
+    pub r_min: f64,       // default: 0.001 Å
+    pub r_max: f64,       // default: 10.005 Å  (use with_auto_rmax for safety)
+    pub dr: f64,          // default: 0.002 Å
+    pub group_by: GroupBy, // resolve partials over elements or site labels
 }
 <span class="boring">}</span></code></pre>
-<p><code>r_max</code> must satisfy $r_\text{max} &lt; L_\text{min}/2$.  Use <code>GrParams::with_auto_rmax(&amp;traj)</code> to set it automatically from the first frame.</p>
-<h2 id="output"><a class="header" href="#output">Output</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>File</th><th>Content</th></tr>
+<tr><th>CLI flag</th><th>Field</th><th>Default</th></tr>
 </thead>
 <tbody>
-<tr><td><code>.gr</code></td><td>Columns: <code>r[Å]</code>, then symmetric partial g(r) in periodic-table order, <code>total</code> last</td></tr>
-<tr><td><code>.cn</code></td><td>Columns: <code>r[Å]</code>, then directed CN pairs in (Z_center, Z_neighbor) order</td></tr>
+<tr><td><code>--r-min</code></td><td><code>r_min</code></td><td>0.001</td></tr>
+<tr><td><code>--r-max</code></td><td><code>r_max</code></td><td>10.005</td></tr>
+<tr><td><code>--dr</code></td><td><code>dr</code></td><td>0.002</td></tr>
+<tr><td><code>-a</code>/<code>-b</code> (element) or <code>-x</code>/<code>-y</code> (label)</td><td><code>group_by</code></td><td>all pairs</td></tr>
 </tbody>
 </table>
 </div>
+<p><code>r_max</code> must satisfy $r_\text{max} &lt; L_\text{min}/2$; it is clamped internally to half the
+smallest interplanar spacing seen across all frames.  Use <code>GrParams::with_auto_rmax(&amp;traj)</code>
+to set it from the first frame.</p>
+<p>Bin $i$ covers $[r_\text{min} + i,\Delta r,\ r_\text{min} + (i{+}1)\Delta r)$ and is labelled
+at its centre, $r_i = r_\text{min} + (i + \tfrac{1}{2})\Delta r$.</p>
+<p>To land on the same grid as <code>code1/gr.c</code> and <code>code2/dump2sq.c</code>, pass the same values on both
+sides — e.g. <code>--r-min 0.005 --dr 0.01</code> here against <code>--rmin 0.005 --dr 0.01</code> there puts bin
+centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than that.</p>
+<h2 id="output"><a class="header" href="#output">Output</a></h2>
+<p><code>gr[_&lt;suffix&gt;].csv</code>，<strong>长表</strong>：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>列</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td><code>file</code></td><td>输入文件 stem</td></tr>
+<tr><td><code>r</code></td><td>半径 [Å]</td></tr>
+<tr><td><code>center</code> / <code>neighbor</code></td><td>该行属于哪一个有序对</td></tr>
+<tr><td><code>gr</code></td><td>$g(r)$</td></tr>
+<tr><td><code>cn</code></td><td>$CN(r)$</td></tr>
+</tbody>
+</table>
+</div>
+<p>类型进<strong>数据列</strong>而不是列名：元素集不同的轨迹可直接堆叠而不需要对列，不给 <code>-a/-b</code>
+是加行而不是加列。<code>gr</code> 对称（<code>A-B</code> 与 <code>B-A</code> 逐点相同），<code>cn</code> 有向
+（<code>CN(A→B) = Σ hist/(N_A·steps)</code>）——这个区别写进了表结构而不是文档注脚。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
+<p>$g(r)$ is <strong>symmetric</strong> — <code>A-B</code> and <code>B-A</code> are pointwise identical.  $CN(r)$ is <strong>directed</strong> —
+<code>A-B</code> is the average number of B around each A, so the order of <code>-a</code> / <code>-b</code> matters.</p>
 <p>Header lines record all parameters, atom counts, average volume, and number density.</p>
-<h3 id="bond-statistics"><a class="header" href="#bond-statistics">Bond Statistics</a></h3>
-<p>Within <code>r_cut</code>, the mean and standard deviation of pair distances are computed and printed in the <code>.cn</code> header:</p>
-<p>$$\bar{d} = \frac{1}{N_\text{bonds}} \sum_k d_k, \quad \sigma = \sqrt{\frac{1}{N_\text{bonds}} \sum_k (d_k - \bar{d})^2}$$</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>
-<pre><code class="language-bash">fe-traj -m gr -i traj.dump -o output
-# writes output.gr, output.cn
+<pre><code class="language-bash">ferro traj gr -i traj.dump -o run1
+
+# one pair, narrowed range
+ferro traj gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -o po
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use ferro_analysis::md::{GrParams, calc_gr, write_gr, write_cn};
+</span>use ferro_analysis::md::{GrParams, calc_gr, write_gr};
 
 let params = GrParams::with_auto_rmax(&amp;traj);
 let result = calc_gr(&amp;traj, &amp;params).unwrap();
-write_gr(&amp;result, "output.gr").unwrap();
-write_cn(&amp;result, "output.cn").unwrap();
+write_gr(&amp;result, "output.gr", None).unwrap();
 <span class="boring">}</span></code></pre>
 <h2 id="implementation-notes"><a class="header" href="#implementation-notes">Implementation Notes</a></h2>
 <ul>
@@ -487,7 +552,7 @@ write_cn(&amp;result, "output.cn").unwrap();
 </span>pub struct SqParams {
     pub q_min: f64,              // default: 0.1 Å⁻¹
     pub q_max: f64,              // default: 25.0 Å⁻¹
-    pub dq: f64,                 // default: 0.05 Å⁻¹
+    pub dq: f64,                 // default: 0.02 Å⁻¹
     pub weighting: SqWeighting,  // default: None
 }
 
@@ -498,10 +563,61 @@ pub enum SqWeighting {
     Both,     // compute both simultaneously
 }
 <span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>CLI flag</th><th>Field</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--q-min</code></td><td><code>q_min</code></td><td>0.1</td></tr>
+<tr><td><code>--q-max</code></td><td><code>q_max</code></td><td>25.0</td></tr>
+<tr><td><code>--dq</code></td><td><code>dq</code></td><td>0.02</td></tr>
+<tr><td><code>--weighting</code></td><td><code>weighting</code></td><td><code>both</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The $g(r)$ that feeds the transform is controlled by the <code>gr</code> flags — <code>--r-min</code>, <code>--r-max</code>,
+<code>--dr</code> — which therefore set the integration range and hence the truncation ripple.</p>
+<h2 id="comparison-with-code2dump2sq"><a class="header" href="#comparison-with-code2dump2sq">Comparison with <code>code2/dump2sq</code></a></h2>
+<p>ferro follows <code>dump2sq</code>’s formula, with one deliberate difference and one caveat about its
+input.</p>
+<p><strong>The <code>+1</code>.</strong> <code>dump2sq</code>’s <code>CalcSq</code> computes only
+$\frac{4\pi\rho}{q}\sum_r r[g(r)-1]\sin(qr),\Delta r$ and omits the leading $1$ of the
+definition, so its curves sit one unit low and do not approach 1 at large $q$. ferro writes
+the standard form. Measured on a full trajectory, the residual is a pure constant:
+1.00031 (XRD) / 1.00018 (neutron) for $q &gt; 15$, with standard deviations 0.014 / 0.002.</p>
+<p><strong>Atom ordering in the input dump.</strong> <code>dump2sq.c:InitializeType</code> writes <code>data[i].type_new</code> on
+frame 0 only; <code>ReadDataLammpstrj</code> never refreshes it, so atoms are classified by <strong>array
+index</strong> rather than by element. If the dump was written without <code>dump_modify sort id</code>, its
+partials — and both weighted totals — are meaningless from frame 1 onwards. Symptoms: all
+partials collapse onto one another (mean pairwise correlation 0.959 on a 2004-atom test
+case) and the XRD and neutron totals become nearly identical (correlation 0.9986), because
+the Faber-Ziman weighting is washed out and both totals degenerate into the Fourier
+transform of the <em>total</em> $g(r)$.</p>
+<p>On an id-sorted dump the two programs agree closely. Measured on a 5003-atom,
+50-frame NVT trajectory with identical parameters:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>max|Δ| vs <code>dump2sq</code></th><th>rms vs experiment</th></tr>
+</thead>
+<tbody>
+<tr><td>Neutron</td><td>0.0027</td><td>0.0194 (both)</td></tr>
+<tr><td>X-ray</td><td>0.0008</td><td>0.0277 (both)</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>scripts/compare_sq.py</code> and <code>scripts/compare_sq_experiment.py</code> run this check automatically
+and refuse to let an unsorted dump be read as evidence against ferro; the shared logic lives
+in <code>scripts/trajcheck.py</code>.</p>
 <h2 id="output-1"><a class="header" href="#output-1">Output</a></h2>
-<pre><code class="language-bash">fe-traj -m sq -i traj.dump -o output
-# writes output.gr, output.sq
-</code></pre>
+<p><code>sq[_&lt;suffix&gt;].csv</code>，<strong>宽表</strong>：<code>file, q, total_xrd, total_neutron</code>，其后每个配对三列
+（<code>&lt;pair&gt;_sq</code> / <code>_xrd</code> / <code>_neutron</code>，只出规范半边——$S(q)$ 没有有向的对应物）。</p>
+<p>主产物是两条 total（一行一个 $q$），加权 partial $w_{ij}(q),S_{ij}(q)$ 是能逐点求和
+还原 total 的诊断分解。元素集不同的输入取列并集，<strong>缺口留空（NaN），不插值不补零</strong>。</p>
+<p><code>sq</code> 不再另写一份 <code>gr</code>；需要 $g(r)$ 就单独跑 <code>ferro traj gr</code>。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <p>The <code>.sq</code> file header records both the g(r) parameters (used as input) and the S(q) parameters.<br>Column ordering matches the <code>.gr</code> file. Additional columns <code>total_xrd</code> and/or <code>total_neutron</code> are appended when weighting is requested.</p>
 <h2 id="usage-1"><a class="header" href="#usage-1">Usage</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -560,9 +676,14 @@ $$f_{j,k}^{(t)} \leftarrow f_{j,k}^{(t)} - \text{round}!\left(f_{j,k}^{(t)} - f_
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output-2"><a class="header" href="#output-2">Output</a></h2>
-<p>Columns: <code>time[fs]</code>, <code>msd[Å²]</code>, <code>msd_a[Å²]</code>, <code>msd_b[Å²]</code>, <code>msd_c[Å²]</code></p>
+<p><code>msd[_&lt;suffix&gt;].csv</code>：<code>file, time, msd, msd_a, msd_b, msd_c</code>
+（时间 fs，位移平方 Å²）。</p>
+<p>给了 <code>--fit-range FMIN,FMAX</code> 时，自扩散系数 $D = \text{slope}/6$ 与 $R^2$ 打印到
+stdout 并写进 <code>#</code> 头块（同时给出 Å²/fs、cm²/s、m²/s 三种单位）。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage-2"><a class="header" href="#usage-2">Usage</a></h2>
-<pre><code class="language-bash">fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 -o output.msd
+<pre><code class="language-bash">ferro traj msd -i traj.dump --dt 2.0 --shift 10 -o run1
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -592,10 +713,55 @@ write_msd(&amp;result, "output.msd").unwrap();
 <p>The vectors $\overrightarrow{BA}$ and $\overrightarrow{BC}$ use the minimum-image convention for periodic cells.</p>
 <h3 id="selection-criteria"><a class="header" href="#selection-criteria">Selection Criteria</a></h3>
 <p>An atom pair (A, B) forms a bond if $|\overrightarrow{BA}| &lt; r_\text{cut,AB}$.<br>Similarly for (B, C): $|\overrightarrow{BC}| &lt; r_\text{cut,BC}$.</p>
-<p>When both end atoms are the same element: $r_\text{cut} = \min(r_\text{cut,AB}, r_\text{cut,BC})$.</p>
+<p><strong>Which physical end is “A”</strong> is decided by the order <em>you</em> wrote it. When the triplet is
+named on the command line, <code>--r-cut-ab</code> goes to the atom given by <code>-a</code> / <code>-x</code> and
+<code>--r-cut-bc</code> to the one given by <code>-c</code> / <code>-z</code>, regardless of atomic number:</p>
+<pre><code class="language-bash"># Zn gets 2.5, P gets 2.0 — exactly as written
+ferro traj angle -a Zn -b O -c P -i traj.dump --r-cut-ab 2.5 --r-cut-bc 2.0
+</code></pre>
+<blockquote>
+<p><strong>Changed in v0.1.15.</strong> Earlier versions handed the two cutoffs out by atomic number,
+so the command above silently gave 2.5 to P (Z = 15 &lt; Z(Zn) = 30) — the opposite of
+what was written. Results are unaffected whenever the two cutoffs are equal.</p>
+</blockquote>
+<p>Without a named triplet (scanning every triplet at once) there is no user order to follow,
+so the canonical (Z, symbol) order is used: <code>r_cut_ab</code> → lower-Z end, <code>r_cut_bc</code> → higher-Z end.</p>
+<p>When both end atoms are the same type, which one gets sorted first depends on the neighbour
+enumeration order, so $r_\text{cut} = \min(r_\text{cut,AB}, r_\text{cut,BC})$ is applied
+to both — the only assignment that gives a reproducible result.</p>
 <h3 id="canonical-key-convention"><a class="header" href="#canonical-key-convention">Canonical Key Convention</a></h3>
 <p>For each triplet, the key <code>"ElemA-ElemCenter-ElemC"</code> is assigned with $Z(\text{ElemA}) \leq Z(\text{ElemC})$.  When both end atoms have the same Z, lexicographic order on the label string is used.  This ensures each angle type appears exactly once.</p>
-<p><strong>No double-counting</strong>: the enumeration requires $\text{idx}(A) &lt; \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events.</p>
+<p><strong>No double-counting</strong>: the enumeration requires $\text{idx}(A) &lt; \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events. Each <em>geometric</em> angle is therefore counted once — a PO₄ tetrahedron contributes 6 O–P–O angles, not 12.</p>
+<h3 id="histogram-range"><a class="header" href="#histogram-range">Histogram Range</a></h3>
+<p>Counts land in bins of width <code>d_angle</code> starting at <code>angle_min</code>; bin $i$ is labelled at its
+centre, $\theta_i = \text{angle_min} + (i + \tfrac{1}{2}),\Delta\theta$. The upper edge is
+<strong>closed</strong>: a perfectly collinear triplet gives $\arccos(-1) = 180.0$ exactly, which a
+half-open interval would discard entirely.</p>
+<p>Angles outside $[\text{angle_min}, \text{angle_max}]$ are dropped, so narrowing the window
+also narrows what is counted — it is not merely a plotting range.</p>
+<h3 id="comparison-with-dump2analysis--m-angle"><a class="header" href="#comparison-with-dump2analysis--m-angle">Comparison with <code>dump2analysis -m angle</code></a></h3>
+<p>Two convention differences, both documented here so the numbers can be read side by side:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th>ferro</th><th><code>dump2analysis</code></th></tr>
+</thead>
+<tbody>
+<tr><td>Counting</td><td>each geometric angle once</td><td>ordered end pairs — <strong>twice</strong> when both ends are the same element (once when they differ)</td></tr>
+<tr><td>Bin $k$ covers</td><td>$[k\Delta\theta,\ (k{+}1)\Delta\theta)$</td><td>$[0.05 + k\Delta\theta,\ 0.15 + k\Delta\theta)$</td></tr>
+</tbody>
+</table>
+</div>
+<p>The factor of two cancels out of the mean, the standard deviation and the peak positions.
+The bin offset is half a bin; <code>dump2analysis</code>’s grid misses $[0, 0.05)$ (angles there index
+<code>a[-1]</code>, out of bounds) and extends past 180°, so ferro does not adopt it as a default. It
+can be reproduced exactly when needed:</p>
+<pre><code class="language-bash">ferro traj angle -a O -b P -c O -i traj.dump \
+        --angle-min 0.05 --angle-max 180.05 --d-angle 0.1
+</code></pre>
+<p>Verified on <code>examples/43Z43P15A_NPT.lammpstrj</code>: after accounting for the ×2 counting
+convention, all 1800 bins of both O–P–O and O–Al–O match <code>dump2analysis</code> as <strong>exact
+integers</strong> (zero differing bins). See <code>scripts/compare_angle.py --align-binning</code>.</p>
 <h3 id="statistics"><a class="header" href="#statistics">Statistics</a></h3>
 <p>From the raw count histogram $h(\theta_i)$:</p>
 <p>$$\bar{\theta} = \frac{\sum_i \theta_i , h_i}{\sum_i h_i}, \quad \sigma = \sqrt{\frac{\sum_i (\theta_i - \bar{\theta})^2 h_i}{\sum_i h_i}}$$</p>
@@ -603,22 +769,53 @@ write_msd(&amp;result, "output.msd").unwrap();
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct AngleParams {
-    pub r_cut_ab: f64,   // cutoff for lower-Z end to centre [Å]; default: 2.3
-    pub r_cut_bc: f64,   // cutoff for higher-Z end to centre [Å]; default: 2.3
+    pub r_cut_ab: f64,   // cutoff from end A to centre [Å]; default: 2.3
+    pub r_cut_bc: f64,   // cutoff from end C to centre [Å]; default: 2.3
+    pub angle_min: f64,  // histogram lower edge [degrees]; default: 0.0
+    pub angle_max: f64,  // histogram upper edge [degrees]; default: 180.0
     pub d_angle: f64,    // histogram bin width [degrees]; default: 0.1
+    pub group_by: GroupBy,       // resolve triplets over elements or site labels
+    pub ends: Option&lt;(String, String)&gt;,  // (A, C) as the caller wrote them; see above
 }
 <span class="boring">}</span></code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>CLI flag</th><th>Field</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-cut-ab</code></td><td><code>r_cut_ab</code></td><td>2.3</td></tr>
+<tr><td><code>--r-cut-bc</code></td><td><code>r_cut_bc</code></td><td>2.3</td></tr>
+<tr><td><code>--angle-min</code></td><td><code>angle_min</code></td><td>0.0</td></tr>
+<tr><td><code>--angle-max</code></td><td><code>angle_max</code></td><td>180.0</td></tr>
+<tr><td><code>--d-angle</code></td><td><code>d_angle</code></td><td>0.1</td></tr>
+<tr><td><code>-a</code>/<code>-b</code>/<code>-c</code> (element) or <code>-x</code>/<code>-y</code>/<code>-z</code> (label)</td><td><code>group_by</code>, <code>ends</code></td><td>all triplets</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="output-3"><a class="header" href="#output-3">Output</a></h2>
-<p>Columns: <code>angle[deg]</code>, then one column per triplet key in (Z_center, Z_left, Z_right) order.</p>
-<p>The header lists mean, standard deviation, and total count per triplet.</p>
+<p><code>angle[_&lt;suffix&gt;].csv</code>，<strong>长表</strong>：<code>file, angle, end_a, center, end_c, count, p</code>。</p>
+<p>三元组进<strong>数据列</strong>，故元素集不同的轨迹可直接堆叠。同时保留整数 <code>count</code> 与归一化 <code>p</code>
+两列：整数直方图是与 <code>dump2analysis</code> 逐 bin 对拍的依据，只留 <code>p</code> 就对不了。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage-3"><a class="header" href="#usage-3">Usage</a></h2>
-<pre><code class="language-bash">fe-traj -m angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -o output.angle
+<pre><code class="language-bash">ferro traj angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -o run1
+
+# one triplet, narrowed to the tetrahedral region
+ferro traj angle -a O -b P -c O -i traj.dump \
+        --angle-min 90 --angle-max 130 --d-angle 0.2 -o opo
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use ferro_analysis::md::{AngleParams, calc_angle, write_angle};
 
-let params = AngleParams { r_cut_ab: 2.4, r_cut_bc: 2.4, d_angle: 0.5 };
+let params = AngleParams {
+    r_cut_ab: 2.4,
+    r_cut_bc: 2.4,
+    d_angle: 0.5,
+    ..AngleParams::default()
+};
 let result = calc_angle(&amp;traj, &amp;params).unwrap();
 write_angle(&amp;result, "output.angle").unwrap();
 <span class="boring">}</span></code></pre>
@@ -670,10 +867,13 @@ Accumulate into histogram bin $\lfloor r / \Delta r \rfloor$.</li>
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output-4"><a class="header" href="#output-4">Output</a></h2>
-<p>Columns: <code>r[Å]</code>, <code>Gs(r,tau)</code> (normalised so sum = 1).</p>
-<p>The header records the lag time $\tau$ in both frames and physical time (fs).</p>
+<p><code>vanhove[_&lt;suffix&gt;].csv</code>：<code>file, r, gs</code>（归一化为 $\sum g_s = 1$）。</p>
+<p>滞后时间 $\tau$ 只在 <code>#</code> 头块里记录（帧数与 fs 各一份）。一次只算一个 $\tau$；
+将来支持多 $\tau$ 时会加 <code>tau</code> 列——那是加行而不是改列结构。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage-4"><a class="header" href="#usage-4">Usage</a></h2>
-<pre><code class="language-bash">fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 -o output.vanhove
+<pre><code class="language-bash">ferro traj vanhove -i traj.dump --tau 500 --dt 2.0 -o run1
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -740,7 +940,10 @@ write_vanhove(&amp;result, "output.vanhove").unwrap();
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output-5"><a class="header" href="#output-5">Output</a></h2>
-<p>Columns: <code>time[fs]</code>, <code>vacf[v²]</code>, <code>vacf_x[v²]</code>, <code>vacf_y[v²]</code>, <code>vacf_z[v²]</code>, <code>diffusion[v²·fs]</code></p>
+<p><code>vacf[_&lt;suffix&gt;].csv</code>：<code>file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion</code>
+（时间 fs，<code>diffusion</code> 为 Green-Kubo running integral）。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h3 id="unit-note"><a class="header" href="#unit-note">Unit Note</a></h3>
 <p>Velocities are stored in whatever unit the source trajectory uses.  LAMMPS metal-unit dump files store velocities in Å/ps.  To convert to internal standard units (Å/fs), multiply by $10^{-3}$.  As a consequence:</p>
 <ul>
@@ -749,7 +952,7 @@ write_vanhove(&amp;result, "output.vanhove").unwrap();
 </ul>
 <p>This conversion will be applied automatically in a future IO unit normalisation update.</p>
 <h2 id="usage-5"><a class="header" href="#usage-5">Usage</a></h2>
-<pre><code class="language-bash">fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li -o output.vacf
+<pre><code class="language-bash">ferro traj vacf -i traj.dump --dt 2.0 --elements Li -o run1
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -812,9 +1015,11 @@ write_vacf(&amp;result, "output.vacf").unwrap();
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output-6"><a class="header" href="#output-6">Output</a></h2>
-<p>Columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
+<p><code>rotcorr[_&lt;suffix&gt;].csv</code>：<code>file, time, c2, integral</code>（时间 fs）。</p>
+<p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
+<code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage-6"><a class="header" href="#usage-6">Usage</a></h2>
-<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --rcut 2.4 --dt 2.0 -o output.rotcorr
+<pre><code class="language-bash">ferro traj rotcorr -i traj.dump --center P --neighbor O --r-cut 2.4 --dt 2.0 -o run1
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -889,16 +1094,16 @@ write_rotcorr(&amp;result, "output.rotcorr").unwrap();
 <p>The cube format is directly accepted by VESTA, VMD, Ovito, and most electronic-structure visualisation packages.</p>
 <h2 id="usage-7"><a class="header" href="#usage-7">Usage</a></h2>
 <pre><code class="language-bash"># Number density of all atoms
-fe-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
+ferro map density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
 
 # Li-only density
-fe-cube -m density -i traj.dump --elements Li -o li_density.cube
+ferro map density -i traj.dump --elements Li -o li_density.cube
 
 # Time-averaged velocity magnitude
-fe-cube -m velocity -i traj.dump --metal-units -o velocity.cube
+ferro map velocity -i traj.dump --metal-units -o velocity.cube
 
 # Time-averaged force magnitude
-fe-cube -m force -i traj.dump -o force.cube
+ferro map force -i traj.dump -o force.cube
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -922,6 +1127,12 @@ write_cube("li_density.cube", &amp;result.cube).unwrap();
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="jump-distance-distribution"><a class="header" href="#jump-distance-distribution">Jump Distance Distribution</a></h1>
+<blockquote>
+<p><strong>仅库函数，没有 CLI 入口。</strong> <code>ferro_analysis::md::cube_jump</code> 实现完整（含 10 个
+单元测试）并已导出，但 0.2.0 把八个 <code>fe-*</code> 合并成单个 <code>ferro</code> 时，<code>fe-cube -m jump</code>
+这一分支没有接回 <code>ferro map</code> 的子命令表。下面的 Rust API 可用；命令行用法要等
+<code>map jump</code> 补上。</p>
+</blockquote>
 <h2 id="theory-8"><a class="header" href="#theory-8">Theory</a></h2>
 <p>The jump distribution map identifies spatial hotspots of large atomic displacements (jump events).  For each atom and each time window $[t,, t+\tau]$, the true Cartesian displacement is computed from unwrapped fractional coordinates.  If the displacement exceeds a threshold $d_\text{min}$, the event is recorded at a voxel position on the 3-D grid.</p>
 <p>This analysis is particularly useful for characterising ion hopping in glassy or disordered materials: the resulting cube shows <em>where</em> jumps originate, terminate, or pass through, enabling the identification of preferred migration corridors.</p>
@@ -972,12 +1183,14 @@ write_cube("li_density.cube", &amp;result.cube).unwrap();
 <li>Normalise by total jump count to obtain the spatial probability distribution.</li>
 </ol>
 <h2 id="usage-8"><a class="header" href="#usage-8">Usage</a></h2>
+<p>命令行入口尚未接回（见页首说明）。当 <code>ferro map jump</code> 补上后，用法预计为：</p>
 <pre><code class="language-bash"># Jump origins for Li, lag = 1 frame, threshold = 1.0 Å
-fe-cube -m jump -i traj.dump --elements Li --tau 1 --threshold 1.0 -o jump.cube
+ferro map jump -i traj.lammpstrj --elements Li --tau 1 --threshold 1.0 -o run1
 
 # Jump midpoints (migration pathway visualisation)
-fe-cube -m jump -i traj.dump --elements Li --record-at midpoint -o jump_mid.cube
+ferro map jump -i traj.lammpstrj --elements Li --record-at midpoint -o run1
 </code></pre>
+<p>目前只能走 Rust API：</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
@@ -1042,10 +1255,10 @@ $$\Delta\mathbf{r} = \mathbf{M}^T \Delta\mathbf{f}$$</p>
 <p>A Gaussian cube file with raw occupancy counts per voxel.  Values are not normalised.  To convert to fractional occupancy, divide by $N_\text{frames} \cdot N_\text{atoms}$.</p>
 <h2 id="usage-9"><a class="header" href="#usage-9">Usage</a></h2>
 <pre><code class="language-bash"># Li occupancy map, 100³ grid, radius 0.7 Å
-fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
+ferro map radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
 
 # All-atom occupancy
-fe-cube -m radius -i traj.dump --radius 1.0 -o all_radius.cube
+ferro map radius -i traj.dump --radius 1.0 -o all_radius.cube
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1178,11 +1391,11 @@ write_cube("li_radius.cube", &amp;result.cube).unwrap();
 <p>All cube files within a family share the same grid origin and spacing, enabling direct overlay in VESTA or VMD.</p>
 <h2 id="usage-10"><a class="header" href="#usage-10">Usage</a></h2>
 <pre><code class="language-bash"># Q3 phosphate clusters with Zn modifier
-fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+ferro map sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
          --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
 
 # Q0 isolated tetrahedra (no modifier)
-fe-cube -m sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
+ferro map sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
 </code></pre>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1234,9 +1447,9 @@ for (sig, family) in &amp;result.families {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="averaged-charge-density-sdf-chg-sdf"><a class="header" href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF (<code>chg-sdf</code>)</a></h1>
-<p><code>fe-cube -m chg_sdf</code> computes the <strong>averaged electron-density spatial distribution function</strong> over a set of Qn-type network clusters.  Given a collection of QE <code>pp.x</code> charge-density cube files (one per MD snapshot), the tool:</p>
+<p><code>ferro map chg-sdf</code> computes the <strong>averaged electron-density spatial distribution function</strong> over a set of Qn-type network clusters.  Given a collection of QE <code>pp.x</code> charge-density cube files (one per MD snapshot), the tool:</p>
 <ol>
-<li>Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as <code>fe-cube -m sdf</code>.</li>
+<li>Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as <code>ferro map sdf</code>.</li>
 <li>Extracts a cubic sub-grid of the electron density centred on the cluster anchor atom, interpolating the raw charge-density grid with trilinear interpolation (PBC-safe).</li>
 <li>Rotates the sub-grid to align with the first-encountered reference cluster via the Kabsch rotation matrix, using “pull” interpolation (<code>output[r] = input[R⁻¹ r]</code>).</li>
 <li>Accumulates rotated sub-grids; divides by the cluster count to obtain the averaged density.</li>
@@ -1249,13 +1462,13 @@ for (sig, family) in &amp;result.families {
 <hr>
 <h2 id="usage-11"><a class="header" href="#usage-11">Usage</a></h2>
 <pre><code class="language-bash"># Basic: average charge density around Q2 clusters (P–O system)
-fe-cube -m chg_sdf \
+ferro map chg-sdf \
     --cubes frame_000.cube frame_001.cube frame_002.cube \
     --qn 2 --former P --ligand O --cutoff-fl 2.4 \
     -o chg_sdf
 
 # With modifier cation (e.g. Zn2+ in Zn-phosphate glass)
-fe-cube -m chg_sdf \
+ferro map chg-sdf \
     --cubes *.cube \
     --qn 2 --former P --ligand O --cutoff-fl 2.4 \
     --modifier Zn --cutoff-ml 2.8 \
@@ -1263,7 +1476,7 @@ fe-cube -m chg_sdf \
     -o chg_sdf_Q2
 
 # Tighter sub-grid / multiple threads
-fe-cube -m chg_sdf \
+ferro map chg-sdf \
     --cubes *.cube \
     --qn 3 --former P --ligand O \
     --chg-padding 5.0 --rmsd-warn 0.3 \
@@ -1317,7 +1530,7 @@ ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
 <hr>
 <h2 id="algorithm-details"><a class="header" href="#algorithm-details">Algorithm Details</a></h2>
 <h3 id="cluster-identification-1"><a class="header" href="#cluster-identification-1">Cluster identification</a></h3>
-<p>Identical to <code>fe-cube -m sdf</code>: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.</p>
+<p>Identical to <code>ferro map sdf</code>: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.</p>
 <h3 id="sub-grid-extraction"><a class="header" href="#sub-grid-extraction">Sub-grid extraction</a></h3>
 <p>For each cluster anchor position <code>c</code> (Cartesian, Å):</p>
 <pre><code>sub[ix, iy, iz] = ρ_charge( c + Δr )
@@ -1334,204 +1547,295 @@ ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
 <hr>
 <h2 id="related-commands"><a class="header" href="#related-commands">Related Commands</a></h2>
 <ul>
-<li><a href="#cluster-sdf-spatial-distribution-function"><code>fe-cube -m sdf</code></a> — atom-type SDF (no charge density required)</li>
-<li><a href="#fe-bader"><code>fe-bader</code></a> — Bader charge decomposition from CHGCAR / cube files</li>
+<li><a href="#cluster-sdf-spatial-distribution-function"><code>ferro map sdf</code></a> — atom-type SDF (no charge density required)</li>
+<li>[<code>ferro bader</code>](../cli-reference.md#ferro bader) — Bader charge decomposition from CHGCAR / cube files</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="glass-network-analysis-fe-network"><a class="header" href="#glass-network-analysis-fe-network">Glass Network Analysis (<code>fe-network</code>)</a></h1>
-<p><code>fe-network</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，统计以下四类量并在全轨迹上累加归一化：</p>
+<h1 id="glass-network-analysis-ferro-net"><a class="header" href="#glass-network-analysis-ferro-net">Glass Network Analysis (<code>ferro net</code>)</a></h1>
+<p><code>ferro net</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，把每个原子归入一个<strong>结构化的类型</strong>，
+再在全轨迹上累加成分布。产物是五张长表，外加可选的标注轨迹。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>量</th><th>含义</th></tr>
+<tr><th>量</th><th>表</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td>配位数 (CN)</td><td>网络形成子与各配体类型的平均配位数及其分布</td></tr>
-<tr><td>配体分类</td><td>FO / NBO / BO / OBO</td></tr>
-<tr><td>Qn 物种</td><td>网络形成子的桥接度分布</td></tr>
-<tr><td>修饰子角色</td><td>Free / T / B / M（可选）</td></tr>
+<tr><td>桥接配体数</td><td><code>bridge</code></td><td>形成子连了几个桥联配体（P 的即 Qn），可按伙伴元素分解</td></tr>
+<tr><td>配体分类</td><td><code>oxy</code></td><td><code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>，伙伴元素以数据列给出</td></tr>
+<tr><td>配位数</td><td><code>cn</code></td><td>形成子与修饰子的总配位数分布</td></tr>
+<tr><td>均值</td><td><code>mean</code></td><td>一元素一行的平均桥接数与平均配位数</td></tr>
+<tr><td>桥联统计</td><td><code>linkage</code></td><td>每座桥两端的位点状态（元素 + 桥接数 + 配位数）</td></tr>
 </tbody>
 </table>
 </div>
+<blockquote>
+<p><strong>0.2.1 起命令形状变了。</strong> <code>ferro net qn</code> 与 <code>ferro net type</code> 已合并为叶子命令
+<code>ferro net</code>；导出退化为开关 <code>--export-traj</code>。旧标签（<code>P0</code> / <code>Of</code> / <code>On_P</code> /
+<code>Ob_P_P</code> / <code>X</code> / <code>Zn_f</code>）已全部替换，不留读取兼容层。</p>
+</blockquote>
 <hr>
 <h2 id="理论背景"><a class="header" href="#理论背景">理论背景</a></h2>
 <h3 id="键连关系的判定"><a class="header" href="#键连关系的判定">键连关系的判定</a></h3>
-<p>以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小镜像约定（minimum-image convention），支持斜方和三斜晶胞：</p>
+<p>以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小
+镜像约定（minimum-image convention），支持斜方和三斜晶胞：</p>
 <p>$$d_{ij} = \bigl|\mathbf{r}<em>{ij} - \mathbf{M} \cdot \text{round}!\left(\mathbf{M}^{-1}\mathbf{r}</em>{ij}\right)\bigr|$$</p>
-<p>分析要求每帧均存在晶胞（PBC）。</p>
-<h3 id="配位数-cn"><a class="header" href="#配位数-cn">配位数 (CN)</a></h3>
-<p>对每个网络形成子原子 $i$（元素 $\alpha$），其与配体元素 $\beta$ 的配位数为：</p>
-<p>$$\text{CN}^{(\alpha\beta)}<em>i = \bigl|{j : \text{elem}(j)=\beta,; d</em>{ij} &lt; r_{\alpha\beta}^{\text{cut}}}\bigr|$$</p>
-<p>全轨迹统计：对所有帧、所有同类形成子原子的 CN 值做频率直方图，给出 CN 分布和均值。</p>
-<p><strong>总 CN</strong>：对同一形成子原子，将其对所有配体类型的 CN 求和。</p>
+<p>分析要求每帧均存在晶胞（PBC）。缺晶胞的帧被跳过；一帧不剩时该输入报错并跳过。</p>
+<h3 id="三种角色"><a class="header" href="#三种角色">三种角色</a></h3>
+<p>参数把元素分成三类，这个划分是后面一切的前提：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>角色</th><th>来源</th><th>参与</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>形成子</strong> (former)</td><td><code>--&lt;F&gt;-&lt;L&gt;=&lt;Å&gt;</code> 的左侧</td><td>桥接数、配位数、配体分类、桥联统计</td></tr>
+<tr><td><strong>配体</strong> (ligand)</td><td><code>--&lt;F&gt;-&lt;L&gt;=&lt;Å&gt;</code> 的右侧</td><td>配体分类</td></tr>
+<tr><td><strong>修饰子</strong> (modifier)</td><td><code>--modifier</code> 点名，截断同样用 <code>--&lt;M&gt;-&lt;L&gt;=&lt;Å&gt;</code></td><td><strong>只</strong>参与配位数</td></tr>
+</tbody>
+</table>
+</div>
+<p>修饰子被排除在配体分类之外，是这个参数存在的全部理由：一个 Zn 挨着某个非桥氧，
+不能因此把那个氧算成桥氧。点名了修饰子却不给它截断会直接报错——静默通过会让它被
+当成形成子，整套氧分类随之错位。</p>
 <h3 id="配体分类"><a class="header" href="#配体分类">配体分类</a></h3>
-<p>对每个配体原子 $k$（元素 $\beta$），统计其网络形成子邻居数 $n_k$：</p>
+<p>对每个配体原子 $k$，统计其形成子邻居数 $n_k$：</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>$n_k$</th><th>标签</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td><code>FO</code></td><td>Free oxygen（游离氧）</td></tr>
-<tr><td>1</td><td><code>NBO(X)</code></td><td>Non-bridging oxygen（非桥氧），X = 形成子元素</td></tr>
-<tr><td>2</td><td><code>BO(X-Y)</code></td><td>Bridging oxygen（桥氧），X、Y 字母序</td></tr>
-<tr><td>≥3</td><td><code>OBO(X-Y-Z)</code></td><td>Over-bridging oxygen（过桥氧）</td></tr>
+<tr><td>0</td><td><code>O_f</code></td><td>Free，游离配体</td></tr>
+<tr><td>1</td><td><code>O_n</code></td><td>Non-bridging，非桥配体</td></tr>
+<tr><td>2</td><td><code>O_b</code></td><td>Bridging，桥联配体</td></tr>
+<tr><td>≥3</td><td><code>O_t</code></td><td>Tricluster，三配位配体（含 Al 玻璃中的常见结构）</td></tr>
 </tbody>
 </table>
 </div>
-<p>混合形成子体系（如 P + Si）时，标签携带具体元素信息，例如 <code>BO(P-Si)</code> 表示该桥氧连接一个 P 和一个 Si。</p>
-<h3 id="qn-物种分类"><a class="header" href="#qn-物种分类">Qn 物种分类</a></h3>
-<p>对每个网络形成子原子 $i$，$Q_n$ 表示其桥接配体数（即所连配体中被分类为 BO 或 OBO 的数量）：</p>
-<p>$$n_i = \bigl|{k \in \text{neighbors}(i) : \text{label}(k) \in {\text{BO}, \text{OBO}}}\bigr|$$</p>
-<p><strong>异核桥接标注</strong>：若桥接配体 $k$ 的另一侧形成子与 $i$ 不同元素，则在标签中注明，例如：</p>
+<p><strong>标签里不带伙伴元素。</strong> <code>P–O–P</code> 与 <code>P–O–Al</code> 都标 <code>O_b</code>，两者的区分走 <code>oxy</code> 表的
+<code>former_a</code> / <code>former_b</code> <strong>数据列</strong>。标签保持朴素、统计保持完整，两件事解耦：标签是
+给结构文件用的，伙伴分解是给分析用的。</p>
+<h3 id="桥接配体数p-的-qn"><a class="header" href="#桥接配体数p-的-qn">桥接配体数（P 的 Qn）</a></h3>
+<p>对每个形成子原子 $i$，桥接数为其邻居中被分类为 <code>O_b</code> 或 <code>O_t</code> 的配体个数：</p>
+<p>$$n_i = \bigl|{k \in \text{neighbors}(i) : n_k \ge 2}\bigr|$$</p>
+<p>三配位配体<strong>计入</strong>（它确实把该形成子连进了网络）。代价是
+$\sum(\text{桥接数}) \neq 2 \times |\text{O_b}|$，因为一个 <code>O_t</code> 被三边各数一次。</p>
+<p>列名是 <code>n_bridge</code> 而不是 <code>qn</code>：这个计数对每个形成子都有定义，但 Qn 记号是四面体
+形成子的惯例——<strong>Al 没有 Qn 这一说</strong>，描述 Al 请看 <code>cn</code> 表。对 P 而言 <code>n_bridge</code>
+就是 Qn。</p>
+<h3 id="异核桥分解-qnmmathrmal"><a class="header" href="#异核桥分解-qnmmathrmal">异核桥分解 $Q^n(m\mathrm{Al})$</a></h3>
+<p><code>bridge</code> 表另有 <code>m_&lt;X&gt;</code> 列：桥接数中通向元素 X 的那部分，即文献（Brow、Eckert 等）
+的 $Q^n(m\mathrm{Al})$ 记号。</p>
 <ul>
-<li><code>Q3</code> — 3 个桥氧，全为同核（P-O-P）</li>
-<li><code>Q3(2Al)</code> — 3 个桥氧，其中 2 个为 P-O-Al 异核桥</li>
-<li><code>Q4(1Al,1Si)</code> — 4 个桥氧，分别含 1 个 P-O-Al 和 1 个 P-O-Si</li>
+<li><code>n_bridge=2, m_Al=1, m_P=1</code> → $Q^2(1\mathrm{Al})$</li>
+<li><code>groupby("n_bridge")</code> 即退回简单 Qn 分布</li>
 </ul>
-<p>异核元素按字母序排列，格式为 <code>Q{n}({count}{Elem},...)</code>.</p>
-<h3 id="修饰子角色分类"><a class="header" href="#修饰子角色分类">修饰子角色分类</a></h3>
-<p>修饰子（modifier）阳离子（如 Zn²⁺、Na⁺）通过与非桥氧（NBO）配位锚定在网络中。对每个修饰子原子 $m$，统计其在截断半径内的 NBO 邻居数 $p_m$：</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>$p_m$</th><th>角色标签</th><th>物理含义</th></tr>
-</thead>
-<tbody>
-<tr><td>0</td><td><code>Free</code></td><td>未与任何 NBO 配位</td></tr>
-<tr><td>1</td><td><code>T</code></td><td>Terminal（单端连接一个 NBO）</td></tr>
-<tr><td>2</td><td><code>B</code></td><td>Bridging（桥接两个 NBO）</td></tr>
-<tr><td>≥3</td><td><code>M</code></td><td>Multi（连接 3 个或更多 NBO）</td></tr>
-</tbody>
-</table>
-</div>
+<p>只对<strong>恰好两个形成子</strong>的配体成立：三配位配体没有唯一对端，计入 <code>n_bridge</code> 但不进任何
+<code>m_&lt;X&gt;</code>，故 $\sum m \le n_\text{bridge}$，差额就是三配位桥的数目——在表里可见而非隐藏。</p>
+<p>这个分解<strong>无法从 <code>linkage</code> 表反推</strong>：两座 P–O–Al 桥可能来自一个 $m_\mathrm{Al}=2$ 的 P，
+也可能来自两个 $m_\mathrm{Al}=1$ 的 P。<code>linkage</code> 数的是桥，<code>bridge</code> 数的是原子。</p>
+<h3 id="桥联统计"><a class="header" href="#桥联统计">桥联统计</a></h3>
+<p>每个连接 ≥2 个形成子的配体，把两端形成子的<strong>位点状态</strong>记下来：</p>
+<p>$$\text{site} = (\text{元素},; n_\text{bridge},; \text{CN})$$</p>
+<p>两端<strong>都</strong>带这三个字段。这一点与常见实现不同：那些实现按元素只存一个数（P 存 Qn、
+Al 存 CN），于是「4 配位 Al 的桥接数是多少」问不出来。</p>
+<ul>
+<li><strong>规范半边</strong>：桥联无方向，两端按 <code>(元素, 桥接数, CN)</code> 排序后小的在前，每对只存一次。
+故<strong>行和不等于该位点的总参与度</strong>，要算参与度得把 <code>_a</code> 与 <code>_b</code> 两列都数一遍。</li>
+<li><strong><code>n_formers</code> 列</strong>：普通桥氧为 2；三配位配体展开成 $C(3,2)=3$ 行并标 3。
+它们不被丢弃，因为「三配位氧连的是谁」在含 Al 体系里正是要研究的东西。</li>
+</ul>
+<h3 id="统计口径fraction-与-sd"><a class="header" href="#统计口径fraction-与-sd">统计口径：<code>fraction</code> 与 <code>sd</code></a></h3>
+<ul>
+<li><code>count</code>：全轨迹计数之和（整数，精确）</li>
+<li><code>fraction</code>：<strong>逐帧比例的平均</strong>。某帧没有该 bin 时按 0 计入，不是缺失值</li>
+<li><code>sd</code>：同一序列的<strong>样本标准差</strong>（ddof = 1），单帧时为空</li>
+</ul>
+<blockquote>
+<p><strong><code>sd</code> 不是标准误。</strong> MD 相邻帧强相关，它既不按 $1/\sqrt{N}$ 收缩，也不估计物理
+涨落。把它读作「这个数在快照之间摆动多大」。真要误差棒应做分块平均（block
+averaging），本分析不提供。</p>
+</blockquote>
+<p>实现用 Welford 递推而非 $\Sigma f$ / $\Sigma f^2$：后者对恒定序列会给出 ~2e-10 的
+抵消噪声，而 <code>sd</code> 列里的假抖动会被读者当成物理。</p>
 <hr>
 <h2 id="快速入门"><a class="header" href="#快速入门">快速入门</a></h2>
-<pre><code class="language-bash"># P₂O₅ 玻璃，P-O 截断 2.3 Å，输出 CSV
-fe-network -i traj.dump --P-O=2.3
+<pre><code class="language-bash"># P₂O₅ 玻璃，P-O 截断 2.4 Å
+ferro net -i traj.lammpstrj --P-O=2.4
 
-# 混合 P-Si 玻璃，多个配体对
-fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 -o result.csv
+# 铝磷酸盐 + Zn 修饰子
+ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 
-# 含 Zn 修饰子，分析其角色
-fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
-
-# 多修饰子
-fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
-
-# 输出 xlsx（多 sheet）
-fe-network -i traj.dump --P-O=2.3 --format xlsx -o result.xlsx
+# 批处理：一次跑多条轨迹，结果堆成一份带 file 列的 csv
+ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
 
 # 只统计尾部 500 帧，8 线程
-fe-network -i traj.dump --P-O=2.3 --last-n 500 --ncore 8
+ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --ncore 8
+
+# 同时导出标注轨迹
+ferro net -i traj.lammpstrj --P-O=2.4 --export-traj
+ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 </code></pre>
 <hr>
 <h2 id="命令行参数"><a class="header" href="#命令行参数">命令行参数</a></h2>
 <h3 id="必需"><a class="header" href="#必需">必需</a></h3>
-<p><code>fe-network</code> 至少需要一个 <code>--Former-Ligand=cutoff</code> 形式的配对参数（首字母大写）。</p>
-<pre><code>--P-O=2.3        P（形成子）与 O（配体）的截断半径 2.3 Å
+<p>至少一个 <code>--&lt;Former&gt;-&lt;Ligand&gt;=&lt;cutoff&gt;</code> 形式的配对参数（元素首字母大写）：</p>
+<pre><code>--P-O=2.4        P（形成子）与 O（配体）的截断半径 2.4 Å
 --Si-O=1.8       Si-O 截断 1.8 Å
---Al-O=2.0       Al-O 截断 2.0 Å
---Al-F=2.1       Al-F 截断 2.1 Å（同一形成子可有多种配体）
+--Al-O=2.4       Al-O 截断 2.4 Å
+--Al-F=2.1       同一形成子可有多种配体
 </code></pre>
-<h3 id="可选参数"><a class="header" href="#可选参数">可选参数</a></h3>
+<p>元素对写在<strong>参数名</strong>里，clap 建模不了，所以 <code>main</code> 在解析前先把它们从 argv 剥离。</p>
+<h3 id="可选"><a class="header" href="#可选">可选</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>参数</th><th>默认值</th><th>说明</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹文件（缺省时显示帮助）</td></tr>
-<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出文件前缀</td></tr>
-<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>-i &lt;FILE&gt;...</code></td><td>—</td><td>输入轨迹，多值并自展开 glob（引号括起来）。缺省时打印帮助</td></tr>
+<tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>—</td><td>输出<strong>文件名后缀</strong>（不是路径）：<code>network_&lt;表&gt;_&lt;后缀&gt;.csv</code></td></tr>
 <tr><td><code>--last-n N</code></td><td>全部帧</td><td>仅使用尾部 N 帧</td></tr>
 <tr><td><code>--ncore N</code></td><td>全部核心</td><td>并行线程数</td></tr>
-<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位（速度 Å/ps，力 eV/Å）</td></tr>
-<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔，如 <code>Zn</code> 或 <code>Zn,Na</code>）</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位。统计不读速度/力，<strong>只对 <code>--export-traj extxyz</code> 有影响</strong></td></tr>
+<tr><td><code>--modifier E,E</code></td><td>—</td><td>只计配位数的元素，逗号分隔。须同时给出各自的截断</td></tr>
+<tr><td><code>--export-traj [FMT]</code></td><td>—</td><td>另写标注轨迹，<code>lammpstrj</code>（默认）或 <code>extxyz</code></td></tr>
 </tbody>
 </table>
 </div>
-<p><strong>修饰子截断</strong>：通过相同的 <code>--Elem-O=cutoff</code> 语法提供，系统根据 <code>--modifier</code> 列表自动路由。</p>
 <hr>
-<h2 id="输出文件"><a class="header" href="#输出文件">输出文件</a></h2>
-<h3 id="csv-格式默认"><a class="header" href="#csv-格式默认">CSV 格式（默认）</a></h3>
+<h2 id="输出"><a class="header" href="#输出">输出</a></h2>
+<p>五张 CSV，各带 <code>file</code> 列，<code>#</code> 注释块里是共享参数与 <code>[inputs]</code> 清单
+（<code>pandas.read_csv(comment="#")</code> 会自动丢掉）。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>文件</th><th>内容</th></tr>
+<tr><th>文件</th><th>列</th><th>一行一个</th></tr>
 </thead>
 <tbody>
-<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>各 (former, ligand) 配对的 CN 分布及均值，含总 CN</td></tr>
-<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>各配体元素的 FO/NBO/BO/OBO 分布</td></tr>
-<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>各形成子元素的 Qn 物种分布</td></tr>
-<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>各修饰子元素的角色分布（仅指定 <code>--modifier</code> 时生成）</td></tr>
+<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td><td>(形成子, 桥接数, 伙伴分解)</td></tr>
+<tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td><td>(配体类型, 伙伴对)</td></tr>
+<tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td><td>(元素, 配位数)</td></tr>
+<tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td><td>元素</td></tr>
+<tr><td><code>network_linkage.csv</code></td><td><code>file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd</code></td><td>桥的两端状态组合</td></tr>
 </tbody>
 </table>
 </div>
-<h4 id="_cncsv-格式"><a class="header" href="#_cncsv-格式"><code>_cn.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Former,Ligand,CN,Count,Fraction
-P,O,3,120,0.240000
-P,O,4,380,0.760000
-P,O,mean,3.7600,
-P,total,4,500,1.000000
-P,total,mean,3.7600,
+<p>三张分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让
+<code>groupby</code> 无意义，故保持三张。<code>mean</code> 是「一元素一行」的另一种粒度，故独立成表，
+而不是在每行重复一个稀疏列。</p>
+<p>批处理时元素集不同的输入取<strong>列并集，缺的留空（NaN），不补零、不插值</strong>——没有 Al
+的体系其 <code>m_Al</code> 列为空，而不是 0。</p>
+<h3 id="示例oxy-表"><a class="header" href="#示例oxy-表">示例：<code>oxy</code> 表</a></h3>
+<pre><code class="language-csv">file,type,former_a,former_b,count,fraction,sd
+43Z43P15A,O_n,P,,2985,4.543379e-1,1.203302e-3
+43Z43P15A,O_b,Al,Al,10,1.522070e-3,0.000000e0
+43Z43P15A,O_b,Al,P,2693,4.098935e-1,1.154167e-3
+43Z43P15A,O_b,P,P,880,1.339422e-1,0.000000e0
+43Z43P15A,O_t,,,2,3.044140e-4,4.168360e-4
 </code></pre>
-<h4 id="_ligandcsv-格式"><a class="header" href="#_ligandcsv-格式"><code>_ligand.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Ligand,Class,Count,Fraction
-O,FO,50,0.033333
-O,NBO(P),650,0.433333
-O,BO(P-P),800,0.533333
+<p><code>O_t</code> 的伙伴列留空——它不是一对，其配对关系由 <code>linkage</code> 表的 <code>n_formers=3</code> 行给出。</p>
+<h3 id="用-pandas-分析-linkage"><a class="header" href="#用-pandas-分析-linkage">用 pandas 分析 <code>linkage</code></a></h3>
+<pre><code class="language-python">import pandas as pd
+d = pd.read_csv("network_linkage.csv", comment="#")
+
+# 按元素对汇总
+d.groupby(["elem_a", "elem_b"])["count"].sum()
+
+# Al-O-Al 发生在哪种配位的 Al 之间
+al = d.query("elem_a == 'Al' and elem_b == 'Al'")
+al.pivot_table(index="cn_a", columns="cn_b", values="count", aggfunc="sum")
+
+# P-O-P 的 Qn–Qn 连接矩阵
+d.query("elem_a == 'P' and elem_b == 'P'").pivot_table(
+    index="n_bridge_a", columns="n_bridge_b", values="count", aggfunc="sum")
+
+# 只看真桥，排除三配位配体
+d.query("n_formers == 2")
 </code></pre>
-<h4 id="_qncsv-格式"><a class="header" href="#_qncsv-格式"><code>_qn.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Former,Species,Count,Fraction
-P,Q2,120,0.240000
-P,Q3,380,0.760000
-</code></pre>
-<h4 id="_modifiercsv-格式"><a class="header" href="#_modifiercsv-格式"><code>_modifier.csv</code> 格式</a></h4>
-<pre><code class="language-csv">Modifier,Role,Count,Fraction
-Zn,Free,10,0.040000
-Zn,T,120,0.480000
-Zn,B,110,0.440000
-Zn,M,10,0.040000
-</code></pre>
-<h3 id="xlsx-格式"><a class="header" href="#xlsx-格式">XLSX 格式</a></h3>
-<p>使用 <code>--format xlsx</code> 时，所有结果写入同一文件的多个 sheet：</p>
+<hr>
+<h2 id="标注轨迹--export-traj"><a class="header" href="#标注轨迹--export-traj">标注轨迹（<code>--export-traj</code>）</a></h2>
+<p>导出每个输入一个文件：<code>&lt;输入 stem&gt;_types[_&lt;后缀&gt;].&lt;ext&gt;</code>。文件名必须掺输入 stem，
+否则批处理时第二个输入会覆盖第一个（与 <code>ferro map</code> 的 cube 同理）。</p>
+<h3 id="标签"><a class="header" href="#标签">标签</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Sheet</th><th>内容</th></tr>
+<tr><th>角色</th><th>标签</th></tr>
 </thead>
 <tbody>
-<tr><td>CN</td><td>配位数分布</td></tr>
-<tr><td>Ligand</td><td>配体分类分布</td></tr>
-<tr><td>Qn</td><td>Qn 物种分布</td></tr>
-<tr><td>Modifier</td><td>修饰子角色分布（有修饰子时才生成）</td></tr>
+<tr><td>形成子</td><td><code>P_0</code> <code>P_1</code> … <code>Al_2</code>（数字 = 桥接配体数）</td></tr>
+<tr><td>自由配体</td><td><code>O_f</code></td></tr>
+<tr><td>非桥配体</td><td><code>O_n</code></td></tr>
+<tr><td>桥联配体</td><td><code>O_b</code></td></tr>
+<tr><td>三配位配体</td><td><code>O_t</code></td></tr>
+<tr><td>修饰子</td><td><code>Zn</code>（元素符号，无角色后缀）</td></tr>
 </tbody>
 </table>
 </div>
+<p>全部合 <code>&lt;元素&gt;_&lt;后缀&gt;</code> 约定，按<strong>首个下划线</strong>拆分。修饰子不带角色后缀：旧方案
+按非桥配体数 0/1/2/≥3 分档，而修饰子的实际配位数在 3–6，实测参考轨迹 97% 落进
+兜底桶，没有分辨力。</p>
+<h3 id="两种格式的差别"><a class="header" href="#两种格式的差别">两种格式的差别</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th></th><th><code>lammpstrj</code>（默认）</th><th><code>extxyz</code></th></tr>
+</thead>
+<tbody>
+<tr><td>标签存放</td><td>折进 <code>element</code> 列</td><td>独立的 <code>label:S:1</code> 列</td></tr>
+<tr><td><code>species</code> / <code>element</code></td><td>是标签（<code>P_2</code>）</td><td>是纯元素（<code>P</code>）</td></tr>
+<tr><td>读回</td><td>reader 按首个下划线拆成 element + label</td><td>直接分列读取，无需猜测</td></tr>
+<tr><td>下游兼容</td><td>不新增列，已有工具照常解析</td><td>新增一列</td></tr>
+</tbody>
+</table>
+</div>
+<p>dump 折叠是因为它只有一列名字放得下第二个名字；extxyz 的列是自描述的，不需要将就。
+<strong>只有 <code>ferro net --export-traj</code> 会折叠</strong>——<code>ferro convert</code> 无论标签如何都写干净的
+元素符号。折叠还带守卫：标签不形如 <code>&lt;元素&gt;_…</code> 时不折并计数告警（CIF 的 <code>O1</code>、CP2K
+的 <code>Fe1</code> 折进去后读回来就是不存在的元素 <code>O1</code>）。</p>
+<h3 id="下游选型"><a class="header" href="#下游选型">下游选型</a></h3>
+<pre><code class="language-bash"># 按元素选 —— 任意帧数都可以
+ferro traj gr -i run_types.lammpstrj -a P -b O
+
+# 按标签选 —— 需要单帧
+ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1
+</code></pre>
+<blockquote>
+<p><strong>按标签选型只在单帧成立。</strong> <code>g(r)</code> 要求逐类型的粒子数守恒，而标签是动态的——
+一个 P 在轨迹推进中会改变自己的 Qn（实测参考轨迹 <code>P_3</code> 逐帧为
+149 / 152 / 150 / 150 / 150）。对多帧标注轨迹按标签选型会被
+「per-type atom counts change」错误拒绝，这是守卫而非缺陷。多帧请按元素选。</p>
+</blockquote>
+<p>标注轨迹与统计表是互相独立的产物：想验证分类是否自洽，可对导出轨迹跑
+<code>ferro traj gr -x P_3 -y O_b --last-n 1</code>，第一壳层 CN 应恰为 3——分类层说
+「这个 P 有 3 个桥氧」，独立的 CN 积分路径应当数回 3。</p>
 <hr>
 <h2 id="典型参数参考"><a class="header" href="#典型参数参考">典型参数参考</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>体系</th><th>形成子</th><th>配体</th><th>参考截断</th></tr>
+<tr><th>体系</th><th>形成子</th><th>修饰子</th><th>参考截断</th></tr>
 </thead>
 <tbody>
-<tr><td>P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å</td></tr>
-<tr><td>SiO₂ 玻璃</td><td>Si</td><td>O</td><td>Si-O: 1.8 Å</td></tr>
-<tr><td>Al₂O₃</td><td>Al</td><td>O</td><td>Al-O: 2.1 Å</td></tr>
-<tr><td>GeO₂ 玻璃</td><td>Ge</td><td>O</td><td>Ge-O: 2.0 Å</td></tr>
-<tr><td>ZnO-P₂O₅ 玻璃</td><td>P</td><td>O</td><td>P-O: 2.3 Å，Zn（modifier）: Zn-O: 3.5 Å</td></tr>
+<tr><td>P₂O₅ 玻璃</td><td>P</td><td>—</td><td>P-O: 2.3–2.4 Å</td></tr>
+<tr><td>SiO₂ 玻璃</td><td>Si</td><td>—</td><td>Si-O: 1.8 Å</td></tr>
+<tr><td>Al₂O₃</td><td>Al</td><td>—</td><td>Al-O: 2.1–2.4 Å</td></tr>
+<tr><td>GeO₂ 玻璃</td><td>Ge</td><td>—</td><td>Ge-O: 2.0 Å</td></tr>
+<tr><td>ZnO–P₂O₅ 玻璃</td><td>P</td><td>Zn</td><td>P-O: 2.4 Å，Zn-O: 2.6 Å</td></tr>
+<tr><td>ZnO–Al₂O₃–P₂O₅</td><td>P, Al</td><td>Zn</td><td>P-O: 2.4，Al-O: 2.4，Zn-O: 2.6 Å</td></tr>
 </tbody>
 </table>
 </div>
-<p>截断值应参照 g(r) 第一峰谷位置（<code>fe-traj -m gr</code>）确定。</p>
+<p>截断值应参照 g(r) 第一峰谷位置确定：</p>
+<pre><code class="language-bash">ferro traj gr -i traj.lammpstrj -a P -b O --r-max 5 --plot
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="job-builders"><a class="header" href="#job-builders">Job Builders</a></h1>
-<p><code>fe-job</code> generates ready-to-run input files for quantum-chemistry / DFT codes from any structure <code>ferro</code> can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).</p>
-<pre><code class="language-bash">fe-job                                 # overview of supported software
-fe-job -s cp2k                         # CP2K-specific help
-fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
+<p><code>ferro job</code> generates ready-to-run input files for quantum-chemistry / DFT codes from any structure <code>ferro</code> can read (XYZ, CIF, PDB, POSCAR, LAMMPS dump, …).</p>
+<pre><code class="language-bash">ferro job                                 # overview of supported software
+ferro job -s cp2k                         # CP2K-specific help
+ferro job -i struct.cif -s qe -o pw.in    # generate a QE input
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -1548,20 +1852,20 @@ fe-job -i struct.cif -s qe -o pw.in    # generate a QE input
 <p>All three share charge/spin handling (see <a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>).</p>
 <hr>
 <h2 id="gaussian"><a class="header" href="#gaussian">Gaussian</a></h2>
-<pre><code class="language-bash">fe-job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-fe-job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
+<pre><code class="language-bash">ferro job -i mol.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+ferro job -i radical.xyz -s gaussian --charge 0 --multiplicity 2
 </code></pre>
 <p><code>-m</code> method and <code>-b</code> basis set are written verbatim into the route section.</p>
 <h2 id="cp2k"><a class="header" href="#cp2k">CP2K</a></h2>
 <p>A full GPW/Quickstep input: <code>&amp;GLOBAL</code>, <code>&amp;FORCE_EVAL</code> (<code>&amp;SUBSYS</code>, <code>&amp;DFT</code>), and a task-specific <code>&amp;MOTION</code>/<code>&amp;VIBRATIONAL_ANALYSIS</code> block.</p>
 <pre><code class="language-bash"># Geometry optimisation, PBE-D3(BJ)
-fe-job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+ferro job -i glass.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
 
 # AIMD, 1500 K, CSVR thermostat
-fe-job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
+ferro job -i glass.xyz -s cp2k --task md --temperature 1500 --md-steps 50000
 
 # Hybrid PBE0 with OT, all-electron pob basis
-fe-job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
+ferro job -i crystal.cif -s cp2k --functional pbe0 --scf ot --cp2k-basis pob-tzvp
 </code></pre>
 <p>Tasks: <code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code>.
 Functionals: PBE/BLYP/revPBE/PBEsol (GGA), PBE0/B3LYP/HSE06 (hybrid, auto <code>&amp;HF</code> block), SCAN/r²SCAN (meta-GGA via LIBXC).</p>
@@ -1576,13 +1880,13 @@ Functionals: PBE/BLYP/revPBE/PBEsol (GGA), PBE0/B3LYP/HSE06 (hybrid, auto <code>
 <h2 id="quantum-espresso"><a class="header" href="#quantum-espresso">Quantum ESPRESSO</a></h2>
 <p>A complete <code>pw.x</code> input with <code>ibrav = 0</code>: <code>&amp;CONTROL</code>, <code>&amp;SYSTEM</code>, <code>&amp;ELECTRONS</code>, plus <code>&amp;IONS</code>/<code>&amp;CELL</code> for relaxation/MD, then <code>ATOMIC_SPECIES</code>, <code>CELL_PARAMETERS angstrom</code>, <code>ATOMIC_POSITIONS angstrom</code>, <code>K_POINTS</code>.</p>
 <pre><code class="language-bash"># SCF, Gamma point
-fe-job -i crystal.cif -s qe
+ferro job -i crystal.cif -s qe
 
 # Metal: Methfessel-Paxton smearing + k-mesh
-fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+ferro job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
 
 # SCAN relaxation
-fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 </code></pre>
 <p>Tasks: <code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code>.
 Functionals map to <code>input_dft</code> (PBE uses the pseudopotential’s own functional).
@@ -1602,7 +1906,7 @@ Pseudopotentials are referenced as <code>&lt;Element&gt;.UPF</code> in <code>--p
 </tbody>
 </table>
 </div>
-<p>See the <a href="#fe-job">CLI Reference</a> for the complete flag tables.</p>
+<p>See the [CLI Reference](../cli-reference.md#ferro job) for the complete flag tables.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="unpaired-electron--spin-multiplicity-estimation"><a class="header" href="#unpaired-electron--spin-multiplicity-estimation">Unpaired-Electron / Spin-Multiplicity Estimation</a></h1>
 <p>When generating a QC input file you must specify the system’s <strong>spin multiplicity</strong> (2S+1).  Guessing wrong produces a calculation that either fails to converge or converges to the wrong electronic state.  <code>ferro</code> can estimate the multiplicity directly from the structure via <code>ferro_core::guess_spin</code>, exposed on every job builder through the <code>--auto-spin</code> flag.</p>
@@ -1662,13 +1966,13 @@ Mn²⁺: group 7, \(n_d = 7 - 2 = 5\) → d⁵ high-spin → <strong>5 unpaired 
 <hr>
 <h2 id="usage-12"><a class="header" href="#usage-12">Usage</a></h2>
 <pre><code class="language-bash"># Auto-guess for a transition-metal oxide (CP2K)
-fe-job -s cp2k -i Fe2O3.cif --auto-spin --smear
+ferro job -s cp2k -i Fe2O3.cif --auto-spin --smear
 
 # Auto-guess for QE
-fe-job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
+ferro job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4
 
 # Manual override (highest priority — disables auto-spin)
-fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
+ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 </code></pre>
 <p>Priority: explicit <code>--multiplicity</code> &gt; <code>--auto-spin</code> (or builder default) &gt; value from the input file.  In the CP2K and QE builders <code>auto_spin</code> is on by default; passing <code>--multiplicity</code> disables it so the manual value is respected.</p>
 <hr>
@@ -1686,7 +1990,7 @@ fe-job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="#job-builders">Job Builders</a> — Gaussian / CP2K / QE input generation</li>
-<li><a href="#fe-job">CLI Reference: <code>fe-job</code></a></li>
+<li>[CLI Reference: <code>ferro job</code>](../cli-reference.md#ferro job)</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="python-bindings-1"><a class="header" href="#python-bindings-1">Python Bindings</a></h1>
@@ -1707,6 +2011,14 @@ pip install target/wheels/ferro-*.whl
 <p><code>cargo build</code> from the workspace root does <strong>not</strong> build this crate (and a
 standalone <code>cargo build</code> fails at the macOS link step on undefined Python
 symbols — that is expected; maturin supplies the correct link flags).</p>
+<p>Because it is a separate workspace with its own lockfile, the root
+<code>cargo build</code> / <code>test</code> / <code>clippy</code> skip it entirely — a break in the bindings is
+not caught by the main test suite.  After changing any public API in
+<code>ferro-core</code> or <code>ferro-analysis</code>, run <code>cd ferro-python &amp;&amp; cargo check</code>.</p>
+<p><strong>Status (0.2.1):</strong> type-level checks pass cleanly (<code>cargo clean &amp;&amp; cargo check</code>,
+clippy zero warnings).  The pyo3 0.21 → 0.29 upgrade has <strong>not</strong> been verified at
+runtime — this machine has no maturin, so module initialisation and the
+<code>#[pyfunction]</code> signatures are unconfirmed in practice.</p>
 </blockquote>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick start</a></h2>
 <pre><code class="language-python">import ferro
@@ -1717,7 +2029,7 @@ print(len(t), t.n_atoms(), t.elements())
 sc = ferro.supercell(t, 2, 2, 1)
 ferro.write(sc, "POSCAR")
 
-g = ferro.gr(t, r_max=10.0, dr=0.02)        # dict[str, list[float]]
+g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)   # dict[str, list[float]]
 d = ferro.msd(t, dt=2.0, elements=["Li"])
 </code></pre>
 <h2 id="trajectory-1"><a class="header" href="#trajectory-1"><code>Trajectory</code></a></h2>
@@ -1781,18 +2093,28 @@ this type too).</p>
 <h2 id="analysis"><a class="header" href="#analysis">Analysis</a></h2>
 <p>Analysis functions return <code>dict[str, list[float]]</code> (PyO3 converts the Rust
 <code>HashMap&lt;String, Vec&lt;f64&gt;&gt;</code> automatically — no NumPy dependency).</p>
-<h3 id="grtraj-r_maxnone-dr001-r_cut23-r_min0005"><a class="header" href="#grtraj-r_maxnone-dr001-r_cut23-r_min0005"><code>gr(traj, r_max=None, dr=0.01, r_cut=2.3, r_min=0.005)</code></a></h3>
-<p>Radial distribution function and coordination number.  <code>r_max=None</code>
-auto-selects half the shortest cell vector of the first frame.</p>
+<h3 id="gr_pairtraj-a-b-byelement-r_maxnone-dr001-r_min0005"><a class="header" href="#gr_pairtraj-a-b-byelement-r_maxnone-dr001-r_min0005"><code>gr_pair(traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005)</code></a></h3>
+<h3 id="gr_alltraj-byelement-r_maxnone-dr001-r_min0005"><a class="header" href="#gr_alltraj-byelement-r_maxnone-dr001-r_min0005"><code>gr_all(traj, by="element", r_max=None, dr=0.01, r_min=0.005)</code></a></h3>
+<p>Radial distribution function and coordination number.  <code>gr_pair</code> computes one
+named pair, <code>gr_all</code> every ordered pair in a single pass.  <code>r_max=None</code>
+auto-selects the minimum-image bound (half the smallest <strong>interplanar spacing</strong>,
+not the shortest cell vector — the two differ for non-orthogonal cells).</p>
+<p><code>by="element"</code> groups on <code>Atom::element</code>, <code>by="label"</code> on <code>Atom::label</code>.</p>
 <p>Returned keys:</p>
 <ul>
 <li><code>"r"</code> — bin-centre radii [Å]</li>
-<li><code>"gr:&lt;El1-El2&gt;"</code>, <code>"gr:total"</code> — partial / total g(r)</li>
-<li><code>"cn:&lt;center-neighbor&gt;"</code> — directed cumulative CN(r)</li>
+<li><code>"&lt;A&gt;-&lt;B&gt;_gr"</code> — partial g(r); symmetric, <code>A-B</code> equals <code>B-A</code></li>
+<li><code>"&lt;A&gt;-&lt;B&gt;_cn"</code> — directed cumulative CN(A→B)</li>
 </ul>
-<pre><code class="language-python">g = ferro.gr(t, r_max=8.0, dr=0.05)
+<p><code>gr_all</code> gives n² ordered pairs for n types.  There is <strong>no total</strong>: an unweighted
+total is the degenerate <code>f_i ≡ 1</code> case, corresponds to no experimental probe, and
+was removed in 0.1.11.</p>
+<pre><code class="language-python">g = ferro.gr_pair(t, "P", "O", r_max=8.0, dr=0.05)
 import matplotlib.pyplot as plt
-plt.plot(g["r"], g["gr:total"])
+plt.plot(g["r"], g["P-O_gr"])
+
+# 按位点标签分组（标注轨迹）
+g = ferro.gr_pair(t, "P_3", "O_b", by="label", r_max=5.0)
 </code></pre>
 <h3 id="msdtraj-dt10-shift1-taunone-elementsnone"><a class="header" href="#msdtraj-dt10-shift1-taunone-elementsnone"><code>msd(traj, dt=1.0, shift=1, tau=None, elements=None)</code></a></h3>
 <p>Mean squared displacement (time-origin averaged, NPT-safe).</p>
@@ -1806,58 +2128,118 @@ exceptions (<code>RuntimeError</code> / <code>IndexError</code> / <code>ValueErr
 message preserved.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cli-reference"><a class="header" href="#cli-reference">CLI Reference</a></h1>
-<p>ferro provides six command-line binaries.  All trajectory binaries share common flags for frame selection and parallelism.  Run any binary without <code>-i</code> to print mode-specific help.</p>
+<p><strong>一个二进制 <code>ferro</code></strong>，子命令按<strong>产物</strong>分组（不是按实现它的 crate）。
+0.2.0 起原来的八个 <code>fe-*</code> 二进制已全部删除，不留兼容层——输出格式同期变更，留着
+<code>fe-traj</code> 会让旧脚本「跑成功」却吐出自己解析不了的 csv，静默坏数据比命令消失难查。</p>
+<pre><code>ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
+ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
+ferro net                                                      → 五张堆叠 csv
+                                                                 + 可选标注轨迹
+ferro bader | convert | info | job
+</code></pre>
+<p><strong>帮助分三级</strong>：<code>ferro</code> 列出分组；<code>ferro traj</code> 列出该组命令；<code>ferro traj gr</code>（不给
+<code>-i</code>）打印该命令的参数、输出列结构与示例。</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>旧命令（0.2.0 前）</th><th>新命令</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fe-traj -m gr</code></td><td><code>ferro traj gr</code></td></tr>
+<tr><td><code>fe-corr -m vacf</code></td><td><code>ferro traj vacf</code></td></tr>
+<tr><td><code>fe-cube -m density</code></td><td><code>ferro map density</code></td></tr>
+<tr><td><code>fe-cube -m chg_sdf</code></td><td><code>ferro map chg-sdf</code></td></tr>
+<tr><td><code>fe-network -m Qn</code></td><td><code>ferro net</code></td></tr>
+<tr><td><code>fe-network -m type</code></td><td><code>ferro net --export-traj</code></td></tr>
+<tr><td><code>fe-bader</code> / <code>fe-convert</code> / <code>fe-info</code> / <code>fe-job</code></td><td><code>ferro bader</code> / <code>convert</code> / <code>info</code> / <code>job</code></td></tr>
+</tbody>
+</table>
+</div>
+<hr>
 <h2 id="common-flags"><a class="header" href="#common-flags">Common Flags</a></h2>
+<p><code>traj</code> / <code>map</code> / <code>net</code> 的每个命令都 flatten 了同一组 <code>CommonArgs</code>：</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Flag</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-i &lt;file&gt;</code></td><td>Input file</td></tr>
-<tr><td><code>-o &lt;file&gt;</code></td><td>Output file (default: mode-specific name)</td></tr>
-<tr><td><code>--last-n N</code></td><td>Use only the last N frames</td></tr>
-<tr><td><code>--ncore N</code></td><td>Parallel threads (default: all cores)</td></tr>
-<tr><td><code>--metal-units</code></td><td>LAMMPS metal units (velocities Å/ps, forces eV/Å)</td></tr>
+<tr><td><code>-i &lt;FILE&gt;...</code></td><td>输入文件，<strong>多值</strong>并自展开 glob 模式（引号括起来，让 shell 别动它）</td></tr>
+<tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>输出<strong>文件名后缀</strong>，不是路径：产物落在 <code>&lt;命令&gt;[_&lt;表&gt;]_&lt;后缀&gt;.csv</code></td></tr>
+<tr><td><code>--last-n N</code></td><td>只用尾部 N 帧（跳过平衡段）</td></tr>
+<tr><td><code>--ncore N</code></td><td>并行线程数（默认全部核心）</td></tr>
+<tr><td><code>--metal-units</code></td><td>LAMMPS metal 单位（速度 Å/ps，力 eV/Å）。<strong>只影响速度与力</strong>，坐标与晶胞两种单位下都是 Å，故对 gr/sq/msd/angle/rotcorr/vanhove/net 无影响</td></tr>
 </tbody>
 </table>
 </div>
-<hr>
-<h2 id="fe-convert"><a class="header" href="#fe-convert"><code>fe-convert</code></a></h2>
-<p>Format conversion.</p>
-<pre><code class="language-bash">fe-convert -i input.xyz -o output.pdb
-fe-convert -i input.cif -o POSCAR
+<h3 id="批处理"><a class="header" href="#批处理">批处理</a></h3>
+<p><code>-i</code> 恒为多值。<strong>只有一条代码路径</strong>：单输入是 N=1 的特例，不是特殊模式——按文件数
+分派会让产物形态取决于 glob 当天匹配到几个文件。</p>
+<pre><code class="language-bash">ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -o scan
 </code></pre>
-<p>Supported input formats: <code>.xyz</code>, <code>.pdb</code>, <code>.cif</code>, LAMMPS dump<br>Supported output formats: <code>.xyz</code>, <code>.pdb</code>, <code>POSCAR</code>, LAMMPS dump</p>
+<p>每个输入独立分析，结果堆叠成<strong>一份</strong>带 <code>file</code> 列的 csv。元素集不同的输入取列并集，
+<strong>缺的留空（NaN），不补零、不插值</strong>。失败的输入被跳过、在输出的 <code>[inputs]</code> 块里留下
+原因、并使<strong>退出码为 1</strong>（否则 shell 里 <code>&amp;&amp;</code> 串联会把批内失败当成功）。
+<code>{a,b}</code> 花括号不支持，交给 shell 展开。</p>
+<p>产物是逐输入的命令（<code>ferro map</code> 的 cube、<code>ferro net --export-traj</code> 的轨迹）例外：
+文件名必须掺输入 stem，否则第二个输入会覆盖第一个。</p>
+<h3 id="类型选择gr--sq--angle"><a class="header" href="#类型选择gr--sq--angle">类型选择（gr / sq / angle）</a></h3>
+<p>两组互斥：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>含义</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-a</code> / <code>-b</code> / <code>-c</code></td><td>按 <code>Atom::element</code> 选（元素）</td></tr>
+<tr><td><code>-x</code> / <code>-y</code> / <code>-z</code></td><td>按 <code>Atom::label</code> 选（位点标签）</td></tr>
+</tbody>
+</table>
+</div>
+<p>第一个槽是中心（pair）或端原子 A（triplet）。<strong>顺序有意义</strong>：<code>g(r)</code> 对称但 <code>CN</code> 有向。</p>
 <hr>
-<h2 id="fe-info"><a class="header" href="#fe-info"><code>fe-info</code></a></h2>
-<p>Print structure summary (cell parameters, atom counts, element list).</p>
-<pre><code class="language-bash">fe-info -i input.xyz
-fe-info -i traj.dump --last-n 1
+<h2 id="ferro-convert"><a class="header" href="#ferro-convert"><code>ferro convert</code></a></h2>
+<p>格式转换。</p>
+<pre><code class="language-bash">ferro convert -i input.xyz -o output.pdb
+ferro convert -i input.cif -o POSCAR
 </code></pre>
+<p>支持格式：<code>.xyz</code>、<code>.extxyz</code>、<code>.pdb</code>、<code>.cif</code>、<code>POSCAR</code>/<code>CONTCAR</code>、LAMMPS dump、
+LAMMPS data、CP2K、QE。</p>
+<p><strong>元素列始终写干净的元素符号</strong>，无论 <code>Atom::label</code> 是什么。只有
+<code>ferro net --export-traj</code> 会把标签折进 LAMMPS dump 的元素列。</p>
 <hr>
-<h2 id="fe-job"><a class="header" href="#fe-job"><code>fe-job</code></a></h2>
-<p>Generate QC software input files for <strong>Gaussian</strong>, <strong>CP2K</strong>, or <strong>Quantum ESPRESSO</strong>.  Run without <code>-s</code> to see an overview; run with <code>-s &lt;software&gt;</code> but without <code>-i</code> to see software-specific help.  See <a href="#job-builders">Job Builders</a> for a guided overview.</p>
-<pre><code class="language-bash">fe-job                                    # overview
-fe-job -s cp2k                            # CP2K-specific help
-fe-job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-fe-job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
-fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
+<h2 id="ferro-info"><a class="header" href="#ferro-info"><code>ferro info</code></a></h2>
+<p>打印结构 / 轨迹摘要（晶胞参数、原子数、元素组成）。</p>
+<pre><code class="language-bash">ferro info -i input.xyz
+ferro info -i traj.lammpstrj --last-n 1
 </code></pre>
-<h3 id="charge--spin-shared-by-all-targets"><a class="header" href="#charge--spin-shared-by-all-targets">Charge / Spin (shared by all targets)</a></h3>
+<p>读取带位点标签的 LAMMPS dump 时会打印一次 element/label 的拆分映射表。</p>
+<hr>
+<h2 id="ferro-job"><a class="header" href="#ferro-job"><code>ferro job</code></a></h2>
+<p>为 <strong>Gaussian</strong>、<strong>CP2K</strong>、<strong>Quantum ESPRESSO</strong> 生成输入文件。不给 <code>-s</code> 打印总览；
+给了 <code>-s &lt;software&gt;</code> 但不给 <code>-i</code> 打印该软件的专属帮助。导览见
+<a href="#job-builders">Job Builders</a>。</p>
+<pre><code class="language-bash">ferro job                                    # 总览
+ferro job -s cp2k                            # CP2K 专属帮助
+ferro job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
+ferro job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
+ferro job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
+</code></pre>
+<h3 id="charge--spin三种目标共用"><a class="header" href="#charge--spin三种目标共用">Charge / Spin（三种目标共用）</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--charge</code></td><td>(from file)</td><td>Override total system charge (applied before spin estimation)</td></tr>
-<tr><td><code>--multiplicity</code></td><td>(from file)</td><td>Force spin multiplicity 2S+1; highest priority, disables auto-spin</td></tr>
-<tr><td><code>--auto-spin</code></td><td>off (on by default for cp2k/qe)</td><td>Estimate multiplicity from structure</td></tr>
+<tr><td><code>--charge</code></td><td>(from file)</td><td>覆盖体系总电荷（在自旋推断之前生效）</td></tr>
+<tr><td><code>--multiplicity</code></td><td>(from file)</td><td>强制多重度 2S+1；优先级最高，会关掉 auto-spin</td></tr>
+<tr><td><code>--auto-spin</code></td><td>off（cp2k/qe 默认开）</td><td>从结构推断多重度</td></tr>
 </tbody>
 </table>
 </div>
-<p>The estimator (magmom → oxidation state + Hund → electron parity) is documented in <a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>.</p>
+<p>推断链（magmom → 氧化态 + Hund 规则 → 电子数奇偶下限）见
+<a href="#unpaired-electron--spin-multiplicity-estimation">Spin Estimation</a>。</p>
 <h3 id="gaussian-1"><a class="header" href="#gaussian-1">Gaussian</a></h3>
 <div class="table-wrapper">
 <table>
@@ -1865,14 +2247,14 @@ fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-m &lt;method&gt;</code></td><td>(required)</td><td>DFT method, e.g. <code>B3LYP</code>, <code>PBE0</code></td></tr>
-<tr><td><code>-b &lt;basis&gt;</code></td><td>(required)</td><td>Basis set, e.g. <code>6-31G*</code>, <code>def2-TZVP</code></td></tr>
-<tr><td><code>-o &lt;file&gt;</code></td><td><code>job.gjf</code></td><td>Output file</td></tr>
+<tr><td><code>-m &lt;method&gt;</code></td><td>(required)</td><td>DFT 方法，如 <code>B3LYP</code>、<code>PBE0</code></td></tr>
+<tr><td><code>-b &lt;basis&gt;</code></td><td>(required)</td><td>基组，如 <code>6-31G*</code>、<code>def2-TZVP</code></td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>job.gjf</code></td><td>输出文件</td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="cp2k-1"><a class="header" href="#cp2k-1">CP2K</a></h3>
-<h4 id="task--electronic-structure"><a class="header" href="#task--electronic-structure">Task &amp; Electronic Structure</a></h4>
+<h4 id="任务与电子结构"><a class="header" href="#任务与电子结构">任务与电子结构</a></h4>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1881,18 +2263,18 @@ fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
 <tbody>
 <tr><td><code>--task</code></td><td><code>energy</code></td><td><code>energy</code>, <code>force</code>, <code>geo-opt</code>, <code>cell-opt</code>, <code>md</code>, <code>freq</code></td></tr>
 <tr><td><code>--functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>blyp</code>, <code>pbe0</code>, <code>b3lyp</code>, <code>revpbe</code>, <code>pbesol</code>, <code>scan</code>, <code>r2scan</code>, <code>hse06</code></td></tr>
-<tr><td><code>--cp2k-basis</code></td><td><code>dzvp-molopt-sr</code></td><td><code>dzvp-molopt-sr</code>, <code>tzvp-molopt</code>, <code>tzv2p-molopt</code>, <code>dzvp-gth</code>, <code>tzvp-gth</code>, <code>pob-dzvp</code>, <code>pob-tzvp</code> (all-electron), or any custom string</td></tr>
+<tr><td><code>--cp2k-basis</code></td><td><code>dzvp-molopt-sr</code></td><td><code>dzvp-molopt-sr</code>, <code>tzvp-molopt</code>, <code>tzv2p-molopt</code>, <code>dzvp-gth</code>, <code>tzvp-gth</code>, <code>pob-dzvp</code>, <code>pob-tzvp</code>（全电子），或任意自定义字符串</td></tr>
 <tr><td><code>--dispersion</code></td><td><code>none</code></td><td><code>none</code>, <code>d3</code>, <code>d3bj</code></td></tr>
-<tr><td><code>--scf</code></td><td><code>diag</code></td><td><code>diag</code> (metals/large), <code>ot</code> (insulators)</td></tr>
-<tr><td><code>--pbc</code></td><td>(auto)</td><td><code>xyz</code>, <code>z</code>, <code>none</code>; auto-detected from cell if omitted</td></tr>
-<tr><td><code>--kpoints</code></td><td>(none)</td><td>Three integers, e.g. <code>--kpoints 2 2 2</code></td></tr>
-<tr><td><code>--cutoff</code></td><td><code>400</code></td><td>Plane-wave cutoff [Ry]</td></tr>
-<tr><td><code>--rel-cutoff</code></td><td><code>50</code></td><td>Relative cutoff [Ry]</td></tr>
-<tr><td><code>--smear</code></td><td>off</td><td>Enable Fermi–Dirac smearing</td></tr>
+<tr><td><code>--scf</code></td><td><code>diag</code></td><td><code>diag</code>（金属/大体系）, <code>ot</code>（绝缘体）</td></tr>
+<tr><td><code>--pbc</code></td><td>(auto)</td><td><code>xyz</code>, <code>z</code>, <code>none</code>；省略时从晶胞自动判断</td></tr>
+<tr><td><code>--kpoints</code></td><td>(none)</td><td>三个整数，如 <code>--kpoints 2 2 2</code></td></tr>
+<tr><td><code>--cutoff</code></td><td><code>400</code></td><td>平面波截断 [Ry]</td></tr>
+<tr><td><code>--rel-cutoff</code></td><td><code>50</code></td><td>相对截断 [Ry]</td></tr>
+<tr><td><code>--smear</code></td><td>off</td><td>启用 Fermi–Dirac 展宽</td></tr>
 </tbody>
 </table>
 </div>
-<h4 id="output-12"><a class="header" href="#output-12">Output</a></h4>
+<h4 id="输出-1"><a class="header" href="#输出-1">输出</a></h4>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1901,34 +2283,36 @@ fe-job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
 <tbody>
 <tr><td><code>--atom-charge</code></td><td><code>none</code></td><td><code>none</code>, <code>mulliken</code>, <code>hirshfeld</code>, <code>hirshfeld-i</code></td></tr>
 <tr><td><code>--cube</code></td><td><code>none</code></td><td><code>none</code>, <code>density</code>, <code>elf</code>, <code>hartree</code></td></tr>
-<tr><td><code>--molden</code></td><td>off</td><td>Export Molden orbital file</td></tr>
-<tr><td><code>--project</code></td><td><code>ferro</code></td><td>CP2K project name</td></tr>
+<tr><td><code>--molden</code></td><td>off</td><td>导出 Molden 轨道文件</td></tr>
+<tr><td><code>--project</code></td><td><code>ferro</code></td><td>CP2K project 名</td></tr>
 </tbody>
 </table>
 </div>
-<h4 id="md-only-with---task-md"><a class="header" href="#md-only-with---task-md">MD (only with <code>--task md</code>)</a></h4>
+<h4 id="md仅---task-md"><a class="header" href="#md仅---task-md">MD（仅 <code>--task md</code>）</a></h4>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>Number of MD steps</td></tr>
-<tr><td><code>--md-timestep</code></td><td><code>1.0</code></td><td>Timestep [fs]</td></tr>
-<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>Temperature [K]</td></tr>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>MD 步数</td></tr>
+<tr><td><code>--md-timestep</code></td><td><code>1.0</code></td><td>步长 [fs]</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>温度 [K]</td></tr>
 <tr><td><code>--thermostat</code></td><td><code>csvr</code></td><td><code>csvr</code>, <code>nose</code>, <code>langevin</code>, <code>none</code></td></tr>
-<tr><td><code>--traj-freq</code></td><td><code>100</code></td><td>Trajectory write frequency [steps]</td></tr>
-<tr><td><code>--barostat</code></td><td>off</td><td>Enable NPT barostat</td></tr>
+<tr><td><code>--traj-freq</code></td><td><code>100</code></td><td>轨迹写出频率 [步]</td></tr>
+<tr><td><code>--barostat</code></td><td>off</td><td>启用 NPT 压浴</td></tr>
 </tbody>
 </table>
 </div>
 <blockquote>
-<p>Basis-set and pseudopotential names are resolved <strong>per element</strong> from a 2829-entry database (PBE / SCAN / all-electron, with matching valence <code>q</code>).  <code>--cp2k-basis</code> selects the family; the exact element-specific name is filled in automatically.  See <a href="#precise-basis--pseudopotential-matching">Job Builders</a>.</p>
+<p>基组与赝势名<strong>逐元素</strong>从 2829 条数据库解析（PBE / SCAN / 全电子，价电子数 <code>q</code>
+一致）。<code>--cp2k-basis</code> 选族，元素专属名自动填入。见
+<a href="#precise-basis--pseudopotential-matching">Job Builders</a>。</p>
 </blockquote>
 <h3 id="quantum-espresso-1"><a class="header" href="#quantum-espresso-1">Quantum ESPRESSO</a></h3>
-<pre><code class="language-bash">fe-job -i crystal.cif -s qe
-fe-job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
-fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
+<pre><code class="language-bash">ferro job -i crystal.cif -s qe
+ferro job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
+ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -1938,43 +2322,26 @@ fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 <tbody>
 <tr><td><code>--qe-task</code></td><td><code>scf</code></td><td><code>scf</code>, <code>nscf</code>, <code>bands</code>, <code>relax</code>, <code>vc-relax</code>, <code>md</code>, <code>vc-md</code></td></tr>
 <tr><td><code>--qe-functional</code></td><td><code>pbe</code></td><td><code>pbe</code>, <code>pbesol</code>, <code>revpbe</code>, <code>blyp</code>, <code>scan</code>, <code>r2scan</code>, <code>pbe0</code>, <code>hse06</code></td></tr>
-<tr><td><code>--ecutwfc</code></td><td><code>50</code></td><td>Plane-wave cutoff [Ry]</td></tr>
-<tr><td><code>--smearing</code></td><td><code>none</code></td><td><code>none</code>, <code>gaussian</code>, <code>mp</code>, <code>mv</code>, <code>fd</code> (mp/mv for metals)</td></tr>
-<tr><td><code>--kpoints</code></td><td>(Gamma)</td><td>Three integers → Monkhorst-Pack mesh</td></tr>
-<tr><td><code>--pseudo-dir</code></td><td><code>./pseudo</code></td><td>Pseudopotential directory (<code>&lt;El&gt;.UPF</code>)</td></tr>
-<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>MD steps (<code>--qe-task md</code>/<code>vc-md</code>)</td></tr>
-<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>MD target temperature [K]</td></tr>
-<tr><td><code>-o &lt;file&gt;</code></td><td><code>pw.in</code></td><td>Output file</td></tr>
+<tr><td><code>--ecutwfc</code></td><td><code>50</code></td><td>平面波截断 [Ry]</td></tr>
+<tr><td><code>--smearing</code></td><td><code>none</code></td><td><code>none</code>, <code>gaussian</code>, <code>mp</code>, <code>mv</code>, <code>fd</code>（金属用 mp/mv）</td></tr>
+<tr><td><code>--kpoints</code></td><td>(Gamma)</td><td>三个整数 → Monkhorst-Pack 网格</td></tr>
+<tr><td><code>--pseudo-dir</code></td><td><code>./pseudo</code></td><td>赝势目录（<code>&lt;El&gt;.UPF</code>）</td></tr>
+<tr><td><code>--md-steps</code></td><td><code>10000</code></td><td>MD 步数（<code>--qe-task md</code>/<code>vc-md</code>）</td></tr>
+<tr><td><code>--temperature</code></td><td><code>298.15</code></td><td>MD 目标温度 [K]</td></tr>
+<tr><td><code>-o &lt;file&gt;</code></td><td><code>pw.in</code></td><td>输出文件</td></tr>
 </tbody>
 </table>
 </div>
-<p><code>ibrav = 0</code>; the cell is written as <code>CELL_PARAMETERS angstrom</code> from the structure.  Spin uses the shared estimator → <code>nspin</code> / <code>tot_magnetization</code>.</p>
+<p><code>ibrav = 0</code>；晶胞按 <code>CELL_PARAMETERS angstrom</code> 从结构写出。自旋走共用推断器 →
+<code>nspin</code> / <code>tot_magnetization</code>。</p>
 <hr>
-<h2 id="fe-traj"><a class="header" href="#fe-traj"><code>fe-traj</code></a></h2>
-<p>Structural analysis of MD trajectories.</p>
-<pre><code class="language-bash">fe-traj -m &lt;mode&gt; -i traj.dump [flags] -o output
+<h2 id="ferro-traj"><a class="header" href="#ferro-traj"><code>ferro traj</code></a></h2>
+<p>七个轨迹分析，共用同一条导出管线：一份长表或宽表 csv + 可选 PNG。</p>
+<pre><code class="language-bash">ferro traj &lt;command&gt; -i traj.lammpstrj [flags] -o &lt;suffix&gt;
 </code></pre>
-<h3 id="modes"><a class="header" href="#modes">Modes</a></h3>
-<h4 id="gr--radial-distribution-function"><a class="header" href="#gr--radial-distribution-function"><code>gr</code> — Radial Distribution Function</a></h4>
-<p>Computes partial and total $g(r)$ plus coordination numbers $\text{CN}(r)$.</p>
-<pre><code class="language-bash">fe-traj -m gr -i traj.dump --r-max 10.0 --dr 0.01 --r-cut 2.3 -o gr.dat
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--r-max</code></td><td>10.005</td><td>Maximum radius [Å]</td></tr>
-<tr><td><code>--dr</code></td><td>0.01</td><td>Bin width [Å]</td></tr>
-<tr><td><code>--r-cut</code></td><td>2.3</td><td>CN integration cutoff [Å]</td></tr>
-</tbody>
-</table>
-</div>
-<p>Output: <code>&lt;stem&gt;.dat</code> (g(r)) and <code>&lt;stem&gt;_cn.dat</code> (coordination numbers)</p>
-<h4 id="sq--structure-factor"><a class="header" href="#sq--structure-factor"><code>sq</code> — Structure Factor</a></h4>
-<p>Computes $S(q)$ via Fourier transform of $g(r)$.</p>
-<pre><code class="language-bash">fe-traj -m sq -i traj.dump --q-max 25.0 --dq 0.05 --weighting xrd -o sq.dat
+<h3 id="gr--径向分布函数"><a class="header" href="#gr--径向分布函数"><code>gr</code> — 径向分布函数</a></h3>
+<p>$g(r)$ 与配位数 $\text{CN}(r)$。</p>
+<pre><code class="language-bash">ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -o run1
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -1982,15 +2349,19 @@ fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--q-max</code></td><td>25.0</td><td>Maximum $q$ [Å⁻¹]</td></tr>
-<tr><td><code>--dq</code></td><td>0.05</td><td>$q$ bin width [Å⁻¹]</td></tr>
-<tr><td><code>--weighting</code></td><td><code>both</code></td><td><code>xrd</code>, <code>neutron</code>, or <code>both</code></td></tr>
+<tr><td><code>--r-min</code></td><td>0.001</td><td>最小半径 [Å]</td></tr>
+<tr><td><code>--r-max</code></td><td>10.005</td><td>最大半径 [Å]；clamp 到最小<strong>面间距</strong>的一半（非最短边长）</td></tr>
+<tr><td><code>--dr</code></td><td>0.002</td><td>分箱宽度 [Å]</td></tr>
+<tr><td><code>--plot</code></td><td>off</td><td>另写 PNG（两格：g(r) | CN(r)），需要指定配对</td></tr>
 </tbody>
 </table>
 </div>
-<h4 id="msd--mean-squared-displacement"><a class="header" href="#msd--mean-squared-displacement"><code>msd</code> — Mean Squared Displacement</a></h4>
-<p>Computes MSD and directional components; supports NPT and non-periodic trajectories.</p>
-<pre><code class="language-bash">fe-traj -m msd -i traj.dump --dt 2.0 --shift 10 --elements Li -o msd.dat
+<p><strong>长表</strong>：<code>file, r, center, neighbor, gr, cn</code>。类型进数据列，故元素集不同的轨迹可直接
+堆叠；不给 <code>-a/-b</code> 是加行而不是加列。<code>gr</code> 对称（<code>A-B</code> == <code>B-A</code>），<code>cn</code> 有向
+（<code>CN(A→B)</code>），这个区别写进了 <code>center</code>/<code>neighbor</code> 两列而不是文档注脚。</p>
+<h3 id="sq--结构因子"><a class="header" href="#sq--结构因子"><code>sq</code> — 结构因子</a></h3>
+<p>对 $g(r)$ 做傅里叶变换得到 $S(q)$。</p>
+<pre><code class="language-bash">ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -o run1
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -1998,15 +2369,20 @@ fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
-<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
-<tr><td><code>--elements</code></td><td>(all)</td><td>Comma-separated element filter</td></tr>
+<tr><td><code>--q-min</code></td><td>0.1</td><td>最小 $q$ [Å⁻¹]</td></tr>
+<tr><td><code>--q-max</code></td><td>25.0</td><td>最大 $q$ [Å⁻¹]</td></tr>
+<tr><td><code>--dq</code></td><td>0.02</td><td>$q$ 分箱宽度 [Å⁻¹]</td></tr>
+<tr><td><code>--weighting</code></td><td><code>both</code></td><td><code>none</code>, <code>xrd</code>, <code>neutron</code>, <code>both</code></td></tr>
+<tr><td><code>--plot</code></td><td>off</td><td>另写 PNG（两格：XRD | Neutron）</td></tr>
 </tbody>
 </table>
 </div>
-<h4 id="angle--bond-angle-distribution"><a class="header" href="#angle--bond-angle-distribution"><code>angle</code> — Bond Angle Distribution</a></h4>
-<p>Computes $P(\theta)$ for all A–B–C triplets.</p>
-<pre><code class="language-bash">fe-traj -m angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 --d-angle 0.1 -o angle.dat
+<p><code>gr</code> 的 <code>--r-min</code> / <code>--r-max</code> / <code>--dr</code> 同样生效——它们决定被变换的那条 $g(r)$ 的范围。</p>
+<p><strong>宽表</strong>：<code>file, q, total_xrd, total_neutron</code>，其后每个配对三列
+（<code>_sq</code> / <code>_xrd</code> / <code>_neutron</code>，只出规范半边）。主产物是两条 total（一行一个 $q$），
+加权 partial 是能求和还原 total 的诊断分解。</p>
+<h3 id="msd--均方位移"><a class="header" href="#msd--均方位移"><code>msd</code> — 均方位移</a></h3>
+<pre><code class="language-bash">ferro traj msd -i traj.lammpstrj --dt 2.0 --shift 10 --elements Li --fit-range 0.3,0.8 -o run1
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -2014,39 +2390,108 @@ fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--r-cut-ab</code></td><td>2.3</td><td>A–B bond cutoff [Å]</td></tr>
-<tr><td><code>--r-cut-bc</code></td><td>2.3</td><td>C–B bond cutoff [Å]</td></tr>
-<tr><td><code>--d-angle</code></td><td>0.1</td><td>Histogram bin width [°]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>步长 [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>时间原点间隔 [帧]</td></tr>
+<tr><td><code>--elements</code></td><td>(全部)</td><td>逗号分隔的元素过滤</td></tr>
+<tr><td><code>--fit-range</code></td><td>(无)</td><td><code>FMIN,FMAX</code> 线性拟合窗口（轨迹分数）→ 自扩散系数 D</td></tr>
+<tr><td><code>--plot</code></td><td>off</td><td>另写 PNG（2×2：total | a | b | c）</td></tr>
 </tbody>
 </table>
 </div>
+<p>给了 <code>--fit-range</code> 即计算并打印 $D = \text{slope}/6$ 与 $R^2$（与 <code>--plot</code> 无关）。</p>
+<h3 id="angle--键角分布"><a class="header" href="#angle--键角分布"><code>angle</code> — 键角分布</a></h3>
+<pre><code class="language-bash">ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 -o run1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--r-cut-ab</code></td><td>2.3</td><td>端 A 到中心 B 的截断 [Å] —— A 是 <code>-a</code>/<code>-x</code> 给的那个</td></tr>
+<tr><td><code>--r-cut-bc</code></td><td>2.3</td><td>端 C 到中心 B 的截断 [Å] —— C 是 <code>-c</code>/<code>-z</code> 给的那个</td></tr>
+<tr><td><code>--angle-min</code></td><td>0.0</td><td>直方图下界 [°]</td></tr>
+<tr><td><code>--angle-max</code></td><td>180.0</td><td>直方图上界 [°]（闭区间）</td></tr>
+<tr><td><code>--d-angle</code></td><td>0.1</td><td>分箱宽度 [°]</td></tr>
+<tr><td><code>--plot</code></td><td>off</td><td>另写 PNG，图例含 mean ± std</td></tr>
+</tbody>
+</table>
+</div>
+<p>不指定三元组时两个截断回落到规范 (Z, 符号) 顺序；两端同类型时两者都取
+<code>min(--r-cut-ab, --r-cut-bc)</code>。区间外的角被<strong>丢弃</strong>，不只是不显示。</p>
+<p><strong>长表</strong>：<code>file, angle, end_a, center, end_c, count, p</code>。保留整数 <code>count</code> 与归一化
+<code>p</code> 两列——整数直方图是与 <code>dump2analysis</code> 逐 bin 对拍的依据。详见
+<a href="#bond-angle-distribution">Bond Angle Distribution</a>。</p>
+<h3 id="vacf--速度自相关"><a class="header" href="#vacf--速度自相关"><code>vacf</code> — 速度自相关</a></h3>
+<pre><code class="language-bash">ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --metal-units -o run1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--dt</code></td><td>1.0</td><td>步长 [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>时间原点间隔 [帧]</td></tr>
+<tr><td><code>--tau</code></td><td>(全部)</td><td>滞后窗口 [帧]</td></tr>
+<tr><td><code>--elements</code></td><td>(全部)</td><td>元素过滤</td></tr>
+</tbody>
+</table>
+</div>
+<p>列：<code>file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion</code></p>
+<h3 id="rotcorr--转动相关"><a class="header" href="#rotcorr--转动相关"><code>rotcorr</code> — 转动相关</a></h3>
+<p>分子取向矢量的 $C_2(t)$。</p>
+<pre><code class="language-bash">ferro traj rotcorr -i traj.lammpstrj --center P --neighbor O --r-cut 2.4 --dt 2.0 -o run1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--center</code></td><td>(required)</td><td>中心原子元素</td></tr>
+<tr><td><code>--neighbor</code></td><td>(required)</td><td>近邻原子元素</td></tr>
+<tr><td><code>--r-cut</code></td><td>1.2</td><td>成键搜索截断 [Å]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>步长 [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>时间原点间隔 [帧]</td></tr>
+<tr><td><code>--tau</code></td><td>(全部)</td><td>滞后窗口 [帧]</td></tr>
+</tbody>
+</table>
+</div>
+<p>列：<code>file, time, c2, integral</code></p>
+<h3 id="vanhove--van-hove-自关联"><a class="header" href="#vanhove--van-hove-自关联"><code>vanhove</code> — Van Hove 自关联</a></h3>
+<pre><code class="language-bash">ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o run1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--tau</code></td><td>(末帧)</td><td>滞后 [帧]</td></tr>
+<tr><td><code>--dt</code></td><td>1.0</td><td>步长 [fs]</td></tr>
+<tr><td><code>--shift</code></td><td>1</td><td>时间原点间隔 [帧]</td></tr>
+<tr><td><code>--r-max</code></td><td>10.0</td><td>最大位移 [Å]</td></tr>
+<tr><td><code>--dr</code></td><td>0.01</td><td>分箱宽度 [Å]</td></tr>
+<tr><td><code>--elements</code></td><td>(全部)</td><td>元素过滤</td></tr>
+</tbody>
+</table>
+</div>
+<p>列：<code>file, r, gs</code></p>
+<h3 id="绘图"><a class="header" href="#绘图">绘图</a></h3>
+<p><code>--plot</code> 出一张 PNG 分格，<strong>一格一个量、一条曲线一个输入文件</strong>；颜色按文件跨格一致，
+图例只画第一格。500 dpi，一格 2708×2083 px。</p>
+<p><code>--plot</code> <strong>冻结在自查质量</strong>，不会去追 matplotlib：数据是长表 csv，一行 seaborn 就是
+一张正经图（<code>sns.lineplot(data=df, x="r", y="gr", hue="file")</code>），对数轴、误差棒、
+主题这些属于 Python。</p>
 <hr>
-<h2 id="fe-corr"><a class="header" href="#fe-corr"><code>fe-corr</code></a></h2>
-<p>Correlation function analysis.</p>
-<pre><code class="language-bash">fe-corr -m &lt;mode&gt; -i traj.dump [flags] -o output
+<h2 id="ferro-map"><a class="header" href="#ferro-map"><code>ferro map</code></a></h2>
+<p>3-D 空间分布图（Gaussian cube 格式）。<strong>逐输入一个 <code>.cube</code></strong>，没有可堆叠的表也没有图，
+故文件名必带输入 stem（<code>density_&lt;stem&gt;.cube</code>）。</p>
+<pre><code class="language-bash">ferro map &lt;command&gt; -i traj.lammpstrj [flags] -o &lt;suffix&gt;
 </code></pre>
-<h3 id="modes-1"><a class="header" href="#modes-1">Modes</a></h3>
-<h4 id="vacf--velocity-autocorrelation-function"><a class="header" href="#vacf--velocity-autocorrelation-function"><code>vacf</code> — Velocity Autocorrelation Function</a></h4>
-<p>Computes VACF and the running Green-Kubo diffusion integral.</p>
-<pre><code class="language-bash">fe-corr -m vacf -i traj.dump --dt 2.0 --elements Li --metal-units -o vacf.dat
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
-<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
-<tr><td><code>--tau</code></td><td>(all)</td><td>Lag window [frames]</td></tr>
-<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
-</tbody>
-</table>
-</div>
-<p>Output columns: <code>time[fs]</code>, <code>vacf[v²]</code>, <code>vacf_x</code>, <code>vacf_y</code>, <code>vacf_z</code>, <code>diffusion[v²·fs]</code></p>
-<h4 id="rotcorr--rotational-autocorrelation"><a class="header" href="#rotcorr--rotational-autocorrelation"><code>rotcorr</code> — Rotational Autocorrelation</a></h4>
-<p>Computes $C_2(t)$ for molecular orientation vectors.</p>
-<pre><code class="language-bash">fe-corr -m rotcorr -i traj.dump --center P --neighbor O --r-cut 2.4 --dt 2.0 -o rotcorr.dat
+<h3 id="density--原子数密度"><a class="header" href="#density--原子数密度"><code>density</code> — 原子数密度</a></h3>
+<pre><code class="language-bash">ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -o run1
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -2054,19 +2499,21 @@ fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--center</code></td><td>(required)</td><td>Central atom element</td></tr>
-<tr><td><code>--neighbor</code></td><td>(required)</td><td>Neighbour atom element</td></tr>
-<tr><td><code>--r-cut</code></td><td>1.2</td><td>Bond search cutoff [Å]</td></tr>
-<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
-<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
-<tr><td><code>--tau</code></td><td>(all)</td><td>Lag window [frames]</td></tr>
+<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>网格维度</td></tr>
+<tr><td><code>--elements</code></td><td>(全部)</td><td>元素过滤</td></tr>
 </tbody>
 </table>
 </div>
-<p>Output columns: <code>time[fs]</code>, <code>C(t)</code>, <code>integral[fs]</code></p>
-<h4 id="vanhove--van-hove-self-correlation"><a class="header" href="#vanhove--van-hove-self-correlation"><code>vanhove</code> — Van Hove Self-Correlation</a></h4>
-<p>Computes $G_s(r, \tau)$ displacement histogram.</p>
-<pre><code class="language-bash">fe-corr -m vanhove -i traj.dump --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o vanhove.dat
+<h3 id="velocity--逐体素平均速率"><a class="header" href="#velocity--逐体素平均速率"><code>velocity</code> — 逐体素平均速率</a></h3>
+<p>需要轨迹带速度（LAMMPS metal dump 请加 <code>--metal-units</code>）。</p>
+<pre><code class="language-bash">ferro map velocity -i traj.lammpstrj --metal-units -o run1
+</code></pre>
+<h3 id="force--逐体素平均力大小"><a class="header" href="#force--逐体素平均力大小"><code>force</code> — 逐体素平均力大小</a></h3>
+<p>需要轨迹带力。</p>
+<pre><code class="language-bash">ferro map force -i traj.lammpstrj -o run1
+</code></pre>
+<h3 id="radius--硬球占据"><a class="header" href="#radius--硬球占据"><code>radius</code> — 硬球占据</a></h3>
+<pre><code class="language-bash">ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o run1
 </code></pre>
 <div class="table-wrapper">
 <table>
@@ -2074,163 +2521,82 @@ fe-job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--tau</code></td><td>(last frame)</td><td>Lag [frames]</td></tr>
-<tr><td><code>--dt</code></td><td>1.0</td><td>Timestep [fs]</td></tr>
-<tr><td><code>--shift</code></td><td>1</td><td>Origin spacing [frames]</td></tr>
-<tr><td><code>--r-max</code></td><td>10.0</td><td>Max displacement [Å]</td></tr>
-<tr><td><code>--dr</code></td><td>0.01</td><td>Bin width [Å]</td></tr>
-<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
+<tr><td><code>--radius</code></td><td>0.7</td><td>硬球半径 [Å]</td></tr>
+<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>网格维度</td></tr>
+<tr><td><code>--elements</code></td><td>(全部)</td><td>元素过滤</td></tr>
 </tbody>
 </table>
 </div>
-<p>Output columns: <code>r[Å]</code>, <code>Gs(r,tau)</code></p>
+<h3 id="sdf--团簇-sdf"><a class="header" href="#sdf--团簇-sdf"><code>sdf</code> — 团簇 SDF</a></h3>
+<pre><code class="language-bash">ferro map sdf -i traj.lammpstrj --qn 3 --former P --ligand O --cutoff-fl 2.4 \
+    --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o run1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--qn</code></td><td>3</td><td>目标 $Q_n$ 级别（0–3）</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>网络形成子元素</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>桥联配体元素</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td>2.4</td><td>形成子–配体截断 [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(无)</td><td>修饰子阳离子元素</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td>2.8</td><td>修饰子–配体截断 [Å]</td></tr>
+<tr><td><code>--grid-res</code></td><td>0.1</td><td>体素尺寸 [Å]</td></tr>
+<tr><td><code>--sigma</code></td><td>1.5</td><td>高斯展宽 [体素]</td></tr>
+<tr><td><code>--padding</code></td><td>3.0</td><td>网格边界余量 [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td>0.5</td><td>RMSD 告警阈值 [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>产物：逐原子类型一个 <code>&lt;stem&gt;_&lt;label&gt;.cube</code>（多族时 <code>&lt;stem&gt;_fam&lt;N&gt;_&lt;label&gt;.cube</code>）。</p>
+<h3 id="chg-sdf--电荷密度-sdf"><a class="header" href="#chg-sdf--电荷密度-sdf"><code>chg-sdf</code> — 电荷密度 SDF</a></h3>
+<p>从一组 QE <code>pp.x</code> 电荷密度 cube 计算 Qn 团簇周围取向平均的电子密度。<strong>不用 <code>-i</code></strong>，
+改接 <code>--cubes</code>。</p>
+<pre><code class="language-bash">ferro map chg-sdf --cubes frame_000.cube frame_001.cube frame_002.cube \
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 -o run1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>QE pp.x cube 文件，一帧一个</td></tr>
+<tr><td><code>--qn</code></td><td><code>3</code></td><td>目标 Qn 级别（0–3）</td></tr>
+<tr><td><code>--former</code></td><td><code>P</code></td><td>网络形成子元素</td></tr>
+<tr><td><code>--ligand</code></td><td><code>O</code></td><td>桥联配体元素</td></tr>
+<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>形成子–配体截断 [Å]</td></tr>
+<tr><td><code>--modifier</code></td><td>(无)</td><td>修饰子阳离子元素</td></tr>
+<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>修饰子–配体截断 [Å]</td></tr>
+<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>子网格边界余量 [Å]</td></tr>
+<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>对齐 RMSD 告警阈值 [Å]</td></tr>
+</tbody>
+</table>
+</div>
+<p>产物：<code>&lt;stem&gt;_Q&lt;n&gt;.cube</code>（一签名族一个文件）。算法见
+<a href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF</a>。</p>
+<blockquote>
+<p><code>--cubes</code> 是 <code>ferro map</code> 里唯一「多输入聚合成<strong>一张</strong> SDF」的模式，与该组其余
+「一输入一产物」的语义相反。拆分需先定义带样本计数的中间产物格式（跨文件加权平均
+不可交换），见 <code>dev/plan.md</code>。</p>
+</blockquote>
 <hr>
-<h2 id="fe-cube"><a class="header" href="#fe-cube"><code>fe-cube</code></a></h2>
-<p>3-D spatial distribution maps (Gaussian cube format).</p>
-<pre><code class="language-bash">fe-cube -m &lt;mode&gt; -i traj.dump [flags] -o output
+<h2 id="ferro-net"><a class="header" href="#ferro-net"><code>ferro net</code></a></h2>
+<p>玻璃网络拓扑：桥接配体数（P 的 Qn）、配体分类、配位数、桥联统计。</p>
+<pre><code class="language-bash">ferro net -i traj.lammpstrj --P-O=2.4
+ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
+ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
+ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 </code></pre>
-<h3 id="modes-2"><a class="header" href="#modes-2">Modes</a></h3>
-<h4 id="density--atomic-number-density"><a class="header" href="#density--atomic-number-density"><code>density</code> — Atomic Number Density</a></h4>
-<pre><code class="language-bash">fe-cube -m density -i traj.dump --nx 80 --ny 80 --nz 80 --elements Li -o li.cube
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>Grid dimensions</td></tr>
-<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
-</tbody>
-</table>
-</div>
-<h4 id="velocity--mean-speed-per-voxel"><a class="header" href="#velocity--mean-speed-per-voxel"><code>velocity</code> — Mean Speed per Voxel</a></h4>
-<p>Requires trajectory with velocities (use <code>--metal-units</code> for LAMMPS metal dumps).</p>
-<pre><code class="language-bash">fe-cube -m velocity -i traj.dump --metal-units -o velocity.cube
-</code></pre>
-<h4 id="force--mean-force-magnitude-per-voxel"><a class="header" href="#force--mean-force-magnitude-per-voxel"><code>force</code> — Mean Force Magnitude per Voxel</a></h4>
-<p>Requires trajectory with forces.</p>
-<pre><code class="language-bash">fe-cube -m force -i traj.dump -o force.cube
-</code></pre>
-<h4 id="radius--hard-sphere-occupancy"><a class="header" href="#radius--hard-sphere-occupancy"><code>radius</code> — Hard-Sphere Occupancy</a></h4>
-<pre><code class="language-bash">fe-cube -m radius -i traj.dump --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o li_radius.cube
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--radius</code></td><td>0.7</td><td>Hard-sphere radius [Å]</td></tr>
-<tr><td><code>--nx/ny/nz</code></td><td>50</td><td>Grid dimensions</td></tr>
-<tr><td><code>--elements</code></td><td>(all)</td><td>Element filter</td></tr>
-</tbody>
-</table>
-</div>
-<h4 id="sdf--cluster-sdf"><a class="header" href="#sdf--cluster-sdf"><code>sdf</code> — Cluster SDF</a></h4>
-<pre><code class="language-bash">fe-cube -m sdf -i traj.dump --qn 3 --former P --ligand O --cutoff-fl 2.4 \
-         --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o sdf
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--qn</code></td><td>3</td><td>Target $Q_n$ level (0–3)</td></tr>
-<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
-<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
-<tr><td><code>--cutoff-fl</code></td><td>2.4</td><td>Former–ligand cutoff [Å]</td></tr>
-<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
-<tr><td><code>--cutoff-ml</code></td><td>2.8</td><td>Modifier–ligand cutoff [Å]</td></tr>
-<tr><td><code>--grid-res</code></td><td>0.1</td><td>Voxel size [Å]</td></tr>
-<tr><td><code>--sigma</code></td><td>1.5</td><td>Gaussian broadening [voxels]</td></tr>
-<tr><td><code>--padding</code></td><td>3.0</td><td>Grid margin [Å]</td></tr>
-<tr><td><code>--rmsd-warn</code></td><td>0.5</td><td>RMSD warning threshold [Å]</td></tr>
-</tbody>
-</table>
-</div>
-<p>Output: <code>&lt;stem&gt;_&lt;label&gt;.cube</code> per atom type (multiple families: <code>&lt;stem&gt;_fam&lt;N&gt;_&lt;label&gt;.cube</code>).</p>
-<h4 id="chg-sdf--averaged-charge-density-sdf"><a class="header" href="#chg-sdf--averaged-charge-density-sdf"><code>chg-sdf</code> — Averaged Charge-Density SDF</a></h4>
-<p>Computes the orientationally averaged electron density around Qn clusters from a set of QE <code>pp.x</code> charge-density cube files.  Does <strong>not</strong> require a trajectory <code>-i</code>; instead takes <code>--cubes</code>.</p>
-<pre><code class="language-bash">fe-cube -m chg_sdf \
-    --cubes frame_000.cube frame_001.cube frame_002.cube \
-    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
-    -o chg_sdf
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--cubes &lt;files…&gt;</code></td><td>(required)</td><td>QE pp.x cube files, one per MD frame</td></tr>
-<tr><td><code>--qn</code></td><td><code>3</code></td><td>Target Qn level (0–3)</td></tr>
-<tr><td><code>--former</code></td><td><code>P</code></td><td>Network-former element</td></tr>
-<tr><td><code>--ligand</code></td><td><code>O</code></td><td>Bridging-ligand element</td></tr>
-<tr><td><code>--cutoff-fl</code></td><td><code>2.4</code></td><td>Former–ligand cutoff [Å]</td></tr>
-<tr><td><code>--modifier</code></td><td>(none)</td><td>Modifier cation element</td></tr>
-<tr><td><code>--cutoff-ml</code></td><td><code>2.8</code></td><td>Modifier–ligand cutoff [Å]</td></tr>
-<tr><td><code>--chg-padding</code></td><td><code>6.0</code></td><td>Sub-grid boundary margin [Å]</td></tr>
-<tr><td><code>--rmsd-warn</code></td><td><code>0.5</code></td><td>Alignment RMSD warning threshold [Å]</td></tr>
-</tbody>
-</table>
-</div>
-<p>Output: <code>&lt;stem&gt;_Q&lt;n&gt;.cube</code> (one file per signature family).</p>
-<p>See <a href="#averaged-charge-density-sdf-chg-sdf">Averaged Charge-Density SDF</a> for algorithm details.</p>
-<hr>
-<h2 id="fe-bader"><a class="header" href="#fe-bader"><code>fe-bader</code></a></h2>
-<p>Bader charge decomposition from DFT charge-density files.  Supports VASP CHGCAR and Gaussian/QE cube files.</p>
-<pre><code class="language-bash">fe-bader -i CHGCAR                      # VASP CHGCAR
-fe-bader -i charge.cube                 # Gaussian/QE cube file
-fe-bader -i CHGCAR -o bader            # custom output stem
-fe-bader -i CHGCAR --method weight     # Yu-Trinkle weight method
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>-i &lt;file&gt;</code></td><td>(required)</td><td>Input file (<code>.cube</code> → cube reader; others → CHGCAR reader)</td></tr>
-<tr><td><code>-o &lt;stem&gt;</code></td><td><code>bader</code></td><td>Output file stem</td></tr>
-<tr><td><code>--method</code></td><td><code>ongrid</code></td><td>Bader method: <code>ongrid</code>, <code>neargrid</code>, <code>offgrid</code>, <code>weight</code></td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="output-files"><a class="header" href="#output-files">Output Files</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>File</th><th>Content</th></tr>
-</thead>
-<tbody>
-<tr><td><code>&lt;stem&gt;_ACF.dat</code></td><td>Atomic Charges File — per-atom Bader charge, volume, min distance to surface</td></tr>
-<tr><td><code>&lt;stem&gt;_BCF.dat</code></td><td>Bader Charge File — per-Bader-volume charge, volume, coordinates</td></tr>
-<tr><td><code>&lt;stem&gt;_AVF.dat</code></td><td>Atomic Volume File — atom → Bader volume index mapping</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="fe-network"><a class="header" href="#fe-network"><code>fe-network</code></a></h2>
-<p>Glass network analysis: CN distribution, ligand classification (FO/NBO/BO/OBO), Qn speciation, modifier cation roles.</p>
-<pre><code class="language-bash"># 基础用法
-fe-network -i traj.dump --P-O=2.3
-
-# 混合形成子 + xlsx 输出
-fe-network -i traj.dump --P-O=2.3 --Si-O=1.8 --format xlsx -o result.xlsx
-
-# 含修饰子角色分析
-fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --modifier Zn
-
-# 多修饰子
-fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
-</code></pre>
-<h3 id="配对参数pair-arguments"><a class="header" href="#配对参数pair-arguments">配对参数（Pair Arguments）</a></h3>
-<p>截断参数使用 <code>--Former-Ligand=cutoff</code> 格式（首字母大写）：</p>
-<pre><code>--P-O=2.3     P-O 截断 2.3 Å（P 为形成子，O 为配体）
---Si-O=1.8    Si-O 截断 1.8 Å
---Zn-O=3.5    当配合 --modifier Zn 时，视为修饰子-配体截断
+<h3 id="配对参数必需至少一个"><a class="header" href="#配对参数必需至少一个">配对参数（必需，至少一个）</a></h3>
+<p>截断用 <code>--&lt;Former&gt;-&lt;Ligand&gt;=&lt;cutoff&gt;</code> 格式（元素首字母大写）。元素对写在<strong>参数名</strong>
+里，clap 建模不了，故 <code>main</code> 在解析前先把它们从 argv 剥离。</p>
+<pre><code>--P-O=2.4     P-O 截断 2.4 Å（P 为形成子，O 为配体）
+--Al-O=2.4    同一体系可有多个形成子
+--Al-F=2.1    同一形成子可有多种配体
+--Zn-O=2.6    配合 --modifier Zn 时视为修饰子–配体截断
 </code></pre>
 <h3 id="普通参数"><a class="header" href="#普通参数">普通参数</a></h3>
 <div class="table-wrapper">
@@ -2239,32 +2605,79 @@ fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
 <tr><th>参数</th><th>默认值</th><th>说明</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-i &lt;file&gt;</code></td><td>—</td><td>输入轨迹（缺省显示帮助）</td></tr>
-<tr><td><code>-o &lt;file&gt;</code></td><td><code>network</code></td><td>输出前缀</td></tr>
-<tr><td><code>--format csv|xlsx</code></td><td><code>csv</code></td><td>输出格式</td></tr>
+<tr><td><code>-i &lt;FILE&gt;...</code></td><td>—</td><td>输入轨迹（缺省显示帮助）</td></tr>
+<tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>—</td><td>输出文件名后缀</td></tr>
 <tr><td><code>--last-n N</code></td><td>全部</td><td>仅用尾部 N 帧</td></tr>
 <tr><td><code>--ncore N</code></td><td>全部核心</td><td>线程数</td></tr>
-<tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位</td></tr>
-<tr><td><code>--modifier Elem</code></td><td>—</td><td>修饰子元素（逗号分隔）</td></tr>
+<tr><td><code>--metal-units</code></td><td>关</td><td>统计不读速度/力；只对 <code>--export-traj extxyz</code> 有影响</td></tr>
+<tr><td><code>--modifier E,E</code></td><td>—</td><td><strong>只计配位数</strong>的元素，不参与桥接计数与配体分类。须同时给出各自的截断，否则报错</td></tr>
+<tr><td><code>--export-traj [FMT]</code></td><td>—</td><td>另写标注轨迹：<code>lammpstrj</code>（默认）或 <code>extxyz</code></td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="输出文件-1"><a class="header" href="#输出文件-1">输出文件</a></h3>
+<h3 id="输出-1-1"><a class="header" href="#输出-1-1">输出</a></h3>
+<p>五张 csv，各带 <code>file</code> 列：</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>文件</th><th>列</th></tr>
+</thead>
+<tbody>
+<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td></tr>
+<tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td></tr>
+<tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td></tr>
+<tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td></tr>
+<tr><td><code>network_linkage.csv</code></td><td><code>file, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>标签：<code>P_0</code>…<code>P_4</code> / <code>Al_2</code>（数字 = 桥接配体数）、<code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>、
+修饰子为裸元素符号。全部合 <code>&lt;元素&gt;_&lt;后缀&gt;</code> 约定。</p>
+<p><code>--export-traj</code> 逐输入写 <code>&lt;输入 stem&gt;_types[_&lt;后缀&gt;].&lt;ext&gt;</code>。</p>
+<p>详细说明（口径、<code>sd</code> 的含义、pandas 分析范例、两种导出格式的差别、按标签选型的
+单帧限制）见 <a href="#glass-network-analysis-ferro-net">Glass Network Analysis</a>。</p>
+<hr>
+<h2 id="ferro-bader"><a class="header" href="#ferro-bader"><code>ferro bader</code></a></h2>
+<p>从 DFT 电荷密度做 Bader 电荷分解。支持 VASP CHGCAR 与 Gaussian/QE cube。</p>
+<pre><code class="language-bash">ferro bader -i CHGCAR                      # VASP CHGCAR
+ferro bader -i charge.cube                 # Gaussian/QE cube
+ferro bader -i CHGCAR -o bader             # 自定义输出 stem
+ferro bader -i CHGCAR --method weight      # Yu-Trinkle weight 方法
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i &lt;file&gt;</code></td><td>(required)</td><td>输入（<code>.cube</code> → cube reader；其余 → CHGCAR reader）</td></tr>
+<tr><td><code>-o &lt;stem&gt;</code></td><td><code>bader</code></td><td>输出文件 stem</td></tr>
+<tr><td><code>--method</code></td><td><code>ongrid</code></td><td><code>ongrid</code>, <code>neargrid</code>, <code>offgrid</code>, <code>weight</code></td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="输出文件"><a class="header" href="#输出文件">输出文件</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>文件</th><th>内容</th></tr>
 </thead>
 <tbody>
-<tr><td><code>&lt;stem&gt;_cn.csv</code></td><td>CN 分布及均值</td></tr>
-<tr><td><code>&lt;stem&gt;_ligand.csv</code></td><td>FO / NBO / BO / OBO 分布</td></tr>
-<tr><td><code>&lt;stem&gt;_qn.csv</code></td><td>Qn 物种分布</td></tr>
-<tr><td><code>&lt;stem&gt;_modifier.csv</code></td><td>Free / T / B / M 分布（有 <code>--modifier</code> 时）</td></tr>
+<tr><td><code>&lt;stem&gt;_ACF.dat</code></td><td>Atomic Charges File —— 逐原子 Bader 电荷、体积、到表面的最小距离</td></tr>
+<tr><td><code>&lt;stem&gt;_BCF.dat</code></td><td>Bader Charge File —— 逐 Bader 体积的电荷、体积、坐标</td></tr>
+<tr><td><code>&lt;stem&gt;_AVF.dat</code></td><td>Atomic Volume File —— 原子 → Bader 体积索引映射</td></tr>
 </tbody>
 </table>
 </div>
-<p>XLSX 格式将上述内容写入同一文件的多个 sheet（CN、Ligand、Qn、Modifier）。</p>
-<p>详细说明见 <a href="#glass-network-analysis-fe-network">Glass Network Analysis</a>。</p>
+<p>这三个是 Henkelman 组的 bader 格式，外部工具在解析，故不随其余产物迁到 csv。</p>
+<hr>
+<h2 id="输出格式约定"><a class="header" href="#输出格式约定">输出格式约定</a></h2>
+<p>除 <code>ferro map</code>（cube）与 <code>ferro bader</code>（ACF/BCF/AVF）外，所有产物都是<strong>一份 csv</strong>，
+数据上方有一个 <code>#</code> 注释块，放共享参数与 <code>[inputs]</code> 清单（逐输入的帧数、原子数、
+体积、状态）。</p>
+<p>那个块是给人看的——<code>pandas.read_csv(comment="#")</code> 会丢掉它，所以<strong>脚本必须解析的
+东西一律是列</strong>，不会藏在注释里。</p>
+<p>数值格式统一 <code>{:.6e}</code>，<strong>NaN 渲染为空字段</strong>（列并集下某输入缺的列就是空，不是 0）。</p>
 
                     </main>
 
@@ -2298,11 +2711,11 @@ fe-network -i traj.dump --P-O=2.3 --Zn-O=3.5 --Na-O=3.2 --modifier Zn,Na
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

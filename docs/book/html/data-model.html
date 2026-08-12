@@ -15,8 +15,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-2459343d.css">
-        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-87948516.js";
+            window.path_to_searchindex_js = "searchindex-b66a67f5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3dd42c47.js"></script>
+        <script src="toc-974254eb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -260,23 +260,57 @@ c\cos\beta &amp; c(\cos\alpha - \cos\beta\cos\gamma)/\sin\gamma &amp; c\sqrt{1 -
 }
 <span class="boring">}</span></code></pre>
 <p>NPT trajectories (variable box per frame) are handled naturally: each <code>Frame</code> carries its own <code>Cell</code>.</p>
-<h2 id="pseudo-element-labels"><a class="header" href="#pseudo-element-labels">Pseudo-Element Labels</a></h2>
-<p>ferro supports pseudo-element labels for sub-classified atoms (e.g. after network analysis):</p>
+<h2 id="element-vs-label"><a class="header" href="#element-vs-label">Element vs. Label</a></h2>
+<p><code>Atom::element</code> 是<strong>化学元素</strong>；<code>Atom::label</code> 是可选的<strong>位点类型</strong>。两者分开存放，
+所以一个原子既能按元素选也能按位点选，而不必二选一：</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Atom { element: "P".into(), label: Some("P_3".into()), .. }
+<span class="boring">}</span></code></pre>
+<p>分析命令的两组选择参数互斥：<code>-a/-b/-c</code> 按 <code>element</code>，<code>-x/-y/-z</code> 按 <code>label</code>。</p>
+<h3 id="标签约定"><a class="header" href="#标签约定">标签约定</a></h3>
+<p>位点标签一律形如 <code>&lt;元素&gt;_&lt;后缀&gt;</code>，按<strong>首个下划线</strong>拆分。后缀里再有下划线不影响
+（<code>O_b_P_P</code> 的元素仍是 <code>O</code>）。</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Label</th><th>Meaning</th></tr>
+<tr><th>标签</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td><code>P0/P1/P2/P3</code></td><td>Phosphorus with Qn connectivity</td></tr>
-<tr><td><code>Of</code></td><td>Free oxygen (0 P neighbours)</td></tr>
-<tr><td><code>On</code></td><td>Non-bridging oxygen (1 P neighbour)</td></tr>
-<tr><td><code>Ob</code></td><td>Bridging oxygen (≥2 P neighbours)</td></tr>
-<tr><td><code>Zn</code>, <code>Na</code>, …</td><td>Modifier cation symbols</td></tr>
+<tr><td><code>P_0</code> … <code>P_4</code>、<code>Al_2</code></td><td>形成子，数字 = 桥接配体数（P 的即 Qn）</td></tr>
+<tr><td><code>O_f</code></td><td>自由配体（不连任何形成子）</td></tr>
+<tr><td><code>O_n</code></td><td>非桥配体（连 1 个）</td></tr>
+<tr><td><code>O_b</code></td><td>桥联配体（连 2 个）</td></tr>
+<tr><td><code>O_t</code></td><td>三配位配体（连 ≥3 个，tricluster）</td></tr>
+<tr><td><code>Zn</code>、<code>Na</code>…</td><td>修饰子，裸元素符号，无角色后缀</td></tr>
 </tbody>
 </table>
 </div>
-<p>Atomic-number lookup (<code>elem_z</code>) resolves pseudo-labels by stripping suffixes: <code>"P3"</code> → P (Z=15), <code>"Ob"</code> → O (Z=8).</p>
+<blockquote>
+<p>0.2.1 之前的旧格式（<code>P0</code> / <code>Of</code> / <code>On_P</code> / <code>Ob_P_P</code> / <code>X</code> / <code>Zn_f</code>）已全部替换，
+<strong>不留读取兼容层</strong>：重跑一次 <code>ferro net --export-traj</code> 即为新格式，而加格式猜测
+反而可能把真元素误判成旧标签。</p>
+</blockquote>
+<h3 id="谁会填-label"><a class="header" href="#谁会填-label">谁会填 <code>label</code></a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>来源</th><th>说明</th></tr>
+</thead>
+<tbody>
+<tr><td>LAMMPS dump reader</td><td><code>element</code> 列写成 <code>P_3</code> 时拆成 <code>element="P"</code> + <code>label="P_3"</code>，读完打印一次映射表</td></tr>
+<tr><td>extxyz reader</td><td>独立的 <code>label:S:1</code> 列</td></tr>
+<tr><td>CIF / CP2K / QE reader</td><td>各自的位点名（<code>O1</code>、<code>Fe1</code>）——注意这些<strong>不合</strong> <code>&lt;元素&gt;_&lt;后缀&gt;</code> 约定</td></tr>
+<tr><td><code>ferro net --export-traj</code></td><td>分类结果写进 <code>label</code>，<code>element</code> 保持元素</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="谁会写出-label"><a class="header" href="#谁会写出-label">谁会写出 <code>label</code></a></h3>
+<p><strong>writer 从不自作主张把 <code>label</code> 折进元素列。</strong> <code>ferro convert</code> 无论标签如何都写干净的
+元素符号。只有 <code>ferro net --export-traj</code> 折叠，且只对 LAMMPS dump——那个格式只有一列
+名字放得下第二个名字；extxyz 走独立的 <code>label:S:1</code> 列，两个方向都无损。</p>
+<p>折叠带守卫：标签不形如 <code>&lt;元素&gt;_…</code> 时不折并计数告警。CIF 的 <code>O1</code> 折进去后再读回来，
+就是一个不存在的元素 <code>O1</code>。</p>
 
                     </main>
 
@@ -322,11 +356,11 @@ c\cos\beta &amp; c(\cos\alpha - \cos\beta\cos\gamma)/\sin\gamma &amp; c\sqrt{1 -
 
         <script src="elasticlunr-ef4e11c1.min.js"></script>
         <script src="mark-09e88c2c.min.js"></script>
-        <script src="searcher-c2a407aa.js"></script>
+        <script src="searcher-09f2665d.js"></script>
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-a0b12cfe.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

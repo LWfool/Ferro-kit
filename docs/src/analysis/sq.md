@@ -101,10 +101,16 @@ in `scripts/trajcheck.py`.
 
 ## Output
 
-```bash
-fe-traj -m sq -i traj.dump -o output
-# writes output.gr, output.sq
-```
+`sq[_<suffix>].csv`，**宽表**：`file, q, total_xrd, total_neutron`，其后每个配对三列
+（`<pair>_sq` / `_xrd` / `_neutron`，只出规范半边——$S(q)$ 没有有向的对应物）。
+
+主产物是两条 total（一行一个 $q$），加权 partial $w_{ij}(q)\,S_{ij}(q)$ 是能逐点求和
+还原 total 的诊断分解。元素集不同的输入取列并集，**缺口留空（NaN），不插值不补零**。
+
+`sq` 不再另写一份 `gr`；需要 $g(r)$ 就单独跑 `ferro traj gr`。
+
+所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
 
 The `.sq` file header records both the g(r) parameters (used as input) and the S(q) parameters.  
 Column ordering matches the `.gr` file. Additional columns `total_xrd` and/or `total_neutron` are appended when weighting is requested.
