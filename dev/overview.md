@@ -74,7 +74,19 @@ ferro bader | convert | info | job
 删除、标签格式全变、表名与列结构全变），按上面的规则本应是 0.3.0，但按用户当时的
 明确要求走了 patch 位。翻 git 历史时注意：**0.2.0 → 0.2.1 之间有 breaking change**。
 
-`v0.2.1` **之后**（尚未发版）还有第二批 net 破坏性改动：六张表全部改名
-（`bridge`→`qn`、`partner`→`qn_partner`、`oxy`→`ligand_type`、`cn`→`coordination`、
-`mean`→`average`）、Al 退出 Qn 表、非 Qn 形成子的 label 数字由桥接数改为配位数、
-`linkage` 加 `linkage`/`ligand` 两列。下次发版时这些一并计入。
+`v0.2.1` **之后有一批尚未发版的 net 破坏性改动**，按用户要求暂不动版本号，
+等配套的 Python 绘图脚本完成后一并升。届时应计入的：
+
+| 改动 | 影响 |
+|---|---|
+| 六张表改名 | `bridge`→`qn`、`partner`→`qn_partner`、`oxy`→`ligand_type`、`cn`→`coordination`、`mean`→**删除** |
+| 新增 `composition` 表 | 一物种一行的结构组成，取代 `average` |
+| Al 退出 Qn 表 | 非 Qn 形成子只在 `coordination` 出现 |
+| 标签数字换义 | 非 Qn 形成子由桥接数改为配位数（`Al_4` = 四配位） |
+| 两套标签词汇 | 分布表 `P-Q2`（单元），`linkage` 与导出轨迹 `P_2`（原子） |
+| `linkage` 加列 | `linkage`（展示）、`ligand`（配体元素，进键） |
+| `ligand_type` 改列 | `label` 合并为 `Al-O_b-P`，原标签移入 `type` |
+| 配体 `fraction` 分母 | 全体配体原子 → 该配体元素 |
+| 新增 `--qn` | 替换默认 Qn 名单 `{B,P,Si}` |
+
+按仓库自己的规则这批应升次版本位（0.3.0）。

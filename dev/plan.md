@@ -506,7 +506,30 @@ linkage 总观测 3589 不变、`ligand_type` 与 `coordination` 逐行相同、
 ## 优先级高
 
 > 2026-08-12 更新：原「net type 标签重做」与「net 接入批处理」两项**已完成**，
-> 归档见下方。剩下 `chg-sdf` 一项。
+> 归档见下方。现存两项。
+
+### scripts/：net 六张表的 Python 绘图脚本（2026-08-12 提出）
+
+**发版的前置条件** —— 用户已明确：版本号等这批脚本完成后，与 net 的破坏性改动
+一并升（见 `overview.md` 的待发版清单）。
+
+`--plot` 冻结在自检质量，不追 matplotlib，所以 net 的图归 Python。六张表是长表
+CSV，`pandas.read_csv(comment="#")` 直接可读，脚本要覆盖的图：
+
+| 图 | 数据源 | 形状 |
+|---|---|---|
+| Qn 分布柱状图 | `network_qn.csv` | 一组一个输入，`hue="file"` |
+| 结构组成 | `network_composition.csv` | 堆叠柱，按 `element` 分面 |
+| 配位数分布 | `network_coordination.csv` | 按 `element` 分面 |
+| 配体类型占比 | `network_ligand_type.csv` | 堆叠柱，`type` 上色、伙伴对细分 |
+| $Q^n(m\mathrm{Al})$ | `network_qn_partner.csv` | 分组柱，`m_Al` 上色 |
+| Al-O-Al 配位矩阵 | `network_linkage.csv` | `pivot_table(cn_a, cn_b)` 热图 |
+
+批处理输出天然带 `file` 列，所以脚本应当**默认按 `file` 分组**而不是假定单输入 ——
+这是与现有四个对拍脚本不同的地方，它们面向的是单文件比对。
+
+误差棒用 `sd` 列，但**图注必须写明它是快照间的散布而非标准误**（MD 相邻帧强相关），
+否则读者会按 $1/\sqrt{N}$ 去理解它。
 
 ### ferro map chg-sdf 的 --cubes 拆成单文件（2026-08-11 提为高）
 

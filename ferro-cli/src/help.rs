@@ -216,7 +216,8 @@ Spatial maps             one .cube grid file per input — no summary table, no 
   map density | velocity | force | radius | sdf | chg-sdf
 
 Topology & charges
-  net            Qn speciation, ligand types, coordination numbers;
+  net            Structural composition, Qn speciation, ligand types,
+                 coordination numbers, bridge connectivity;
                  --export-traj also writes the classified trajectory
   bader          Bader charge partitioning (ACF/BCF/AVF)
 
