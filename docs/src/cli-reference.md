@@ -7,7 +7,7 @@
 ```
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net                                                      → 五张堆叠 csv
+ferro net                                                      → 六张堆叠 csv
                                                                  + 可选标注轨迹
 ferro bader | convert | info | job
 ```
@@ -485,11 +485,12 @@ ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 
 ### 输出
 
-五张 csv，各带 `file` 列：
+六张 csv，各带 `file` 列：
 
 | 文件 | 列 |
 |---|---|
-| `network_bridge.csv` | `file, former, n_bridge, m_<X>…, count, fraction, sd` |
+| `network_bridge.csv` | `file, former, n_bridge, count, fraction, sd`（**P 的即 Qn 分布**） |
+| `network_partner.csv` | `file, former, n_bridge, m_<X>…, count, fraction, sd` |
 | `network_oxy.csv` | `file, type, former_a, former_b, count, fraction, sd` |
 | `network_cn.csv` | `file, element, cn, count, fraction, sd` |
 | `network_mean.csv` | `file, element, mean_n_bridge, mean_cn` |

@@ -21,7 +21,7 @@ eight `fe-*` binaries; they are gone, with no compatibility shims — see
 |---|---|---|
 | `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
 | `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | 3-D spatial maps | one `.cube` per input |
-| `ferro net` | Glass network topology | five stacked CSVs + optional labelled trajectory |
+| `ferro net` | Glass network topology | six stacked CSVs + optional labelled trajectory |
 | `ferro bader` | Bader charge partitioning | ACF/BCF/AVF |
 | `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
 

@@ -38,7 +38,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b66a67f5.js";
+            window.path_to_searchindex_js = "searchindex-ebcc719c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-974254eb.js"></script>
@@ -251,7 +251,7 @@ eight <code>fe-*</code> binaries; they are gone, with no compatibility shims —
 <tbody>
 <tr><td><code>ferro traj gr|sq|msd|angle|vacf|rotcorr|vanhove</code></td><td>Trajectory analysis</td><td>one stacked CSV + optional PNG</td></tr>
 <tr><td><code>ferro map density|velocity|force|radius|sdf|chg-sdf</code></td><td>3-D spatial maps</td><td>one <code>.cube</code> per input</td></tr>
-<tr><td><code>ferro net</code></td><td>Glass network topology</td><td>five stacked CSVs + optional labelled trajectory</td></tr>
+<tr><td><code>ferro net</code></td><td>Glass network topology</td><td>six stacked CSVs + optional labelled trajectory</td></tr>
 <tr><td><code>ferro bader</code></td><td>Bader charge partitioning</td><td>ACF/BCF/AVF</td></tr>
 <tr><td><code>ferro convert</code> / <code>info</code> / <code>job</code></td><td>Structure I/O, info, QC input files</td><td>files / stdout</td></tr>
 </tbody>
@@ -1553,14 +1553,15 @@ ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="glass-network-analysis-ferro-net"><a class="header" href="#glass-network-analysis-ferro-net">Glass Network Analysis (<code>ferro net</code>)</a></h1>
 <p><code>ferro net</code> 对 MD 轨迹逐帧建立玻璃网络拓扑，把每个原子归入一个<strong>结构化的类型</strong>，
-再在全轨迹上累加成分布。产物是五张长表，外加可选的标注轨迹。</p>
+再在全轨迹上累加成分布。产物是六张长表，外加可选的标注轨迹。</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>量</th><th>表</th><th>含义</th></tr>
 </thead>
 <tbody>
-<tr><td>桥接配体数</td><td><code>bridge</code></td><td>形成子连了几个桥联配体（P 的即 Qn），可按伙伴元素分解</td></tr>
+<tr><td>桥接配体数</td><td><code>bridge</code></td><td>形成子连了几个桥联配体 —— <strong>P 的这几行就是 Qn 分布</strong></td></tr>
+<tr><td>异核桥分解</td><td><code>partner</code></td><td>上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$</td></tr>
 <tr><td>配体分类</td><td><code>oxy</code></td><td><code>O_f</code> / <code>O_n</code> / <code>O_b</code> / <code>O_t</code>，伙伴元素以数据列给出</td></tr>
 <tr><td>配位数</td><td><code>cn</code></td><td>形成子与修饰子的总配位数分布</td></tr>
 <tr><td>均值</td><td><code>mean</code></td><td>一元素一行的平均桥接数与平均配位数</td></tr>
@@ -1624,12 +1625,15 @@ $\sum(\text{桥接数}) \neq 2 \times |\text{O_b}|$，因为一个 <code>O_t</co
 形成子的惯例——<strong>Al 没有 Qn 这一说</strong>，描述 Al 请看 <code>cn</code> 表。对 P 而言 <code>n_bridge</code>
 就是 Qn。</p>
 <h3 id="异核桥分解-qnmmathrmal"><a class="header" href="#异核桥分解-qnmmathrmal">异核桥分解 $Q^n(m\mathrm{Al})$</a></h3>
-<p><code>bridge</code> 表另有 <code>m_&lt;X&gt;</code> 列：桥接数中通向元素 X 的那部分，即文献（Brow、Eckert 等）
-的 $Q^n(m\mathrm{Al})$ 记号。</p>
+<p><code>partner</code> 表在 <code>bridge</code> 之上多一维：<code>m_&lt;X&gt;</code> 是桥接数中通向元素 X 的那部分，即文献
+（Brow、Eckert 等）的 $Q^n(m\mathrm{Al})$ 记号。</p>
 <ul>
 <li><code>n_bridge=2, m_Al=1, m_P=1</code> → $Q^2(1\mathrm{Al})$</li>
-<li><code>groupby("n_bridge")</code> 即退回简单 Qn 分布</li>
+<li><code>bridge</code> 就是它对伙伴维度的<strong>边际</strong></li>
 </ul>
+<p>两者是<strong>两张表而不是一张加 <code>groupby</code></strong>：简单 Qn 分布是主产物，必须打开文件就能读到，
+不能要求先做聚合。这与 <code>mean</code> 独立成表是同一条判据——粒度不同就该分表。
+<code>sd</code> 也必须各自累加而不是相加：相关项之和的方差不等于方差之和。</p>
 <p>只对<strong>恰好两个形成子</strong>的配体成立：三配位配体没有唯一对端，计入 <code>n_bridge</code> 但不进任何
 <code>m_&lt;X&gt;</code>，故 $\sum m \le n_\text{bridge}$，差额就是三配位桥的数目——在表里可见而非隐藏。</p>
 <p>这个分解<strong>无法从 <code>linkage</code> 表反推</strong>：两座 P–O–Al 桥可能来自一个 $m_\mathrm{Al}=2$ 的 P，
@@ -1705,7 +1709,7 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 </div>
 <hr>
 <h2 id="输出"><a class="header" href="#输出">输出</a></h2>
-<p>五张 CSV，各带 <code>file</code> 列，<code>#</code> 注释块里是共享参数与 <code>[inputs]</code> 清单
+<p>六张 CSV，各带 <code>file</code> 列，<code>#</code> 注释块里是共享参数与 <code>[inputs]</code> 清单
 （<code>pandas.read_csv(comment="#")</code> 会自动丢掉）。</p>
 <div class="table-wrapper">
 <table>
@@ -1713,7 +1717,8 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 <tr><th>文件</th><th>列</th><th>一行一个</th></tr>
 </thead>
 <tbody>
-<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td><td>(形成子, 桥接数, 伙伴分解)</td></tr>
+<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, count, fraction, sd</code></td><td>(形成子, 桥接数)</td></tr>
+<tr><td><code>network_partner.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td><td>(形成子, 桥接数, 伙伴分解)</td></tr>
 <tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td><td>(配体类型, 伙伴对)</td></tr>
 <tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td><td>(元素, 配位数)</td></tr>
 <tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td><td>元素</td></tr>
@@ -1721,9 +1726,9 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 </tbody>
 </table>
 </div>
-<p>三张分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让
-<code>groupby</code> 无意义，故保持三张。<code>mean</code> 是「一元素一行」的另一种粒度，故独立成表，
-而不是在每行重复一个稀疏列。</p>
+<p>分布表的值列语义各不相同（桥接数 / 类型标签 / 配位数），并成一张会让 <code>groupby</code>
+无意义，故各自成表。<code>bridge</code> 与 <code>partner</code>、以及 <code>mean</code>，都是<strong>粒度不同故分表</strong>：
+简单 Qn 分布要打开文件就能读到，一元素一行的均值也不该在每行重复成稀疏列。</p>
 <p>批处理时元素集不同的输入取<strong>列并集，缺的留空（NaN），不补零、不插值</strong>——没有 Al
 的体系其 <code>m_Al</code> 列为空，而不是 0。</p>
 <h3 id="示例oxy-表"><a class="header" href="#示例oxy-表">示例：<code>oxy</code> 表</a></h3>
@@ -2133,7 +2138,7 @@ message preserved.</p>
 <code>fe-traj</code> 会让旧脚本「跑成功」却吐出自己解析不了的 csv，静默坏数据比命令消失难查。</p>
 <pre><code>ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net                                                      → 五张堆叠 csv
+ferro net                                                      → 六张堆叠 csv
                                                                  + 可选标注轨迹
 ferro bader | convert | info | job
 </code></pre>
@@ -2616,14 +2621,15 @@ ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 </table>
 </div>
 <h3 id="输出-1-1"><a class="header" href="#输出-1-1">输出</a></h3>
-<p>五张 csv，各带 <code>file</code> 列：</p>
+<p>六张 csv，各带 <code>file</code> 列：</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>文件</th><th>列</th></tr>
 </thead>
 <tbody>
-<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td></tr>
+<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, count, fraction, sd</code>（<strong>P 的即 Qn 分布</strong>）</td></tr>
+<tr><td><code>network_partner.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td></tr>
 <tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td></tr>
 <tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td></tr>
 <tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td></tr>

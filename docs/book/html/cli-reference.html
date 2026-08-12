@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b66a67f5.js";
+            window.path_to_searchindex_js = "searchindex-ebcc719c.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-974254eb.js"></script>
@@ -182,7 +182,7 @@
 <code>fe-traj</code> 会让旧脚本「跑成功」却吐出自己解析不了的 csv，静默坏数据比命令消失难查。</p>
 <pre><code>ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net                                                      → 五张堆叠 csv
+ferro net                                                      → 六张堆叠 csv
                                                                  + 可选标注轨迹
 ferro bader | convert | info | job
 </code></pre>
@@ -665,14 +665,15 @@ ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 </table>
 </div>
 <h3 id="输出-1"><a class="header" href="#输出-1">输出</a></h3>
-<p>五张 csv，各带 <code>file</code> 列：</p>
+<p>六张 csv，各带 <code>file</code> 列：</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>文件</th><th>列</th></tr>
 </thead>
 <tbody>
-<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td></tr>
+<tr><td><code>network_bridge.csv</code></td><td><code>file, former, n_bridge, count, fraction, sd</code>（<strong>P 的即 Qn 分布</strong>）</td></tr>
+<tr><td><code>network_partner.csv</code></td><td><code>file, former, n_bridge, m_&lt;X&gt;…, count, fraction, sd</code></td></tr>
 <tr><td><code>network_oxy.csv</code></td><td><code>file, type, former_a, former_b, count, fraction, sd</code></td></tr>
 <tr><td><code>network_cn.csv</code></td><td><code>file, element, cn, count, fraction, sd</code></td></tr>
 <tr><td><code>network_mean.csv</code></td><td><code>file, element, mean_n_bridge, mean_cn</code></td></tr>

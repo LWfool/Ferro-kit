@@ -305,7 +305,7 @@ crate implements them — the `fe-*` binaries are gone.
 |---|---|---|
 | `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
 | `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | Spatial distribution maps | one `.cube` grid **per input** |
-| `ferro net` | Glass network topology (`--P-O=2.3`) | five stacked CSVs + optional labelled trajectory |
+| `ferro net` | Glass network topology (`--P-O=2.3`) | six stacked CSVs + optional labelled trajectory |
 | `ferro bader` | Bader charge partitioning | ACF/BCF/AVF (Henkelman format) |
 | `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
 
@@ -492,17 +492,22 @@ collapsed over-coordinated oxygen and over-coordinated modifier into one label.
 
 | Table | One row per | Columns |
 |---|---|---|
-| `bridge` | former × (bridging count, partner split) | `former, n_bridge, m_<X>…, count, fraction, sd` |
+| `bridge` | former × bridging count | `former, n_bridge, count, fraction, sd` |
+| `partner` | former × bridging count × partner split | `former, n_bridge, m_<X>…, count, fraction, sd` |
 | `oxy` | ligand type × partner pair | `type, former_a, former_b, count, fraction, sd` |
 | `cn` | element × coordination number | `element, cn, count, fraction, sd` |
 | `mean` | element | `element, mean_n_bridge, mean_cn` |
 | `linkage` | bridge × both site states | `elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
 
 `n_bridge`, not `qn`: the count is defined for every former, but Qn is a
-tetrahedral-former convention — Al has no Qn. `m_<X>` splits it by partner element (the
-Q^n(mAl) notation); `groupby("n_bridge")` collapses back to plain Qn. It is **not**
-derivable from `linkage`: two P–O–Al bridges could be one P with `m_Al = 2` or two P
-atoms with `m_Al = 1`. `linkage` counts bridges, `bridge` counts atoms.
+tetrahedral-former convention — Al has no Qn. **`bridge` is the plain distribution**,
+one row per (former, n_bridge) — for P, that is the Qn distribution, readable as-is.
+`partner` adds the `m_<X>` split (the Q^n(mAl) notation) and `bridge` is its marginal;
+they are separate tables rather than one plus a `groupby` because the plain
+distribution is a primary product, and a different granularity earns a different table
+(same reasoning as `mean`). Neither is derivable from `linkage`: two P–O–Al bridges
+could be one P with `m_Al = 2` or two P atoms with `m_Al = 1`. `linkage` counts
+bridges, `bridge`/`partner` count atoms.
 
 `linkage` stores each pair **once**, canonically ordered by `(element, n_bridge, cn)` —
 a bridge has no direction, same reasoning as `sq`'s canonical half — so a row sum is not

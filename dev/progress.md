@@ -163,7 +163,7 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
 - 单文件 `mod.rs`，依赖 `ferro_core::classify_frame_detailed`
 - 参数类型：`TypeParams`（来自 ferro-core，`cutoffs` + `modifier_cutoffs`）
 - 结果：`NetworkResult`（`bridge_dist` / `mean_bridge` / `cn_dist` / `mean_cn` /
-  `oxy_dist` / `linkage`），`to_tables()` 出五张长表
+  `oxy_dist` / `partner_dist` / `linkage`），`to_tables()` 出六张长表
 - **`Bin { count, fraction, sd }`**：`fraction` 是**逐帧比例的平均**，`sd` 是同一序列的
   样本标准差（ddof=1），缺席帧按 f=0 计入。`sd` **不是标准误** —— MD 相邻帧强相关，
   既不按 1/√N 收缩也不估计物理涨落
@@ -176,6 +176,11 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
   - 规范半边：桥联无方向，两端按 `(元素, 桥接数, 配位数)` 排序后小的在前，
     每对只存一次（与 sq 只做规范半边同理）。行和不等于该位点的总参与度
   - `n_formers` 列：普通桥氧为 2，三配位氧展开成 C(3,2)=3 行并标 3
+- **`bridge` 与 `partner` 是两张表**（0.2.2 修）：前者是桥接数的边际分布（P 的即
+  Qn 分布，打开文件即可读），后者多一维伙伴分解。0.2.1 曾合成一张，理由是
+  「`groupby` 能退回去」——结果是用户打开 `network_bridge.csv` **看不到 Qn 占比**，
+  它散在 14 行里。粒度不同就该分表，与 `mean` 独立成表同理；`sd` 必须各自累加，
+  相关项之和的方差不等于方差之和
 - **`m_<X>` 分解**（`bridges_to`）：Q^n(mAl) 记号。只对「恰好两个形成子」的配体成立，
   故 `Σm ≤ n_bridge`，差额即三配位桥数。**无法从 linkage 反推** —— 两座 P-O-Al 桥
   可能来自一个 m_Al=2 的 P，也可能来自两个 m_Al=1 的 P；linkage 数桥，这里数原子

@@ -156,8 +156,12 @@ pub struct Bin {
 /// 网络分析时间平均结果。
 #[derive(Debug, Clone)]
 pub struct NetworkResult {
-    /// former_elem → 桥接配体数分布（P 的即 Qn），按 `(n_bridge, 伙伴分解)` 升序
-    pub bridge_dist: HashMap<String, Vec<(BridgeKey, Bin)>>,
+    /// former_elem → 桥接配体数分布（P 的即 Qn），按数值升序。**边际分布** ——
+    /// 主产物，一行一个 (形成子, 桥接数)
+    pub bridge_dist: HashMap<String, Vec<(u32, Bin)>>,
+    /// former_elem → 桥接数 × 伙伴元素的**联合分布**（Q^n(mAl) 记号）。
+    /// 与 `bridge_dist` 是两个粒度：后者是前者对伙伴维度的边际
+    pub partner_dist: HashMap<String, Vec<(BridgeKey, Bin)>>,
     /// former_elem → 平均桥接配体数
     pub mean_bridge: HashMap<String, f64>,
     /// 元素 → 总配位数分布（所有配体类型之和）。**含修饰子** ——
@@ -205,9 +209,17 @@ impl NetworkResult {
     /// | table | one row per | columns |
     /// |---|---|---|
     /// | `bridge` | former × bridging count | `former, n_bridge, count, fraction, sd` |
+    /// | `partner` | former × bridging count × partner split | `former, n_bridge, m_<X>…, count, fraction, sd` |
     /// | `oxy` | ligand type × partner pair | `type, former_a, former_b, count, fraction, sd` |
     /// | `cn` | element × coordination number | `element, cn, count, fraction, sd` |
     /// | `mean` | element | `element, mean_n_bridge, mean_cn` |
+    ///
+    /// `bridge` is the marginal of `partner` over the partner dimension, and is a
+    /// **separate table rather than a `groupby`** because the plain Qn distribution
+    /// is a primary product: it has to be readable by opening the file, not only by
+    /// aggregating it.  Same reasoning as `mean` — a different granularity earns a
+    /// different table.  `sd` genuinely has to be re-accumulated, not summed: the
+    /// variance of a sum is not the sum of variances when the terms are correlated.
     ///
     /// The three distributions have different value-column semantics, so they stay
     /// three tables — merging them would make `groupby` on the value column
@@ -226,21 +238,37 @@ impl NetworkResult {
         let mut elems: Vec<&String> = self.cn_dist.keys().collect();
         elems.sort();
 
-        // bridge：只有形成子有桥接数。`m_<X>` 给出按伙伴元素的分解 ——
-        // 文献的 Q^n(mAl) 记号，`groupby("n_bridge")` 即退回简单 Qn
+        // bridge：桥接数的**边际**分布 —— P 的这几行就是 Qn 分布
+        let (mut f_col, mut v_col) = (Vec::new(), Vec::new());
+        let mut bins = Vec::new();
+        for former in &formers {
+            for (n, b) in &self.bridge_dist[*former] {
+                f_col.push((*former).clone());
+                v_col.push(*n as f64);
+                bins.push(*b);
+            }
+        }
+        let mut t = Table::new();
+        t.push_text("former", f_col).push_num("n_bridge", v_col);
+        push_bins(&mut t, &bins);
+        out.push(("bridge".to_string(), t));
+
+        // partner：桥接数 × 伙伴元素的**联合**分布，文献的 Q^n(mAl) 记号
         let partner_elems: Vec<String> = {
-            let mut s: Vec<String> = self.bridge_dist.values()
+            let mut s: Vec<String> = self.partner_dist.values()
                 .flat_map(|rows| rows.iter().flat_map(|((_, to), _)| to.keys().cloned()))
                 .collect();
             s.sort();
             s.dedup();
             s
         };
+        let mut pf: Vec<&String> = self.partner_dist.keys().collect();
+        pf.sort();
         let (mut f_col, mut v_col) = (Vec::new(), Vec::new());
         let mut m_cols: Vec<Vec<f64>> = vec![Vec::new(); partner_elems.len()];
         let mut bins = Vec::new();
-        for former in &formers {
-            for ((n, to), b) in &self.bridge_dist[*former] {
+        for former in &pf {
+            for ((n, to), b) in &self.partner_dist[*former] {
                 f_col.push((*former).clone());
                 v_col.push(*n as f64);
                 for (i, p) in partner_elems.iter().enumerate() {
@@ -255,7 +283,7 @@ impl NetworkResult {
             t.push_num(format!("m_{p}"), col);
         }
         push_bins(&mut t, &bins);
-        out.push(("bridge".to_string(), t));
+        out.push(("partner".to_string(), t));
 
         // oxy：伙伴元素以数据列给出,不编码进标签
         let (mut ty, mut fa, mut fb) = (Vec::new(), Vec::new(), Vec::new());
@@ -341,8 +369,10 @@ fn push_bins(t: &mut Table, bins: &[Bin]) {
 
 /// One frame's histograms with the denominators that turn them into fractions.
 struct FrameData {
-    /// 元素 → (桥接数直方图, 该元素原子数)
-    bridge: HashMap<String, (HashMap<BridgeKey, usize>, usize)>,
+    /// 元素 → (桥接数直方图, 该元素原子数) —— 边际
+    bridge: HashMap<String, (HashMap<u32, usize>, usize)>,
+    /// 元素 → (桥接数×伙伴分解直方图, 该元素原子数) —— 联合
+    partner: HashMap<String, (HashMap<BridgeKey, usize>, usize)>,
     /// 元素 → (配位数直方图, 该元素原子数)，形成子与修饰子共用
     cn: HashMap<String, (HashMap<u32, usize>, usize)>,
     /// 配体类型 → 计数
@@ -390,7 +420,8 @@ fn compute_frame(
     let ft = classify_frame_detailed(frame, cell, params);
     let types = &ft.types;
 
-    let mut bridge: HashMap<String, (HashMap<BridgeKey, usize>, usize)> = HashMap::new();
+    let mut bridge: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
+    let mut partner: HashMap<String, (HashMap<BridgeKey, usize>, usize)> = HashMap::new();
     let mut cn: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
     let mut oxy: HashMap<OxyKey, usize> = HashMap::new();
     let mut n_ligand = 0usize;
@@ -401,8 +432,11 @@ fn compute_frame(
         match t {
             AtomType::Former { elem, bridging, cn: c, bridges_to } => {
                 let b = bridge.entry(elem.clone()).or_default();
-                *b.0.entry((*bridging, bridges_to.clone())).or_insert(0) += 1;
+                *b.0.entry(*bridging).or_insert(0) += 1;
                 b.1 += 1;
+                let p = partner.entry(elem.clone()).or_default();
+                *p.0.entry((*bridging, bridges_to.clone())).or_insert(0) += 1;
+                p.1 += 1;
                 let e = cn.entry(elem.clone()).or_default();
                 *e.0.entry(*c).or_insert(0) += 1;
                 e.1 += 1;
@@ -449,15 +483,18 @@ fn compute_frame(
         }
     }
 
-    Some(FrameData { bridge, cn, oxy, n_ligand, linkage, n_links })
+    Some(FrameData { bridge, partner, cn, oxy, n_ligand, linkage, n_links })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
 
 #[derive(Default)]
 struct Accumulator {
-    /// 元素 → { (桥接数, 伙伴分解) → 矩 }
-    bridge: HashMap<String, BTreeMap<BridgeKey, Moments>>,
+    /// 元素 → { 桥接数 → 矩 }（边际）
+    bridge: HashMap<String, BTreeMap<u32, Moments>>,
+    /// 元素 → { (桥接数, 伙伴分解) → 矩 }（联合）。
+    /// 必须与边际分开累加：和的方差不等于方差的和
+    partner: HashMap<String, BTreeMap<BridgeKey, Moments>>,
     /// 元素 → { 配位数 → 矩 }
     cn: HashMap<String, BTreeMap<u32, Moments>>,
     /// 配体类型 → 矩（键含 rank，天然有序）
@@ -497,7 +534,12 @@ impl Accumulator {
     fn push(&mut self, fd: &FrameData) {
         for (elem, (hist, total)) in &fd.bridge {
             push_hist(&mut self.bridge, &mut self.bridge_sum, elem, hist, *total,
-                      |(n, _)| *n as f64);
+                      |n| *n as f64);
+        }
+        // 池化均值只从边际取一次,故这里传一个丢弃用的累加器
+        let mut ignored = HashMap::new();
+        for (elem, (hist, total)) in &fd.partner {
+            push_hist(&mut self.partner, &mut ignored, elem, hist, *total, |_| 0.0);
         }
         for (elem, (hist, total)) in &fd.cn {
             push_hist(&mut self.cn, &mut self.cn_sum, elem, hist, *total, |v| *v as f64);
@@ -519,6 +561,9 @@ impl Accumulator {
     fn merge(&mut self, other: Self) {
         for (k, inner) in other.bridge {
             merge_keyed(self.bridge.entry(k).or_default(), inner);
+        }
+        for (k, inner) in other.partner {
+            merge_keyed(self.partner.entry(k).or_default(), inner);
         }
         for (k, inner) in other.cn {
             merge_keyed(self.cn.entry(k).or_default(), inner);
@@ -549,6 +594,8 @@ impl Accumulator {
         // 只保留轨迹里真正出现过的元素。参数里点名但不存在的元素若留下,
         // 均值会算成 0.0,把「不存在」伪装成「平均值为零」;长表下缺席就是不出行
         let bridge_dist: HashMap<_, _> = self.bridge.iter()
+            .map(|(e, m)| (e.clone(), to_dist(m))).collect();
+        let partner_dist: HashMap<_, _> = self.partner.iter()
             .map(|(e, m)| {
                 let rows = m.iter().map(|(k, mo)| (k.clone(), mo.finish(n_frames))).collect();
                 (e.clone(), rows)
@@ -572,7 +619,7 @@ impl Accumulator {
             .collect();
 
         NetworkResult {
-            bridge_dist, mean_bridge, cn_dist, mean_cn, oxy_dist, linkage,
+            bridge_dist, partner_dist, mean_bridge, cn_dist, mean_cn, oxy_dist, linkage,
             n_frames, n_atoms, params,
         }
     }
@@ -628,9 +675,12 @@ mod tests {
 
         let bp = &res.bridge_dist["P"];
         assert_eq!(bp.len(), 1);
-        assert_eq!(bp[0].0.0, 1);                     // 桥接数 = 1
-        assert_eq!(bp[0].0.1["P"], 1);                // 该桥通向一个 P
+        assert_eq!(bp[0].0, 1);                       // 桥接数 = 1
         assert_eq!(bp[0].1.count, 2);                 // 两个 P
+        // 联合分布另成一表：该桥通向一个 P
+        let pp = &res.partner_dist["P"];
+        assert_eq!(pp[0].0.0, 1);
+        assert_eq!(pp[0].0.1["P"], 1);
 
         let oxy = oxy_counts(&res);
         assert_eq!(oxy["O_b"], 1);
@@ -648,8 +698,8 @@ mod tests {
             atom("O",  0.0,-1.6, 0.0),
         ]);
         let res = calc_network(&traj_of(vec![frame]), &make_params(2.3)).unwrap();
-        assert_eq!(res.bridge_dist["P"][0].0.0, 0);
-        assert!(res.bridge_dist["P"][0].0.1.is_empty(), "Q0 没有任何桥");
+        assert_eq!(res.bridge_dist["P"][0].0, 0);
+        assert!(res.partner_dist["P"][0].0.1.is_empty(), "Q0 没有任何桥");
         assert!(res.oxy_dist.iter().all(|(l, _, _)| l == "O_n"));
     }
 
@@ -859,8 +909,46 @@ mod tests {
         // 桥接数计入(R1),但伙伴分解不计入 —— 三配位配体没有唯一对端
         let bal = &res.bridge_dist["Al"];
         assert_eq!(bal.len(), 1);
-        assert_eq!(bal[0].0.0, 1, "该 Al 有 1 个桥接配体");
-        assert!(bal[0].0.1.is_empty(), "三配位配体不进 bridges_to");
+        assert_eq!(bal[0].0, 1, "该 Al 有 1 个桥接配体");
+        assert!(res.partner_dist["Al"][0].0.1.is_empty(), "三配位配体不进 bridges_to");
+    }
+
+    /// 简单 Qn 分布必须**直接可读**，而不是要靠 groupby 从伙伴分解里聚出来。
+    /// 0.2.1 曾把两者合成一张表（理由是「groupby 能退回去」），结果是打开
+    /// network_bridge.csv 根本看不到 P 的 Qn 占比 —— 它散在 14 行里。
+    #[test]
+    fn test_bridge_table_is_the_plain_distribution() {
+        // 两个 P 各连 1 个桥氧，一个通向 P、一个通向 Al
+        let frame = cube(vec![
+            atom("P",  0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0),
+            atom("Al", 3.2, 0.0, 0.0),
+            atom("P",  0.0, 5.0, 0.0),
+            atom("O",  1.6, 5.0, 0.0),
+            atom("P",  3.2, 5.0, 0.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
+
+        // 边际：三个 P 全是「1 个桥」，合成一行
+        let bp = &res.bridge_dist["P"];
+        assert_eq!(bp.len(), 1, "边际分布一个桥接数一行: {bp:?}");
+        assert_eq!(bp[0].0, 1);
+        assert_eq!(bp[0].1.count, 3);
+
+        // 联合：按伙伴拆成两行（→P 两个、→Al 一个）
+        let pp = &res.partner_dist["P"];
+        assert_eq!(pp.len(), 2, "联合分布按伙伴拆开: {pp:?}");
+        assert_eq!(pp.iter().map(|(_, b)| b.count).sum::<usize>(), 3);
+
+        // 两张表在 count 上必须闭合
+        let tables = res.to_tables();
+        let names: Vec<&str> = tables.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"bridge") && names.contains(&"partner"),
+                "两张表都要出: {names:?}");
     }
 
     /// 缺席帧按 f = 0 计入，而不是被当作缺失值跳过。

@@ -30,7 +30,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 ```
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net                                                      → 五张堆叠 csv
+ferro net                                                      → 六张堆叠 csv
                                                                  + 可选标注轨迹
 ferro bader | convert | info | job
 ```
