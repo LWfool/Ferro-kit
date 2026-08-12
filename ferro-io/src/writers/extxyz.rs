@@ -37,6 +37,10 @@ pub fn write_extxyz(trajectory: &Trajectory, path: &str) -> Result<()> {
         if has_charge { prop_spec.push_str(":charges:R:1"); }
         let has_magmom = frame.atoms.iter().any(|a| a.magmom.is_some());
         if has_magmom { prop_spec.push_str(":magmoms:R:1"); }
+        // extxyz 的列是自描述的,故位点标签走自己的一列,species 保持纯元素。
+        // 这是与 LAMMPS dump 的区别:那边没地方放第二个名字,只能折进 element 列
+        let has_label = frame.atoms.iter().any(|a| a.label.is_some());
+        if has_label { prop_spec.push_str(":label:S:1"); }
         parts.push(format!("Properties={prop_spec}"));
 
         if let Some(e) = frame.energy { parts.push(format!("energy={}", fmt(e))); }
@@ -74,6 +78,10 @@ pub fn write_extxyz(trajectory: &Trajectory, path: &str) -> Result<()> {
             if has_magmom {
                 line.push_str(&format!(" {}", fmt(atom.magmom.unwrap_or(0.0))));
             }
+            if has_label {
+                // 无标签的原子回退为元素符号:S 列不能留空,否则列数对不齐
+                line.push_str(&format!(" {}", atom.label.as_deref().unwrap_or(&atom.element)));
+            }
             writeln!(w, "{line}")?;
         }
     }
@@ -103,6 +111,37 @@ mod tests {
             Vector3::new(-0.1, 0.0, 0.0),
         ]);
         Trajectory::from_frame(frame)
+    }
+
+    /// 位点标签走自己的 `label:S:1` 列,species 保持纯元素 —— 两个方向都无损。
+    #[test]
+    fn test_label_column_roundtrips_without_touching_species() {
+        let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        for (elem, label) in [("P", "P_3"), ("O", "O_b"), ("Zn", "Zn")] {
+            let mut a = Atom::new(elem, Vector3::new(0.0, 0.0, 0.0));
+            a.label = Some(label.to_string());
+            frame.add_atom(a);
+        }
+        let traj = Trajectory::from_frame(frame);
+
+        let path = std::env::temp_dir().join("label_col.extxyz");
+        let p = path.to_str().unwrap();
+        write_extxyz(&traj, p).unwrap();
+
+        let text = std::fs::read_to_string(p).unwrap();
+        assert!(text.contains("label:S:1"), "Properties 必须声明 label 列:\n{text}");
+        let atom_line = text.lines().nth(2).unwrap();
+        assert!(atom_line.starts_with("P "), "species 列仍是纯元素: {atom_line}");
+        assert!(atom_line.ends_with("P_3"), "标签在自己的列里: {atom_line}");
+
+        let back = read_extxyz(p).unwrap();
+        let atoms = &back.frames[0].atoms;
+        assert_eq!(atoms[0].element, "P");
+        assert_eq!(atoms[0].label.as_deref(), Some("P_3"));
+        assert_eq!(atoms[1].element, "O");
+        assert_eq!(atoms[1].label.as_deref(), Some("O_b"));
+        assert_eq!(atoms[2].label.as_deref(), Some("Zn"));
     }
 
     #[test]

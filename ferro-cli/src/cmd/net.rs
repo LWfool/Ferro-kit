@@ -10,11 +10,11 @@
 //! those out of argv before clap parses and hands them here.
 
 use anyhow::{anyhow, bail, Result};
-use clap::Args;
+use clap::{Args, ValueEnum};
 use ferro_analysis::{calc_network, NetworkResult};
 use ferro_core::{Trajectory, TypeParams};
-use ferro_io::write_lammps_dump;
-use ferro_structure::{apply_type_labels, classify_trajectory};
+use ferro_io::{write_extxyz, write_lammps_dump};
+use ferro_structure::{apply_type_labels, classify_trajectory, fold_labels};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -31,9 +31,30 @@ pub struct NetCmd {
     #[arg(long)]
     pub modifier: Option<String>,
 
-    /// Also write the classified trajectory to <input>_types[_<suffix>].lammpstrj
-    #[arg(long)]
-    pub export_traj: bool,
+    /// Also write the classified trajectory, one file per input:
+    /// <input stem>_types[_<suffix>].<ext>. Defaults to lammpstrj
+    #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "lammpstrj")]
+    pub export_traj: Option<ExportFormat>,
+}
+
+/// Where a classified trajectory can go, and how the label survives the trip.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ExportFormat {
+    /// One name column only, so the label replaces the element; the dump reader
+    /// splits `<element>_<suffix>` back apart, so nothing downstream sees a new column
+    Lammpstrj,
+    /// Self-describing columns, so the label gets its own `label:S:1` and
+    /// `species` stays a pure element symbol — lossless in both directions
+    Extxyz,
+}
+
+impl ExportFormat {
+    fn ext(self) -> &'static str {
+        match self {
+            ExportFormat::Lammpstrj => "lammpstrj",
+            ExportFormat::Extxyz => "extxyz",
+        }
+    }
 }
 
 pub fn wants_help(cmd: &NetCmd) -> bool {
@@ -65,8 +86,8 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         let result = calc_network(&traj, &params).ok_or_else(|| {
             anyhow!("no usable frame (every frame is missing a cell; PBC required)")
         })?;
-        if cmd.export_traj {
-            export_labelled(&traj, &params, p, cmd.common.suffix())?;
+        if let Some(fmt) = cmd.export_traj {
+            export_labelled(&traj, &params, p, cmd.common.suffix(), fmt)?;
         }
         Ok(result)
     });
@@ -112,16 +133,21 @@ fn fmt_means<T>(
 
 // ─── 标注轨迹导出 ─────────────────────────────────────────────────────────────
 
-/// Writes the classified trajectory as `<input stem>_types[_<suffix>].lammpstrj`.
+/// Writes the classified trajectory as `<input stem>_types[_<suffix>].<ext>`.
 ///
 /// The name carries the input stem because this is a **one product per input**
 /// product, like `ferro map`'s cubes — a fixed output path would make the second
 /// input overwrite the first.
+///
+/// The labels live in `Atom::label` throughout; only the LAMMPS-dump branch folds
+/// them into the element column, and only here — `ferro convert` keeps writing
+/// clean element symbols.
 fn export_labelled(
     traj: &Trajectory,
     params: &TypeParams,
     input: &Path,
     suffix: Option<&str>,
+    fmt: ExportFormat,
 ) -> Result<()> {
     let per_frame = classify_trajectory(traj, params);
     if per_frame.len() != traj.frames.len() {
@@ -132,20 +158,39 @@ fn export_labelled(
         );
     }
 
+    let mut skipped = 0usize;
     let frames = traj.frames.iter().zip(&per_frame)
         .map(|(frame, types)| {
             let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
-            apply_type_labels(frame, &labels)
+            let labelled = apply_type_labels(frame, &labels);
+            match fmt {
+                ExportFormat::Lammpstrj => {
+                    let (folded, n) = fold_labels(&labelled);
+                    skipped += n;
+                    folded
+                }
+                ExportFormat::Extxyz => labelled,
+            }
         })
         .collect();
-    let labelled = Trajectory { frames, metadata: traj.metadata.clone() };
+    let out_traj = Trajectory { frames, metadata: traj.metadata.clone() };
 
     let stem = batch::label_of(input);
+    let ext = fmt.ext();
     let path = match suffix {
-        Some(s) if !s.is_empty() => format!("{stem}_types_{s}.lammpstrj"),
-        _ => format!("{stem}_types.lammpstrj"),
+        Some(s) if !s.is_empty() => format!("{stem}_types_{s}.{ext}"),
+        _ => format!("{stem}_types.{ext}"),
     };
-    write_lammps_dump(&labelled, &path, ferro_io::LammpsUnits::Real)?;
+    match fmt {
+        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, ferro_io::LammpsUnits::Real)?,
+        ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
+    }
+    if skipped > 0 {
+        println!(
+            "        note: {skipped} label(s) not of the form <element>_<suffix>; \
+             wrote the element instead"
+        );
+    }
     println!("        traj -> {path}");
     Ok(())
 }

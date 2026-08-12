@@ -12,6 +12,18 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &str, units: LammpsUnits
     let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
     let mut w = BufWriter::new(file);
 
+    // type 编号在**整条轨迹**上确定一次。逐帧重建会让编号跟着「该帧碰巧先出现
+    // 哪个名字」走 —— 元素只有几种时看不出来,但写位点标签时(某帧恰好没有 P_4)
+    // 同一个 type 会在不同帧指向不同的东西
+    let mut elem_types: Vec<&str> = Vec::new();
+    for frame in &trajectory.frames {
+        for atom in &frame.atoms {
+            if !elem_types.contains(&atom.element.as_str()) {
+                elem_types.push(atom.element.as_str());
+            }
+        }
+    }
+
     for (ts, frame) in trajectory.frames.iter().enumerate() {
         let n = frame.n_atoms();
 
@@ -52,14 +64,6 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &str, units: LammpsUnits
         if has_force { header.push_str(" fx fy fz"); }
         if has_charge { header.push_str(" q"); }
         writeln!(w, "{header}")?;
-
-        // Atom type assignment (element → integer type)
-        let mut elem_types: Vec<&str> = Vec::new();
-        for atom in &frame.atoms {
-            if !elem_types.contains(&atom.element.as_str()) {
-                elem_types.push(atom.element.as_str());
-            }
-        }
 
         let lammps_cell = lammps_cell_matrix(lx, ly, lz, xy, xz, yz);
 
@@ -157,6 +161,39 @@ mod tests {
         traj.add_frame(frame.clone());
         traj.add_frame(frame);
         traj
+    }
+
+    /// type 编号在整条轨迹上确定一次。逐帧重建时,某帧碰巧缺一个名字
+    /// (标注轨迹里很常见:某帧没有 P_4)会让后续所有编号错位。
+    #[test]
+    fn test_type_numbering_is_stable_across_frames() {
+        let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+        let mk = |elems: &[&str]| {
+            let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+            for (i, e) in elems.iter().enumerate() {
+                f.add_atom(Atom::new(*e, Vector3::new(i as f64, 0.0, 0.0)));
+            }
+            f
+        };
+        // 帧 0 有 P_4,帧 1 没有 —— 逐帧编号会让帧 1 的 O_b 抢到 type 2
+        let traj = Trajectory { frames: vec![mk(&["P_2", "P_4", "O_b"]), mk(&["P_2", "O_b"])],
+                                metadata: Default::default() };
+
+        let path = std::env::temp_dir().join("type_stable.lammpstrj");
+        let p = path.to_str().unwrap();
+        write_lammps_dump(&traj, p, LammpsUnits::Real).unwrap();
+
+        let text = std::fs::read_to_string(p).unwrap();
+        let mut seen: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+        for line in text.lines() {
+            let c: Vec<&str> = line.split_whitespace().collect();
+            if c.len() == 6 && c[0].parse::<usize>().is_ok() {
+                if let Some(prev) = seen.insert(c[2], c[1]) {
+                    assert_eq!(prev, c[1], "{} 的 type 编号在帧间变了", c[2]);
+                }
+            }
+        }
+        assert_eq!(seen.len(), 3, "三种名字各自一个稳定编号: {seen:?}");
     }
 
     #[test]
