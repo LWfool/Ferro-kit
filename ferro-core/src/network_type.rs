@@ -18,13 +18,22 @@
 //!
 //! | Atom role | Label |
 //! |-----------|-------|
-//! | Network former | `P_0`, `P_3`, `Al_2`, … (digit = bridging ligands) |
+//! | Qn former | `P_0`, `P_3`, `Si_4`, … (digit = Qn, i.e. bridging ligands) |
+//! | Other former | `Al_4`, `Al_5`, … (digit = **coordination number**) |
 //! | Free ligand (0 NF) | `O_f` |
 //! | Non-bridging ligand (1 NF) | `O_n` |
 //! | Bridging ligand (2 NF) | `O_b` |
 //! | Tricluster ligand (≥3 NF) | `O_t` |
 //! | Modifier | element symbol unchanged (`Zn`) |
 //! | Other atoms | element symbol unchanged |
+//!
+//! **A former's digit is not always the same quantity.**  Qn is a tetrahedral-former
+//! convention, so it is shown only for the elements in [`crate::data::qn_elements`];
+//! every other former shows its coordination number, which is what the literature
+//! quotes for it (`Al[4]`/`Al[5]`/`Al[6]`).  The two coincide for a former with no
+//! non-bridging ligand — true of Al in aluminophosphates — so a system where they
+//! agree proves nothing about which one is being displayed.  See
+//! [`AtomType::site_digit`].
 //!
 //! Ligand labels carry no partner suffix: which formers a bridge joins is a
 //! *statistic*, reported through [`AtomType::Ligand::partners`] as data columns,
@@ -36,8 +45,9 @@
 //! the reference trajectory), so it carried no resolving power.  Modifiers are now
 //! described by their coordination number instead.
 
+use crate::data::qn_elements;
 use crate::{Cell, Frame};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Cutoff table: `(element_A, element_B)` → distance [Å]
 pub type CutoffTable = BTreeMap<(String, String), f64>;
@@ -49,9 +59,38 @@ pub struct TypeParams {
     pub cutoffs: CutoffTable,
     /// `(modifier_elem, ligand_elem)` → cutoff [Å].  Empty → no modifier classification.
     pub modifier_cutoffs: CutoffTable,
+    /// Formers described by a Qn speciation; everything else is described by its
+    /// coordination number.  See [`crate::data::qn_elements`].
+    ///
+    /// Held here rather than looked up from the static table at render time because
+    /// `--qn` overrides it per run: a classification must carry the convention it was
+    /// made under, or a label means different things in two files of the same batch.
+    pub qn_elements: BTreeSet<String>,
 }
 
 impl TypeParams {
+    /// Cutoff tables with the default Qn element set.
+    pub fn new(cutoffs: CutoffTable, modifier_cutoffs: CutoffTable) -> Self {
+        Self { cutoffs, modifier_cutoffs, qn_elements: qn_elements::default_qn_set() }
+    }
+
+    /// Replace the Qn element set (`ferro net --qn`).
+    pub fn with_qn_elements(mut self, elems: impl IntoIterator<Item = String>) -> Self {
+        self.qn_elements = elems.into_iter().collect();
+        self
+    }
+
+    /// Whether this former is reported with a Qn speciation.
+    pub fn is_qn_former(&self, elem: &str) -> bool {
+        self.qn_elements.contains(elem)
+    }
+
+    /// Former elements reported with a Qn speciation, sorted — the row set of the
+    /// `qn` and `qn_partner` tables.  May be empty.
+    pub fn qn_formers(&self) -> Vec<String> {
+        self.formers().into_iter().filter(|e| self.is_qn_former(e)).collect()
+    }
+
     /// Unique former elements, sorted.
     pub fn formers(&self) -> Vec<String> {
         unique_keys_left(&self.cutoffs)
@@ -89,14 +128,29 @@ impl TypeParams {
 /// where a type becomes text — changing the label scheme touches that method only.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AtomType {
-    /// Network former.  `bridging` = number of bridging ligands (the Qn value for
-    /// elements where Qn applies); `cn` = total ligands within cutoff;
-    /// `bridges_to` = how many of those bridging ligands lead to each partner
-    /// element, counting only ligands shared by **exactly two** formers.
+    /// Network former.
+    ///
+    /// | field | meaning |
+    /// |---|---|
+    /// | `qn` | `Some(bridging)` for a Qn former, `None` otherwise — the flag *and* the value |
+    /// | `bridging` | ligands shared with at least one other former |
+    /// | `cn` | **all** ligands within cutoff, bridging or not |
+    /// | `bridges_to` | how many bridging ligands lead to each partner element |
+    ///
+    /// `bridging` and `cn` are different quantities and must not be conflated: `cn`
+    /// counts every ligand inside the cutoff, `bridging` only those a second former
+    /// also touches.  They happen to coincide for a former carrying no non-bridging
+    /// ligand, which is true of Al in aluminophosphate glasses and false in general.
     ///
     /// `Σ bridges_to ≤ bridging`, the shortfall being ligands shared by three or
     /// more formers: those count as one bridge each but have no single partner.
-    Former { elem: String, bridging: u32, cn: u32, bridges_to: BTreeMap<String, u32> },
+    Former {
+        elem: String,
+        qn: Option<u32>,
+        bridging: u32,
+        cn: u32,
+        bridges_to: BTreeMap<String, u32>,
+    },
     /// Ligand (oxygen).  `partners` = elements of the formers bonded to it, sorted;
     /// its length is the classification (0 free, 1 non-bridging, 2 bridging,
     /// ≥3 tricluster).
@@ -119,10 +173,29 @@ impl AtomType {
         }
     }
 
+    /// The digit a former's label carries: its Qn if it has one, its coordination
+    /// number otherwise.
+    ///
+    /// Two different quantities behind one slot, which is the literature's own
+    /// convention — `Q²` and `Al[4]` are read by different rules and nobody confuses
+    /// them.  The alternative, showing the bridging count for every former, puts a
+    /// number in the Al slot that no aluminophosphate paper quotes and that happens to
+    /// equal the coordination number whenever Al carries no non-bridging ligand — a
+    /// coincidence of the system, not a definition, so the error would be invisible.
+    pub fn site_digit(&self) -> Option<u32> {
+        match self {
+            AtomType::Former { qn: Some(n), .. } => Some(*n),
+            AtomType::Former { qn: None, cn, .. } => Some(*cn),
+            _ => None,
+        }
+    }
+
     /// Render as a site label.  **The only place a type becomes text.**
     pub fn label(&self) -> String {
         match self {
-            AtomType::Former { elem, bridging, .. } => format!("{elem}_{bridging}"),
+            AtomType::Former { elem, qn, cn, .. } => {
+                format!("{elem}_{}", qn.unwrap_or(*cn))
+            }
             AtomType::Ligand { elem, partners } => match partners.len() {
                 0 => format!("{elem}_f"),
                 1 => format!("{elem}_n"),
@@ -135,10 +208,11 @@ impl AtomType {
 
     /// Sort rank *within one distribution table* (all rows share a role).
     ///
-    /// Ligand: `_f` < `_n` < `_b` < `_t`.
+    /// Ligand: `_f` < `_n` < `_b` < `_t`.  Former: by the digit its label shows, so
+    /// the sort order and the printed order cannot disagree.
     pub fn class_rank(&self) -> u8 {
         match self {
-            AtomType::Former { bridging, .. } => (*bridging).min(u8::MAX as u32) as u8,
+            AtomType::Former { qn, cn, .. } => qn.unwrap_or(*cn).min(u8::MAX as u32) as u8,
             AtomType::Ligand { partners, .. } => partners.len().min(3) as u8,
             AtomType::Modifier { .. } | AtomType::Other { .. } => 0,
         }
@@ -319,8 +393,11 @@ fn classify_formers(
                     }
                 }
             }
+            // 约定在分类时定死,而不是渲染时查表:`--qn` 能覆盖它,一个类型必须
+            // 携带自己是在哪套约定下产生的
+            let qn = params.is_qn_former(&former_elem).then_some(bridging);
             result.push((fa_idx, AtomType::Former {
-                elem: former_elem.clone(), bridging, cn, bridges_to,
+                elem: former_elem.clone(), qn, bridging, cn, bridges_to,
             }));
         }
     }
@@ -385,9 +462,18 @@ fn unique_keys_right(table: &CutoffTable) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// Qn former: the label digit is the bridging count.
     fn former(elem: &str, bridging: u32, cn: u32) -> AtomType {
         AtomType::Former {
-            elem: elem.to_string(), bridging, cn, bridges_to: BTreeMap::new(),
+            elem: elem.to_string(), qn: Some(bridging), bridging, cn,
+            bridges_to: BTreeMap::new(),
+        }
+    }
+
+    /// Non-Qn former: the label digit is the coordination number.
+    fn cn_former(elem: &str, bridging: u32, cn: u32) -> AtomType {
+        AtomType::Former {
+            elem: elem.to_string(), qn: None, bridging, cn, bridges_to: BTreeMap::new(),
         }
     }
 
@@ -398,7 +484,7 @@ mod tests {
         let cases: Vec<(AtomType, &str, &str)> = vec![
             (former("P", 0, 4), "P_0", "P"),
             (former("P", 3, 4), "P_3", "P"),
-            (former("Al", 2, 5), "Al_2", "Al"),
+            (cn_former("Al", 2, 5), "Al_5", "Al"),
             (AtomType::Ligand { elem: "O".into(), partners: vec![] }, "O_f", "O"),
             (AtomType::Ligand { elem: "O".into(), partners: vec!["P".into()] }, "O_n", "O"),
             (AtomType::Ligand {
@@ -482,5 +568,92 @@ mod tests {
         assert!(lig(2).is_bridging());
         // ≥3 渲染为 X，旧实现的 `starts_with("Ob_")` 同样不匹配
         assert!(!lig(3).is_bridging());
+    }
+
+    // ─── Qn 与配位数的分叉 ────────────────────────────────────────────────────
+
+    /// A frame in a 20 Å cubic box; positions in Å.
+    fn frame_of(atoms: &[(&str, f64, f64, f64)]) -> (Frame, Cell) {
+        use crate::Atom;
+        use nalgebra::Vector3;
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let mut f = Frame::new();
+        f.atoms = atoms.iter()
+            .map(|(e, x, y, z)| Atom::new(*e, Vector3::new(*x, *y, *z)))
+            .collect();
+        f.cell = Some(cell.clone());
+        f.pbc = [true; 3];
+        (f, cell)
+    }
+
+    fn params_po_alo() -> TypeParams {
+        let mut c = CutoffTable::new();
+        c.insert(("P".into(), "O".into()), 2.0);
+        c.insert(("Al".into(), "O".into()), 2.0);
+        TypeParams::new(c, CutoffTable::new())
+    }
+
+    #[test]
+    fn test_non_qn_former_labels_by_coordination_not_bridging() {
+        // 盲区回归:参考轨迹里的 Al 恰好不带非桥氧,于是 bridging == cn,
+        // 两种口径的分叉从未被触发过。这里造一个 Al 带非桥氧的构型把它钉死。
+        //
+        //   O0 —— 同时挨着 Al 和 P  → 桥氧,计入 Al 的 bridging 与 cn
+        //   O1 —— 只挨着 Al        → 非桥氧,只计入 Al 的 cn
+        let (frame, cell) = frame_of(&[
+            ("Al", 0.0, 0.0, 0.0),
+            ("O",  1.5, 0.0, 0.0),   // Al-O-P 桥
+            ("P",  3.0, 0.0, 0.0),
+            ("O",  0.0, 1.5, 0.0),   // 只连 Al 的非桥氧
+        ]);
+        let types = classify_frame(&frame, &cell, &params_po_alo());
+
+        let AtomType::Former { qn, bridging, cn, .. } = &types[0] else {
+            panic!("Al 应被分类为形成子, got {:?}", types[0])
+        };
+        assert_eq!(*qn, None, "Al 不是 Qn 元素");
+        assert_eq!(*bridging, 1, "只有一个氧同时连着 P");
+        assert_eq!(*cn, 2, "cn 数的是截断内全部氧,含非桥氧");
+        assert_ne!(*bridging, *cn, "构型没造对:这个测试要的正是两者分叉");
+        assert_eq!(types[0].label(), "Al_2", "非 Qn 形成子按配位数标注");
+        assert_eq!(types[0].site_digit(), Some(2));
+
+        // 同一帧里的 P 走另一套:数字是 Qn
+        let AtomType::Former { qn, bridging, cn, .. } = &types[2] else {
+            panic!("P 应被分类为形成子")
+        };
+        assert_eq!(*qn, Some(1));
+        assert_eq!((*bridging, *cn), (1, 1));
+        assert_eq!(types[2].label(), "P_1");
+
+        assert_eq!(types[1].label(), "O_b");
+        assert_eq!(types[3].label(), "O_n");
+    }
+
+    #[test]
+    fn test_qn_override_switches_which_digit_a_label_shows() {
+        // `--qn` 改的是约定,而约定必须随分类走 —— 同一构型换个约定,
+        // Al 的标签要从配位数变成桥接数
+        let (frame, cell) = frame_of(&[
+            ("Al", 0.0, 0.0, 0.0),
+            ("O",  1.5, 0.0, 0.0),
+            ("P",  3.0, 0.0, 0.0),
+            ("O",  0.0, 1.5, 0.0),
+        ]);
+        let params = params_po_alo().with_qn_elements(["Al".to_string()]);
+        let types = classify_frame(&frame, &cell, &params);
+
+        assert_eq!(types[0].label(), "Al_1", "Al 现在报 Qn,即桥接数 1");
+        assert_eq!(types[2].label(), "P_1", "P 被移出 Qn 列表,改报配位数 1");
+        assert_eq!(params.qn_formers(), vec!["Al".to_string()]);
+    }
+
+    #[test]
+    fn test_default_qn_set_excludes_al() {
+        let p = params_po_alo();
+        assert!(p.is_qn_former("P"));
+        assert!(!p.is_qn_former("Al"));
+        assert_eq!(p.formers(), vec!["Al".to_string(), "P".to_string()]);
+        assert_eq!(p.qn_formers(), vec!["P".to_string()]);
     }
 }
