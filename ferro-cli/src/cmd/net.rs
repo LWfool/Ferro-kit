@@ -234,7 +234,7 @@ fn build_params(pair_args: &[String], modifier: Option<&str>) -> Result<TypePara
             bail!("--modifier names {m} but no --{m}-<Ligand>=<cutoff> was given");
         }
     }
-    Ok(TypeParams { cutoffs, modifier_cutoffs })
+    Ok(TypeParams::new(cutoffs, modifier_cutoffs))
 }
 
 fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> {

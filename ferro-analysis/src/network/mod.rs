@@ -21,7 +21,7 @@
 //!
 //! let mut cutoffs = BTreeMap::new();
 //! cutoffs.insert(("P".into(), "O".into()), 2.3);
-//! let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+//! let params = TypeParams::new(cutoffs, BTreeMap::new());
 //! let result = calc_network(&traj, &params).unwrap();
 //! ```
 
@@ -430,7 +430,7 @@ fn compute_frame(
 
     for (idx, t) in types.iter().enumerate() {
         match t {
-            AtomType::Former { elem, bridging, cn: c, bridges_to } => {
+            AtomType::Former { elem, bridging, cn: c, bridges_to, .. } => {
                 let b = bridge.entry(elem.clone()).or_default();
                 *b.0.entry(*bridging).or_insert(0) += 1;
                 b.1 += 1;
@@ -651,7 +651,7 @@ mod tests {
     fn make_params(p_o: f64) -> TypeParams {
         let mut c = BTreeMap::new();
         c.insert(("P".into(), "O".into()), p_o);
-        TypeParams { cutoffs: c, modifier_cutoffs: BTreeMap::new() }
+        TypeParams::new(c, BTreeMap::new())
     }
 
     /// 取配体类型的 label → count 映射
@@ -718,7 +718,7 @@ mod tests {
         let mut cutoffs = BTreeMap::new();
         cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
         cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
-        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let params = TypeParams::new(cutoffs, BTreeMap::new());
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
         // 标签都是 O_b
@@ -746,7 +746,7 @@ mod tests {
         cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
         let mut modifier_cutoffs = BTreeMap::new();
         modifier_cutoffs.insert(("Zn".to_string(), "O".to_string()), 2.6);
-        let params = TypeParams { cutoffs, modifier_cutoffs };
+        let params = TypeParams::new(cutoffs, modifier_cutoffs);
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
         assert_eq!(res.cn_dist["Zn"][0].0, 1, "Zn 配位数 1");
@@ -770,7 +770,7 @@ mod tests {
         cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
         let mut modifier_cutoffs = BTreeMap::new();
         modifier_cutoffs.insert(("Zn".to_string(), "O".to_string()), 2.6);
-        let params = TypeParams { cutoffs, modifier_cutoffs };
+        let params = TypeParams::new(cutoffs, modifier_cutoffs);
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
         for absent in ["Al", "Zn"] {
@@ -869,7 +869,7 @@ mod tests {
         let mut cutoffs = BTreeMap::new();
         cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
         cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
-        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let params = TypeParams::new(cutoffs, BTreeMap::new());
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
         assert_eq!(res.linkage.len(), 1, "一座桥只存一行: {:?}", res.linkage);
@@ -895,7 +895,7 @@ mod tests {
         ]);
         let mut cutoffs = BTreeMap::new();
         cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
-        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let params = TypeParams::new(cutoffs, BTreeMap::new());
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
         assert_eq!(res.oxy_dist.len(), 1);
@@ -930,7 +930,7 @@ mod tests {
         let mut cutoffs = BTreeMap::new();
         cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
         cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
-        let params = TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() };
+        let params = TypeParams::new(cutoffs, BTreeMap::new());
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
         // 边际：三个 P 全是「1 个桥」，合成一行

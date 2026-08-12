@@ -117,7 +117,7 @@ mod tests {
     fn make_params(p_o: f64) -> TypeParams {
         let mut cutoffs = BTreeMap::new();
         cutoffs.insert(("P".into(), "O".into()), p_o);
-        TypeParams { cutoffs, modifier_cutoffs: BTreeMap::new() }
+        TypeParams::new(cutoffs, BTreeMap::new())
     }
 
     fn atom(elem: &str, x: f64, y: f64, z: f64) -> Atom {
