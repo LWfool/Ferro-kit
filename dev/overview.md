@@ -23,7 +23,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 `ferro-core`，当且仅当两个以上中间层需要叫出它的名字。两个方向各一个范例：
 `Trajectory`（io 产出、analysis 消费）与 `Table`（analysis 产出、io 消费）。
 
-## 命令入口（0.2.0 起）
+## 命令入口（0.2.0 起；`net` 于 0.2.1 降为叶子命令）
 
 **单二进制 `ferro`**，子命令按**产物**分组（不是按实现它的 crate）：
 
