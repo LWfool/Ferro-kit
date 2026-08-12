@@ -350,87 +350,46 @@ OPTIONS:
   -o, --output SUFFIX   Output name suffix: network_<table>_<suffix>.csv
       --last-n N        Use only the last N frames (skip equilibration)
       --ncore N         Parallel threads (default: all cores)
-      --metal-units     LAMMPS metal units. The statistics never read velocities
-                        or forces; this only matters for --export-traj extxyz,
-                        which writes them in internal units without conversion
-      --modifier E,E    Elements counted for coordination only: they take no part
-                        in bridging counts or ligand classification.
-                        Supply each one's cutoff too, e.g. --Zn-O=2.6
+      --metal-units     LAMMPS metal units; only affects --export-traj extxyz
+      --modifier E,E    Elements counted for coordination only: no bridging count,
+                        no part in ligand classification. Give each a cutoff too
+      --qn E,E          Formers reported as a Qn speciation. REPLACES the default
+                        list (B,P,Si); every other former is described by its
+                        coordination number
       --export-traj [FMT]
                         Also write the classified trajectory, one file per input:
                         <input stem>_types[_<suffix>].<ext>
-                          lammpstrj  (default) label replaces the element column;
-                                     the dump reader splits it back apart, so no
-                                     downstream tool sees a new column
-                          extxyz     label gets its own label:S:1 column and
-                                     species stays a pure element — lossless
+                        FMT is lammpstrj (default) or extxyz
 
 LABELS:
-  Former      P_0 P_1 P_2 …    digit = number of bridging ligands (Qn for P)
-  Free        O_f              bonded to no former
-  Non-bridge  O_n              bonded to one former
-  Bridge      O_b              bonded to two formers
-  Tricluster  O_t              bonded to three or more
-  Modifier    Zn               element symbol, no role suffix
+  Printed with this run's elements filled in when the analysis starts, and
+  repeated in the header of every file that has a label column.
 
-  Every label splits at the first underscore into element + label, so an exported
-  trajectory can be selected either way:
-    ferro traj gr -i run_types.lammpstrj -a P -b O                (by element)
-    ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1 (by label)
+  NOTE: an exported trajectory can be selected by element (-a/-b/-c) over any
+  number of frames, but by label (-x/-y/-z) only from a SINGLE frame — g(r)
+  requires a fixed particle count per type and labels change as the run evolves.
+  Use --last-n 1, or select by element.
 
-  NOTE: selecting by label needs a SINGLE frame. g(r) requires a fixed particle
-  count per type, and labels are dynamic — a P changes its Qn as the run evolves,
-  so a multi-frame labelled trajectory is rejected with a per-type-count error.
-  Selecting by element works over any number of frames.
+OUTPUT — stacked CSVs, each with a `file` column. Every file carries a `#` header
+describing its own columns; `pandas.read_csv(comment='#')` drops it.
 
-OUTPUT — stacked CSVs, each with a `file` column:
-  network_bridge.csv   file, former, n_bridge, count, fraction, sd
-  network_partner.csv  file, former, n_bridge, m_<X>..., count, fraction, sd
-  network_oxy.csv      file, type, former_a, former_b, count, fraction, sd
-  network_cn.csv       file, element, cn, count, fraction, sd
-  network_mean.csv     file, element, mean_n_bridge, mean_cn
-  network_linkage.csv  file, elem_a, n_bridge_a, cn_a,
-                             elem_b, n_bridge_b, cn_b, n_formers,
-                             count, fraction, sd
+  network_qn.csv            Qn speciation — the plain distribution, readable as-is
+  network_qn_partner.csv    the same, split by partner element: Q^n(mAl)
+  network_ligand_type.csv   ligand speciation: free / non-bridging / bridging /
+                            tricluster, with the formers each one joins
+  network_coordination.csv  coordination number distribution, formers + modifiers
+  network_average.csv       per-element mean Qn and mean coordination number
+  network_linkage.csv       bridge connectivity, both ends and the ligand between
 
-  n_bridge is the number of bridging ligands. For P that is Qn; Al has no Qn in
-  the literature, so the column is named for what it counts and Al is described
-  by the cn table instead. THE BRIDGE TABLE IS THE PLAIN Qn DISTRIBUTION —
-  one row per (former, n_bridge), readable as-is.
-
-  The partner table adds one dimension: m_<X> splits n_bridge by partner element,
-  the Q^n(mAl) notation. It is the same data at a finer granularity, so bridge is
-  its marginal — a separate table rather than a groupby, because the plain
-  distribution is a primary product and must be readable by opening the file.
-
-  The oxy table keeps the partner elements as data columns, not in the label:
-  P-O-P and P-O-Al are both labelled O_b but are separate rows (former_a/_b).
-  A tricluster (O_t) leaves them empty — its pairs are in the linkage table.
-
-  The linkage table is one row per bridge, both ends carrying element, bridging
-  count AND coordination number. Each pair is stored ONCE, canonically ordered,
-  so a row sum is not a site's total involvement. n_formers is 2 for a true
-  bridge, 3+ for a tricluster (which contributes C(n,2) rows).
-
-  fraction is the mean over frames of that frame's fraction; sd is the sample
-  standard deviation (ddof=1) of the same quantity. Consecutive MD frames are
-  correlated, so sd is a spread between snapshots, NOT a standard error.
-
-ANALYSING THE LINKAGE TABLE (pandas):
-  d = pd.read_csv('network_linkage.csv', comment='#')
-  al = d.query(\"elem_a=='Al' and elem_b=='Al'\")           # Al-O-Al only
-  al.pivot_table(index='cn_a', columns='cn_b',
-                 values='count', aggfunc='sum')            # which Al coordination
-  d.query(\"elem_a=='P' and elem_b=='P'\").pivot_table(
-      index='n_bridge_a', columns='n_bridge_b',
-      values='count', aggfunc='sum')                       # Qn-Qn connectivity
+  The first two are omitted when no former is a Qn element; a reason is printed.
 
 EXAMPLES:
   ferro net -i traj.lammpstrj --P-O=2.4
   ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
   ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
   ferro net -i traj.lammpstrj --P-O=2.4 --last-n 50 --export-traj
-  ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz";
+  ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al";
+
 
 #[cfg(test)]
 mod tests {
