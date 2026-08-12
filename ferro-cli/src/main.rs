@@ -37,11 +37,8 @@ enum Command {
         #[command(subcommand)]
         cmd: Option<cmd::map::MapCmd>,
     },
-    /// Glass network topology (qn, type)
-    Net {
-        #[command(subcommand)]
-        cmd: Option<cmd::net::NetCmd>,
-    },
+    /// Glass network topology — Qn speciation, ligand types, coordination numbers
+    Net(cmd::net::NetCmd),
     /// Bader charge partitioning from CHGCAR or cube
     Bader(cmd::bader::BaderCmd),
     /// Convert between structure/trajectory formats
@@ -90,11 +87,7 @@ fn main() -> Result<()> {
                 cmd::map::run(c)?
             }
         }
-        Command::Net { cmd: None } => {
-            help::print_net_overview();
-            0
-        }
-        Command::Net { cmd: Some(c) } => {
+        Command::Net(c) => {
             if cmd::net::wants_help(c) {
                 cmd::net::print_help();
                 0
