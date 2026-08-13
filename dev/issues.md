@@ -359,7 +359,7 @@ analysis（io 没理由认识它），跨层的只有它的可序列化投影。
 - `ferro traj sq` 的 `--q-min` 只影响输出 q 网格，g(r) 的积分范围由 `--r-min` /
   `--r-max` 决定；两者不要混淆
 - `ferro-cli/main.rs`：REPL 未实现（现为子命令分发器，裸 `ferro` 打印总览）
-- `ferro net` 与 `ferro-python` 未跟进批处理/长表重构
+- `ferro net` 已跟进批处理/长表（0.2.1）；`ferro-python` 仍只暴露 gr/msd，未包 net
 - `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋
 - `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化静态表
 - QE 赝势仅占位 `<El>.UPF`（UPF 与 CP2K GTH 库不通用，由用户提供 `pseudo_dir`）
