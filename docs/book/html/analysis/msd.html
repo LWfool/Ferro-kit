@@ -37,7 +37,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7f67bd7f.js";
+            window.path_to_searchindex_js = "../searchindex-d5ba57f9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-974254eb.js"></script>
@@ -214,7 +214,7 @@ $$f_{j,k}^{(t)} \leftarrow f_{j,k}^{(t)} - \text{round}!\left(f_{j,k}^{(t)} - f_
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p><code>msd[_&lt;suffix&gt;].csv</code>：<code>file, time, msd, msd_a, msd_b, msd_c</code>
+<p><code>msd_&lt;元素&gt;[_&lt;suffix&gt;].csv</code>（元素排序去重，无 <code>--elements</code> 时为 <code>msd_all…</code>）：<code>file, time, msd, msd_a, msd_b, msd_c</code>
 （时间 fs，位移平方 Å²）。</p>
 <p>给了 <code>--fit-range FMIN,FMAX</code> 时，自扩散系数 $D = \text{slope}/6$ 与 $R^2$ 打印到
 stdout 并写进 <code>#</code> 头块（同时给出 Å²/fs、cm²/s、m²/s 三种单位）。</p>

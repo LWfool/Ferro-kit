@@ -37,7 +37,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7f67bd7f.js";
+            window.path_to_searchindex_js = "../searchindex-d5ba57f9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-974254eb.js"></script>
@@ -266,7 +266,7 @@ integers</strong> (zero differing bins). See <code>scripts/compare_angle.py --al
 </table>
 </div>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p><code>angle[_&lt;suffix&gt;].csv</code>，<strong>长表</strong>：<code>file, angle, end_a, center, end_c, count, p</code>。</p>
+<p><code>angle_&lt;三元组&gt;[_&lt;suffix&gt;].csv</code>（未点名三元组时为 <code>angle_all…</code>），<strong>长表</strong>：<code>file, angle, end_a, center, end_c, count, p</code>。</p>
 <p>三元组进<strong>数据列</strong>，故元素集不同的轨迹可直接堆叠。同时保留整数 <code>count</code> 与归一化 <code>p</code>
 两列：整数直方图是与 <code>dump2analysis</code> 逐 bin 对拍的依据，只留 <code>p</code> 就对不了。</p>
 <p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与

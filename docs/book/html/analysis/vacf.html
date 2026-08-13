@@ -37,7 +37,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7f67bd7f.js";
+            window.path_to_searchindex_js = "../searchindex-d5ba57f9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-974254eb.js"></script>
@@ -208,7 +208,7 @@
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p><code>vacf[_&lt;suffix&gt;].csv</code>：<code>file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion</code>
+<p><code>vacf_&lt;元素&gt;[_&lt;suffix&gt;].csv</code>（元素排序去重，无 <code>--elements</code> 时为 <code>vacf_all…</code>）：<code>file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion</code>
 （时间 fs，<code>diffusion</code> 为 Green-Kubo running integral）。</p>
 <p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
 <code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>

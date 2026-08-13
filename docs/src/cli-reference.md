@@ -34,7 +34,8 @@ ferro bader | convert | info | job
 | Flag | Description |
 |---|---|
 | `-i <FILE>...` | 输入文件，**多值**并自展开 glob 模式（引号括起来，让 shell 别动它） |
-| `-o <SUFFIX>` | 输出**文件名后缀**，不是路径：产物落在 `<命令>[_<表>]_<后缀>.csv` |
+| `-o <SUFFIX>` | 输出**文件名后缀**，不是路径：产物落在 `<命令>[_<表>][_<label>]_<后缀>.csv` |
+| `--outdir <DIR>` | 产物写入该目录（不存在则创建并打印一行）；默认当前目录 |
 | `--last-n N` | 只用尾部 N 帧（跳过平衡段） |
 | `--ncore N` | 并行线程数（默认全部核心） |
 | `--metal-units` | LAMMPS metal 单位（速度 Å/ps，力 eV/Å）。**只影响速度与力**，坐标与晶胞两种单位下都是 Å，故对 gr/sq/msd/angle/rotcorr/vanhove/net 无影响 |
@@ -54,9 +55,38 @@ ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -o scan
 `{a,b}` 花括号不支持，交给 shell 展开。
 
 产物是逐输入的命令（`ferro map` 的 cube、`ferro net --export-traj` 的轨迹）例外：
-文件名必须掺输入 stem，否则第二个输入会覆盖第一个。
+文件名必须掺输入 stem，否则第二个输入会覆盖第一个。`--outdir` 对这两类同样生效。
 
-### 类型选择（gr / sq / angle）
+### 产物命名
+
+```
+<outdir>/<命令>[_<表>][_<label>]_<后缀>.csv
+```
+
+`label` 说的是**算了什么**，由类型选择填出来；`-o` 是批次标记。label 排在 suffix
+之前，所以 `ls gr_P-O_*` 能列出同一对在各个批次里的结果。
+
+| 命令 | label 来源 | 例 |
+|---|---|---|
+| `traj gr` | `-a/-b` 或 `-x/-y` | `gr_P-O.csv`、`gr_P_3-O_b.csv`、无筛选 `gr_all.csv` |
+| `traj angle` | `-a/-b/-c` 或 `-x/-y/-z` | `angle_O-P-O.csv`、无筛选 `angle_all.csv` |
+| `traj msd` / `vacf` / `vanhove` | `--elements`，**排序去重** | `msd_O-P.csv`、无筛选 `msd_all.csv` |
+| `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv`（两者必填，走不到 `all`） |
+| `traj sq` | 无（见下） | `sq.csv` |
+| `ferro net`、`ferro map` | 无 | `network_qn.csv`、`density.cube` |
+
+两条容易混的规则：
+
+- **`gr` / `angle` 按你写的顺序拼**，`-a P -b O` 与 `-a O -b P` 落到两个文件。这是对的：
+  `g(r)` 对称但 `CN` 有向，两份数据本就不同。
+- **`--elements` 排序后拼**，因为它是个集合：`O,P` 与 `P,O` 选中同一批原子，同一份数据
+  不能落到两个文件名下。
+
+选中的元素/标签会成为**路径的一段**，所以拼名前校验字符集 `[A-Za-z0-9_+-]`，违规
+**在读第一个文件之前**报错。替换成下划线的做法被否掉了——那会让 `-a P/2` 与 `-a P_2`
+静默写进同一个文件。
+
+### 类型选择（gr / angle）
 
 两组互斥：
 
@@ -66,6 +96,12 @@ ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -o scan
 | `-x` / `-y` / `-z` | 按 `Atom::label` 选（位点标签） |
 
 第一个槽是中心（pair）或端原子 A（triplet）。**顺序有意义**：`g(r)` 对称但 `CN` 有向。
+
+**`traj sq` 没有类型选择**：`-a/-b` 与 `-x/-y` 已移除。$S(q)$ 的主产物是两条 total，
+partial 是能加回 total 的诊断分解（$\sum w_{ij}S_{ij} = \mathrm{total}$），只留一对
+恰好把这条闭合藏起来；要看某一对在 pandas 里选列即可。按 label 分辨的 partial 一并
+移除——一个位点标签对应的原子数往往不足以让它的 partial 显出信号。库层的
+`GroupBy::Label` 不动。
 
 ---
 

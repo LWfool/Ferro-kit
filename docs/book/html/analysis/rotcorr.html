@@ -37,7 +37,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7f67bd7f.js";
+            window.path_to_searchindex_js = "../searchindex-d5ba57f9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-974254eb.js"></script>
@@ -222,7 +222,7 @@
 }
 <span class="boring">}</span></code></pre>
 <h2 id="output"><a class="header" href="#output">Output</a></h2>
-<p><code>rotcorr[_&lt;suffix&gt;].csv</code>：<code>file, time, c2, integral</code>（时间 fs）。</p>
+<p><code>rotcorr_&lt;中心&gt;-&lt;近邻&gt;[_&lt;suffix&gt;].csv</code>（两者必填，走不到 <code>all</code>）：<code>file, time, c2, integral</code>（时间 fs）。</p>
 <p>所有产物是<strong>一份</strong> csv，多输入时堆叠成一张表并加 <code>file</code> 列；<code>#</code> 注释块里是共享参数与
 <code>[inputs]</code> 清单（<code>pandas.read_csv(comment="#")</code> 会丢掉）。<code>-o</code> 给的是<strong>文件名后缀</strong>。</p>
 <h2 id="usage"><a class="header" href="#usage">Usage</a></h2>

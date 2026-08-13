@@ -37,7 +37,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-7f67bd7f.js";
+            window.path_to_searchindex_js = "../searchindex-d5ba57f9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-974254eb.js"></script>
@@ -372,6 +372,7 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 <tbody>
 <tr><td><code>-i &lt;FILE&gt;...</code></td><td>—</td><td>输入轨迹，多值并自展开 glob（引号括起来）。缺省时打印帮助</td></tr>
 <tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>—</td><td>输出<strong>文件名后缀</strong>（不是路径）：<code>network_&lt;表&gt;_&lt;后缀&gt;.csv</code></td></tr>
+<tr><td><code>--outdir &lt;DIR&gt;</code></td><td>当前目录</td><td>六张表与 <code>--export-traj</code> 的轨迹都写进这里（不存在则创建）</td></tr>
 <tr><td><code>--last-n N</code></td><td>全部帧</td><td>仅使用尾部 N 帧</td></tr>
 <tr><td><code>--ncore N</code></td><td>全部核心</td><td>并行线程数</td></tr>
 <tr><td><code>--metal-units</code></td><td>关</td><td>LAMMPS metal 单位。统计不读速度/力，<strong>只对 <code>--export-traj extxyz</code> 有影响</strong></td></tr>

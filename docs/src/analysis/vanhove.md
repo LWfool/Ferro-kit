@@ -54,7 +54,7 @@ pub struct VanHoveParams {
 
 ## Output
 
-`vanhove[_<suffix>].csv`：`file, r, gs`（归一化为 $\sum g_s = 1$）。
+`vanhove_<元素>[_<suffix>].csv`（元素排序去重，无 `--elements` 时为 `vanhove_all…`）：`file, r, gs`（归一化为 $\sum g_s = 1$）。
 
 滞后时间 $\tau$ 只在 `#` 头块里记录（帧数与 fs 各一份）。一次只算一个 $\tau$；
 将来支持多 $\tau$ 时会加 `tau` 列——那是加行而不是改列结构。

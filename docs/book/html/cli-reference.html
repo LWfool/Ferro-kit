@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-7f67bd7f.js";
+            window.path_to_searchindex_js = "searchindex-d5ba57f9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-974254eb.js"></script>
@@ -214,7 +214,8 @@ ferro bader | convert | info | job
 </thead>
 <tbody>
 <tr><td><code>-i &lt;FILE&gt;...</code></td><td>输入文件，<strong>多值</strong>并自展开 glob 模式（引号括起来，让 shell 别动它）</td></tr>
-<tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>输出<strong>文件名后缀</strong>，不是路径：产物落在 <code>&lt;命令&gt;[_&lt;表&gt;]_&lt;后缀&gt;.csv</code></td></tr>
+<tr><td><code>-o &lt;SUFFIX&gt;</code></td><td>输出<strong>文件名后缀</strong>，不是路径：产物落在 <code>&lt;命令&gt;[_&lt;表&gt;][_&lt;label&gt;]_&lt;后缀&gt;.csv</code></td></tr>
+<tr><td><code>--outdir &lt;DIR&gt;</code></td><td>产物写入该目录（不存在则创建并打印一行）；默认当前目录</td></tr>
 <tr><td><code>--last-n N</code></td><td>只用尾部 N 帧（跳过平衡段）</td></tr>
 <tr><td><code>--ncore N</code></td><td>并行线程数（默认全部核心）</td></tr>
 <tr><td><code>--metal-units</code></td><td>LAMMPS metal 单位（速度 Å/ps，力 eV/Å）。<strong>只影响速度与力</strong>，坐标与晶胞两种单位下都是 Å，故对 gr/sq/msd/angle/rotcorr/vanhove/net 无影响</td></tr>
@@ -231,8 +232,38 @@ ferro bader | convert | info | job
 原因、并使<strong>退出码为 1</strong>（否则 shell 里 <code>&amp;&amp;</code> 串联会把批内失败当成功）。
 <code>{a,b}</code> 花括号不支持，交给 shell 展开。</p>
 <p>产物是逐输入的命令（<code>ferro map</code> 的 cube、<code>ferro net --export-traj</code> 的轨迹）例外：
-文件名必须掺输入 stem，否则第二个输入会覆盖第一个。</p>
-<h3 id="类型选择gr--sq--angle"><a class="header" href="#类型选择gr--sq--angle">类型选择（gr / sq / angle）</a></h3>
+文件名必须掺输入 stem，否则第二个输入会覆盖第一个。<code>--outdir</code> 对这两类同样生效。</p>
+<h3 id="产物命名"><a class="header" href="#产物命名">产物命名</a></h3>
+<pre><code>&lt;outdir&gt;/&lt;命令&gt;[_&lt;表&gt;][_&lt;label&gt;]_&lt;后缀&gt;.csv
+</code></pre>
+<p><code>label</code> 说的是<strong>算了什么</strong>，由类型选择填出来；<code>-o</code> 是批次标记。label 排在 suffix
+之前，所以 <code>ls gr_P-O_*</code> 能列出同一对在各个批次里的结果。</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>命令</th><th>label 来源</th><th>例</th></tr>
+</thead>
+<tbody>
+<tr><td><code>traj gr</code></td><td><code>-a/-b</code> 或 <code>-x/-y</code></td><td><code>gr_P-O.csv</code>、<code>gr_P_3-O_b.csv</code>、无筛选 <code>gr_all.csv</code></td></tr>
+<tr><td><code>traj angle</code></td><td><code>-a/-b/-c</code> 或 <code>-x/-y/-z</code></td><td><code>angle_O-P-O.csv</code>、无筛选 <code>angle_all.csv</code></td></tr>
+<tr><td><code>traj msd</code> / <code>vacf</code> / <code>vanhove</code></td><td><code>--elements</code>，<strong>排序去重</strong></td><td><code>msd_O-P.csv</code>、无筛选 <code>msd_all.csv</code></td></tr>
+<tr><td><code>traj rotcorr</code></td><td><code>--center</code>-<code>--neighbor</code></td><td><code>rotcorr_O-H.csv</code>（两者必填，走不到 <code>all</code>）</td></tr>
+<tr><td><code>traj sq</code></td><td>无（见下）</td><td><code>sq.csv</code></td></tr>
+<tr><td><code>ferro net</code>、<code>ferro map</code></td><td>无</td><td><code>network_qn.csv</code>、<code>density.cube</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>两条容易混的规则：</p>
+<ul>
+<li><strong><code>gr</code> / <code>angle</code> 按你写的顺序拼</strong>，<code>-a P -b O</code> 与 <code>-a O -b P</code> 落到两个文件。这是对的：
+<code>g(r)</code> 对称但 <code>CN</code> 有向，两份数据本就不同。</li>
+<li><strong><code>--elements</code> 排序后拼</strong>，因为它是个集合：<code>O,P</code> 与 <code>P,O</code> 选中同一批原子，同一份数据
+不能落到两个文件名下。</li>
+</ul>
+<p>选中的元素/标签会成为<strong>路径的一段</strong>，所以拼名前校验字符集 <code>[A-Za-z0-9_+-]</code>，违规
+<strong>在读第一个文件之前</strong>报错。替换成下划线的做法被否掉了——那会让 <code>-a P/2</code> 与 <code>-a P_2</code>
+静默写进同一个文件。</p>
+<h3 id="类型选择gr--angle"><a class="header" href="#类型选择gr--angle">类型选择（gr / angle）</a></h3>
 <p>两组互斥：</p>
 <div class="table-wrapper">
 <table>
@@ -246,6 +277,11 @@ ferro bader | convert | info | job
 </table>
 </div>
 <p>第一个槽是中心（pair）或端原子 A（triplet）。<strong>顺序有意义</strong>：<code>g(r)</code> 对称但 <code>CN</code> 有向。</p>
+<p><strong><code>traj sq</code> 没有类型选择</strong>：<code>-a/-b</code> 与 <code>-x/-y</code> 已移除。$S(q)$ 的主产物是两条 total，
+partial 是能加回 total 的诊断分解（$\sum w_{ij}S_{ij} = \mathrm{total}$），只留一对
+恰好把这条闭合藏起来；要看某一对在 pandas 里选列即可。按 label 分辨的 partial 一并
+移除——一个位点标签对应的原子数往往不足以让它的 partial 显出信号。库层的
+<code>GroupBy::Label</code> 不动。</p>
 <hr>
 <h2 id="ferro-convert"><a class="header" href="#ferro-convert"><code>ferro convert</code></a></h2>
 <p>格式转换。</p>
