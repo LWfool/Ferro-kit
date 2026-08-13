@@ -354,6 +354,8 @@ PAIR ARGUMENTS (required, at least one):
 OPTIONS:
   -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
   -o, --output SUFFIX   Output name suffix: network_<table>_<suffix>.csv
+      --outdir DIR      Write every product here, tables and --export-traj alike
+                        (created if missing; default: current dir)
       --last-n N        Use only the last N frames (skip equilibration)
       --ncore N         Parallel threads (default: all cores)
       --metal-units     LAMMPS metal units; only affects --export-traj extxyz
