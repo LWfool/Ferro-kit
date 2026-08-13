@@ -18,9 +18,13 @@ pub struct CommonArgs {
     #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
-    /// Output name suffix: results go to <command>[_<table>]_<suffix>.csv
+    /// Output name suffix: results go to <command>[_<table>][_<label>]_<suffix>.csv
     #[arg(short, long, value_name = "SUFFIX")]
     pub output: Option<String>,
+
+    /// Directory to write every product into (created if missing; default: current dir)
+    #[arg(long, value_name = "DIR")]
+    pub outdir: Option<PathBuf>,
 
     /// Use only the last N frames (skip equilibration)
     #[arg(long)]
@@ -54,6 +58,18 @@ impl CommonArgs {
 
     pub fn suffix(&self) -> Option<&str> {
         self.output.as_deref()
+    }
+
+    /// Builds the naming/placement bundle for this run.
+    ///
+    /// `label` says what was analysed and lands in the file name; pass `None` for the
+    /// modes that have no type selection (`sq`, `net`, `map`).
+    pub fn out(&self, label: Option<String>) -> crate::batch::Output {
+        crate::batch::Output {
+            dir: self.outdir.clone(),
+            label,
+            suffix: self.output.clone(),
+        }
     }
 }
 

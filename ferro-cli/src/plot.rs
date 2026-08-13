@@ -9,6 +9,8 @@
 //! input file**. The file is the only variable dimension, so colours are assigned per
 //! file and stay consistent across panels; only the first panel carries a legend.
 
+use std::path::Path;
+
 use anyhow::{bail, Result};
 use plotters::prelude::*;
 use ferro_analysis::{AngleResult, GrResult, MsdResult, SqResult};
@@ -66,9 +68,12 @@ pub struct Panel {
     pub series: Vec<Series>,
 }
 
-/// PNG name derived from the data file: `gr_run1.csv` → `gr_run1.png`.
-fn png_path(data_path: &str) -> String {
-    let p = std::path::Path::new(data_path);
+/// PNG name derived from the data file: `gr_P-O_run1.csv` → `gr_P-O_run1.png`.
+///
+/// Taking the whole path, not just the stem, is what makes `--outdir` and the type
+/// label reach the plot without either being threaded through here.
+fn png_path(data_path: &Path) -> String {
+    let p = data_path;
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
     match p.parent().and_then(|d| d.to_str()).filter(|s| !s.is_empty()) {
         Some(dir) => format!("{dir}/{stem}.png"),
@@ -192,7 +197,7 @@ fn panels_from<T>(
 ///
 /// The old dual-Y-axis layout is gone: with several files there would be 2N curves
 /// fighting over two scales. Separate panels also drop the axis-side ambiguity.
-pub fn plot_gr(results: &[(String, &GrResult)], data_path: &str, a: &str, b: &str) -> Result<String> {
+pub fn plot_gr(results: &[(String, &GrResult)], data_path: &Path, a: &str, b: &str) -> Result<String> {
     let out = png_path(data_path);
     let key = format!("{a}-{b}");
 
@@ -219,7 +224,7 @@ pub fn plot_gr(results: &[(String, &GrResult)], data_path: &str, a: &str, b: &st
 
 /// The two weighted totals as two panels — they are different quantities, not two
 /// styles of the same one, so they do not share an axis.
-pub fn plot_sq(results: &[(String, &SqResult)], data_path: &str) -> Result<String> {
+pub fn plot_sq(results: &[(String, &SqResult)], data_path: &Path) -> Result<String> {
     let out = png_path(data_path);
 
     let collect = |pick: fn(&SqResult) -> Option<&Vec<f64>>| -> Vec<Series> {
@@ -254,7 +259,7 @@ pub fn plot_sq(results: &[(String, &SqResult)], data_path: &str) -> Result<Strin
 // ─── MSD ────────────────────────────────────────────────────────────────────
 
 /// Total MSD plus the three lattice-direction components, 2×2.
-pub fn plot_msd(results: &[(String, &MsdResult)], data_path: &str) -> Result<String> {
+pub fn plot_msd(results: &[(String, &MsdResult)], data_path: &Path) -> Result<String> {
     let out = png_path(data_path);
     let quantities: &[Quantity<MsdResult>] = &[
         ("MSD total", "t  [fs]", "MSD  [Å²]", |r| (r.time.clone(), r.msd.clone())),
@@ -273,7 +278,7 @@ pub fn plot_msd(results: &[(String, &MsdResult)], data_path: &str) -> Result<Str
 ///
 /// Requires a named triplet for the same reason g(r) requires a named pair: without
 /// one the figure would carry every triplet of every file at once.
-pub fn plot_angle(results: &[(String, &AngleResult)], data_path: &str, triplet: &str) -> Result<String> {
+pub fn plot_angle(results: &[(String, &AngleResult)], data_path: &Path, triplet: &str) -> Result<String> {
     let out = png_path(data_path);
 
     let mut series = Vec::new();
@@ -324,8 +329,10 @@ mod tests {
 
     #[test]
     fn test_png_path_replaces_extension() {
-        assert_eq!(png_path("gr_run1.csv"), "gr_run1.png");
-        assert_eq!(png_path("out/sq.csv"), "out/sq.png");
+        assert_eq!(png_path(Path::new("gr_run1.csv")), "gr_run1.png");
+        assert_eq!(png_path(Path::new("out/sq.csv")), "out/sq.png");
+        // --outdir 与类型 label 都由数据文件路径带过来,绘图侧不需要各自再接一遍
+        assert_eq!(png_path(Path::new("res/700K/gr_P-O_run1.csv")), "res/700K/gr_P-O_run1.png");
     }
 
     #[test]

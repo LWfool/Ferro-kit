@@ -145,16 +145,122 @@ pub fn stack<T>(
     Ok(out)
 }
 
-/// Output file name: `<mode>[_<table>]_<suffix>.csv`.
+/// Characters allowed in a file-name label. Everything a chemical symbol or a site
+/// label can legitimately contain, and nothing that can redirect a path.
+fn label_char_ok(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-')
+}
+
+/// Joins the selected types into the label that goes in the file name.
 ///
-/// `-o` supplies the suffix, so one batch's products sort together under `ls <mode>_*`.
-/// The table name is dropped when it merely repeats the mode (the single-table case).
-pub fn out_path(mode: &str, table: &str, suffix: Option<&str>) -> String {
-    let stem = if table == mode { mode.to_string() } else { format!("{mode}_{table}") };
-    match suffix {
-        Some(s) if !s.is_empty() => format!("{stem}_{s}.csv"),
-        _ => format!("{stem}.csv"),
+/// `["P", "O"] -> "P-O"`, `[] -> "all"`. The parts are what the caller wrote, so
+/// `-a P -b O` and `-a O -b P` land in different files — that is correct, `g(r)` is
+/// symmetric but `CN(r)` is directed. Callers whose selection is an unordered set
+/// (`--elements`) sort and dedup before calling, or the same data would be written
+/// under two names.
+///
+/// Validated **before** any file is read: these strings become a path component, and
+/// a `/` in `-a` would otherwise silently write somewhere else.
+pub fn file_label<S: AsRef<str>>(parts: &[S]) -> Result<String> {
+    if parts.is_empty() {
+        return Ok("all".to_string());
     }
+    for p in parts {
+        let p = p.as_ref();
+        if p.is_empty() {
+            bail!("empty type selection: a selected element or label cannot be blank");
+        }
+        if let Some(bad) = p.chars().find(|c| !label_char_ok(*c)) {
+            bail!(
+                "invalid character {bad:?} in '{p}': a selected element or site label \
+                 goes into the output file name, so only letters, digits, '_', '+' and \
+                 '-' are accepted"
+            );
+        }
+    }
+    Ok(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join("-"))
+}
+
+/// Sorts and dedups an unordered selection before it becomes a label.
+///
+/// `--elements` is a set: `O,P` and `P,O` select the same atoms and must not produce
+/// two files holding identical data.
+pub fn set_label(parts: Option<&Vec<String>>) -> Result<String> {
+    match parts {
+        Some(v) => {
+            let mut v: Vec<&str> = v.iter().map(|s| s.as_str()).collect();
+            v.sort_unstable();
+            v.dedup();
+            file_label(&v)
+        }
+        None => Ok("all".to_string()),
+    }
+}
+
+/// Where a batch's products go and what they are called.
+///
+/// Collected into one struct because the three fields always travel together and
+/// `write_all` would otherwise take eight positional arguments.
+#[derive(Clone, Debug, Default)]
+pub struct Output {
+    /// `--outdir`; `None` = the current directory.
+    pub dir: Option<PathBuf>,
+    /// What was analysed (`P-O`, `O-P-O`, `all`). `None` for modes with no selection.
+    pub label: Option<String>,
+    /// `-o`, the batch tag.
+    pub suffix: Option<String>,
+}
+
+impl Output {
+    /// Creates `--outdir` if it does not exist. Call once, **before the first input is
+    /// read**, so a bad path fails alongside the other parameter errors rather than
+    /// after a long analysis.
+    pub fn prepare(&self) -> Result<()> {
+        if let Some(d) = &self.dir {
+            if !d.exists() {
+                std::fs::create_dir_all(d)
+                    .map_err(|e| anyhow::anyhow!("cannot create --outdir '{}': {e}", d.display()))?;
+                println!("Created: {}", d.display());
+            } else if !d.is_dir() {
+                bail!("--outdir '{}' exists and is not a directory", d.display());
+            }
+        }
+        Ok(())
+    }
+
+    /// Places a finished file name inside `--outdir`.
+    pub fn join(&self, name: &str) -> PathBuf {
+        match &self.dir {
+            Some(d) => d.join(name),
+            None => PathBuf::from(name),
+        }
+    }
+
+    /// [`Output::join`] as a `String`, for `ferro-io`'s writers — all nine of them take
+    /// `&str`. Widening that surface to `&Path` is tracked in `dev/plan.md`.
+    pub fn join_str(&self, name: &str) -> String {
+        self.join(name).to_string_lossy().into_owned()
+    }
+}
+
+/// Output file name: `<outdir>/<mode>[_<table>][_<label>]_<suffix>.csv`.
+///
+/// The table name is dropped when it merely repeats the mode (the single-table case).
+/// `label` says what was analysed and `suffix` (`-o`) tags the batch; label comes first
+/// so `ls gr_P-O_*` lists one pair across every batch.
+pub fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
+    let mut stem =
+        if table == mode { mode.to_string() } else { format!("{mode}_{table}") };
+    if let Some(l) = out.label.as_deref().filter(|l| !l.is_empty()) {
+        stem.push('_');
+        stem.push_str(l);
+    }
+    if let Some(s) = out.suffix.as_deref().filter(|s| !s.is_empty()) {
+        stem.push('_');
+        stem.push_str(s);
+    }
+    stem.push_str(".csv");
+    out.join(&stem)
 }
 
 /// Builds the `#` comment block written above the data.
@@ -191,10 +297,10 @@ pub fn write_all(
     params: &[String],
     summary: &Table,
     tables: Vec<(String, Table)>,
-    suffix: Option<&str>,
-) -> Result<String> {
+    out: &Output,
+) -> Result<PathBuf> {
     let meta = meta_block(title, params, summary);
-    let mut first = String::new();
+    let mut first = PathBuf::new();
     for (name, mut table) in tables {
         if table.meta.is_empty() {
             table.meta = meta.clone();
@@ -204,10 +310,11 @@ pub fn write_all(
             table.meta.extend(own);
             table.meta.push("-".repeat(60));
         }
-        let path = out_path(mode, &name, suffix);
-        write_table(&table, &path, TableFormat::Csv)?;
-        println!("{:<12} -> {path}", name.to_uppercase());
-        if first.is_empty() {
+        let path = out_path(mode, &name, out);
+        // ferro-io 的 writer 路径统一是 &str(九个 writer 都如此),故在此转换一次
+        write_table(&table, &path.to_string_lossy(), TableFormat::Csv)?;
+        println!("{:<12} -> {}", name.to_uppercase(), path.display());
+        if first.as_os_str().is_empty() {
             first = path;
         }
     }
@@ -377,12 +484,77 @@ mod tests {
         assert_eq!(stacked[0].1.n_rows(), 2, "两个输入各贡献一行");
     }
 
+    fn out(label: Option<&str>, suffix: Option<&str>) -> Output {
+        Output {
+            dir: None,
+            label: label.map(str::to_string),
+            suffix: suffix.map(str::to_string),
+        }
+    }
+
     #[test]
     fn test_out_path_naming() {
-        assert_eq!(out_path("gr", "gr", Some("run1")), "gr_run1.csv");
-        assert_eq!(out_path("gr", "gr", None), "gr.csv");
-        assert_eq!(out_path("network", "qn", Some("run1")), "network_qn_run1.csv");
-        assert_eq!(out_path("network", "qn", None), "network_qn.csv");
+        let p = |o: Output| out_path("gr", "gr", &o).to_string_lossy().into_owned();
+        assert_eq!(p(out(None, None)), "gr.csv");
+        assert_eq!(p(out(None, Some("run1"))), "gr_run1.csv");
+        assert_eq!(p(out(Some("P-O"), None)), "gr_P-O.csv");
+        assert_eq!(p(out(Some("P-O"), Some("run1"))), "gr_P-O_run1.csv");
+        // label 在 suffix 之前:`ls gr_P-O_*` 能列出同一对在各批次的结果
+        assert_eq!(p(out(Some("all"), Some("run1"))), "gr_all_run1.csv");
+
+        let q = |o: Output| out_path("network", "qn", &o).to_string_lossy().into_owned();
+        assert_eq!(q(out(None, None)), "network_qn.csv", "net 无 label 段");
+        assert_eq!(q(out(None, Some("run1"))), "network_qn_run1.csv");
+    }
+
+    #[test]
+    fn test_out_path_honours_outdir() {
+        let o = Output {
+            dir: Some(PathBuf::from("results/700K")),
+            label: Some("P-O".into()),
+            suffix: None,
+        };
+        assert_eq!(out_path("gr", "gr", &o), PathBuf::from("results/700K/gr_P-O.csv"));
+    }
+
+    #[test]
+    fn test_file_label_joins_and_defaults_to_all() {
+        assert_eq!(file_label::<&str>(&[]).unwrap(), "all");
+        assert_eq!(file_label(&["P", "O"]).unwrap(), "P-O");
+        assert_eq!(file_label(&["O", "P", "O"]).unwrap(), "O-P-O");
+        // 位点标签自带下划线,原样拼接不转义
+        assert_eq!(file_label(&["P_3", "O_b"]).unwrap(), "P_3-O_b");
+        // 顺序照写:gr 的 CN 有向,-a P -b O 与 -a O -b P 是两份不同的数据
+        assert_eq!(file_label(&["O", "P"]).unwrap(), "O-P");
+    }
+
+    #[test]
+    fn test_file_label_rejects_path_characters() {
+        // 这个串会成为路径的一段,放行等于让 -a 决定写到哪里
+        for bad in ["P/2", "../etc", "P O", "P.O", ""] {
+            assert!(file_label(&[bad]).is_err(), "{bad:?} 应被拒绝");
+        }
+    }
+
+    #[test]
+    fn test_set_label_sorts_and_dedups() {
+        let v = |s: &[&str]| Some(s.iter().map(|x| x.to_string()).collect::<Vec<_>>());
+        // --elements 是集合,两种写法必须落到同一个文件名
+        assert_eq!(set_label(v(&["O", "P"]).as_ref()).unwrap(), "O-P");
+        assert_eq!(set_label(v(&["P", "O"]).as_ref()).unwrap(), "O-P");
+        assert_eq!(set_label(v(&["P", "O", "P"]).as_ref()).unwrap(), "O-P");
+        assert_eq!(set_label(None).unwrap(), "all");
+    }
+
+    #[test]
+    fn test_output_prepare_creates_missing_dir() {
+        let base = std::env::temp_dir().join(format!("ferro_outdir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let o = Output { dir: Some(base.join("deep/nested")), ..Default::default() };
+        o.prepare().unwrap();
+        assert!(o.dir.as_ref().unwrap().is_dir(), "缺失目录应被创建");
+        o.prepare().unwrap(); // 已存在时是 no-op
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

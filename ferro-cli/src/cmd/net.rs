@@ -82,6 +82,10 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         bail!("Every cutoff names a modifier element; at least one former is required");
     }
 
+    // net 没有类型选择,故无 label 段;--outdir 在读第一个文件之前建好
+    let out = cmd.common.out(None);
+    out.prepare()?;
+
     let inputs = batch::expand_inputs(&cmd.common.input)?;
     cmd.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
@@ -93,7 +97,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
             anyhow!("no usable frame (every frame is missing a cell; PBC required)")
         })?;
         if let Some(fmt) = cmd.export_traj {
-            export_labelled(&traj, &params, p, cmd.common.suffix(), fmt)?;
+            export_labelled(&traj, &params, p, &out, fmt)?;
         }
         Ok(result)
     });
@@ -118,7 +122,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        cmd.common.suffix(),
+        &out,
     )?;
 
     Ok(failures.len())
@@ -197,7 +201,7 @@ fn export_labelled(
     traj: &Trajectory,
     params: &TypeParams,
     input: &Path,
-    suffix: Option<&str>,
+    out: &batch::Output,
     fmt: ExportFormat,
 ) -> Result<()> {
     let per_frame = classify_trajectory(traj, params);
@@ -228,10 +232,12 @@ fn export_labelled(
 
     let stem = batch::label_of(input);
     let ext = fmt.ext();
-    let path = match suffix {
-        Some(s) if !s.is_empty() => format!("{stem}_types_{s}.{ext}"),
-        _ => format!("{stem}_types.{ext}"),
+    let name = match out.suffix.as_deref().filter(|s| !s.is_empty()) {
+        Some(s) => format!("{stem}_types_{s}.{ext}"),
+        None => format!("{stem}_types.{ext}"),
     };
+    let path = out.join(&name);
+    let path = path.to_string_lossy().into_owned();
     match fmt {
         ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, ferro_io::LammpsUnits::Real)?,
         ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,

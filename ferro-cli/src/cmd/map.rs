@@ -128,6 +128,9 @@ pub struct ChgSdfCmd {
     /// Output file stem
     #[arg(short, long)]
     pub output: Option<String>,
+    /// Directory to write the cubes into (created if missing; default: current dir)
+    #[arg(long, value_name = "DIR")]
+    pub outdir: Option<PathBuf>,
     /// Sub-grid boundary margin [Å]
     #[arg(long = "chg-padding", default_value = "6.0")]
     pub chg_padding: f64,
@@ -194,10 +197,16 @@ fn mode_name(m: &CubeCliMode) -> &'static str {
 }
 
 /// Shared driver: traverse inputs, skip failures, one grid file each.
+///
+/// `map` has no type selection, so its `Output` carries no label — only `--outdir` and
+/// the `-o` stem, the latter already folded into `stem_for`.
 fn drive(
     common: &CommonArgs,
-    body: impl Fn(&Trajectory, &str) -> Result<()>,
+    body: impl Fn(&Trajectory, &str, &batch::Output) -> Result<()>,
 ) -> Result<usize> {
+    let out = common.out(None);
+    out.prepare()?;
+
     let inputs = batch::expand_inputs(&common.input)?;
     common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
@@ -206,13 +215,13 @@ fn drive(
     let (_ok, failures) = batch::map_inputs(&inputs, |p| {
         let traj = common.load(p)?;
         let stem = stem_for(common.suffix(), p, multi);
-        body(&traj, &stem)
+        body(&traj, &stem, &out)
     });
     Ok(failures.len())
 }
 
 fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
-    drive(&c.common, |traj, stem| {
+    drive(&c.common, |traj, stem, out| {
         let params = CubeDensityParams {
             nx: c.grid.nx,
             ny: c.grid.ny,
@@ -224,10 +233,11 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
             .ok_or_else(|| anyhow!("Cube calc failed (missing cell, velocities, or forces?)"))?;
 
         let name = mode_name(&mode);
-        let out = if stem.is_empty() { format!("{name}.cube") } else { format!("{name}_{stem}.cube") };
-        write_cube(&out, &result.cube)?;
+        let file = if stem.is_empty() { format!("{name}.cube") } else { format!("{name}_{stem}.cube") };
+        let path = out.join_str(&file);
+        write_cube(&path, &result.cube)?;
         println!(
-            "Cube ({name}) -> {out}  [{} frames, {} atoms]",
+            "Cube ({name}) -> {path}  [{} frames, {} atoms]",
             result.n_frames, result.n_atoms
         );
         Ok(())
@@ -235,7 +245,7 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
 }
 
 fn run_radius(c: &RadiusCmd) -> Result<usize> {
-    drive(&c.common, |traj, stem| {
+    drive(&c.common, |traj, stem, out| {
         let params = CubeRadiusParams {
             nx: c.grid.nx,
             ny: c.grid.ny,
@@ -246,10 +256,11 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
         let result = calc_cube_radius(traj, &params)
             .ok_or_else(|| anyhow!("Cube radius calc failed (missing cell?)"))?;
 
-        let out = if stem.is_empty() { "radius.cube".to_string() } else { format!("radius_{stem}.cube") };
-        write_cube(&out, &result.cube)?;
+        let file = if stem.is_empty() { "radius.cube".to_string() } else { format!("radius_{stem}.cube") };
+        let path = out.join_str(&file);
+        write_cube(&path, &result.cube)?;
         println!(
-            "Cube (radius={:.3}Å) -> {out}  [{} frames, {} atoms]",
+            "Cube (radius={:.3}Å) -> {path}  [{} frames, {} atoms]",
             params.radius, result.n_frames, result.n_atoms
         );
         Ok(())
@@ -257,7 +268,7 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
 }
 
 fn run_sdf(c: &SdfCmd) -> Result<usize> {
-    drive(&c.common, |traj, stem| {
+    drive(&c.common, |traj, stem, out| {
         let params = ClusterSdfParams {
             former: c.cluster.former.clone(),
             ligand: c.cluster.ligand.clone(),
@@ -290,16 +301,17 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
             let mut labels: Vec<_> = family.grids.keys().collect();
             labels.sort();
             for label in &labels {
-                write_cube(&format!("{fam_prefix}_{label}.cube"), &family.grids[*label])?;
+                write_cube(&out.join_str(&format!("{fam_prefix}_{label}.cube")), &family.grids[*label])?;
                 total_files += 1;
             }
             println!(
-                "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {fam_prefix}_*.cube",
+                "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {}_*.cube",
                 family.signature,
                 family.n_clusters,
                 family.rmsd_stats.mean,
                 family.rmsd_stats.max,
                 family.rmsd_stats.n_warned,
+                out.join_str(&fam_prefix),
             );
         }
         println!(
@@ -315,6 +327,10 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
 /// weighted cross-file average needs a new intermediate product format and is tracked
 /// separately in `dev/plan.md`.
 fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
+    // 这个命令不走 CommonArgs(它吃 --cubes 而不是 -i),所以 Output 自己拼
+    let out = batch::Output { dir: c.outdir.clone(), ..Default::default() };
+    out.prepare()?;
+
     if let Some(n) = c.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
@@ -347,7 +363,7 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     let mut total_files = 0usize;
     for (fam_idx, family) in families.iter().enumerate() {
         let fam_stem = if multi_family { format!("{stem}_fam{fam_idx}") } else { stem.to_string() };
-        let path = format!("{}_Q{}.cube", fam_stem, c.cluster.qn);
+        let path = out.join_str(&format!("{}_Q{}.cube", fam_stem, c.cluster.qn));
         write_cube(&path, &family.cube)?;
         total_files += 1;
         println!(
