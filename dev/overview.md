@@ -89,4 +89,13 @@ ferro bader | convert | info | job
 | 配体 `fraction` 分母 | 全体配体原子 → 该配体元素 |
 | 新增 `--qn` | 替换默认 Qn 名单 `{B,P,Si}` |
 
-按仓库自己的规则这批应升次版本位（0.3.0）。
+同期的 `traj` 产物命名改动（2026-08-13）：
+
+| 改动 | 影响 |
+|---|---|
+| 文件名加 label 段 | `<mode>[_<table>][_<label>]_<suffix>.csv`;`gr.csv` → `gr_P-O.csv` / `gr_all.csv` |
+| 六个命令全改名 | gr / angle / msd / vacf / vanhove / rotcorr,**含无筛选时的 `_all`** |
+| 新增 `--outdir` | 进 `CommonArgs`,覆盖 11 个命令的 csv/png/cube/导出轨迹;`chg-sdf` 单独加同名参数 |
+| `traj sq` 移除 `-a/-b/-x/-y` | 旧命令行直接报 `unexpected argument`;按 label 分辨的 partial 从 CLI 消失 |
+
+按仓库自己的规则这两批合起来应升次版本位（0.3.0）。

@@ -460,6 +460,45 @@ linkage 总观测 3589 不变、`ligand_type` 与 `coordination` 逐行相同、
 
 测试 398 → 420，clippy 零警告。产物交叉对账全部闭合（见提交 `304bdd9` 说明）。
 
+### traj 产物命名带 label + --outdir + sq 移除选择（2026-08-13，已完成，未发版）
+
+起因是一句具体的抱怨：`gr.csv` 看不出算的是哪一对。追问中范围从「gr 和 angle」扩到
+六个命令，并顺带拆掉了 sq 的配对选择。
+
+| 提交 | 内容 |
+|---|---|
+| `3062954` | `Output` + `out_path`/`file_label`/`set_label`；六命令接 label；`--outdir` 进 `CommonArgs`；sq 删 `SelectArgs` |
+| `2646232` | 帮助文本 |
+| `5234fba` | 手册 + `CLAUDE.md` |
+
+grilling 里定下、值得记住的四条：
+
+- **label 排在 suffix 之前**。label 说的是算了什么，suffix 是批次标记；这个顺序让
+  `ls gr_P-O_*` 列出同一对在各批次的结果，反过来没有对应的用法
+- **两种拼法并存且各有理由**：`gr`/`angle` 按写的顺序（`CN` 有向，两个顺序是两份数据），
+  `--elements` 排序去重（是集合，同一份数据不能落到两个文件名下）。看着不一致，
+  但统一成任何一种都会错一半
+- **非法字符报错而不是替换**。替换会让 `-a P/2` 与 `-a P_2` 静默写进同一个文件 ——
+  与这个仓库反复躲的那类静默坏数据同源
+- **`_all` 是有代价的选择**。它让所有不带筛选的旧命令产物改名（`gr.csv` → `gr_all.csv`），
+  换来的是「文件名一眼看出有没有筛选」。用户明确选了这一边
+
+实施中发现的两处与设计讨论不符：
+
+- **rotcorr 的 `--center`/`--neighbor` 是必填的**（`Option` 只为「不带 `-i` 时打帮助」），
+  所以它恒有 label，讨论里假设的 `rotcorr_all.csv` 那条路根本走不到，无需写代码
+- **删掉 `SelectArgs` 的使用不等于删掉参数**。先只改了 `run_sq` 的函数体，
+  `traj sq -a P -b O` 照样被接受并静默产出 `sq.csv`；必须连 `SqCmd` 的字段一起删，
+  clap 才会报 `unexpected argument`
+
+sq 移除选择的代价已知并接受：**按 label 分辨的 partial 从 CLI 消失**（`-x/-y` 曾是进入
+`GroupBy::Label` 的唯一入口）。理由是位点标签对应的原子数往往不足以让 partial 显出信号。
+库层 `GroupBy::Label` 与钉住 O(1/N) 自排除项的两个测试都不动。
+
+**`vacf` / `vanhove` / `rotcorr` 的改名未经实测验证** —— 参考 fixture 没有速度，
+`vacf` 跑不到写文件那步；这三个性质本身也还没调试到。单元测试覆盖了拼名函数，
+但端到端只验了 gr / angle / msd / sq / net / map。
+
 ### scripts/ 四个对拍脚本修复（2026-08-11 已实施）
 
 0.2.0 的输出变更（`.dat` 退役 → csv、宽表 → 长表、新增 `file` 文本列、顶部 `#` 元信息块）
@@ -508,6 +547,21 @@ linkage 总观测 3589 不变、`ligand_type` 与 `coordination` 逐行相同、
 > 2026-08-12 更新：原「net type 标签重做」与「net 接入批处理」两项**已完成**，
 > 归档见下方。现存两项。
 
+### scripts/：四个对拍脚本跟进产物改名（2026-08-13 提出）
+
+`traj` 的产物名在 2026-08-13 加了 label 段，三处会破（第四处 sq 不受影响，它不传配对）：
+
+| 脚本 | 断点 |
+|---|---|
+| `compare_rdf.py` | 期待 `gr_<tag>.csv`，实际 `gr_P-O_<tag>.csv` |
+| `compare_angle.py` | 期待 `angle_<tag>.csv`，实际 `angle_O-P-O_<tag>.csv` |
+| `compare_sq.py` 的 gr 段 | `-a O -b O -o O-O` 现在产出 `gr_O-O_O-O.csv`（label 与 suffix 同值） |
+
+改动本身只是 `fc.run_ferro(...)` 第四个参数的字符串。**在这之前这三个脚本是断的** ——
+它们是 gr/sq/angle 与参考实现对拍的唯一通路，断着等于没有回归保障，应尽早补。
+
+顺带可考虑给 `ferrocmp.py` 加个拼名助手，避免下次改命名规则又要改四处。
+
 ### scripts/：net 六张表的 Python 绘图脚本（2026-08-12 提出）
 
 **发版的前置条件** —— 用户已明确：版本号等这批脚本完成后，与 net 的破坏性改动
@@ -530,6 +584,20 @@ CSV，`pandas.read_csv(comment="#")` 直接可读，脚本要覆盖的图：
 
 误差棒用 `sd` 列，但**图注必须写明它是快照间的散布而非标准误**（MD 相邻帧强相关），
 否则读者会按 $1/\sqrt{N}$ 去理解它。
+
+### 三项小待办（2026-08-13 提出）
+
+三件事互相独立，都不大，凑在一起是因为都属「上一次改动划在范围外的部分」：
+
+1. **`bader` 的 `--outdir`**。它不走 `CommonArgs`，把 `ACF.dat` / `BCF.dat` / `AVF.dat`
+   三个**固定名字**写在当前目录 —— 连续跑两个体系直接互相覆盖。加参数要连
+   `write_acf` / `write_bcf` / `write_avf` 的签名一起动，与 Henkelman 格式无关，只是路径。
+2. **`convert` / `job` 的 `-o` 统一为文件名**，路径走 `--outdir`。现在它们的 `-o` 是完整
+   路径，与其余 11 个命令「`-o` 是后缀、`--outdir` 是路径」的约定相反。
+3. **`ferro-io` 的 writer 路径统一 `&str` → `&Path`**。九个 writer 全收 `&str`，而
+   `batch.rs` 内部已是 `PathBuf`，只能在边界 `to_string_lossy()` 转一次
+   （`Output::join_str` 就是为此存在）。改动机械但会碰到 io_dispatch、ferro-python 与
+   一批测试，故没有混进命名那次提交。
 
 ### ferro map chg-sdf 的 --cubes 拆成单文件（2026-08-11 提为高）
 
