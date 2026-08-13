@@ -230,7 +230,16 @@ Batch input:
   -i takes several files and expands glob patterns itself — quote them:
     ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan
   Each input is analysed on its own; results stack into ONE csv with a `file` column.
-  A failed input is skipped, listed in the output's [inputs] block, and sets exit code 1."#,
+  A failed input is skipped, listed in the output's [inputs] block, and sets exit code 1.
+
+Output naming:
+  <outdir>/<command>[_<table>][_<label>]_<suffix>.csv
+  --outdir DIR   where every product goes (created if missing; default: current dir)
+  -o SUFFIX      batch tag, chosen by you
+  <label>        what was analysed — filled in from the type selection, so
+                 `traj gr -a P -b O` writes gr_P-O.csv and no selection writes
+                 gr_all.csv. Label before suffix, so `ls gr_P-O_*` lists one pair
+                 across every batch."#,
         env!("CARGO_PKG_VERSION")
     );
 }
@@ -327,8 +336,14 @@ Parameters:
   --dr     FLOAT          Histogram bin width [Å]                default: 0.002
   --last-n INT            Use only the last N frames
   --ncore  INT            Parallel threads (default: all cores)
-  -o SUFFIX               Output suffix -> gr_<suffix>.csv        default: gr.csv
+  -o SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
+  --outdir DIR            Write products here (created if missing)
   --plot                  PNG next to the data file (needs a pair)
+
+File name — gr_<pair>[_<suffix>].csv, the pair as you wrote it:
+  -a P -b O  -> gr_P-O.csv        -a O -b P  -> gr_O-P.csv   (different data: cn
+                                                              is directed)
+  no pair    -> gr_all.csv        -x P_3 -y O_b -> gr_P_3-O_b.csv
 
 Output — long format, one row per (file, r, pair):
   file  r  center  neighbor  gr  cn
@@ -341,6 +356,7 @@ Example:
   ferro traj gr -i traj.dump
   ferro traj gr -i traj.dump -a P -b O --r-max 8.0 --plot
   ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan     # 一次跑一批
+  ferro traj gr -i traj.dump -a P -b O --outdir results/700K
   ferro traj gr -i traj.dump -x P_0 -y O_b_P_P --last-n 500"#
     );
 }
@@ -358,12 +374,12 @@ pub fn print_sq() {
   (w_ij(q)*S_ij(q)). The weighted ones sum over pairs to total_xrd / total_neutron,
   so they decompose the experimentally comparable curve pair by pair.
 
-Selecting a pair:
-  -a ELEM  -b ELEM        by element
-  -x LABEL -y LABEL       by site label — recommended here, since the pair count
-                          grows quadratically with the number of labels and the
-                          full table would run to hundreds of columns
-  With a pair given only that pair's three columns are written, next to the totals.
+No type selection: EVERY pair is written, always.
+  -a/-b and -x/-y were removed. The primary product is the pair of totals; the
+  partials are a decomposition that sums back to them, and keeping one pair hides
+  exactly that closure. Filter columns in pandas instead — the file is small.
+  Label-resolved partials went with them: a site label rarely carries enough atoms
+  for its partial to show a signal.
 
 Parameters:
   --q-min      FLOAT  Min q [Å⁻¹]                  default: 0.1
@@ -375,7 +391,8 @@ Parameters:
   --dr         FLOAT  g(r) bin width [Å]           default: 0.002
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads (used in g(r) step)
-  -o SUFFIX           Output suffix -> sq_<suffix>.csv   default: sq.csv
+  -o SUFFIX           Batch tag -> sq_<suffix>.csv   default: sq.csv
+  --outdir DIR        Write products here (created if missing)
   --plot              PNG next to the data file (weighted totals only)
 
 Output — wide format, one row per (file, q):
@@ -389,7 +406,7 @@ Example:
   ferro traj sq -i traj.dump
   ferro traj sq -i traj.dump --weighting xrd --q-max 20.0 -o xrd
   ferro traj sq -i 'runs/*/prod.dump' -o scan
-  ferro traj sq -i traj.dump -x P_0 -y O_b_P_P"#
+  ferro traj sq -i traj.dump --outdir results/700K"#
     );
 }
 
@@ -409,7 +426,13 @@ Parameters:
   --last-n    INT        Use only the last N frames
   --ncore     INT        Parallel threads
   --plot                 Generate PNG and open in viewer
-  -o SUFFIX              Output suffix -> msd_<suffix>.csv   default: msd.csv
+  -o SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
+  --outdir DIR           Write products here (created if missing)
+
+File name — msd_<elements>[_<suffix>].csv, elements sorted:
+  --elements P,O -> msd_O-P.csv     (so does --elements O,P: it is a set, and the
+                                     same data must not land under two names)
+  no --elements  -> msd_all.csv
 
 Example:
   ferro traj msd -i traj.xyz --dt 2.0
@@ -442,8 +465,12 @@ Parameters:
   --d-angle  FLOAT              Histogram bin width [°]         default: 0.1
   --last-n   INT                Use only the last N frames
   --ncore    INT                Parallel threads
-  -o SUFFIX                     Output suffix -> angle_<suffix>.csv  default: angle.csv
+  -o SUFFIX                     Batch tag -> angle_<triplet>_<suffix>.csv
+  --outdir DIR                  Write products here (created if missing)
   --plot                        Generate PNG and open in viewer
+
+File name — angle_<triplet>[_<suffix>].csv, the triplet as you wrote it:
+  -a O -b P -c O -> angle_O-P-O.csv        no triplet -> angle_all.csv
 
 Example:
   ferro traj angle -i traj.dump
@@ -473,7 +500,11 @@ Parameters:
   --shift    INT        Time-origin stride             default: 1
   --elements Fe,O,...   Include only these elements    default: all
   --last-n   INT        Use only the last N frames
-  -o SUFFIX             Output suffix -> vacf_<suffix>.csv   default: vacf.csv
+  -o SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
+  --outdir DIR          Write products here (created if missing)
+
+File name — vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
+  --elements.
 
 Example:
   ferro traj vacf -i traj.dump --dt 2.0
@@ -494,7 +525,11 @@ Parameters:
   --dt        FLOAT   Timestep [fs]                     default: 1.0
   --shift     INT     Time-origin stride                default: 1
   --last-n    INT     Use only the last N frames
-  -o SUFFIX           Output suffix -> rotcorr_<suffix>.csv  default: rotcorr.csv
+  -o SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
+  --outdir DIR        Write products here (created if missing)
+
+File name — rotcorr_<centre>-<neighbour>[_<suffix>].csv; both are required, so this
+  one never falls back to "all". --center O --neighbor H -> rotcorr_O-H.csv
 
 Example:
   ferro traj rotcorr -i traj.xyz --center O --neighbor H
@@ -516,7 +551,11 @@ Parameters:
   --dr       FLOAT      Bin width [Å]                  default: 0.01
   --elements Fe,O,...   Track only these elements       default: all
   --last-n   INT        Use only the last N frames
-  -o SUFFIX             Output suffix -> vanhove_<suffix>.csv  default: vanhove.csv
+  -o SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
+  --outdir DIR          Write products here (created if missing)
+
+File name — vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv
+  without --elements.
 
 Example:
   ferro traj vanhove -i traj.xyz --tau 100
@@ -540,7 +579,8 @@ Parameters:
   --elements Fe,O     Count only these elements   default: all
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
-  -o PATH             Output cube file            default: density.cube
+  -o STEM             Output name stem            default: density.cube
+  --outdir DIR        Write the cubes here (created if missing)
 
 Example:
   ferro map density -i traj.dump
@@ -561,7 +601,8 @@ Parameters:
   --elements Fe,O     Include only these elements default: all
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
-  -o PATH             Output cube file            default: velocity.cube
+  -o STEM             Output name stem            default: velocity.cube
+  --outdir DIR        Write the cubes here (created if missing)
 
 Example:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80"#
@@ -581,7 +622,8 @@ Parameters:
   --elements Fe,O     Include only these elements default: all
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
-  -o PATH             Output cube file            default: force.cube
+  -o STEM             Output name stem            default: force.cube
+  --outdir DIR        Write the cubes here (created if missing)
 
 Example:
   ferro map force -i traj.dump --elements O"#
@@ -606,7 +648,8 @@ Parameters:
   --elements Fe,O     Include only these elements default: all
   --last-n  INT       Use only the last N frames
   --ncore   INT       Parallel threads
-  -o PATH             Output cube file            default: radius.cube
+  -o STEM             Output name stem            default: radius.cube
+  --outdir DIR        Write the cubes here (created if missing)
 
 Example:
   ferro map radius -i traj.dump --elements Li --radius 0.7
@@ -645,7 +688,8 @@ Parameters:
   --rmsd-warn  FLOAT  RMSD warning threshold [Å]              default: 0.5
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads
-  -o PATH             Output stem (no extension)              default: sdf
+  -o STEM             Output stem (no extension)              default: sdf
+  --outdir DIR        Write the cubes here (created if missing)
 
 Example:
   ferro map sdf -i traj.dump --qn 3
@@ -681,7 +725,8 @@ Parameters:
   --chg-padding FLOAT   Sub-grid boundary margin [Å]           default: 6.0
   --rmsd-warn  FLOAT    RMSD warning threshold [Å]             default: 0.5
   --ncore      INT      Parallel threads
-  -o PATH               Output stem (no extension)             default: chg_sdf
+  -o STEM               Output stem (no extension)             default: chg_sdf
+  --outdir DIR          Write the cubes here (created if missing)
 
 Example:
   ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
