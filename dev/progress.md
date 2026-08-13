@@ -11,6 +11,25 @@
 | ferro-workflow | 23 |
 | ferro-cli（lib 29 + 集成 5） | 34 |
 
+## scripts/
+
+两组脚本，共享层各一份：
+
+| 组 | 共享层 | 脚本 | 用途 |
+|---|---|---|---|
+| 对拍 | `ferrocmp.py` | `compare_rdf/angle/sq/sq_experiment.py` | 跟 dump2analysis / dump2sq 逐点比 |
+| 出图 | `ferroplot.py` | `plot_gr/angle/sq/net.py` | 发表级 pdf（+ png 看效果） |
+
+两组不合并：都读 ferro 的 csv，但读完之后没有共同代码。
+
+出图侧样式 `['science','vibrant']` + LaTeX + 四边框；每个脚本顶部一个 `CFG` 配置块。
+`plot_net.py` 的 x 轴是**成分**（`file` 列），100 % 堆积柱，`--partner` 展开成
+色相 = Qn、同色系明度 = m_<X> 的嵌套条带并给每个 Qn 组加框线。多 csv（`-o` 的 suffix
+区分 CMD / MLMD）画成同一刻度下并排多根柱。
+
+**对拍脚本当前是断的** —— `traj` 产物加了 label 段，三处写死的产物名要跟进，
+见 `dev/plan.md`。
+
 ## 锚点 tag
 
 **`v0.1.15`** = 批处理/长表重构前的最后状态（单文件输入、`.dat` 宽表、writer 在
