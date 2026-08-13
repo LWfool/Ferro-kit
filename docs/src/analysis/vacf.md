@@ -53,7 +53,7 @@ pub struct VacfParams {
 
 ## Output
 
-`vacf[_<suffix>].csv`：`file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
+`vacf_<元素>[_<suffix>].csv`（元素排序去重，无 `--elements` 时为 `vacf_all…`）：`file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
 （时间 fs，`diffusion` 为 Green-Kubo running integral）。
 
 所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与

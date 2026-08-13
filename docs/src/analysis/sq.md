@@ -101,7 +101,7 @@ in `scripts/trajcheck.py`.
 
 ## Output
 
-`sq[_<suffix>].csv`，**宽表**：`file, q, total_xrd, total_neutron`，其后每个配对三列
+`sq[_<suffix>].csv`（**无 label 段**——这个命令没有类型选择），**宽表**：`file, q, total_xrd, total_neutron`，其后每个配对三列
 （`<pair>_sq` / `_xrd` / `_neutron`，只出规范半边——$S(q)$ 没有有向的对应物）。
 
 主产物是两条 total（一行一个 $q$），加权 partial $w_{ij}(q)\,S_{ij}(q)$ 是能逐点求和
@@ -110,7 +110,18 @@ in `scripts/trajcheck.py`.
 `sq` 不再另写一份 `gr`；需要 $g(r)$ 就单独跑 `ferro traj gr`。
 
 所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**，
+`--outdir` 给目录。
+
+### 没有类型选择
+
+`-a/-b` 与 `-x/-y` 已移除，**每个配对恒定全写**。理由是主产物就是那两条 total，而
+partial 的全部价值在于 $\sum_{i\le j} w_{ij}(q)S_{ij}(q) = \mathrm{total}$ 这条闭合——
+只留一对恰好把它藏起来。要看某一对，在 pandas 里选列即可，文件本来就不大。
+
+按 label 分辨的 partial 随之消失：`-x/-y` 曾是进入 `GroupBy::Label` 的唯一入口，而一个
+位点标签对应的原子数往往不足以让它的 partial 显出信号。**库层的 `GroupBy::Label` 不动**
+（`GrParams` 的字段还在，钉住 $O(1/N)$ 自排除项的两个测试照常跑），只是 CLI 不再暴露。
 
 The `.sq` file header records both the g(r) parameters (used as input) and the S(q) parameters.  
 Column ordering matches the `.gr` file. Additional columns `total_xrd` and/or `total_neutron` are appended when weighting is requested.

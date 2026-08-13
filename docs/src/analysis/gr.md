@@ -78,7 +78,7 @@ centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than t
 
 ## Output
 
-`gr[_<suffix>].csv`，**长表**：
+`gr_<配对>[_<suffix>].csv`（未点名配对时为 `gr_all…`），**长表**：
 
 | 列 | 含义 |
 |---|---|

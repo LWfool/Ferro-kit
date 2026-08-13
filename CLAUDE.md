@@ -238,15 +238,16 @@ ferro-cli/src/
 ├── main.rs              # the ferro binary: subcommand tree + dispatch
 ├── lib.rs               # re-exports args, batch, cmd, help, io_dispatch, plot
 ├── args/
-│   ├── common.rs        # CommonArgs (-i/-o/--last-n/--ncore/--metal-units) + SelectArgs (-a..-z)
+│   ├── common.rs        # CommonArgs (-i/-o/--outdir/--last-n/--ncore/--metal-units)
+│   │                    #   + SelectArgs (-a..-z; gr and angle only, not sq)
 │   ├── traj.rs          # SqWeightingCli
 │   ├── corr.rs
 │   └── cube.rs          # CubeCliMode (still the analysis-facing enum)
-├── batch.rs             # multi-input driving, generic over the result type
+├── batch.rs             # multi-input driving + product naming (Output/out_path/file_label)
 ├── cmd/
 │   ├── traj.rs          # gr/sq/msd/angle/vacf/rotcorr/vanhove — one Args struct each
 │   ├── map.rs           # density/velocity/force/radius/sdf/chg-sdf
-│   ├── net.rs           # qn/type + the --P-O=2.3 argv pre-pass
+│   ├── net.rs           # leaf command + the --P-O=2.3 argv pre-pass
 │   ├── bader.rs, convert.rs, info.rs, job.rs
 │   └── mod.rs
 ├── help.rs              # print_overview / print_*_overview / per-command help text
@@ -259,6 +260,13 @@ ferro-cli/src/
 looping, skipping and reporting; it never names `GrResult` or any other analysis type,
 and the analysis crates never learn that batching exists. Deciding *which* scalars are
 worth summarising is analysis semantics, so that stays in `cmd/`.
+
+It also owns **product naming**: `Output { dir, label, suffix }` plus `out_path`,
+`file_label` (join as written) and `set_label` (sort + dedup, for set-valued
+selections). One struct rather than three positional arguments because the three always
+travel together — `write_all` would otherwise take eight. `Output::prepare` creates
+`--outdir` and is called **before the first input is read**, so a bad path fails
+alongside the other parameter errors.
 
 
 ---
@@ -318,7 +326,7 @@ without sharing a field; `CommonArgs` / `SelectArgs` are `#[command(flatten)]`-e
 **Help is three levels**: `ferro` → the groups; `ferro traj` → that group's commands;
 `ferro traj gr` (no `-i`) → that command's parameters, output columns and examples.
 
-Common flags shared by all trajectory binaries: `--last-n N`, `--ncore N`, `--metal-units`.
+Common flags shared by all trajectory binaries: `--outdir DIR`, `--last-n N`, `--ncore N`, `--metal-units`.
 
 **Batch input.** `-i` takes one or more files and expands glob patterns itself
 (`-i 'runs/*/prod.dump'` — quote it so the shell leaves it alone; `{a,b}` braces are
@@ -334,12 +342,12 @@ first file is read.
 ### `ferro traj` — detailed flags
 
 ```
-# type selection — two mutually exclusive groups
--a ELEM   [gr/sq] centre element; [angle] end atom A
--b ELEM   [gr/sq] neighbour element; [angle] centre atom B   (requires -a)
+# type selection — two mutually exclusive groups (gr and angle only; sq has none)
+-a ELEM   [gr] centre element; [angle] end atom A
+-b ELEM   [gr] neighbour element; [angle] centre atom B   (requires -a)
 -c ELEM   [angle] end atom C   (requires -a -b)
--x LABEL  [gr/sq] centre site label; [angle] end atom A
--y LABEL  [gr/sq] neighbour site label; [angle] centre atom B  (requires -x)
+-x LABEL  [gr] centre site label; [angle] end atom A
+-y LABEL  [gr] neighbour site label; [angle] centre atom B  (requires -x)
 -z LABEL  [angle] end atom C   (requires -x -y)
 
 # gr-specific
@@ -347,7 +355,7 @@ first file is read.
                 (clamped to half the smallest interplanar spacing)
 --dr    FLOAT   bin width [Å]              default 0.01
 
-# sq-specific
+# sq-specific  (no type selection — every pair is always written)
 --q-max     FLOAT   max q [Å⁻¹]           default 25.0
 --dq        FLOAT   q bin width [Å⁻¹]     default 0.05
 --weighting ENUM    none|xrd|neutron|both  default both
@@ -367,11 +375,41 @@ first file is read.
 --plot   write PNG next to the data file (opened in a viewer only for a single input)
 ```
 
-**`-o` is a name suffix, not a path**: results land in `<mode>[_<table>]_<suffix>.csv`
-(`gr_run1.csv`, `network_qn_run1.csv`). Per-input files are not produced — the
-batch summary is the product, the one exception being products that are inherently
-per-input (`ferro map`'s cubes, `ferro net --export-traj`'s trajectories), whose
-names must carry the input stem or a second input would overwrite the first.
+**Product naming.** Results land in
+`<outdir>/<mode>[_<table>][_<label>]_<suffix>.csv`.
+
+`-o` is a **name suffix, not a path** — the batch tag. `--outdir` is the path
+(`CommonArgs`, so all eleven batch commands take it; created if missing, printed once,
+and it covers the CSVs, the PNGs, `ferro map`'s cubes and `net --export-traj`'s
+trajectories alike). `<label>` says **what was analysed** and comes from the type
+selection, so `traj gr -a P -b O` writes `gr_P-O.csv` and no selection writes
+`gr_all.csv`. Label precedes suffix so `ls gr_P-O_*` lists one pair across every batch.
+
+| Command | label from | example |
+|---|---|---|
+| `traj gr` | `-a/-b` or `-x/-y` | `gr_P-O.csv`, `gr_P_3-O_b.csv`, `gr_all.csv` |
+| `traj angle` | `-a/-b/-c` or `-x/-y/-z` | `angle_O-P-O.csv`, `angle_all.csv` |
+| `traj msd`/`vacf`/`vanhove` | `--elements`, **sorted + deduped** | `msd_O-P.csv`, `msd_all.csv` |
+| `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv` (both required, never `all`) |
+| `traj sq`, `net`, `map` | none | `sq.csv`, `network_qn.csv`, `density.cube` |
+
+`gr`/`angle` join the parts **as written** — `-a P -b O` and `-a O -b P` are different
+files because `CN` is directed. `--elements` is **sorted** because it is a set, and one
+dataset must not land under two names. The selected strings become a path component, so
+they are validated against `[A-Za-z0-9_+-]` **before the first file is read**; replacing
+bad characters was rejected, since it would make `-a P/2` and `-a P_2` collide silently.
+
+Per-input files are not produced — the batch summary is the product, the one exception
+being products that are inherently per-input (`ferro map`'s cubes,
+`ferro net --export-traj`'s trajectories), whose names must carry the input stem or a
+second input would overwrite the first.
+
+**`traj sq` has no type selection.** `-a/-b` and `-x/-y` were removed: the primary
+product is the pair of totals and the partials are a decomposition that sums back to
+them, so keeping one pair hides the very closure they exist to show — filter columns in
+pandas instead. Label-resolved partials went with them (a site label rarely carries
+enough atoms for its partial to show a signal); the library-level `GroupBy::Label` is
+untouched, only the CLI entry point is gone.
 
 **element vs. label.** `Atom::element` is the chemical element; `Atom::label` is an
 optional site type. The LAMMPS dump reader splits an `element` column entry written as

@@ -61,7 +61,7 @@ pub struct RotCorrParams {
 
 ## Output
 
-`rotcorr[_<suffix>].csv`：`file, time, c2, integral`（时间 fs）。
+`rotcorr_<中心>-<近邻>[_<suffix>].csv`（两者必填，走不到 `all`）：`file, time, c2, integral`（时间 fs）。
 
 所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
 `[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。

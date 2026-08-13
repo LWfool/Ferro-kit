@@ -58,7 +58,7 @@ pub struct MsdParams {
 
 ## Output
 
-`msd[_<suffix>].csv`：`file, time, msd, msd_a, msd_b, msd_c`
+`msd_<元素>[_<suffix>].csv`（元素排序去重，无 `--elements` 时为 `msd_all…`）：`file, time, msd, msd_a, msd_b, msd_c`
 （时间 fs，位移平方 Å²）。
 
 给了 `--fit-range FMIN,FMAX` 时，自扩散系数 $D = \text{slope}/6$ 与 $R^2$ 打印到

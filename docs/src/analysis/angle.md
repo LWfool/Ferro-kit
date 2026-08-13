@@ -107,7 +107,7 @@ pub struct AngleParams {
 
 ## Output
 
-`angle[_<suffix>].csv`，**长表**：`file, angle, end_a, center, end_c, count, p`。
+`angle_<三元组>[_<suffix>].csv`（未点名三元组时为 `angle_all…`），**长表**：`file, angle, end_a, center, end_c, count, p`。
 
 三元组进**数据列**，故元素集不同的轨迹可直接堆叠。同时保留整数 `count` 与归一化 `p`
 两列：整数直方图是与 `dump2analysis` 逐 bin 对拍的依据，只留 `p` 就对不了。
