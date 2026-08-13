@@ -75,17 +75,20 @@ impl CommonArgs {
 
 /// Type selection for the pair/triplet analyses.
 ///
+/// Flattened into `gr` and `angle` only — **not `sq`**, whose partials are always all
+/// written.
+///
 /// Two mutually exclusive groups: `-a/-b/-c` pick chemical elements, `-x/-y/-z` pick
 /// site labels. Position carries meaning — the first slot is the centre for a pair and
 /// end A for a triplet — so the order the caller wrote is preserved downstream rather
 /// than being re-sorted by atomic number.
 #[derive(Args, Clone, Debug, Default)]
 pub struct SelectArgs {
-    /// Centre element (gr/sq) or end atom A (angle); requires -b
+    /// Centre element (gr) or end atom A (angle); requires -b
     #[arg(short = 'a', long)]
     pub atom_a: Option<String>,
 
-    /// Neighbour element (gr/sq) or centre atom B (angle); requires -a
+    /// Neighbour element (gr) or centre atom B (angle); requires -a
     #[arg(short = 'b', long)]
     pub atom_b: Option<String>,
 
@@ -93,11 +96,11 @@ pub struct SelectArgs {
     #[arg(short = 'c', long)]
     pub atom_c: Option<String>,
 
-    /// Centre site label (gr/sq) or end atom A (angle); requires -y
+    /// Centre site label (gr) or end atom A (angle); requires -y
     #[arg(short = 'x', long)]
     pub label_x: Option<String>,
 
-    /// Neighbour site label (gr/sq) or centre atom B (angle); requires -x
+    /// Neighbour site label (gr) or centre atom B (angle); requires -x
     #[arg(short = 'y', long)]
     pub label_y: Option<String>,
 
@@ -124,7 +127,9 @@ impl SelectArgs {
         Ok((mode, [slots[0].clone(), slots[1].clone(), slots[2].clone()]))
     }
 
-    /// Pair selection for gr / sq: either both members or neither.
+    /// Pair selection for gr: either both members or neither.
+    ///
+    /// `sq` used to share this and no longer does — it has no type selection at all.
     pub fn resolve_pair(&self) -> Result<(GroupBy, Option<(String, String)>)> {
         let (mode, slots) = self.resolve()?;
         if slots[2].is_some() {
