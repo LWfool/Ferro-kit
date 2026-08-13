@@ -1,6 +1,6 @@
 # 当前进度
 
-## 测试总数：434 个（全部通过，clippy 零警告）
+## 测试总数：439 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
@@ -9,7 +9,7 @@
 | ferro-structure | 70 |
 | ferro-analysis | 163 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 24 + 集成 5） | 29 |
+| ferro-cli（lib 29 + 集成 5） | 34 |
 
 ## 锚点 tag
 
@@ -141,7 +141,8 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
     签名与分层不变，结果严格等于 code2 的逐帧变换（对拍 <1e-10）
   - `SqResult`：`sq`（未加权 partial）/ `sq_xrd` / `sq_neutron` / `total_xrd` / `total_neutron`
   - 加权 partial `w_ij(q)·S_ij(q)` 逐点相加恰等于对应 total
-  - `write_sq(gr, sq, path, pair)`：`Some` 只写该对三列 + 两条 total
+  - `to_tables(gr)` **恒写全部规范半边**（0.2.1 后）：pair 参数已删,CLI 侧的
+    `-a/-b/-x/-y` 一并移除 —— 只留一对会藏起 `Σ w_ij·S_ij = total` 这条闭合
   - 散射因子查表失败时告警（此前静默输出垃圾值）
   - Faber-Ziman 权重改上三角遍历，修复异种对被重复累加（实测 total_xrd 曾偏大 1.59 倍）
 - `msd.rs`：MSD，NPT 安全，atom-major 并行；`fit_diffusion` 线性最小二乘拟合自扩散系数 D=slope/6（Einstein 3D）+ R²；`plot_msd` 绘图（total + a/b/c + 拟合线）
@@ -290,13 +291,32 @@ ferro bader | convert | info | job
 - **不留兼容层**：输出格式同期变更，留着 `fe-traj` 会让旧脚本「跑成功」却吐出自己
   解析不了的 csv——静默坏数据比命令消失难查
 
+- **产物命名（0.2.1 后）**：`<outdir>/<mode>[_<表>][_<label>]_<后缀>.csv`
+  - `Output { dir, label, suffix }` 收口三个字段（否则 `write_all` 要吃 8 个位置参数），
+    配 `out_path` / `file_label`（原样拼）/ `set_label`（排序去重）
+  - `label` 由类型选择填出：`gr_P-O.csv`、`angle_O-P-O.csv`、`msd_O-P.csv`、
+    `rotcorr_O-H.csv`；未点名时为 `all`。**排在 suffix 之前** —— `ls gr_P-O_*`
+    列出同一对在各批次的结果
+  - **两条拼法，各有理由**：`gr`/`angle` 按写的顺序（`CN` 有向，`-a P -b O` 与
+    `-a O -b P` 本就是两份数据）；`--elements` 排序去重（是集合，同一份数据不能
+    落到两个文件名下）
+  - 选中的串会成为**路径的一段**，故拼名前校验 `[A-Za-z0-9_+-]`，在读第一个文件
+    之前失败。替换非法字符被否掉：那会让 `-a P/2` 与 `-a P_2` 静默写进同一个文件
+  - `--outdir` 进 `CommonArgs`（11 个命令），`Output::prepare` 缺失即创建并打印，
+    同样在读第一个文件之前。覆盖 csv / png / `map` 的 cube / `net --export-traj`
+    的轨迹；`chg-sdf` 不走 `CommonArgs`，单独加了同名参数
+  - PNG 由数据文件**路径**派生（`png_path` 改收 `&Path`），目录与 label 自动跟随
+- **`traj sq` 没有类型选择**（0.2.1 后）：`SqCmd` 去掉 `SelectArgs`，
+  `SqResult::to_tables` 去掉 pair 参数。主产物是两条 total，partial 的价值全在
+  `Σ w_ij·S_ij = total` 这条闭合上，只留一对恰好把它藏起来。按 label 分辨的 partial
+  随之消失（位点标签对应的原子数往往不足以显出信号）；**库层 `GroupBy::Label` 不动**
 - **`batch.rs`**：多输入驱动，**对结果类型泛型**，不认识任何分析类型
   - `expand_inputs`：自展开 glob（`glob` crate，不支持 `{a,b}`），参数顺序 + 参数内
     字典序，跨模式按规范化路径去重，**零匹配报错**
   - `map_inputs<T>(inputs, f)`：串行遍历（轨迹是内存大头，逐条释放；帧内并行不变），
     失败跳过并收集
   - `stack<T>`：按表名分组，各组 `Table::concat_union("file", ...)`
-  - `write_all` / `out_path` / `meta_block` / `Summary`
+  - `write_all` / `out_path` / `Output` / `meta_block` / `Summary`
   - `Summary` 存**预格式化文本**：`[inputs]` 是给人看的，`{:.6e}` 会把「5 帧」写成
     `5.000000e0`
 - **单一代码路径**：N=1 是 N 的特例。按文件数分派会让产物形态取决于 glob 当天匹配到
