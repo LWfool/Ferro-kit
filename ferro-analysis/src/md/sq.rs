@@ -308,16 +308,6 @@ fn weights_from_factors(
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
-/// Write S(q) data to a tab-separated text file (`.sq`).
-///
-/// The header records both g(r) parameters (used as input) and S(q) parameters.
-///
-/// Columns: `q[Ang^-1]`, then `total_xrd` / `total_neutron` where computed, then per
-/// pair a `_sq` / `_xrd` / `_neutron` triple ordered by (Z, label).
-///
-/// - `pair = None` → every canonical pair.
-/// - `pair = Some((a, b))` → only that pair. Used with label-resolved partials, where
-///   the pair count grows quadratically in the number of site labels and a full table
 impl SqResult {
     /// Projects the result into the wide table the writers consume.
     ///
@@ -330,30 +320,12 @@ impl SqResult {
     /// with different element sets end up with different pair columns; stacking them takes
     /// the column union and leaves the gaps empty (`ferro_core::Table::concat_union`).
     ///
-    /// `pair = Some((a, b))` keeps only that pair's three columns next to the totals;
-    /// the pair is matched in either order, since S(q) has no directed counterpart.
-    pub fn to_tables(
-        &self,
-        gr: &GrResult,
-        pair: Option<(&str, &str)>,
-    ) -> Result<Vec<(String, Table)>, ChemError> {
+    /// **Every** canonical pair is written, always. There is no pair filter: keeping
+    /// one pair next to the totals hides the `Σ w_ij·S_ij == total` closure that is the
+    /// only reason the partials are here at all.
+    pub fn to_tables(&self, gr: &GrResult) -> Result<Vec<(String, Table)>, ChemError> {
         let _ = gr;
-        let keys: Vec<String> = match pair {
-            Some((a, b)) => {
-                let ab = format!("{a}-{b}");
-                let ba = format!("{b}-{a}");
-                if self.sq.contains_key(&ab) {
-                    vec![ab]
-                } else if self.sq.contains_key(&ba) {
-                    vec![ba]
-                } else {
-                    return Err(ChemError::ValidationError(format!(
-                        "pair '{ab}' not present in the trajectory"
-                    )));
-                }
-            }
-            None => sorted_keys(&self.sq),
-        };
+        let keys: Vec<String> = sorted_keys(&self.sq);
 
         let mut t = Table::new();
         t.push_num("q", self.q.clone());
@@ -765,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn test_to_tables_pair_selection_columns() {
+    fn test_to_tables_always_writes_every_pair() {
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.1, r_max: 5.9, dr: 0.05, ..Default::default()
@@ -774,22 +746,16 @@ mod tests {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
         });
 
-        // 指定单对：q + 2 条 total + 该对 3 列 = 6 列，参数顺序无关
-        let (_, t) = sq.to_tables(&gr_res, Some(("Si", "O"))).unwrap().remove(0);
-        assert_eq!(
-            t.names(),
-            vec!["q", "total_xrd", "total_neutron", "O-Si_sq", "O-Si_xrd", "O-Si_neutron"]
-        );
-        assert_eq!(t.n_rows(), sq.q.len(), "宽表 → 一行一个 q");
+        // 没有配对过滤:q + 2 条 total + 3 对 × 3 列 = 12 列,恒定如此。
+        // 只留一对会藏起 Σ w_ij·S_ij == total 的闭合,而那是 partial 存在的唯一理由
+        let (_, t) = sq.to_tables(&gr_res).unwrap().remove(0);
+        assert_eq!(t.n_cols(), 12);
+        assert_eq!(t.n_rows(), sq.q.len(), "宽表 → 一行一个 q,配对增多只加列");
         assert!(t.validate().is_ok());
-
-        // 全部对：q + 2 条 total + 3 对 × 3 列 = 12 列
-        let (_, t2) = sq.to_tables(&gr_res, None).unwrap().remove(0);
-        assert_eq!(t2.n_cols(), 12);
-        assert_eq!(t2.n_rows(), sq.q.len(), "配对增多只加列,不加行");
-        assert!(!t2.names().contains(&"total"), "未加权 total 不该复活");
-
-        assert!(sq.to_tables(&gr_res, Some(("Zn", "O"))).is_err());
+        assert!(!t.names().contains(&"total"), "未加权 total 不该复活");
+        for n in ["O-Si_sq", "O-Si_xrd", "O-Si_neutron", "O-O_sq", "Si-Si_sq"] {
+            assert!(t.names().contains(&n), "{n} 应在表中");
+        }
     }
 
     #[test]
@@ -802,7 +768,7 @@ mod tests {
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
         });
-        let (_, t) = sq.to_tables(&gr_res, None).unwrap().remove(0);
+        let (_, t) = sq.to_tables(&gr_res).unwrap().remove(0);
 
         let col = |name: &str| match t.column(name).unwrap() {
             ferro_core::Column::Num(v) => v.clone(),

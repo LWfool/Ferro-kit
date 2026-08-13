@@ -13,7 +13,7 @@ use anyhow::{anyhow, Result};
 use clap::{Args, Subcommand};
 use ferro_analysis::{
     calc_angle, calc_gr, calc_msd, calc_rotcorr, calc_sq_from_gr, calc_vacf, calc_vanhove,
-    AngleParams, AngleResult, GrParams, GrResult, MsdParams, MsdResult, RotCorrParams,
+    AngleParams, AngleResult, GroupBy, GrParams, GrResult, MsdParams, MsdResult, RotCorrParams,
     RotCorrResult, SqParams, SqResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
 
@@ -79,11 +79,16 @@ pub struct GrCmd {
 }
 
 #[derive(Args, Debug)]
+/// No `SelectArgs`: S(q) has no type selection.
+///
+/// The primary product is the pair of weighted totals; the partials are a diagnostic
+/// decomposition that sums back to them (`Σ w_ij·S_ij == total`), so filtering to one
+/// pair hides the very closure they exist to show. `-x/-y` used to double as the only
+/// way to reach label-resolved partials — dropped with it, since a site label rarely
+/// carries enough atoms for its partial to show a signal.
 pub struct SqCmd {
     #[command(flatten)]
     pub common: CommonArgs,
-    #[command(flatten)]
-    pub select: SelectArgs,
     #[command(flatten)]
     pub knobs: GrKnobs,
 
@@ -261,6 +266,12 @@ pub fn print_help(cmd: &TrajCmd) {
 fn run_gr(c: &GrCmd) -> Result<usize> {
     let (group_by, pair) = c.select.resolve_pair()?;
     let params = c.knobs.params(group_by);
+    // label 进文件名,故在读第一个文件之前校验并建目录
+    let out = c.common.out(Some(match &pair {
+        Some((a, b)) => batch::file_label(&[a, b])?,
+        None => batch::file_label::<&str>(&[])?,
+    }));
+    out.prepare()?;
     let inputs = batch::expand_inputs(&c.common.input)?;
     c.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
@@ -296,7 +307,7 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
 
     if c.plot {
@@ -319,8 +330,11 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
 }
 
 fn run_sq(c: &SqCmd) -> Result<usize> {
-    let (group_by, pair) = c.select.resolve_pair()?;
-    let gr_params = c.knobs.params(group_by);
+    // S(q) 恒输出全部 partial 与两条 total:主产物是那两条 total,partial 是能加回
+    // total 的诊断分解,只留一对反而看不出闭合。故这里没有类型选择,也没有 label 段
+    let gr_params = c.knobs.params(GroupBy::Element);
+    let out = c.common.out(None);
+    out.prepare()?;
     let sq_params = SqParams {
         q_min: c.q_min,
         q_max: c.q_max,
@@ -341,10 +355,8 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         return Err(anyhow!("every input failed; nothing to write"));
     }
 
-    let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
-    let tables = batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| {
-        Ok(sq.to_tables(gr, pair_ref)?)
-    })?;
+    let tables =
+        batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| Ok(sq.to_tables(gr)?))?;
 
     let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
     for (path, (gr, _)) in &results {
@@ -365,7 +377,7 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         &results[0].1 .1.meta_lines(&results[0].1 .0),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
 
     if c.plot {
@@ -396,6 +408,8 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         fit_range,
         ..MsdParams::default()
     };
+    let out = c.common.out(Some(batch::set_label(c.elements.as_ref())?));
+    out.prepare()?;
     let inputs = batch::expand_inputs(&c.common.input)?;
     c.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
@@ -440,7 +454,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
 
     if c.plot {
@@ -473,6 +487,16 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         group_by,
         ends,
     };
+    let out = c.common.out(Some(match slots.iter().all(|s| s.is_some()) {
+        true => batch::file_label(&[
+            slots[0].as_ref().unwrap(),
+            slots[1].as_ref().unwrap(),
+            slots[2].as_ref().unwrap(),
+        ])?,
+        false => batch::file_label::<&str>(&[])?,
+    }));
+    out.prepare()?;
+
     let triplet_keys = slots.iter().all(|s| s.is_some()).then(|| {
         let (a, b, cc) = (
             slots[0].as_ref().unwrap(),
@@ -520,7 +544,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
 
     if c.plot {
@@ -551,6 +575,8 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
         tau: c.time.tau,
         elements: c.elements.clone(),
     };
+    let out = c.common.out(Some(batch::set_label(c.elements.as_ref())?));
+    out.prepare()?;
     let inputs = batch::expand_inputs(&c.common.input)?;
     c.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
@@ -577,7 +603,7 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
     Ok(failures.len())
 }
@@ -587,6 +613,10 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         .ok_or_else(|| anyhow!("--center is required for rotcorr (run without -i to see help)"))?;
     let neighbor = c.neighbor.clone()
         .ok_or_else(|| anyhow!("--neighbor is required for rotcorr (run without -i to see help)"))?;
+
+    // 两个参数都是必填的(上面已 bail),所以 rotcorr 恒有 label,走不到 "all"
+    let out = c.common.out(Some(batch::file_label(&[&center, &neighbor])?));
+    out.prepare()?;
 
     let params = RotCorrParams {
         center,
@@ -622,7 +652,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
     Ok(failures.len())
 }
@@ -637,6 +667,8 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
         elements: c.elements.clone(),
         ..VanHoveParams::default()
     };
+    let out = c.common.out(Some(batch::set_label(c.elements.as_ref())?));
+    out.prepare()?;
     let inputs = batch::expand_inputs(&c.common.input)?;
     c.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
@@ -669,7 +701,7 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
-        c.common.suffix(),
+        &out,
     )?;
     Ok(failures.len())
 }
