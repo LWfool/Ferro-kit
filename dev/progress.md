@@ -1,15 +1,15 @@
 # 当前进度
 
-## 测试总数：420 个（全部通过，clippy 零警告）
+## 测试总数：434 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 79 |
+| ferro-core | 84 |
 | ferro-io | 65 |
 | ferro-structure | 70 |
-| ferro-analysis | 156 |
+| ferro-analysis | 163 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 22 + 集成 5） | 27 |
+| ferro-cli（lib 24 + 集成 5） | 29 |
 
 ## 锚点 tag
 
@@ -271,7 +271,8 @@ dump2analysis 逐 bin 对拍的依据，不能只留 `p`。
 ```
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net   qn | type                                          → 拓扑分布表
+ferro net                                                      → 六张堆叠 csv
+                                                                 + 可选标注轨迹
 ferro bader | convert | info | job
 ```
 
@@ -332,7 +333,8 @@ ferro bader | convert | info | job
   （读 xyz/cif/lammpstrj、supercell 568→2272、write、gr、msd 含元素过滤）
 - 注：本 crate 无 `cargo test`（cdylib 绑定层），经 maturin + Python 验证
 
-- 版本号：**0.2.0**（workspace 统一；ferro-python 版本号已同步，但代码**未跟进本次重构**）
+- 版本号：**0.2.1**（workspace 统一；ferro-python 已同步并复核编译通过）。
+  `v0.2.1` 之后另有一批**尚未发版**的 net 破坏性改动，清单见 `overview.md`
 
 ---
 
