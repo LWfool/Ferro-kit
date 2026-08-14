@@ -94,44 +94,35 @@
 
 ## g(r) / S(q) 审查项处置（2026-08-08）
 
-| 位置 | 问题 | 状态 |
-|---|---|---|
-| `sq.rs` `weights_from_factors` | 全 n² 遍历 + `factor=2.0`，异种对权重被加两次 → `Σw>1` | **已修 0.1.10**（改上三角，对齐 `dump2sq.c:327`）。实测 `examples/70Z30P00A_NVT.lammpstrj` 大 q 处 `total_xrd` 旧/新 = 1.588、`total_neutron` = 1.524，修后尾部收敛到 1.007 |
-| `gr.rs` r_max clamp | 用 `cell.lengths()`，MIC 正确上界应为最小**面间距** | **已修 0.1.11**（`Cell::minimum_image_cutoff`，与 `CellList::build` 共用） |
-| `gr.rs` / `angle.rs` 类型排序 | 仅 `sort_by_key(elem_z)`，同 Z 标签顺序随 HashSet 迭代序漂移 | **已修 0.1.11**（`(elem_z, 字符串)` 二级比较） |
-| `gr.rs` `sorted_keys` | 无条件 `push("total")` → 移除 total 后会写出全 0 幽灵列 | **已修 0.1.11**（total 已整体移除，`sorted_keys` 变为纯配对排序） |
-| `gr.rs` 归一化 | **NPT 下所有帧共用 `avg_volume`** | **已修 0.1.13**，详见下节。注：原记录「应逐帧 `hist/V_frame`」方向写反了，正确是 `hist·V_frame` |
-| `angle.rs` `neighbors_of` | 每对被枚举两次后靠 `j<=i` 丢一半，2× 计算浪费（不影响正确性） | 不处理 |
-| `network_type.rs:236,246` | 兜底标签均为字面 `"X"`，≥3 配位的氧与 ≥3 NBO 的修饰子**塌缩成同一标签** | **已修（0.2.1）**：氧的兜底成为独立类型 `O_t`（tricluster），修饰子角色分类整体删除。实测单帧 `X = 181` 中 180 个是 Zn、1 个是氧 |
+七项中六项已修（0.1.10–0.1.13、0.2.1），教训分别落在下方各节与
+`network 重构（0.2.1）编码陷阱`。两条仍需知道的：
+
+- `angle.rs` `neighbors_of` 每对被枚举两次后靠 `j<=i` 丢一半，**2× 计算浪费但不影响
+  正确性 —— 决定不处理**
+- `sq.rs` 的 Faber-Ziman 权重曾全 n² 遍历 + `factor=2.0`，异种对被加两次。实测
+  `examples/70Z30P00A_NVT.lammpstrj` 大 q 处 `total_xrd` 旧/新 = **1.588**、
+  `total_neutron` = 1.524，修后尾部收敛到 1.007。改权重公式后**必须验大 q 是否趋于 1**
 
 ## NPT 逐帧体积归一化（2026-08-08 已修，0.1.13）
 
-### 病根：口径不一致，不是局部笔误
+**病根是口径不一致，不是局部笔误。** 参考实现（`code1/gr.c:139-146`、
+`code2/dump2sq.c:392-406`）是**逐帧归一化/变换后时间平均**；Ferro 移植时把体积提到了
+循环外（`⟨hist⟩·⟨V⟩`），只对时间平均后的 g 做一次变换。NVT 下两者严格恒等
+（V 恒定，运算线性可交换）；NPT 下每处交换留下一个协方差项。
 
-参考实现（`examples/code1/gr.c:139-146`，注释「1ステップ毎にgrの計算」）是**逐帧归一化后
-时间平均**：`gr[i] += cr[i]*volume/bunbo`，输出时 `/steps`。`code2/dump2sq.c:392-406` 更进
-一步，`CalcSq` 在帧循环内用**该帧的** `head->rho` 逐帧做傅里叶变换，末尾才 `TimeAverage`。
-
-Ferro 移植时把体积提到了循环外（`⟨hist⟩·⟨V⟩`），并且只对时间平均后的 g 做一次变换。
-NVT 下两者严格恒等（V 恒定，全部运算线性可交换）；NPT 下每处交换留下一个协方差项。
-
-### 关键恒等式：ρ·g 中体积自行抵消
+**关键恒等式：ρ·g 中体积自行抵消**
 
 ```
 ρ_f · g_ij,f = (N_f/V_f) · ni·hist_f·V_f/(4πr²dr·N_A·N_B')
              = ni·N·hist_f/(4πr²dr·N_A·N_B')          ← V_f 消去
-```
 
-所以逐帧变换的结果可由两个时间平均量精确重构，**无须**每帧各做一次变换：
-
-```
 ⟨ρ_f(g_f−1)⟩ = rho_g − rho,   rho_g := ⟨ρ_f·g_f⟩（纯计数），rho := N·⟨1/V⟩
 ```
 
-`GrResult` 因此新增 `rho_g` 字段；fold 维护两份直方图 —— `plain`（Σcount，供 CN 与 rho_g）
-与 `vol_w`（Σcount·V_f，供 g(r)）。这不是近似：测试
-`test_folded_matches_literal_per_frame_transform` 与
-`folded_matches_literal_per_frame_on_real_npt_trajectory` 与字面逐帧实现对拍到 1e-10 以内。
+所以逐帧变换的结果可由两个时间平均量**精确**重构，无须每帧各做一次 FT。
+`GrResult` 因此有 `rho_g` 字段；fold 维护两份直方图 —— `plain`（Σcount，供 CN 与
+`rho_g`）与 `vol_w`（Σcount·V_f，供 g(r)）。不是近似：两个测试与字面逐帧实现对拍到
+1e-10 以内。
 
 ### 实测差异（完整轨迹，`-a P -b O`）
 
@@ -260,16 +251,14 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 ## angle cutoff 归属（2026-08-09 已修，0.1.15）
 
 `--r-cut-ab` / `--r-cut-bc` 原先按**原子序数**派发给两端，静默忽略用户在 `-a`/`-c`
-写的顺序：`-a Zn -b O -c P --r-cut-ab 2.5 --r-cut-bc 2.0` 会把 2.5 给 P
-（Z=15 < Zn 的 30），与用户意图相反。两个 cutoff 相等时不显现，所以一直没暴露。
+写的顺序（`-a Zn -b O -c P --r-cut-ab 2.5` 会把 2.5 给 P，因 Z=15 < 30），与意图相反。
+两个 cutoff 相等时不显现，所以一直没暴露。
 
-修法：`AngleParams` 新增 `ends: Option<(String, String)>`，CLI 点名三元组时把
-`-a`/`-c`（或 `-x`/`-z`）原样传下去。未点名时（一次扫全部三元组）无用户顺序可依，
-仍用规范 (Z, 符号) 顺序。
+修法：`AngleParams.ends: Option<(String,String)>`，CLI 点名三元组时把 `-a`/`-c` 原样
+传下去；未点名时（扫全部三元组）无用户顺序可依，仍用规范 (Z, 符号) 顺序。
 
-**两端同类型时 `ends` 不生效**，一律取 `min(r_cut_ab, r_cut_bc)`——谁被排成 lo 端
-取决于邻居枚举顺序，只有取 min 才可复现。测试 `test_symmetric_ends_ignore_order`
-把这条钉死。
+**两端同类型时 `ends` 不生效**，一律取 `min(r_cut_ab, r_cut_bc)` —— 谁被排成 lo 端
+取决于邻居枚举顺序，只有取 min 才可复现（测试 `test_symmetric_ends_ignore_order`）。
 
 ---
 
@@ -386,18 +375,9 @@ analysis（io 没理由认识它），跨层的只有它的可序列化投影。
 | 子命令帮助 | clap 的 `--help` 派生格式塞不下「输出列结构」「长表为什么长」这类段落 | 保留 `disable_help_flag` 风格的自定义 `help.rs`；`ferro traj gr` 无 `-i` 时打印富文本 |
 | 三级帮助的第一级 | clap 不支持给子命令**分组**显示 | 帮助本来就是手写的，`print_overview()` 自己排版分类 |
 
-## 已知限制
-
-- `box_builder`：支持嵌套括号公式（0.1.14）；不支持水合物点记法 `CuSO4·5H2O`，
-  水应作为独立 component 传入（这也正是建盒时想要的形式）
-- `box_builder` 无 CLI / Python 入口，目前只能作为库函数调用
-- `ferro traj sq` 的 `--q-min` 只影响输出 q 网格，g(r) 的积分范围由 `--r-min` /
-  `--r-max` 决定；两者不要混淆
-- `ferro-cli/main.rs`：REPL 未实现（现为子命令分发器，裸 `ferro` 打印总览）
-- `ferro net` 已跟进批处理/长表（0.2.1）；`ferro-python` 仍只暴露 gr/msd，未包 net
-- `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋
-- `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化静态表
-- QE 赝势仅占位 `<El>.UPF`（UPF 与 CP2K GTH 库不通用，由用户提供 `pseudo_dir`）
+> 已知限制清单见 `progress.md`。一条容易混淆的留在这里：
+> `ferro traj sq` 的 `--q-min` 只影响**输出 q 网格**，g(r) 的积分范围由 `--r-min` /
+> `--r-max` 决定。
 
 ## network 重构（0.2.1）编码陷阱
 

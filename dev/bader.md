@@ -500,108 +500,6 @@ ionvol[j] = count(volnum == Bader_vols_of_j) * V_cell / nrho
 
 ---
 
-## 8. Rust 实现计划
-
-### 8.1 模块结构
-
-```
-ferro-analysis/src/
-└── dft/
-    ├── mod.rs
-    ├── bader.rs          # 公开 API：BaderAnalyzer, BaderResult
-    ├── bader_grid.rs     # on-grid / near-grid / off-grid 梯度上升
-    ├── bader_weight.rs   # Yu-Trinkle weight 方法
-    └── voronoi.rs        # Voronoi 对比方法（可选）
-
-ferro-io/src/
-└── readers/
-    └── chgcar.rs         # CHGCAR 读取 → (Frame, ChargeGrid)
-```
-
-### 8.2 `ChargeGrid` 实现要点
-
-```rust
-impl ChargeGrid {
-    /// 从 CHGCAR 读取结果构造
-    pub fn new(rho: Vec<f64>, shape: [usize; 3], cell: &Cell) -> Self { ... }
-
-    /// 周期性边界密度查询（处理越界格点）
-    pub fn rho_val(&self, p: [i32; 3]) -> f64 {
-        let [n1, n2, n3] = self.pbc_i(p);
-        self.rho[n1 + self.shape[0] * (n2 + self.shape[1] * n3)]
-    }
-
-    /// 格点 PBC 折叠
-    pub fn pbc_i(&self, p: [i32; 3]) -> [usize; 3] {
-        std::array::from_fn(|i| {
-            p[i].rem_euclid(self.shape[i] as i32) as usize
-        })
-    }
-}
-```
-
-### 8.3 路径状态结构（near-grid 关键）
-
-```rust
-struct PathState {
-    path: Vec<[usize; 3]>,
-    known: Vec<u8>,          // 共享 &mut 引用
-    dr: Vector3<f64>,        // SAVE 变量：跨 step_neargrid 调用持续累积
-}
-
-impl PathState {
-    fn new_path(&mut self, start: [usize; 3]) {
-        self.path.clear();
-        self.path.push(start);
-        self.dr = Vector3::zeros();  // 新路径开始时归零
-    }
-}
-```
-
-### 8.4 实现步骤（推荐顺序）
-
-**阶段一：基础设施**
-1. `ferro-io`：实现 `read_chgcar(path) -> Result<(Frame, ChargeGrid)>`
-   - 解析晶格、离子坐标（分数→笛卡尔）
-   - 读取 N1×N2×N3 密度数据（x 最快，直接存入 Vec）
-   - 计算 `lat2car`、`car2lat`、`lat_dist`、`lat_i_dist`
-   - **不对密度做归一化**
-
-2. `ferro-analysis/dft`：定义 `ChargeGrid`、`BaderResult`
-
-**阶段二：on-grid 方法**
-3. 实现 `rho_val`（PBC 密度查询）
-4. 实现 `step_ongrid`（26邻居距离校正）
-5. 实现 `max_ongrid`（梯度上升到极大值）
-6. 实现 `bader_calc` 主流程（volnum 分配）
-7. 实现 `assign_chg2atom` + `cal_atomic_vol`
-8. 实现 `bader_output`（写 ACF.dat / BCF.dat / AVF.dat）
-9. 单元测试：已知体系（如 H₂O）验证原子电荷
-
-**阶段三：near-grid 方法（默认）**
-10. 实现 `rho_grad_dir`（中心差分 + 极大平台清零）
-11. 实现 `step_neargrid`（含 `dr` 状态管理、循环检测）
-12. 实现 `max_neargrid`（含 `known=2` 提前退出）
-13. 实现 `assign_surrounding_pts` + `known_volnum_ongrid`（`known=2` 标记）
-14. 实现 `refine_edge`（边缘精化，默认自动模式）
-
-**阶段四：weight 方法**
-15. 实现 `ws_voronoi`（Wigner-Seitz Voronoi 分解，alpha 计算）
-16. 实现排序 + 流分配
-17. 实现电荷积分（O(N_ions × N_grid) 或优化为单遍）
-
-**阶段五：off-grid 方法**
-18. 实现 `rho_grad`（三线性插值密度和梯度）
-19. 实现 `to_lat`（浮点→最近格点，2×2×2 邻居搜索）
-20. 实现 `step_offgrid` + `max_offgrid`
-
-**阶段六：CLI 集成**
-21. `ferro bader` 子命令
-    - 参数：`-i CHGCAR [-ref AECCAR] [-b ongrid|neargrid|offgrid|weight] [-r N]`
-22. 输出：ACF.dat、BCF.dat、AVF.dat（可选 CSV/xlsx）
-
----
-
 ## 9. 已知陷阱与修正
 
 | 位置 | 陷阱 | 正确做法 |
@@ -628,4 +526,8 @@ impl PathState {
 | `BvIndex.dat` | 每个格点的 Bader 体积编号（可视化用） |
 | `AtIndex.dat` | 每个格点的归属原子编号（可视化用） |
 
-Ferro 扩展：考虑同时输出 `bader.csv`（含元素符号，便于后处理）和 xlsx 格式（与 network 分析的 sheet 风格统一）。
+**ACF/BCF/AVF 三个 writer 不走 `Table`**（全项目唯一的例外）：它们是 Henkelman 组的
+既定格式，外部工具按它解析。0.2.0 让其余 7 个 `write_*` 退役时，这三个明确保留。
+
+已实现部分见 `progress.md`「ferro-analysis / dft」；`--outdir` 尚未接入（三个固定
+文件名写在当前目录，连跑两个体系会互相覆盖），见 `plan.md` 的三项小待办。

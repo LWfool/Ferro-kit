@@ -1,10 +1,15 @@
 # Ferro — 项目概要
 
+> **文档分工**：`docs/src/`（mdBook）= 怎么用，面向使用者 · `dev/` = 为什么这样定 +
+> 现状 + 待办，面向开发 · `CLAUDE.md` = 给 Claude 的硬约束与导航。
+> 用法问题（CLI 参数、输出列结构、数据模型字段）一律查 `docs/src/`。
+
 ## 定位
 
-Rust 重写的计算化学后处理工具链，面向周期性体系（晶体、表面、玻璃）的 MD 轨迹分析。目标：替代原有 Python 脚本，兼顾性能与可扩展性，未来计划集成深度学习工作流。
+Rust 重写的计算化学后处理工具链，面向周期性体系（晶体、表面、玻璃）的 MD 轨迹分析。
+目标：替代原有 Python 脚本，兼顾性能与可扩展性，未来计划集成深度学习工作流。
 
-## 架构（Cargo workspace，严格分层）
+## 架构
 
 ```
 ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
@@ -14,14 +19,16 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
     ├── ferro-io       → core   ← 格式读写 + write_table（分析产物的唯一出口）
     ├── ferro-structure→ core   ← 超胞、真空层、合并、初始盒子
     ├── ferro-analysis → core   ← 纯计算，不碰文件系统；结果暴露 to_tables()
-    │                             md/（gr、sq、msd、angle、vacf、rotcorr、vanhove、cube）
-    │                             network/（桥接数、配体分类、CN、桥联统计）、dft/（Bader、ChgSDF）
+    │                             md/、network/、dft/（Bader、ChgSDF）、ml/（未来）
     └── ferro-workflow → core   ← QC 输入生成（Gaussian / CP2K / QE，含基组赝势库）
 ```
 
-中间层 crate 之间不允许互相依赖。**但共享类型可以下沉**——判据：一个类型该放
+中间层 crate 之间不允许互相依赖。**但共享类型可以下沉** —— 判据：一个类型该放
 `ferro-core`，当且仅当两个以上中间层需要叫出它的名字。两个方向各一个范例：
 `Trajectory`（io 产出、analysis 消费）与 `Table`（analysis 产出、io 消费）。
+
+这条规则的完整论证见 `issues.md`「分析产物为什么不进 ferro-io」—— ASE 与 pymatgen
+是 Python，**能**写出循环依赖却依然不写，说明这是设计选择而非语言约束。
 
 ## 命令入口（0.2.0 起；`net` 于 0.2.1 降为叶子命令）
 
@@ -31,31 +38,13 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
 ferro net                                                      → 六张堆叠 csv
-                                                                 + 可选标注轨迹
 ferro bader | convert | info | job
 ```
 
 `-i` 恒为多值并自展开 glob；逐文件独立分析，结果堆叠成一份带 `file` 列的 csv。
-`-o` 是**文件名后缀**，不是路径。
+`-o` 是**文件名后缀**，不是路径；路径走 `--outdir`。
 
-## 核心数据模型
-
-- 顶层类型：`Trajectory { frames: Vec<Frame> }`，单帧文件也用此类型
-- `Frame`：`atoms: Vec<Atom>`、`cell: Option<Cell>`、`pbc: [bool; 3]`、能量/力/应力/速度
-- `Atom`：`element`、`position`（Å，Cartesian）、`label`、`mass`、`magmom`、`charge`
-- `Cell`：`matrix: Matrix3<f64>`（行向量 a, b, c，单位 Å）
-
-## 内部单位
-
-| 量 | 单位 |
-|---|---|
-| 长度 | Å |
-| 能量 | eV |
-| 力 | eV/Å |
-| 时间 | fs |
-| 质量 | amu |
-| 电荷 | e |
-| 温度 | K |
+参数与输出列结构见 `docs/src/cli-reference.md`。
 
 ## 编码规范
 
@@ -64,18 +53,21 @@ ferro bader | convert | info | job
 
 ## 版本规则
 
-版本号在 `Cargo.toml`（workspace 根）集中管理，各 crate 继承
-`workspace.package.version`；`ferro-python` 是独立 workspace，需手动同步。
+版本号在根 `Cargo.toml` 集中管理，各 crate 继承 `workspace.package.version`；
+`ferro-python` 是独立 workspace，需手动同步。
 
 **只在用户明确要求时才动版本号**，不要每次改代码就自动 +1。破坏性改动升次版本位
-（0.1.15 → 0.2.0），其余升 patch 位。发布点打 annotated tag（`v0.1.15`、`v0.2.0`）。
+（0.1.15 → 0.2.0），其余升 patch 位。发布点打 annotated tag。
 
 **已知例外**：`v0.2.1`（2026-08-12，net 重构）含破坏性改动（`net qn`/`net type`
 删除、标签格式全变、表名与列结构全变），按上面的规则本应是 0.3.0，但按用户当时的
 明确要求走了 patch 位。翻 git 历史时注意：**0.2.0 → 0.2.1 之间有 breaking change**。
 
-`v0.2.1` **之后有一批尚未发版的 net 破坏性改动**，按用户要求暂不动版本号，
-等配套的 Python 绘图脚本完成后一并升。届时应计入的：
+## 未发版的破坏性改动（`v0.2.1` 之后）
+
+按用户要求暂不动版本号，等配套的 Python 绘图脚本完成后一并升。届时应计入：
+
+**net 重做（2026-08-12）**
 
 | 改动 | 影响 |
 |---|---|
@@ -89,13 +81,12 @@ ferro bader | convert | info | job
 | 配体 `fraction` 分母 | 全体配体原子 → 该配体元素 |
 | 新增 `--qn` | 替换默认 Qn 名单 `{B,P,Si}` |
 
-同期的 `traj` 产物命名改动（2026-08-13）：
+**traj 产物命名（2026-08-13）**
 
 | 改动 | 影响 |
 |---|---|
-| 文件名加 label 段 | `<mode>[_<table>][_<label>]_<suffix>.csv`;`gr.csv` → `gr_P-O.csv` / `gr_all.csv` |
-| 六个命令全改名 | gr / angle / msd / vacf / vanhove / rotcorr,**含无筛选时的 `_all`** |
-| 新增 `--outdir` | 进 `CommonArgs`,覆盖 11 个命令的 csv/png/cube/导出轨迹;`chg-sdf` 单独加同名参数 |
-| `traj sq` 移除 `-a/-b/-x/-y` | 旧命令行直接报 `unexpected argument`;按 label 分辨的 partial 从 CLI 消失 |
+| 文件名加 label 段 | `gr.csv` → `gr_P-O.csv` / `gr_all.csv`；六个命令全改，**含无筛选时的 `_all`** |
+| 新增 `--outdir` | 进 `CommonArgs`，覆盖 11 个命令的 csv/png/cube/导出轨迹；`chg-sdf` 单独加同名参数 |
+| `traj sq` 移除 `-a/-b/-x/-y` | 旧命令行直接报 `unexpected argument`；按 label 分辨的 partial 从 CLI 消失 |
 
 按仓库自己的规则这两批合起来应升次版本位（0.3.0）。
