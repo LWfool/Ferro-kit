@@ -285,6 +285,9 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 退出码 | dump2analysis / dump2sq 参数校验失败走 `exit(0)`，退出码不可信；**ferro 的可信**（批内失败也置 1） | 两种检查分开：C 程序只验产物，ferro 同时查 `returncode` |
 | 读长表 | 按列名取列的老写法在长表下取不到东西；直接 `df.iloc[:, 4]` 又会在列顺序变化时静默错位 | 按数据列选行（`center` / `neighbor` / `end_a`…），选空时把该表实际有的组合打印出来 |
 | `file` 列 | 单输入脚本遇到多输入产物时静默取第一个，后面所有数字都对不上且图上看不出来 | 断言 `df.file.nunique() == 1` 后再丢列 |
+| 产物名 | 在调用点手写 `f"gr_{tag}.csv"` | 用 `ferrocmp.product_name()` 拼（`batch::out_path` 的镜像）。2026-08-13 加 label 段时，三个脚本各写各的名字，同时断掉 |
+| `-o` 与 label 重复 | 把配对同时塞进 `-o`（`-o P-O` → `gr_P-O_P-O.csv`） | 配对已由 label 段进文件名，`-o` 只留批次标记（`cmp`）。这正是加 label 段换来的东西 |
+| `--ferro` 传相对路径 | 直接交给 `subprocess` | `run_ferro` 以 outdir 为 cwd，`../target/release/ferro` 会 `FileNotFoundError`。含分隔符时先 `resolve()` |
 
 ## 产物命名 / --outdir 编码陷阱（2026-08-13）
 

@@ -58,6 +58,7 @@ D_ANGLE = 0.1   # dump2analysis 固定 0.1°，ferro 显式对齐
 ALIGN_BINNING_MIN, ALIGN_BINNING_MAX = 0.05, 180.05
 
 TRIPLETS = [("O", "P", "O"), ("O", "Al", "O")]
+SUFFIX = "cmp"  # -o 的批次标记；三元组由文件名的 label 段区分，不必再进后缀
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
@@ -101,15 +102,18 @@ def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
         tag = f"{a}-{b}-{c}"
         print(f"[{tag}]")
 
-        # ferro：-a/-b/-c 是【元素】，-b 为中心原子；-o 是后缀，产物落在 outdir 下
+        # ferro：-a/-b/-c 是【元素】，-b 为中心原子；-o 是后缀，产物落在 outdir 下。
+        # 三元组已经由 label 段进了文件名，故 -o 只留一个批次标记，不再重复 tag
         fe_argv = ["traj", "angle", "-a", a, "-b", b, "-c", c,
-                   "-i", traj, "-o", tag,
+                   "-i", traj, "-o", SUFFIX,
                    "--r-cut-ab", R_CUT_AB, "--r-cut-bc", R_CUT_BC,
                    "--d-angle", D_ANGLE]
         if align_binning:
             fe_argv += ["--angle-min", ALIGN_BINNING_MIN,
                         "--angle-max", ALIGN_BINNING_MAX]
-        fe_out = fc.run_ferro(ferro_bin, fe_argv, outdir, f"angle_{tag}.csv")
+        fe_out = fc.run_ferro(
+            ferro_bin, fe_argv, outdir,
+            fc.product_name("angle", label=fc.file_label(a, b, c), suffix=SUFFIX))
 
         # dump2analysis：-x/-y/-z 才是【元素】，-a/-b/-c 是原子 id
         d2a_out = outdir / f"d2a_{tag}.angle"

@@ -5,21 +5,6 @@
 
 ## 优先级高
 
-### scripts/：四个对拍脚本跟进产物改名（2026-08-13 提出）
-
-`traj` 的产物名在 2026-08-13 加了 label 段，三处会破（第四处 sq 不受影响，它不传配对）：
-
-| 脚本 | 断点 |
-|---|---|
-| `compare_rdf.py` | 期待 `gr_<tag>.csv`，实际 `gr_P-O_<tag>.csv` |
-| `compare_angle.py` | 期待 `angle_<tag>.csv`，实际 `angle_O-P-O_<tag>.csv` |
-| `compare_sq.py` 的 gr 段 | `-a O -b O -o O-O` 现在产出 `gr_O-O_O-O.csv`（label 与 suffix 同值） |
-
-改动本身只是 `fc.run_ferro(...)` 第四个参数的字符串。**在这之前这三个脚本是断的** ——
-它们是 gr/sq/angle 与参考实现对拍的唯一通路，断着等于没有回归保障，应尽早补。
-
-顺带可考虑给 `ferrocmp.py` 加个拼名助手，避免下次改命名规则又要改四处。
-
 ### scripts/：net 剩余四张表的画法
 
 四个发表级绘图脚本已完成。**net 六张表里还有四张没有画法**，因为用户明确说还没想好
@@ -332,6 +317,24 @@ compound 一旦不在库中，`compounds::find` 返回 `None` 就报错了，**�
 
 顺带修：`compare_sq_experiment.py` 的 `TRAJ_CANDIDATES` 首选指向一个**不存在**的文件，
 一直在静默回退到 5 帧子集。
+
+### scripts/：对拍脚本跟进产物改名（2026-08-14）
+
+产物加 label 段后三个脚本断了（`compare_rdf` / `compare_angle` / `compare_sq` 的 gr 段），
+根因不是那三个字符串写错，而是**四个脚本各自手写产物名**。故做法是把命名规则搬进
+`ferrocmp.py`：`file_label()` / `set_label()` / `product_name()` 是 `batch::out_path`
+与 `batch::file_label` 的镜像，调用点只说「哪个模式、什么 label、什么后缀」。
+
+- **`-o` 不再重复配对**。原先 `-o P-O` 是唯一区分手段，现在配对已在 label 段里，
+  再塞进后缀就成了 `gr_P-O_P-O.csv`。四个脚本统一 `-o cmp` / `-o exp`
+- 顺带修：`--ferro` 传相对路径必炸（`run_ferro` 以 outdir 为 cwd），含分隔符时先 `resolve()`
+
+复跑四个脚本，数值与 2026-08-11 那轮**逐项吻合**（`max|Δ|` 5e-5/5e-4、Σfe/Σref
+0.5000、q>15 均值 1.00031/1.00018、partial 互相关 +0.959、rms 0.0194/0.0277、
+FSDP 1.95/2.05），说明改的只是拼名不是口径。
+
+外部程序的环境坑（与本仓无关，但会挡住复跑）：`dump2sq` 链接的 `gcc@14` 已被升级
+成 gcc 16，需 `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib/gcc/current` 才跑得起来。
 
 ### scripts/：四个发表级绘图脚本（2026-08-13）
 

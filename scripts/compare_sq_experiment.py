@@ -90,7 +90,7 @@ def compute(traj, outdir, r_max, ferro_bin, d2sq_bin):
          "--q-min", Q_MIN, "--q-max", Q_MAX, "--dq", DQ,
          "--r-min", R_MIN, "--r-max", r_max, "--dr", DR,
          "--weighting", "both"],
-        outdir, "sq_exp.csv")
+        outdir, fc.product_name("sq", suffix="exp"))   # sq 无类型选择,故无 label 段
 
     # dump2sq 把 argv 的最后一项当输入文件；输出为 <outbase>.{gr,cn,sq,coeff}
     base = outdir / "d2sq"
