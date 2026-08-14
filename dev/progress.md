@@ -31,12 +31,13 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | 对拍 | `ferrocmp.py` | `compare_rdf/angle/sq/sq_experiment.py` | 跟 dump2analysis / dump2sq 逐点比 |
 | 出图 | `ferroplot.py` | `plot_gr/angle/sq/net.py` | 发表级 pdf（+ png 看效果） |
 
+对拍侧的产物名一律由 `ferrocmp.product_name()` 拼（`batch::out_path` 的镜像），
+调用点不写文件名字符串；四个脚本均已按 label 段复跑验证。
+
 出图侧样式 `['science','vibrant']` + LaTeX + 四边框；每个脚本顶部一个 `CFG` 配置块。
 `plot_net.py` 的 x 轴是**成分**（`file` 列），100 % 堆积柱；`--partner` 展开成
 色相 = Qn、同色系明度 = m_<X> 的嵌套条带。多 csv（`-o` 的 suffix 区分 CMD / MLMD）
 画成同一刻度下并排多根柱。
-
-**对拍脚本当前是断的** —— `traj` 产物加了 label 段，三处写死的产物名要跟进，见 `plan.md`。
 
 ---
 

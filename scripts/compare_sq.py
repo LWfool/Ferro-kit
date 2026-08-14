@@ -81,7 +81,7 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
          "--q-min", Q_MIN, "--q-max", Q_MAX, "--dq", DQ,
          "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR,
          "--weighting", "both"],
-        outdir, "sq_cmp.csv")
+        outdir, fc.product_name("sq", suffix="cmp"))   # sq 无类型选择,故无 label 段
 
     # dump2sq：无元素选择参数，一次算出全部 partial 与两条 total
     d2sq_base = outdir / "d2sq"
@@ -92,11 +92,13 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
             str(traj)], d2sq_sq)
 
     print("[O-O g(r) 归因]")
+    # 配对已由 label 段进文件名，-o 与 S(q) 共用同一个批次标记
     fe_gr = fc.run_ferro(
         ferro_bin,
-        ["traj", "gr", "-a", "O", "-b", "O", "-i", traj, "-o", "O-O",
+        ["traj", "gr", "-a", "O", "-b", "O", "-i", traj, "-o", "cmp",
          "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR],
-        outdir, "gr_O-O.csv")
+        outdir,
+        fc.product_name("gr", label=fc.file_label("O", "O"), suffix="cmp"))
     d2a_gr = outdir / "d2a_O-O.gr"
     fc.run([d2a_bin, "-m", "gr", "-x", "O", "-y", "O",
             "--rmin", str(R_MIN), "--rmax", str(R_MAX), "--dr", str(DR),

@@ -22,10 +22,15 @@
 4. 数值一律 `{:.6e}`，缺失值写成**空字段**（列并集下某输入没有的列）。pandas
    读回来就是 NaN，不需要额外处理 —— 但不要把 NaN 当 0 参与统计。
 
+5. **产物名带 label 段**（2026-08-13 起）：`gr.csv` → `gr_P-O.csv`，无筛选是
+   `gr_all.csv`。文件名一律用 `product_name()` 拼，不要在调用点手写字符串 ——
+   加 label 段那次，三个脚本因为各写各的名字同时断掉。
+
 外部参考程序（dump2analysis / dump2sq）的输出格式没变，仍是空白分隔的数值表，
 由 `load_legacy()` / `legacy_header()` 读取。
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -59,15 +64,71 @@ def run_ferro(ferro_bin, argv, outdir, product):
     """跑一条 ferro 子命令，返回它写出的产物路径。
 
     `-o` 是后缀不是路径，故以 `outdir` 为工作目录调用；`argv` 里的输入路径必须
-    已经是绝对路径。`product` 是预期文件名（`gr_<后缀>.csv` 这类），相对 outdir。
+    已经是绝对路径。`product` 是预期文件名，用 `product_name()` 拼，别手写。
     """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     target = outdir / product
     if target.exists():
         target.unlink()      # 不让上一轮的残留冒充本轮产物
-    return run([ferro_bin, *[str(a) for a in argv]], target,
+    # cwd 换成了 outdir，`--ferro ../target/release/ferro` 这种相对路径会解析不到
+    if os.sep in str(ferro_bin):
+        ferro_bin = Path(ferro_bin).resolve()
+    return run([str(ferro_bin), *[str(a) for a in argv]], target,
                cwd=outdir, check_returncode=True)
+
+
+# ── 产物文件名 ───────────────────────────────────────────────────────────────
+#
+# 命名规则在 ferro-cli 的 `batch::out_path` / `batch::file_label`，这里是它的镜像。
+# 手写产物名的代价已经付过一次：2026-08-13 给 traj 产物加 label 段，三个脚本同时
+# 断掉。规则再变时只改这一处。
+
+_LABEL_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-")
+
+
+def file_label(*parts):
+    """有序选择的 label：`file_label("P", "O") -> "P-O"`，不给参数 -> `"all"`。
+
+    对应 `-a`/`-b`/`-c` 这类**按写的顺序**进文件名的选择：CN(r) 有向，
+    `-a P -b O` 与 `-a O -b P` 是两份不同数据，必须落到两个文件名下。
+    """
+    parts = [str(p) for p in parts if p is not None]
+    if not parts:
+        return "all"
+    for p in parts:
+        if not p:
+            sys.exit("空的类型选择：元素或位点标签不能为空串")
+        bad = [c for c in p if c not in _LABEL_OK]
+        if bad:
+            sys.exit(f"'{p}' 含非法字符 {bad!r}：label 会成为文件名的一段，"
+                     f"ferro 只接受字母、数字、'_'、'+'、'-'")
+    return "-".join(parts)
+
+
+def set_label(parts=None):
+    """集合选择的 label（`--elements`）：排序去重后再拼。
+
+    `O,P` 与 `P,O` 选中同一批原子，是同一份数据，不能写成两个文件名。
+    """
+    if not parts:
+        return "all"
+    return file_label(*sorted(set(str(p) for p in parts)))
+
+
+def product_name(mode, label=None, suffix=None, table=None):
+    """ferro 的产物文件名：`<mode>[_<table>][_<label>][_<suffix>].csv`。
+
+    * `table` 与 `mode` 同名时省略（gr / angle / sq 这类单表模式）；
+      net 的六张表要显式传（`product_name("network", table="qn", ...)`）。
+    * `label` 是**该模式有没有类型选择**：sq 没有，传 `None`；gr / angle 有，
+      即使没筛选也得传 `file_label()` 拿到的 `"all"`。两者的区别就是差一段。
+    """
+    stem = mode if table in (None, mode) else f"{mode}_{table}"
+    for seg in (label, suffix):
+        if seg:
+            stem += f"_{seg}"
+    return f"{stem}.csv"
 
 
 # ── ferro csv 读取 ───────────────────────────────────────────────────────────

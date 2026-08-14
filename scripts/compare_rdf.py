@@ -19,6 +19,7 @@ PairStats，故此参数无对应物，这里显式传 2.3 但不使用其结果
 **0.2.0 的产物形状**（详见 ferrocmp.py 的模块 docstring）：
   * `-o` 是文件名后缀不是路径 → 以 outdir 为工作目录调用
   * gr 是长表 `file,r,center,neighbor,gr,cn` → 按 center/neighbor 选行，不按列名取列
+  * 产物名带 label 段（2026-08-13 起）：`gr_P-O_cmp.csv` → 用 `fc.product_name()` 拼
 
 用法:
     python compare_rdf.py [--traj FILE] [--outdir DIR]
@@ -42,6 +43,7 @@ DR = 0.01
 R_CUT = 2.3     # 仅 dump2analysis 的键长统计用，不影响曲线
 
 PAIRS = [("P", "O"), ("Al", "O")]
+SUFFIX = "cmp"  # -o 的批次标记；配对由文件名的 label 段区分，不必再进后缀
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
@@ -54,12 +56,14 @@ def compute(traj, outdir, ferro_bin, d2a_bin):
         tag = f"{a}-{b}"
         print(f"[{tag}]")
 
-        # ferro：-a 是中心元素、-b 是近邻元素；-o 给的是后缀，产物落在 outdir 下
+        # ferro：-a 是中心元素、-b 是近邻元素；-o 给的是后缀，产物落在 outdir 下。
+        # 配对已经由 label 段进了文件名，故 -o 只留一个批次标记，不再重复 tag
         fe_out = fc.run_ferro(
             ferro_bin,
-            ["traj", "gr", "-a", a, "-b", b, "-i", traj, "-o", tag,
+            ["traj", "gr", "-a", a, "-b", b, "-i", traj, "-o", SUFFIX,
              "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR],
-            outdir, f"gr_{tag}.csv")
+            outdir,
+            fc.product_name("gr", label=fc.file_label(a, b), suffix=SUFFIX))
 
         # dump2analysis：-x/-y 才是【元素】，-a/-b 是原子 id
         d2a_out = outdir / f"d2a_{tag}.gr"
