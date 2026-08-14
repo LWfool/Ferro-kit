@@ -1,720 +1,103 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> **动手前先读 `dev/`**：`overview.md`（定位与版本）→ `progress.md`（各 crate 现状）
+> → `plan.md`（待办）→ `issues.md`（编码陷阱，**改代码前必查**）。
+>
+> 本文件只放硬约束与导航。三份文档分工：
+> **`docs/src/`** = 怎么用（用户手册，mdBook）· **`dev/`** = 为什么这样定 + 现状 + 待办 ·
+> **本文件** = 你必须遵守的规则。任何用法问题（CLI 参数、输出列、数据模型）查
+> `docs/src/`，不要在这里重述。
 
-## Build & Test Commands
-
-```bash
-cargo build                                                    # build entire workspace
-cargo build --release
-cargo build --package ferro-core                             # single crate
-cargo test                                                     # all tests
-cargo test --package ferro-io                                # single crate
-cargo test --package ferro-core test_basic_molecule          # single test
-cargo fmt
-cargo clippy
-cargo check
-
-# CLI (dev) — one binary, subcommands grouped by what they produce
-cargo run --bin ferro -- traj gr -i traj.dump -a P -b O
-cargo run --bin ferro -- traj gr -i 'runs/*/prod.dump' -a P -b O -o scan   # batch
-cargo run --bin ferro -- map density -i traj.dump
-cargo run --bin ferro -- net -i traj.dump --P-O=2.3 --Zn-O=2.6 --modifier Zn
-cargo run --bin ferro -- convert -i input.xyz -o output.pdb
-cargo run --bin ferro -- job -i input.xyz -s gaussian -m B3LYP -o job.gjf
-
-# Python bindings (separate workspace: its own lockfile, skipped by the root cargo)
-cd ferro-python && maturin develop
-```
-
-Test fixtures: `tests/` (two 5-frame LAMMPS trajectories — one NPT, one NVT — plus `Experiment.xlsx`)
-
----
-
-## Architecture
-
-Cargo workspace with a strict layered dependency graph. Middle-layer crates must NOT depend on each other — only the top-layer entry points combine them.
-
-```
-ferro-cli / ferro-python        ← only layer that combines multiple crates
-    ├── ferro-core                ← pure data structures + static reference data
-    ├── ferro-io        → core    ← format readers/writers
-    ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── ferro-analysis  → core    ← md/, dft/ (future), ml/ (future)
-    └── ferro-workflow  → core    ← QC software input file builders
-```
-
-**Shared types go down, not sideways.** The rule above forbids `ferro-io → ferro-analysis`,
-but it never forbade the two from *sharing* types — the sharing point is `ferro-core`.
-
-> A type belongs in `ferro-core` **iff two or more middle layers need to name it.**
-
-Two worked examples, one per direction of data flow:
-
-| Direction | Shared type | Producer | Consumer |
-|---|---|---|---|
-| structures in | `Trajectory` | `ferro-io` | `ferro-analysis` |
-| results out | `Table` | `ferro-analysis` | `ferro-io` |
-
-Analysis-private intermediates (`GrResult`, `SqResult`, …) stay in `ferro-analysis`;
-only their serialisable projection (`Table`, via `to_tables()`) crosses a layer boundary.
-This is the same pattern as pymatgen's `MSONable` and OVITO's `DataTable` — neither
-lets its io module import its analysis module.
-
-### Crate responsibilities
-
-| Crate | Role |
-|---|---|
-| `ferro-core` | `Atom`, `Frame`, `Trajectory`, `Cell`, `Table`; static element/compound data; error types; unit conversion |
-| `ferro-io` | Format readers (`read_xyz`, `read_pdb`, ...) and writers; returns/accepts `Trajectory`. `write_table` is the single exit point for analysis results |
-| `ferro-structure` | Supercell, vacuum layer, merge, initial box estimation from compound data |
-| `ferro-analysis` | Pure computation — no filesystem. Results expose `to_tables() -> Vec<(String, Table)>`. Sub-modules: `md/` (g(r), S(q), MSD, angle, VACF, rotcorr, VanHove, cube density, cluster SDF), `network/` (bridging speciation, ligand types, CN, linkage), `dft/` (Bader, ChgSDF), `ml/` (future) |
-| `ferro-workflow` | QC input file builders: `GaussianJobBuilder`, `GromacsTopologyBuilder`, etc. |
-| `ferro-cli` | CLI + REPL + batch mode (shared interpreter); `batch.rs` drives multi-input runs, generic over the result type |
-| `ferro-python` | PyO3 wrappers only; pure Rust libs have zero Python awareness |
-
----
-
-## Core Data Model
-
-**Primary use case is periodic systems** (crystals, surfaces). Non-periodic (molecular) systems are secondary.
-
-**Always use `Trajectory` as the top-level type**, even for single-frame files.
-- Single-frame file → `Trajectory { frames: vec![frame_0] }`
-- MD trajectory → `Trajectory { frames: vec![frame_0, frame_1, ...] }`
-
-All module APIs accept/return `Trajectory`. All core types derive `Clone`.
-
-### Atom
-```rust
-pub struct Atom {
-    pub element: String,
-    pub position: Vector3<f64>,    // Å, Cartesian
-    pub label: Option<String>,     // human-readable tag e.g. "Fe1", "Fe2"
-    pub mass: Option<f64>,         // None = look up from elements table
-    pub magmom: Option<f64>,       // initial magnetic moment (DFT input)
-    pub charge: Option<f64>,       // Bader/DDEC charge (post-processing result)
-}
-```
-
-Atom index is **implicit** (position in `Vec<Atom>`). No `index` field stored to avoid inconsistency.
-
-### Frame (≈ ASE Atoms)
-```rust
-pub struct Frame {
-    pub atoms: Vec<Atom>,
-    pub cell: Option<Cell>,                      // None = non-periodic
-    pub pbc: [bool; 3],                          // periodic in x/y/z
-    pub charge: i32,                             // total system charge
-    pub multiplicity: u32,                       // 2S+1; unpaired electrons = multiplicity-1
-    pub bonds: Option<Vec<(usize, usize)>>,      // optional bond list (i,j)
-    // post-processing results (written back after calculation):
-    pub energy: Option<f64>,
-    pub forces: Option<Vec<Vector3<f64>>>,
-    pub stress: Option<Matrix3<f64>>,
-    pub velocities: Option<Vec<Vector3<f64>>>,
-}
-```
-
-`pbc` controls periodicity: `[false,false,false]` = molecular, `[true,true,true]` = crystal, `[true,true,false]` = surface/slab.
-
-**`Molecule` struct does not exist** — `Frame` covers all cases.
-
-### ferro-core file structure
-```
-ferro-core/src/
-├── lib.rs
-├── atom.rs
-├── cell.rs
-├── frame.rs
-├── trajectory.rs
-├── table.rs         # Table / Column — analysis results on their way to ferro-io
-├── charge_grid.rs   # ChargeGrid (Bader)
-├── cube_data.rs     # CubeData (3-D grids)
-├── cluster.rs       # build_network_graph / connected_components (shared primitive)
-├── network_type.rs  # AtomType / TypeParams / classify_frame[_detailed]
-├── spin.rs          # guess_spin / oxidation states
-├── data/
-│   ├── mod.rs
-│   ├── elements.rs  # static: symbol, atomic number, mass, oxidation states, electron config
-│   └── compounds.rs # static: name, formula, molecular_mass, density — for box estimation
-├── units.rs
-└── error.rs
-```
-
-### Cell
-```rust
-pub struct Cell {
-    pub matrix: Matrix3<f64>,  // row vectors a, b, c in Å
-}
-```
-
-| Method | Purpose |
-|---|---|
-| `from_matrix` / `from_lengths_angles` | constructors |
-| `lengths() -> [f64; 3]` | a, b, c |
-| `angles() -> [f64; 3]` | α, β, γ in degrees |
-| `volume() -> f64` | |
-| `fractional_to_cartesian` / `cartesian_to_fractional` | coordinate transforms |
-| `wrap_position` | fold Cartesian position back into box |
-| `minimum_image` | minimum image convention for PBC distance/vector |
-
-NPT trajectories (varying box per frame) are naturally handled: `cell: Option<Cell>` lives inside `Frame`, so each frame carries its own cell.
-
-### Units
-Internal standard follows **DeePMD-kit / VASP convention**:
-
-| Quantity | Internal unit |
-|---|---|
-| Length | Å |
-| Energy | eV |
-| Force | eV/Å |
-| Stress | eV/Å³ |
-| Time | fs |
-| Mass | amu |
-| Charge | e |
-| Temperature | K |
-
-Self-implemented (no `uom` or external unit crates). Enum-based conversion:
-```rust
-pub enum LengthUnit   { Angstrom, Bohr, Nanometer }
-pub enum EnergyUnit   { EV, Hartree, KcalPerMol, KJPerMol, Wavenumber }
-pub enum PressureUnit { EVPerAng3, GPa, Kbar }
-pub enum TimeUnit     { Femtosecond, Picosecond }
-
-pub fn convert_length(value: f64, from: LengthUnit, to: LengthUnit) -> f64
-pub fn convert_energy(value: f64, from: EnergyUnit, to: EnergyUnit) -> f64
-pub fn convert_pressure(value: f64, from: PressureUnit, to: PressureUnit) -> f64
-```
-
-### Error handling
-- Library crates: `ferro_core::error::ChemError` / `ferro_core::Result<T>`
-- CLI: `anyhow::Result`
-
----
-
-## Static Reference Data (ferro-core/data/)
-
-### elements.rs
-Per-element: symbol, atomic number, atomic mass, common oxidation states, electron configuration, electronegativity.
-
-### compounds.rs
-Used by `ferro-structure` to estimate initial MD simulation box size:
-```rust
-pub struct CompoundData {
-    pub name: &'static str,
-    pub formula: &'static str,
-    pub molecular_mass: f64,       // g/mol
-    pub density: Option<f64>,      // g/cm³ at standard conditions; None for gases
-    pub cas: Option<&'static str>,
-}
-```
-Box estimation logic (V = Σ n_i·M_i / ρ_mix·Nₐ) lives in `ferro-structure`, not here.
-
----
-
-## Execution Modes
-
-**Implemented:** one-shot CLI only.
+## Build & Test
 
 ```bash
-ferro traj gr -i traj.dump -a P -b O          # one input
-ferro traj gr -i 'runs/*/prod.dump' -o scan   # many, stacked into one csv
+cargo build                                   # 整个 workspace
+cargo test                                    # 全部测试
+cargo test --package ferro-core test_name     # 单个测试
+cargo clippy                                  # 必须零警告
+cd ferro-python && cargo check                # 独立 workspace，主 workspace 会跳过它
 ```
 
-**Not implemented** — `main.rs` is a subcommand dispatcher; bare `ferro` prints the
-overview. The REPL / script interpreter (`rustyline`, `ferro -f workflow.mf`, piped
-stdin, bare `ferro` entering an interactive session on a tty) is the next large feature;
-see `dev/plan.md`. It must link every command into one process — a stateful
-`read` → `gr` → `sq` session cannot shell out per command without re-reading the
-trajectory — which is also why 0.2.0 collapsed the `fe-*` binaries into one.
+`cargo fmt` **不要全仓跑**：本仓未纳入 rustfmt 管理，全仓格式化会改动约 80 文件
+（含 22k 行生成代码），淹没真实 diff。见 `dev/issues.md`「构建 / 工具链陷阱」。
 
-**Python library:** `import ferro` via PyO3 in `ferro-python` — **currently does not
-compile**, see the Python Bindings section below.
+测试 fixture：`tests/`（两条 5 帧 LAMMPS 轨迹，一 NPT 一 NVT）。
 
-### ferro-cli internal structure
-```
-ferro-cli/src/
-├── main.rs              # the ferro binary: subcommand tree + dispatch
-├── lib.rs               # re-exports args, batch, cmd, help, io_dispatch, plot
-├── args/
-│   ├── common.rs        # CommonArgs (-i/-o/--outdir/--last-n/--ncore/--metal-units)
-│   │                    #   + SelectArgs (-a..-z; gr and angle only, not sq)
-│   ├── traj.rs          # SqWeightingCli
-│   ├── corr.rs
-│   └── cube.rs          # CubeCliMode (still the analysis-facing enum)
-├── batch.rs             # multi-input driving + product naming (Output/out_path/file_label)
-├── cmd/
-│   ├── traj.rs          # gr/sq/msd/angle/vacf/rotcorr/vanhove — one Args struct each
-│   ├── map.rs           # density/velocity/force/radius/sdf/chg-sdf
-│   ├── net.rs           # leaf command + the --P-O=2.3 argv pre-pass
-│   ├── bader.rs, convert.rs, info.rs, job.rs
-│   └── mod.rs
-├── help.rs              # print_overview / print_*_overview / per-command help text
-├── io_dispatch.rs       # read_trajectory / read_trajectory_tail (format detection)
-└── plot.rs              # Panel/Series + render; plot_gr / plot_sq / plot_msd / plot_angle
-```
-
-`batch.rs` is the multi-input driver and is **generic over the result type** —
-`map_inputs<T>(inputs, f) -> (Vec<(PathBuf, T)>, Vec<Failure>)`. It owns indexing,
-looping, skipping and reporting; it never names `GrResult` or any other analysis type,
-and the analysis crates never learn that batching exists. Deciding *which* scalars are
-worth summarising is analysis semantics, so that stays in `cmd/`.
-
-It also owns **product naming**: `Output { dir, label, suffix }` plus `out_path`,
-`file_label` (join as written) and `set_label` (sort + dedup, for set-valued
-selections). One struct rather than three positional arguments because the three always
-travel together — `write_all` would otherwise take eight. `Output::prepare` creates
-`--outdir` and is called **before the first input is read**, so a bad path fails
-alongside the other parameter errors.
-
-
----
-
-## Python Bindings (ferro-python)
-
-> **Currently broken.** `analysis.rs` still calls the `write_gr` path that 0.2.0 removed,
-> so `cd ferro-python && cargo check` fails. `ferro-python` is a **separate workspace**
-> with its own lockfile, so the main workspace's `cargo build`/`test`/`clippy` skip it
-> entirely — that is exactly how it drifted. Run its `cargo check` after touching any
-> public API in `ferro-analysis` or `ferro-core`.
-
-All PyO3 glue lives here. Library crates have zero Python awareness.
+## 分层铁律
 
 ```
-ferro-python/src/
-├── lib.rs        # #[pymodule] entry
-├── types.rs      # PyTrajectory (#[pyclass] wrapping inner: Trajectory)
-├── io.rs
-├── structure.rs
-└── analysis.rs
+ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
+    ├── ferro-core                纯数据结构 + 静态数据 + Table + AtomType
+    ├── ferro-io        → core    格式读写；write_table 是分析产物的唯一出口
+    ├── ferro-structure → core    超胞、真空层、合并、建盒
+    ├── ferro-analysis  → core    纯计算，**不碰文件系统**
+    └── ferro-workflow  → core    QC 输入生成
 ```
 
-Return types: `Vec<f64>`, `HashMap<String, Vec<f64>>` — PyO3 converts automatically to Python list/dict. No numpy or polars Rust crates.
+**中间层 crate 不得互相依赖。** 共享类型下沉而非横向依赖：
 
-```toml
-# ferro-python/Cargo.toml — minimal deps
-[dependencies]
-pyo3 = { version = "0.29", features = ["extension-module"] }
-ferro-core      = { path = "../ferro-core" }
-ferro-io        = { path = "../ferro-io" }
-ferro-structure = { path = "../ferro-structure" }
-ferro-analysis  = { path = "../ferro-analysis" }
-```
+> 一个类型该放 `ferro-core`，**当且仅当两个以上中间层需要叫出它的名字**。
 
----
+两个方向各一个范例：`Trajectory`（io 产出 → analysis 消费）、`Table`（analysis 产出
+→ io 消费）。分析私有的中间产物（`GrResult`、`SqResult`…）留在 `ferro-analysis`，
+只有可序列化投影（`to_tables()` 出的 `Table`）跨层。
 
-## CLI Reference
+## 编码约定
 
-**One binary, `ferro`.** Subcommands are grouped by **what they produce**, not by which
-crate implements them — the `fe-*` binaries are gone.
+- `///` / `//!` doc 注释 → **英文**；`//` 内部注释 → **中文**
+- 库 crate 用 `ferro_core::error::ChemError` / `Result<T>`；CLI 用 `anyhow::Result`
+- 顶层类型恒为 `Trajectory`，单帧文件也是（`frames: vec![frame_0]`）
+- **`Molecule` 类型不存在** —— `Frame` 覆盖分子与周期体系，由 `pbc: [bool; 3]` 区分
+- 原子索引是**隐式的**（在 `Vec<Atom>` 里的位置），不存 `index` 字段
 
-| Command | Purpose | Product |
-|---|---|---|
-| `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV + optional PNG |
-| `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | Spatial distribution maps | one `.cube` grid **per input** |
-| `ferro net` | Glass network topology (`--P-O=2.3`) | six stacked CSVs + optional labelled trajectory |
-| `ferro bader` | Bader charge partitioning | ACF/BCF/AVF (Henkelman format) |
-| `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
+内部单位（DeePMD-kit / VASP 约定）：长度 Å · 能量 eV · 力 eV/Å · 应力 eV/Å³ ·
+时间 fs · 质量 amu · 电荷 e · 温度 K。转换走 `units.rs` 的枚举，不引入 `uom`。
 
-`traj` merges the old `ferro traj` + `ferro traj`: all seven share one output pipeline, and the
-"structural vs dynamic" line never held anyway (`msd` is a time correlation that sat on
-the structural side). `-m` is gone everywhere — position is the mode. Each subcommand
-owns its own argument struct, so `--dt` can mean different things for `msd` and `vacf`
-without sharing a field; `CommonArgs` / `SelectArgs` are `#[command(flatten)]`-ed in.
+## 版本规则
 
-**Help is three levels**: `ferro` → the groups; `ferro traj` → that group's commands;
-`ferro traj gr` (no `-i`) → that command's parameters, output columns and examples.
+版本号在根 `Cargo.toml` 集中管理，各 crate 继承 `workspace.package.version`；
+`ferro-python` 是独立 workspace，需**手动同步**。
 
-Common flags shared by all trajectory binaries: `--outdir DIR`, `--last-n N`, `--ncore N`, `--metal-units`.
+**只在用户明确要求时才动版本号**，不要每次改代码就自动 +1。
+`v0.2.1` 之后有一批未发版的破坏性改动，清单见 `dev/overview.md`。
 
-**Batch input.** `-i` takes one or more files and expands glob patterns itself
-(`-i 'runs/*/prod.dump'` — quote it so the shell leaves it alone; `{a,b}` braces are
-*not* supported, let the shell do those). There is **one code path**: each input is
-analysed independently and the results are stacked into a single CSV with a `file`
-column. A single input is the N=1 case, not a special mode — dispatching on the number
-of inputs would make the output shape depend on what a glob happened to match that day.
+## 扩展项目
 
-A failing input is reported, skipped, listed in the output's `[inputs]` block with its
-reason, and makes the **exit code 1**. Parameter errors still fail fast, before the
-first file is read.
+**加文件格式**
+1. `ferro-io/src/readers/<fmt>.rs` 返回 `Result<Trajectory>` + `writers/<fmt>.rs`
+2. 从 `readers/mod.rs`、`writers/mod.rs` 导出
+3. `ferro-cli/src/io_dispatch.rs` 加格式检测（`read_trajectory` 与 `write_trajectory` **两处**）
+4. `ferro-python/src/io.rs` 加包装
 
-### `ferro traj` — detailed flags
+**加分析方法**
+1. 在 `ferro-analysis/src/<domain>/` 实现 —— **纯计算，无文件 I/O**
+2. 给结果类型 `to_tables() -> Vec<(String, Table)>` 与 `meta_lines() -> Vec<String>`。
+   `meta_lines` **只放批内共享的参数**；逐输入才有意义的量走 `[inputs]` 清单，
+   否则第一个文件的组成会摆在全局参数区冒充全局事实
+3. `ferro-cli/src/cmd/<group>.rs` 加分支：构造参数（**在读第一个文件前**校验）→
+   `batch::map_inputs` → `batch::stack` → `batch::write_all`
+4. `ferro-cli/src/help.rs` 加帮助并在 `print_overview` 列出
+5. `docs/src/analysis/<name>.md` 加手册页 + `SUMMARY.md` 挂上
 
-```
-# type selection — two mutually exclusive groups (gr and angle only; sq has none)
--a ELEM   [gr] centre element; [angle] end atom A
--b ELEM   [gr] neighbour element; [angle] centre atom B   (requires -a)
--c ELEM   [angle] end atom C   (requires -a -b)
--x LABEL  [gr] centre site label; [angle] end atom A
--y LABEL  [gr] neighbour site label; [angle] centre atom B  (requires -x)
--z LABEL  [angle] end atom C   (requires -x -y)
+**加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
+目前无 CLI 入口（`box_builder` 也是库级）。
 
-# gr-specific
---r-max FLOAT   max r [Å]                  default 10.005
-                (clamped to half the smallest interplanar spacing)
---dr    FLOAT   bin width [Å]              default 0.01
+**加 QC 目标**：`ferro-workflow/src/job_builder.rs` + `templates.rs` → `cmd/job.rs` 分支。
 
-# sq-specific  (no type selection — every pair is always written)
---q-max     FLOAT   max q [Å⁻¹]           default 25.0
---dq        FLOAT   q bin width [Å⁻¹]     default 0.05
---weighting ENUM    none|xrd|neutron|both  default both
+## 代码导航
 
-# msd-specific
---dt    FLOAT   timestep [fs]              default 1.0
---shift INT     time-origin stride         default 1
---elements El,El,...  filter elements
---fit-range FMIN,FMAX  linear-fit window (traj. fractions) → self-diffusion D
-
-# angle-specific
---r-cut-ab FLOAT   A→B cutoff [Å]         default 2.3
---r-cut-bc FLOAT   B→C cutoff [Å]         default 2.3
---d-angle  FLOAT   bin width [°]           default 0.1
-
-# plot (gr / sq / angle / msd)
---plot   write PNG next to the data file (opened in a viewer only for a single input)
-```
-
-**Product naming.** Results land in
-`<outdir>/<mode>[_<table>][_<label>]_<suffix>.csv`.
-
-`-o` is a **name suffix, not a path** — the batch tag. `--outdir` is the path
-(`CommonArgs`, so all eleven batch commands take it; created if missing, printed once,
-and it covers the CSVs, the PNGs, `ferro map`'s cubes and `net --export-traj`'s
-trajectories alike). `<label>` says **what was analysed** and comes from the type
-selection, so `traj gr -a P -b O` writes `gr_P-O.csv` and no selection writes
-`gr_all.csv`. Label precedes suffix so `ls gr_P-O_*` lists one pair across every batch.
-
-| Command | label from | example |
-|---|---|---|
-| `traj gr` | `-a/-b` or `-x/-y` | `gr_P-O.csv`, `gr_P_3-O_b.csv`, `gr_all.csv` |
-| `traj angle` | `-a/-b/-c` or `-x/-y/-z` | `angle_O-P-O.csv`, `angle_all.csv` |
-| `traj msd`/`vacf`/`vanhove` | `--elements`, **sorted + deduped** | `msd_O-P.csv`, `msd_all.csv` |
-| `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv` (both required, never `all`) |
-| `traj sq`, `net`, `map` | none | `sq.csv`, `network_qn.csv`, `density.cube` |
-
-`gr`/`angle` join the parts **as written** — `-a P -b O` and `-a O -b P` are different
-files because `CN` is directed. `--elements` is **sorted** because it is a set, and one
-dataset must not land under two names. The selected strings become a path component, so
-they are validated against `[A-Za-z0-9_+-]` **before the first file is read**; replacing
-bad characters was rejected, since it would make `-a P/2` and `-a P_2` collide silently.
-
-Per-input files are not produced — the batch summary is the product, the one exception
-being products that are inherently per-input (`ferro map`'s cubes,
-`ferro net --export-traj`'s trajectories), whose names must carry the input stem or a
-second input would overwrite the first.
-
-**`traj sq` has no type selection.** `-a/-b` and `-x/-y` were removed: the primary
-product is the pair of totals and the partials are a decomposition that sums back to
-them, so keeping one pair hides the very closure they exist to show — filter columns in
-pandas instead. Label-resolved partials went with them (a site label rarely carries
-enough atoms for its partial to show a signal); the library-level `GroupBy::Label` is
-untouched, only the CLI entry point is gone.
-
-**element vs. label.** `Atom::element` is the chemical element; `Atom::label` is an
-optional site type. The LAMMPS dump reader splits an `element` column entry written as
-`<Element>_<suffix>` (`P_0`, `O_b`, `Al_2`) at the **first underscore** — element
-prefix into `element`, whole string into `label` — and prints the mapping once on read.
-Plain symbols pass through untouched with `label = None`. `-a/-b/-c` select by element,
-`-x/-y/-z` by label; `ferro-io`'s CIF / CP2K / QE readers also populate `label` from
-their native site names, and extxyz carries it in a `label:S:1` column.
-
-**Writers never fold `label` into the element column on their own.** `ferro convert`
-emits clean element symbols whatever the labels say. Only `ferro net --export-traj`
-folds, and only for LAMMPS dump, which has nowhere else to put a second per-atom name;
-extxyz gets the dedicated column instead. The fold is guarded — a label not of the form
-`<element>_…` (CIF's `O1`, CP2K's `Fe1`) is left out and counted, because folding it
-would make the element column read back as the non-existent element `O1`.
-
-**Selecting by label only works frame-by-frame.** `g(r)` requires a fixed particle
-count per type, and label populations drift as the MD evolves (`P_3` was 149/152/150/150/150
-over five frames of the reference trajectory), so `traj gr -x P_3 -y O_b` on a
-multi-frame labelled trajectory is rejected with a per-type-count error. Use
-`--last-n 1`, or select by element.
-
-### Output format
-
-Every table-producing mode writes **one CSV**, with a `#` comment block above the data
-holding the shared parameters and an `[inputs]` table (one row per input: frames, atoms,
-volume, the clamped `r_max`, composition, status). That block is for humans —
-`pandas.read_csv(comment="#")` drops it, so anything a script must parse is a column.
-
-**The table's shape follows its primary product's granularity.** That is why `gr` and
-`sq` differ:
-
-**`gr` / `angle` — long format.** `file, r, center, neighbor, gr, cn` (and
-`file, angle, end_a, center, end_c, count, p`). Types live in *data columns*, so runs
-with different element sets stack with no column alignment; omitting `-a/-b` adds rows,
-never columns. `g(r)` is symmetric (`A-B` == `B-A`); `CN(r)` is directed, which the
-`center`/`neighbor` split writes into the table structure rather than a doc comment.
-`angle` keeps a raw `count` alongside the normalised `p` because the integer histogram
-is what `scripts/compare_angle.py` checks against dump2analysis bin for bin.
-
-**`sq` — wide format.** `file, q, total_xrd, total_neutron`, then `_sq` / `_xrd` /
-`_neutron` per pair (canonical half only — S(q) has no directed counterpart). The
-primary product is the pair of totals, which are one value per `q`; the weighted
-partials `w_ij(q)·S_ij(q)` are a diagnostic decomposition that sums back to the totals.
-Inputs with different element sets contribute different pair columns: the union is
-taken and **gaps are left empty (NaN), never interpolated or zero-filled**.
-
-Label-resolved totals match element-resolved ones up to an O(1/N) term: same-type
-partials normalise by `N_A(N_A−1)` whereas summing label partials reconstructs `N_A²`.
-
-**Plot behaviour** — one PNG split into panels, **one panel per quantity, one curve per
-input file**; colours are per file and consistent across panels, and only the first
-panel carries a legend:
-- `gr`: two panels (g(r) | CN(r)); needs a named pair, otherwise skipped with a note
-- `sq`: two panels (XRD | Neutron) — different quantities, so no shared axis
-- `angle`: one panel for the named triplet, mean ± std in the legend
-- `msd`: 2×2 (total | a | b | c); `--fit-range` prints D = slope/6 and R² per input
-
-Plots render at `plot.rs`'s `DPI` (500), so a panel is 2708×2083 px and stays sharp to
-roughly 5× zoom. The layout is authored in 96-dpi pixels and scaled by `px()`, so
-changing `DPI` rescales the figure as a whole and never re-flows it — but every length,
-**including font sizes and `legend_area_size`**, has to go through `px()` or it will be
-left at its unscaled default. Vector output (SVG/PDF) was tried and rejected: sharper
-at any zoom, but `svg2pdf` drags in usvg/resvg/fontdb, and a plotting nicety does not
-justify that much non-computational dependency.
-
-`--plot` is **frozen at self-check quality** and will not chase matplotlib. The data is
-long-format CSV, so a real figure is one line of seaborn
-(`sns.lineplot(data=df, x="r", y="gr", hue="file")`); log axes, error bars and themes
-belong in Python.
-
-**`ferro map` is the one exception** to the batch output rules: its product is a 3-D grid
-file, so there is nothing to stack and nothing to plot. It still shares the traversal and
-failure handling (error handling should not exist in two versions), but writes one
-`.cube` per input, and the file name **must** carry the input stem
-(`density_<stem>.cube`) or a second input would overwrite the first.
-
-`ferro bader`'s `write_acf` / `write_bcf` / `write_avf` are likewise untouched: ACF.dat is
-the Henkelman-group bader format that external tools parse.
-
-### `ferro net` — Glass network topology
-
-A **leaf command**, not a subcommand group: the old `net qn` / `net type` split was
-never two analyses. Both classified every atom of every frame identically; `type` just
-wrote the classification out instead of summarising it. So exporting is a flag.
-
-```bash
-ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
-ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan --export-traj
-ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
-```
-
-Cutoffs are `--<Former>-<Ligand>=<Å>`: the element pair is in the *flag name*, which
-clap cannot model, so `main` strips them from argv before parsing. `--modifier E,E`
-marks elements counted for coordination only — they take no part in bridging counts or
-ligand classification, which is the whole point (a modifier next to a non-bridging
-oxygen must not turn it into a bridge). Naming a modifier without giving it a cutoff is
-an error, not a silent demotion to network former.
-
-**Qn is reported only for Qn formers.** Qn is a tetrahedral-former convention: it says
-everything about a site whose coordination is otherwise fixed. Al breaks that premise —
-its coordination *is* what the literature reports (Al[4]/Al[5]/Al[6]). So the default
-list in `ferro-core/src/data/qn_elements.rs` is `{B, P, Si}`, `--qn E,E` **replaces** it
-(never adds to it, because "B is not a former in this system" is a real need), and a
-non-Qn former is described by `coordination` instead. It stays a former everywhere else:
-bridging-oxygen classification, `ligand_type`, `linkage`, and P's `m_Al` partner column
-all still see it. Naming a non-former or a `--modifier` element in `--qn` is an error.
-
-The convention is baked into `AtomType::Former.qn: Option<u32>` at classification time
-rather than looked up when rendering, because `--qn` can override it per run: a type
-must carry the convention it was made under.
-
-**`bridging` and `cn` are different quantities** (`network_type.rs:301-311`): `cn += 1`
-for every ligand inside the cutoff, `bridging += 1` only when that ligand touches a
-second former. They coincide for a former carrying no non-bridging ligand — true of Al
-in the reference trajectory, where `ligand_type` has no `O_n, Al` row at all — which
-makes the distinction invisible there and wrong elsewhere. There is a regression test
-(`test_non_qn_former_labels_by_coordination_not_bridging`) building the case where they
-diverge, because nothing in `tests/` triggers it.
-
-**Labels** (`ferro_core::AtomType::label`, the one place a type becomes text):
-
-| Role | Label | Meaning |
-|---|---|---|
-| Qn former | `P_0`…`P_4`, `Si_4` | digit = Qn (bridging ligands) |
-| Other former | `Al_4`, `Al_5` | digit = **coordination number** |
-| Free ligand | `O_f` | bonded to no former |
-| Non-bridging | `O_n` | one former |
-| Bridging | `O_b` | two formers |
-| Tricluster | `O_t` | three or more |
-| Modifier | `Zn` | element symbol, no role suffix |
-
-Two quantities behind one slot is the literature's own convention (`Q²` vs `Al[4]`), and
-it is what makes `traj gr -x Al_5 -y O_b` select 5-coordinate Al — the entry point for
-the Al-O-Al study. The scheme is printed once per run with this run's elements filled
-in, since which element gets which digit depends on `--qn` and on the cutoffs given.
-
-**Two label vocabularies, deliberately.** Distribution tables (`composition`, `qn`,
-`qn_partner`) name the structural **unit**, `P-Q2` — they count Q2 units, and Qn *is* a
-unit notation. `linkage` and the exported trajectory name the **atom**, `P_2` — a bridge
-joins two atoms while a Qn unit contains several, and a trajectory label must split back
-into an element at the first underscore, which `Q2` cannot. Non-Qn formers render the
-same either way (`Al_4`). `AtomType::label` is the atom form; `species_label` in
-`ferro-analysis` is the unit form and delegates to it for the non-Qn case. `-x/-y`
-select on the atom form.
-
-The element prefix in `P-Q2` is not decoration: a run with two Qn formers (B+P, Si+Al)
-would otherwise repeat `Q0`…`Q4`, and **cross-element collisions have no adjacent column
-to resolve them**. The partner split is deliberately *not* folded in either — the
-literature's `Q^n(mX)` cannot express a bridge whose ligand joins three formers, and the
-reference data really does contain two rows that would both render `Q2(1Al)`.
-
-Ligand labels carry **no partner suffix** and modifiers **no role suffix**. Both were
-tried and dropped: the partner set belongs in data columns (below), and the old
-`Zn_f`/`Zn_t`/`Zn_b`/`X` binning by non-bridging-ligand count 0/1/2/≥3 put 97 % of Zn in
-the catch-all, since a modifier's coordination is 3–6. The old `X` fallback also
-collapsed over-coordinated oxygen and over-coordinated modifier into one label.
-
-**Six stacked CSVs**, each with a `file` column:
-
-| Table | One row per | Columns |
-|---|---|---|
-| `composition` | species | `label, element, count, fraction, sd` |
-| `qn` | Qn former × Qn | `label, former, qn, count, fraction, sd` |
-| `qn_partner` | Qn former × Qn × partner split | `label, former, qn, m_<X>…, count, fraction, sd` |
-| `ligand_type` | ligand type × partner pair | `label, type, former_a, former_b, count, fraction, sd` |
-| `coordination` | element × coordination number | `element, cn, count, fraction, sd` |
-| `linkage` | bridge × both site states | `linkage, ligand, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
-
-`composition` is a **digest** of the other tables, one row per species, and the one
-place a reader sees the whole structure at once. Its denominator is always **that
-element's atom count** (Q2 out of all P, `Al_4` out of all Al, `O_b` out of all O), so
-"each element's fractions sum to 1" is a checkable identity — and every element is
-characterised exactly one way, so P has no `cn` rows there. Its ligand rows aggregate
-`ligand_type`'s partner split, and their `sd` is **re-accumulated per frame**, never
-summed from the source rows. It replaced `average`; the means it used to hold live in
-the `[inputs]` block and are recoverable from it (`Σ n·f_n`, verified to 2.395161).
-
-**Every table carries its own `#` header** — one line on what the table is, one per
-column, plus that table's traps. `batch::write_all` prepends the shared block instead of
-overwriting `Table::meta`, and `Table::concat_union` carries the first part's meta
-through `stack`, or the description would be lost before it reached the writer. This is
-where the detail deleted from the help text went: the header travels with the file.
-
-A `label` column sits next to the numeric columns rather than replacing them. The label
-is the human anchor; `former`/`qn`/`cn` are what you filter and plot on. Dropping them
-would turn "rows with qn ≥ 3" into string surgery — the same reverse-parsing this
-refactor removed from five call sites.
-
-**`qn` is the plain distribution**, one row per (former, qn), readable as-is.
-`qn_partner` adds the `m_<X>` split (the Q^n(mAl) notation) and `qn` is its marginal;
-they are separate tables rather than one plus a `groupby` because the plain
-distribution is a primary product, and a different granularity earns a different table
-(same reasoning as `average`). `sd` must be re-accumulated at each granularity, never
-summed across partner rows — the variance of a sum is not the sum of variances for
-correlated terms (measured: P `qn=2` gives 5.574e-3, its partner rows sum to 9.966e-3).
-Neither is derivable from `linkage`: two P–O–Al bridges could be one P with `m_Al = 2`
-or two P atoms with `m_Al = 1`. `linkage` counts bridges, `qn`/`qn_partner` count atoms.
-
-Both Qn tables are **omitted entirely** when no former is a Qn element, with a printed
-reason: a header-only CSV reads as "measured, and the answer was zero".
-
-`linkage` stores each pair **once**, canonically ordered by `(element, n_bridge, cn)` —
-a bridge has no direction, same reasoning as `sq`'s canonical half — so a row sum is not
-a site's total involvement. Both ends carry *both* numbers, so "what is the bridging
-count of that 4-coordinate Al" is answerable. `n_formers` is 2 for a real bridge; a
-tricluster contributes C(n,2) rows tagged with its own `n_formers`. The `ligand` column
-is part of the key, not decoration: without it a two-ligand system (`--Al-O` + `--Al-F`)
-silently merges Al–O–P with Al–F–P. `n_bridge_a/b` keeps that name rather than `qn_a/b`
-— the bridging count is defined for every former, `qn` only for some — and the
-`linkage` display column (`Al_4-O-P_2`) renders through `AtomType::label`, so the tables
-and the exported trajectory cannot disagree about what `Al_4` means.
-
-`fraction` is the **mean over frames** of that frame's fraction; `sd` is the sample
-standard deviation (ddof = 1) of the same quantity, with absent bins contributing 0.
-It is a spread between snapshots, **not a standard error** — consecutive MD frames are
-correlated. Computed with Welford, because `Σf² − N·mean²` reports ~2e-10 for a
-constant series and a fake wobble in an `sd` column reads as physics.
-
-`--export-traj [FMT]` writes `<input stem>_types[_<suffix>].<ext>`, one per input.
-
-### `ferro map sdf` — Cluster SDF
-
-Identifies Qn-type clusters (connected components of network-former atoms sharing bridging ligands), aligns each to a reference via Kabsch + permutation enumeration, and outputs per-atom-type 3D probability density as Gaussian cube files.
-
-```
-ferro-analysis/src/md/cube_sdf.rs
-```
-
-Key types:
-```rust
-pub struct ClusterSdfParams {
-    pub former: String,              // network former element, e.g. "P"
-    pub ligand: String,              // bridging ligand element, e.g. "O"
-    pub target_qn: u8,               // 0/1/2/3 — determined by max individual Qn in component
-    pub former_ligand_cutoff: f64,
-    pub modifier: Option<String>,    // modifier cation, e.g. Some("Zn")
-    pub modifier_cutoff: f64,
-    pub grid_res: f64,               // Å/voxel
-    pub sigma: f64,                  // Gaussian broadening in voxels
-    pub padding: f64,                // grid boundary margin in Å
-    pub rmsd_warn_threshold: f64,
-}
-```
-
-Atom-type labels: `P0/P1/P2/P3` (individual Qn), `Of/On/Ob` (O connectivity), modifier element symbol.
-Output: `<stem>_<label>.cube` per atom type (multi-family: `<stem>_fam<N>_<label>.cube`).
-
-### `ferro-analysis/src/md/` file structure
-
-| File | Analysis |
+| 位置 | 内容 |
 |---|---|
-| `gr.rs` | Radial distribution function g(r) + coordination number CN(r) |
-| `sq.rs` | Structure factor S(q) via Fourier transform of g(r) |
-| `msd.rs` | Mean square displacement (time-shift average, NPT-safe) |
-| `angle.rs` | Bond angle distribution P(θ) |
-| `vanhove.rs` | Van Hove self-correlation Gs(r, τ) |
-| `vacf.rs` | Velocity autocorrelation function |
-| `rotcorr.rs` | Rotational correlation C₂(t) for molecular bond vectors |
-| `cube_density.rs` | 3D spatial density / velocity / force maps |
-| `cube_sdf.rs` | Cluster SDF — Kabsch alignment + per-type density accumulation |
+| `ferro-core/src/` | `atom/cell/frame/trajectory`、`table.rs`、`network_type.rs`（`AtomType`）、`cluster.rs`、`spin.rs`、`data/`（元素、化合物、Qn 名单） |
+| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `cube_density` `cube_sdf` |
+| `ferro-analysis/src/network/` | 单文件 `mod.rs`，六张表的统计 |
+| `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
+| `ferro-cli/src/` | `main.rs` 子命令树、`batch.rs` 多输入驱动（对结果类型泛型）、`cmd/`、`help.rs`、`plot.rs` |
 
----
+**几条容易违反的**（完整清单在 `dev/issues.md`）：
 
-## Extending the Project
-
-### Add a file format
-1. `ferro-io/src/readers/<fmt>.rs` — return `Result<Trajectory>`
-2. `ferro-io/src/writers/<fmt>.rs`
-3. Export from `readers/mod.rs`, `writers/mod.rs`
-4. Add format detection in `ferro-cli/src/io_dispatch.rs` (both `read_trajectory` and `write_trajectory`)
-5. Add wrapper in `ferro-python/src/io.rs`
-
-### Add a structure operation
-1. Implement in `ferro-structure/src/` — takes/returns `Trajectory`
-2. `ferro-python/src/structure.rs`
-3. No CLI surface yet (`box_builder` is library-only too)
-
-### Add an analysis method
-1. Implement in `ferro-analysis/src/<domain>/` — **pure computation, no file I/O**
-2. Give the result type `to_tables() -> Vec<(String, Table)>` and `meta_lines() -> Vec<String>`.
-   Put only batch-wide parameters in `meta_lines`; anything that varies per input belongs
-   in the `[inputs]` summary, or it will masquerade as a global fact
-3. Add a subcommand arm in `ferro-cli/src/cmd/<group>.rs`: build params (validating before
-   any file is read) → `batch::map_inputs` → `batch::stack` → `batch::write_all`
-4. Add the help text in `ferro-cli/src/help.rs` and list it in `print_overview`
-5. `ferro-python/src/analysis.rs`
-
-### Add a QC software target
-1. Builder in `ferro-workflow/src/job_builder.rs`
-2. Templates in `ferro-workflow/src/templates.rs`
-3. CLI branch in `ferro-cli/src/cmd/job.rs`
-
----
-
-## Key Dependencies
-
-| Crate | Purpose |
-|---|---|
-| `nalgebra` | 3D vectors/matrices; coordinates are `nalgebra::Vector3<f64>`, cell is `Matrix3<f64>` |
-| `ndarray` | Multi-dimensional arrays for bulk trajectory data |
-| `rayon` | Data parallelism |
-| `thiserror` | Derive macros for `ChemError` |
-| `anyhow` | Error propagation in CLI |
-| `clap` | CLI argument parsing |
-| `glob` | Input pattern expansion for batch runs (`ferro-cli`) |
-| `rustyline` | REPL input — **not a dependency yet**; add when the REPL lands |
-| `pyo3` | Python bindings (ferro-python only) |
+- 绝不从 `AtomType::label()` 的字符串反解析数字 —— 直接读字段。0.2.1 重构消灭的
+  正是散在四个 crate 的五处这种解析
+- 列并集下缺失值填 `f64::NAN`（渲染为空字段），**绝不补零** —— 零是「测到了 0」
+- 批内单文件失败：跳过 + 记入 `[inputs]` + **退出码 1**；参数错误在读第一个文件前快速失败
+- 不按输入文件数分派单/批两条路径，N=1 是 N 的特例
