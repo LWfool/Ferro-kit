@@ -333,9 +333,6 @@ compound 一旦不在库中，`compounds::find` 返回 `None` 就报错了，**�
 0.5000、q>15 均值 1.00031/1.00018、partial 互相关 +0.959、rms 0.0194/0.0277、
 FSDP 1.95/2.05），说明改的只是拼名不是口径。
 
-外部程序的环境坑（与本仓无关，但会挡住复跑）：`dump2sq` 链接的 `gcc@14` 已被升级
-成 gcc 16，需 `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib/gcc/current` 才跑得起来。
-
 ### scripts/：四个发表级绘图脚本（2026-08-13）
 
 与 `compare_*.py` 的分工是清楚的：那边**对拍**（跟参考实现逐点比，图只为看差异），
