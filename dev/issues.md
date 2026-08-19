@@ -54,6 +54,8 @@
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
+| `ferro-structure::find_clusters` | 用 `AtomType::is_bridging()` 当连通性判据 | 它是「**恰好**两个形成子」，三簇配体返回 `false` → 网络在连得最紧的节点处断开（实测 3 个 P 共享一个三簇氧报成 3 个团簇，应为 1 个）。连通性判据是 `partners.len() >= 2`，与 `LigandKind::Bridging`、与模块 doc 一致。`ferro-core::build_network_graph` 那份从一开始就是对的，两份实现不一致了很久 |
+| `find_clusters` 的截断 | 按形成子元素取 `cutoffs.keys().find()` 的第一个 | 按 `(形成子, **该配体元素**)` 取。`BTreeMap` 序下 `("P","F") < ("P","O")`，双配体体系会拿 P-F 的 1.4 Å 去判 P-O 的 1.6 Å 键，桥氧整体判不出来。与 `LinkKey` 少一个配体元素维是同一类洞：参考体系只有 O，所以一直没暴露 |
 | `ferro-core::cluster` | ferro-analysis / ferro-structure 中间层不能互依赖 | 共享原语下沉 `ferro-core`（两者共同依赖）；ferro-analysis 已去 petgraph |
 | `cif.rs` 坐标回退 | 依赖远处 `ensure!` 的 `.unwrap()` 脆弱 | 本地 `else if let (Some,Some,Some)` 守卫 + `bail!`，不变量自洽 |
 | `vasp.rs`/`chgcar.rs` VASP4 检测 | 守卫 `parse::<u64>` 而 unwrap `parse::<usize>`，32 位平台大值溢出 panic | 单次按 `usize` 解析为 `Option<Vec<usize>>`：`Some`→VASP4，`None`→VASP5 |
