@@ -230,7 +230,14 @@ impl AtomType {
         }
     }
 
-    /// True for a ligand bridging exactly two formers.
+    /// True for a ligand bridging **exactly two** formers.
+    ///
+    /// Not a connectivity test.  A tricluster joins three formers and is the most
+    /// strongly connected node in the network, yet it is `false` here — use
+    /// `partners.len() >= 2` (equivalently [`crate::LigandKind::Bridging`]) when the
+    /// question is whether the ligand links formers at all.  Reach for this method
+    /// only when a true two-ended bridge is what is meant, such as separating the
+    /// pairwise `linkage` rows from the tricluster ones.
     pub fn is_bridging(&self) -> bool {
         matches!(self, AtomType::Ligand { partners, .. } if partners.len() == 2)
     }
