@@ -4,7 +4,7 @@
 //! bridging oxygen atoms (oxygen with ≥2 NF neighbors).  Used by `cube_sdf`
 //! and downstream analysis that needs per-cluster statistics.
 
-use ferro_core::{classify_frame, connected_components, Frame, TypeParams};
+use ferro_core::{classify_frame, connected_components, AtomType, Frame, TypeParams};
 use std::collections::HashMap;
 
 /// Result of cluster identification for one frame.
@@ -64,16 +64,18 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
 
     let mut edges: Vec<(usize, usize)> = Vec::new();
     for (la_idx, atom_type) in types.iter().enumerate() {
-        if !atom_type.is_bridging() { continue; }
-        // 收集该桥氧在截断内的所有形成子邻居
+        // 只有配体角色参与连边。桥联判据是「≥2 个形成子」，在下面按实际邻居数
+        // 判定 —— 不能用 `AtomType::is_bridging()`，它是「**恰好**两个」，会把
+        // 三簇配体（连 3 个形成子，网络里连得最紧的节点）当成完全不连通
+        let AtomType::Ligand { elem: lig_elem, .. } = atom_type else { continue };
+        // 收集该配体在截断内的所有形成子邻居
         let la_pos = frame.atoms[la_idx].position;
         let mut nf_locals: Vec<usize> = Vec::new();
 
         for former_elem in &formers {
-            let Some(&cutoff) = params.cutoffs.keys()
-                .find(|(f, _)| f == former_elem)
-                .and_then(|k| params.cutoffs.get(k))
-            else { continue };
+            // 截断按 (形成子, **该配体元素**) 取。双配体体系（`--Al-O` + `--Al-F`）
+            // 下 Al-O 与 Al-F 是两个不同的键长，取错会把一种键判成全断或全连
+            let Some(cutoff) = params.cutoff(former_elem, lig_elem) else { continue };
             let c2 = cutoff * cutoff;
             let Some(fa_idxs) = elem_map.get(former_elem.as_str()) else { continue };
             for &fa_idx in fa_idxs {
@@ -87,7 +89,8 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
                 }
             }
         }
-        // 该桥氧的相邻形成子两两连通（链式即可）
+        if nf_locals.len() < 2 { continue; }
+        // 该桥联配体的相邻形成子两两连通（链式即可；三簇配体给 2 条边连通 3 个）
         for i in 1..nf_locals.len() {
             edges.push((nf_locals[0], nf_locals[i]));
         }
@@ -160,5 +163,49 @@ mod tests {
         // P1 和 P2 在不同团簇
         assert_ne!(res.cluster_id[0], res.cluster_id[2]);
         assert_eq!(res.n_clusters, 2);
+    }
+
+    /// 三簇氧（连 3 个形成子）必须连通它的三个形成子。
+    /// 模块 doc 与 `ferro_core::LigandKind` 都定义桥联为「≥2 个形成子」。
+    #[test]
+    fn test_tricluster_connects_three_formers() {
+        // 一个 O 被 3 个 P 包围（正三角形中心）
+        let r = 1.6;
+        let atoms = vec![
+            atom("O", 0.0, 0.0, 0.0),
+            atom("P", r, 0.0, 0.0),
+            atom("P", -r / 2.0,  r * 0.8660254, 0.0),
+            atom("P", -r / 2.0, -r * 0.8660254, 0.0),
+        ];
+        let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
+        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let params = make_params(2.3);
+        let res = find_clusters(&frame, &params).unwrap();
+        assert_eq!(res.n_clusters, 1, "三簇氧把三个 P 连成一个团簇");
+        assert_eq!(res.cluster_id[1], res.cluster_id[2]);
+        assert_eq!(res.cluster_id[1], res.cluster_id[3]);
+    }
+
+    /// 双配体体系：截断必须按 (形成子, **该配体元素**) 取。
+    /// `BTreeMap` 里 ("P","F") 排在 ("P","O") 之前，按形成子元素取「第一个」
+    /// 截断会拿 P-F 的 1.4 Å 去判 P-O 的 1.6 Å 键，桥氧整体判不出来。
+    #[test]
+    fn test_cutoff_is_per_ligand_element() {
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("P".to_string(), "F".to_string()), 1.4);
+        let params = TypeParams::new(cutoffs, BTreeMap::new());
+
+        let atoms = vec![
+            atom("P", 0.0, 0.0, 0.0),
+            atom("O", 1.6, 0.0, 0.0), // 桥氧：P-O = 1.6 Å，在 2.3 内、在 1.4 外
+            atom("P", 3.2, 0.0, 0.0),
+            atom("F", 0.0, 9.0, 0.0), // 远处的 F，只为让 F 进入配体元素集
+        ];
+        let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
+        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let res = find_clusters(&frame, &params).unwrap();
+        assert_eq!(res.n_clusters, 1, "P-O 桥必须按 P-O 的截断判定");
+        assert_eq!(res.cluster_id[0], res.cluster_id[2]);
     }
 }
