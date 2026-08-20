@@ -12,10 +12,14 @@ own workspace and must be built by maturin:
 
 ```bash
 cd ferro-python
-maturin develop            # build + install into the active venv
-# or
-maturin build --release    # produce a wheel in target/wheels/
+maturin build --interpreter "$(which python)"   # wheel → target/wheels/
+pip install target/wheels/*.whl
+# or, with a venv/conda env already active:
+maturin develop
 ```
+
+Pin the interpreter explicitly: without `--interpreter`, maturin may pick a stray
+`python3.9` and tag the wheel for the wrong version.
 
 ## Usage
 
@@ -28,10 +32,13 @@ print(len(t), t.n_atoms(), t.elements())
 sc = ferro.supercell(t, 2, 2, 1)
 ferro.write(sc, "POSCAR")
 
-g = ferro.gr(t, r_max=10.0, dr=0.02)        # dict[str, list[float]]:
-#   "r", "gr:<El1-El2>", "gr:total", "cn:<center-neighbor>"
+# one pair -> {"r", "P-O_gr", "P-O_cn"}
+g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)
 
-d = ferro.msd(t, dt=2.0, elements=["Li"])   # "time","msd","msd_a/b/c"
+# every ordered pair in one pass -> {"r", "<A>-<B>_gr", "<A>-<B>_cn", ...}
+ga = ferro.gr_all(t, by="label")
+
+d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 ```
 
 ### API surface
@@ -42,12 +49,23 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])   # "time","msd","msd_a/b/c"
 | `write(traj, path, metal_units=False)` | Write by extension |
 | `supercell(traj, nx, ny, nz)` | Per-frame supercell |
 | `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along `x`/`y`/`z` |
-| `merge(a, b, axis, gap)` | Merge first frames |
-| `gr(traj, r_max=None, dr=0.01, r_cut=2.3, r_min=0.005)` | g(r) + CN(r) |
-| `msd(traj, dt=1.0, shift=1, tau=None, elements=None)` | MSD(t) |
+| `merge(a, b, axis, gap)` | Merge the first frames of two systems |
+| `gr_pair(traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005)` | g(r) + CN(r) for one pair |
+| `gr_all(traj, by="element", r_max=None, dr=0.01, r_min=0.005)` | g(r) + CN(r) for all n² ordered pairs |
+| `msd(traj, dt=1.0, shift=1, tau=None, elements=None)` | MSD(t), time-origin averaged |
 
 `Trajectory` methods: `n_frames()`, `n_atoms()`, `elements()`,
 `positions(frame)`, `symbols(frame)`, `cell(frame)`, `charge(frame)`,
-`multiplicity(frame)`, `tail(n)`, `len()`.
+`multiplicity(frame)`, `tail(n)`, `len()`, `repr()`.
 
 Analysis functions return `dict[str, list[float]]` (PyO3 auto-converts).
+`by="label"` groups by site label instead of element — valid on a single frame only,
+since g(r) requires a fixed particle count per type.
+
+Network analysis (`ferro net`) is not wrapped yet.
+
+## Notes
+
+- `__version__` is taken from `Cargo.toml`; keep it in step with the root workspace
+  version by hand — this crate is not a member of it
+- `gr(...)` was split into `gr_pair` / `gr_all` in 0.1.10; the old name is gone
