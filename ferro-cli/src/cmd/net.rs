@@ -107,6 +107,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
 
     let tables = batch::stack(&results, |r: &NetworkResult| Ok(r.to_tables()))?;
     note_missing_qn_tables(&params);
+    warn_edge_sharing(&results);
 
     let mut summary = Summary::new(&[]);
     for (path, r) in &results {
@@ -182,6 +183,23 @@ fn note_missing_qn_tables(params: &TypeParams) {
 
 /// `Zn=3.98 P=4.00` — per-input, so it belongs in the `[inputs]` block rather than
 /// the shared parameter block.
+/// Warns when formers share two or more ligands (edge-sharing polyhedra).
+///
+/// The conventional Qn analysis assumes an all-corner-sharing network.  Edge
+/// sharing is genuinely rare in phosphates, so the likelier cause is a cutoff
+/// that reaches into the second shell — say so rather than leaving the user to
+/// wonder why one neighbour produced two bridges.
+fn warn_edge_sharing(results: &[(std::path::PathBuf, NetworkResult)]) {
+    for (path, r) in results {
+        if r.n_edge_sharing == 0 { continue; }
+        eprintln!(
+            "warning: {}: {} former pair(s) share 2+ ligands (edge-sharing).\n\
+             \x20        Qn assumes corner sharing, so one neighbour here yields two bridges.\n\
+             \x20        Edge sharing is very rare in phosphates — check the cutoffs first.",
+            batch::label_of(path), r.n_edge_sharing);
+    }
+}
+
 fn fmt_means<T>(
     means: &std::collections::HashMap<String, f64>,
     present: &std::collections::HashMap<String, T>,
