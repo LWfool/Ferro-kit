@@ -14,8 +14,8 @@
 | ferro-workflow | 23 |
 | ferro-cli（lib 29 + 集成 5） | 34 |
 
-版本号 **0.2.1**（workspace 统一；ferro-python 已同步并复核编译通过）。
-`v0.2.1` 之后另有一批**尚未发版**的破坏性改动，清单见 `overview.md`。
+版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
+`v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
 
 ## 锚点 tag
 

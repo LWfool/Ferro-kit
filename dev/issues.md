@@ -69,6 +69,7 @@
 | `Cargo.toml` | 不进主 workspace，但 `version.workspace=true` 需成员资格 | 显式 `version`/`edition` + 空 `[workspace]` 表使其独立 |
 | maturin 解释器 | 默认可能选到杂散 python3.9，wheel tag 不匹配当前 python | `maturin build --interpreter "$(which python)"` |
 | `pyproject.toml` | `readme="README.md"` 缺文件 → maturin 失败；失效 `python-source` | 必须有 README.md；无 python 覆盖层时删 `python-source` |
+| `pyproject.toml` 的版本号 | 手动同步 `[project] version` | **已漂移过一次**：0.3.0 发版时发现它还停在 `0.1.7`，落后四个版本，而 maturin 打 wheel 用的正是这个值——装出来的包会自称 0.1.7。已改用 `dynamic = ["version"]` 让 maturin 从 Cargo.toml 取，`[project]` 下不再写 `version`。**本机无 maturin，此改动未经构建验证**，首次 `maturin build` 时留意 |
 | `maturin develop` | 无激活 venv/conda 时报错 | 用 `maturin build` + `pip install <wheel>`，或先激活环境 |
 
 ## 依赖升级陷阱（2026-08-08）
