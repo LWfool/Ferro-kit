@@ -112,6 +112,10 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     for (path, r) in &results {
         summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[]);
         summary.note("mean_qn", fmt_means(&r.mean_qn, &r.qn_dist));
+        // mean_n_bo 与 mean_qn 并列：前者是桥氧个数(旧口径的那个数)，后者只数
+        // 同元素连接。两者在无三簇氧的纯磷酸盐里相等，混合体系里分叉，摆在
+        // 一行让读者一眼看出这条轨迹的异核桥有多少
+        summary.note("mean_n_bo", fmt_means(&r.mean_n_bo, &r.cn_dist));
         summary.note("mean_cn", fmt_means(&r.mean_cn, &r.cn_dist));
     }
     summary.failed(&failures);
@@ -144,7 +148,11 @@ fn print_label_scheme(params: &TypeParams) {
         .filter(|e| !params.is_qn_former(e)).collect();
 
     println!("Labels:");
-    println!("  {:<10} <elem>_<Qn>   digit = bridging ligands (Qn)", join(qn));
+    println!("  {:<10} <elem>_<Qn>   digit = HOMOPOLAR connections (P-O-P), the n",
+             join(qn.clone()));
+    if !qn.is_empty() {
+        println!("  {:<10}               of Q^n_m; P-O-Al etc. are the m_ columns", "");
+    }
     if !cn_formers.is_empty() {
         println!("  {:<10} <elem>_<CN>   digit = COORDINATION number, not Qn",
                  join(cn_formers));
@@ -383,8 +391,10 @@ describing its own columns; `pandas.read_csv(comment='#')` drops it.
 
   network_composition.csv   every species at a glance: P-Q2, Al_4, O_b, Zn_4 …
                             each as a fraction of its own element
-  network_qn.csv            Qn speciation — the plain distribution, readable as-is
-  network_qn_partner.csv    the same, split by partner element: Q^n(mAl)
+  network_qn.csv            Qn speciation — the plain distribution, readable as-is.
+                            n counts HOMOPOLAR bridges only (P-O-P), as in the
+                            literature's Q^n_m; total bridges = n + sum(m)
+  network_qn_partner.csv    the same, split by partner element: Q^n_m (m = P-O-Al)
   network_ligand_type.csv   ligand speciation: free / non-bridging / bridging /
                             tricluster, with the formers each one joins
   network_coordination.csv  coordination number distribution, formers + modifiers

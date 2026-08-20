@@ -132,13 +132,19 @@ pub enum AtomType {
     ///
     /// | field | meaning |
     /// |---|---|
-    /// | `qn` | `Some(bridging)` for a Qn former, `None` otherwise — the flag *and* the value |
-    /// | `bridging` | ligands shared with at least one other former |
+    /// | `qn` | `Some(n)` for a Qn former, `None` otherwise — the flag *and* the value |
+    /// | `n_bo` | bridging ligands: ligands shared with at least one other former |
     /// | `cn` | **all** ligands within cutoff, bridging or not |
     /// | `bridges_to` | connections to each partner element (a tricluster counts twice) |
     ///
-    /// `bridging` and `cn` are different quantities and must not be conflated: `cn`
-    /// counts every ligand inside the cutoff, `bridging` only those a second former
+    /// `qn` is the **homopolar** connection count — P–O–P for a P, i.e.
+    /// `bridges_to[elem]`.  This is the literature's `n` in `Q^n_m` / `P^n_(mAl,xB)`;
+    /// the heteropolar connections are the `m` values and live in `bridges_to` under
+    /// their own elements.  The total bridging-oxygen count is `n_bo`, which is a
+    /// *third* number: it equals `n + Σm` only when no tricluster is present.
+    ///
+    /// `n_bo` and `cn` are different quantities and must not be conflated: `cn`
+    /// counts every ligand inside the cutoff, `n_bo` only those a second former
     /// also touches.  They happen to coincide for a former carrying no non-bridging
     /// ligand, which is true of Al in aluminophosphate glasses and false in general.
     ///
@@ -150,7 +156,7 @@ pub enum AtomType {
     Former {
         elem: String,
         qn: Option<u32>,
-        bridging: u32,
+        n_bo: u32,
         cn: u32,
         bridges_to: BTreeMap<String, u32>,
     },
@@ -372,7 +378,7 @@ fn classify_formers(
 
         for &fa_idx in former_idxs {
             let fa_pos = frame.atoms[fa_idx].position;
-            let mut bridging = 0u32;
+            let mut n_bo = 0u32;
             let mut cn = 0u32;
             let mut bridges_to: BTreeMap<String, u32> = BTreeMap::new();
 
@@ -392,7 +398,7 @@ fn classify_formers(
                     // 桥接判断：该配体有 ≥2 个 NF 邻居
                     let nf = nf_map.get(&la_idx).map(|v| v.as_slice()).unwrap_or(&[]);
                     if nf.len() < 2 { continue; }
-                    bridging += 1;
+                    n_bo += 1;
 
                     // 伙伴分解数的是**连接**，不是桥氧：该配体上除自己之外的
                     // 每个形成子各算一个连接。三簇配体 P-O(-Al)(-Al) 因此给出
@@ -405,11 +411,14 @@ fn classify_formers(
                     }
                 }
             }
-            // 约定在分类时定死,而不是渲染时查表:`--qn` 能覆盖它,一个类型必须
-            // 携带自己是在哪套约定下产生的
-            let qn = params.is_qn_former(&former_elem).then_some(bridging);
+            // n 只数**同元素**连接（P-O-P）,异核连接留在 bridges_to 里当 m。
+            // 这是文献 Q^n_m 的口径:总桥数由 n 与各 m 相加得到,而不是 n 本身。
+            // 约定在分类时定死而非渲染时查表:`--qn` 能覆盖它,一个类型必须携带
+            // 自己是在哪套约定下产生的
+            let qn = params.is_qn_former(&former_elem)
+                .then(|| bridges_to.get(&former_elem).copied().unwrap_or(0));
             result.push((fa_idx, AtomType::Former {
-                elem: former_elem.clone(), qn, bridging, cn, bridges_to,
+                elem: former_elem.clone(), qn, n_bo, cn, bridges_to,
             }));
         }
     }
@@ -475,17 +484,17 @@ mod tests {
     use super::*;
 
     /// Qn former: the label digit is the bridging count.
-    fn former(elem: &str, bridging: u32, cn: u32) -> AtomType {
+    fn former(elem: &str, n_bo: u32, cn: u32) -> AtomType {
         AtomType::Former {
-            elem: elem.to_string(), qn: Some(bridging), bridging, cn,
+            elem: elem.to_string(), qn: Some(n_bo), n_bo, cn,
             bridges_to: BTreeMap::new(),
         }
     }
 
     /// Non-Qn former: the label digit is the coordination number.
-    fn cn_former(elem: &str, bridging: u32, cn: u32) -> AtomType {
+    fn cn_former(elem: &str, n_bo: u32, cn: u32) -> AtomType {
         AtomType::Former {
-            elem: elem.to_string(), qn: None, bridging, cn, bridges_to: BTreeMap::new(),
+            elem: elem.to_string(), qn: None, n_bo, cn, bridges_to: BTreeMap::new(),
         }
     }
 
@@ -620,23 +629,25 @@ mod tests {
         ]);
         let types = classify_frame(&frame, &cell, &params_po_alo());
 
-        let AtomType::Former { qn, bridging, cn, .. } = &types[0] else {
+        let AtomType::Former { qn, n_bo, cn, .. } = &types[0] else {
             panic!("Al 应被分类为形成子, got {:?}", types[0])
         };
         assert_eq!(*qn, None, "Al 不是 Qn 元素");
-        assert_eq!(*bridging, 1, "只有一个氧同时连着 P");
+        assert_eq!(*n_bo, 1, "只有一个氧同时连着 P");
         assert_eq!(*cn, 2, "cn 数的是截断内全部氧,含非桥氧");
-        assert_ne!(*bridging, *cn, "构型没造对:这个测试要的正是两者分叉");
+        assert_ne!(*n_bo, *cn, "构型没造对:这个测试要的正是两者分叉");
         assert_eq!(types[0].label(), "Al_2", "非 Qn 形成子按配位数标注");
         assert_eq!(types[0].site_digit(), Some(2));
 
-        // 同一帧里的 P 走另一套:数字是 Qn
-        let AtomType::Former { qn, bridging, cn, .. } = &types[2] else {
+        // 同一帧里的 P 走另一套:数字是 Qn。这个 P 唯一的桥氧通向 Al,
+        // 是**异核**连接 —— n 只数 P-O-P,故 n=0 而桥氧数 n_bo=1
+        let AtomType::Former { qn, n_bo, cn, bridges_to, .. } = &types[2] else {
             panic!("P 应被分类为形成子")
         };
-        assert_eq!(*qn, Some(1));
-        assert_eq!((*bridging, *cn), (1, 1));
-        assert_eq!(types[2].label(), "P_1");
+        assert_eq!(*qn, Some(0), "唯一的桥通向 Al,不是 P-O-P");
+        assert_eq!((*n_bo, *cn), (1, 1));
+        assert_eq!(bridges_to.get("Al"), Some(&1), "那一个连接记在 m_Al 上");
+        assert_eq!(types[2].label(), "P_0");
 
         assert_eq!(types[1].label(), "O_b");
         assert_eq!(types[3].label(), "O_n");
@@ -655,7 +666,9 @@ mod tests {
         let params = params_po_alo().with_qn_elements(["Al".to_string()]);
         let types = classify_frame(&frame, &cell, &params);
 
-        assert_eq!(types[0].label(), "Al_1", "Al 现在报 Qn,即桥接数 1");
+        // Al 现在报 Qn = 同元素连接数。这个构型里没有 Al-O-Al,故为 0 ——
+        // 与它的配位数 2 不同,正好证明约定确实切换了
+        assert_eq!(types[0].label(), "Al_0", "Al 报 Qn(同元素连接)=0,而非配位数 2");
         assert_eq!(types[2].label(), "P_1", "P 被移出 Qn 列表,改报配位数 1");
         assert_eq!(params.qn_formers(), vec!["Al".to_string()]);
     }

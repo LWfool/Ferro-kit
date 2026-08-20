@@ -39,7 +39,7 @@ use std::collections::{BTreeMap, HashMap};
 /// with `m_Al = 2` or from two P atoms with `m_Al = 1` each.
 pub type BridgeKey = (u32, BTreeMap<String, u32>);
 
-/// One end of a bridge: `(element, bridging count, coordination number)`.
+/// One end of a bridge: `(element, homopolar connection count, coordination number)`.
 ///
 /// Both numbers are kept for both ends.  The reference Python stores one number per
 /// element — Qn for P, CN for Al — which answers "what Qn of P does a 4-coordinate Al
@@ -96,7 +96,7 @@ fn former_label(elem: &str, qn: Option<u32>, cn: u32) -> String {
     AtomType::Former {
         elem: elem.to_string(),
         qn,
-        bridging: qn.unwrap_or(0),
+        n_bo: qn.unwrap_or(0),
         cn,
         bridges_to: BTreeMap::new(),
     }
@@ -117,8 +117,8 @@ fn species_label(elem: &str, qn: Option<u32>, cn: u32) -> String {
 
 /// Label of one bridge end, given the run's Qn convention.  Atom vocabulary — a bridge
 /// joins two *atoms*, whereas Qn names a unit that contains several.
-fn site_label(params: &TypeParams, (elem, bridging, cn): &SiteState) -> String {
-    former_label(elem, params.is_qn_former(elem).then_some(*bridging), *cn)
+fn site_label(params: &TypeParams, (elem, n, cn): &SiteState) -> String {
+    former_label(elem, params.is_qn_former(elem).then_some(*n), *cn)
 }
 
 /// Ligand row label: the formers it joins, with the ligand's own type in the middle.
@@ -241,6 +241,14 @@ pub struct NetworkResult {
     pub cn_dist: HashMap<String, Vec<(u32, Bin)>>,
     /// 元素 → 平均总配位数（含修饰子）
     pub mean_cn: HashMap<String, f64>,
+    /// Former element → mean number of **bridging oxygens** per atom.
+    ///
+    /// A third quantity next to `mean_qn` (homopolar connections) and `mean_cn`
+    /// (all ligands): it counts bridging ligands, so a tricluster adds one here but
+    /// two to `qn + Σm`.  Reported alongside `mean_qn` because the two coincide in
+    /// a corner-sharing, tricluster-free network and diverge exactly where the
+    /// literature's conventional Qn analysis stops applying.
+    pub mean_n_bo: HashMap<String, f64>,
     /// 配体类型分布：`(label, partner_elements, bin)`，按 (元素, `class_rank`) 排序。
     /// `fraction` 的分母是**该配体元素**的原子数
     pub oxy_dist: Vec<(String, Vec<String>, Bin)>,
@@ -336,12 +344,16 @@ impl NetworkResult {
             push_bins(&mut t, &bins);
             for line in [
                 "table   : Qn speciation — one row per (former, Qn).",
-                "          Qn = number of bridging ligands on that former.",
+                "          n = HOMOPOLAR connections only (P-O-P for a P), following",
+                "          the literature's Q^n_m / P^n_(mAl,xB): the heteropolar ones",
+                "          are the m values in network_qn_partner.csv, and the TOTAL",
+                "          bridge count is n + Sum(m), not n.  A P-Q1 row therefore",
+                "          still contains phosphorus with any number of P-O-Al bridges",
                 "label   : structural unit, <element>-Q<n>.  NOTE this is the UNIT",
                 "          vocabulary; the exported trajectory labels the same site as",
                 "          P_2 (atom vocabulary), which is what -x/-y select on",
                 "former  : network former element",
-                "qn      : bridging ligands on the site",
+                "qn      : homopolar connections on the site (the literature's n)",
                 "count   : occurrences summed over all frames",
                 "fraction: mean over frames of that frame's fraction of this former",
                 "sd      : sample std (ddof=1) of the per-frame fraction; a spread",
@@ -385,16 +397,21 @@ impl NetworkResult {
             }
             push_bins(&mut t, &bins);
             for line in [
-                "table   : Q^n(mX) — the Qn distribution split by partner element.",
+                "table   : Q^n_m — the Qn distribution split by partner element.",
                 "          network_qn.csv is this table's marginal over the m_ columns.",
                 "label   : structural unit, <element>-Q<n>; repeats across the rows",
-                "          that share a Qn.  The partner split is NOT folded into it:",
-                "          Q^n(mX) notation cannot express a bridge whose ligand joins",
-                "          three formers, and two such rows would collide",
-                "qn      : bridging ligands on the site",
-                "m_<X>   : how many of those bridges lead to element X.",
-                "          Sum of m_ ≤ qn: a ligand shared by 3+ formers is one bridge",
-                "          with no single partner, so it is counted in qn only",
+                "          that share a Qn.  The partner split is kept in columns",
+                "          rather than folded into the label: with two heteropolar",
+                "          partners the label would grow to P-Q1(2Al,1B), and these",
+                "          columns are what you filter on anyway",
+                "qn      : homopolar connections on the site (the literature's n)",
+                "m_<X>   : HETEROPOLAR connections to element X (the literature's m).",
+                "          The former's own element has no column: it would repeat qn",
+                "          exactly.  Total bridging connections = qn + Sum(m_).",
+                "          A ligand shared by 3 formers connects this site to TWO",
+                "          partners and contributes 2, so qn + Sum(m_) can exceed the",
+                "          number of bridging oxygens — see n_bo in the composition",
+                "          table for that count",
                 "count/fraction/sd: as in network_qn.csv, but re-accumulated at this",
                 "          granularity — sd cannot be summed across partner rows,",
                 "          the terms are correlated",
@@ -538,10 +555,10 @@ impl NetworkResult {
         t.push_text("linkage", c_link)
             .push_text("ligand", c_lig)
             .push_text("elem_a", c_a)
-            .push_num("n_bridge_a", n_a)
+            .push_num("qn_a", n_a)
             .push_num("cn_a", cn_a)
             .push_text("elem_b", c_b)
-            .push_num("n_bridge_b", n_b)
+            .push_num("qn_b", n_b)
             .push_num("cn_b", cn_b)
             .push_num("n_formers", nf);
         push_bins(&mut t, &bins);
@@ -553,16 +570,16 @@ impl NetworkResult {
             "          (Q2 vs Al[4]).  Filter on the numeric columns, not this text",
             "ligand  : element of the bridging atom.  Al-O-P and Al-F-P are different",
             "          bridges and never share a row",
-            "n_bridge_*: bridging ligands on that end.  Named n_bridge, not qn: it is",
-            "          defined for every former, whereas qn is a convention that",
-            "          applies to some of them",
+            "qn_*    : HOMOPOLAR connections on that end (P-O-P for a P), the n of",
+            "          the literature's Q^n_m.  Defined for every former, including",
+            "          those not reported with a Qn speciation (Al-O-Al for an Al)",
             "cn_*    : coordination number of that end",
             "n_formers: 2 for a true bridge.  A ligand shared by n formers is a",
             "          tricluster and contributes C(n,2) rows, all tagged with its n",
             "note    : each pair is stored ONCE, canonically ordered, because a bridge",
             "          has no direction — so a row sum is not a site's total",
             "          involvement.  Both ends carry both numbers, so \"what is the",
-            "          bridging count of that 4-coordinate Al\" is answerable",
+            "          homopolar count of that 4-coordinate Al\" is answerable",
         ] { t.meta_line(line); }
         out.push(("linkage".to_string(), t));
 
@@ -592,6 +609,8 @@ struct FrameData {
     /// 且是 oxy 的分母来源。逐元素而非全体配体:「桥氧占全部氧的比例」是文献的
     /// BO fraction 口径,「桥氧占 O+F 的比例」不对应任何常用量
     ligand: LigandHist,
+    /// 元素 → (桥氧个数直方图, 该元素原子数)，只为池化 mean_n_bo
+    n_bo: HashMap<String, (HashMap<u32, usize>, usize)>,
     /// 桥联组合 → 计数
     linkage: HashMap<LinkKey, usize>,
     /// 本帧的桥联观测总数（linkage 的分母）
@@ -638,6 +657,7 @@ fn compute_frame(
     let mut cn: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
     let mut oxy: HashMap<OxyKey, usize> = HashMap::new();
     let mut ligand: LigandHist = HashMap::new();
+    let mut n_bo_hist: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
 
     let ligands = params.ligands();
 
@@ -646,13 +666,20 @@ fn compute_frame(
             // `qn` 是 Some 才有 Qn 分布可言；非 Qn 形成子（Al）只进配位数表。
             // 判据取自类型自身而不是重查 params，因为类型携带的正是它被分类时
             // 所用的那套约定
-            AtomType::Former { elem, qn: q, cn: c, bridges_to, .. } => {
+            AtomType::Former { elem, qn: q, cn: c, bridges_to, n_bo } => {
+                let nb = n_bo_hist.entry(elem.clone()).or_default();
+                *nb.0.entry(*n_bo).or_insert(0) += 1;
+                nb.1 += 1;
                 if let Some(n) = q {
                     let b = bridge.entry(elem.clone()).or_default();
                     *b.0.entry(*n).or_insert(0) += 1;
                     b.1 += 1;
                     let p = partner.entry(elem.clone()).or_default();
-                    *p.0.entry((*n, bridges_to.clone())).or_insert(0) += 1;
+                    // 只留异核连接：同元素那一列恒等于 n 本身,是重复信息。
+                    // 文献 Q^n_mAl,xB 也没给自己留下标位
+                    let mut hetero = bridges_to.clone();
+                    hetero.remove(elem);
+                    *p.0.entry((*n, hetero)).or_insert(0) += 1;
                     p.1 += 1;
                 }
                 let e = cn.entry(elem.clone()).or_default();
@@ -681,8 +708,11 @@ fn compute_frame(
     // 三配位配体贡献 C(3,2)=3 条记录，靠 n_formers 列区分,不静默丢掉
     let site = |i: usize| -> Option<SiteState> {
         match &types[i] {
-            AtomType::Former { elem, bridging, cn, .. } => {
-                Some((elem.clone(), *bridging, *cn))
+            AtomType::Former { elem, cn, bridges_to, .. } => {
+                // 同元素连接数 = 文献的 n。对非 Qn 形成子(Al)同样有定义
+                // (Al-O-Al 数),故 linkage 两端都能给出这个量
+                let n = bridges_to.get(elem).copied().unwrap_or(0);
+                Some((elem.clone(), n, *cn))
             }
             _ => None,
         }
@@ -706,7 +736,8 @@ fn compute_frame(
         }
     }
 
-    Some(FrameData { qn: bridge, qn_partner: partner, cn, oxy, ligand, linkage, n_links })
+    Some(FrameData { qn: bridge, qn_partner: partner, cn, oxy, ligand,
+                     n_bo: n_bo_hist, linkage, n_links })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
@@ -730,6 +761,9 @@ struct Accumulator {
     /// 元素 → (Σ值·计数, Σ计数)，用于池化均值
     qn_sum: HashMap<String, (f64, usize)>,
     cn_sum: HashMap<String, (f64, usize)>,
+    /// 桥氧个数的池化均值。与 qn_sum 是两个量：qn 只数同元素连接，
+    /// n_bo 数桥氧个数，三簇氧下 n_bo < qn + Σm
+    n_bo_sum: HashMap<String, (f64, usize)>,
 }
 
 /// Folds one frame's histogram into `dst`, converting counts to fractions with
@@ -779,6 +813,13 @@ impl Accumulator {
             if *total == 0 { continue; }
             self.oxy.entry(key.clone()).or_default().push(c, c as f64 / *total as f64);
         }
+        for (elem, (hist, _)) in &fd.n_bo {
+            let e = self.n_bo_sum.entry(elem.clone()).or_insert((0.0, 0));
+            for (&v, &c) in hist {
+                e.0 += v as f64 * c as f64;
+                e.1 += c;
+            }
+        }
         if fd.n_links > 0 {
             for (key, &c) in &fd.linkage {
                 self.linkage.entry(key.clone()).or_default()
@@ -803,7 +844,8 @@ impl Accumulator {
         }
         merge_keyed(&mut self.linkage, other.linkage);
         for (dst, src) in [(&mut self.qn_sum, other.qn_sum),
-                           (&mut self.cn_sum, other.cn_sum)] {
+                           (&mut self.cn_sum, other.cn_sum),
+                           (&mut self.n_bo_sum, other.n_bo_sum)] {
             for (k, (s, n)) in src {
                 let e = dst.entry(k).or_insert((0.0, 0));
                 e.0 += s;
@@ -839,6 +881,9 @@ impl Accumulator {
             .map(|(e, m)| (e.clone(), to_dist(m))).collect();
         let mean_cn: HashMap<_, _> = self.cn.keys()
             .map(|e| (e.clone(), mean_of(&self.cn_sum, e))).collect();
+        // 键取自 n_bo_sum 而非 qn:非 Qn 形成子(Al)也有桥氧数
+        let mean_n_bo: HashMap<_, _> = self.n_bo_sum.keys()
+            .map(|e| (e.clone(), mean_of(&self.n_bo_sum, e))).collect();
 
         let ligand_dist: HashMap<_, _> = self.ligand.iter()
             .map(|(e, m)| {
@@ -860,7 +905,7 @@ impl Accumulator {
             .collect();
 
         NetworkResult {
-            qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, oxy_dist, ligand_dist,
+            qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, mean_n_bo, oxy_dist, ligand_dist,
             linkage, n_frames, n_atoms, params,
         }
     }
@@ -918,10 +963,11 @@ mod tests {
         assert_eq!(bp.len(), 1);
         assert_eq!(bp[0].0, 1);                       // 桥接数 = 1
         assert_eq!(bp[0].1.count, 2);                 // 两个 P
-        // 联合分布另成一表：该桥通向一个 P
+        // 联合分布另成一表。该桥通向 P，是**同元素**连接，已计入 n；
+        // m 只装异核伙伴，故这里为空（P 自己没有 m_P 列）
         let pp = &res.qn_partner_dist["P"];
         assert_eq!(pp[0].0.0, 1);
-        assert_eq!(pp[0].0.1["P"], 1);
+        assert!(pp[0].0.1.is_empty(), "同元素连接进 n，不再重复成 m_P 列: {:?}", pp[0].0.1);
 
         let oxy = oxy_counts(&res);
         assert_eq!(oxy["O_b"], 1);
@@ -1121,9 +1167,11 @@ mod tests {
         assert_eq!(*n_formers, 2, "普通桥氧连两个形成子");
         assert_eq!(ligand, "O", "桥中间那个原子的元素进键");
         assert_eq!(bin.count, 1);
-        // 规范半边：Al < P，故 Al 在前。两端都带 (元素, 桥接数, 配位数)
-        assert_eq!(*a, ("Al".to_string(), 1, 2));
-        assert_eq!(*b, ("P".to_string(), 1, 2));
+        // 规范半边：Al < P，故 Al 在前。两端都带 (元素, 同元素连接数, 配位数)。
+        // 这座桥是 Al-O-P：两端各自的同元素连接数都是 0（没有 Al-O-Al，
+        // 也没有 P-O-P），配位数都是 2
+        assert_eq!(*a, ("Al".to_string(), 0, 2));
+        assert_eq!(*b, ("P".to_string(), 0, 2));
     }
 
     /// 三配位氧不是一对，展开成 C(3,2)=3 条记录，靠 `n_formers` 列区分。
@@ -1151,14 +1199,15 @@ mod tests {
         assert!(res.linkage.iter().all(|((_, _, _, n), _)| *n == 3),
                 "n_formers 必须标出这是三配位配体");
 
-        // 三簇配体贡献的是**连接**：该 P 通过这一个氧连上了 2 个 P，
-        // 故 m_P = 2 而桥氧只有 1 个。文献数的是 connections，不是桥氧
+        // 三簇配体贡献的是**连接**：该 P 通过这一个氧连上了 2 个 P，故 n = 2,
+        // 而桥氧只有 1 个。这正是 n 与 n_bo 分叉的地方 —— 传统 Qn 分析假设
+        // 「无三键氧」,分叉一出现该假设就不成立了
         let bp = &res.qn_dist["P"];
         assert_eq!(bp.len(), 1);
-        assert_eq!(bp[0].0, 1, "该 P 只有 1 个桥氧");
+        assert_eq!(bp[0].0, 2, "三簇氧把该 P 连上了 2 个 P，n = 2");
+        assert_eq!(res.mean_n_bo["P"], 1.0, "但桥氧只有 1 个：一个氧、两个连接");
         let (key, _) = &res.qn_partner_dist["P"][0];
-        assert_eq!(key.1.get("P"), Some(&2),
-                   "三簇配体把该 P 连上了 2 个 P，m_P 必须是 2 而不是缺席: {key:?}");
+        assert!(key.1.is_empty(), "全是同元素连接，无异核伙伴: {key:?}");
     }
 
     /// 简单 Qn 分布必须**直接可读**，而不是要靠 groupby 从伙伴分解里聚出来。
@@ -1181,16 +1230,19 @@ mod tests {
         let params = TypeParams::new(cutoffs, BTreeMap::new());
         let res = calc_network(&traj_of(vec![frame]), &params).unwrap();
 
-        // 边际：三个 P 全是「1 个桥」，合成一行
+        // 边际：三个 P 各有 1 个桥氧，但 n 只数同元素连接 —— 连向 Al 的那个
+        // P 是 Q0，互相连的两个 P 是 Q1。这正是新旧口径的分界：旧口径三个
+        // 都是「1 个桥」合成一行，文献口径分成两行
         let bp = &res.qn_dist["P"];
-        assert_eq!(bp.len(), 1, "边际分布一个桥接数一行: {bp:?}");
-        assert_eq!(bp[0].0, 1);
-        assert_eq!(bp[0].1.count, 3);
+        assert_eq!(bp.len(), 2, "n=0 与 n=1 各一行: {bp:?}");
+        assert_eq!((bp[0].0, bp[0].1.count), (0, 1), "连向 Al 的那个 P 是 Q0");
+        assert_eq!((bp[1].0, bp[1].1.count), (1, 2), "互连的两个 P 是 Q1");
 
-        // 联合：按伙伴拆成两行（→P 两个、→Al 一个）
+        // 联合：Q0 那个带 m_Al=1，两个 Q1 无异核伙伴
         let pp = &res.qn_partner_dist["P"];
         assert_eq!(pp.len(), 2, "联合分布按伙伴拆开: {pp:?}");
         assert_eq!(pp.iter().map(|(_, b)| b.count).sum::<usize>(), 3);
+        assert_eq!(pp[0].0.1.get("Al"), Some(&1), "Q0 的那个 P 连着一个 Al: {pp:?}");
 
         // 两张表在 count 上必须闭合
         let tables = res.to_tables();
@@ -1235,9 +1287,10 @@ mod tests {
         assert!(!col("qn", "former").contains(&"Al".to_string()));
         assert!(col("coordination", "element").contains(&"Al".to_string()));
 
-        // composition:P 走单元词汇 P-Q1,Al 走原子词汇 Al_1,两者并存一表
+        // composition:P 走单元词汇,Al 走原子词汇 Al_1,两者并存一表。
+        // 这个 P 的唯一桥氧通向 Al,是异核连接,故 n=0 → P-Q0
         let labels = col("composition", "label");
-        assert!(labels.contains(&"P-Q1".to_string()), "{labels:?}");
+        assert!(labels.contains(&"P-Q0".to_string()), "{labels:?}");
         assert!(labels.contains(&"Al_1".to_string()), "{labels:?}");
         // 每个元素只出现一种刻画:P 不该再有配位数行
         assert_eq!(labels.iter().filter(|l| l.starts_with("P")).count(), 1,
@@ -1319,7 +1372,8 @@ mod tests {
         let c = t.column("linkage").unwrap();
         let mut rows: Vec<String> = (0..c.len()).map(|i| c.cell(i)).collect();
         rows.sort();
-        assert_eq!(rows, vec!["Al_1-F-P_1".to_string(), "Al_1-O-P_1".to_string()]);
+        // P 的数字是同元素连接数：这两座桥都通向 Al，故 P 是 Q0
+        assert_eq!(rows, vec!["Al_1-F-P_0".to_string(), "Al_1-O-P_0".to_string()]);
     }
 
     // ─── composition 表与配体分母 ──────────────────────────────────────────────
