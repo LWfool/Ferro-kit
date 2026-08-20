@@ -1151,11 +1151,14 @@ mod tests {
         assert!(res.linkage.iter().all(|((_, _, _, n), _)| *n == 3),
                 "n_formers 必须标出这是三配位配体");
 
-        // 桥接数计入(R1),但伙伴分解不计入 —— 三配位配体没有唯一对端
+        // 三簇配体贡献的是**连接**：该 P 通过这一个氧连上了 2 个 P，
+        // 故 m_P = 2 而桥氧只有 1 个。文献数的是 connections，不是桥氧
         let bp = &res.qn_dist["P"];
         assert_eq!(bp.len(), 1);
-        assert_eq!(bp[0].0, 1, "该 P 有 1 个桥接配体");
-        assert!(res.qn_partner_dist["P"][0].0.1.is_empty(), "三配位配体不进 bridges_to");
+        assert_eq!(bp[0].0, 1, "该 P 只有 1 个桥氧");
+        let (key, _) = &res.qn_partner_dist["P"][0];
+        assert_eq!(key.1.get("P"), Some(&2),
+                   "三簇配体把该 P 连上了 2 个 P，m_P 必须是 2 而不是缺席: {key:?}");
     }
 
     /// 简单 Qn 分布必须**直接可读**，而不是要靠 groupby 从伙伴分解里聚出来。
