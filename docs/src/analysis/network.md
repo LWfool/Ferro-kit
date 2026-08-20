@@ -6,7 +6,7 @@
 | 量 | 表 | 含义 |
 |---|---|---|
 | **结构组成** | `composition` | 一物种一行：`P-Q2` `Al_4` `O_b` `Zn_4`，各占其元素的比例 |
-| Qn 分布 | `qn` | Qn 形成子连了几个桥联配体 |
+| Qn 分布 | `qn` | Qn 形成子的**同核**连接数 $n$（P–O–P），文献 $Q^n_m$ 的 $n$ |
 | 异核桥分解 | `qn_partner` | 上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$ |
 | 配体分类 | `ligand_type` | `O_f` / `O_n` / `O_b` / `O_t`，伙伴元素以数据列给出 |
 | 配位数 | `coordination` | 形成子与修饰子的总配位数分布 |
@@ -90,37 +90,70 @@ $Q^n$ 是四面体形成子的记号：在配位数基本固定的位点上，�
 
 | | 出现在 `qn` / `qn_partner` | 标签数字 | 由什么刻画 |
 |---|---|---|---|
-| Qn 形成子（默认 B, P, Si） | 是 | Qn（桥接数） | Qn 分布 |
+| Qn 形成子（默认 B, P, Si） | 是 | $n$（同核连接数） | Qn 分布 |
 | 其他形成子（Al, …） | **否** | **配位数** | `coordination` 表 |
 | 修饰子（Zn, …） | 否 | 无后缀 | `coordination` 表 |
 
 名单是**默认值**，`--qn Si,Al` 会整体替换它（不是叠加）——某个元素算不算 Qn 形成子
 是体系的性质：铝硅酸盐里人们确实会报 Al 的 $Q^n(m\mathrm{Si})$。
 
-### 异核桥分解 $Q^n(m\mathrm{Al})$
+### $n$ 只数同核桥 —— 与文献一致的口径
 
-`qn_partner` 表在 `qn` 之上多一维：`m_<X>` 是桥接数中通向元素 X 的那部分，即文献
-（Brow、Eckert 等）的 $Q^n(m\mathrm{Al})$ 记号。
+这是**最容易读错的一列**，请先读完本节再用 `qn`。
 
-- `qn=2, m_Al=1, m_P=1` → $Q^2(1\mathrm{Al})$
-- `qn` 就是它对伙伴维度的**边际**
+文献的扩展记号 $Q^n_m$（铝磷酸盐写 $Q^n(m\mathrm{Al})$，硼磷酸盐写 $Q^n(m\mathrm{B})$，
+多异核时写 $P^n_{m\mathrm{Al},x\mathrm{B}}$）里：
 
-**伙伴分解不编码进 `label`。** 试过写成 `Q2(1Al)`，行不通：文献的 $Q^n(mX)$ 记号
-表达不了「该桥的配体连了三个形成子」这种情形。参考轨迹里
-`(qn=2, m_Al=1, m_P=0)` 与 `(qn=2, m_Al=1, m_P=1)` 两行都会被写成 `Q2(1Al)`——
-前者有一座桥是三簇氧，$\sum m = 1 < qn$——而没有任何一列能把它们分开。那一维本就
-在 `m_<X>` 列里，标签只写 `P-Q2`。
+| 符号 | 数什么 |
+|---|---|
+| $n$ | **同核**桥连接：P–O–P |
+| $m_X$ | **异核**桥连接：P–O–Al、P–O–B … |
+| 总桥连接数 | $n + \sum_X m_X$ ——**不是** $n$ |
+
+> arXiv 2510.13545 原文：*"'n' denotes the total number of bridging oxygen
+> connections involving P–O–P and P–O–Si bonds, and 'm' and 'x' specify the number
+> of aluminum and boron connections with phosphate."*
+>
+> 铝磷酸盐文献专门指出「$n$ 是总桥氧数」是这个领域的一个**已知误解**，成因是
+> $n$ 与 $m$ 来自两个不同的 NMR 序列（同核 J/双量子 vs 异核 REAPDOR/TRAPDOR/HETCOR），
+> 天然是两个独立计数。$Q^0(3\mathrm{B})$、$Q^1(2\mathrm{Al})$ 这类 $m>n$ 的物种
+> 是真实存在且常见的（前者在高硼组分里占 29%），在「$m$ 是 $n$ 的子集」读法下无法解释。
+
+`ferro net` 从 2026-08 起按此口径输出。对参考轨迹 `43Z43P15A` 的影响：
+
+| | 旧口径（总桥） | 文献口径 |
+|---|---|---|
+| `mean_qn` | 2.40 | **0.95**（另有 $m_\mathrm{Al}$=1.45） |
+| `P-Q3` 占比 | 40.4% | **0.27%** |
+
+差 130 倍。旧口径下读者会把「`P-Q3` 占 40%」理解成一个高度交联的磷酸盐网络，
+而这个玻璃的 P 平均只有 0.95 个 P–O–P 桥，是以二聚体和短链为主的结构。
+
+**总桥氧数仍然可读**：`[inputs]` 块里 `mean_n_bo` 与 `mean_qn` 并列给出。
+
+- `qn=1, m_Al=2` → $Q^1(2\mathrm{Al})$，共 3 座桥
+- `qn` 就是 `qn_partner` 对 `m_` 各列的**边际**（count 与 fraction 精确闭合）
+
+**伙伴分解不编码进 `label`。** 多形成子体系下标签会长成 `P-Q1(2Al,1B)`，而 `qn`
+表正是给人一眼扫分布用的；`m_<X>` 列本来就是拿来筛选和画图的。文献自己在
+$P^n_{m\mathrm{Al},x\mathrm{B}}$ 里也是靠下标位而非括号串。
+
+**形成子自身元素没有 `m_` 列**：新口径下 `m_P` 恒等于 `qn`，是重复列。它由 `qn`
+唯一决定、不是独立分组维度，故去掉它不影响上面那条闭合关系。
 
 注意 Al 在这里是**伙伴而非主语**：它没有自己的行，但 `m_Al` 列照常存在。
 
 两者是**两张表而不是一张加 `groupby`**：简单 Qn 分布是主产物，必须打开文件就能读到，
 不能要求先做聚合。这与 `average` 独立成表是同一条判据——粒度不同就该分表。
 `sd` 也必须各自累加而不是相加：相关项之和的方差不等于方差之和。实测参考轨迹
-P 的 `qn=2` 一行，正确 `sd` 为 5.574e-3，而把 `qn_partner` 对应各行的 `sd` 相加得
-9.966e-3，差近一倍。
+P 的 `qn=1` 一行，正确 `sd` 为 **0**（P–O–P 骨架逐帧不变），而把 `qn_partner`
+对应四行的 `sd` 相加得 **7.598e-3**——相加会把一个「完全没有抖动」的量伪造成
+有明显涨落。分量各自在动而总和不动，正是相关项抵消的典型表现。
 
-只对**恰好两个形成子**的配体成立：三配位配体没有唯一对端，计入 `qn` 但不进任何
-`m_<X>`，故 $\sum m \le n_\text{qn}$，差额就是三配位桥的数目——在表里可见而非隐藏。
+**三簇配体按连接数计入。** 一个连着三个形成子的配体，把本位点连上了**两个**伙伴，
+故贡献 2 而不是 1——文献数的是 *connections*，不是桥氧个数。于是
+$n + \sum_X m_X$ 可能**超过**桥氧个数（`mean_n_bo`），超出的部分正是三簇桥。
+这也是 $Q^n_m$ 能作为无歧义标签的前提：按桥氧记会让 $\sum m$ 亏空。
 
 这个分解**无法从 `linkage` 表反推**：两座 P–O–Al 桥可能来自一个 $m_\mathrm{Al}=2$ 的 P，
 也可能来自两个 $m_\mathrm{Al}=1$ 的 P。`linkage` 数的是桥，`qn` 数的是原子。
@@ -141,12 +174,13 @@ Al 存 CN），于是「4 配位 Al 的桥接数是多少」问不出来。
   这一列。
 - **`ligand` 列**：桥中间那个原子的元素。多配体体系里 `Al-O-P` 与 `Al-F-P` 是两种桥，
   永不共用一行——合并计数会报出一个实验无法对应的数。
-- **规范半边**：桥联无方向，两端按 `(元素, 桥接数, CN)` 排序后小的在前，每对只存一次。
+- **规范半边**：桥联无方向，两端按 `(元素, 同核连接数, CN)` 排序后小的在前，每对只存一次。
   故**行和不等于该位点的总参与度**，要算参与度得把 `_a` 与 `_b` 两列都数一遍。
 - **`n_formers` 列**：普通桥氧为 2；三配位配体展开成 $C(3,2)=3$ 行并标 3。
   它们不被丢弃，因为「三配位氧连的是谁」在含 Al 体系里正是要研究的东西。
-- **`n_bridge_a/b` 保留此名而不叫 `qn_a/b`**：桥接数对每个形成子都有定义，Qn 只对
-  一部分成立。这是 `linkage` 里唯一还需要给「非 Qn 形成子的桥接数」命名的地方。
+- **`qn_a/b` 是同核连接数**，对每个形成子都有定义——非 Qn 形成子也有（Al 的
+  `qn_a` 就是 Al–O–Al 数）。它与 `linkage` 展示列里那个数字**同源**：`P_2` 的 2
+  读得到 `qn_a`，`Al_4` 的 4 读得到 `cn_a`，标签与数值列不会互相矛盾。
 
 ### 统计口径：`fraction` 与 `sd`
 
@@ -229,7 +263,7 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 | `network_qn_partner.csv` | (形成子, Qn, 伙伴分解) | `label, former, qn, m_<X>…, count, fraction, sd` |
 | `network_ligand_type.csv` | (配体类型, 伙伴对) | `label, type, former_a, former_b, count, fraction, sd` |
 | `network_coordination.csv` | (元素, 配位数) | `element, cn, count, fraction, sd` |
-| `network_linkage.csv` | (配体, 两端状态) | `linkage, ligand, elem_a, n_bridge_a, cn_a, elem_b, n_bridge_b, cn_b, n_formers, count, fraction, sd` |
+| `network_linkage.csv` | (配体, 两端状态) | `linkage, ligand, elem_a, qn_a, cn_a, elem_b, qn_b, cn_b, n_formers, count, fraction, sd` |
 
 `label` 列是给人读的锚点，`former` / `qn` / `cn` 等数值列是给筛选和画图用的——两者
 并存而非二选一，否则「筛出 Qn ≥ 3 的」就得去切字符串。
@@ -247,22 +281,26 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 
 ```csv
 file,label,element,count,fraction,sd
-43Z43P15A,P-Q0,P,25,1.344086e-2,0.000000e0
-43Z43P15A,P-Q1,P,276,1.483871e-1,2.249086e-3
-43Z43P15A,P-Q2,P,653,3.510753e-1,5.574312e-3
-43Z43P15A,P-Q3,P,751,4.037634e-1,2.944745e-3
-43Z43P15A,P-Q4,P,155,8.333333e-2,1.900825e-3
+43Z43P15A,P-Q0,P,465,2.500000e-1,0.000000e0
+43Z43P15A,P-Q1,P,1035,5.564516e-1,0.000000e0
+43Z43P15A,P-Q2,P,355,1.908602e-1,0.000000e0
+43Z43P15A,P-Q3,P,5,2.688172e-3,0.000000e0
 43Z43P15A,Al_4,Al,590,8.939394e-1,1.417294e-2
 43Z43P15A,Al_5,Al,63,9.545455e-2,1.570943e-2
 43Z43P15A,Al_6,Al,7,1.060606e-2,4.149413e-3
-43Z43P15A,Zn_3,Zn,114,1.225806e-1,4.844680e-2
-43Z43P15A,Zn_4,Zn,723,7.774194e-1,2.860094e-2
-43Z43P15A,Zn_5,Zn,92,9.892473e-2,2.331127e-2
-43Z43P15A,Zn_6,Zn,1,1.075269e-3,2.404374e-3
+43Z43P15A,Zn_3,Zn,87,9.354839e-2,4.906927e-2
+43Z43P15A,Zn_4,Zn,675,7.258065e-1,2.434243e-2
+43Z43P15A,Zn_5,Zn,159,1.709677e-1,3.921416e-2
+43Z43P15A,Zn_6,Zn,8,8.602151e-3,2.944745e-3
+43Z43P15A,Zn_7,Zn,1,1.075269e-3,2.404374e-3
 43Z43P15A,O_n,O,2985,4.543379e-1,1.203302e-3
 43Z43P15A,O_b,O,3583,5.453577e-1,1.154167e-3
 43Z43P15A,O_t,O,2,3.044140e-4,4.168360e-4
 ```
+
+> P 那四行的 `sd` 为 0 不是缺陷：这 5 帧里 P–O–P 骨架的拓扑没有变化。涨落全在
+> P–O–Al 与配位数一侧（看 `Al_*` 与 `Zn_*` 的 `sd`）。旧口径把刚性骨架与涨落混在
+> 一个数里，所以从前这几行的 `sd` 非零。
 
 **分母恒为该元素的原子数**：Q2 占全部 P、`Al_4` 占全部 Al、`O_b` 占全部 O。所以
 **每个元素的 `fraction` 求和为 1** —— 这是一条打开文件就能核对的恒等式。
@@ -274,18 +312,18 @@ P 在这里没有配位数行（它在 `network_coordination.csv` 里）。
 累加**而非把三行相加——相关项之和的方差不等于方差之和。
 
 原来的 `network_average.csv` 已删除。它的两个均值仍在每个文件的 `[inputs]` 块里
-（`mean_qn P=2.40  mean_cn Al=4.12 P=4.00 Zn=3.98`），也可从本表精确复算：
-$\sum_n n \cdot f_n = 2.395161$。
+（`mean_qn P=0.95  mean_n_bo Al=4.12 P=2.40  mean_cn Al=4.12 P=4.00 Zn=4.10`），
+也可从本表精确复算：$\sum_n n \cdot f_n = 0.946$。注意 `mean_qn`（同核连接）
+与 `mean_n_bo`（桥氧个数）是两个量，并列给出正是为了让口径一目了然。
 
 ### 示例：`network_qn.csv`
 
 ```csv
 file,label,former,qn,count,fraction,sd
-43Z43P15A,P-Q0,P,0,25,1.344086e-2,0.000000e0
-43Z43P15A,P-Q1,P,1,276,1.483871e-1,2.249086e-3
-43Z43P15A,P-Q2,P,2,653,3.510753e-1,5.574312e-3
-43Z43P15A,P-Q3,P,3,751,4.037634e-1,2.944745e-3
-43Z43P15A,P-Q4,P,4,155,8.333333e-2,1.900825e-3
+43Z43P15A,P-Q0,P,0,465,2.500000e-1,0.000000e0
+43Z43P15A,P-Q1,P,1,1035,5.564516e-1,0.000000e0
+43Z43P15A,P-Q2,P,2,355,1.908602e-1,0.000000e0
+43Z43P15A,P-Q3,P,3,5,2.688172e-3,0.000000e0
 ```
 
 Al 不在其中——同一次运行里它出现在 `network_coordination.csv` 的 `cn` 4/5/6 三行。
@@ -317,14 +355,16 @@ file,label,type,former_a,former_b,count,fraction,sd
 ### 示例：`network_linkage.csv`
 
 ```csv
-file,linkage,ligand,elem_a,n_bridge_a,cn_a,elem_b,n_bridge_b,cn_b,n_formers,count,...
-43Z43P15A,Al_4-O-Al_4,O,Al,4,4,Al,4,4,2,10,...
-43Z43P15A,Al_4-O-P_3,O,Al,4,4,P,3,4,2,1277,...
-43Z43P15A,Al_5-O-P_2,O,Al,5,5,P,2,4,2,83,...
+file,linkage,ligand,elem_a,qn_a,cn_a,elem_b,qn_b,cn_b,n_formers,count,...
+43Z43P15A,Al_4-O-P_0,O,Al,0,4,P,0,4,2,844,...
+43Z43P15A,Al_4-O-P_1,O,Al,0,4,P,1,4,2,1210,...
+43Z43P15A,Al_4-O-P_2,O,Al,0,4,P,2,4,2,213,...
 ```
 
-`Al_4` 里的 4 是**配位数**，`P_3` 里的 3 是 **Qn**——这是文献自己的约定（Al[4] 对
-Q³），逐文件的 `#` 头会写明。
+`Al_4` 里的 4 是**配位数**（读 `cn_a`），`P_1` 里的 1 是 **$n$，即该 P 的 P–O–P 数**
+（读 `qn_b`）——这是文献自己的约定（Al[4] 对 $Q^n$），逐文件的 `#` 头会写明。
+`Al_4-O-P_0` 这类行很常见：那个 P 通过这座桥连着 Al，但它自己没有 P–O–P，
+所以是 $Q^0$。Al 端的 `qn_a=0` 则表示没有 Al–O–Al。
 
 这里用的是**原子词汇**（`P_3` 而不是 `P-Q3`）：桥联描述的是两个原子之间的连接，
 而 Qn 命名的是一个含多个原子的结构单元。与导出轨迹的标签一致。
@@ -344,11 +384,11 @@ al.pivot_table(index="cn_a", columns="cn_b", values="count", aggfunc="sum")
 
 # P-O-P 的 Qn–Qn 连接矩阵
 d.query("elem_a == 'P' and elem_b == 'P'").pivot_table(
-    index="n_bridge_a", columns="n_bridge_b", values="count", aggfunc="sum")
+    index="qn_a", columns="qn_b", values="count", aggfunc="sum")
 
-# 某种配位的 Al 更爱连哪种 Qn 的 P
+# 某种配位的 Al 更爱连哪种 Qn 的 P —— 直接对照 27Al 的 Al[4]/[5]/[6] × 31P 的 Qn
 d.query("elem_a == 'Al' and elem_b == 'P'").pivot_table(
-    index="cn_a", columns="n_bridge_b", values="count", aggfunc="sum")
+    index="cn_a", columns="qn_b", values="count", aggfunc="sum")
 
 # 只看真桥，排除三配位配体
 d.query("n_formers == 2")
