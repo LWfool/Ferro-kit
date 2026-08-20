@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""把 `ferro net` 的产物画成发表级的网络拓扑图。
+r"""把 `ferro net` 的产物画成发表级的网络拓扑图。
 
 两类图，形状相同：**x = 成分（`file` 列），100 % 堆积柱，条带 = 位点类型**。
 问的是同一个问题——某个位点的分布随成分怎么变——所以用同一套模板。
@@ -15,12 +15,20 @@
 
 展开成 `network_qn_partner.csv` 的两级结构：色相仍是 Qn，同色系内按 m_<X> 分明度，
 每个 Qn 组外加一圈框线标出粗结构边界。这样第一眼仍落在 Qn 的色块上，伙伴分解只是
-补充。两处要知道的：
+补充。段标签即文献记号 $Q^n(m\mathrm{X})$——`Q1(2Al)` = 1 个 P–O–P + 2 个 P–O–Al。
 
-- **单形成子体系下它是退化的**：没给第二个 `--<Former>-O` 时 `m_P ≡ qn`，两张表逐行
-  相同，展开只会画出一条假的两级结构。所以这是开关而不是默认。
-- **`Σm ≤ qn`**：三配位配体计入 qn 但没有唯一对端，不进 `m_<X>`，差额即三簇氧桥数。
-  所以最深的一档**不等于**「全部桥都连 X」。这句必须进图注。
+**口径（2026-08-20 起）**：`qn` 只数**同核**连接（P–O–P），`m_<X>` 是**异核**连接
+（P–O–Al…），总连接数 = `qn + Σm`。形成子自身那一列已从 csv 里去掉（它恒等于 `qn`），
+所以剩下的每一列都携带 `qn` 没有的信息：
+
+- **退化不再发生**。旧口径下单形成子体系 `m_P ≡ qn`，展开只画出一条假的两级结构，
+  这是 `--partner` 当初被设成开关而非默认的唯一理由；那个理由现在没有了。
+  是否改回默认属出图形式问题，另行决定。
+- **无异核形成子的体系没有 m_<X> 列**（如 Zn–P–O），此时 `--partner` 自动退化为普通
+  Qn 图并打印说明——不是错误，那个体系确实没有伙伴维可展开。
+- **三簇配体按连接数计入**：它把本位点连上两个伙伴，故贡献 2。于是 `qn + Σm` 可能
+  **超过**该位点的桥氧个数（差额即三簇桥），两者在 `ferro net` 里分别是
+  `mean_qn`/`m_` 与 `mean_n_bo`。
 
 ## 多 csv
 
@@ -35,7 +43,6 @@
 """
 
 import argparse
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
@@ -71,6 +78,10 @@ CFG = {
     # 挂在 ax 上会被它们顶穿。y 要留够旋转标签的高度
     "legend_bbox": (0.5, -0.16),
     "legend_ncol": 6,
+    # --partner 下明度维的说明。图例只画 Qn 色相（第一眼要落在粗结构上），
+    # 但同色系的深浅档携带 m_<X>，不说明读者无从得知它编码什么
+    "partner_note": r"Shading within each hue: {m} high (dark) $\to$ low (light)",
+    "note_bbox": (0.5, -0.30),
 
     "ylim": (0, 100),
 }
@@ -87,6 +98,9 @@ def series_qn(df, former, partner):
 
     段序：`partner=False` 按 qn 升序；`True` 时先 qn 升序，组内按第一个 m_ 列**降序**，
     于是同色系里最深的一档 m 最高。
+
+    `m_<X>` 列在新口径下全是**异核**伙伴（形成子自身那一列已从 csv 去掉），故没有
+    m_ 列就是真的没有异核伙伴，此时退化为普通 Qn 分布是正确行为而非降级。
     """
     sub = df[df["former"] == former]
     m_cols = [c for c in sub.columns if c.startswith("m_")]
@@ -109,7 +123,8 @@ def series_qn(df, former, partner):
         mask = sub["qn"] == key["qn"]
         for c in m_cols:
             mask &= sub[c] == key[c]
-        tag = ",".join(f"{c[2:]}{int(key[c])}" for c in m_cols if key[c] > 0)
+        # 数字在前：文献写 Q^1(2Al) 而不是 Q^1(Al2)
+        tag = ",".join(f"{int(key[c])}{c[2:]}" for c in m_cols if key[c] > 0)
         label = f"Q{int(key['qn'])}" + (f"({tag})" if tag else "")
         segs.append((label, int(key["qn"]), sub[mask]))
     return segs
@@ -212,8 +227,11 @@ def build_palette(all_groups):
     return {q: fp.shades(cycle[q], per[q]) for q in keys}
 
 
-def build_figure(panels, groups_of, files, partner):
-    """panels: [(title, key)]，groups_of(key) -> [(组标签, segs)]。"""
+def build_figure(panels, groups_of, files, partner, note=None):
+    """panels: [(title, key)]，groups_of(key) -> [(组标签, segs)]。
+
+    `note` 是图例下方的一行小字，用于解释图例本身表达不了的维度（明度档）。
+    """
     n = len(panels)
     ncols = CFG["ncols"] or n
     nrows = -(-n // ncols)
@@ -239,6 +257,10 @@ def build_figure(panels, groups_of, files, partner):
     fig.legend(handles=handles, loc=CFG["legend_loc"],
                bbox_to_anchor=CFG["legend_bbox"], ncol=CFG["legend_ncol"],
                bbox_transform=fig.transFigure)
+    if note:
+        fig.text(*CFG["note_bbox"], note, ha="center", va="top",
+                 fontsize=plt.rcParams["font.size"] - 1,
+                 transform=fig.transFigure)
     return fig
 
 
@@ -249,22 +271,26 @@ def run_qn(frames, args):
     formers = list(dict.fromkeys(f for _, df in frames for f in df["former"]))
     files = list(dict.fromkeys(f for _, df in frames for f in fp.files_in(df)))
 
+    # 无 m_<X> 列有两种可能：给的是 network_qn.csv，或者这个体系根本没有异核形成子
+    # （Zn-P-O 的 qn_partner 与 qn 列结构完全相同）。两者无法从列上区分，而后者是
+    # 正常情形，所以退化而不是报错 —— series_qn 已有对应分支
     if partner and not any(c.startswith("m_") for _, df in frames for c in df.columns):
-        raise SystemExit(
-            "--partner 需要 network_qn_partner.csv（带 m_<X> 列），给的是 network_qn.csv"
-        )
-    if partner:
-        for path, df in frames:
-            m_cols = [c for c in df.columns if c.startswith("m_")]
-            if len(m_cols) == 1:
-                print(f"Note  : {Path(path).name} 只有一个形成子，m_{m_cols[0][2:]} ≡ qn，"
-                      f"展开出的两级结构是退化的")
+        print("Note  : 没有 m_<X> 列，按普通 Qn 分布绘制。"
+              "该体系没有异核形成子，或给的是 network_qn.csv")
+        partner = False
 
     def groups_of(former):
         return [(fp.suffix_of(p), series_qn(df, former, partner)) for p, df in frames]
 
+    note = None
+    if partner:
+        m_elems = sorted({c[2:] for _, df in frames for c in df.columns
+                          if c.startswith("m_")})
+        m_tex = ", ".join(rf"$m_{{\mathrm{{{e}}}}}$" for e in m_elems)
+        note = CFG["partner_note"].format(m=m_tex)
+
     return build_figure([(CFG["title_qn"].format(former=f), f) for f in formers],
-                        groups_of, files, partner)
+                        groups_of, files, partner, note)
 
 
 def run_cn(frames, args):
@@ -296,7 +322,8 @@ def main():
     ap.add_argument("kind", choices=["qn", "cn"], help="qn = Qn 分布；cn = 配位数分布")
     ap.add_argument("inputs", nargs="+", help="ferro net 的 csv（可用 glob）")
     ap.add_argument("--partner", action="store_true",
-                    help="[qn] 展开 m_<X> 伙伴分解（需 network_qn_partner.csv）")
+                    help="[qn] 展开 m_<X> 异核伙伴分解，即文献的 Q^n(mX)"
+                         "（需 network_qn_partner.csv）")
     ap.add_argument("--element", default=None,
                     help="[cn] 只画这些元素，逗号分隔（默认：分布不平凡的全部）")
     ap.add_argument("-o", "--output", default=None, help="产物文件名 stem")
