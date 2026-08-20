@@ -135,15 +135,18 @@ pub enum AtomType {
     /// | `qn` | `Some(bridging)` for a Qn former, `None` otherwise — the flag *and* the value |
     /// | `bridging` | ligands shared with at least one other former |
     /// | `cn` | **all** ligands within cutoff, bridging or not |
-    /// | `bridges_to` | how many bridging ligands lead to each partner element |
+    /// | `bridges_to` | connections to each partner element (a tricluster counts twice) |
     ///
     /// `bridging` and `cn` are different quantities and must not be conflated: `cn`
     /// counts every ligand inside the cutoff, `bridging` only those a second former
     /// also touches.  They happen to coincide for a former carrying no non-bridging
     /// ligand, which is true of Al in aluminophosphate glasses and false in general.
     ///
-    /// `Σ bridges_to ≤ bridging`, the shortfall being ligands shared by three or
-    /// more formers: those count as one bridge each but have no single partner.
+    /// `bridges_to` counts **connections**, not bridging ligands: a ligand shared
+    /// with three formers connects this one to two partners and contributes two.
+    /// So `Σ bridges_to ≥ bridging`, the excess being triclusters.  Counting
+    /// bridging ligands instead would leave `Σ bridges_to` short of the literature's
+    /// `n + Σm` identity, which is what `Q^n_m` / `P^n_(mAl,xB)` add up.
     Former {
         elem: String,
         qn: Option<u32>,
@@ -391,12 +394,14 @@ fn classify_formers(
                     if nf.len() < 2 { continue; }
                     bridging += 1;
 
-                    // 伙伴分解只对「恰好两个形成子」的配体成立；三配位配体
-                    // 没有唯一对端，计入 bridging 但不计入任何 bridges_to
-                    if nf.len() == 2 {
-                        if let Some((partner, _)) = nf.iter().find(|(_, i)| *i != fa_idx) {
-                            *bridges_to.entry(partner.clone()).or_insert(0) += 1;
-                        }
+                    // 伙伴分解数的是**连接**，不是桥氧：该配体上除自己之外的
+                    // 每个形成子各算一个连接。三簇配体 P-O(-Al)(-Al) 因此给出
+                    // m_Al += 2 —— 文献 (Q^n_m / P^n_mAl,xB) 数的正是
+                    // 「connections with phosphate」，而一个三簇氧确实把该 P
+                    // 连上了两个 Al。按桥氧数记则 Σm 会亏空，无法与 n 相加
+                    for (partner, i) in nf {
+                        if *i == fa_idx { continue; }
+                        *bridges_to.entry(partner.clone()).or_insert(0) += 1;
                     }
                 }
             }
