@@ -264,16 +264,18 @@ Commands:
 
 Common options:
   -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output SUFFIX   Output name suffix -> <command>[_<table>]_<suffix>.csv
+  -o, --output SUFFIX   Batch tag -> <command>[_<table>][_<label>]_<suffix>.csv
+      --outdir DIR      Write every product here (created if missing; default: .)
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
       --metal-units     LAMMPS metal units (velocities in A/ps)
 
-Selecting types (gr / sq / angle):
+Selecting types (gr / angle only):
   -a -b -c              by chemical element   (e.g. -a P -b O)
-  -x -y -z              by site label         (e.g. -x P_0 -y O_b_P_P)
-  The two groups are mutually exclusive. For gr and sq the first is the centre and the
-  second the neighbour, and the order matters for CN."#
+  -x -y -z              by site label         (e.g. -x P_2 -y O_b)
+  The two groups are mutually exclusive. For gr the first is the centre and the second
+  the neighbour, and the order matters for CN. sq has no type selection: its partials
+  sum back to the weighted totals, so filtering to one pair hides that closure."#
     );
 }
 
@@ -322,12 +324,17 @@ pub fn print_gr() {
 
 Selecting a pair (centre first, neighbour second):
   -a ELEM  -b ELEM        by element, e.g. -a P -b O  -> O around each P
-  -x LABEL -y LABEL       by site label, e.g. -x P_0 -y O_b_P_P
+  -x LABEL -y LABEL       by site label, e.g. -x P_2 -y O_b
   (the two groups are mutually exclusive; omit both to get every pair)
 
   Site labels come from the LAMMPS dump element column written as
-  <Element>_<suffix> (P_0, O_b_P_P, Zn_f); they are split into element +
-  label on read, so -a/-b keep working on the plain element.
+  <Element>_<suffix> (P_2, O_b, Al_4 — what `ferro net --export-traj` writes);
+  they are split into element + label on read, so -a/-b keep working on the
+  plain element.
+
+  NOTE: -x/-y hold over a SINGLE frame only. g(r) requires a fixed particle count
+  per type, and labels shift as the run evolves, so a multi-frame labelled
+  trajectory is rejected. Use --last-n 1, or select by element.
 
 Parameters:
   --r-min  FLOAT          Min cutoff radius [Å]                  default: 0.001
@@ -357,7 +364,7 @@ Example:
   ferro traj gr -i traj.dump -a P -b O --r-max 8.0 --plot
   ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan     # 一次跑一批
   ferro traj gr -i traj.dump -a P -b O --outdir results/700K
-  ferro traj gr -i traj.dump -x P_0 -y O_b_P_P --last-n 500"#
+  ferro traj gr -i traj.dump -x P_2 -y O_b --last-n 1"#
     );
 }
 
@@ -475,7 +482,7 @@ File name — angle_<triplet>[_<suffix>].csv, the triplet as you wrote it:
 Example:
   ferro traj angle -i traj.dump
   ferro traj angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
-  ferro traj angle -i traj.dump -x O_b_P_P -y P_0 -z O_f
+  ferro traj angle -i traj.dump -x O_b -y P_2 -z O_n --last-n 1
   ferro traj angle -i traj.dump -a O -b P -c O --angle-min 90 --angle-max 130
 
 Counting: each geometric angle once (a PO4 tetrahedron gives 6 O-P-O angles, not 12).
