@@ -249,6 +249,14 @@ pub struct NetworkResult {
     /// a corner-sharing, tricluster-free network and diverge exactly where the
     /// literature's conventional Qn analysis stops applying.
     pub mean_n_bo: HashMap<String, f64>,
+    /// Former pairs sharing **two or more** ligands, summed over frames.
+    ///
+    /// Zero for a corner-sharing network, which is what the conventional Qn
+    /// analysis assumes.  Non-zero means one neighbour contributes two bridging
+    /// oxygens, so `qn` and "how many neighbours" stop being the same number.
+    /// In phosphates this is vanishingly rare, so a non-zero value more often
+    /// means the cutoff is too large than that the structure really shares edges.
+    pub n_edge_sharing: usize,
     /// 配体类型分布：`(label, partner_elements, bin)`，按 (元素, `class_rank`) 排序。
     /// `fraction` 的分母是**该配体元素**的原子数
     pub oxy_dist: Vec<(String, Vec<String>, Bin)>,
@@ -611,6 +619,8 @@ struct FrameData {
     ligand: LigandHist,
     /// 元素 → (桥氧个数直方图, 该元素原子数)，只为池化 mean_n_bo
     n_bo: HashMap<String, (HashMap<u32, usize>, usize)>,
+    /// 共享 ≥2 个配体的形成子对数（共边多面体）
+    n_edge_sharing: usize,
     /// 桥联组合 → 计数
     linkage: HashMap<LinkKey, usize>,
     /// 本帧的桥联观测总数（linkage 的分母）
@@ -719,6 +729,10 @@ fn compute_frame(
     };
     let mut linkage: HashMap<LinkKey, usize> = HashMap::new();
     let mut n_links = 0usize;
+    // 每对形成子共享几个配体。共享 1 个 = 共角（磷酸盐的常态），≥2 = 共边。
+    // 传统 Qn 分析的前提之一是「全部共角」：共边一出现，一对邻居就贡献两个
+    // 桥氧，Qn 与「连了几个邻居」不再是同一个数
+    let mut shared: HashMap<(usize, usize), usize> = HashMap::new();
     for (&lig_idx, formers) in &ft.ligand_formers {
         if formers.len() < 2 { continue; }
         let n_formers = formers.len();
@@ -732,12 +746,15 @@ fn compute_frame(
                 let (a, b) = if a <= b { (a, b) } else { (b, a) };
                 *linkage.entry((a, b, ligand_elem.clone(), n_formers)).or_insert(0) += 1;
                 n_links += 1;
+                // formers 已升序，故 (i,j) 天然是规范序
+                *shared.entry((formers[i], formers[j])).or_insert(0) += 1;
             }
         }
     }
+    let n_edge_sharing = shared.values().filter(|&&c| c >= 2).count();
 
     Some(FrameData { qn: bridge, qn_partner: partner, cn, oxy, ligand,
-                     n_bo: n_bo_hist, linkage, n_links })
+                     n_bo: n_bo_hist, n_edge_sharing, linkage, n_links })
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
@@ -764,6 +781,8 @@ struct Accumulator {
     /// 桥氧个数的池化均值。与 qn_sum 是两个量：qn 只数同元素连接，
     /// n_bo 数桥氧个数，三簇氧下 n_bo < qn + Σm
     n_bo_sum: HashMap<String, (f64, usize)>,
+    /// 全轨迹累计的共边形成子对数
+    n_edge_sharing: usize,
 }
 
 /// Folds one frame's histogram into `dst`, converting counts to fractions with
@@ -813,6 +832,7 @@ impl Accumulator {
             if *total == 0 { continue; }
             self.oxy.entry(key.clone()).or_default().push(c, c as f64 / *total as f64);
         }
+        self.n_edge_sharing += fd.n_edge_sharing;
         for (elem, (hist, _)) in &fd.n_bo {
             let e = self.n_bo_sum.entry(elem.clone()).or_insert((0.0, 0));
             for (&v, &c) in hist {
@@ -829,6 +849,7 @@ impl Accumulator {
     }
 
     fn merge(&mut self, other: Self) {
+        self.n_edge_sharing += other.n_edge_sharing;
         for (k, inner) in other.qn {
             merge_keyed(self.qn.entry(k).or_default(), inner);
         }
@@ -905,7 +926,8 @@ impl Accumulator {
             .collect();
 
         NetworkResult {
-            qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, mean_n_bo, oxy_dist, ligand_dist,
+            qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, mean_n_bo,
+            n_edge_sharing: self.n_edge_sharing, oxy_dist, ligand_dist,
             linkage, n_frames, n_atoms, params,
         }
     }
@@ -1457,5 +1479,50 @@ mod tests {
         assert!((bin.fraction - 0.25).abs() < 1e-15, "(1+0+0+0)/4 = 0.25");
         // 样本标准差: 值为 [1,0,0,0], mean=0.25, Σ(x-μ)²=0.75, /3 → 0.25 → sd=0.5
         assert!((bin.sd - 0.5).abs() < 1e-15, "实得 {}", bin.sd);
+    }
+
+    // ─── 共边检测 ─────────────────────────────────────────────────────────────
+
+    /// 两个形成子共享**两个**配体 = 共边多面体。传统 Qn 分析假设全部共角，
+    /// 共边一出现，一个邻居就贡献两个桥氧，Qn 与「连了几个邻居」分道扬镳。
+    #[test]
+    fn test_edge_sharing_is_detected() {
+        // P1、P2 共享 O1 与 O2：P-O = sqrt(1.3^2+1^2) = 1.64 < 2.3
+        let frame = cube(vec![
+            atom("P", 0.0, 0.0, 0.0),
+            atom("P", 2.6, 0.0, 0.0),
+            atom("O", 1.3, 1.0, 0.0),
+            atom("O", 1.3, -1.0, 0.0),
+        ]);
+        let res = calc_network(&traj_of(vec![frame]), &make_params(2.3)).unwrap();
+        assert_eq!(res.n_edge_sharing, 1, "一对 P 共享两个氧,应报 1 对共边");
+        // 该 P 的 n = 2（两个桥氧各连向对方），但邻居只有一个
+        assert_eq!(res.qn_dist["P"][0].0, 2, "共边下 n 数的是桥氧,不是邻居数");
+    }
+
+    /// 共角是常态,不能误报。
+    #[test]
+    fn test_corner_sharing_reports_no_edge_sharing() {
+        let frame = cube(vec![
+            atom("P", 0.0, 0.0, 0.0),
+            atom("O", 1.6, 0.0, 0.0),
+            atom("P", 3.2, 0.0, 0.0),
+        ]);
+        let res = calc_network(&traj_of(vec![frame]), &make_params(2.3)).unwrap();
+        assert_eq!(res.n_edge_sharing, 0);
+    }
+
+    /// 三簇氧不是共边:三个形成子共享**一个**配体,每对只共享它一个。
+    #[test]
+    fn test_tricluster_is_not_edge_sharing() {
+        let r = 1.8;
+        let frame = cube(vec![
+            atom("O", 0.0, 0.0, 0.0),
+            atom("P", r, 0.0, 0.0),
+            atom("P", -r / 2.0,  r * 0.8660254, 0.0),
+            atom("P", -r / 2.0, -r * 0.8660254, 0.0),
+        ]);
+        let res = calc_network(&traj_of(vec![frame]), &make_params(2.3)).unwrap();
+        assert_eq!(res.n_edge_sharing, 0, "三簇氧是一个配体连三个形成子,不是共边");
     }
 }
