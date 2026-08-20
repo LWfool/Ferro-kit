@@ -3,14 +3,14 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：439 个（全部通过，clippy 零警告）
+## 测试总数：444 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 84 |
 | ferro-io | 65 |
-| ferro-structure | 70 |
-| ferro-analysis | 163 |
+| ferro-structure | 72 |
+| ferro-analysis | 166 |
 | ferro-workflow | 23 |
 | ferro-cli（lib 29 + 集成 5） | 34 |
 
@@ -60,7 +60,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`cluster.rs`**：`build_network_graph`（former–ligand 邻接 + 配体分类 + 个人 Qn +
   连通分量）、`connected_components`（通用并查集）。供 `ferro-structure::find_clusters`
   与 `ferro-analysis::cube_sdf` 复用
-- **`network_type.rs`**：`enum AtomType`（`Former{elem,bridging,cn,bridges_to,qn}` /
+- **`network_type.rs`**：`enum AtomType`（`Former{elem,qn,n_bo,cn,bridges_to}` /
   `Ligand{elem,partners}` / `Modifier{elem,cn}` / `Other`）、`TypeParams`、
   `classify_frame[_detailed]`
   - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` / `display_rank()`
@@ -123,13 +123,21 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 结果 `NetworkResult` 出六张长表（`composition` / `qn` / `qn_partner` / `ligand_type` /
 `coordination` / `linkage`），每张自带 `#` 头。
 
+**Qn 口径 = 文献的 $Q^n_m$（2026-08-20 起）**：`qn` 只数**同元素**连接（P–O–P），
+异核连接是 `qn_partner` 的 `m_<X>` 列，总桥连接数 = `n + Σm`。桥氧个数是第三个量
+（`n_bo`，池化均值在 `[inputs]` 的 `mean_n_bo`），三簇氧算 1 个桥氧但 2 个连接，
+三者只在无三簇氧时相等。改动前 `qn` 是总桥数却渲染成 `P-Q3`，与文献差 130 倍
+（`P-Q3` 40.4% vs 文献 n=3 的 0.27%）。判据与文献原文见 `issues.md`。
+
 **表的含义、列结构与 pandas 用法见 `docs/src/analysis/network.md`（467 行，最完整的一份）。**
 设计判据与踩过的坑见 `issues.md`「network 重构（0.2.1）编码陷阱」。这里只记实现事实：
 
 - 参数 `TypeParams`（`cutoffs` + `modifier_cutoffs` + `qn_elements`），`--qn` 整体替换名单
+- `n_edge_sharing`：共享 ≥2 个配体的形成子对数（共边多面体），非零才告警。传统 Qn
+  假设全共角，共边下一个邻居贡献两个桥氧。参考轨迹 3589 对全共角、零共边
 - `Bin { count, fraction, sd }`：`fraction` 是逐帧比例的平均，`sd` 是同一序列的样本
   标准差（ddof=1，缺席帧按 0 计入），用 Welford + Chan/Golub/LeVeque 成对合并（rayon 是归并）
-- `linkage` 规范半边存储，两端各带元素/桥接数/配位数，`LinkKey` 含配体元素维
+- `linkage` 规范半边存储，两端各带元素/同核连接数(`qn_a`)/配位数，`LinkKey` 含配体元素维
 - 旧的 `cn.rs`、`ligand_class.rs`、`qn.rs`、`modifier.rs` 已删除（逻辑迁移至 ferro-core）
 
 ### ferro-analysis / dft
