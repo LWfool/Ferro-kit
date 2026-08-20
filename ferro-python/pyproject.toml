@@ -4,7 +4,9 @@ build-backend = "maturin"
 
 [project]
 name = "ferro"
-version = "0.1.7"
+# 版本从 Cargo.toml 取。手动同步这条路已被证明失效：这里曾长期停在 0.1.7,
+# 而 Cargo.toml 已经走到 0.2.1,maturin 打出的 wheel 会带那个陈旧版本号
+dynamic = ["version"]
 description = "ferro — 计算化学 MD 轨迹后处理工具（Python 绑定）"
 readme = "README.md"
 requires-python = ">=3.8"

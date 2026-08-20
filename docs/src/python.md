@@ -26,7 +26,7 @@ pip install target/wheels/ferro-*.whl
 > not caught by the main test suite.  After changing any public API in
 > `ferro-core` or `ferro-analysis`, run `cd ferro-python && cargo check`.
 >
-> **Status (0.2.1):** type-level checks pass cleanly (`cargo clean && cargo check`,
+> **Status (0.3.0):** type-level checks pass cleanly (`cargo clean && cargo check`,
 > clippy zero warnings).  The pyo3 0.21 → 0.29 upgrade has **not** been verified at
 > runtime — this machine has no maturin, so module initialisation and the
 > `#[pyfunction]` signatures are unconfirmed in practice.
