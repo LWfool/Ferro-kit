@@ -143,13 +143,65 @@ ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
 **能不能带速度/力取决于两侧都支持**：`.dump` 转 `.xyz` 会静默丢掉速度，因为
 纯 XYZ 没地方放。要保留就转 `.extxyz`。
 
+### 选帧
+
+```bash
+ferro convert -i traj.dump -o sub.extxyz --start 100            # 跳过弛豫段
+ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
+ferro convert -i traj.dump -o POSCAR --stride 50                # 每 50 帧一个
+ferro convert -i traj.dump -o conf.lmp --number 20              # 等间隔取 20 个
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--start N` | `0` | 起始帧，**0 基，含** |
+| `--end N` | 最后一帧 | 结束帧，**0 基，含** |
+| `--stride N` | `1` | 在 `[start, end]` 内每 N 帧取一个 |
+| `--number N` | — | 在 `[start, end]` 内**等间隔取 N 个**，含两端；与 `--stride` 互斥 |
+
+三条语义要记住：
+
+- **闭区间、0 基**，与 `ferro info` 打印的帧号一致：`info` 显示末帧是 `Frame 4`，
+  那么 `--end 4` 就覆盖到它。（半开区间要写 `--end 5`，与 `info` 对不上，故不采用。）
+- **`--stride` 与 `--number` 不能同时给**，clap 在解析阶段就报错。一个是间隔、
+  一个是总数，同一组合表达两种意图；静默忽略其中一个是更坏的选择。
+- **`--number` 恒含两端**。末帧往往是最平衡的构型，固定步长走法会系统性漏掉它。
+  要的比现有帧数多时给出每帧一次，不会补重复。
+
+### 产物是一个文件还是 N 个
+
+**由目标格式决定，没有开关**：
+
+| 目标格式 | 产物 |
+|---|---|
+| 装得下轨迹（`.xyz` `.extxyz` `.pdb` `.cif` `.dump`） | **一个**多帧文件 |
+| 只装一个结构（`POSCAR` `.lmp`/`.data` `.in`/`.qe`） | **一帧一个**文件 |
+
+往 POSCAR 写 20 帧本来就只能是 20 个文件，所以不必再要用户记一个开关。
+
+序号插在**扩展名之前**，且用的是**原轨迹里的帧索引**（不是「第几个抽出来的」），
+产物因此能直接对回轨迹：
+
+```
+-o POSCAR   --stride 2   →  POSCAR_0000     POSCAR_0002     POSCAR_0004
+-o conf.lmp --number 3   →  conf_0000.lmp   conf_0002.lmp   conf_0004.lmp
+```
+
+补零至少 4 位，保证 `ls` 按帧序排。`POSCAR` 这类靠**前缀**识别的名字加了序号仍能
+被读回（`POSCAR_0002` 依然匹配 `POSCAR*`）。**只选中一帧时写一个文件、不加序号**，
+无论什么格式。
+
+`-i` 目前只接受**单个文件**。多输入 + 抽帧会让不同轨迹的产物名互撞，需要把输入
+stem 也掺进文件名，另算一件事。
+
 **元素列始终写干净的元素符号**，无论 `Atom::label` 是什么。只有
 `ferro net --export-traj` 会把标签折进 LAMMPS dump 的元素列。
 
 | Flag | Default | Description |
 |---|---|---|
-| `-i <file>` | (required) | 输入文件；省略则打印上表 |
-| `-o <file>` | (required) | 输出文件。**这里是完整路径**，与分析命令的 `-o` 是后缀不同 |
+| `-i <file>` | (required) | 输入文件（单个）；省略则打印格式表 |
+| `-o <file>` | (required) | 输出文件。**这里是完整路径**，与分析命令的 `-o` 是后缀不同。多帧写出时序号插进文件名部分，路径不变 |
+| `--start` / `--end` / `--stride` / `--number` | 见上 | 选帧 |
 | `--metal-units` | off | LAMMPS dump 按 metal 单位读写（速度 Å/ps、力 eV/Å） |
 
 ---

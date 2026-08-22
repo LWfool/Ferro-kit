@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：457 个（全部通过，clippy 零警告）
+## 测试总数：470 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 85 |
+| ferro-core | 92 |
 | ferro-io | 65 |
 | ferro-structure | 72 |
 | ferro-analysis | 166 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 41 + 集成 5） | 46 |
+| ferro-cli（lib 47 + 集成 5） | 52 |
 
 版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -73,6 +73,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - `CubeData`、`charge_grid.rs`、`units.rs`（含 `AMU_ANG3_TO_G_CM3`，由 `AVOGADRO`
   导出，供 `ferro info` 报 g/cm³）、`error.rs`
 - `Frame::unique_elements()`（替代 5 处重复实现）
+- **帧选择**（2026-08-22）：`Trajectory::select(start, end, stride)` /
+  `select_indices` / `spread_indices`。区间是 **0 基闭区间**，与 `ferro info`
+  打印的帧号对齐；`spread_indices` 是 `--number` 的等间隔且**恒含两端**。
+  `tail()` 已改用 `select` 实现，帧选择逻辑只此一处
 
 ### ferro-io
 
@@ -177,6 +181,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
   是有意的 —— 短表是参数速查，富文本是格式清单与告警说明。`job` 是唯一自己接管
   `-h` 的命令，未动
+- **`convert` 支持选帧**（2026-08-22）：`--start` / `--end` / `--stride` /
+  `--number`。产物个数**由目标格式决定不设开关** —— 装得下轨迹的写一个文件，
+  只装单结构的（POSCAR / data / QE）一帧一个，序号用**原轨迹帧索引**插在扩展名
+  之前（`POSCAR_0000` 仍匹配前缀，可读回）。`-o` 语义未动，仍是完整路径
 - **`io_dispatch::supported_formats()` 是格式清单的唯一出处**，读/写/多帧三列。
   三件事清单里各占一列而不是一句散文：CP2K 的 `.inp`/`.restart` 只读不写；
   POSCAR / LAMMPS data / QE 只写第一帧且**不警告**。有测试钉住表与 `match`
