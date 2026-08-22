@@ -127,7 +127,7 @@ ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
 | PDB | `.pdb` | y | y | 全部（MODEL 记录） |
 | CIF | `.cif` | y | y | 全部（多个 data block） |
 | LAMMPS dump | `.dump` `.lammpstrj` | y | y | 全部 |
-| VASP | `POSCAR*` / `CONTCAR*` 前缀 | y | y | **只第一帧** |
+| VASP | `.vasp` `.pos`，或 `POSCAR*` / `CONTCAR*` 前缀 | y | y | **只第一帧** |
 | LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **只第一帧** |
 | QE (pw.x) | `.in` `.qe` | y | y | **只第一帧** |
 | CP2K input | `.inp` | y | — | — |
@@ -139,6 +139,8 @@ ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
   它写的是完整算例设置，不是裸坐标。
 - **「只第一帧」是静默的**：500 帧的轨迹写成 POSCAR 得到第 0 帧，不报错。
 - 写到 `CONTCAR` 这个名字得到的是 **POSCAR 格式**的内容。
+- VASP 文件常常没有扩展名，故**前缀与扩展名两条路都认**：`POSCAR`、`CONTCAR`、
+  `conf.vasp`、`conf.pos` 都走同一对 reader/writer。
 
 **能不能带速度/力取决于两侧都支持**：`.dump` 转 `.xyz` 会静默丢掉速度，因为
 纯 XYZ 没地方放。要保留就转 `.extxyz`。
@@ -175,7 +177,7 @@ ferro convert -i traj.dump -o conf.lmp --number 20              # 等间隔取 2
 | 目标格式 | 产物 |
 |---|---|
 | 装得下轨迹（`.xyz` `.extxyz` `.pdb` `.cif` `.dump`） | **一个**多帧文件 |
-| 只装一个结构（`POSCAR` `.lmp`/`.data` `.in`/`.qe`） | **一帧一个**文件 |
+| 只装一个结构（`POSCAR` `.vasp`/`.pos` `.lmp`/`.data` `.in`/`.qe`） | **一帧一个**文件 |
 
 往 POSCAR 写 20 帧本来就只能是 20 个文件，所以不必再要用户记一个开关。
 
@@ -183,8 +185,8 @@ ferro convert -i traj.dump -o conf.lmp --number 20              # 等间隔取 2
 产物因此能直接对回轨迹：
 
 ```
--o POSCAR   --stride 2   →  POSCAR_0000     POSCAR_0002     POSCAR_0004
--o conf.lmp --number 3   →  conf_0000.lmp   conf_0002.lmp   conf_0004.lmp
+-o POSCAR    --stride 2   →  POSCAR_0000      POSCAR_0002      POSCAR_0004
+-o conf.vasp --number 3   →  conf_0000.vasp   conf_0002.vasp   conf_0004.vasp
 ```
 
 补零至少 4 位，保证 `ls` 按帧序排。`POSCAR` 这类靠**前缀**识别的名字加了序号仍能

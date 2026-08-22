@@ -20,6 +20,7 @@ pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Traject
         Some("pdb")                      => Ok(read_pdb(s)?),
         Some("cif")                      => Ok(read_cif(s)?),
         Some("extxyz")                   => Ok(read_extxyz(s)?),
+        Some("vasp") | Some("pos")       => read_poscar(s),
         Some("lammps") | Some("data") | Some("lmp") => Ok(read_lammps_data(s)?),
         Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(s, lammps_units)?),
         Some("inp")                      => Ok(read_cp2k_inp(s)?),
@@ -60,6 +61,7 @@ pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnit
         Some("pdb")                      => Ok(write_pdb(traj, s)?),
         Some("cif")                      => Ok(write_cif(traj, s)?),
         Some("extxyz")                   => Ok(write_extxyz(traj, s)?),
+        Some("vasp") | Some("pos")       => write_poscar(traj, s),
         Some("lammps") | Some("data") | Some("lmp") => Ok(write_lammps_data(traj, s)?),
         Some("dump") | Some("lammpstrj") => Ok(write_lammps_dump(traj, s, lammps_units)?),
         Some("in") | Some("qe")          => Ok(write_qe_input(traj, s)?),
@@ -87,6 +89,7 @@ pub fn holds_multiple_frames(path: &Path) -> bool {
     !matches!(
         path.extension().and_then(|e| e.to_str()),
         Some("lammps") | Some("data") | Some("lmp") | Some("in") | Some("qe")
+            | Some("vasp") | Some("pos")
     )
 }
 
@@ -95,29 +98,30 @@ pub fn holds_multiple_frames(path: &Path) -> bool {
 /// Read and write are NOT symmetric — the CP2K inputs are read-only — so the two
 /// directions get their own column rather than one flat list.
 pub fn supported_formats() -> &'static str {
-    "  Format        Detected by                  Read   Write  Frames on write
-  ----------------------------------------------------------------
-  XYZ           .xyz                         y      y      all
-  extended XYZ  .extxyz                      y      y      all
-  PDB           .pdb                         y      y      all (MODEL records)
-  CIF           .cif                         y      y      all (data blocks)
-  LAMMPS dump   .dump  .lammpstrj            y      y      all
-  VASP          POSCAR* / CONTCAR* (prefix)  y      y      FIRST only
-  LAMMPS data   .lammps  .data  .lmp         y      y      FIRST only
-  QE (pw.x)     .in  .qe                     y      y      FIRST only
-  CP2K input    .inp                         y      -      -
-  CP2K restart  .restart                     y      -      -
+    "  Format        Detected by                    Read   Write  Frames on write
+  ------------------------------------------------------------------
+  XYZ           .xyz                           y      y      all
+  extended XYZ  .extxyz                        y      y      all
+  PDB           .pdb                           y      y      all (MODEL records)
+  CIF           .cif                           y      y      all (data blocks)
+  LAMMPS dump   .dump  .lammpstrj              y      y      all
+  VASP          .vasp  .pos  POSCAR*/CONTCAR*  y      y      FIRST only
+  LAMMPS data   .lammps  .data  .lmp           y      y      FIRST only
+  QE (pw.x)     .in  .qe                       y      y      FIRST only
+  CP2K input    .inp                           y      -      -
+  CP2K restart  .restart                       y      -      -
 
-  Format is taken from the file NAME, never from a flag: extension for most,
-  a POSCAR/CONTCAR prefix for VASP (case-insensitive). Writing to a CONTCAR
-  name emits POSCAR-format content.
+  Format is taken from the file NAME, never from a flag: an extension, or a
+  POSCAR/CONTCAR prefix (case-insensitive) for VASP files that have none.
+  Writing to a CONTCAR name emits POSCAR-format content.
 
   `-` under Write means read-only: a CP2K .inp can be converted FROM, not TO.
   To generate CP2K input use `ferro job -s cp2k`, which writes a full run
   setup rather than bare coordinates.
 
   `FIRST only` means the format holds one structure: a 500-frame trajectory
-  written to POSCAR gives you frame 0 and no warning."
+  written to POSCAR gives you frame 0 and no warning. Use --stride / --number
+  to write one file per frame instead."
 }
 
 
@@ -172,6 +176,7 @@ mod tests {
             ("t.dump", true), ("t.lammpstrj", true),
             ("POSCAR", false), ("CONTCAR", false), ("poscar", false),
             ("run1_POSCAR", true),   // 前缀匹配，不是包含匹配
+            ("t.vasp", false), ("t.pos", false), ("conf_0000.vasp", false),
             ("t.lmp", false), ("t.data", false), ("t.lammps", false),
             ("t.in", false), ("t.qe", false),
         ] {
@@ -185,6 +190,21 @@ mod tests {
 
     /// 未知扩展名答 true，好让 write_trajectory 报一次「不支持的格式」，
     /// 而不是被拆成 N 次逐帧失败
+    /// `.vasp` / `.pos` 与 POSCAR 前缀走同一对 reader/writer
+    #[test]
+    fn test_vasp_extensions_round_trip_like_poscar() {
+        let traj = one_atom_traj();
+        let dir = std::env::temp_dir();
+        for name in ["ferro_vasp_test.vasp", "ferro_vasp_test.pos"] {
+            let path = dir.join(name);
+            write_trajectory(&traj, &path, LammpsUnits::Real).unwrap();
+            let back = read_trajectory(&path, LammpsUnits::Real).unwrap();
+            assert_eq!(back.n_frames(), 1, "{name}");
+            assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
+            std::fs::remove_file(&path).ok();
+        }
+    }
+
     #[test]
     fn test_unknown_extension_defers_to_the_writer_error() {
         assert!(holds_multiple_frames(Path::new("t.nosuchfmt")));
