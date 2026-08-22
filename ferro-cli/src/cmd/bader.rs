@@ -7,8 +7,9 @@ use std::path::PathBuf;
 #[derive(Args, Debug)]
 pub struct BaderCmd {
     /// Input file: CHGCAR (VASP) or .cube (Gaussian / QE pp.x)
+    /// (omit to show the methods and output files)
     #[arg(short, long)]
-    pub input: PathBuf,
+    pub input: Option<PathBuf>,
 
     /// Bader method: ongrid | neargrid | offgrid | weight
     #[arg(short, long, default_value = "neargrid")]
@@ -23,10 +24,29 @@ pub struct BaderCmd {
     pub vacval: f64,
 }
 
-pub fn run(args: &BaderCmd) -> Result<()> {
-    let path = args.input.to_str().unwrap_or_default();
+/// True when `ferro bader` was typed with no input: print the help page rather
+/// than clap's bare "required argument" error.
+pub fn wants_help(args: &BaderCmd) -> bool {
+    args.input.is_none()
+}
 
-    let is_cube = args.input
+pub fn run(args: &BaderCmd) -> Result<()> {
+    // input 为空由 main 分派到帮助页，这里的 bail 只是防御
+    let Some(input) = &args.input else {
+        bail!("bader needs an input file: -i <CHGCAR|FILE.cube>");
+    };
+    let path = input.to_str().unwrap_or_default();
+
+    // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等
+    let method = match args.method.to_lowercase().as_str() {
+        "ongrid"   => BaderMethod::OnGrid,
+        "neargrid" => BaderMethod::NearGrid,
+        "offgrid"  => BaderMethod::OffGrid,
+        "weight"   => BaderMethod::Weight,
+        other => bail!("Unknown method: {other}.  Use ongrid|neargrid|offgrid|weight"),
+    };
+
+    let is_cube = input
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.eq_ignore_ascii_case("cube"))
@@ -36,14 +56,6 @@ pub fn run(args: &BaderCmd) -> Result<()> {
         read_cube_as_chg(path)?
     } else {
         read_chgcar(path)?
-    };
-
-    let method = match args.method.to_lowercase().as_str() {
-        "ongrid"   => BaderMethod::OnGrid,
-        "neargrid" => BaderMethod::NearGrid,
-        "offgrid"  => BaderMethod::OffGrid,
-        "weight"   => BaderMethod::Weight,
-        other => bail!("Unknown method: {other}.  Use ongrid|neargrid|offgrid|weight"),
     };
 
     println!("Bader analysis: method={:?}, refine={}, vacval={:.1e}", method, args.refine, args.vacval);
@@ -58,7 +70,7 @@ pub fn run(args: &BaderCmd) -> Result<()> {
 
     println!("Bader volumes found: {}", result.nvols);
 
-    let stem = args.input.file_stem()
+    let stem = input.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("bader");
     let acf_path = format!("{stem}_ACF.dat");
@@ -77,4 +89,33 @@ pub fn run(args: &BaderCmd) -> Result<()> {
     println!("Total:              {:.4} e", total_e + result.vacchg);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cmd(input: Option<&str>) -> BaderCmd {
+        BaderCmd {
+            input: input.map(PathBuf::from),
+            method: "neargrid".into(),
+            refine: -1,
+            vacval: 1e-3,
+        }
+    }
+
+    #[test]
+    fn test_wants_help_only_without_input() {
+        assert!(wants_help(&cmd(None)));
+        assert!(!wants_help(&cmd(Some("CHGCAR"))));
+    }
+
+    /// 方法名在读文件**之前**校验：拿错方法名跑一个 GB 级 CHGCAR 再报错是白等
+    #[test]
+    fn test_unknown_method_is_rejected() {
+        let mut c = cmd(Some("no_such_CHGCAR"));
+        c.method = "nosuchmethod".into();
+        let err = run(&c).unwrap_err();
+        assert!(err.to_string().contains("Unknown method"), "{err}");
+    }
 }

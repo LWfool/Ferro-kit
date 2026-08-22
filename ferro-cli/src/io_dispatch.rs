@@ -68,8 +68,85 @@ pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnit
     }
 }
 
-/// Returns a human-readable list of supported read/write formats.
+/// Returns a human-readable read/write matrix of the supported formats.
+///
+/// Read and write are NOT symmetric — the CP2K inputs are read-only — so the two
+/// directions get their own column rather than one flat list.
 pub fn supported_formats() -> &'static str {
-    "Read:  xyz, pdb, cif, extxyz, lammps/data, dump/lammpstrj, inp, restart, in/qe, POSCAR, CONTCAR
-Write: xyz, pdb, cif, extxyz, lammps/data, dump/lammpstrj, in/qe, POSCAR"
+    "  Format        Detected by                  Read   Write  Frames on write
+  ----------------------------------------------------------------
+  XYZ           .xyz                         y      y      all
+  extended XYZ  .extxyz                      y      y      all
+  PDB           .pdb                         y      y      all (MODEL records)
+  CIF           .cif                         y      y      all (data blocks)
+  LAMMPS dump   .dump  .lammpstrj            y      y      all
+  VASP          POSCAR* / CONTCAR* (prefix)  y      y      FIRST only
+  LAMMPS data   .lammps  .data  .lmp         y      y      FIRST only
+  QE (pw.x)     .in  .qe                     y      y      FIRST only
+  CP2K input    .inp                         y      -      -
+  CP2K restart  .restart                     y      -      -
+
+  Format is taken from the file NAME, never from a flag: extension for most,
+  a POSCAR/CONTCAR prefix for VASP (case-insensitive). Writing to a CONTCAR
+  name emits POSCAR-format content.
+
+  `-` under Write means read-only: a CP2K .inp can be converted FROM, not TO.
+  To generate CP2K input use `ferro job -s cp2k`, which writes a full run
+  setup rather than bare coordinates.
+
+  `FIRST only` means the format holds one structure: a 500-frame trajectory
+  written to POSCAR gives you frame 0 and no warning."
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferro_core::{Atom, Cell, Frame};
+    use nalgebra::Vector3;
+
+    fn one_atom_traj() -> Trajectory {
+        let mut frame = Frame::new();
+        frame.cell = Some(Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap());
+        frame.pbc = [true; 3];
+        frame.atoms.push(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
+        Trajectory { frames: vec![frame], metadata: Default::default() }
+    }
+
+    /// `supported_formats()` 的 Write 列写着 `-` 的两个格式，dispatch 必须真的拒绝。
+    /// 表与 match 分支是两处手写的事实，漂了就是文档在说谎。
+    #[test]
+    fn test_read_only_formats_are_rejected_on_write() {
+        let traj = one_atom_traj();
+        let dir = std::env::temp_dir();
+        for ext in ["inp", "restart"] {
+            let path = dir.join(format!("ferro_dispatch_test.{ext}"));
+            let err = write_trajectory(&traj, &path, LammpsUnits::Real).unwrap_err();
+            assert!(
+                err.to_string().contains("Unsupported output format"),
+                ".{ext} should be read-only, got: {err}"
+            );
+            assert!(!path.exists(), "拒绝写的格式不该留下空文件");
+        }
+    }
+
+    #[test]
+    fn test_format_table_marks_cp2k_read_only() {
+        let table = supported_formats();
+        for line in table.lines() {
+            let Some(rest) = line.trim().strip_prefix("CP2K") else { continue };
+            // 该行形如 `CP2K input    .inp    y    -    -`
+            let cols: Vec<&str> = rest.split_whitespace().collect();
+            assert_eq!(cols[2], "y", "CP2K 应可读: {line}");
+            assert_eq!(cols[3], "-", "CP2K 应不可写: {line}");
+        }
+    }
+
+    #[test]
+    fn test_unknown_extension_is_rejected_both_ways() {
+        let traj = one_atom_traj();
+        let path = std::env::temp_dir().join("ferro_dispatch_test.nosuchfmt");
+        assert!(write_trajectory(&traj, &path, LammpsUnits::Real).is_err());
+        assert!(read_trajectory(&path, LammpsUnits::Real).is_err());
+    }
 }

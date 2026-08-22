@@ -95,9 +95,19 @@ fn main() -> Result<()> {
                 cmd::net::run(c, &pair_args)?
             }
         }
-        Command::Bader(c)   => { cmd::bader::run(c)?; 0 }
-        Command::Convert(c) => { cmd::convert::run(c)?; 0 }
-        Command::Info(c)    => { cmd::info::run(c)?; 0 }
+        // 裸命令（无 -i）打富文本帮助，与 traj / map / net 一致；`-h` 仍归 clap 的参数表
+        Command::Bader(c) => {
+            if cmd::bader::wants_help(c) { help::print_bader() } else { cmd::bader::run(c)? }
+            0
+        }
+        Command::Convert(c) => {
+            if cmd::convert::wants_help(c) { help::print_convert() } else { cmd::convert::run(c)? }
+            0
+        }
+        Command::Info(c) => {
+            if cmd::info::wants_help(c) { help::print_info() } else { cmd::info::run(c)? }
+            0
+        }
         Command::Job(c)     => { cmd::job::run(c)?; 0 }
     };
 

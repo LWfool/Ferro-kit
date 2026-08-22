@@ -22,3 +22,7 @@ plotters         = { version = "0.3", default-features = false, features = ["bit
 anyhow.workspace = true
 rayon.workspace  = true
 glob.workspace   = true
+
+# 只有测试要叫出 Vector3 来构造 Atom；nalgebra 已在 ferro-core 的编译图里
+[dev-dependencies]
+nalgebra.workspace = true
