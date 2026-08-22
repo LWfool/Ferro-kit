@@ -43,6 +43,11 @@ pub const KBAR_TO_GPA: f64 = 0.1;
 /// Avogadro 常数
 pub const AVOGADRO: f64 = 6.022_140_76e23;
 
+/// 质量密度：amu/Å³ → g/cm³。
+///
+/// 1 amu = 1/N_A g 且 1 Å³ = 1e-24 cm³，两者之比即 `1e24 / AVOGADRO`。
+pub const AMU_ANG3_TO_G_CM3: f64 = 1e24 / AVOGADRO;
+
 // ── 长度 ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,6 +178,20 @@ pub fn convert_time(value: f64, from: TimeUnit, to: TimeUnit) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_density_constant_against_known_solids() {
+        // 用两个手册值反查：NaCl 立方胞 a=5.6402 Å，Z=4（4 个 NaCl 单元），
+        // 实验密度 2.165 g/cm3
+        let m_nacl = 4.0 * (22.990 + 35.453);
+        let v_nacl = 5.6402_f64.powi(3);
+        let rho = m_nacl / v_nacl * AMU_ANG3_TO_G_CM3;
+        assert!((rho - 2.165).abs() < 5e-3, "NaCl rho = {rho}");
+
+        // 金刚石 a=3.5670 Å，Z=8 个 C，实验密度 3.515 g/cm3
+        let rho_c = 8.0 * 12.011 / 3.5670_f64.powi(3) * AMU_ANG3_TO_G_CM3;
+        assert!((rho_c - 3.515).abs() < 5e-3, "diamond rho = {rho_c}");
+    }
 
     #[test]
     fn test_length() {

@@ -193,6 +193,135 @@ Examples:
     );
 }
 
+/// `ferro convert` with no `-i`: the read/write format matrix.
+pub fn print_convert() {
+    println!(
+        r#"ferro convert — Structure / trajectory format conversion
+  Reads one file, writes another. Both formats come from the file names;
+  there is no --from / --to flag.
+
+Supported formats:
+{}
+
+Parameters:
+  -i, --input  FILE       Input file  (format from its name)
+  -o, --output FILE       Output file (format from its name) — a full PATH here,
+                          unlike the analysis commands where -o is a suffix
+      --metal-units       Read/write LAMMPS dump in metal units
+                          (velocities Å/ps, forces eV/Å; default is real units)
+  -h, --help              Parameter table (this page shows the formats)
+
+What survives a conversion:
+  Positions and cell always. Velocities, forces and energy only if BOTH sides
+  carry them — converting a .dump to .xyz silently drops velocities, because
+  plain XYZ has nowhere to put them. Use .extxyz to keep them.
+
+  The element column is always written as a CLEAN element symbol, whatever
+  `Atom::label` holds. Only `ferro net --export-traj` folds site labels back
+  into the LAMMPS dump element column.
+
+Example:
+  ferro convert -i input.xyz -o output.pdb
+  ferro convert -i input.cif -o POSCAR
+  ferro convert -i CONTCAR -o final.cif
+  ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units"#,
+        crate::io_dispatch::supported_formats()
+    );
+}
+
+/// `ferro info` with no `-i`: what the summary reports.
+pub fn print_info() {
+    println!(
+        r#"ferro info — Structure / trajectory summary
+  Prints frame count, composition, cell parameters, volume and mass density.
+  Reads every format `ferro convert` can read (run `ferro convert` for the list).
+
+Parameters:
+  -i, --input  FILE       Input file (format from its name)
+      --metal-units       Read LAMMPS dump in metal units (velocities Å/ps,
+                          forces eV/Å; default is real units)
+  -h, --help              Parameter table
+
+Reported per frame — the FIRST and the LAST only, not every frame:
+  Atoms       total count + per-element composition
+  Cell        a b c (Å) and α β γ (°); "none (non-periodic)" for molecules
+  Volume      Å³
+  Density     g/cm³ — Σ(atomic mass) / cell volume, from the element table
+              unless the file carries explicit masses. Omitted entirely when
+              there is no cell: density without a volume is undefined, and a
+              placeholder would read like a measurement.
+  PBC         per-axis periodicity flags
+  Energy / Forces / Velocities   whether the frame carries them
+
+  A trajectory whose volume drifts between the first and last frame is an NPT
+  run; the density line will drift with it. For a mean ± σ over ALL frames,
+  read the `# volume = <mean> +/- <std>` header any `ferro traj` product carries.
+
+Unknown elements:
+  Masses come from the built-in element table. A symbol that is not in it
+  (a stray site label, or the "X" a short PDB line degrades to) falls back to
+  1 amu, which drags the density DOWN without any other visible sign — so the
+  density line is followed by a warning naming how many atoms fell back.
+  Treat the number as invalid until that warning is gone.
+
+Example:
+  ferro info -i input.xyz
+  ferro info -i traj.lammpstrj
+  ferro info -i CHGCAR"#
+    );
+}
+
+/// `ferro bader` with no `-i`: methods, outputs, and the file-name collision.
+pub fn print_bader() {
+    println!(
+        r#"ferro bader — Bader charge partitioning from a DFT charge density
+  Partitions the charge density into atomic basins along its zero-flux surfaces,
+  and reports the charge, volume and surface distance of each.
+
+Input (format from the file name):
+  .cube                   Gaussian / QE pp.x cube
+  anything else           VASP CHGCAR
+
+Parameters:
+  -i, --input  FILE       Charge density file
+  -m, --method NAME       ongrid | neargrid | offgrid | weight   default: neargrid
+  -r, --refine INT        Edge refinement: -1 = auto, -2 = single pass,
+                          N = N passes                           default: -1
+  -v, --vacval FLOAT      Vacuum density threshold [e/Å³]        default: 1e-3
+  -h, --help              Parameter table
+
+Choosing a method:
+  neargrid   Default. Gradient ascent with the accumulated off-grid correction,
+             then edge refinement. Accurate on ordinary cells.
+  ongrid     Cheapest, steepest-ascent between grid points only. Basin surfaces
+             are staircased, so charges are systematically off by a little.
+  offgrid    Interpolated gradients — slower, no grid bias.
+  weight     Yu-Trinkle: every grid point is SPLIT between basins by flux
+             weight instead of assigned whole. Use it for strongly skewed
+             (non-orthogonal) cells, where the gradient direction the on/near
+             grid methods use carries a known approximation error.
+
+Output — three Henkelman-format .dat files, named after the INPUT file stem:
+  <stem>_ACF.dat          per atom: charge, volume, min distance to the surface
+  <stem>_BCF.dat          per Bader volume: charge, volume, position
+  <stem>_AVF.dat          atom -> Bader volume index
+
+  These stay in the Henkelman layout (not csv) because external tools parse them.
+
+  CAUTION: they are written to the CURRENT DIRECTORY and there is no --outdir
+  yet. VASP names every charge density CHGCAR, so running two systems from the
+  same working directory writes CHGCAR_ACF.dat twice — the second run silently
+  overwrites the first. Until --outdir lands, cd into each system's directory
+  (or rename the inputs) rather than running them side by side.
+
+Example:
+  ferro bader -i CHGCAR
+  ferro bader -i charge.cube
+  ferro bader -i CHGCAR --method weight
+  ferro bader -i CHGCAR --method neargrid --refine 3 --vacval 1e-4"#
+    );
+}
+
 /// Top-level `ferro` help: the command families, grouped by what they produce.
 pub fn print_overview() {
     println!(

@@ -352,6 +352,7 @@ dependencies = [
  "ferro-structure",
  "ferro-workflow",
  "glob",
+ "nalgebra",
  "plotters",
  "rayon",
 ]
