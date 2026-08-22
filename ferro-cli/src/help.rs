@@ -207,9 +207,41 @@ Parameters:
   -i, --input  FILE       Input file  (format from its name)
   -o, --output FILE       Output file (format from its name) — a full PATH here,
                           unlike the analysis commands where -o is a suffix
+      --start  N          First frame to take      (0-based, inclusive) [0]
+      --end    N          Last frame to take       (0-based, INCLUSIVE) [last]
+      --stride N          Take every Nth frame within [start, end]      [1]
+      --number N          Take this many frames, spread evenly over
+                          [start, end] with both ends included
       --metal-units       Read/write LAMMPS dump in metal units
                           (velocities Å/ps, forces eV/Å; default is real units)
   -h, --help              Parameter table (this page shows the formats)
+
+Selecting frames:
+  --end is INCLUSIVE and 0-based, matching the frame numbers `ferro info` prints:
+  a run whose last frame `info` calls `Frame 4` is fully covered by `--end 4`.
+
+  --stride and --number are two ways of saying the same thing and cannot be
+  combined: --stride is a spacing, --number is a total. --number always takes
+  both endpoints, because the last frame of a run is usually the most
+  equilibrated one and a fixed-step walk would systematically drop it.
+  Asking for more frames than exist gives every frame once, never duplicates.
+
+  ferro convert -i traj.dump -o sub.extxyz --start 100          # drop equilibration
+  ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
+  ferro convert -i traj.dump -o POSCAR --stride 50              # every 50th frame
+  ferro convert -i traj.dump -o conf.lmp --number 20            # 20 spread evenly
+
+How many files come out:
+  One, if the target format holds a trajectory (see the Frames column above).
+  One PER FRAME, if it holds a single structure — writing 20 frames to POSCAR
+  can only be 20 files. The frame number is inserted before the extension, and
+  it is the index in the ORIGINAL trajectory, so products trace back to it:
+
+    -o POSCAR   --stride 2   ->  POSCAR_0000     POSCAR_0002     POSCAR_0004
+    -o conf.lmp --number 3   ->  conf_0000.lmp   conf_0002.lmp   conf_0004.lmp
+
+  Zero-padded to at least 4 digits so `ls` sorts them in frame order. Selecting
+  a single frame writes one file with no number, whatever the format.
 
 What survives a conversion:
   Positions and cell always. Velocities, forces and energy only if BOTH sides
