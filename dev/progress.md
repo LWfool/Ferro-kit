@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：444 个（全部通过，clippy 零警告）
+## 测试总数：457 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 84 |
+| ferro-core | 85 |
 | ferro-io | 65 |
 | ferro-structure | 72 |
 | ferro-analysis | 166 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 29 + 集成 5） | 34 |
+| ferro-cli（lib 41 + 集成 5） | 46 |
 
 版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -70,7 +70,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `is_transition_metal`、**`split_element_label`**（按第一个下划线拆分，返回
   `LabelSplit::{Plain, Split, Unknown}`；不用贪婪前缀匹配，避免 `Pb`→铅的静默误判）
 - `data/compounds.rs`、`data/qn_elements.rs`（默认 `{B,P,Si}`）
-- `CubeData`、`charge_grid.rs`、`units.rs`、`error.rs`
+- `CubeData`、`charge_grid.rs`、`units.rs`（含 `AMU_ANG3_TO_G_CM3`，由 `AVOGADRO`
+  导出，供 `ferro info` 报 g/cm³）、`error.rs`
 - `Frame::unique_elements()`（替代 5 处重复实现）
 
 ### ferro-io
@@ -171,7 +172,15 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
   零匹配报错）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
-- 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）
+- 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
+  **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
+  `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
+  是有意的 —— 短表是参数速查，富文本是格式清单与告警说明。`job` 是唯一自己接管
+  `-h` 的命令，未动
+- **`io_dispatch::supported_formats()` 是格式清单的唯一出处**，读/写/多帧三列。
+  三件事清单里各占一列而不是一句散文：CP2K 的 `.inp`/`.restart` 只读不写；
+  POSCAR / LAMMPS data / QE 只写第一帧且**不警告**。有测试钉住表与 `match`
+  分支一致（表里写 `-` 的格式必须真的拒绝写入），否则两处手写的事实会漂
 - `net` 的 `--P-O=2.3` 由 `main` 在 clap 解析前从 argv 剥离
 - **`plot.rs` 面板模型**：`Panel`/`Series` + 通用 `render`，一格一个量、一条曲线一个
   文件，颜色按文件跨格一致，图例只画第一格。**500 dpi**，版式按 96 dpi 编写并统一过
@@ -226,5 +235,12 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   逐类型粒子数守恒守卫拒绝（实测 `P_3`：149/152/150/150/150）。多帧请按元素选
 - `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
   「一输入一产物」相反。**优先级高**
+- **`ferro bader` 的三个 `.dat` 写在当前目录**，名字是 `<输入stem>_ACF.dat`。VASP 的
+  电荷密度一律叫 `CHGCAR`，故同一目录连跑两个体系后一次静默盖掉前一次。已在帮助页
+  与手册告知，`--outdir` 待做（`plan.md` 优先级高）
+- **`ferro info` 的密度只报首尾两帧**，不是全轨迹统计。NPT 下要 mean ± σ 请读
+  `ferro traj` 产物文件头的 `# volume = <mean> +/- <std>`。元素表里查不到的符号在
+  `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
+  info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
 - `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋

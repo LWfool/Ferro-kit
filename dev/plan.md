@@ -70,11 +70,18 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
 
 三件事互相独立，都不大，凑在一起是因为都属「上一次改动划在范围外的部分」：
 
-1. **`bader` 的 `--outdir`**。它不走 `CommonArgs`，把 `ACF.dat` / `BCF.dat` / `AVF.dat`
-   三个**固定名字**写在当前目录 —— 连续跑两个体系直接互相覆盖。要连
-   `write_acf` / `write_bcf` / `write_avf` 的签名一起动，与 Henkelman 格式无关，只是路径
+1. **`bader` 的 `--outdir`**。它不走 `CommonArgs`，三个 `.dat` 一律写在当前目录。
+   要连 `write_acf` / `write_bcf` / `write_avf` 的签名一起动，与 Henkelman 格式无关，
+   只是路径。
+
+   **原先这条写的「三个固定名字」不准确**（2026-08-22 核对代码）：名字是
+   `<输入stem>_ACF.dat`，跟着输入走。但危害不变甚至更隐蔽 —— VASP 的电荷密度
+   一律叫 `CHGCAR`，所以 `run1/CHGCAR` 与 `run2/CHGCAR` 在同一个工作目录跑，
+   两次都写 `CHGCAR_ACF.dat`，后一次静默盖掉前一次。已在 `ferro bader` 的帮助页
+   与手册里如实告知，`--outdir` 仍待做
 2. **`convert` / `job` 的 `-o` 统一为文件名**，路径走 `--outdir`。现在它们的 `-o` 是完整
-   路径，与其余 11 个命令的约定相反
+   路径，与其余 11 个命令的约定相反。（2026-08-22：这条差异已先在 `ferro convert`
+   的帮助页与手册里写明，行为未动）
 3. **`ferro-io` 的 writer 路径统一 `&str` → `&Path`**。九个 writer 全收 `&str`，而
    `batch.rs` 内部已是 `PathBuf`，只能在边界 `to_string_lossy()` 转一次
    （`Output::join_str` 就是为此存在）。改动机械但会碰到 io_dispatch、ferro-python 与
