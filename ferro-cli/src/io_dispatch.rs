@@ -68,6 +68,28 @@ pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnit
     }
 }
 
+/// Whether the format named by `path` can hold more than one frame on write.
+///
+/// The `Frames on write` column of [`supported_formats`] in code form: XYZ, extxyz,
+/// PDB, CIF and LAMMPS dump carry a whole trajectory, while POSCAR, LAMMPS data and
+/// QE input hold a single structure and would silently keep only frame 0. Callers
+/// writing several frames use this to decide between one file and one file per frame.
+///
+/// Unknown extensions answer `true` so the write itself produces the "Unsupported
+/// output format" error, rather than this function turning it into a pile of
+/// per-frame failures.
+pub fn holds_multiple_frames(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let upper = name.to_uppercase();
+    if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
+        return false;
+    }
+    !matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("lammps") | Some("data") | Some("lmp") | Some("in") | Some("qe")
+    )
+}
+
 /// Returns a human-readable read/write matrix of the supported formats.
 ///
 /// Read and write are NOT symmetric — the CP2K inputs are read-only — so the two
@@ -140,6 +162,32 @@ mod tests {
             assert_eq!(cols[2], "y", "CP2K 应可读: {line}");
             assert_eq!(cols[3], "-", "CP2K 应不可写: {line}");
         }
+    }
+
+    /// `holds_multiple_frames` 与格式表的 `Frames on write` 列是两处手写的同一事实
+    #[test]
+    fn test_multi_frame_capability_agrees_with_the_table() {
+        for (name, expected) in [
+            ("t.xyz", true), ("t.extxyz", true), ("t.pdb", true), ("t.cif", true),
+            ("t.dump", true), ("t.lammpstrj", true),
+            ("POSCAR", false), ("CONTCAR", false), ("poscar", false),
+            ("run1_POSCAR", true),   // 前缀匹配，不是包含匹配
+            ("t.lmp", false), ("t.data", false), ("t.lammps", false),
+            ("t.in", false), ("t.qe", false),
+        ] {
+            assert_eq!(
+                holds_multiple_frames(Path::new(name)),
+                expected,
+                "{name} 与 supported_formats() 的 Frames 列不一致"
+            );
+        }
+    }
+
+    /// 未知扩展名答 true，好让 write_trajectory 报一次「不支持的格式」，
+    /// 而不是被拆成 N 次逐帧失败
+    #[test]
+    fn test_unknown_extension_defers_to_the_writer_error() {
+        assert!(holds_multiple_frames(Path::new("t.nosuchfmt")));
     }
 
     #[test]
