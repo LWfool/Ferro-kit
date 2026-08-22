@@ -348,11 +348,11 @@ Topology & charges
   net            Structural composition, Qn speciation, ligand types,
                  coordination numbers, bridge connectivity;
                  --export-traj also writes the classified trajectory
-  bader          Bader charge partitioning (ACF/BCF/AVF)
+  bader          Bader charge partitioning (ACF/BCF/AVF, Henkelman format)
 
 Structure I/O
-  convert        Format conversion (xyz, pdb, cif, POSCAR, extxyz, lammps, qe, ...)
-  info           Structure / trajectory information
+  convert        Format conversion — run it bare for the read/write matrix
+  info           Atoms, cell, volume, density (g/cm³) of a structure or trajectory
   job            Quantum-chemistry input files (gaussian | cp2k | qe)
 
 Batch input:
@@ -368,7 +368,12 @@ Output naming:
   <label>        what was analysed — filled in from the type selection, so
                  `traj gr -a P -b O` writes gr_P-O.csv and no selection writes
                  gr_all.csv. Label before suffix, so `ls gr_P-O_*` lists one pair
-                 across every batch."#,
+                 across every batch.
+
+Help:
+  Any command typed without -i prints its own page: what it computes, the
+  parameters, and the shape of what it writes. `-h` gives the short parameter
+  table instead."#,
         env!("CARGO_PKG_VERSION")
     );
 }

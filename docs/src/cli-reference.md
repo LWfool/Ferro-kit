@@ -13,7 +13,11 @@ ferro bader | convert | info | job
 ```
 
 **帮助分三级**：`ferro` 列出分组；`ferro traj` 列出该组命令；`ferro traj gr`（不给
-`-i`）打印该命令的参数、输出列结构与示例。
+`-i`）打印该命令的参数、输出列结构与示例。叶子命令 `convert` / `info` / `bader`
+同理：不给 `-i` 就打印自己那一页。
+
+两套帮助并存且各有用处：**裸命令**给富文本页（格式清单、输出结构、告警说明），
+**`-h`** 给 clap 的简短参数表。`job` 是唯一的例外，它自己接管了 `-h`。
 
 | 旧命令（0.2.0 前） | 新命令 |
 |---|---|
@@ -107,31 +111,95 @@ partial 是能加回 total 的诊断分解（$\sum w_{ij}S_{ij} = \mathrm{total}
 
 ## `ferro convert`
 
-格式转换。
+格式转换。读写两侧的格式都由**文件名**决定，没有 `--from` / `--to`。
 
 ```bash
+ferro convert                              # 不带 -i：打印下面这张表
 ferro convert -i input.xyz -o output.pdb
 ferro convert -i input.cif -o POSCAR
+ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
 ```
 
-支持格式：`.xyz`、`.extxyz`、`.pdb`、`.cif`、`POSCAR`/`CONTCAR`、LAMMPS dump、
-LAMMPS data、CP2K、QE。
+| 格式 | 由什么识别 | 读 | 写 | 写出几帧 |
+|---|---|:-:|:-:|---|
+| XYZ | `.xyz` | y | y | 全部 |
+| extended XYZ | `.extxyz` | y | y | 全部 |
+| PDB | `.pdb` | y | y | 全部（MODEL 记录） |
+| CIF | `.cif` | y | y | 全部（多个 data block） |
+| LAMMPS dump | `.dump` `.lammpstrj` | y | y | 全部 |
+| VASP | `POSCAR*` / `CONTCAR*` 前缀 | y | y | **只第一帧** |
+| LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **只第一帧** |
+| QE (pw.x) | `.in` `.qe` | y | y | **只第一帧** |
+| CP2K input | `.inp` | y | — | — |
+| CP2K restart | `.restart` | y | — | — |
+
+三点容易踩的：
+
+- **CP2K 的两种输入只读不写**。要生成 CP2K 输入走 `ferro job -s cp2k`，
+  它写的是完整算例设置，不是裸坐标。
+- **「只第一帧」是静默的**：500 帧的轨迹写成 POSCAR 得到第 0 帧，不报错。
+- 写到 `CONTCAR` 这个名字得到的是 **POSCAR 格式**的内容。
+
+**能不能带速度/力取决于两侧都支持**：`.dump` 转 `.xyz` 会静默丢掉速度，因为
+纯 XYZ 没地方放。要保留就转 `.extxyz`。
 
 **元素列始终写干净的元素符号**，无论 `Atom::label` 是什么。只有
 `ferro net --export-traj` 会把标签折进 LAMMPS dump 的元素列。
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <file>` | (required) | 输入文件；省略则打印上表 |
+| `-o <file>` | (required) | 输出文件。**这里是完整路径**，与分析命令的 `-o` 是后缀不同 |
+| `--metal-units` | off | LAMMPS dump 按 metal 单位读写（速度 Å/ps、力 eV/Å） |
 
 ---
 
 ## `ferro info`
 
-打印结构 / 轨迹摘要（晶胞参数、原子数、元素组成）。
+打印结构 / 轨迹摘要：帧数、元素组成、晶胞参数、体积、**质量密度**。
+可读的格式与 `ferro convert` 完全相同。
 
 ```bash
+ferro info                          # 不带 -i：打印这一页说明
 ferro info -i input.xyz
-ferro info -i traj.lammpstrj --last-n 1
+ferro info -i traj.lammpstrj
 ```
 
+逐帧报告 —— **只报第一帧与最后一帧**，不是每一帧：
+
+| 行 | 内容 |
+|---|---|
+| `Atoms` | 总数 + 逐元素组成 |
+| `Cell` | a b c（Å）与 α β γ（°）；非周期体系为 `none (non-periodic)` |
+| `Volume` | Å³ |
+| `Density` | **g/cm³** = Σ(原子质量) / 晶胞体积。质量优先取文件里的显式值，否则查元素表 |
+| `PBC` | 逐轴周期性标志 |
+| `Energy` / `Forces` / `Velocities` | 该帧是否携带 |
+
+密度的两条边界：
+
+- **无晶胞则整行不打印**，不写 `n/a` 之类的占位符 —— 没有体积就没有密度，
+  占位符读起来像一个测量结果。
+- **未知元素会把密度拉低**。元素表里查不到的符号（散落的位点标签，或 PDB
+  行过短退化出的 `X`）在 `effective_mass()` 里回退成 1 amu，除了数值变小之外
+  没有任何征兆。故密度行后会跟一条告警，指名有几个原子、什么符号触发了回退：
+
+  ```
+  Density: 0.0765 g/cm³
+           WARNING: 2 atom(s) not in the element table (Xx×2) counted as 1 amu — the density is too low
+  ```
+
+  **告警在就别用那个数。**
+
+第一帧与最后一帧的体积不同即为 NPT 轨迹，密度会随之漂移。要全轨迹的
+mean ± σ，读任一 `ferro traj` 产物文件头里的 `# volume = <mean> +/- <std>`。
+
 读取带位点标签的 LAMMPS dump 时会打印一次 element/label 的拆分映射表。
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <file>` | (required) | 输入文件；省略则打印这一页说明 |
+| `--metal-units` | off | LAMMPS dump 按 metal 单位读（速度 Å/ps、力 eV/Å） |
 
 ---
 
@@ -557,27 +625,47 @@ ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 从 DFT 电荷密度做 Bader 电荷分解。支持 VASP CHGCAR 与 Gaussian/QE cube。
 
 ```bash
+ferro bader                                # 不带 -i：打印方法与输出说明
 ferro bader -i CHGCAR                      # VASP CHGCAR
 ferro bader -i charge.cube                 # Gaussian/QE cube
-ferro bader -i CHGCAR -o bader             # 自定义输出 stem
 ferro bader -i CHGCAR --method weight      # Yu-Trinkle weight 方法
+ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `-i <file>` | (required) | 输入（`.cube` → cube reader；其余 → CHGCAR reader） |
-| `-o <stem>` | `bader` | 输出文件 stem |
-| `--method` | `ongrid` | `ongrid`, `neargrid`, `offgrid`, `weight` |
+| `-m, --method` | `neargrid` | `ongrid` \| `neargrid` \| `offgrid` \| `weight` |
+| `-r, --refine` | `-1` | 边缘精化：`-1` 自动、`-2` 单遍、`N` 跑 N 遍 |
+| `-v, --vacval` | `1e-3` | 真空密度阈值 [e/Å³] |
+
+**没有 `-o`**：输出文件名由输入文件的 stem 决定（见下）。
+
+### 四种方法怎么选
+
+| 方法 | 说明 |
+|---|---|
+| `neargrid` | 默认。带累积离格修正的梯度上升 + 边缘精化，常规晶胞下准确 |
+| `ongrid` | 最省，只在格点间最陡上升。盆地表面呈阶梯状，电荷系统性偏一点 |
+| `offgrid` | 插值梯度，更慢但无格点偏置 |
+| `weight` | Yu-Trinkle：格点按流量**权重拆分**到多个盆地，而非整点归属。**强倾斜（非正交）晶胞用它** —— on/near grid 依赖的梯度方向在那里有已知近似误差 |
 
 ### 输出文件
 
+三个 Henkelman 格式的 `.dat`，**以输入文件的 stem 命名**：
+
 | 文件 | 内容 |
 |---|---|
-| `<stem>_ACF.dat` | Atomic Charges File —— 逐原子 Bader 电荷、体积、到表面的最小距离 |
-| `<stem>_BCF.dat` | Bader Charge File —— 逐 Bader 体积的电荷、体积、坐标 |
-| `<stem>_AVF.dat` | Atomic Volume File —— 原子 → Bader 体积索引映射 |
+| `<输入stem>_ACF.dat` | Atomic Charges File —— 逐原子 Bader 电荷、体积、到表面的最小距离 |
+| `<输入stem>_BCF.dat` | Bader Charge File —— 逐 Bader 体积的电荷、体积、坐标 |
+| `<输入stem>_AVF.dat` | Atomic Volume File —— 原子 → Bader 体积索引映射 |
 
 这三个是 Henkelman 组的 bader 格式，外部工具在解析，故不随其余产物迁到 csv。
+
+> **注意：会互相覆盖。** 它们写在**当前目录**，且 `bader` 目前没有 `--outdir`。
+> VASP 的电荷密度一律叫 `CHGCAR`，所以在同一个工作目录连跑两个体系，两次都写
+> `CHGCAR_ACF.dat`，后一次静默盖掉前一次。在 `--outdir` 落地之前，请 `cd` 进各
+> 体系自己的目录跑，或先把输入改名。
 
 ---
 
