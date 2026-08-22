@@ -229,7 +229,7 @@ Selecting frames:
   ferro convert -i traj.dump -o sub.extxyz --start 100          # drop equilibration
   ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
   ferro convert -i traj.dump -o POSCAR --stride 50              # every 50th frame
-  ferro convert -i traj.dump -o conf.lmp --number 20            # 20 spread evenly
+  ferro convert -i traj.dump -o conf.vasp --number 20           # 20 spread evenly
 
 How many files come out:
   One, if the target format holds a trajectory (see the Frames column above).
@@ -237,8 +237,8 @@ How many files come out:
   can only be 20 files. The frame number is inserted before the extension, and
   it is the index in the ORIGINAL trajectory, so products trace back to it:
 
-    -o POSCAR   --stride 2   ->  POSCAR_0000     POSCAR_0002     POSCAR_0004
-    -o conf.lmp --number 3   ->  conf_0000.lmp   conf_0002.lmp   conf_0004.lmp
+    -o POSCAR    --stride 2  ->  POSCAR_0000      POSCAR_0002      POSCAR_0004
+    -o conf.vasp --number 3  ->  conf_0000.vasp   conf_0002.vasp   conf_0004.vasp
 
   Zero-padded to at least 4 digits so `ls` sorts them in frame order. Selecting
   a single frame writes one file with no number, whatever the format.
@@ -255,6 +255,7 @@ What survives a conversion:
 Example:
   ferro convert -i input.xyz -o output.pdb
   ferro convert -i input.cif -o POSCAR
+  ferro convert -i input.cif -o cell.vasp
   ferro convert -i CONTCAR -o final.cif
   ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units"#,
         crate::io_dispatch::supported_formats()

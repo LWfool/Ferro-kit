@@ -87,6 +87,25 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
    （`Output::join_str` 就是为此存在）。改动机械但会碰到 io_dispatch、ferro-python 与
    一批测试，故没有混进命名那次提交
 
+### ferro job 从轨迹抽帧（2026-08-22 提出）
+
+`job` 现在无条件取第 0 帧（`cmd/job.rs:186`），多帧输入的其余帧**静默丢弃、无警告**。
+喂一条 500 帧轨迹得到的是最没平衡那个构型的输入文件 —— 静默取错构型比报错难查。
+
+`convert` 的 `--start/--end/--stride/--number` 已把选帧逻辑做进
+`Trajectory::select_indices` / `spread_indices`，job 复用即可，不必重写。
+真正要定的是**产物命名与批量语义**，与 `convert` 不完全一样：
+
+- job 的 `-o` 现在是完整路径且有默认值（`job.gjf` / `job.inp`），多帧要变成
+  `job_0000.inp` 这类。与待办 #2「`-o` 统一为文件名」是同一件事，该合并做
+- 一个构型一个输入文件是显然的（QC 输入本来就一个结构一个），所以不存在
+  `convert` 那种「一个文件还是 N 个」的分支 —— 恒为 N 个
+- **最小可用的第一步是加警告**：多帧输入时明确说「用了第 0 帧，其余 N-1 帧忽略；
+  要抽帧见 --stride」。这一步不动任何产物形态，可以先做
+
+在此之前的变通：`ferro convert -i traj.dump -o conf.vasp --number 20` 抽成单帧
+文件，再逐个喂给 job。
+
 ### ferro map chg-sdf 的 --cubes 拆成单文件（2026-08-11 提为高）
 
 现在是多个 cube 聚合成**一张** SDF（`cmd/map.rs::run_chg_sdf`），与 `ferro map` 其余

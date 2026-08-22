@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：470 个（全部通过，clippy 零警告）
+## 测试总数：471 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
@@ -12,7 +12,7 @@
 | ferro-structure | 72 |
 | ferro-analysis | 166 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 47 + 集成 5） | 52 |
+| ferro-cli（lib 48 + 集成 5） | 53 |
 
 版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -246,6 +246,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`ferro bader` 的三个 `.dat` 写在当前目录**，名字是 `<输入stem>_ACF.dat`。VASP 的
   电荷密度一律叫 `CHGCAR`，故同一目录连跑两个体系后一次静默盖掉前一次。已在帮助页
   与手册告知，`--outdir` 待做（`plan.md` 优先级高）
+- **`ferro job` 只用输入的第 0 帧**（`cmd/job.rs:186` 的 `frames.into_iter().next()`），
+  其余帧**静默丢弃，无警告**。喂一条 500 帧轨迹得到的是最没平衡那个构型的输入文件。
+  变通是先 `ferro convert --number N` 抽成单帧文件再逐个跑 job；让 job 自己选帧
+  见 `plan.md`
 - **`ferro info` 的密度只报首尾两帧**，不是全轨迹统计。NPT 下要 mean ± σ 请读
   `ferro traj` 产物文件头的 `# volume = <mean> +/- <std>`。元素表里查不到的符号在
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
