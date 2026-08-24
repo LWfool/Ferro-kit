@@ -254,4 +254,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
   info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
+- **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
+  `io_dispatch.rs` 走。2026-08 加的 `.vasp`/`.pos` 扩展名只有 CLI 认，Python 侧仍只认
+  `POSCAR`/`CONTCAR` 前缀。两处 match 分支本就是分开维护，改一处不会波及另一处，
+  但也意味着**会漂**——加格式时两边都要看一眼
 - `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋

@@ -271,6 +271,17 @@ ferro job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
 ferro job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
 ```
 
+**只用输入的第 0 帧**（一个结构对应一个输入文件）。给一条多帧轨迹会打三行 `[warn]`
+（帧数、忽略了几帧、可直接抄的抽帧命令），但仍然只生成第 0 帧的输入——轨迹的第 0 帧
+往往是最没弛豫的构型。要从轨迹里选特定帧或批量生成，先用 `ferro convert` 抽出来：
+
+```bash
+ferro convert -i traj.dump -o conf.vasp --number 20       # 抽 20 个构型
+for f in conf_*.vasp; do
+  ferro job -i "$f" -s cp2k --task energy -o "${f%.vasp}.inp"
+done
+```
+
 ### Charge / Spin（三种目标共用）
 
 | Flag | Default | Description |
