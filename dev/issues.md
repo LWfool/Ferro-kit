@@ -85,6 +85,7 @@
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
+| `cmd/job.rs` 的 `-h` | 自己声明 `help` 字段接管 `-h/--help`，却没关掉 clap 自动生成的那个。**两个同名参数只在 debug 断言里报**：`cargo build` 通过、release 正常跑，而 **debug 版 `ferro job` 一跑就 panic**（`clap_builder/debug_asserts.rs:99`）。测试全绿也发现不了 —— 23 个 workflow 测试测的是 builder，从不经过 clap 解析 | `#[command(disable_help_flag = true)]`。2026-08-24 修。**任何自定义 `-h`/`-V` 都要同时关掉 clap 的自动版**；发现它的唯一途径是拿 debug 二进制真跑一次子命令 |
 | `cargo fmt`（全仓） | 代码库未用 rustfmt 管理，全仓 `cargo fmt` 会改动 ~80 文件（含 22k 行生成的 `cp2k_basis_db.rs`），淹没特性 diff | 只对改动文件 `cargo fmt -- <file>`，或跳过格式化手工对齐周边风格；用 `cargo build`/`cargo clippy` 验证。若已误跑全仓，先提交真实改动再 `git checkout -- .` 丢弃格式化 |
 
 ## g(r) / box_builder / Bader 编码陷阱

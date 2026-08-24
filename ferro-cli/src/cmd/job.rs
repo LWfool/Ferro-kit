@@ -10,9 +10,13 @@ use ferro_workflow::{
     Cp2kScf, Cp2kPbc, Cp2kCubePrint, Cp2kAtomCharge, Cp2kThermostat,
     QeJobBuilder, QeTask, QeFunctional, QeSmearing,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+// job 自己接管 -h/--help（无 -s 打总览、有 -s 打该软件的帮助），故必须关掉 clap
+// 自动生成的那个 —— 两个同名参数会让 clap 的 debug 断言直接 panic，而 release
+// 构建不跑断言，于是「debug 下 ferro job 一跑就崩、release 下正常」
 #[derive(Args, Clone, Debug)]
+#[command(disable_help_flag = true)]
 pub struct JobCmd {
     /// Show help: overview when -s is absent, software-specific when -s is given
     #[arg(short = 'h', long = "help", action = clap::ArgAction::SetTrue)]
@@ -161,6 +165,26 @@ pub struct JobCmd {
     pub pseudo_dir: String,
 }
 
+/// The warning shown when a multi-frame trajectory is handed to `job`, or `None`
+/// for a single structure.
+///
+/// `job` builds one input file from one structure, so it takes frame 0 — which on a
+/// trajectory is the least equilibrated configuration there is. Nothing about the
+/// resulting input file reveals that the other frames were dropped, so say it out
+/// loud and point at the way to pick a frame on purpose.
+fn multi_frame_warning(input: &Path, n_frames: usize) -> Option<String> {
+    if n_frames <= 1 {
+        return None;
+    }
+    let path = input.display();
+    Some(format!(
+        "[warn] {path} holds {n_frames} frames; using frame 0 and ignoring the other {}.\n\
+         [warn] Frame 0 is usually the least equilibrated one. To choose deliberately:\n\
+         [warn]   ferro convert -i {path} -o conf.vasp --number 20   # then run job on each\n",
+        n_frames - 1
+    ))
+}
+
 pub fn run(args: &JobCmd) -> Result<()> {
     // 原实现按值消费各字段;克隆一份保持函数体不变
     let args = args.clone();
@@ -183,6 +207,11 @@ pub fn run(args: &JobCmd) -> Result<()> {
     let input = args.input.as_ref().unwrap();
     let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
     let traj = read_trajectory(input, units)?;
+    // 多帧输入静默取第 0 帧是最难查的一种错：拿到的是弛豫前那个构型，
+    // 而生成的输入文件本身看不出任何异常
+    if let Some(w) = multi_frame_warning(input, traj.n_frames()) {
+        eprint!("{w}");
+    }
     let mut frame = traj.frames.into_iter().next()
         .ok_or_else(|| anyhow!("No frames in input file"))?;
 
@@ -386,4 +415,29 @@ pub fn run(args: &JobCmd) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_structure_gets_no_warning() {
+        assert!(multi_frame_warning(Path::new("a.cif"), 1).is_none());
+        // 空文件走的是 "No frames in input file" 那条错误，不是警告
+        assert!(multi_frame_warning(Path::new("a.cif"), 0).is_none());
+    }
+
+    #[test]
+    fn test_multi_frame_warning_names_the_count_and_the_way_out() {
+        let w = multi_frame_warning(Path::new("traj.dump"), 500).unwrap();
+        assert!(w.contains("500 frames"), "{w}");
+        assert!(w.contains("ignoring the other 499"), "{w}");
+        // 必须指出变通办法，否则用户知道有问题也不知道怎么办
+        assert!(w.contains("ferro convert"), "{w}");
+        assert!(w.contains("--number"), "{w}");
+        // 每行都带前缀，跟 job 里既有的 spin 警告一致
+        assert!(w.lines().all(|l| l.starts_with("[warn]")), "{w}");
+        assert!(w.ends_with('\n'), "结尾要有换行，用的是 eprint! 不是 eprintln!");
+    }
 }
