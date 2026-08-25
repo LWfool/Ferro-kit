@@ -390,6 +390,7 @@ Structure I/O
 
 Machine-learning datasets
   dataset collect   AIMD output -> DeePMD system directories (set.*/*.npy)
+  dataset filter    Drop low-quality frames (force / stress thresholds)
 
 Batch input:
   -i takes several files and expands glob patterns itself — quote them:
@@ -919,7 +920,7 @@ pub fn print_dataset_overview() {
   its output is the copy you back up:
 
   collect    AIMD output -> DeePMD system directories        (implemented)
-  filter     quality selection on an existing dataset        (not yet)
+  filter     quality selection on an existing dataset        (implemented)
   merge      combine same-composition datasets, resize sets  (not yet)
 
 Run a subcommand with no -i for its full page:
@@ -986,5 +987,70 @@ Examples:
   ferro dataset collect -i total.out
   ferro dataset collect -i run*/total.out -o data
   ferro dataset collect -i md1.out md2.out -o /scratch/train"#
+    );
+}
+
+pub fn print_dataset_filter() {
+    println!(
+        r#"ferro dataset filter — Drop low-quality frames from a dataset
+
+  Reads DeePMD system directories, decides which frames to keep, and writes the
+  survivors as a new dataset. The input is never modified.
+
+Parameters:
+  -i, --input  DIR...     System directories, or a directory holding them
+                          (searched recursively; a directory with type.raw is
+                          taken as a system and not descended into)
+  -o, --outdir DIR        Output root; each system is rebuilt under its path
+                          relative to -i. OMIT for a read-only run
+  -f, --f-max  EV_PER_A   Drop frames whose largest force magnitude exceeds
+                          this                                        [20.0]
+  -s, --s-max  GPA        Drop frames whose largest |stress component|
+                          exceeds this                                [10.0]
+      --start  N          First SURVIVING frame to take   (0-based, incl.) [0]
+      --end    N          Last SURVIVING frame to take (0-based, INCL.) [last]
+      --stride N          Take every Nth surviving frame                  [1]
+  -N, --number N          Take this many surviving frames, spread evenly
+      --set-size N        Frames per output set; 0 = one set           [400]
+      --overwrite         Allow writing into an existing non-empty directory
+
+The funnel:
+  all frames -> |F|max -> |sigma|max -> [start:end:stride|number]
+
+  A threshold of 0 switches that criterion off. An explicit zero says "do not
+  judge", which no small positive number can express.
+
+  --start/--end/--stride/-N count SURVIVING frames, not original frame numbers.
+  `--start 10` means the 10th frame that passed the quality criteria — the only
+  reading that stays meaningful after an unknown number of frames were dropped.
+  The report always names original indices, so kept frames stay traceable.
+
+Reading the report:
+  [funnel]    how many frames each step left, in execution order
+  [criteria]  per criterion: how many frames it flagged, and how many of those
+              NO other criterion flagged (the exclusive count)
+  [overlap]   frames flagged by both members of each criterion pair
+
+  The exclusive count is the one that matters. The funnel alone cannot tell a
+  useful criterion from a redundant one, because each step only reports on what
+  the previous step left — a criterion that merely re-catches another one's
+  frames still looks productive there. An exclusive count near 0 means the
+  criterion is not earning its place and can be switched off.
+
+  These tables are printed, not written. A dataset is the product here; the
+  statistics are how you choose the thresholds, and they change every run.
+
+Units and signs:
+  -f is eV/Angstrom, taken as the largest force VECTOR magnitude over the atoms
+  of a frame. -s is GPa (converted internally), taken as the largest absolute
+  value among the 9 stress components, so both diagonal and shear outliers are
+  caught. Stress comes from virial/volume, with the volume from |det(box)| —
+  a DeePMD system carries no volume.npy.
+
+Examples:
+  ferro dataset filter -i raw                       # look, write nothing
+  ferro dataset filter -i raw -o clean
+  ferro dataset filter -i raw -o clean -f 15 -s 8
+  ferro dataset filter -i raw -o clean -N 500 --set-size 250"#
     );
 }

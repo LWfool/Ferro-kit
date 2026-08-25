@@ -41,8 +41,23 @@ pub fn label_of(path: &Path) -> String {
 /// A pattern matching nothing is an error. Silently analysing zero files is the
 /// hardest failure mode to notice, especially inside a script.
 pub fn expand_inputs(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    expand_with(patterns, |p| p.is_file(), "FILE", "file")
+}
+
+/// The directory form of [`expand_inputs`], for commands whose input is a
+/// directory rather than a file — a DeePMD system is a directory, not a file.
+pub fn expand_dirs(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    expand_with(patterns, |p| p.is_dir(), "DIR", "directory")
+}
+
+fn expand_with(
+    patterns: &[PathBuf],
+    keep: fn(&std::path::Path) -> bool,
+    arg: &str,
+    noun: &str,
+) -> Result<Vec<PathBuf>> {
     if patterns.is_empty() {
-        bail!("no input given (-i FILE [FILE ...], glob patterns allowed)");
+        bail!("no input given (-i {arg} [{arg} ...], glob patterns allowed)");
     }
 
     let mut out: Vec<PathBuf> = Vec::new();
@@ -56,18 +71,18 @@ pub fn expand_inputs(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {
         match glob::glob(&pat_str) {
             Ok(paths) => {
                 for entry in paths.flatten() {
-                    if entry.is_file() {
+                    if keep(&entry) {
                         matched.push(entry);
                     }
                 }
             }
             // 不是合法模式(例如路径里有未闭合的 `[`)时按字面路径处理
-            Err(_) if pat.is_file() => matched.push(pat.clone()),
+            Err(_) if keep(pat) => matched.push(pat.clone()),
             Err(e) => bail!("bad input pattern '{pat_str}': {e}"),
         }
 
         if matched.is_empty() {
-            bail!("no file matches '{pat_str}'");
+            bail!("no {noun} matches '{pat_str}'");
         }
         matched.sort();
 

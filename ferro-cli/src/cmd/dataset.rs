@@ -18,12 +18,63 @@ use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 
 use crate::batch::expand_inputs;
-use ferro_io::{read_cp2k_out_with_stats, write_deepmd_npy, Cp2kOutStats};
+use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
+use ferro_core::units::{convert_pressure, PressureUnit};
+use ferro_io::{
+    read_cp2k_out_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
+    write_deepmd_npy_sets, Cp2kOutStats,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum DatasetCmd {
     /// Extract AIMD output into DeePMD system directories
     Collect(CollectCmd),
+    /// Drop low-quality frames from existing datasets
+    Filter(FilterCmd),
+}
+
+#[derive(Args, Debug)]
+pub struct FilterCmd {
+    /// System directories, or a directory holding them (searched recursively)
+    #[arg(short, long, num_args = 1..)]
+    pub input: Vec<PathBuf>,
+
+    /// Output root; each system is rebuilt under its path relative to -i.
+    /// Omit for a read-only run that only reports.
+    #[arg(short, long, value_name = "DIR")]
+    pub outdir: Option<PathBuf>,
+
+    /// Drop frames whose largest force magnitude exceeds this, eV/A; 0 = off
+    #[arg(short = 'f', long, value_name = "EV_PER_A", default_value_t = 20.0)]
+    pub f_max: f64,
+
+    /// Drop frames whose largest |stress component| exceeds this, GPa; 0 = off
+    #[arg(short = 's', long, value_name = "GPA", default_value_t = 10.0)]
+    pub s_max: f64,
+
+    /// First surviving frame to take (0-based, inclusive)          [default: 0]
+    #[arg(long, value_name = "N")]
+    pub start: Option<usize>,
+
+    /// Last surviving frame to take (0-based, INCLUSIVE)        [default: last]
+    #[arg(long, value_name = "N")]
+    pub end: Option<usize>,
+
+    /// Take every Nth surviving frame
+    #[arg(long, value_name = "N")]
+    pub stride: Option<usize>,
+
+    /// Take this many surviving frames, spread evenly
+    #[arg(short = 'N', long, value_name = "N", conflicts_with = "stride")]
+    pub number: Option<usize>,
+
+    /// Frames per output set; 0 keeps everything in one set    [default: 400]
+    #[arg(long, value_name = "N", default_value_t = 400)]
+    pub set_size: usize,
+
+    /// Allow writing into an existing non-empty output directory
+    #[arg(long)]
+    pub overwrite: bool,
 }
 
 #[derive(Args, Debug)]
@@ -41,12 +92,14 @@ pub struct CollectCmd {
 pub fn wants_help(cmd: &DatasetCmd) -> bool {
     match cmd {
         DatasetCmd::Collect(c) => c.input.is_empty(),
+        DatasetCmd::Filter(c) => c.input.is_empty(),
     }
 }
 
 pub fn print_help(cmd: &DatasetCmd) {
     match cmd {
         DatasetCmd::Collect(_) => crate::help::print_dataset_collect(),
+        DatasetCmd::Filter(_) => crate::help::print_dataset_filter(),
     }
 }
 
@@ -54,6 +107,7 @@ pub fn print_help(cmd: &DatasetCmd) {
 pub fn run(cmd: &DatasetCmd) -> Result<usize> {
     match cmd {
         DatasetCmd::Collect(c) => run_collect(c),
+        DatasetCmd::Filter(c) => run_filter(c),
     }
 }
 
@@ -179,4 +233,131 @@ mod tests {
         let inputs = vec![PathBuf::from("r/total.out"), PathBuf::from("x/r/total.out")];
         assert!(system_names(&inputs).is_err());
     }
+}
+
+// ── filter ───────────────────────────────────────────────────────────────────
+
+fn run_filter(args: &FilterCmd) -> Result<usize> {
+    // 参数级错误在读第一个数据集之前暴露
+    if args.f_max < 0.0 || args.s_max < 0.0 {
+        bail!("thresholds cannot be negative (0 switches the criterion off)");
+    }
+    let params = FilterParams {
+        f_max: args.f_max,
+        // CLI 收 GPa（用起来顺手），内部一律 eV/Å³
+        s_max: convert_pressure(args.s_max, PressureUnit::GPa, PressureUnit::EVPerAng3),
+        start: args.start.unwrap_or(0),
+        end: args.end,
+        stride: args.stride.unwrap_or(1),
+        number: args.number,
+    };
+
+    let roots = crate::batch::expand_dirs(&args.input)?;
+    let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new(); // (system, 相对路径)
+    for root in &roots {
+        for sys in find_systems(root)? {
+            let rel = sys.strip_prefix(root).unwrap_or(Path::new(""));
+            let rel = if rel.as_os_str().is_empty() {
+                PathBuf::from(root.file_name().unwrap_or(root.as_os_str()))
+            } else {
+                rel.to_path_buf()
+            };
+            jobs.push((sys, rel));
+        }
+    }
+    if jobs.is_empty() {
+        bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
+    }
+
+    if let Some(out) = &args.outdir {
+        std::fs::create_dir_all(out)
+            .with_context(|| format!("cannot create {}", out.display()))?;
+    } else {
+        println!("(read-only: no -o given, nothing will be written)\n");
+    }
+
+    let mut failures = 0usize;
+    for (sys, rel) in &jobs {
+        match filter_one(sys, rel, args, &params) {
+            Ok(()) => {}
+            Err(e) => {
+                eprintln!("SKIP {}: {e:#}", sys.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures > 0 {
+        eprintln!("\n{failures} of {} system(s) failed", jobs.len());
+    }
+    Ok(failures)
+}
+
+fn filter_one(sys: &Path, rel: &Path, args: &FilterCmd, params: &FilterParams) -> Result<()> {
+    let (traj, warnings) = read_deepmd_npy_with_warnings(sys)?;
+    for w in &warnings {
+        eprintln!("WARNING: {w}");
+    }
+    let result = filter_frames(&traj, params)?;
+    println!("{}", sys.display());
+    print_report(&result);
+
+    let Some(out_root) = &args.outdir else {
+        println!();
+        return Ok(());
+    };
+    if result.keep.is_empty() {
+        bail!("every frame was dropped; nothing to write");
+    }
+
+    let dest = out_root.join(rel);
+    if !args.overwrite && dest.exists() && std::fs::read_dir(&dest)?.next().is_some() {
+        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
+    }
+    // 筛过的轨迹替换原轨迹，原数据集不动
+    let kept = traj.subset(&result.keep);
+    write_deepmd_npy_sets(&kept, &dest, args.set_size)?;
+    println!("  -> {}\n", dest.display());
+    Ok(())
+}
+
+fn print_report(r: &FilterResult) {
+    for line in r.meta_lines() {
+        println!("  {line}");
+    }
+    for (name, table) in r.to_tables() {
+        println!("  [{name}]");
+        for line in table.to_comment_lines() {
+            println!("    {line}");
+        }
+    }
+}
+
+/// Directories holding a `type.raw`, searched depth-first and not descended into.
+fn find_systems(root: &Path) -> Result<Vec<PathBuf>> {
+    if !root.is_dir() {
+        bail!("{} is not a directory", root.display());
+    }
+    if root.join("type.raw").exists() {
+        return Ok(vec![root.to_path_buf()]);
+    }
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)
+            .with_context(|| format!("cannot list {}", dir.display()))?
+            .filter_map(|e| e.ok())
+        {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            if p.join("type.raw").exists() {
+                out.push(p); // 认作 system 就不再往下走
+            } else {
+                stack.push(p);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
 }

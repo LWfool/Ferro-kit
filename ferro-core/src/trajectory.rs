@@ -164,6 +164,20 @@ impl Trajectory {
         spread_range(self.n_frames(), start, end, count)
     }
 
+    /// The frames at `indices`, in the order given.
+    ///
+    /// [`Trajectory::select`] covers ranges; this covers an arbitrary verdict —
+    /// dataset filtering yields a list of surviving frame numbers that is not a
+    /// range at all. Indices past the end are skipped rather than panicking, so
+    /// a stale index list cannot take down a long run.
+    pub fn subset(&self, indices: &[usize]) -> Trajectory {
+        let frames = indices
+            .iter()
+            .filter_map(|&i| self.frames.get(i).cloned())
+            .collect();
+        Trajectory { frames, metadata: self.metadata.clone() }
+    }
+
     pub fn iter_frames(&self) -> impl Iterator<Item = &Frame> {
         self.frames.iter()
     }

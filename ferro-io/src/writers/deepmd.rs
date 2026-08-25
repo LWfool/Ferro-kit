@@ -46,8 +46,18 @@ use ferro_core::{matrix3_row_major, Trajectory};
 use ndarray::ArrayView2;
 use ndarray_npy::write_npy;
 
-/// Writes `traj` as one DeePMD system directory.
+/// Writes `traj` as one DeePMD system directory, all frames in `set.000`.
 pub fn write_deepmd_npy(traj: &Trajectory, dir: &Path) -> Result<()> {
+    write_deepmd_npy_sets(traj, dir, 0)
+}
+
+/// Writes `traj` as one DeePMD system directory, split into sets of `set_size`.
+///
+/// `set_size` of 0 means one set holding everything. Splitting exists to give a
+/// later shuffle its boundaries, so a trailing set of a dozen frames is worse
+/// than useless — the remainder is spread over the sets rather than left as a
+/// stub.
+pub fn write_deepmd_npy_sets(traj: &Trajectory, dir: &Path, set_size: usize) -> Result<()> {
     let frames = &traj.frames;
     if frames.is_empty() {
         bail!("cannot write an empty trajectory as a DeePMD system");
@@ -87,8 +97,15 @@ pub fn write_deepmd_npy(traj: &Trajectory, dir: &Path) -> Result<()> {
     }
 
     fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
-    let set_dir = dir.join("set.000");
-    fs::create_dir_all(&set_dir).with_context(|| format!("cannot create {}", set_dir.display()))?;
+    // 重写时先清掉旧的 set.*，否则帧数变少会留下上一次的尾巴
+    for entry in fs::read_dir(dir)?.filter_map(|e| e.ok()) {
+        let p = entry.path();
+        if p.is_dir()
+            && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("set."))
+        {
+            fs::remove_dir_all(&p)?;
+        }
+    }
 
     let type_raw: String = type_index.iter().map(|t| format!("{t}\n")).collect();
     fs::write(dir.join("type.raw"), type_raw)?;
@@ -103,32 +120,32 @@ pub fn write_deepmd_npy(traj: &Trajectory, dir: &Path) -> Result<()> {
     }
 
     let nf = frames.len();
+    let bounds = set_bounds(nf, set_size);
 
-    // coord: (nframes, natoms*3)
+    // 逐项先在整条轨迹上摊平，再按 set 边界切片写出
+    let mut arrays: Vec<(String, Vec<f64>, usize)> = Vec::new();
+
     let mut coord = Vec::with_capacity(nf * natoms * 3);
     for f in frames {
         for a in &f.atoms {
             coord.extend_from_slice(&[a.position.x, a.position.y, a.position.z]);
         }
     }
-    save2d(&set_dir.join("coord.npy"), &coord, nf, natoms * 3)?;
+    arrays.push(("coord".into(), coord, natoms * 3));
 
     if has_cell {
         let mut boxes = Vec::with_capacity(nf * 9);
         for f in frames {
             boxes.extend_from_slice(&matrix3_row_major(&f.cell.as_ref().unwrap().matrix));
         }
-        save2d(&set_dir.join("box.npy"), &boxes, nf, 9)?;
+        arrays.push(("box".into(), boxes, 9));
     }
 
     // 逐项要么全帧都有要么全帧都无：半有半无地补零会把「没算」写成「算出来是 0」
     if let Some(energies) = all_or_none(frames.iter().map(|f| f.energy), "energy")? {
-        save2d(&set_dir.join("energy.npy"), &energies, nf, 1)?;
+        arrays.push(("energy".into(), energies, 1));
     }
-    if let Some(force_frames) = all_or_none(
-        frames.iter().map(|f| f.forces.as_ref()),
-        "forces",
-    )? {
+    if let Some(force_frames) = all_or_none(frames.iter().map(|f| f.forces.as_ref()), "forces")? {
         let mut force = Vec::with_capacity(nf * natoms * 3);
         for fs_ in force_frames {
             if fs_.len() != natoms {
@@ -138,7 +155,7 @@ pub fn write_deepmd_npy(traj: &Trajectory, dir: &Path) -> Result<()> {
                 force.extend_from_slice(&[v.x, v.y, v.z]);
             }
         }
-        save2d(&set_dir.join("force.npy"), &force, nf, natoms * 3)?;
+        arrays.push(("force".into(), force, natoms * 3));
     }
     if let Some(stresses) = all_or_none(frames.iter().map(|f| f.stress), "stress")? {
         if !has_cell {
@@ -151,10 +168,42 @@ pub fn write_deepmd_npy(traj: &Trajectory, dir: &Path) -> Result<()> {
                 virial.push(x * v);
             }
         }
-        save2d(&set_dir.join("virial.npy"), &virial, nf, 9)?;
+        arrays.push(("virial".into(), virial, 9));
+    }
+
+    for (i, &(lo, hi)) in bounds.iter().enumerate() {
+        let set_dir = dir.join(format!("set.{i:03}"));
+        fs::create_dir_all(&set_dir)
+            .with_context(|| format!("cannot create {}", set_dir.display()))?;
+        for (name, data, per_frame) in &arrays {
+            save2d(
+                &set_dir.join(format!("{name}.npy")),
+                &data[lo * per_frame..hi * per_frame],
+                hi - lo,
+                *per_frame,
+            )?;
+        }
     }
 
     Ok(())
+}
+
+/// `[lo, hi)` frame ranges, the remainder spread instead of left as a stub set.
+fn set_bounds(nf: usize, set_size: usize) -> Vec<(usize, usize)> {
+    if set_size == 0 || nf <= set_size {
+        return vec![(0, nf)];
+    }
+    let n_sets = nf.div_ceil(set_size);
+    let base = nf / n_sets;
+    let extra = nf % n_sets;
+    let mut out = Vec::with_capacity(n_sets);
+    let mut lo = 0;
+    for i in 0..n_sets {
+        let take = base + usize::from(i < extra);
+        out.push((lo, lo + take));
+        lo += take;
+    }
+    out
 }
 
 /// `Some(values)` when every frame has the property, `None` when none has.
@@ -190,7 +239,7 @@ mod tests {
     use ferro_core::{Atom, Cell, Frame};
     use nalgebra::{Matrix3, Vector3};
 
-    fn demo_traj() -> Trajectory {
+    pub(super) fn demo_traj() -> Trajectory {
         let cell = Cell::from_matrix(Matrix3::from_row_slice(&[
             5.0, 0.0, 0.0, 0.1, 6.0, 0.0, 0.2, 0.3, 7.0,
         ]));
@@ -211,7 +260,7 @@ mod tests {
         Trajectory { frames, metadata: Default::default() }
     }
 
-    fn out_dir(name: &str) -> std::path::PathBuf {
+    pub(super) fn out_dir(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(name);
         let _ = fs::remove_dir_all(&d);
         d
@@ -256,5 +305,42 @@ mod tests {
         write_deepmd_npy(&t, &d).unwrap();
         assert!(d.join("nopbc").exists());
         assert!(!d.join("set.000/box.npy").exists());
+    }
+}
+
+#[cfg(test)]
+mod set_tests {
+    use super::tests::{demo_traj, out_dir};
+    use super::*;
+
+    #[test]
+    fn a_remainder_is_spread_not_left_as_a_stub() {
+        // 410 帧、每 set 400：朴素切法给出 400 + 10，那个 10 帧的 set 当验证集没有意义
+        assert_eq!(set_bounds(410, 400), vec![(0, 205), (205, 410)]);
+        assert_eq!(set_bounds(1000, 400), vec![(0, 334), (334, 667), (667, 1000)]);
+    }
+
+    #[test]
+    fn zero_or_small_input_stays_one_set() {
+        assert_eq!(set_bounds(50, 0), vec![(0, 50)]);
+        assert_eq!(set_bounds(50, 400), vec![(0, 50)]);
+    }
+
+    #[test]
+    fn splitting_writes_every_set_and_drops_stale_ones() {
+        let d = out_dir("ferro_dp_sets");
+        let mut t = demo_traj();
+        // demo 只有 2 帧，扩到 5 帧
+        while t.frames.len() < 5 {
+            t.frames.push(t.frames[0].clone());
+        }
+        write_deepmd_npy_sets(&t, &d, 2).unwrap();
+        for i in 0..3 {
+            assert!(d.join(format!("set.{i:03}/coord.npy")).exists(), "set {i}");
+        }
+        // 再写一次单 set，旧的 set.001/002 必须消失
+        write_deepmd_npy(&t, &d).unwrap();
+        assert!(d.join("set.000/coord.npy").exists());
+        assert!(!d.join("set.001").exists());
     }
 }

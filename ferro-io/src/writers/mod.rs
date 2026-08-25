@@ -22,4 +22,4 @@ pub use lammps_dump::write_lammps_dump;
 pub use qe::write_qe_input;
 pub use cube::write_cube;
 pub use table::{write_table, TableFormat};
-pub use deepmd::write_deepmd_npy;
+pub use deepmd::{write_deepmd_npy, write_deepmd_npy_sets};

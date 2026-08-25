@@ -234,22 +234,22 @@ impl FilterResult {
         funnel.meta_line("frames remaining after each step, in execution order");
         funnel
             .push_text("step", self.funnel.iter().map(|(s, _)| s.clone()).collect())
-            .push_num("kept", self.funnel.iter().map(|(_, k)| *k as f64).collect());
+            .push_text("kept", self.funnel.iter().map(|(_, k)| k.to_string()).collect());
 
         let ct = self.cross_tab();
         let mut cross = Table::new();
         cross.meta_line("exclusive = flagged by this criterion and by no other");
         cross
             .push_text("criterion", ct.iter().map(|(c, _, _)| c.name().to_string()).collect())
-            .push_num("flagged", ct.iter().map(|(_, f, _)| *f as f64).collect())
-            .push_num("exclusive", ct.iter().map(|(_, _, e)| *e as f64).collect());
+            .push_text("flagged", ct.iter().map(|(_, f, _)| f.to_string()).collect())
+            .push_text("exclusive", ct.iter().map(|(_, _, e)| e.to_string()).collect());
 
         let ov = self.overlaps();
         let mut overlap = Table::new();
         overlap
             .push_text("a", ov.iter().map(|(a, _, _)| a.name().to_string()).collect())
             .push_text("b", ov.iter().map(|(_, b, _)| b.name().to_string()).collect())
-            .push_num("both", ov.iter().map(|(_, _, n)| *n as f64).collect());
+            .push_text("both", ov.iter().map(|(_, _, n)| n.to_string()).collect());
 
         vec![
             ("funnel".to_string(), funnel),
@@ -265,7 +265,18 @@ impl FilterResult {
             format!("frames in  = {}", self.n_input),
             format!("frames out = {}", self.keep.len()),
             format!("f_max      = {} eV/Ang", off(p.f_max)),
-            format!("s_max      = {} eV/Ang^3", off(p.s_max)),
+            match p.s_max > 0.0 {
+                true => format!(
+                    "s_max      = {:.6} eV/Ang^3  ({:.4} GPa)",
+                    p.s_max,
+                    ferro_core::units::convert_pressure(
+                        p.s_max,
+                        ferro_core::units::PressureUnit::EVPerAng3,
+                        ferro_core::units::PressureUnit::GPa,
+                    )
+                ),
+                false => "s_max      = off".to_string(),
+            },
             format!("range      = [{}:{}]", p.start, p.end.map(|e| e.to_string()).unwrap_or_default()),
         ];
         match p.number {
