@@ -3,14 +3,14 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：489 个（全部通过，clippy 零警告）
+## 测试总数：504 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 95 |
-| ferro-io | 75 |
+| ferro-core | 96 |
+| ferro-io | 83 |
 | ferro-structure | 72 |
-| ferro-analysis | 166 |
+| ferro-analysis | 174 |
 | ferro-workflow | 23 |
 | ferro-cli（lib 53 + 集成 5） | 58 |
 
@@ -102,8 +102,13 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   与制表符免疫；数值行不写死下标（应力靠「解得出三个浮点」筛，cell 从尾部取）。
   四种排版变形 + 多一行表头 + cell 多一列，均有测试钉住结果逐位相同
 - **`writers/deepmd.rs`**（2026-08-25）：DeePMD system 目录（`type.raw` +
-  `type_map.raw` + `set.000/*.npy`）。磁盘上一律二维 `float64`；
-  `virial = stress × V` 不变号；半有半无的属性直接报错
+  `type_map.raw` + `set.NNN/*.npy`）。磁盘上一律二维 `float64`；
+  `virial = stress × V` 不变号；半有半无的属性直接报错。`write_deepmd_npy_sets`
+  按 set 切分，**余数摊进各 set** 而不是留尾巴（410 帧按 400 切是 205+205）
+- **`readers/deepmd.rs`**（2026-08-25）：上者的逆，返回 `Trajectory`（不造数据集
+  专用类型，否则 analysis 要依赖 io）。**dpdata 的 float32 与 ferro 的 float64
+  都收**；`virial → stress` 除以 `|det(box)|`（system 里没有 volume.npy）；
+  额外键（`atom_ener` 等）**告警而非静默丢**
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
 
 ### ferro-structure
@@ -161,6 +166,20 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - `linkage` 规范半边存储，两端各带元素/同核连接数(`qn_a`)/配位数，`LinkKey` 含配体元素维
 - 旧的 `cn.rs`、`ligand_class.rs`、`qn.rs`、`modifier.rs` 已删除（逻辑迁移至 ferro-core）
 
+### ferro-analysis / ml
+
+`filter.rs`（2026-08-25）：数据集帧筛选，与 md/network/dft 并列，纯计算。
+`filter_frames(&Trajectory, &FilterParams) -> FilterResult`，判据 `Criterion`
+（力 / 应力，批 2 加 O-O 与 Al6）。
+
+- **区间作用于存活序列**，不是原始帧号；原始索引由 `keep` 带出，保留帧可追溯
+- **交叉表**（`cross_tab` / `overlaps`）：逐帧对**全部**帧算判定而非只算存活帧，
+  才能报出每个判据「独占抓到」多少 —— 漏斗每步只在上一步存活帧上报数，冗余判据
+  在那里看着也很能干
+- 阈值 0 = 关闭；给了阈值但缺该标签 → 判之前就报错
+- `to_tables()` 出 funnel / criteria / overlap 三张表，**计数走预格式化文本**
+  （`Column::Num` 会把 2000 渲染成 `2.000000e3`）
+
 ### ferro-analysis / dft
 
 - `bader.rs`：`BaderAnalyzer` builder、`BaderResult`、ACF/BCF/AVF 输出（Henkelman 格式，
@@ -194,7 +213,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
 - **`cmd/dataset.rs`**（2026-08-25）：`ferro dataset collect` —— AIMD out →
   DeePMD system 目录。一输入一目录，目录名取 stem，撞车（CP2K 日志常全叫
-  `total.out`）时改 `<父目录>_<stem>`，仍撞则报错。`filter` / `merge` 待做
+  `total.out`）时改 `<父目录>_<stem>`，仍撞则报错。
+  `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
+  `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
+  **不给 `-o` 即只读**。三张表只打印不落盘。`merge` 待做
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
@@ -276,7 +298,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`ferro dataset collect` 只读 CP2K**，VASP / QE 待扩；`.out` **未**注册进
   `io_dispatch`（这个扩展名太通用，不能替 CP2K 占下），故 `ferro convert -i x.out`
   仍不认识它
-- **`dataset` 的 filter / merge 未实现**，`collect` 的产物目前只能由外部脚本消费
+- **`dataset merge` 未实现**；`filter` 的几何判据（O-O 间距、Al6 配位）也未做，
+  现有的只有力与应力两道
 - **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
   `io_dispatch.rs` 走。2026-08 加的 `.vasp`/`.pos` 扩展名只有 CLI 认，Python 侧仍只认
   `POSCAR`/`CONTCAR` 前缀。两处 match 分支本就是分开维护，改一处不会波及另一处，

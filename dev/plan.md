@@ -109,14 +109,18 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
 在此之前的变通：`ferro convert -i traj.dump -o conf.vasp --number 20` 抽成单帧
 文件，再逐个喂给 job。
 
-### ferro dataset 的 filter 与 merge（2026-08-25 提出）
+### ferro dataset：filter 的几何判据与 merge（2026-08-25）
 
-`collect` 已落地（CP2K out → DeePMD system 目录），三步里的后两步未做：
+`collect` 与 `filter` 的力/应力两道判据已落地。剩下：
 
-- **`filter`**：硬性剔除力/应力过大的帧；可选帧区间与间隔；可选 O-O 间距与
-  Al6 配位判据。**筛完直接切 set 导出**，中间不再存一版
+- **`filter` 的几何判据**：`--oo-min`（逐帧最小 O-O 距离，含周期镜像）与
+  `-r`（Al6 配位筛选）。两者都要周期近邻搜索，且各自要配诊断表 ——
+  参考实现里 `-r` 的只读模式额外打三张表（配位数分布、每帧 Al6 个数分布、
+  换截断的敏感性），因为「筛选结果几乎完全由 rcut 决定」。镜像层数由几何定死：
+  折回后每轴还能偏半个垂直宽度，故 n = floor(rcut / w + 0.5)
 - **`merge`**：合并同化学式的数据集，两种模式（全局打乱 / 每 system 一个 set）
-  + set 大小；也可能只用来调 set 尺寸
+  + set 大小；也可能只用来调 set 尺寸。`type_map` 跨 system 对齐靠 `collect`
+  的 `(Z, 符号)` 排序规则可复现
 
 两件**不必新写**的事已经在库里：帧区间与间隔用 `Trajectory::select_indices` /
 `spread_indices`（`convert` 的 `--start/--end/--stride/--number` 就是它）；
