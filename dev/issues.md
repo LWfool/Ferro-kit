@@ -420,6 +420,24 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 
 ---
 
+## CP2K out 解析 / DeePMD 数据集编码陷阱（2026-08-25）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `nalgebra::Matrix3` 落盘 | 用 `as_slice()` 取九个数 | 它是**列优先**（无开关），给出的是转置；而 npy 的 box/virial、extxyz 的 `Lattice`、GPUMD 的 `lattice` 全要行优先。走 `matrix3_row_major()`。**这个错误有一半是静默的**：stress 对称，转置后数值不变，于是你会在 cell 上发现 bug、修掉、以为 stress 也对了。测试必须用**非对称**矩阵 |
+| CP2K 的应力单位 | 按版本查表推断 | `STRESS_UNIT` 是 **`&PRINT &STRESS_TENSOR` 下的输入关键字**，同一个二进制能打 bar / GPa / atm —— 单位不是版本的函数，版本表天生解不了。从 `STRESS\| Analytical stress tensor [bar]` 的方括号自读，认不出**报错**。dpdata 硬编码 `/ GPa`（`formats/cp2k/output.py`），遇到 bar 输出静默错 5 个数量级 |
+| 力的单位 | 也想从文本读 | 力是唯一**没有**单位标注的量（xyz 块的注释行只有 `i = …, time = …, E = …`），只能按 a.u.（Hartree/Bohr）兜底。这是「文本没写时才回落」的唯一实例 |
+| 坐标块 vs 力块 | 靠内容区分 | 两个块**逐字同构**：同原子数、同 `i = …` 注释行、同元素列。只有**顺序**能分辨（坐标在前），所以扫描必须有上界 —— 限定在 `[锚点_i, 锚点_{i+1})` 内。没有上界时，某帧缺块会让扫描跨界抓到下一帧的数据，**数值完全正常只是整体错位一帧** |
+| 块定位 | 用固定行偏移（`A + 10` 这类） | 偏移随 ensemble 变（NVT/NPT_I/NPT_F 的坐标块偏移是 10/18/20），CP2K 多打一行（`MD\| Estimated peak process memory` 已经在输出里了）整张表就错位，而错位读到的是别的块的数字、不报错。改为从锚点扫描特征行；偏移只用来**校验**（与首帧不同则告警） |
+| `STRESS\|` 与 `MD\| Pressure` | 当成同一个量 | `STRESS\|` 是**势能部分**，`MD\| Pressure` 含动能项。实测（`total.out` 第 1 帧）：`(2/3)E_kin/V = 14134` bar，`(1/3)Tr σ = 2345` bar，两者相加 16479 ≈ `MD\| Pressure` 的 16480.9。训练集只能用 `STRESS\|` —— 用错等于把动能烘进势函数，别的温度下系统性错压 |
+| stress 的符号 | 以为 CP2K 与 ASE 同号 | CP2K / VASP / QE **三者一致，且都与 ASE 相反**（正 = 压缩）。证据：`ase/calculators/cp2k.py:363` 的 `-1.0 * stress  # cp2k uses the opposite sign`、`ase/io/vasp.py:630` 的 `stress *= -0.1*GPa`、`ase/io/espresso.py:2098` 的 `# sign convention is opposite of ase`。ferro 存原样符号，故 `virial = +stress×V` 不变号；**导出 GPUMD 的 `stress=` 时要变号**（那个关键字是 ASE 约定），`virial=` 不用 |
+| 重启拼接的 out | 按序号取第 k 个 `ENERGY\|` / `STRESS\|` | 重启时会**重打一次初始值**：`total.out` 有 2002 个 `ENERGY\|` 但只有 2000 帧，按序号取在重启点之后整体错位一位。用「从锚点向上找最近的」，天然不受影响。段的标志是 `MD_INI\| MD initialization`（`GO CP2K GO` 在新版本里根本不打印，dpdata 的段分隔符不可用） |
+| 初始构型 | 以为会混进数据集 | CP2K 的初始构型打印在**第一个 `MD\| Step number` 之前**，按锚点定位天然排除；且重启**不**重打构型，故不存在重复帧。实测 2000 个锚点区间内各恰好 2 个 xyz 块，无一例外 |
+| DeePMD npy 的形状 | 照文档写 `(nframes, natoms, 3)` | 磁盘上**一律二维**：dpdata 落盘前统一 `reshape([nframes, -1])`，文档里的三维是逻辑形状。`energy.npy` 是 `(nframes, 1)` 而非 `(nframes,)` |
+| npy 的精度 | 跟 dpdata 默认的 float32 | `collect` 是流水线的**头**，filter 与 merge 都读它；头上有损无法在下游还原。写 float64，降精度留给喂训练框架那一步 |
+| 一个 system 的组成 | 把多条轨迹并进一个目录 | `type.raw` 一个目录只写一次，故各帧的原子数与类型序列必须逐项相同。合并是 `merge` 的职责，`collect` 恒为一输入一目录 |
+| 输出目录名 | 用文件 stem | CP2K 日志常常**全叫 `total.out`**，靠目录区分。stem 撞车时改 `<父目录>_<stem>`，仍撞则报错 —— 静默覆盖会让你以为收集了两条轨迹 |
+
 ## network 重构（0.2.1）编码陷阱
 
 | 位置 | 陷阱 | 正确做法 |

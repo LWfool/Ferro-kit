@@ -25,6 +25,10 @@
 - [Averaged Charge-Density SDF](analysis/chg-sdf.md)
 - [Glass Network Analysis](analysis/network.md)
 
+# Machine-Learning Datasets
+
+- [Collecting AIMD Output](dataset/collect.md)
+
 # Input Generation
 
 - [Job Builders](workflow/job-builders.md)

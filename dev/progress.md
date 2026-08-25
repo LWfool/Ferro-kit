@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：473 个（全部通过，clippy 零警告）
+## 测试总数：486 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 92 |
-| ferro-io | 65 |
+| ferro-core | 95 |
+| ferro-io | 72 |
 | ferro-structure | 72 |
 | ferro-analysis | 166 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 50 + 集成 5） | 55 |
+| ferro-cli（lib 53 + 集成 5） | 58 |
 
 版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -73,6 +73,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - `CubeData`、`charge_grid.rs`、`units.rs`（含 `AMU_ANG3_TO_G_CM3`，由 `AVOGADRO`
   导出，供 `ferro info` 报 g/cm³）、`error.rs`
 - `Frame::unique_elements()`（替代 5 处重复实现）
+- **`array_order.rs`**（2026-08-25）：`matrix3_row_major` / `matrix3_from_row_major`。
+  nalgebra 是列优先且无开关，`as_slice()` 给出的是转置，而 npy 的 box/virial、
+  extxyz 的 `Lattice`、GPUMD 的 `lattice` 全要行优先。测试用**非对称**矩阵 ——
+  对称张量（stress）被转置后数值不变，这个错误只在 cell 上暴露、在 stress 上静默
 - **帧选择**（2026-08-22）：`Trajectory::select(start, end, stride)` /
   `select_indices` / `spread_indices`。区间是 **0 基闭区间**，与 `ferro info`
   打印的帧号对齐；`spread_indices` 是 `--number` 的等间隔且**恒含两端**。
@@ -88,6 +92,15 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `species` 保持纯元素 —— 与 dump「没地方放第二个名字只能折进 element 列」相反
 - **`cube.rs`**：`read_cube`（可视化）+ `read_cube_as_chg`（Bader 用：Bohr→Å、索引转置、
   密度缩放 `rho_stored = ρ_cube × V_cell_Bohr`），共用 `parse_header()`
+- **`cp2k_out.rs`**（2026-08-25）：CP2K MD 的 stdout 日志（坐标/力/应力全打到
+  `__STD_OUT__` 时一个文件自足）。定位靠 `MD| Step number` 锚点 + **区间内扫描**，
+  不用固定行偏移（偏移随 ensemble 变，NVT/NPT_I/NPT_F 差 10/18/20 行）；区间上界
+  是下一个锚点，缺块的帧宁可丢也不借下一帧的数据。单位从文本自读
+  （`[hartree]` / `[bar]`），认不出报错。丢帧三类（SCF 未收敛 / 块截断 / 组成不符）
+  计数由 `Cp2kOutStats` 带出
+- **`writers/deepmd.rs`**（2026-08-25）：DeePMD system 目录（`type.raw` +
+  `type_map.raw` + `set.000/*.npy`）。磁盘上一律二维 `float64`；
+  `virial = stress × V` 不变号；半有半无的属性直接报错
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
 
 ### ferro-structure
@@ -176,6 +189,9 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
   零匹配报错）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
+- **`cmd/dataset.rs`**（2026-08-25）：`ferro dataset collect` —— AIMD out →
+  DeePMD system 目录。一输入一目录，目录名取 stem，撞车（CP2K 日志常全叫
+  `total.out`）时改 `<父目录>_<stem>`，仍撞则报错。`filter` / `merge` 待做
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
@@ -254,6 +270,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
   info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
+- **`ferro dataset collect` 只读 CP2K**，VASP / QE 待扩；`.out` **未**注册进
+  `io_dispatch`（这个扩展名太通用，不能替 CP2K 占下），故 `ferro convert -i x.out`
+  仍不认识它
+- **`dataset` 的 filter / merge 未实现**，`collect` 的产物目前只能由外部脚本消费
 - **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
   `io_dispatch.rs` 走。2026-08 加的 `.vasp`/`.pos` 扩展名只有 CLI 认，Python 侧仍只认
   `POSCAR`/`CONTCAR` 前缀。两处 match 分支本就是分开维护，改一处不会波及另一处，

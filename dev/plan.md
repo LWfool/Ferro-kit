@@ -109,6 +109,24 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
 在此之前的变通：`ferro convert -i traj.dump -o conf.vasp --number 20` 抽成单帧
 文件，再逐个喂给 job。
 
+### ferro dataset 的 filter 与 merge（2026-08-25 提出）
+
+`collect` 已落地（CP2K out → DeePMD system 目录），三步里的后两步未做：
+
+- **`filter`**：硬性剔除力/应力过大的帧；可选帧区间与间隔；可选 O-O 间距与
+  Al6 配位判据。**筛完直接切 set 导出**，中间不再存一版
+- **`merge`**：合并同化学式的数据集，两种模式（全局打乱 / 每 system 一个 set）
+  + set 大小；也可能只用来调 set 尺寸
+
+两件**不必新写**的事已经在库里：帧区间与间隔用 `Trajectory::select_indices` /
+`spread_indices`（`convert` 的 `--start/--end/--stride/--number` 就是它）；
+O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
+`AtomType::Former{cn,..}`（`Al_4`/`Al_6` 的数字就是配位数）。`filter` 在 CLI 层
+组合 io 与 analysis，中间层仍不互依赖。
+
+还需要定的：`filter` 要读回 npy（`ndarray-npy` 读侧未用过）；merge 的 `type_map`
+跨 system 对齐（`collect` 已按 `(Z, 符号)` 排序，这条规则可复现是对齐的前提）。
+
 ### ferro map chg-sdf 的 --cubes 拆成单文件（2026-08-11 提为高）
 
 现在是多个 cube 聚合成**一张** SDF（`cmd/map.rs::run_chg_sdf`），与 `ferro map` 其余
@@ -201,7 +219,9 @@ pip install target/wheels/*.whl
 
 ### 深度学习工作流 I/O
 
-`ferro-io` 新增 DeePMD-kit 训练集格式、MACE/NequIP 兼容格式。
+DeePMD-kit 的 npy 系统目录**写**侧已完成（`writers/deepmd.rs`，2026-08-25），
+读侧与 GPUMD/NEP 的 `train.xyz` 导出待做（后者是链末的 export，不是中间格式）。
+MACE/NequIP 兼容格式仍未开始。
 
 ---
 
