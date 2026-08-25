@@ -17,7 +17,7 @@ pub const BOHR_TO_ANG: f64 = 0.529_177_210_9;
 pub const ANG_TO_BOHR: f64 = 1.0 / BOHR_TO_ANG;
 
 /// Hartree → eV
-pub const HARTREE_TO_EV: f64 = 27.211_396_132;
+pub const HARTREE_TO_EV: f64 = 27.211_386_245_988;
 pub const EV_TO_HARTREE: f64 = 1.0 / HARTREE_TO_EV;
 
 /// eV → kcal/mol
@@ -35,6 +35,10 @@ pub const WAVENUMBER_TO_EV: f64 = 1.0 / EV_TO_WAVENUMBER;
 /// eV/Å³ → GPa
 pub const EV_ANG3_TO_GPA: f64 = 160.217_663_4;
 pub const GPA_TO_EV_ANG3: f64 = 1.0 / EV_ANG3_TO_GPA;
+
+/// GPa → bar（CP2K 的 `STRESS|` 默认单位）
+pub const GPA_TO_BAR: f64 = 1e4;
+pub const BAR_TO_GPA: f64 = 1e-4;
 
 /// GPa → kBar
 pub const GPA_TO_KBAR: f64 = 10.0;
@@ -125,6 +129,8 @@ pub enum PressureUnit {
     EVPerAng3,
     GPa,
     Kbar,
+    /// CP2K 的 `STRESS|` 默认单位
+    Bar,
 }
 
 impl PressureUnit {
@@ -133,6 +139,7 @@ impl PressureUnit {
             Self::EVPerAng3 => v,
             Self::GPa       => v * GPA_TO_EV_ANG3,
             Self::Kbar      => v * KBAR_TO_GPA * GPA_TO_EV_ANG3,
+            Self::Bar       => v * BAR_TO_GPA * GPA_TO_EV_ANG3,
         }
     }
     fn ev_ang3_into(self, v: f64) -> f64 {
@@ -140,6 +147,7 @@ impl PressureUnit {
             Self::EVPerAng3 => v,
             Self::GPa       => v * EV_ANG3_TO_GPA,
             Self::Kbar      => v * EV_ANG3_TO_GPA * GPA_TO_KBAR,
+            Self::Bar       => v * EV_ANG3_TO_GPA * GPA_TO_BAR,
         }
     }
 }
