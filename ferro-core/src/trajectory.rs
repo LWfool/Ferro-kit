@@ -4,6 +4,46 @@ use serde::{Deserialize, Serialize};
 
 use crate::frame::Frame;
 
+/// Indices `select` would pick out of a sequence of `n` items.
+///
+/// The index-level form of [`Trajectory::select_indices`], for callers whose
+/// sequence is not the trajectory itself — dataset filtering applies the range
+/// to the frames that SURVIVED earlier criteria, so the bound is the survivor
+/// count, not `n_frames()`. Keeping one implementation is what stops the two
+/// from drifting apart on the inclusive-end and clamping rules.
+pub fn select_range(n: usize, start: usize, end: Option<usize>, stride: usize) -> Vec<usize> {
+    let last = n.saturating_sub(1);
+    let end = end.unwrap_or(last).min(last);
+    if n == 0 || start > end {
+        return Vec::new();
+    }
+    (start..=end).step_by(stride.max(1)).collect()
+}
+
+/// Indices of `count` items spread evenly over `[start, end]`, both ends taken.
+///
+/// The index-level form of [`Trajectory::spread_indices`]; see [`select_range`]
+/// for why both forms exist.
+pub fn spread_range(n: usize, start: usize, end: Option<usize>, count: usize) -> Vec<usize> {
+    let last = n.saturating_sub(1);
+    let end = end.unwrap_or(last).min(last);
+    if n == 0 || count == 0 || start > end {
+        return Vec::new();
+    }
+    let available = end - start + 1;
+    if count >= available {
+        return (start..=end).collect();
+    }
+    if count == 1 {
+        return vec![start];
+    }
+    // linspace 含两端：i=0 给 start，i=count-1 给 end
+    let span = (end - start) as f64;
+    (0..count)
+        .map(|i| start + (span * i as f64 / (count - 1) as f64).round() as usize)
+        .collect()
+}
+
 /// 轨迹元数据。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TrajectoryMetadata {
@@ -109,12 +149,7 @@ impl Trajectory {
     /// position within the selection: frames taken with `stride = 10` should be
     /// named 0, 10, 20 so the products can be traced back to the trajectory.
     pub fn select_indices(&self, start: usize, end: Option<usize>, stride: usize) -> Vec<usize> {
-        let last = self.n_frames().saturating_sub(1);
-        let end = end.unwrap_or(last).min(last);
-        if start > end || self.frames.is_empty() {
-            return Vec::new();
-        }
-        (start..=end).step_by(stride.max(1)).collect()
+        select_range(self.n_frames(), start, end, stride)
     }
 
     /// Indices of `count` frames spread evenly over `[start, end]`, both ends
@@ -126,25 +161,7 @@ impl Trajectory {
     /// drop it. Returns at most `end - start + 1` indices — asking for more frames
     /// than exist yields every frame once, never a duplicate.
     pub fn spread_indices(&self, start: usize, end: Option<usize>, count: usize) -> Vec<usize> {
-        let last = self.n_frames().saturating_sub(1);
-        let end = end.unwrap_or(last).min(last);
-        if count == 0 || start > end || self.frames.is_empty() {
-            return Vec::new();
-        }
-
-        let available = end - start + 1;
-        if count >= available {
-            return (start..=end).collect();
-        }
-        if count == 1 {
-            return vec![start];
-        }
-
-        // linspace 含两端：i=0 给 start，i=count-1 给 end
-        let span = (end - start) as f64;
-        (0..count)
-            .map(|i| start + (span * i as f64 / (count - 1) as f64).round() as usize)
-            .collect()
+        spread_range(self.n_frames(), start, end, count)
     }
 
     pub fn iter_frames(&self) -> impl Iterator<Item = &Frame> {

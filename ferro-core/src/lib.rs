@@ -29,7 +29,7 @@ pub use atom::Atom;
 pub use cell::Cell;
 pub use charge_grid::ChargeGrid;
 pub use frame::Frame;
-pub use trajectory::{Trajectory, TrajectoryMetadata};
+pub use trajectory::{select_range, spread_range, Trajectory, TrajectoryMetadata};
 pub use cube_data::CubeData;
 pub use table::{Column, Table};
 pub use error::{ChemError, Result};

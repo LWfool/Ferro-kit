@@ -5,6 +5,7 @@ pub mod trajectory_analysis;
 pub mod md;
 pub mod network;
 pub mod dft;
+pub mod ml;
 
 pub use geometry::*;
 pub use trajectory_analysis::*;
