@@ -3,14 +3,14 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：525 个（全部通过，clippy 零警告）
+## 测试总数：527 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 96 |
 | ferro-io | 83 |
 | ferro-structure | 72 |
-| ferro-analysis | 193 |
+| ferro-analysis | 195 |
 | ferro-workflow | 23 |
 | ferro-cli（lib 55 + 集成 5） | 60 |
 
@@ -229,7 +229,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `total.out`）时改 `<父目录>_<stem>`，仍撞则报错。
   `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
   `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
-  **不给 `-o` 即只读**，只读模式另打四张诊断表。
+  **不给 `-o` 即只读**，只读模式另打四张诊断表。`--shuffle` 在**全部判据与
+  抽帧之后**打乱写出顺序（seed 默认 666）—— 抽帧要看时间序，而打乱不可逆。
   `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱后按
   `--set-size` 切 / `by-source` **一个 system 一个 set**、不打乱不重切，
   并写 `sets_source.txt`）

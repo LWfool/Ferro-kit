@@ -126,6 +126,14 @@ pub struct FilterCmd {
     #[arg(long, num_args = 0..=1, default_missing_value = "auto", value_name = "RCUT")]
     pub al6: Option<String>,
 
+    /// Shuffle the kept frames before writing, after every criterion has run
+    #[arg(long)]
+    pub shuffle: bool,
+
+    /// Seed for --shuffle                                        [default: 666]
+    #[arg(long, value_name = "N")]
+    pub seed: Option<u64>,
+
     /// Frames per output set; 0 keeps everything in one set    [default: 400]
     #[arg(long, value_name = "N", default_value_t = 400)]
     pub set_size: usize,
@@ -339,6 +347,9 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
             bail!("--al6 cutoff must be positive");
         }
     }
+    if args.seed.is_some() && !args.shuffle {
+        bail!("--seed only means something with --shuffle");
+    }
     if args.oo_min.is_some_and(|v| v <= 0.0) {
         bail!("--oo-min must be positive (omit the flag to switch the criterion off)");
     }
@@ -352,6 +363,7 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
         stride: args.stride.unwrap_or(1),
         number: args.number,
         oo_min: args.oo_min.unwrap_or(0.0),
+        shuffle: args.shuffle.then(|| args.seed.unwrap_or(DEFAULT_SEED)),
         // 每个 system 各算各的，此处只放手动值
         al6_rcut: manual_rcut,
     };

@@ -34,6 +34,7 @@ use ferro_core::{select_range, spread_range, Table, Trajectory, TypeParams};
 use rayon::prelude::*;
 
 use super::geometry::{count_with_coordination, min_pair_distance};
+use super::merge::shuffle_order;
 
 /// A quality criterion; the bit position is its slot in [`FrameVerdict::flags`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +95,9 @@ pub struct FilterParams {
     pub oo_min: f64,
     /// Drop frames holding no 6-coordinated Al; the Al-O cutoff (Å). `None` = off
     pub al6_rcut: Option<f64>,
+    /// Shuffle the kept frames with this seed once every criterion has run.
+    /// `None` keeps them in trajectory order.
+    pub shuffle: Option<u64>,
 }
 
 impl Default for FilterParams {
@@ -107,6 +111,7 @@ impl Default for FilterParams {
             number: None,
             oo_min: 0.0,
             al6_rcut: None,
+            shuffle: None,
         }
     }
 }
@@ -271,8 +276,15 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
         Some(k) => spread_range(survivors.len(), params.start, params.end, k),
         None => select_range(survivors.len(), params.start, params.end, params.stride),
     };
-    let keep: Vec<usize> = picked.iter().map(|&p| survivors[p]).collect();
+    let mut keep: Vec<usize> = picked.iter().map(|&p| survivors[p]).collect();
     funnel.push(("range".to_string(), keep.len()));
+
+    // 打乱**在所有判据与抽帧之后**：--stride / --number 是「每隔多久取一帧」，
+    // 在乱序上说不通；打乱一旦发生，时间序就再也取不回来了
+    if let Some(seed) = params.shuffle {
+        let order = shuffle_order(keep.len(), seed);
+        keep = order.into_iter().map(|i| keep[i]).collect();
+    }
 
     Ok(FilterResult { n_input: n, keep, verdicts, funnel, params: params.clone() })
 }
@@ -386,6 +398,10 @@ impl FilterResult {
         v.push(match p.al6_rcut {
             Some(r) => format!("al6_rcut   = {r:.3} Ang"),
             None => "al6_rcut   = off".to_string(),
+        });
+        v.push(match p.shuffle {
+            Some(seed) => format!("shuffle    = seed {seed}"),
+            None => "shuffle    = off (trajectory order kept)".to_string(),
         });
         v
     }
@@ -553,6 +569,36 @@ mod tests {
         let p = FilterParams { number: Some(3), ..Default::default() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.keep, vec![0, 5, 9]);
+    }
+
+    #[test]
+    fn shuffle_permutes_the_kept_frames_after_everything_else() {
+        let t = traj_of(&[1.0, 99.0, 1.0, 1.0, 1.0, 1.0], &[0.1; 6]);
+        let base = FilterParams { f_max: 20.0, ..Default::default() };
+        let ordered = filter_frames(&t, &base).unwrap();
+        assert_eq!(ordered.keep, vec![0, 2, 3, 4, 5]);
+
+        let p = FilterParams { shuffle: Some(7), ..base.clone() };
+        let mixed = filter_frames(&t, &p).unwrap();
+        // 同一批帧，顺序不同
+        let mut sorted = mixed.keep.clone();
+        sorted.sort();
+        assert_eq!(sorted, ordered.keep);
+        assert_ne!(mixed.keep, ordered.keep);
+        // 同一 seed 可复现
+        assert_eq!(filter_frames(&t, &p).unwrap().keep, mixed.keep);
+    }
+
+    /// Sampling has to see time order, so the shuffle runs last.
+    #[test]
+    fn stride_still_samples_in_time_before_the_shuffle() {
+        let t = traj_of(&[1.0; 10], &[0.1; 10]);
+        let p = FilterParams { stride: 3, shuffle: Some(1), ..Default::default() };
+        let r = filter_frames(&t, &p).unwrap();
+        let mut got = r.keep.clone();
+        got.sort();
+        // 等间隔取到的仍是 0/3/6/9，只是写出顺序被打乱
+        assert_eq!(got, vec![0, 3, 6, 9]);
     }
 
     #[test]

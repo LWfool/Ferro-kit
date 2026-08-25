@@ -89,10 +89,27 @@ Every frame `force` flagged was also flagged by `stress`. At these thresholds
 the force criterion contributes nothing, and the funnel — which would show
 `2000 → 22 → 0` — hides that completely.
 
+## Frame order
+
+Kept frames stay in **trajectory order** unless `--shuffle` is given, and the
+shuffle runs **last** — after every criterion and after `--stride` / `--number`.
+
+That order is not arbitrary. "Take every 3rd frame" says nothing about a
+shuffled sequence, so sampling has to see time order; and once shuffled, time
+order cannot be recovered. Sorting the kept frames of a `-N 500 --shuffle` run
+back into order gives exactly the same `[0, 4, 8, … 1999]` as the run without
+it — the shuffle changes the write order, not which frames were chosen.
+
+`--seed` (default 666) makes it reproducible, and is rejected without
+`--shuffle` rather than silently ignored.
+
+Shuffling here and shuffling in `ferro dataset merge` are **alternatives, not a
+sequence**: shuffle in `merge` when sets should mix several sources, shuffle
+here when this dataset goes to a trainer as it is.
+
 ## Output
 
-Survivors are written in their original order (**not shuffled**) and split into
-sets of `--set-size` frames (default 400, `0` keeps one set). The remainder is
+Survivors are split into sets of `--set-size` frames (default 400, `0` keeps one set). The remainder is
 spread across the sets rather than left as a stub: 410 frames at `--set-size
 400` give 205 + 205, not 400 + 10, because a set of ten frames is useless as a
 validation split.

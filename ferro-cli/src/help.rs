@@ -1068,6 +1068,16 @@ Read-only diagnostics:
   threshold, because a count cannot tell an outlier tail from a smooth spread,
   and only the first is worth filtering away.
 
+Frame order:
+  Kept frames stay in trajectory order unless --shuffle is given, and the
+  shuffle runs LAST — after every criterion and after --stride / --number.
+  That order matters: "take every 3rd frame" says nothing about a shuffled
+  sequence, and once shuffled the time order cannot be recovered.
+
+  Shuffling here and shuffling in `ferro dataset merge` are alternatives, not a
+  sequence. Shuffle in merge if the sets should mix several sources; shuffle
+  here if this dataset is going to a trainer as-is.
+
 Reading the report:
   [funnel]    how many frames each step left, in execution order
   [criteria]  per criterion: how many frames it flagged, and how many of those
