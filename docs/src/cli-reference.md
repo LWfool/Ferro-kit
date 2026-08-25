@@ -33,7 +33,8 @@ ferro bader | convert | info | job
 
 ## Common Flags
 
-`traj` / `map` / `net` 的每个命令都 flatten 了同一组 `CommonArgs`：
+`traj` / `map` / `net` 的每个命令都 flatten 了同一组 `CommonArgs`（`convert` / `info` /
+`job` / `bader` / `dataset` **不接**，各有自己的参数）：
 
 | Flag | Description |
 |---|---|
@@ -731,6 +732,122 @@ ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 > VASP 的电荷密度一律叫 `CHGCAR`，所以在同一个工作目录连跑两个体系，两次都写
 > `CHGCAR_ACF.dat`，后一次静默盖掉前一次。在 `--outdir` 落地之前，请 `cd` 进各
 > 体系自己的目录跑，或先把输入改名。
+
+---
+
+## `ferro dataset`
+
+机器学习训练集的三步流水线。与其余命令的两点不同：产物是**目录**（DeePMD 的
+system 就是目录），故 `-o` 是输出**根目录**而非文件名后缀；且不接 `CommonArgs`。
+
+```
+ferro dataset collect   AIMD 输出   → DeePMD system 目录
+ferro dataset filter    system 目录 → 筛过的 system 目录
+ferro dataset merge     多个 system → 按成分合并
+```
+
+三步各自读写同一种目录格式，**没有一步会改动自己的输入**。
+
+### `collect` — AIMD 输出转数据集
+
+| Flag | Description |
+|---|---|
+| `-i <FILE>...` | CP2K MD 的 stdout 日志，支持 glob |
+| `-o <DIR>` | system 目录写到哪里，默认当前目录 |
+
+一个输入一个 system 目录，目录名取文件 stem；stem 撞车（CP2K 日志常全叫
+`total.out`）时改用 `<父目录>_<stem>`，仍撞则报错。
+
+要求 CP2K 把坐标、力、应力全部打到 `__STD_OUT__`，这样一个 out 文件自足。
+单位从文本自读（`[hartree]` / `[bar]`），认不出**报错**不默认 —— `STRESS_UNIT`
+是 CP2K 的输入关键字，同一版本能吐 bar / GPa / atm。力是唯一无单位标注的量，
+按 a.u. 兜底。
+
+丢帧三类，**始终计数**：SCF 未收敛 / 块截断 / 组成不符。
+
+产物：
+
+```
+<outdir>/<name>/
+  type.raw          逐原子的类型索引，0 基
+  type_map.raw      元素符号，按 (Z, 符号) 排序
+  set.000/coord.npy (nframes, natoms*3)  Å
+          box.npy   (nframes, 9)         Å，行优先
+          energy.npy(nframes, 1)         eV
+          force.npy (nframes, natoms*3)  eV/Å
+          virial.npy(nframes, 9)         eV = stress × V
+```
+
+磁盘上一律**二维 float64**。dpdata 默认 float32，这里不跟 —— 这是流水线的头，
+下游读它，精度在这里丢了就回不来。
+
+### `filter` — 按质量筛帧
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <DIR>...` | | system 目录，或含它们的上层目录（递归找 `type.raw`） |
+| `-o <DIR>` | | 输出根目录，按相对 `-i` 的路径重建；**省略即只读** |
+| `-f, --f-max <EV_PER_A>` | 20.0 | 逐帧最大力**矢量模长**超过则删；0 关闭 |
+| `-s, --s-max <GPA>` | 10.0 | 逐帧 9 个应力分量绝对值的最大值超过则删；0 关闭 |
+| `--oo-min [<DMIN>]` | 关闭 / 裸给 2.0 | 逐帧最小 O–O 距离低于则删 |
+| `--al6 [<RCUT>]` | 关闭 / 裸给自动 | 只保留含 6 配位 Al 的帧；裸给时截断取 Al–O RDF 第一壳层外沿 |
+| `--start <N>` | 0 | 区间起点（**存活帧**的序号，0 基闭区间） |
+| `--end <N>` | 末帧 | 区间终点（0 基，**含**） |
+| `--stride <N>` | 1 | 每 N 个存活帧取一个 |
+| `-N, --number <N>` | | 等间隔取这么多帧，含两端；与 `--stride` 互斥 |
+| `--shuffle` | 关闭 | 写出前打乱，**在所有判据与抽帧之后** |
+| `--seed <N>` | 666 | `--shuffle` 的种子；不带 `--shuffle` 给它会报错 |
+| `--set-size <N>` | 400 | 每个输出 set 的帧数；0 表示不切 |
+| `--overwrite` | | 允许写入已存在的非空目录 |
+
+漏斗（逐步收窄）：
+
+```
+全部帧 → |F|max → |σ|max → min d(O-O) → Al6 → [区间/抽帧] → shuffle
+```
+
+**区间与抽帧作用于存活帧的序号**，不是原始帧号 —— 在丢掉未知多少帧之后，这是
+唯一还讲得通的语义。报告里给的始终是原始帧号。
+
+阈值 0 关闭该判据：显式的零表达「不判」，小正数表达不了。
+
+报告三张表（只打印不落盘）：`[funnel]` 逐步剩余、`[criteria]` 每条判据判坏多少
+及**独占**多少、`[overlap]` 两两重叠。**独占数才是判据有没有用的证据** —— 漏斗
+每步只在上一步的存活帧上报数，一个只会重复抓别人已抓帧的判据在那里看着也很能干。
+
+只读模式（不给 `-o`）另打四张诊断表：min d(O–O) 分布、每帧 Al6 个数、Al 配位
+分布、**rcut 敏感性扫描**。最后一张最要紧 —— 一个体系上它可能从 0.9% 陡升到
+41.4%，另一个体系上却是一条 100% 的平线。
+
+### `merge` — 按成分合并
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <DIR>...` | | 待合并的 system 目录，支持 glob |
+| `-o <DIR>` | | 输出根目录，一个成分一个子目录 |
+| `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
+| `--seed <N>` | 666 | `shuffle` 的种子；`by-source` 不用 |
+| `--set-size <N>` | 400 | 每个输出 set 的帧数；0 表示不切 |
+| `--suffix <EXT>` | 继承 | 强制输出目录后缀；默认继承组内共同的 `.train`/`.test`/`.valid` |
+| `--overwrite` | | 允许写入已存在的非空目录 |
+
+**分组不看目录名** —— `init.011` 说明不了里面装的是什么。按逐原子的元素序列
+分组，成分相同才合并。输出目录名 `<原子数>_<化学式>`（`112_Al32O64Zn16`），
+下标是实际计数不约分。
+
+组内各 system 的原子排列可以不同：合并时统一到规范序 `(Z, 符号)`，**逐原子
+数组（coord、force）跟同一置换走**，与原子编号无关的量（box、energy、virial）
+原样搬。DP 对原子编号置换不变，改的是记法不是物理。
+
+| 模式 | 行为 |
+|---|---|
+| `shuffle` | 同成分全部拼接 → 按 seed 打乱 → 按 `--set-size` 切 |
+| `by-source` | 不混不打乱；**每个 system 内部**独立切，set 不横跨 system，对应关系写 `sets_source.txt` |
+
+两种模式的余数都均分：500 帧按 400 切给 250+250，不是 400+100。
+
+`filter --shuffle` 与 `merge --mode shuffle` 是**二选一不是先后**：要让 set
+混合多个来源就在 merge 打乱，数据集直接喂训练器就在 filter 打乱。
 
 ---
 

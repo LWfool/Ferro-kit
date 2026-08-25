@@ -87,6 +87,10 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 
 **加 QC 目标**：`ferro-workflow/src/job_builder.rs` + `templates.rs` → `cmd/job.rs` 分支。
 
+**加数据集判据**：`ferro-analysis/src/ml/filter.rs` 的 `Criterion` 加变体（记得
+`ALL`、`name`、`bit`、`enabled` 四处）→ `FilterParams` 加参数 → `cmd/dataset.rs`
+接 CLI。判据一律表达成「符合条件则**删**」，四条同一语义交叉表才不用分裂。
+
 ## 代码导航
 
 | 位置 | 内容 |
@@ -95,6 +99,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `cube_density` `cube_sdf` |
 | `ferro-analysis/src/network/` | 单文件 `mod.rs`，六张表的统计 |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
+| `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表）、`merge`（分组、规范序、打乱） |
 | `ferro-cli/src/` | `main.rs` 子命令树、`batch.rs` 多输入驱动（对结果类型泛型）、`cmd/`、`help.rs`、`plot.rs` |
 
 **几条容易违反的**（完整清单在 `dev/issues.md`）：

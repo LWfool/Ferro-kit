@@ -7,8 +7,8 @@
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 96 |
-| ferro-io | 83 |
+| ferro-core | 95 |
+| ferro-io | 82（另有 1 个 `#[ignore]`，跑真实 40 MB out，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 195 |
 | ferro-workflow | 23 |
@@ -16,6 +16,10 @@
 
 版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
+
+`v0.3.0` 之后的改动**全部是新增**（`ferro dataset` 三步、CP2K out reader、
+DeePMD npy 读写、`ml` 模块、`array_order`），没有破坏性变更 —— 唯一动到既有
+行为的是 `HARTREE_TO_EV` 由旧值改为 CODATA 2018，而它此前全项目无使用点。
 
 ## 锚点 tag
 

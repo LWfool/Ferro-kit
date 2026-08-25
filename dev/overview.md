@@ -19,7 +19,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
     ├── ferro-io       → core   ← 格式读写 + write_table（分析产物的唯一出口）
     ├── ferro-structure→ core   ← 超胞、真空层、合并、初始盒子
     ├── ferro-analysis → core   ← 纯计算，不碰文件系统；结果暴露 to_tables()
-    │                             md/、network/、dft/（Bader、ChgSDF）、ml/（未来）
+    │                             md/、network/、dft/（Bader、ChgSDF）、
+    │                             ml/（数据集筛选与合并）
     └── ferro-workflow → core   ← QC 输入生成（Gaussian / CP2K / QE，含基组赝势库）
 ```
 
@@ -38,8 +39,13 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
 ferro net                                                      → 六张堆叠 csv
+ferro dataset collect | filter | merge                         → DeePMD system 目录
 ferro bader | convert | info | job
 ```
+
+`dataset` 是唯一产物为**目录**（而非文件）的一组：DeePMD 的 system 就是目录。
+故它的 `-o` 是输出根目录，不是文件名后缀 —— 与下面那条约定的例外，已在各自
+帮助页写明。
 
 `-i` 恒为多值并自展开 glob；逐文件独立分析，结果堆叠成一份带 `file` 列的 csv。
 `-o` 是**文件名后缀**，不是路径；路径走 `--outdir`。
@@ -104,6 +110,22 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 依据是 arXiv 2510.13545 等文献原文：n 只数同核桥，m 数异核桥，总桥由两者相加；
 铝磷酸盐文献专门指出「n 是总桥氧数」是领域内的已知误解。判据与排查清单见
 `issues.md`。
+
+## `v0.3.0` 之后：机器学习数据集（2026-08-25，未发版）
+
+新增 `ferro dataset` 三步（`collect` / `filter` / `merge`），配套
+`ferro-io` 的 CP2K out reader 与 DeePMD npy 读写、`ferro-analysis/src/ml/`、
+`ferro-core/src/array_order.rs`。**全部是新增，无破坏性改动** —— 唯一动到既有
+行为的是 `HARTREE_TO_EV` 由旧值 27.211396132 改为 CODATA 2018 的
+27.211386245988，而它此前全项目无使用点。
+
+三个跨命令的约定在这批里定下，其他地方也适用：
+
+| 约定 | 出处 |
+|---|---|
+| **落盘矩阵一律行优先**，取九个数走 `matrix3_row_major`，禁用 nalgebra 的 `as_slice()`（它是列优先，且对称张量下这个错误完全静默） | `array_order.rs` |
+| **`Frame::stress` 的符号 = 正为压缩**，与 CP2K/VASP/QE 输出一致、与 ASE/GPUMD 的 stress 相反；`virial = stress × V` 不变号 | `frame.rs` 字段文档 |
+| **单位从输出文本自读**，认不出报错不默认 —— CP2K 的 `STRESS_UNIT` 是输入关键字，单位不是版本的函数 | `readers/cp2k_out.rs` |
 
 三批合起来按规则升次版本位，故 `0.2.1 → 0.3.0`（跳过 0.2.x）。配套的
 `scripts/plot_net.py` 已同步（`a87843d`）。

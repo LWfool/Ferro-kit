@@ -82,6 +82,12 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
 2. **`convert` / `job` 的 `-o` 统一为文件名**，路径走 `--outdir`。现在它们的 `-o` 是完整
    路径，与其余 11 个命令的约定相反。（2026-08-22：这条差异已先在 `ferro convert`
    的帮助页与手册里写明，行为未动）
+
+   **2026-08-25 更新**：现在共有**三种** `-o` 语义 —— 分析命令的文件名后缀、
+   `convert`/`job` 的完整路径、`dataset` 的输出根**目录**。第三种不是历史包袱
+   而是必然的：DeePMD 的 system 就是目录，没有「文件名」可言。所以统一的目标
+   应当是**两种**（后缀 / 目录），把 `convert`/`job` 的完整路径归入前者，而不是
+   指望三种收敛成一种。
 3. **`ferro-io` 的 writer 路径统一 `&str` → `&Path`**。九个 writer 全收 `&str`，而
    `batch.rs` 内部已是 `PathBuf`，只能在边界 `to_string_lossy()` 转一次
    （`Output::join_str` 就是为此存在）。改动机械但会碰到 io_dispatch、ferro-python 与
