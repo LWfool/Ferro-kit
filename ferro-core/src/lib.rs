@@ -8,6 +8,7 @@
 //!               └── data::elements (static element table, used for mass lookup)
 //! ```
 
+pub mod array_order;
 pub mod atom;
 pub mod cell;
 pub mod charge_grid;
@@ -23,6 +24,7 @@ pub mod cluster;
 pub mod spin;
 
 // top-level re-exports for downstream crates
+pub use array_order::{matrix3_from_row_major, matrix3_row_major};
 pub use atom::Atom;
 pub use cell::Cell;
 pub use charge_grid::ChargeGrid;
