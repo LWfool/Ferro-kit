@@ -27,8 +27,13 @@
 //! and how many of those NO other criterion flagged — the exclusive count. A
 //! criterion whose exclusive count is ~0 is redundant and can be switched off.
 
+use std::collections::BTreeMap;
+
 use ferro_core::error::ChemError;
-use ferro_core::{select_range, spread_range, Table, Trajectory};
+use ferro_core::{select_range, spread_range, Table, Trajectory, TypeParams};
+use rayon::prelude::*;
+
+use super::geometry::{count_with_coordination, min_pair_distance};
 
 /// A quality criterion; the bit position is its slot in [`FrameVerdict::flags`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,15 +42,22 @@ pub enum Criterion {
     Force,
     /// Largest absolute value among the 9 stress components
     Stress,
+    /// Smallest O-O distance in the frame, minimum image
+    OoMin,
+    /// Frames holding no 6-coordinated Al at all
+    Al6,
 }
 
 impl Criterion {
-    pub const ALL: [Criterion; 2] = [Criterion::Force, Criterion::Stress];
+    pub const ALL: [Criterion; 4] =
+        [Criterion::Force, Criterion::Stress, Criterion::OoMin, Criterion::Al6];
 
     pub fn name(self) -> &'static str {
         match self {
             Criterion::Force => "force",
             Criterion::Stress => "stress",
+            Criterion::OoMin => "oo_min",
+            Criterion::Al6 => "al6",
         }
     }
 
@@ -53,6 +65,8 @@ impl Criterion {
         match self {
             Criterion::Force => 1,
             Criterion::Stress => 2,
+            Criterion::OoMin => 4,
+            Criterion::Al6 => 8,
         }
     }
 }
@@ -76,11 +90,24 @@ pub struct FilterParams {
     pub stride: usize,
     /// Take this many survivors, spread evenly; mutually exclusive with stride
     pub number: Option<usize>,
+    /// Drop frames whose smallest O-O distance is below this (Å); 0 = off
+    pub oo_min: f64,
+    /// Drop frames holding no 6-coordinated Al; the Al-O cutoff (Å). `None` = off
+    pub al6_rcut: Option<f64>,
 }
 
 impl Default for FilterParams {
     fn default() -> Self {
-        Self { f_max: 0.0, s_max: 0.0, start: 0, end: None, stride: 1, number: None }
+        Self {
+            f_max: 0.0,
+            s_max: 0.0,
+            start: 0,
+            end: None,
+            stride: 1,
+            number: None,
+            oo_min: 0.0,
+            al6_rcut: None,
+        }
     }
 }
 
@@ -91,6 +118,10 @@ pub struct FrameVerdict {
     pub index: usize,
     pub max_force: Option<f64>,
     pub max_stress: Option<f64>,
+    /// Smallest O-O distance, only computed when that criterion is on
+    pub min_oo: Option<f64>,
+    /// Number of 6-coordinated Al, only computed when that criterion is on
+    pub n_al6: Option<usize>,
     /// Bit set of the criteria that flagged this frame
     pub flags: u32,
 }
@@ -137,12 +168,38 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
             "a stress threshold was given but some frames carry no stress".into(),
         ));
     }
+    let geometric = params.oo_min > 0.0 || params.al6_rcut.is_some();
+    if geometric && traj.frames.iter().any(|f| f.cell.is_none()) {
+        return Err(ChemError::ValidationError(
+            "a geometric criterion was given but some frames carry no cell".into(),
+        ));
+    }
+    // 最小镜像只在关心的距离小于最小面间距的一半时严格成立
+    if let Some(f) = traj.frames.first() {
+        if let (true, Some(cell)) = (geometric, f.cell.as_ref()) {
+            let bound = cell.minimum_image_cutoff()?;
+            let want = params.oo_min.max(params.al6_rcut.unwrap_or(0.0));
+            if want > bound {
+                return Err(ChemError::ValidationError(format!(
+                    "cutoff {want:.3} A exceeds the minimum-image bound {bound:.3} A of the cell"
+                )));
+            }
+        }
+    }
+
+    // Al6 走 network 的分类器，故只需给出 Al-O 一个截断；
+    // Al 不在默认 Qn 名单 {B,P,Si} 里，落在「非 Qn 形成子」分支，cn 即配位数
+    let type_params = params.al6_rcut.map(|r| {
+        let mut cut = BTreeMap::new();
+        cut.insert(("Al".to_string(), "O".to_string()), r);
+        TypeParams::new(cut, Default::default())
+    });
 
     // 逐帧算出各判据的量与判定，全部帧都算 —— 交叉表要的是「每个判据单独
     // 判坏多少」，只在存活帧上算就永远看不出判据之间的重叠
     let verdicts: Vec<FrameVerdict> = traj
         .frames
-        .iter()
+        .par_iter()
         .enumerate()
         .map(|(i, f)| {
             let max_force = f.forces.as_ref().map(|v| {
@@ -166,7 +223,29 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
                     }
                 }
             }
-            FrameVerdict { index: i, max_force, max_stress, flags }
+            let mut min_oo = None;
+            let mut n_al6 = None;
+            if let Some(cell) = f.cell.as_ref() {
+                if params.oo_min > 0.0 {
+                    let d = min_pair_distance(f, cell, "O", "O");
+                    if let Some(d) = d {
+                        if d < params.oo_min {
+                            flags |= Criterion::OoMin.bit();
+                        }
+                    }
+                    min_oo = d;
+                }
+                if let Some(tp) = &type_params {
+                    let n = count_with_coordination(f, cell, tp, "Al", 6);
+                    // 「保留含 Al6 的帧」与「删除不含 Al6 的帧」是同一件事，
+                    // 表达成后者，判据语义就和其余三条一致，交叉表也不必分裂
+                    if n == 0 {
+                        flags |= Criterion::Al6.bit();
+                    }
+                    n_al6 = Some(n);
+                }
+            }
+            FrameVerdict { index: i, max_force, max_stress, min_oo, n_al6, flags }
         })
         .collect();
 
@@ -177,6 +256,8 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
         let enabled = match c {
             Criterion::Force => params.f_max > 0.0,
             Criterion::Stress => params.s_max > 0.0,
+            Criterion::OoMin => params.oo_min > 0.0,
+            Criterion::Al6 => params.al6_rcut.is_some(),
         };
         if !enabled {
             continue;
@@ -197,9 +278,26 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
 }
 
 impl FilterResult {
+    /// The criteria that were switched on for this run, in funnel order.
+    ///
+    /// Reporting the disabled ones too would fill the tables with rows of zeros
+    /// and bury the counts that mean something.
+    pub fn enabled(&self) -> Vec<Criterion> {
+        let p = &self.params;
+        Criterion::ALL
+            .into_iter()
+            .filter(|c| match c {
+                Criterion::Force => p.f_max > 0.0,
+                Criterion::Stress => p.s_max > 0.0,
+                Criterion::OoMin => p.oo_min > 0.0,
+                Criterion::Al6 => p.al6_rcut.is_some(),
+            })
+            .collect()
+    }
+
     /// Frames each criterion flagged, and how many of those no other criterion flagged.
     pub fn cross_tab(&self) -> Vec<(Criterion, usize, usize)> {
-        Criterion::ALL
+        self.enabled()
             .iter()
             .map(|&c| {
                 let flagged = self.verdicts.iter().filter(|v| v.flagged_by(c)).count();
@@ -216,8 +314,9 @@ impl FilterResult {
     /// Frames flagged by both members of each criterion pair.
     pub fn overlaps(&self) -> Vec<(Criterion, Criterion, usize)> {
         let mut out = Vec::new();
-        for (i, &a) in Criterion::ALL.iter().enumerate() {
-            for &b in &Criterion::ALL[i + 1..] {
+        let on = self.enabled();
+        for (i, &a) in on.iter().enumerate() {
+            for &b in &on[i + 1..] {
                 let n = self
                     .verdicts
                     .iter()
@@ -283,6 +382,11 @@ impl FilterResult {
             Some(k) => v.push(format!("number     = {k}")),
             None => v.push(format!("stride     = {}", p.stride)),
         }
+        v.push(format!("oo_min     = {} Ang", off(p.oo_min)));
+        v.push(match p.al6_rcut {
+            Some(r) => format!("al6_rcut   = {r:.3} Ang"),
+            None => "al6_rcut   = off".to_string(),
+        });
         v
     }
 }
@@ -314,6 +418,83 @@ mod tests {
             })
             .collect();
         Trajectory { frames, metadata: Default::default() }
+    }
+
+
+    /// A frame with two O too close, and one where the same pair is fine.
+    fn oo_traj(gaps: &[f64]) -> Trajectory {
+        let cell = Cell::from_matrix(Matrix3::identity() * 12.0);
+        let frames = gaps
+            .iter()
+            .map(|&g| {
+                let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+                f.atoms = vec![
+                    Atom::new("O", Vector3::new(1.0, 1.0, 1.0)),
+                    Atom::new("O", Vector3::new(1.0 + g, 1.0, 1.0)),
+                ];
+                f
+            })
+            .collect();
+        Trajectory { frames, metadata: Default::default() }
+    }
+
+    #[test]
+    fn oo_min_drops_the_close_contact_frames() {
+        let t = oo_traj(&[2.5, 1.8, 2.1]);
+        let p = FilterParams { oo_min: 2.0, ..Default::default() };
+        let r = filter_frames(&t, &p).unwrap();
+        assert_eq!(r.keep, vec![0, 2]);
+        assert!(r.verdicts[1].flagged_by(Criterion::OoMin));
+        // 判据打开时该量被记录下来，供只读模式画分布
+        assert!((r.verdicts[1].min_oo.unwrap() - 1.8).abs() < 1e-12);
+        assert!(r.verdicts[0].n_al6.is_none(), "al6 未开启就不该计算");
+    }
+
+    /// "Keep frames containing Al6" and "drop frames containing none" are the
+    /// same rule; expressing it as the latter keeps one sense for all criteria.
+    #[test]
+    fn al6_drops_frames_without_any_six_coordinated_al() {
+        let cell = Cell::from_matrix(Matrix3::identity() * 20.0);
+        let mut frames = Vec::new();
+        for n_o in [6usize, 4] {
+            let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+            let mut atoms = vec![Atom::new("Al", Vector3::new(5.0, 5.0, 5.0))];
+            let dirs = [
+                [1.9, 0.0, 0.0], [-1.9, 0.0, 0.0], [0.0, 1.9, 0.0],
+                [0.0, -1.9, 0.0], [0.0, 0.0, 1.9], [0.0, 0.0, -1.9],
+            ];
+            for d in dirs.iter().take(n_o) {
+                atoms.push(Atom::new("O", Vector3::new(5.0 + d[0], 5.0 + d[1], 5.0 + d[2])));
+            }
+            f.atoms = atoms;
+            frames.push(f);
+        }
+        let t = Trajectory { frames, metadata: Default::default() };
+        let p = FilterParams { al6_rcut: Some(2.4), ..Default::default() };
+        let r = filter_frames(&t, &p).unwrap();
+        assert_eq!(r.keep, vec![0]);
+        assert_eq!(r.verdicts[0].n_al6, Some(1));
+        assert_eq!(r.verdicts[1].n_al6, Some(0));
+        assert!(r.verdicts[1].flagged_by(Criterion::Al6));
+    }
+
+    #[test]
+    fn a_cutoff_past_the_minimum_image_bound_is_an_error() {
+        let t = oo_traj(&[2.5]);
+        // 盒子 12 Å，最小镜像上界 6 Å
+        let p = FilterParams { oo_min: 7.0, ..Default::default() };
+        let err = filter_frames(&t, &p).unwrap_err().to_string();
+        assert!(err.contains("minimum-image"), "{err}");
+    }
+
+    #[test]
+    fn disabled_criteria_stay_out_of_the_tables() {
+        let t = oo_traj(&[2.5, 1.8]);
+        let p = FilterParams { oo_min: 2.0, ..Default::default() };
+        let r = filter_frames(&t, &p).unwrap();
+        assert_eq!(r.enabled(), vec![Criterion::OoMin]);
+        assert_eq!(r.cross_tab().len(), 1);
+        assert!(r.overlaps().is_empty(), "只有一条判据时没有两两重叠");
     }
 
     #[test]

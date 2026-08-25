@@ -18,7 +18,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 
 use crate::batch::expand_inputs;
-use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
+use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_io::{
     read_cp2k_out_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
@@ -67,6 +67,16 @@ pub struct FilterCmd {
     /// Take this many surviving frames, spread evenly
     #[arg(short = 'N', long, value_name = "N", conflicts_with = "stride")]
     pub number: Option<usize>,
+
+    /// Drop frames whose smallest O-O distance is below this, A.
+    /// Bare --oo-min uses 2.0; omit the flag to switch the criterion off
+    #[arg(long, num_args = 0..=1, default_missing_value = "2.0", value_name = "DMIN")]
+    pub oo_min: Option<f64>,
+
+    /// Keep only frames holding a 6-coordinated Al. Bare --al6 takes the cutoff
+    /// from the Al-O RDF; give a number to set it by hand
+    #[arg(long, num_args = 0..=1, default_missing_value = "auto", value_name = "RCUT")]
+    pub al6: Option<String>,
 
     /// Frames per output set; 0 keeps everything in one set    [default: 400]
     #[arg(long, value_name = "N", default_value_t = 400)]
@@ -242,6 +252,22 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     if args.f_max < 0.0 || args.s_max < 0.0 {
         bail!("thresholds cannot be negative (0 switches the criterion off)");
     }
+    let manual_rcut = match args.al6.as_deref() {
+        None | Some("auto") => None,
+        Some(v) => Some(
+            v.parse::<f64>()
+                .with_context(|| format!("--al6 expects a cutoff in Angstrom or nothing, got `{v}`"))?,
+        ),
+    };
+    if let Some(r) = manual_rcut {
+        if r <= 0.0 {
+            bail!("--al6 cutoff must be positive");
+        }
+    }
+    if args.oo_min.is_some_and(|v| v <= 0.0) {
+        bail!("--oo-min must be positive (omit the flag to switch the criterion off)");
+    }
+
     let params = FilterParams {
         f_max: args.f_max,
         // CLI 收 GPa（用起来顺手），内部一律 eV/Å³
@@ -250,6 +276,9 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
         end: args.end,
         stride: args.stride.unwrap_or(1),
         number: args.number,
+        oo_min: args.oo_min.unwrap_or(0.0),
+        // 每个 system 各算各的，此处只放手动值
+        al6_rcut: manual_rcut,
     };
 
     let roots = crate::batch::expand_dirs(&args.input)?;
@@ -277,14 +306,25 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     }
 
     let mut failures = 0usize;
+    let mut auto_rcuts: Vec<f64> = Vec::new();
     for (sys, rel) in &jobs {
         match filter_one(sys, rel, args, &params) {
-            Ok(()) => {}
+            Ok(rcut) => auto_rcuts.extend(rcut),
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", sys.display());
                 failures += 1;
             }
         }
+    }
+    // 自动截断参与了删帧决定，不能是个看不见的数；多 system 时报均值与范围
+    if auto_rcuts.len() > 1 {
+        let mean = auto_rcuts.iter().sum::<f64>() / auto_rcuts.len() as f64;
+        let lo = auto_rcuts.iter().cloned().fold(f64::INFINITY, f64::min);
+        let hi = auto_rcuts.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        println!(
+            "Al-O cutoff over {} system(s): mean {mean:.3} A  (range {lo:.3} - {hi:.3})",
+            auto_rcuts.len()
+        );
     }
     if failures > 0 {
         eprintln!("\n{failures} of {} system(s) failed", jobs.len());
@@ -292,18 +332,47 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     Ok(failures)
 }
 
-fn filter_one(sys: &Path, rel: &Path, args: &FilterCmd, params: &FilterParams) -> Result<()> {
+/// Returns the automatically derived Al-O cutoff, when one was derived.
+fn filter_one(
+    sys: &Path,
+    rel: &Path,
+    args: &FilterCmd,
+    params: &FilterParams,
+) -> Result<Option<f64>> {
     let (traj, warnings) = read_deepmd_npy_with_warnings(sys)?;
     for w in &warnings {
         eprintln!("WARNING: {w}");
     }
-    let result = filter_frames(&traj, params)?;
+
+    // --al6 不带值：从这个 system 自己的 Al-O RDF 取第一壳层的外沿。
+    // 逐 system 各算各的 —— 成分不同，壳层位置本来就不同
+    let mut params = params.clone();
+    let mut derived = None;
+    if args.al6.as_deref() == Some("auto") {
+        let shell = first_shell_cutoff(&traj, "Al", "O")
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .context("no Al-O pair in this system, so --al6 has no cutoff to derive")?;
+        println!(
+            "  Al-O first shell: peak {:.2} A (g={:.1}), cutoff {:.2} A (g={:.3})",
+            shell.peak_r, shell.peak_g, shell.min_r, shell.depth
+        );
+        if shell.depth > 0.5 {
+            println!(
+                "  WARNING: that minimum is shallow (g={:.2}); Al-O may have no clear shell here",
+                shell.depth
+            );
+        }
+        params.al6_rcut = Some(shell.min_r);
+        derived = Some(shell.min_r);
+    }
+
+    let result = filter_frames(&traj, &params)?;
     println!("{}", sys.display());
     print_report(&result);
 
     let Some(out_root) = &args.outdir else {
         println!();
-        return Ok(());
+        return Ok(derived);
     };
     if result.keep.is_empty() {
         bail!("every frame was dropped; nothing to write");
@@ -317,7 +386,7 @@ fn filter_one(sys: &Path, rel: &Path, args: &FilterCmd, params: &FilterParams) -
     let kept = traj.subset(&result.keep);
     write_deepmd_npy_sets(&kept, &dest, args.set_size)?;
     println!("  -> {}\n", dest.display());
-    Ok(())
+    Ok(derived)
 }
 
 fn print_report(r: &FilterResult) {
