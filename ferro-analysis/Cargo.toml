@@ -8,4 +8,5 @@ ferro-core = { path = "../ferro-core" }
 nalgebra = { workspace = true, features = ["serde-serialize"] }
 ndarray.workspace = true
 rayon.workspace = true
+rand.workspace = true
 thiserror.workspace = true

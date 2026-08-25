@@ -58,6 +58,20 @@ pub fn write_deepmd_npy(traj: &Trajectory, dir: &Path) -> Result<()> {
 /// than useless — the remainder is spread over the sets rather than left as a
 /// stub.
 pub fn write_deepmd_npy_sets(traj: &Trajectory, dir: &Path, set_size: usize) -> Result<()> {
+    let bounds = set_bounds(traj.n_frames(), set_size);
+    write_deepmd_npy_bounds(traj, dir, &bounds)
+}
+
+/// Writes `traj` with the set boundaries given explicitly as `[lo, hi)` ranges.
+///
+/// Merging by source needs boundaries that fall exactly where one source ends
+/// and the next begins, so that every set holds frames from a single condition.
+/// An even split cannot express that.
+pub fn write_deepmd_npy_bounds(
+    traj: &Trajectory,
+    dir: &Path,
+    bounds: &[(usize, usize)],
+) -> Result<()> {
     let frames = &traj.frames;
     if frames.is_empty() {
         bail!("cannot write an empty trajectory as a DeePMD system");
@@ -120,7 +134,10 @@ pub fn write_deepmd_npy_sets(traj: &Trajectory, dir: &Path, set_size: usize) -> 
     }
 
     let nf = frames.len();
-    let bounds = set_bounds(nf, set_size);
+    let covered: usize = bounds.iter().map(|(lo, hi)| hi.saturating_sub(*lo)).sum();
+    if covered != nf {
+        bail!("set boundaries cover {covered} frame(s) but the trajectory holds {nf}");
+    }
 
     // 逐项先在整条轨迹上摊平，再按 set 边界切片写出
     let mut arrays: Vec<(String, Vec<f64>, usize)> = Vec::new();

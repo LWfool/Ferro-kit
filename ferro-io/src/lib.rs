@@ -15,7 +15,7 @@ pub use readers::{
     LammpsUnits,
 };
 pub use writers::{
-    write_deepmd_npy, write_deepmd_npy_sets,
+    write_deepmd_npy, write_deepmd_npy_bounds, write_deepmd_npy_sets,
     write_cif, write_pdb, write_xyz,
     write_poscar,
     write_extxyz,

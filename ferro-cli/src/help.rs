@@ -391,6 +391,7 @@ Structure I/O
 Machine-learning datasets
   dataset collect   AIMD output -> DeePMD system directories (set.*/*.npy)
   dataset filter    Drop low-quality frames (force / stress thresholds)
+  dataset merge     Combine same-composition datasets, shuffle, resize sets
 
 Batch input:
   -i takes several files and expands glob patterns itself — quote them:
@@ -921,7 +922,7 @@ pub fn print_dataset_overview() {
 
   collect    AIMD output -> DeePMD system directories        (implemented)
   filter     quality selection on an existing dataset        (implemented)
-  merge      combine same-composition datasets, resize sets  (not yet)
+  merge      combine same-composition datasets, resize sets  (implemented)
 
 Run a subcommand with no -i for its full page:
   ferro dataset collect"#
@@ -1094,5 +1095,60 @@ Examples:
   ferro dataset filter -i raw -o clean
   ferro dataset filter -i raw -o clean -f 15 -s 8
   ferro dataset filter -i raw -o clean -N 500 --set-size 250"#
+    );
+}
+
+pub fn print_dataset_merge() {
+    println!(
+        r#"ferro dataset merge — Combine datasets of the same composition
+
+  Reads DeePMD system directories, groups them by what they actually contain,
+  and writes one merged system per composition.
+
+Parameters:
+  -i, --input  DIR...     System directories to combine (globs allowed)
+  -o, --outdir DIR        Output root; one directory per composition
+      --mode   MODE       shuffle | by-source                    [shuffle]
+      --seed   N          Shuffle seed; by-source ignores it          [666]
+      --set-size N        Frames per output set; 0 = one set          [400]
+      --suffix EXT        Force this suffix; default inherits a shared one
+      --overwrite         Allow writing into an existing non-empty directory
+
+Grouping:
+  NOT by directory name — `init.011` says nothing reliable about its contents.
+  Systems are grouped by their per-atom element sequence, so two of them merge
+  exactly when they hold the same atoms. The output directory is named
+  <natoms>_<formula>, e.g. 7_Al2O4Zn: subscripts are actual counts (not
+  reduced), and the atom-count prefix makes `ls` group equal-sized systems.
+
+Atom order:
+  Systems of one composition may still list their atoms differently and carry
+  different type_map orders. Merging sorts every system into one canonical
+  order — (Z, symbol), the same order `collect` writes — and permutes the
+  per-atom arrays (coord, force) along with them. A DP model is invariant under
+  atom renumbering, so this changes notation, not physics. dpdata sorts
+  alphabetically instead; both are self-describing through type_map.raw.
+
+The two modes:
+  shuffle     Everything of one composition is concatenated, shuffled with
+              --seed, then cut into sets. Every set holds a mix of whatever
+              conditions went in — temperatures, compressions, sources.
+  by-source   No mixing, no shuffling. Every source is cut into sets on its
+              own and the set boundaries fall exactly on source edges, so each
+              set.NNN holds frames from a single condition. The mapping is
+              written to sets_source.txt inside the output system.
+
+  Pick by-source when the sources are already shuffled internally and you want
+  a validation split that is a clean hold-out of one condition; pick shuffle
+  when you want every set to be statistically like every other.
+
+  In both modes a remainder is spread across the sets rather than left as a
+  stub — a set of a dozen frames is useless as a validation split.
+
+Examples:
+  ferro dataset merge -i data/*.train -o merged
+  ferro dataset merge -i data/*.train -o merged --seed 42
+  ferro dataset merge -i data/*.train -o merged --mode by-source
+  ferro dataset merge -i clean/* -o merged --set-size 250 --suffix .train"#
     );
 }

@@ -11,7 +11,7 @@
 //! single system is NOT done here: a DeePMD system holds one composition, and
 //! deciding which inputs belong together is `merge`'s job.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -22,11 +22,14 @@ use ferro_analysis::ml::diagnostics::{
     coordination_table, count_histogram, cutoff_scan, distribution_table, pooled_coordination,
     scan_table,
 };
+use ferro_analysis::ml::merge::{
+    composition_key, group_name, shuffle_order, sort_atoms, DEFAULT_SEED,
+};
 use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_io::{
     read_cp2k_out_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
-    write_deepmd_npy_sets, Cp2kOutStats,
+    write_deepmd_npy_bounds, write_deepmd_npy_sets, Cp2kOutStats,
 };
 
 #[derive(Subcommand, Debug)]
@@ -35,6 +38,47 @@ pub enum DatasetCmd {
     Collect(CollectCmd),
     /// Drop low-quality frames from existing datasets
     Filter(FilterCmd),
+    /// Combine datasets of the same composition
+    Merge(MergeCmd),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum MergeMode {
+    /// Concatenate everything of one composition, shuffle, then cut sets
+    Shuffle,
+    /// Keep sources apart; every set holds frames from one source only
+    BySource,
+}
+
+#[derive(Args, Debug)]
+pub struct MergeCmd {
+    /// System directories to combine (glob patterns allowed)
+    #[arg(short, long, num_args = 1..)]
+    pub input: Vec<PathBuf>,
+
+    /// Output root; one directory per composition is created under it
+    #[arg(short, long, value_name = "DIR")]
+    pub outdir: Option<PathBuf>,
+
+    /// How frames from different sources are laid out         [default: shuffle]
+    #[arg(long, value_enum, default_value_t = MergeMode::Shuffle)]
+    pub mode: MergeMode,
+
+    /// Shuffle seed; ignored by --mode by-source                  [default: 666]
+    #[arg(long, value_name = "N")]
+    pub seed: Option<u64>,
+
+    /// Frames per output set; 0 keeps everything in one set    [default: 400]
+    #[arg(long, value_name = "N", default_value_t = 400)]
+    pub set_size: usize,
+
+    /// Force this suffix on output directories; default inherits a shared one
+    #[arg(long, value_name = "EXT")]
+    pub suffix: Option<String>,
+
+    /// Allow writing into an existing non-empty output directory
+    #[arg(long)]
+    pub overwrite: bool,
 }
 
 #[derive(Args, Debug)]
@@ -107,6 +151,7 @@ pub fn wants_help(cmd: &DatasetCmd) -> bool {
     match cmd {
         DatasetCmd::Collect(c) => c.input.is_empty(),
         DatasetCmd::Filter(c) => c.input.is_empty(),
+        DatasetCmd::Merge(c) => c.input.is_empty(),
     }
 }
 
@@ -114,6 +159,7 @@ pub fn print_help(cmd: &DatasetCmd) {
     match cmd {
         DatasetCmd::Collect(_) => crate::help::print_dataset_collect(),
         DatasetCmd::Filter(_) => crate::help::print_dataset_filter(),
+        DatasetCmd::Merge(_) => crate::help::print_dataset_merge(),
     }
 }
 
@@ -122,6 +168,7 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
     match cmd {
         DatasetCmd::Collect(c) => run_collect(c),
         DatasetCmd::Filter(c) => run_filter(c),
+        DatasetCmd::Merge(c) => run_merge(c),
     }
 }
 
@@ -240,6 +287,24 @@ mod tests {
     fn colliding_stems_fall_back_to_the_parent_directory() {
         let inputs = vec![PathBuf::from("run1/total.out"), PathBuf::from("run2/total.out")];
         assert_eq!(system_names(&inputs).unwrap(), vec!["run1_total", "run2_total"]);
+    }
+
+    #[test]
+    fn set_spans_spread_the_remainder() {
+        assert_eq!(set_spans(500, 400), vec![(0, 250), (250, 500)]);
+        assert_eq!(set_spans(2000, 400), vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]);
+        assert_eq!(set_spans(120, 400), vec![(0, 120)]);
+        assert_eq!(set_spans(120, 0), vec![(0, 120)]);
+    }
+
+    #[test]
+    fn a_shared_split_suffix_is_inherited_and_a_mixed_one_is_not() {
+        let same = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.train")];
+        assert_eq!(shared_suffix(&same).as_deref(), Some(".train"));
+        let mixed = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.test")];
+        assert_eq!(shared_suffix(&mixed), None);
+        let bare = vec![PathBuf::from("a/sys.001"), PathBuf::from("b/sys.002")];
+        assert_eq!(shared_suffix(&bare), None);
     }
 
     #[test]
@@ -482,4 +547,163 @@ fn print_table(t: &ferro_core::Table) {
     for line in t.to_comment_lines() {
         println!("    {line}");
     }
+}
+
+// ── merge ────────────────────────────────────────────────────────────────────
+
+/// dpgen / dpdata split suffixes an output directory may inherit.
+const SPLIT_SUFFIXES: [&str; 3] = [".train", ".test", ".valid"];
+
+fn run_merge(args: &MergeCmd) -> Result<usize> {
+    let Some(out_root) = &args.outdir else {
+        bail!("merge needs an output directory (-o DIR)");
+    };
+    let roots = crate::batch::expand_dirs(&args.input)?;
+    let mut systems: Vec<PathBuf> = Vec::new();
+    for root in &roots {
+        systems.extend(find_systems(root)?);
+    }
+    if systems.is_empty() {
+        bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
+    }
+    std::fs::create_dir_all(out_root)
+        .with_context(|| format!("cannot create {}", out_root.display()))?;
+
+    // 分组不看目录名 —— init.011 这类名字说明不了里面装的是什么。
+    // 按逐原子的元素序列（规范序）分组，成分相同才合并
+    let mut groups: BTreeMap<Vec<String>, Vec<(PathBuf, ferro_core::Trajectory)>> =
+        BTreeMap::new();
+    let mut failures = 0usize;
+    for sys in &systems {
+        match read_deepmd_npy_with_warnings(sys) {
+            Ok((traj, warns)) => {
+                for w in warns {
+                    eprintln!("WARNING: {w}");
+                }
+                groups.entry(composition_key(&traj)).or_default().push((sys.clone(), traj));
+            }
+            Err(e) => {
+                eprintln!("SKIP {}: {e:#}", sys.display());
+                failures += 1;
+            }
+        }
+    }
+
+    for (_, members) in groups {
+        if let Err(e) = merge_group(&members, out_root, args) {
+            eprintln!("SKIP group: {e:#}");
+            failures += 1;
+        }
+    }
+    if failures > 0 {
+        eprintln!("\n{failures} failure(s)");
+    }
+    Ok(failures)
+}
+
+fn merge_group(
+    members: &[(PathBuf, ferro_core::Trajectory)],
+    out_root: &Path,
+    args: &MergeCmd,
+) -> Result<()> {
+    // 各 system 的原子排列与 type_map 顺序都可能不同；统一到规范序，
+    // 逐原子数据跟着同一个置换走。DP 对原子编号置换不变，改的是记法不是物理
+    let sorted: Vec<(PathBuf, ferro_core::Trajectory)> = members
+        .iter()
+        .map(|(p, t)| (p.clone(), sort_atoms(t)))
+        .collect();
+
+    let name = group_name(&sorted[0].1);
+    let suffix = args
+        .suffix
+        .clone()
+        .or_else(|| shared_suffix(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()))
+        .unwrap_or_default();
+    let dest = out_root.join(format!("{name}{suffix}"));
+
+    if !args.overwrite && dest.exists() && std::fs::read_dir(&dest)?.next().is_some() {
+        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
+    }
+
+    let mut all = ferro_core::Trajectory::new();
+    let mut source_spans: Vec<(PathBuf, usize, usize)> = Vec::new();
+    for (p, t) in &sorted {
+        let lo = all.frames.len();
+        all.frames.extend(t.frames.iter().cloned());
+        source_spans.push((p.clone(), lo, all.frames.len()));
+    }
+    all.metadata = sorted[0].1.metadata.clone();
+
+    println!(
+        "{name}{suffix}: {} system(s), {} frames",
+        sorted.len(),
+        all.n_frames()
+    );
+    for (p, lo, hi) in &source_spans {
+        println!("  {:5} frames  {}", hi - lo, p.display());
+    }
+
+    match args.mode {
+        MergeMode::Shuffle => {
+            let seed = args.seed.unwrap_or(DEFAULT_SEED);
+            let order = shuffle_order(all.n_frames(), seed);
+            let mixed = all.subset(&order);
+            write_deepmd_npy_sets(&mixed, &dest, args.set_size)?;
+            println!("  shuffled with seed {seed} -> {}", dest.display());
+        }
+        MergeMode::BySource => {
+            // set 边界严格落在来源边界上：每个 set 里的帧都出自同一个条件
+            let mut bounds: Vec<(usize, usize)> = Vec::new();
+            let mut record: Vec<(String, PathBuf)> = Vec::new();
+            for (p, lo, hi) in &source_spans {
+                let n = hi - lo;
+                for (a, b) in set_spans(n, args.set_size) {
+                    record.push((format!("set.{:03}", bounds.len()), p.clone()));
+                    bounds.push((lo + a, lo + b));
+                }
+            }
+            write_deepmd_npy_bounds(&all, &dest, &bounds)?;
+            let mut txt = String::from("# set  source\n");
+            for (set, p) in &record {
+                txt.push_str(&format!("{set}  {}\n", p.display()));
+            }
+            std::fs::write(dest.join("sets_source.txt"), txt)?;
+            println!("  {} set(s), boundaries kept on source edges -> {}", bounds.len(), dest.display());
+        }
+    }
+    Ok(())
+}
+
+/// `[lo, hi)` spans of one source, remainder spread rather than left as a stub.
+fn set_spans(n: usize, set_size: usize) -> Vec<(usize, usize)> {
+    if set_size == 0 || n <= set_size {
+        return vec![(0, n)];
+    }
+    let n_sets = n.div_ceil(set_size);
+    let base = n / n_sets;
+    let extra = n % n_sets;
+    let mut out = Vec::with_capacity(n_sets);
+    let mut lo = 0;
+    for i in 0..n_sets {
+        let take = base + usize::from(i < extra);
+        out.push((lo, lo + take));
+        lo += take;
+    }
+    out
+}
+
+/// The split suffix every input shares, if they all share one.
+fn shared_suffix(paths: &[PathBuf]) -> Option<String> {
+    let suffix_of = |p: &PathBuf| -> Option<String> {
+        let name = p.file_name()?.to_str()?;
+        SPLIT_SUFFIXES
+            .iter()
+            .find(|s| name.ends_with(**s))
+            .map(|s| s.to_string())
+    };
+    let first = suffix_of(&paths[0])?;
+    paths
+        .iter()
+        .all(|p| suffix_of(p).as_deref() == Some(first.as_str()))
+        .then_some(first)
 }

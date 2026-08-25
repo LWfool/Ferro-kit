@@ -390,6 +390,7 @@ dependencies = [
  "ferro-core",
  "nalgebra",
  "ndarray",
+ "rand",
  "rayon",
  "thiserror",
 ]
