@@ -99,12 +99,81 @@ validation split.
 
 Writing into an existing non-empty directory requires `--overwrite`.
 
+## The two geometric criteria
+
+Force and stress are the first-line rules, on by default. These two are optional
+and independent — both, either, or neither.
+
+### `--al6` — keep frames containing a 6-coordinated Al
+
+"Keep frames containing at least one Al⁶" and "drop frames containing none" are
+the same rule; ferro expresses it as the latter so all four criteria share one
+sense and the cross-tabulation stays a single table.
+
+Coordination comes from the **same classifier `ferro net` uses**
+(`classify_frame`), so the number means the same thing in both commands. Only
+the Al–O cutoff is needed: Al is not in the default Qn element set `{B,P,Si}`,
+so it takes the "non-Qn former" branch where the label's digit *is* the
+coordination number.
+
+The cutoff can be derived. Bare `--al6` takes **the first minimum of the Al–O
+g(r) past its first peak** — the outer edge of the first coordination shell —
+computed per system, because compositions differ and so do shell positions. On
+the reference system that gives 2.45 Å against the 2.4 Å normally used by hand.
+The value is always printed, and the mean over systems reported at the end: a
+cutoff that decides which frames die must not be an invisible number.
+
+### `--oo-min` — drop frames with a too-short O–O contact
+
+**This one has no automatic form and always needs an explicit value** (bare
+`--oo-min` uses 2.0 Å). The reason is structural, not an omission:
+
+| pair | first peak | first minimum past it | depth there |
+|---|---|---|---|
+| Al–O | 1.81 Å | **2.41 Å** | 0.23 |
+| P–O | 1.51 Å | 2.25 Å | 0.08 |
+| O–O | 2.55 Å | 3.77 Å | **0.72** |
+
+O–O does not bond, so its g(r) has no coordination shell — the "first minimum"
+is a shallow feature almost 4 Å out. And healthy frames have their smallest O–O
+distance *below* the first O–O peak (1.77–2.14 Å against a peak at 2.55 Å). The
+threshold you actually want comes from the RDF of **broken** data: the trough
+between the collapse peak and the normal one. That trough does not exist in data
+that is still good, which is why no amount of analysis of a healthy dataset can
+produce it.
+
+## Read-only diagnostics
+
+Without `-o`, four more tables are printed to help pick those two values.
+
+**The cutoff scan is the important one.** On one reference system it goes
+
+```
+rcut  frames_pct  per_frame
+2.15  0.9         0.01
+2.45  13.1        0.14
+2.75  41.4        0.46
+```
+
+and on another it is a flat 100% from 2.1 to 2.6 Å. A steep column means the
+selection is decided by the cutoff rather than by the structure. **The same
+table says opposite things about the two systems** — which is exactly why it is
+worth printing rather than baking a number into the code.
+
+The `min d(O-O)` table reports the **distribution** — quantiles and a histogram
+— rather than a count below the threshold. A count cannot tell an outlier tail
+from a smooth spread, and only the first is worth filtering away. Note also that
+this quantity is an *extreme-value* statistic: its location shifts with the
+number of O atoms in the cell (64 O gave a mean of 2.40 Å, 201 O gave 2.00 Å for
+the same kind of glass), so a threshold carried over from another system means
+very little.
+
 ## Not implemented yet
 
-- **Geometric criteria** — minimum O–O distance and Al⁶ coordination selection
-  (`--oo-min`, `-r` in the reference Python implementation). They need periodic
-  neighbour searching and their own diagnostic tables.
 - **Shuffling and merging** — `ferro dataset merge`.
+- **Multi-layer periodic images.** Cutoffs are checked against the
+  minimum-image bound and rejected beyond it, rather than scanning further image
+  shells. Not a limitation for cells much larger than the cutoff.
 - **Extra keys.** `atom_ener.npy` and friends have no home in `Frame`; they are
   **reported** on read and would be lost on write. The reader names them rather
   than dropping them quietly.

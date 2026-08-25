@@ -1011,11 +1011,18 @@ Parameters:
       --end    N          Last SURVIVING frame to take (0-based, INCL.) [last]
       --stride N          Take every Nth surviving frame                  [1]
   -N, --number N          Take this many surviving frames, spread evenly
+      --oo-min [DMIN]     Drop frames whose smallest O-O distance is below
+                          this. Bare --oo-min uses 2.0 A; omit to switch off
+      --al6 [RCUT]        Keep only frames holding a 6-coordinated Al. Bare
+                          --al6 takes the cutoff from the Al-O RDF
       --set-size N        Frames per output set; 0 = one set           [400]
       --overwrite         Allow writing into an existing non-empty directory
 
 The funnel:
-  all frames -> |F|max -> |sigma|max -> [start:end:stride|number]
+  all frames -> |F|max -> |sigma|max -> min d(O-O) -> Al6 -> [start:end:...]
+
+  Force and stress are the first-line rules and are on by default. The two
+  geometric criteria are optional and independent: both, either, or neither.
 
   A threshold of 0 switches that criterion off. An explicit zero says "do not
   judge", which no small positive number can express.
@@ -1024,6 +1031,41 @@ The funnel:
   `--start 10` means the 10th frame that passed the quality criteria — the only
   reading that stays meaningful after an unknown number of frames were dropped.
   The report always names original indices, so kept frames stay traceable.
+
+The two geometric criteria:
+  --al6 keeps frames containing at least one 6-coordinated Al, which is the same
+  rule as "drop frames containing none" — expressed as the latter so all four
+  criteria share one sense and the cross-tabulation stays a single table.
+  Coordination comes from the same classifier `ferro net` uses, so the number
+  means the same thing in both commands.
+
+  Its cutoff can be derived: bare --al6 takes the first minimum of the Al-O g(r)
+  past its first peak, i.e. the outer edge of the first coordination shell,
+  computed per system (compositions differ, so shell positions differ). The
+  value used is always printed, and the mean over systems is reported at the
+  end — a cutoff that decides which frames die cannot be an invisible number.
+
+  --oo-min has no such automatic form and always needs an explicit value. O-O
+  does not bond, so its g(r) has no coordination shell: the first minimum sits
+  around 3.8 A with a depth near 0.7, while healthy frames have their smallest
+  O-O distance BELOW the first O-O peak. The threshold you want comes from the
+  RDF of BROKEN data — the trough between the collapse peak and the normal one —
+  and that trough does not exist in data that is still good.
+
+Read-only diagnostics:
+  Without -o, four more tables are printed to help pick those two values:
+  the distribution of min d(O-O), the number of Al6 per frame, the Al
+  coordination histogram, and a scan of the Al6 selection against its cutoff.
+
+  The scan is the important one. On one reference system it goes 0.9% -> 13.1%
+  -> 41.4% of frames over 2.15 -> 2.45 -> 2.75 A; on another it is 100% flat
+  from 2.1 to 2.6. A steep column means the selection is decided by the cutoff
+  rather than by the structure, and the same table says the opposite thing about
+  the two systems — which is exactly why it is worth printing.
+
+  The min d(O-O) table reports the distribution rather than a count below the
+  threshold, because a count cannot tell an outlier tail from a smooth spread,
+  and only the first is worth filtering away.
 
 Reading the report:
   [funnel]    how many frames each step left, in execution order

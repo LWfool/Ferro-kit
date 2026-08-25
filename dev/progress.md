@@ -3,14 +3,14 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：504 个（全部通过，clippy 零警告）
+## 测试总数：517 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 96 |
 | ferro-io | 83 |
 | ferro-structure | 72 |
-| ferro-analysis | 174 |
+| ferro-analysis | 187 |
 | ferro-workflow | 23 |
 | ferro-cli（lib 53 + 集成 5） | 58 |
 
@@ -177,6 +177,15 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   才能报出每个判据「独占抓到」多少 —— 漏斗每步只在上一步存活帧上报数，冗余判据
   在那里看着也很能干
 - 阈值 0 = 关闭；给了阈值但缺该标签 → 判之前就报错
+- **`geometry.rs`**：`min_pair_distance`（周期最小镜像，超出最小镜像上界报错）、
+  `count_with_coordination` / `coordination_histogram`（走 `classify_frame`，读
+  `cn` **字段**不解析标签）、`first_shell_cutoff`（g(r) 第一峰后的极小 = 配位壳层
+  外沿，用 0.02 Å 粗 bin，细 bin 的局部极小是采样噪声）
+- **`diagnostics.rs`**：只读模式的四张表 —— min d(O-O) 分布、每帧 Al6 个数、
+  Al 配位分布、**rcut 敏感性扫描**。敏感性表在 49Z49P02A 上是陡坡
+  （2.15→0.9%、2.45→13.1%、2.75→41.4%），在 43Z43P15A 上是平线（2.1–2.6 全
+  100%）—— 同一张表给出相反提示，这是它的价值
+- 四条判据同一语义：「保留含 Al6 的帧」写成「删除不含 Al6 的帧」，交叉表不分裂
 - `to_tables()` 出 funnel / criteria / overlap 三张表，**计数走预格式化文本**
   （`Column::Num` 会把 2000 渲染成 `2.000000e3`）
 
