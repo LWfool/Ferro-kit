@@ -424,6 +424,9 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
+| 文本锚点 | 字面匹配（`starts_with(" MD\| Step number")`） | **按 token 序列匹配**（`["MD\|","Step","number"]`，`split_whitespace` 后逐词比）。CP2K 每个版本都会动列宽与对齐，字面匹配把解析器钉死在一个版本的空白上；而空白正是 `split_whitespace` 已经扔掉的东西。所有 tag 收进 `mod tag` 一张表，**每个 tag 是候选列表**，支持某版本改了措辞就是加一行，不是在扫描器里加分支 |
+| 数值行的列 | 写死下标（`f[2..5]`、`fields[2..11]`、恰好 12 字段） | **从尾部取或按可解析性筛**。应力块靠「这一行能解出三个浮点」自动跳过表头与 `1/3 Trace`、`Determinant` 摘要行，不必知道有几行表头；cell 行末位是体积、其前九个是晶胞，从尾部取则前缀增减一列都不影响 |
+| xyz 块的注释行 | 要求它以 `i =` 开头 | 注释行的措辞不是 xyz 格式的约定，版本间无保证。判据改成**结构性**的：一行原子数、一行解析**不成**原子行的（这才叫注释）、然后那么多行能解析的原子行。首尾各验一行即可，中间留给真正读取时逐行解析 |
 | `nalgebra::Matrix3` 落盘 | 用 `as_slice()` 取九个数 | 它是**列优先**（无开关），给出的是转置；而 npy 的 box/virial、extxyz 的 `Lattice`、GPUMD 的 `lattice` 全要行优先。走 `matrix3_row_major()`。**这个错误有一半是静默的**：stress 对称，转置后数值不变，于是你会在 cell 上发现 bug、修掉、以为 stress 也对了。测试必须用**非对称**矩阵 |
 | CP2K 的应力单位 | 按版本查表推断 | `STRESS_UNIT` 是 **`&PRINT &STRESS_TENSOR` 下的输入关键字**，同一个二进制能打 bar / GPa / atm —— 单位不是版本的函数，版本表天生解不了。从 `STRESS\| Analytical stress tensor [bar]` 的方括号自读，认不出**报错**。dpdata 硬编码 `/ GPa`（`formats/cp2k/output.py`），遇到 bar 输出静默错 5 个数量级 |
 | 力的单位 | 也想从文本读 | 力是唯一**没有**单位标注的量（xyz 块的注释行只有 `i = …, time = …, E = …`），只能按 a.u.（Hartree/Bohr）兜底。这是「文本没写时才回落」的唯一实例 |

@@ -62,6 +62,45 @@ use ferro_core::units::{convert_pressure, PressureUnit, BOHR_TO_ANG, HARTREE_TO_
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 
+/// Text anchors, as token sequences rather than literal substrings.
+///
+/// CP2K reformats its log between releases — column alignment shifts, a field
+/// widens, an extra space appears. Matching `" MD| Step number"` literally ties
+/// the parser to one release's whitespace; matching the token sequence
+/// `["MD|", "Step", "number"]` survives any amount of padding, because
+/// `split_whitespace` has already thrown the padding away.
+///
+/// Each tag is a LIST of acceptable token sequences. Supporting a release that
+/// renamed something is then one more line here, not a new branch in the
+/// scanner — which is the whole point of keeping them in one table.
+mod tag {
+    /// Start of one MD step; the frame anchor everything else hangs off.
+    pub const FRAME: &[&[&str]] = &[&["MD|", "Step", "number"]];
+    /// Total potential energy of the step.
+    pub const ENERGY: &[&[&str]] = &[
+        &["ENERGY|", "Total", "FORCE_EVAL"],
+        &["ENERGY|", "Total", "force_eval"],
+    ];
+    /// Header of the analytical stress tensor block; carries the unit.
+    pub const STRESS: &[&[&str]] = &[&["STRESS|", "Analytical", "stress", "tensor"]];
+    /// Any `STRESS|` line — the numeric rows of the block are a subset.
+    pub const STRESS_ROW: &[&[&str]] = &[&["STRESS|"]];
+    /// SCF convergence verdict; the wording after this differs by method.
+    pub const SCF: &[&[&str]] = &[&["SCF", "run"]];
+    /// One per MD initialisation; more than one means the run was restarted.
+    pub const RESTART: &[&[&str]] = &[&["MD_INI|", "MD", "initialization"]];
+    /// Banner line carrying the CP2K release, kept for the trajectory metadata.
+    pub const VERSION: &[&[&str]] = &[&["CP2K|", "version", "string:"]];
+}
+
+/// True when the line's leading tokens match any of `candidates`.
+fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
+    candidates.iter().any(|tokens| {
+        let mut it = line.split_whitespace();
+        tokens.iter().all(|t| it.next() == Some(*t))
+    })
+}
+
 /// Per-file account of what was parsed and what was thrown away.
 ///
 /// Frame dropping happens inside the reader because every criterion needs the
@@ -142,14 +181,30 @@ fn xyz_line(line: &str) -> Option<(&str, Vector3<f64>)> {
     Some((sym, Vector3::new(x, y, z)))
 }
 
-// 块头: 一行纯数字 + 下一行以 "i =" 开头
+/// Recognises an xyz block head structurally, without reading the comment line.
+///
+/// The comment CP2K writes (`i = 1, time = 2.000, E = -2059.59`) is not part of
+/// the xyz format's contract and its wording has no guarantee across releases,
+/// so it is only required NOT to parse as an atom row — which is what makes it
+/// a comment. What must hold is the shape: an atom count, then a line that is
+/// not data, then that many parsable atom rows.
 fn block_head(lines: &[&str], i: usize) -> Option<usize> {
     let n: usize = lines.get(i)?.trim().parse().ok()?;
-    if lines.get(i + 1)?.trim_start().starts_with("i =") {
-        Some(n)
-    } else {
-        None
+    if n == 0 {
+        return None;
     }
+    // 第二行必须是注释（即解析不成原子行），否则那个"数字"是数据的一部分
+    if xyz_line(lines.get(i + 1)?).is_some() {
+        return None;
+    }
+    let first = i + 2;
+    if first + n > lines.len() {
+        return None;
+    }
+    // 只验首尾两行；全部 n 行随后真正读取时才逐行解析，不在这里做两遍
+    xyz_line(lines[first])?;
+    xyz_line(lines[first + n - 1])?;
+    Some(n)
 }
 
 /// Reads `n` atom rows starting at the block-head line, returning symbols and vectors.
@@ -174,13 +229,19 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
     let mut stats = Cp2kOutStats::default();
     let mut anchors: Vec<usize> = Vec::new();
     let mut scf: Vec<(usize, bool)> = Vec::new();
+    let mut version: Option<String> = None;
     for (i, l) in lines.iter().enumerate() {
-        if l.starts_with(" MD| Step number") {
+        if line_matches(l, tag::FRAME) {
             anchors.push(i);
-        } else if l.contains("SCF run ") {
-            scf.push((i, !l.contains("NOT converged")));
-        } else if l.contains("MD_INI| MD initialization") {
+        } else if line_matches(l, tag::SCF) {
+            // 收敛与否看有没有 NOT 这个词，而不是整句措辞
+            let not_converged = l.split_whitespace().any(|t| t == "NOT");
+            scf.push((i, !not_converged));
+        } else if line_matches(l, tag::RESTART) {
             stats.n_restarts += 1;
+        } else if version.is_none() && line_matches(l, tag::VERSION) {
+            // 行尾是版本号本身（`CP2K| version string: CP2K version 2024.1`）
+            version = l.split_whitespace().last().map(|v| v.to_string());
         }
     }
     stats.n_steps = anchors.len();
@@ -211,9 +272,9 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
         let mut stress_at = None;
         for i in (lo..a).rev() {
             let l = lines[i];
-            if energy.is_none() && l.starts_with(" ENERGY| Total FORCE_EVAL") {
+            if energy.is_none() && line_matches(l, tag::ENERGY) {
                 energy = Some(energy_to_ev(l)?);
-            } else if stress_at.is_none() && l.contains("STRESS| Analytical stress tensor") {
+            } else if stress_at.is_none() && line_matches(l, tag::STRESS) {
                 stress_at = Some(i);
             }
             if energy.is_some() && stress_at.is_some() {
@@ -260,13 +321,15 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
             stats.n_incomplete += 1;
             continue;
         };
-        if cell_fields.len() != 12 {
+        // 末位是体积，它之前的九个是晶胞；从尾部取，前缀多一列少一列都无所谓
+        if cell_fields.len() < 10 {
             stats.n_incomplete += 1;
             continue;
         }
+        let nine = &cell_fields[cell_fields.len() - 10..cell_fields.len() - 1];
         let mut m = [0.0_f64; 9];
         let mut ok = true;
-        for (slot, s) in m.iter_mut().zip(&cell_fields[2..11]) {
+        for (slot, s) in m.iter_mut().zip(nine) {
             match s.parse::<f64>() {
                 Ok(v) => *slot = v,
                 Err(_) => {
@@ -306,25 +369,34 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
         let stress = match stress_at {
             Some(s) => {
                 let unit = stress_unit(lines[s])?;
+                // 表头行（`STRESS| x y z`）与摘要行（`1/3 Trace`、`Determinant`）
+                // 都解析不出三个浮点，于是自动被跳过 —— 不必知道块里有几行表头
                 let mut t = Matrix3::zeros();
-                let mut good = true;
-                for (row, l) in lines[s + 2..(s + 5).min(lines.len())].iter().enumerate() {
-                    let f: Vec<&str> = l.split_whitespace().collect();
-                    if f.len() < 5 {
-                        good = false;
+                let mut row = 0usize;
+                for l in &lines[s + 1..(s + 12).min(lines.len())] {
+                    if row == 3 {
                         break;
                     }
-                    for (col, s) in f[2..5].iter().enumerate() {
-                        match s.parse::<f64>() {
-                            Ok(v) => t[(row, col)] = convert_pressure(v, unit, PressureUnit::EVPerAng3),
-                            Err(_) => {
-                                good = false;
-                                break;
-                            }
+                    if !line_matches(l, tag::STRESS_ROW) {
+                        continue;
+                    }
+                    let f: Vec<&str> = l.split_whitespace().collect();
+                    if f.len() < 4 {
+                        continue;
+                    }
+                    // 取末尾三个：前面是 `STRESS|` 加行标，列数变了也不影响
+                    let vals: Option<Vec<f64>> = f[f.len() - 3..]
+                        .iter()
+                        .map(|x| x.parse::<f64>().ok())
+                        .collect();
+                    if let Some(v) = vals {
+                        for (col, x) in v.iter().enumerate() {
+                            t[(row, col)] = convert_pressure(*x, unit, PressureUnit::EVPerAng3);
                         }
+                        row += 1;
                     }
                 }
-                if good { Some(t) } else { None }
+                if row == 3 { Some(t) } else { None }
             }
             None => None,
         };
@@ -356,7 +428,10 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
     }
 
     let mut traj = Trajectory { frames, metadata: Default::default() };
-    traj.metadata.source = Some("CP2K out".to_string());
+    traj.metadata.source = Some(match version {
+        Some(v) => format!("CP2K {v} out"),
+        None => "CP2K out".to_string(),
+    });
     Ok((traj, stats))
 }
 
@@ -406,6 +481,74 @@ mod tests {
         "        0.0000000000       5.0000000000        0.0000000000",
         "        0.0000000000        0.0000000000       5.0000000000          125.0000000000\n",
     );
+
+
+    // 同一份数据的几种「换了排版」的写法；解析结果必须逐位相同。
+    // 这是 token 匹配相对字面匹配的全部理由，所以它得有测试兜着。
+    fn variants() -> Vec<(&'static str, String)> {
+        let relayout = |f: fn(&str) -> String| -> String {
+            MINI.lines().map(f).collect::<Vec<_>>().join("\n") + "\n"
+        };
+        vec![
+            // 所有空白变三倍，模拟列宽调整
+            ("wider columns", MINI.replace(' ', "   ")),
+            // 行首缩进消失
+            ("no indent", relayout(|l| l.trim_start().to_string())),
+            // 缩进换成制表符
+            ("tab indent", relayout(|l| format!("\t{}", l.trim_start()))),
+            // cell 行前面多出一列（某个版本加了个计数器）
+            (
+                "extra cell column",
+                MINI.replace("\n       1       1.000       5.0000000000",
+                             "\n     42       1       1.000       5.0000000000"),
+            ),
+        ]
+    }
+
+    #[test]
+    fn relayouts_parse_identically() {
+        let (base, base_st) = parse_cp2k_out(MINI).unwrap();
+        let b = &base.frames[0];
+        for (name, text) in variants() {
+            let (t, st) = parse_cp2k_out(&text)
+                .unwrap_or_else(|e| panic!("{name}: {e:#}"));
+            assert_eq!(st, base_st, "{name}: stats differ");
+            assert_eq!(t.n_frames(), 1, "{name}");
+            let f = &t.frames[0];
+            assert_eq!(f.energy, b.energy, "{name}: energy");
+            assert_eq!(f.forces, b.forces, "{name}: forces");
+            assert_eq!(f.stress, b.stress, "{name}: stress");
+            assert_eq!(
+                f.cell.as_ref().unwrap().matrix,
+                b.cell.as_ref().unwrap().matrix,
+                "{name}: cell"
+            );
+            assert_eq!(
+                f.atoms.iter().map(|a| a.position).collect::<Vec<_>>(),
+                b.atoms.iter().map(|a| a.position).collect::<Vec<_>>(),
+                "{name}: positions"
+            );
+        }
+    }
+
+    #[test]
+    fn stress_block_tolerates_extra_header_rows() {
+        // 在表头与数值之间插一行；靠"解析得出三个浮点"筛选，多几行表头无所谓
+        let text = MINI.replace(
+            " STRESS|                        x                   y                   z\n",
+            " STRESS|                        x                   y                   z\n STRESS|  (in the cell frame)\n",
+        );
+        let (t, _) = parse_cp2k_out(&text).unwrap();
+        let (base, _) = parse_cp2k_out(MINI).unwrap();
+        assert_eq!(t.frames[0].stress, base.frames[0].stress);
+    }
+
+    #[test]
+    fn version_string_reaches_the_metadata() {
+        let text = format!(" CP2K| version string:                 CP2K version 2024.1\n{MINI}");
+        let (t, _) = parse_cp2k_out(&text).unwrap();
+        assert_eq!(t.metadata.source.as_deref(), Some("CP2K 2024.1 out"));
+    }
 
     #[test]
     fn parses_units_and_drops_unconverged_frames() {

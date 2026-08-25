@@ -3,12 +3,12 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：486 个（全部通过，clippy 零警告）
+## 测试总数：489 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 72 |
+| ferro-io | 75 |
 | ferro-structure | 72 |
 | ferro-analysis | 166 |
 | ferro-workflow | 23 |
@@ -97,7 +97,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   不用固定行偏移（偏移随 ensemble 变，NVT/NPT_I/NPT_F 差 10/18/20 行）；区间上界
   是下一个锚点，缺块的帧宁可丢也不借下一帧的数据。单位从文本自读
   （`[hartree]` / `[bar]`），认不出报错。丢帧三类（SCF 未收敛 / 块截断 / 组成不符）
-  计数由 `Cp2kOutStats` 带出
+  计数由 `Cp2kOutStats` 带出。
+  **文本锚点按 token 序列匹配**（`mod tag` 一张多候选表），对列宽、对齐、缩进
+  与制表符免疫；数值行不写死下标（应力靠「解得出三个浮点」筛，cell 从尾部取）。
+  四种排版变形 + 多一行表头 + cell 多一列，均有测试钉住结果逐位相同
 - **`writers/deepmd.rs`**（2026-08-25）：DeePMD system 目录（`type.raw` +
   `type_map.raw` + `set.000/*.npy`）。磁盘上一律二维 `float64`；
   `virial = stress × V` 不变号；半有半无的属性直接报错
