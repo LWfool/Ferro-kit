@@ -46,7 +46,7 @@ pub enum DatasetCmd {
 pub enum MergeMode {
     /// Concatenate everything of one composition, shuffle, then cut sets
     Shuffle,
-    /// Keep sources apart; every set holds frames from one source only
+    /// One set per input system; no mixing, no shuffling, no resizing
     BySource,
 }
 
@@ -68,9 +68,10 @@ pub struct MergeCmd {
     #[arg(long, value_name = "N")]
     pub seed: Option<u64>,
 
-    /// Frames per output set; 0 keeps everything in one set    [default: 400]
-    #[arg(long, value_name = "N", default_value_t = 400)]
-    pub set_size: usize,
+    /// Frames per output set; 0 keeps everything in one set. Only --mode
+    /// shuffle uses it — by-source gives each system its own set    [400]
+    #[arg(long, value_name = "N")]
+    pub set_size: Option<usize>,
 
     /// Force this suffix on output directories; default inherits a shared one
     #[arg(long, value_name = "EXT")]
@@ -287,14 +288,6 @@ mod tests {
     fn colliding_stems_fall_back_to_the_parent_directory() {
         let inputs = vec![PathBuf::from("run1/total.out"), PathBuf::from("run2/total.out")];
         assert_eq!(system_names(&inputs).unwrap(), vec!["run1_total", "run2_total"]);
-    }
-
-    #[test]
-    fn set_spans_spread_the_remainder() {
-        assert_eq!(set_spans(500, 400), vec![(0, 250), (250, 500)]);
-        assert_eq!(set_spans(2000, 400), vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]);
-        assert_eq!(set_spans(120, 400), vec![(0, 120)]);
-        assert_eq!(set_spans(120, 0), vec![(0, 120)]);
     }
 
     #[test]
@@ -554,6 +547,9 @@ fn print_table(t: &ferro_core::Table) {
 /// dpgen / dpdata split suffixes an output directory may inherit.
 const SPLIT_SUFFIXES: [&str; 3] = [".train", ".test", ".valid"];
 
+/// Frames per set when `--mode shuffle` is not told otherwise.
+const DEFAULT_SET_SIZE: usize = 400;
+
 fn run_merge(args: &MergeCmd) -> Result<usize> {
     let Some(out_root) = &args.outdir else {
         bail!("merge needs an output directory (-o DIR)");
@@ -648,48 +644,31 @@ fn merge_group(
             let seed = args.seed.unwrap_or(DEFAULT_SEED);
             let order = shuffle_order(all.n_frames(), seed);
             let mixed = all.subset(&order);
-            write_deepmd_npy_sets(&mixed, &dest, args.set_size)?;
+            write_deepmd_npy_sets(&mixed, &dest, args.set_size.unwrap_or(DEFAULT_SET_SIZE))?;
             println!("  shuffled with seed {seed} -> {}", dest.display());
         }
         MergeMode::BySource => {
-            // set 边界严格落在来源边界上：每个 set 里的帧都出自同一个条件
-            let mut bounds: Vec<(usize, usize)> = Vec::new();
-            let mut record: Vec<(String, PathBuf)> = Vec::new();
-            for (p, lo, hi) in &source_spans {
-                let n = hi - lo;
-                for (a, b) in set_spans(n, args.set_size) {
-                    record.push((format!("set.{:03}", bounds.len()), p.clone()));
-                    bounds.push((lo + a, lo + b));
-                }
+            // 一个 system 一个 set：不混合、不打乱、也不重切。set 与来源
+            // 一一对应，于是每个 set 就是一个条件的完整留出集
+            if args.set_size.is_some() {
+                println!("  note: --set-size does not apply to --mode by-source (one set per system)");
             }
+            let bounds: Vec<(usize, usize)> =
+                source_spans.iter().map(|(_, lo, hi)| (*lo, *hi)).collect();
             write_deepmd_npy_bounds(&all, &dest, &bounds)?;
-            let mut txt = String::from("# set  source\n");
-            for (set, p) in &record {
-                txt.push_str(&format!("{set}  {}\n", p.display()));
+            let mut txt = String::from("# set  frames  source\n");
+            for (i, (p, lo, hi)) in source_spans.iter().enumerate() {
+                txt.push_str(&format!("set.{i:03}  {}  {}\n", hi - lo, p.display()));
             }
             std::fs::write(dest.join("sets_source.txt"), txt)?;
-            println!("  {} set(s), boundaries kept on source edges -> {}", bounds.len(), dest.display());
+            println!(
+                "  {} set(s), one per system -> {}",
+                bounds.len(),
+                dest.display()
+            );
         }
     }
     Ok(())
-}
-
-/// `[lo, hi)` spans of one source, remainder spread rather than left as a stub.
-fn set_spans(n: usize, set_size: usize) -> Vec<(usize, usize)> {
-    if set_size == 0 || n <= set_size {
-        return vec![(0, n)];
-    }
-    let n_sets = n.div_ceil(set_size);
-    let base = n / n_sets;
-    let extra = n % n_sets;
-    let mut out = Vec::with_capacity(n_sets);
-    let mut lo = 0;
-    for i in 0..n_sets {
-        let take = base + usize::from(i < extra);
-        out.push((lo, lo + take));
-        lo += take;
-    }
-    out
 }
 
 /// The split suffix every input shares, if they all share one.

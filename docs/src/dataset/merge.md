@@ -62,26 +62,24 @@ set holds a mix of whatever went in — temperatures, compressions, sources.
 
 ### `--mode by-source`
 
-No mixing, no shuffling. Every source is cut into sets on its own and **the set
-boundaries fall exactly on source edges**, so each `set.NNN` holds frames from a
-single condition. The mapping is written to `sets_source.txt`:
+**One set per input system.** No mixing, no shuffling, no resizing: `set.000` is
+the first system whole, `set.001` the second, and so on. `--set-size` and
+`--seed` do not apply. The mapping is written to `sets_source.txt`:
 
 ```
-# set  source
-set.000  data/run300K.train
-...
-set.005  data/run500K.train
+# set  frames  source
+set.000  2000  data/run300K.train
+set.001   500  data/run500K.train
 ```
 
-Merging 2000 + 500 frames at `--set-size 400` gives `400×5 + 250×2` — five sets
-from the first source, two from the second, and no set straddling the join.
+So merging a 2000-frame and a 500-frame system gives exactly two sets, of 2000
+and 500 frames. The point is that each set stays identifiable: if every input is
+one condition — a temperature, a compression — then every set remains a clean
+hold-out of that condition, and picking a validation split means picking a set.
 
-Pick `by-source` when the sources are already shuffled internally and you want a
-validation split that is a clean hold-out of one condition; pick `shuffle` when
-you want every set to be statistically like every other.
-
-In both modes a remainder is spread across the sets rather than left as a stub,
-because a set of a dozen frames is useless as a validation split.
+Pick `shuffle` instead when you want every set to be statistically like every
+other. There, a remainder is spread across the sets rather than left as a stub,
+since a set of a dozen frames is useless as a split.
 
 ## The pipeline
 

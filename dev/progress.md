@@ -230,8 +230,9 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
   `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
   **不给 `-o` 即只读**，只读模式另打四张诊断表。
-  `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱 /
-  `by-source` set 边界落在来源边界上并写 `sets_source.txt`）
+  `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱后按
+  `--set-size` 切 / `by-source` **一个 system 一个 set**、不打乱不重切，
+  并写 `sets_source.txt`）
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存

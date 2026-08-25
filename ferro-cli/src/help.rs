@@ -1111,6 +1111,7 @@ Parameters:
       --mode   MODE       shuffle | by-source                    [shuffle]
       --seed   N          Shuffle seed; by-source ignores it          [666]
       --set-size N        Frames per output set; 0 = one set          [400]
+                          Only --mode shuffle uses it
       --suffix EXT        Force this suffix; default inherits a shared one
       --overwrite         Allow writing into an existing non-empty directory
 
@@ -1131,19 +1132,18 @@ Atom order:
 
 The two modes:
   shuffle     Everything of one composition is concatenated, shuffled with
-              --seed, then cut into sets. Every set holds a mix of whatever
-              conditions went in — temperatures, compressions, sources.
-  by-source   No mixing, no shuffling. Every source is cut into sets on its
-              own and the set boundaries fall exactly on source edges, so each
-              set.NNN holds frames from a single condition. The mapping is
-              written to sets_source.txt inside the output system.
+              --seed, then cut into sets of --set-size. Every set holds a mix
+              of whatever conditions went in — temperatures, compressions,
+              sources. A remainder is spread across the sets rather than left
+              as a stub, since a set of a dozen frames is useless as a split.
+  by-source   ONE SET PER INPUT SYSTEM. No mixing, no shuffling, no resizing:
+              set.000 is the first system whole, set.001 the second, and so on.
+              --set-size and --seed do not apply. The mapping is written to
+              sets_source.txt inside the output system.
 
-  Pick by-source when the sources are already shuffled internally and you want
-  a validation split that is a clean hold-out of one condition; pick shuffle
-  when you want every set to be statistically like every other.
-
-  In both modes a remainder is spread across the sets rather than left as a
-  stub — a set of a dozen frames is useless as a validation split.
+  Pick by-source when each input is already one condition and you want every
+  set to stay a clean hold-out of it; pick shuffle when you want every set to
+  be statistically like every other.
 
 Examples:
   ferro dataset merge -i data/*.train -o merged
