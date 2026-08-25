@@ -21,6 +21,8 @@ license = "MIT"
 nalgebra = "0.35"
 # 多维数组,用于大规模数据处理
 ndarray = "0.17"
+# NumPy .npy 读写（DeePMD 数据集）；0.10 要求 ndarray ^0.17.1，与上面同一份
+ndarray-npy = "0.10"
 # 并行计算库
 rayon = "1.8"
 # 序列化/反序列化

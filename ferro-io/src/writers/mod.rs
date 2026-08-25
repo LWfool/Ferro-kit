@@ -10,6 +10,7 @@ pub mod lammps_dump;
 pub mod qe;
 pub mod cube;
 pub mod table;
+pub mod deepmd;
 
 pub use xyz::write_xyz;
 pub use pdb::write_pdb;
@@ -21,3 +22,4 @@ pub use lammps_dump::write_lammps_dump;
 pub use qe::write_qe_input;
 pub use cube::write_cube;
 pub use table::{write_table, TableFormat};
+pub use deepmd::write_deepmd_npy;
