@@ -62,24 +62,33 @@ set holds a mix of whatever went in — temperatures, compressions, sources.
 
 ### `--mode by-source`
 
-**One set per input system.** No mixing, no shuffling, no resizing: `set.000` is
-the first system whole, `set.001` the second, and so on. `--set-size` and
-`--seed` do not apply. The mapping is written to `sets_source.txt`:
+No mixing, no shuffling. Each system is cut into sets **on its own**, so a set
+never straddles two systems and every `set.NNN` stays traceable to one
+condition. `--seed` does not apply. The mapping is written to
+`sets_source.txt`:
 
 ```
 # set  frames  source
-set.000  2000  data/run300K.train
-set.001   500  data/run500K.train
+set.000  400  data/run300K.train
+...
+set.004  400  data/run300K.train
+set.005  250  data/run500K.train
+set.006  250  data/run500K.train
 ```
 
-So merging a 2000-frame and a 500-frame system gives exactly two sets, of 2000
-and 500 frames. The point is that each set stays identifiable: if every input is
-one condition — a temperature, a compression — then every set remains a clean
+Merging a 2000-frame and a 500-frame system at `--set-size 400` gives 5 + 2
+sets. The point is that each set stays identifiable: if every input is one
+condition — a temperature, a compression — then every set remains a clean
 hold-out of that condition, and picking a validation split means picking a set.
 
 Pick `shuffle` instead when you want every set to be statistically like every
-other. There, a remainder is spread across the sets rather than left as a stub,
-since a set of a dozen frames is useless as a split.
+other.
+
+## The remainder is spread, in both modes
+
+500 frames at `--set-size 400` give **250 + 250, not 400 + 100**. A lopsided
+pair is worse both for training balance and for using a set as a validation
+split — and a trailing set of a dozen frames is useless as either.
 
 ## The pipeline
 

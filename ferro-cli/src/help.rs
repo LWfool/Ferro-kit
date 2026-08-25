@@ -1111,7 +1111,6 @@ Parameters:
       --mode   MODE       shuffle | by-source                    [shuffle]
       --seed   N          Shuffle seed; by-source ignores it          [666]
       --set-size N        Frames per output set; 0 = one set          [400]
-                          Only --mode shuffle uses it
       --suffix EXT        Force this suffix; default inherits a shared one
       --overwrite         Allow writing into an existing non-empty directory
 
@@ -1136,14 +1135,18 @@ The two modes:
               of whatever conditions went in — temperatures, compressions,
               sources. A remainder is spread across the sets rather than left
               as a stub, since a set of a dozen frames is useless as a split.
-  by-source   ONE SET PER INPUT SYSTEM. No mixing, no shuffling, no resizing:
-              set.000 is the first system whole, set.001 the second, and so on.
-              --set-size and --seed do not apply. The mapping is written to
-              sets_source.txt inside the output system.
+  by-source   No mixing, no shuffling. Each system is cut into sets ON ITS
+              OWN, so a set never straddles two systems and every set.NNN
+              stays traceable to one condition. --seed does not apply. The
+              mapping is written to sets_source.txt inside the output system.
 
   Pick by-source when each input is already one condition and you want every
   set to stay a clean hold-out of it; pick shuffle when you want every set to
   be statistically like every other.
+
+  In both modes the remainder is spread evenly rather than left at the end:
+  500 frames at --set-size 400 give 250 + 250, not 400 + 100. The lopsided
+  pair is worse both for training balance and for using a set as a split.
 
 Examples:
   ferro dataset merge -i data/*.train -o merged
