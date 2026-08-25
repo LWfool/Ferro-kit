@@ -10,6 +10,7 @@ pub mod lammps_data;
 pub mod lammps_dump;
 pub mod cp2k;
 pub mod cp2k_out;
+pub mod deepmd;
 pub mod qe;
 pub mod cube;
 
@@ -23,5 +24,6 @@ pub use lammps_data::read_lammps_data;
 pub use lammps_dump::{read_lammps_dump, LammpsUnits};
 pub use cp2k::{read_cp2k_inp, read_cp2k_restart};
 pub use cp2k_out::{read_cp2k_out, read_cp2k_out_with_stats, Cp2kOutStats};
+pub use deepmd::{read_deepmd_npy, read_deepmd_npy_with_warnings};
 pub use qe::read_qe_input;
 pub use cube::{read_cube, read_cube_as_chg};
