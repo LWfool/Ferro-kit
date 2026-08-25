@@ -5,6 +5,7 @@
 //! the result belong to `ferro-io`; this module only decides.
 
 pub mod filter;
+pub mod diagnostics;
 pub mod geometry;
 
 pub use filter::{filter_frames, Criterion, FilterParams, FilterResult, FrameVerdict};

@@ -18,6 +18,10 @@ use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 
 use crate::batch::expand_inputs;
+use ferro_analysis::ml::diagnostics::{
+    coordination_table, count_histogram, cutoff_scan, distribution_table, pooled_coordination,
+    scan_table,
+};
 use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_io::{
@@ -371,6 +375,8 @@ fn filter_one(
     print_report(&result);
 
     let Some(out_root) = &args.outdir else {
+        // 诊断只在只读模式算：它比筛选本身贵，而写出时人已经定好参数了
+        print_diagnostics(&traj, &result, &params);
         println!();
         return Ok(derived);
     };
@@ -429,4 +435,51 @@ fn find_systems(root: &Path) -> Result<Vec<PathBuf>> {
     }
     out.sort();
     Ok(out)
+}
+
+/// The tables that answer "should I be filtering, and at what value".
+///
+/// Only printed in read-only mode. A selection whose outcome swings with its
+/// cutoff is chosen by the cutoff rather than by the structure, and a minimum
+/// distance drawn from a smooth distribution has no outliers to remove — neither
+/// is visible from the funnel alone.
+fn print_diagnostics(
+    traj: &ferro_core::Trajectory,
+    r: &FilterResult,
+    params: &FilterParams,
+) {
+    if params.oo_min > 0.0 {
+        let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
+        println!("  [min_oo distribution]");
+        print_table(&distribution_table("min d(O-O) [A]", &v, 16));
+    }
+
+    let Some(rcut) = params.al6_rcut else { return };
+
+    let n6: Vec<usize> = r.verdicts.iter().filter_map(|x| x.n_al6).collect();
+    if !n6.is_empty() {
+        println!("  [Al6 per frame]");
+        print_table(&count_histogram("n_al6", &n6));
+    }
+
+    let mut cut = std::collections::BTreeMap::new();
+    cut.insert(("Al".to_string(), "O".to_string()), rcut);
+    let tp = ferro_core::TypeParams::new(cut, Default::default());
+    let hist = pooled_coordination(traj, &tp, "Al");
+    if !hist.is_empty() {
+        println!("  [Al coordination at rcut = {rcut:.2} A]");
+        print_table(&coordination_table(&hist));
+    }
+
+    // 以当前截断为中心扫一圈：陡不陡才是这张表要说的事
+    let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1).filter(|v| *v > 0.0).collect();
+    let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200);
+    println!("  [rcut sensitivity]");
+    print_table(&scan_table(&scan));
+}
+
+fn print_table(t: &ferro_core::Table) {
+    for line in t.to_comment_lines() {
+        println!("    {line}");
+    }
 }
