@@ -109,16 +109,19 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
 在此之前的变通：`ferro convert -i traj.dump -o conf.vasp --number 20` 抽成单帧
 文件，再逐个喂给 job。
 
-### ferro dataset merge（2026-08-25）
+### ferro dataset：三步已齐，剩余小项（2026-08-25）
 
-`collect` 与 `filter`（力/应力/区间 + O-O/Al6 两道可选几何判据 + 只读诊断）
-均已落地。剩 `merge`：合并同化学式的数据集，两种模式（全局打乱 / 每 system
-一个 set）+ set 大小；也可能只用来调 set 尺寸。`type_map` 跨 system 对齐靠
-`collect` 的 `(Z, 符号)` 排序规则可复现。
+`collect` / `filter` / `merge` 均已落地。剩下的都不大：
 
-**尚未处理**：`filter` 现在把最小镜像当作判据的上界（超出报错），没有实现参考
-脚本里的多层镜像扫描（`n = floor(rcut / w + 0.5)`）。当前两个体系的盒子都远大
-于阈值，不构成限制；小胞体系需要时再补。
+- **多层周期镜像**：几何判据现在把最小镜像当上界（超出报错），没做参考脚本的
+  多层扫描（`n = floor(rcut / w + 0.5)`）。当前体系盒子远大于阈值，不构成限制
+- **额外键搬运**：`atom_ener` / `fparam` 这类 `Frame` 装不下的项，读时告警、
+  写时丢失。真出现时再设计（需要一条绕过 `Trajectory` 的按帧索引搬运通道）
+- **GPUMD/NEP 的 `train.xyz` 导出**：链末的 export。extxyz 读写两侧已有，但
+  `readers/extxyz.rs:45` 把 `virial` 与 `stress` 当同一个量读（差一个体积因子
+  且 GPUMD 里两者反号），`writers/extxyz.rs:47` 写 `stress=` 时也没变号
+  （`Frame::stress` 是「正 = 压缩」，GPUMD 的 `stress=` 是 ASE 约定）。
+  **这两处要在接 GPUMD 之前修**
 
 两件**不必新写**的事已经在库里：帧区间与间隔用 `Trajectory::select_indices` /
 `spread_indices`（`convert` 的 `--start/--end/--stride/--number` 就是它）；

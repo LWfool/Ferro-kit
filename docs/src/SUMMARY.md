@@ -29,6 +29,7 @@
 
 - [Collecting AIMD Output](dataset/collect.md)
 - [Filtering a Dataset](dataset/filter.md)
+- [Merging Datasets](dataset/merge.md)
 
 # Input Generation
 

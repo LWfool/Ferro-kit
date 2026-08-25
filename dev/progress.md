@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：517 个（全部通过，clippy 零警告）
+## 测试总数：525 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 96 |
 | ferro-io | 83 |
 | ferro-structure | 72 |
-| ferro-analysis | 187 |
+| ferro-analysis | 193 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 53 + 集成 5） | 58 |
+| ferro-cli（lib 55 + 集成 5） | 60 |
 
 版本号 **0.3.0**（workspace 统一；ferro-python 已同步并复核编译通过）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -186,6 +186,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   （2.15→0.9%、2.45→13.1%、2.75→41.4%），在 43Z43P15A 上是平线（2.1–2.6 全
   100%）—— 同一张表给出相反提示，这是它的价值
 - 四条判据同一语义：「保留含 Al6 的帧」写成「删除不含 Al6 的帧」，交叉表不分裂
+- **`merge.rs`**：`composition_key`（逐原子元素序列，分组用，**不看目录名**）、
+  `sort_atoms`（规范序 (Z,符号)，coord/force 跟同一置换，box/energy 不动）、
+  `group_name`（`112_Al32O64Zn16`，下标是实际计数不约分）、`shuffle_order`
+  （seed 默认 666，不给也可复现）
 - `to_tables()` 出 funnel / criteria / overlap 三张表，**计数走预格式化文本**
   （`Column::Num` 会把 2000 渲染成 `2.000000e3`）
 
@@ -225,7 +229,9 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `total.out`）时改 `<父目录>_<stem>`，仍撞则报错。
   `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
   `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
-  **不给 `-o` 即只读**。三张表只打印不落盘。`merge` 待做
+  **不给 `-o` 即只读**，只读模式另打四张诊断表。
+  `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱 /
+  `by-source` set 边界落在来源边界上并写 `sets_source.txt`）
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
@@ -307,8 +313,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`ferro dataset collect` 只读 CP2K**，VASP / QE 待扩；`.out` **未**注册进
   `io_dispatch`（这个扩展名太通用，不能替 CP2K 占下），故 `ferro convert -i x.out`
   仍不认识它
-- **`dataset merge` 未实现**；`filter` 的几何判据（O-O 间距、Al6 配位）也未做，
-  现有的只有力与应力两道
+- `dataset` 三步（collect / filter / merge）已齐；几何判据只覆盖最小镜像范围，
+  未做多层镜像扫描（小胞体系需要时再补）
+- **merge 的规范序取 (Z, 符号)**，dpdata 取字母序；两者都靠 `type_map.raw`
+  自描述，但同一份数据经 ferro 与经 dpdata 合并，`type.raw` 的数字会不同
 - **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
   `io_dispatch.rs` 走。2026-08 加的 `.vasp`/`.pos` 扩展名只有 CLI 认，Python 侧仍只认
   `POSCAR`/`CONTCAR` 前缀。两处 match 分支本就是分开维护，改一处不会波及另一处，
