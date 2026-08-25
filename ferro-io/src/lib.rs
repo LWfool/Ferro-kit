@@ -2,6 +2,7 @@ pub mod readers;
 pub mod writers;
 
 pub use readers::{
+    read_cp2k_out, read_cp2k_out_with_stats, Cp2kOutStats,
     read_cif, read_pdb, read_xyz,
     read_poscar, read_contcar,
     read_chgcar,
@@ -13,6 +14,7 @@ pub use readers::{
     LammpsUnits,
 };
 pub use writers::{
+    write_deepmd_npy,
     write_cif, write_pdb, write_xyz,
     write_poscar,
     write_extxyz,

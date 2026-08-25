@@ -47,6 +47,11 @@ enum Command {
     Info(cmd::info::InfoCmd),
     /// Generate quantum-chemistry input files
     Job(Box<cmd::job::JobCmd>),
+    /// Build machine-learning training sets from AIMD output
+    Dataset {
+        #[command(subcommand)]
+        cmd: Option<cmd::dataset::DatasetCmd>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -109,6 +114,18 @@ fn main() -> Result<()> {
             0
         }
         Command::Job(c)     => { cmd::job::run(c)?; 0 }
+        Command::Dataset { cmd: None } => {
+            help::print_dataset_overview();
+            0
+        }
+        Command::Dataset { cmd: Some(c) } => {
+            if cmd::dataset::wants_help(c) {
+                cmd::dataset::print_help(c);
+                0
+            } else {
+                cmd::dataset::run(c)?
+            }
+        }
     };
 
     if failures > 0 {

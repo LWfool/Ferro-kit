@@ -388,6 +388,9 @@ Structure I/O
   info           Atoms, cell, volume, density (g/cm³) of a structure or trajectory
   job            Quantum-chemistry input files (gaussian | cp2k | qe)
 
+Machine-learning datasets
+  dataset collect   AIMD output -> DeePMD system directories (set.*/*.npy)
+
 Batch input:
   -i takes several files and expands glob patterns itself — quote them:
     ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan
@@ -905,5 +908,83 @@ Parameters:
 Example:
   ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
   ferro map chg-sdf --cubes f1.cube f2.cube --qn 0 --chg-padding 5.0"#
+    );
+}
+
+pub fn print_dataset_overview() {
+    println!(
+        r#"ferro dataset — Machine-learning training sets
+
+  Three steps kept as separate commands, because the first one is expensive and
+  its output is the copy you back up:
+
+  collect    AIMD output -> DeePMD system directories        (implemented)
+  filter     quality selection on an existing dataset        (not yet)
+  merge      combine same-composition datasets, resize sets  (not yet)
+
+Run a subcommand with no -i for its full page:
+  ferro dataset collect"#
+    );
+}
+
+pub fn print_dataset_collect() {
+    println!(
+        r#"ferro dataset collect — AIMD output -> DeePMD system directories
+
+  Reads CP2K MD output (the stdout log, with coordinates, forces and stress all
+  printed to __STD_OUT__) and writes one DeePMD system directory per input.
+
+Parameters:
+  -i, --input  FILE...    AIMD output files; glob patterns allowed
+  -o, --outdir DIR        Where the system directories go                  [.]
+
+Output layout (one per input):
+  <outdir>/<name>/
+    type.raw          one 0-based integer per atom, indexing type_map.raw
+    type_map.raw      one element symbol per line, sorted by (Z, symbol)
+    set.000/
+      coord.npy       (nframes, natoms*3)   Angstrom
+      box.npy         (nframes, 9)          Angstrom, row-major lattice vectors
+      energy.npy      (nframes, 1)          eV
+      force.npy       (nframes, natoms*3)   eV/Angstrom
+      virial.npy      (nframes, 9)          eV   = stress * volume
+
+  <name> is the input file stem; when several inputs share a stem (CP2K logs
+  are routinely all called total.out) the parent directory is prefixed, giving
+  run1_total / run2_total rather than one overwriting the other.
+
+  Everything is float64. dpdata defaults to float32, but this directory is the
+  head of the pipeline — `filter` and `merge` read it back, and precision lost
+  here cannot be recovered. Narrow to float32 when feeding the trainer.
+
+  One set per input, never split. Splitting exists to give `merge --shuffle`
+  its boundaries, and nothing is shuffled yet at this stage.
+
+Dropped frames (always counted, never silent):
+  SCF not converged     the forces are garbage; keeping them is worse than a gap
+  incomplete block      a job killed mid-step leaves a truncated frame
+  composition changed   guards against block misalignment rather than a real
+                        change of system: if a warning is printed inside an xyz
+                        block, the element column stops holding element symbols
+
+Units and signs:
+  Energy and stress carry their unit in the text ([hartree], [bar]) and it is
+  read from there. CP2K's STRESS_UNIT is an INPUT keyword, so one version can
+  print bar, GPa or atm — a version table cannot answer this. An unrecognised
+  unit is an error, never a default. Forces are the one quantity with no unit
+  printed; they are taken as atomic units (Hartree/Bohr).
+
+  stress keeps the sign CP2K/VASP/QE print (positive = compression), which is
+  the orientation DeePMD's virial uses, so virial = stress * V with no flip.
+  GPUMD's `stress=` keyword uses the opposite (ASE) convention and needs one.
+
+  The stress is the POTENTIAL part only. `MD| Pressure` additionally holds the
+  kinetic term (for the reference run: 2345 + 14134 = 16479 bar of a total
+  16481) and must not be used — it would bake kinetic energy into the potential.
+
+Examples:
+  ferro dataset collect -i total.out
+  ferro dataset collect -i run*/total.out -o data
+  ferro dataset collect -i md1.out md2.out -o /scratch/train"#
     );
 }
