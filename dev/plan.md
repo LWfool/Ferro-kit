@@ -5,37 +5,28 @@
 
 ## 优先级高
 
-### extxyz 的 stress/virial 修正 + GPUMD/NEP 导出（**最高优先**，2026-08-26 提级）
+### GPUMD/NEP 的 `train.xyz` 导出（**最高优先**，2026-08-26）
 
-原在「dataset 剩余小项」里作为 GPUMD 接入的前置，现单列并提到最高 —— 它不是
-新特性而是**既有读写的正确性缺陷**，且错得静默：
+前置的 extxyz 符号/体积因子修正**已完成**（见归档），导出本身仍待做。这轮查证顺带
+把导出要用的约定全部落实了，下次开工不必重查：
 
-| 位置 | 现状 | 问题 |
-|---|---|---|
-| `readers/extxyz.rs:45` | `stress` 取不到就回落取 `virial` | 两个键当同一个量读，**差一个体积因子** |
-| 同上 | 读到什么存什么 | ASE/GPUMD 的 `stress=` 是「正 = 张」，Ferro 的 `Frame::stress` 是「正 = 压缩」，**没变号** |
-| `writers/extxyz.rs:47` | 直接把 `frame.stress` 九个数写成 `stress=` | 同样没变号，写出去的 extxyz 对 ASE 而言符号是反的 |
+| 事实 | 出处 |
+|---|---|
+| `virial=` 单位 eV，**正 = 压缩**，等于 `Frame::stress × V` 不变号 | GPUMD 手册；与 dpdata 1.0.2、extxyz 规格三方一致 |
+| `stress=` 单位 eV/Å³，**正 = 拉伸**（ASE 约定），写出时变号 | 同上 |
+| 两键同在时 **GPUMD 取 virial** | GPUMD 手册。注意 Ferro 的 reader 更严：不一致直接报错 |
+| 力列 `force:R:3` 与 `forces:R:3` **都合法** | GPUMD 手册；读侧已两种都收 |
+| `lattice="ax ay az bx by bz cx cy cz"` | 与 Ferro 现有写法一致，不必改 |
 
-要定的换算（两条内部约定已定死，见 `overview.md` 的 v0.3.1 表）：
-`virial = stress × V` 不变号 · `Frame::stress` 正 = 压缩。故读侧
-`virial` 键要除以 `|det(box)|`（`readers/deepmd.rs` 已有同一条换算，复用而非重写），
-`stress` 键要变号；写侧对称。**无 cell 时读到 `virial` 无法换算 → 报错，不静默当 stress**。
+仍要定的：
 
-**测试必须钉住符号，且不能只靠自洽**：ferro 写出→ferro 读回这条回路里，符号错两次
-会互相抵消、测试全绿。要一条**外部产生的固定文本 fixture**（GPUMD 的 `train.xyz`
-片段或 ASE 写出的 extxyz），断言读进来的 `Frame::stress` 符号与已知压缩/张状态一致。
-这与 `array_order.rs` 用非对称矩阵测行优先是同一类防护：对称张量下转置静默，
-自洽回路下符号静默。
-
-修完再接**GPUMD/NEP 的 `train.xyz` 导出**（链末 export，不是中间格式）：
-
-- 键名待核对：NEP 的 train.xyz 用单数 `force`，ASE 用复数 `forces`。**读侧两个都收**，
-  写侧按目标写。同理 `virial=` 与 `stress=` 两种下游都存在
-- 命令归属未定：是 `ferro dataset export --format nep`（与 collect/filter/merge 同链）
-  还是 `ferro convert` 的一个目标格式。判据：产物是**一个文件**而非目录，且不需要
-  按成分分组 —— 更像 convert；但输入是 DeePMD system 目录，`convert` 的 `-i` 现在
-  不收目录。倾向前者
-- `config_type` / `weight` 这类 NEP 侧可选键：先不写，需要时再加
+- **命令归属**：`ferro dataset export --format nep`（与 collect/filter/merge 同链）
+  还是 `ferro convert` 的一个目标格式。判据：产物是**一个文件**而非目录，更像
+  convert；但输入是 DeePMD system 目录，而 `convert` 的 `-i` 现在不收目录。倾向前者
+- **写 `stress=` 还是 `virial=`**：通用 extxyz writer 定的是只写 `stress=`（两个键
+  = 两处可能矛盾的事实）。NEP 侧两个都认，故沿用 `stress=` 即可，除非实测发现
+  GPUMD 对 `stress=` 的处理有别
+- `config_type` / `weight` 这类 NEP 可选键：先不写，需要时再加
 
 ---
 
@@ -114,6 +105,17 @@ mixed type 布局（**先核对 DeePMD-kit 文档与 dpdata 的 `deepmd/npy/mixe
 `io_dispatch` 侧可按前缀 `OUTCAR` 注册只读格式（与 `POSCAR`/`CONTCAR` 的前缀判断
 同一模式），让 `ferro convert -i OUTCAR -o traj.xyz` 也能用；注册时记得
 **`ferro-python/src/io.rs` 是另一处独立的分派**，加格式要两边都看。
+
+**Voigt 顺序表（`ferro-io/src/voigt.rs`）跟着这条待办建**：extxyz 那轮本打算先建，
+但 6 分量在 extxyz 侧已决定拒收，表在那里没有调用者，先建等于先造一个没人用的抽象。
+两条已实证的顺序可直接写进去：
+
+| 来源 | 6 分量顺序 | 实证 |
+|---|---|---|
+| extxyz 规格 / ASE | `xx yy zz` `yz xz xy` | `ase/stress.py:84` |
+| VASP `in kB` / GPUMD `stress_*.out` | `xx yy zz` `xy yz zx` | `ase/io/vasp_parsers/vasp_outcar_parsers.py:93` 的 `[[0,1,2,4,5,3]]` 重排 |
+
+LAMMPS 那条**没有实证，先不写** —— 半可信的表比没有表危险。
 
 ---
 
@@ -235,9 +237,8 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
   多层扫描（`n = floor(rcut / w + 0.5)`）。当前体系盒子远大于阈值，不构成限制
 - **额外键搬运**：`atom_ener` / `fparam` 这类 `Frame` 装不下的项，读时告警、
   写时丢失。真出现时再设计（需要一条绕过 `Trajectory` 的按帧索引搬运通道）
-- **GPUMD/NEP 的 `train.xyz` 导出**：连同它的前置（extxyz 的 stress/virial
-  符号与体积因子）已单独提为本章第一条，见「extxyz 的 stress/virial 修正 +
-  GPUMD/NEP 导出」
+- **GPUMD/NEP 的 `train.xyz` 导出**：已单独提为本章第一条「GPUMD/NEP 的
+  `train.xyz` 导出」；它的前置（extxyz 的 stress/virial 符号与体积因子）已完成
 
 两件**不必新写**的事已经在库里：帧区间与间隔用 `Trajectory::select_indices` /
 `spread_indices`（`convert` 的 `--start/--end/--stride/--number` 就是它）；
@@ -275,6 +276,22 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
   参数结构体），不要另起一套
 - 注意与「批处理输入」是两件事：这里是**命令**的批处理（一个脚本跑多条命令），
   那里是**输入文件**的批处理（一条命令跑多个轨迹）。两者可叠加但互不依赖
+
+### CP2K 的 EXTXYZ 把 atom kind 写进 species 列（2026-08-26 提出）
+
+CP2K 新版的 `MOTION/PRINT/TRAJECTORY` 多了 `FORMAT EXTXYZ`，而它的
+`PRINT_ATOM_KIND` 会**把 subsys 里的 atom kind 写进 species 列**（文档原文：只对
+XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素、位点标签走
+独立的 `label:S:1` 列，撞上这种文件会把 kind 当元素收下。
+
+与 LAMMPS dump「没地方放第二个名字只能折进 element 列」是同一族问题，但**不能照抄
+那边的解法**：dump 那边是无条件按下划线拆，而 extxyz 的 species 列在合规文件里就
+该是纯元素，无条件拆会误伤。要定的是判据 —— 拆还是不拆、按什么拆、
+`split_element_label` 的 `Unknown` 分支怎么处理（`Pb` 那类贪婪前缀误判的教训见
+`issues.md`）。
+
+CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
+文件里），故这条与应力无关，是纯粹的标签映射问题。
 
 ### ferro-python：pyo3 0.29 运行时验证
 
@@ -385,6 +402,28 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### extxyz 的 stress/virial 修正（2026-08-26，0.3.2）
+
+四处静默缺陷，共同根因是**在没有依据的地方替用户猜了一个约定，且猜错不报错**：
+`stress` 取不到就回落取 `virial`（差一个体积因子）· 两侧都没做 ASE（正 = 拉伸）与
+`Frame::stress`（正 = 压缩）之间的变号 · 九个数按行优先处理而 ASE 文档说列优先 ·
+`Properties` 的力列只认复数 `forces`，读 GPUMD 的 `train.xyz` 会丢掉全部受力。
+
+**被查证推翻的原计划**（三条，都发生在动手之前）：
+
+1. 原计划「读到 `virial=` 就报错，因为符号约定无法核实」。实测 dpdata 1.0.2 的
+   `virials = -volume * stress_ase` 双向换算 + GPUMD 手册 + extxyz 规格的
+   `virial -> stress` 乘 `-1/cell_vol`，三方一致，符号完全可定 —— 报错等于明知
+   怎么读却拒绝读
+2. 原计划「按列优先读写以对齐 ASE」。查到规格要求该张量**对称**（"fail if not
+   symmetric"），而对称下行/列优先逐位相同 —— ASE 说 Fortran order、GPUMD 手册
+   拼成 `vxx vxy vxz vyx ...`，两家描述相反却从无人报 bug，正是这个原因。改为
+   **检查对称性**，不站队
+3. 原计划「6 分量按标准 Voigt 收下并告警」。用户判断：让用户重排与重新生成 9 分量
+   的工作量几乎没差别，那就取最稳的结果、正确性交回给用户 —— 改为**拒收**
+
+`Lattice` 全程未动：实测 ASE 写出的九个数就是三个晶格矢量依次排开，Ferro 原本正确。
 
 ### 帮助页精简：其余各页（2026-08-26，0.3.2）
 

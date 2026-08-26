@@ -146,6 +146,7 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 | `collect` 新增 `--overwrite` | 与 `filter` / `merge` 一致 |
 | `filter` 的报告落盘 | 七张 csv 平铺在 `-o` 根下（`filter_*.csv`）。诊断表改为恒算 |
 | 批内失败提示改措辞 | 不再承诺「见 `[inputs]` 块」—— dataset 的产物是目录，没有那个文件 |
+| **extxyz 的 `stress=` 变号** | 写出的九个数与 0.3.1 逐个反号。旧行为不是「另一种约定」而是错的：extxyz 的 `stress=` 是 ASE 约定（正 = 拉伸），`Frame::stress` 是正 = 压缩，两侧都没变号。读侧同时改：`virial=` 不再与 `stress=` 混作一谈（差一个体积因子），非对称张量与 6 分量 Voigt 一律拒收 |
 
 **新增**：`ferro doc`（手册编译进二进制，`include_str!` 24 页 208 KB，topic 跟
 子命令树同名，tty 下走 `$PAGER`）。

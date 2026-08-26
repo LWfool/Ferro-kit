@@ -38,7 +38,14 @@ pub struct Frame {
     pub energy: Option<f64>,
     /// 每个原子的受力（eV/Å），顺序与 atoms 一致
     pub forces: Option<Vec<Vector3<f64>>>,
-    /// 应力张量（eV/Å³），Voigt 顺序由调用方自行约定
+    /// Stress tensor (eV/Å³), row-major, **positive = compression**.
+    ///
+    /// This is the sign CP2K, VASP and QE print, and the opposite of ASE's
+    /// (positive = tension); readers of ASE-flavoured formats negate on the way
+    /// in. The virial follows from it without a sign change: `virial = stress *
+    /// V` (eV), which is what DeePMD, QUIP and GPUMD call `virial`.
+    ///
+    /// Voigt order is left to the caller — nothing in this crate flattens it.
     pub stress: Option<Matrix3<f64>>,
     /// 每个原子的速度（Å/fs），顺序与 atoms 一致
     pub velocities: Option<Vec<Vector3<f64>>>,

@@ -44,7 +44,11 @@ pub fn write_extxyz(trajectory: &Trajectory, path: &str) -> Result<()> {
         parts.push(format!("Properties={prop_spec}"));
 
         if let Some(e) = frame.energy { parts.push(format!("energy={}", fmt(e))); }
+        // extxyz 的 stress= 是 ASE 约定(正 = 拉伸),Frame::stress 是正 = 压缩,
+        // 故写出时变号。virial= 不写 —— 两个键就是两处可能互相矛盾的事实,
+        // 读侧为此专门做了交叉校验,没有理由自己生产这种文件
         if let Some(s) = &frame.stress {
+            let s = -s;
             parts.push(format!(
                 "stress=\"{} {} {} {} {} {} {} {} {}\"",
                 fmt(s[(0,0)]), fmt(s[(0,1)]), fmt(s[(0,2)]),
@@ -159,4 +163,28 @@ mod tests {
         let forces = f.forces.as_ref().unwrap();
         assert!((forces[0].x - 0.1).abs() < 1e-6);
     }
+    #[test]
+    fn test_stress_written_in_ase_sign() {
+        // 锚点是 ASE 3.29.0 对同一张量写出的文本,不是本 writer 自己的往返 ——
+        // 写侧与读侧同时漏掉变号时,往返测试照样通过。
+        //   σ_ferro(正 = 压缩) = -[[0.01,0.002,0.003],[...]]
+        //   ASE 对应写出的 stress= 必须是 +0.01 0.002 0.003 ...
+        use nalgebra::Matrix3;
+        let mut traj = bcc_traj();
+        traj.frames[0].stress = Some(-Matrix3::new(
+            0.01, 0.002, 0.003,
+            0.002, 0.02, 0.004,
+            0.003, 0.004, 0.03));
+        let path = std::env::temp_dir().join("stress_sign.extxyz");
+        write_extxyz(&traj, path.to_str().unwrap()).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let line = text.lines().nth(1).unwrap();
+        assert!(
+            line.contains("stress=\"0.0100000000 0.0020000000 0.0030000000 \
+0.0020000000 0.0200000000 0.0040000000 0.0030000000 0.0040000000 0.0300000000\""),
+            "{line}");
+        // virial= 不写:两个键 = 两处可能互相矛盾的事实
+        assert!(!line.contains("virial="), "{line}");
+    }
+
 }

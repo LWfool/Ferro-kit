@@ -46,7 +46,27 @@ pub struct Frame {
 ```
 
 `pbc = [false,false,false]` → molecular system.  
-`pbc = [true,true,false]` → surface / slab.  
+`pbc = [true,true,false]` → surface / slab.
+
+### 应力的符号
+
+`stress` 一律**正 = 压缩**（CP2K / VASP / QE 打印的那个符号），行优先存储。
+维里由它直接得到、**不变号**：`virial = stress × V`（eV），这正是 DeePMD、
+QUIP 与 GPUMD 所说的 `virial`。
+
+**ASE 相反**（正 = 拉伸）。所以读写 ASE 系的格式时 ferro 会在边界上变号：
+
+| 格式与键 | 文件里是什么 | ferro 怎么处理 |
+|---|---|---|
+| extxyz 的 `stress=` | eV/Å³，正 = 拉伸 | 读写两侧**变号** |
+| extxyz 的 `virial=` | eV，正 = 压缩 | 除以 `\|det(box)\|`，**不变号**；没有 `Lattice` 就报错 |
+| DeePMD 的 `virial.npy` | eV，正 = 压缩 | `stress × V`，不变号 |
+
+extxyz 若同时给了 `stress=` 与 `virial=`，两者必须自洽（`virial ≈ stress × V`），
+否则报错 —— 不会替你挑一个。另外该张量必须**对称**（extxyz 规格如此要求），
+**6 分量的 Voigt 写法不收**：它的分量顺序在各家程序间并不统一（规格与 ASE 是
+`xx yy zz yz xz xy`，VASP 的 `in kB` 与 GPUMD 的 `stress_*.out` 是
+`xx yy zz xy yz zx`），而文件里没有任何字段说明是谁写的。请改写成 9 个数。  
 `pbc = [true,true,true]` → bulk crystal or glass.
 
 ## Cell

@@ -3,12 +3,12 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：536 个（全部通过，clippy 零警告）
+## 测试总数：545 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 82（另有 1 个 `#[ignore]`，跑真实 40 MB out，需 `-- --ignored`） |
+| ferro-io | 91（另有 1 个 `#[ignore]`，跑真实 40 MB out，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 195 |
 | ferro-workflow | 23 |
@@ -97,6 +97,16 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   映射表。writer 的整数 `type` 列**在整条轨迹上确定一次**（0.2.1）
 - **`extxyz.rs`**：`label:S:1` 列（读写两侧）。extxyz 的列自描述，故标签走自己一列、
   `species` 保持纯元素 —— 与 dump「没地方放第二个名字只能折进 element 列」相反
+  - **应力（2026-08-26 修正）**：`stress=` 随 ASE（正 = 拉伸，读写两侧变号），
+    `virial=` 随 QUIP/GPUMD/DeePMD（eV，正 = 压缩，除 `|det(box)|`、不变号；
+    无 Lattice 报错）。两键同在则交叉校验 `virial ≈ stress × V`，不一致报错而
+    不选一个。九个数**检查对称性**（规格要求对称，藉此绕开 ASE「列优先」与
+    GPUMD「行优先」的相反描述）；**6 分量 Voigt 拒收**（顺序不普适且无法从数据
+    检测）。写侧只写 `stress=`，不写 `virial=`
+  - `Properties` 的力列 **`force` 与 `forces` 两种拼法都收** —— GPUMD 的
+    `train.xyz` 用单数，此前只认复数，读 NEP 数据集会静默丢掉全部受力
+  - 符号的依据是**外部实物**：fixture 由 ASE 3.29.0 生成，期望值由 dpdata 1.0.2
+    的换算式独立算出（`~/.miniforge3/envs/deepmd`）。自读自写的回路验证不了符号
 - **`cube.rs`**：`read_cube`（可视化）+ `read_cube_as_chg`（Bader 用：Bohr→Å、索引转置、
   密度缩放 `rho_stored = ρ_cube × V_cell_Bohr`），共用 `parse_header()`
 - **`cp2k_out.rs`**（2026-08-25）：CP2K MD 的 stdout 日志（坐标/力/应力全打到
@@ -343,10 +353,6 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
   info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
-- **extxyz 的 stress/virial 现在是错的**：读侧 `stress` 取不到就回落取 `virial`
-  （两者差一个体积因子），且两侧都没做 ASE 约定（正 = 张）与 `Frame::stress`
-  （正 = 压缩）之间的变号。自读自写的回路里符号错两次相抵，故现有测试全绿。
-  修法与钉符号的测试要求见 `plan.md` 优先级高第一条
 - **`ferro dataset collect` 只读 CP2K**，VASP / QE 待扩；`.out` **未**注册进
   `io_dispatch`（这个扩展名太通用，不能替 CP2K 占下），故 `ferro convert -i x.out`
   仍不认识它

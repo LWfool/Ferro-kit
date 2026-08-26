@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use ferro_core::{Atom, Cell, Frame, Trajectory};
+use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
@@ -42,9 +42,8 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 
         // Scalar properties in comment
         let energy: Option<f64> = kv.get("energy").and_then(|s| s.parse().ok());
-        let stress: Option<Matrix3<f64>> = kv.get("stress")
-            .or_else(|| kv.get("virial"))
-            .and_then(|s| parse_matrix9(s));
+        let stress = read_stress(&kv, cell.as_ref())
+            .with_context(|| format!("frame {}", traj.n_frames()))?;
 
         // Properties column spec
         let props = kv.get("properties").map(|s| parse_properties(s))
@@ -112,7 +111,7 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
             }
             frame.add_atom(atom);
 
-            if let Some(c) = find("forces") {
+            if let Some(c) = find("forces").or_else(|| find("force")) {
                 let fx: f64 = cols[c].parse().unwrap_or(0.0);
                 let fy: f64 = cols[c+1].parse().unwrap_or(0.0);
                 let fz: f64 = cols[c+2].parse().unwrap_or(0.0);
@@ -193,15 +192,120 @@ fn parse_pbc(s: &str) -> [bool; 3] {
     pbc
 }
 
-fn parse_matrix9(s: &str) -> Option<Matrix3<f64>> {
-    let v: Vec<f64> = s.split_whitespace()
-        .filter_map(|x| x.parse().ok())
-        .collect();
-    if v.len() == 9 {
-        Some(Matrix3::new(v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8]))
-    } else {
-        None
+/// Relative tolerance for the symmetry check and the stress/virial cross-check.
+/// Both compare numbers that were rounded on their way into text.
+const TENSOR_TOL: f64 = 1e-6;
+
+/// Reads `stress=` / `virial=` into the convention [`ferro_core::Frame::stress`]
+/// uses (eV/Å³, positive = compression).
+///
+/// extxyz carries the tensor under two keys that mean different things:
+///
+/// | key | file holds | conversion |
+/// |---|---|---|
+/// | `stress` | eV/Å³, positive = tension | negate |
+/// | `virial` | eV, positive = compression | divide by the cell volume |
+///
+/// Three independent sources agree on this: the extxyz specification states
+/// that `virial -> stress` is a multiplication by `-1/cell_vol`; the GPUMD
+/// manual documents `virial` as positive-for-compressed and `stress` as
+/// positive-for-stretched; dpdata 1.0.2 writes `virials = -volume * stress`
+/// against ASE's stress (`dpdata/plugins/ase.py`).
+///
+/// A file carrying both keys is cross-checked rather than resolved by
+/// precedence — the two disagreeing is a defect in the file, and picking a
+/// winner would hide it.
+fn read_stress(
+    kv: &HashMap<String, String>,
+    cell: Option<&Cell>,
+) -> Result<Option<Matrix3<f64>>> {
+    let stress = kv.get("stress").map(|v| parse_tensor9("stress", v)).transpose()?;
+    let virial = kv.get("virial").map(|v| parse_tensor9("virial", v)).transpose()?;
+
+    // virial 是 eV,要除体积才是应力;没有 Lattice 就没有体积可除
+    let from_virial = match virial {
+        None => None,
+        Some(v) => {
+            let cell = cell.context(
+                "virial= without a Lattice — no cell volume to divide by")?;
+            let vol = cell.volume();
+            anyhow::ensure!(vol.abs() > 1e-12, "virial= with a zero-volume cell");
+            Some(v / vol)
+        }
+    };
+    let from_stress = stress.map(|s| -s);
+
+    match (from_stress, from_virial) {
+        (Some(s), Some(v)) => {
+            if !close(&s, &v) {
+                let vol = cell.map(|c| c.volume()).unwrap_or(1.0);
+                // 行优先渲染 —— nalgebra 的 as_slice() 是列优先,连报错都会打出转置
+                bail!(
+                    "stress= and virial= disagree: virial/V gives {:?} but -stress gives {:?} \
+                     (eV/Å³, row-major, cell volume {vol}). One of the two keys was written \
+                     under a different convention; fix the file rather than letting this \
+                     reader pick a winner",
+                    matrix3_row_major(&v), matrix3_row_major(&s)
+                );
+            }
+            Ok(Some(s))
+        }
+        (Some(s), None) => Ok(Some(s)),
+        (None, Some(v)) => Ok(Some(v)),
+        (None, None) => Ok(None),
     }
+}
+
+/// Parses the nine numbers of a `stress=` / `virial=` value.
+///
+/// The extxyz specification requires this tensor to be symmetric ("fail if not
+/// symmetric"), and that requirement is what makes the row-major/column-major
+/// question moot: ASE documents these nine numbers as Fortran-ordered while the
+/// GPUMD manual spells them out row-major (`vxx vxy vxz vyx ...`), and both
+/// readings agree on every symmetric tensor. So this parser checks symmetry
+/// instead of betting on one of the two descriptions.
+///
+/// A six-number Voigt value is rejected on purpose: the component order is not
+/// universal (the spec and ASE use `xx yy zz yz xz xy`, while VASP's `in kB`
+/// line and GPUMD's own `stress_*.out` use `xx yy zz xy yz zx`), and nothing in
+/// the file says which one produced it. Guessing would silently transpose the
+/// off-diagonal components.
+fn parse_tensor9(key: &str, s: &str) -> Result<Matrix3<f64>> {
+    let v: Vec<f64> = s
+        .split_whitespace()
+        .map(|x| x.parse::<f64>().with_context(|| format!("{key}=: {x:?} is not a number")))
+        .collect::<Result<_>>()?;
+
+    if v.len() == 6 {
+        bail!(
+            "{key}= holds 6 numbers (Voigt). Ferro does not read this form: the component \
+             order is not universal — the extxyz spec and ASE use `xx yy zz yz xz xy`, \
+             VASP's `in kB` line and GPUMD's `stress_*.out` use `xx yy zz xy yz zx` — and \
+             the file does not say which one wrote it. Re-emit the tensor as 9 numbers"
+        );
+    }
+    anyhow::ensure!(v.len() == 9, "{key}= holds {} numbers, expected 9", v.len());
+
+    let m = Matrix3::new(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
+    let scale = v.iter().fold(0.0f64, |a, b| a.max(b.abs())).max(1.0);
+    for (i, j) in [(0, 1), (0, 2), (1, 2)] {
+        if (m[(i, j)] - m[(j, i)]).abs() > TENSOR_TOL * scale {
+            bail!(
+                "{key}= is not symmetric ({},{}) = {} but ({},{}) = {}. The extxyz \
+                 specification requires a symmetric tensor; an asymmetric one means the \
+                 nine numbers are not what this reader takes them for",
+                i, j, m[(i, j)], j, i, m[(j, i)]
+            );
+        }
+    }
+    Ok(m)
+}
+
+/// Component-wise comparison with [`TENSOR_TOL`], scaled by the larger operand.
+fn close(a: &Matrix3<f64>, b: &Matrix3<f64>) -> bool {
+    a.iter().zip(b.iter()).all(|(x, y)| {
+        (x - y).abs() <= TENSOR_TOL * x.abs().max(y.abs()).max(1.0)
+    })
 }
 
 fn parse_properties(spec: &str) -> Vec<(String, char, usize)> {
@@ -234,6 +338,52 @@ Fe 0.0 0.0 0.0 0.1 0.0 0.0
 Fe 2.5 2.5 2.5 -0.1 0.0 0.0
 "#;
 
+    // ── stress / virial fixtures ─────────────────────────────────────────────
+    //
+    // 下面两份文本是 ASE 3.29.0 亲手写出的,不是照约定手敲的 —— 符号约定的依据
+    // 必须来自外部实物:ferro 写出→ferro 读回的回路里符号错两次会互相抵消,
+    // 测试照样全绿。生成方式(~/.miniforge3/envs/deepmd,ase 3.29.0 + dpdata 1.0.2):
+    //
+    //   cell   = [[10,0,0],[1,11,0],[2,3,12]]        V = 1320 Å³
+    //   σ_ase  = [[0.01,0.002,0.003],[0.002,0.02,0.004],[0.003,0.004,0.03]]
+    //   at.calc = SinglePointCalculator(at, stress=σ_ase, ...); ase.io.write(...)
+    //   virial = -V * σ_ase                          (dpdata 1.0.2 的换算式)
+    //
+    // 两份的期望值相同:σ_ferro = -σ_ase = virial/V,亦即 dpdata 读同一份 virial
+    // 键再除体积得到的数。
+    const ASE_STRESS: &str = r#"2
+Lattice="10.0 0.0 0.0 1.0 11.0 0.0 2.0 3.0 12.0" Properties=species:S:1:pos:R:3:forces:R:3 energy=-1.5 stress="0.01 0.002 0.003 0.002 0.02 0.004 0.003 0.004 0.03" pbc="T T T"
+H        0.00000000       0.00000000       0.00000000       0.10000000       0.20000000       0.30000000
+H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.20000000      -0.30000000
+"#;
+
+    const ASE_VIRIAL: &str = r#"2
+Lattice="10.0 0.0 0.0 1.0 11.0 0.0 2.0 3.0 12.0" Properties=species:S:1:pos:R:3:forces:R:3 virial="-13.200000000000012 -2.6400000000000023 -3.9600000000000035 -2.6400000000000023 -26.400000000000023 -5.280000000000005 -3.9600000000000035 -5.280000000000005 -39.60000000000003" energy=-1.5 pbc="T T T"
+H        0.00000000       0.00000000       0.00000000       0.10000000       0.20000000       0.30000000
+H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.20000000      -0.30000000
+"#;
+
+    /// σ_ferro（正 = 压缩）for both fixtures above.
+    const EXPECT: [[f64; 3]; 3] = [
+        [-0.01,  -0.002, -0.003],
+        [-0.002, -0.02,  -0.004],
+        [-0.003, -0.004, -0.03 ],
+    ];
+
+    fn assert_expect(f: &Frame) {
+        let s = f.stress.expect("stress");
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!((s[(i, j)] - EXPECT[i][j]).abs() < 1e-9,
+                    "({i},{j}): {} vs {}", s[(i, j)], EXPECT[i][j]);
+            }
+        }
+    }
+
+    fn err_of(name: &str, text: &str) -> String {
+        format!("{:#}", read_extxyz(&tmp(name, text)).unwrap_err())
+    }
+
     fn tmp(name: &str, c: &str) -> String {
         let p = std::env::temp_dir().join(name);
         std::fs::write(&p, c).unwrap();
@@ -260,4 +410,77 @@ Fe 2.5 2.5 2.5 -0.1 0.0 0.0
         assert!((forces[0].x - 0.1).abs() < 1e-10);
         assert!((forces[1].x - (-0.1)).abs() < 1e-10);
     }
+    #[test]
+    fn test_stress_sign_from_ase() {
+        // ASE 写的 stress= 是正 = 拉伸;Ferro 存正 = 压缩,故对角必须转负
+        let traj = read_extxyz(&tmp("ase_stress.extxyz", ASE_STRESS)).unwrap();
+        let f = traj.first().unwrap();
+        assert_expect(f);
+        assert!(f.stress.unwrap()[(0, 0)] < 0.0);
+    }
+
+    #[test]
+    fn test_virial_matches_dpdata() {
+        // virial= 是 eV 且正 = 压缩:除以体积、不变号,结果应与 stress fixture 相同
+        let traj = read_extxyz(&tmp("ase_virial.extxyz", ASE_VIRIAL)).unwrap();
+        assert_expect(traj.first().unwrap());
+    }
+
+    #[test]
+    fn test_stress_and_virial_agree() {
+        let both = ASE_STRESS.replace(
+            "energy=-1.5",
+            "energy=-1.5 virial=\"-13.2 -2.64 -3.96 -2.64 -26.4 -5.28 -3.96 -5.28 -39.6\"");
+        let traj = read_extxyz(&tmp("both_ok.extxyz", &both)).unwrap();
+        assert_expect(traj.first().unwrap());
+    }
+
+    #[test]
+    fn test_stress_and_virial_conflict() {
+        // virial 少一个负号 —— 正是「两处约定不一致」的真实故障形态
+        let bad = ASE_STRESS.replace(
+            "energy=-1.5",
+            "energy=-1.5 virial=\"13.2 2.64 3.96 2.64 26.4 5.28 3.96 5.28 39.6\"");
+        let e = err_of("both_bad.extxyz", &bad);
+        assert!(e.contains("disagree"), "{e}");
+    }
+
+    #[test]
+    fn test_virial_without_lattice() {
+        let no_cell = "1\nvirial=\"1 0 0 0 1 0 0 0 1\"\nH 0.0 0.0 0.0\n";
+        let e = err_of("no_lattice.extxyz", no_cell);
+        assert!(e.contains("no cell volume"), "{e}");
+    }
+
+    #[test]
+    fn test_asymmetric_tensor_rejected() {
+        // 非对称张量:规格要求对称,而这也是行/列优先唯一能显形的地方
+        let asym = ASE_STRESS.replace(
+            "stress=\"0.01 0.002 0.003 0.002 0.02 0.004 0.003 0.004 0.03\"",
+            "stress=\"0.01 0.002 0.003 0.009 0.02 0.004 0.003 0.004 0.03\"");
+        let e = err_of("asym.extxyz", &asym);
+        assert!(e.contains("not symmetric"), "{e}");
+    }
+
+    #[test]
+    fn test_voigt6_rejected() {
+        let v6 = ASE_STRESS.replace(
+            "stress=\"0.01 0.002 0.003 0.002 0.02 0.004 0.003 0.004 0.03\"",
+            "stress=\"0.01 0.02 0.03 0.004 0.003 0.002\"");
+        let e = err_of("voigt6.extxyz", &v6);
+        assert!(e.contains("6 numbers"), "{e}");
+    }
+
+    #[test]
+    fn test_nep_singular_force_column() {
+        // GPUMD 的 train.xyz 用 force:R:3,ASE 用 forces:R:3,两种拼法都要收 ——
+        // 只认复数时,读 NEP 数据集会一声不吭地把受力全丢了
+        let nep = ASE_STRESS.replace("forces:R:3", "force:R:3");
+        let traj = read_extxyz(&tmp("nep_force.extxyz", &nep)).unwrap();
+        let f = traj.first().unwrap();
+        let forces = f.forces.as_ref().expect("force column not read");
+        assert!((forces[0].x - 0.1).abs() < 1e-12);
+        assert!((forces[1].z + 0.3).abs() < 1e-12);
+    }
+
 }
