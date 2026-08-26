@@ -111,7 +111,10 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 铝磷酸盐文献专门指出「n 是总桥氧数」是领域内的已知误解。判据与排查清单见
 `issues.md`。
 
-## `v0.3.0` 之后：机器学习数据集（2026-08-25，未发版）
+三批合起来按规则升次版本位，故 `0.2.1 → 0.3.0`（跳过 0.2.x）。配套的
+`scripts/plot_net.py` 已同步（`a87843d`）。
+
+## `v0.3.1`：机器学习数据集（2026-08-26 发版）
 
 新增 `ferro dataset` 三步（`collect` / `filter` / `merge`），配套
 `ferro-io` 的 CP2K out reader 与 DeePMD npy 读写、`ferro-analysis/src/ml/`、
@@ -127,5 +130,4 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 | **`Frame::stress` 的符号 = 正为压缩**，与 CP2K/VASP/QE 输出一致、与 ASE/GPUMD 的 stress 相反；`virial = stress × V` 不变号 | `frame.rs` 字段文档 |
 | **单位从输出文本自读**，认不出报错不默认 —— CP2K 的 `STRESS_UNIT` 是输入关键字，单位不是版本的函数 | `readers/cp2k_out.rs` |
 
-三批合起来按规则升次版本位，故 `0.2.1 → 0.3.0`（跳过 0.2.x）。配套的
-`scripts/plot_net.py` 已同步（`a87843d`）。
+`v0.3.1` 是纯新增，故升 patch 位。

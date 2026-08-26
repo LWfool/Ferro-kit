@@ -4,7 +4,7 @@ A modular computational-chemistry post-processing toolkit written in Rust, aimed
 **periodic systems** — crystals, surfaces and glasses — and at the MD trajectories
 they produce.
 
-**Version 0.3.0** · 444 tests · MIT
+**Version 0.3.1** · 527 tests · MIT
 
 > **Documentation**
 > [`docs/src/`](docs/src) is the user manual (mdBook): every command, every output
