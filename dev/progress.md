@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：527 个（全部通过，clippy 零警告）
+## 测试总数：535 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
@@ -12,14 +12,17 @@
 | ferro-structure | 72 |
 | ferro-analysis | 195 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 55 + 集成 5） | 60 |
+| ferro-cli（lib 61 + bin 2 + 集成 5） | 68 |
 
-版本号 **0.3.1**（workspace 统一；ferro-python 已同步并复核编译通过）。
+版本号 **0.3.2**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
 
 `v0.3.1` 相对 `v0.3.0` **全部是新增**（`ferro dataset` 三步、CP2K out reader、
 DeePMD npy 读写、`ml` 模块、`array_order`），没有破坏性变更 —— 唯一动到既有
 行为的是 `HARTREE_TO_EV` 由旧值改为 CODATA 2018，而它此前全项目无使用点。
+
+`v0.3.2`（未发版）含破坏性改动（`collect` 的产物布局），但按用户要求走 patch 位；
+清单见 `overview.md`。
 
 ## 锚点 tag
 
@@ -228,16 +231,33 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
   零匹配报错）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
-- **`cmd/dataset.rs`**（2026-08-25）：`ferro dataset collect` —— AIMD out →
-  DeePMD system 目录。一输入一目录，目录名取 stem，撞车（CP2K 日志常全叫
-  `total.out`）时改 `<父目录>_<stem>`，仍撞则报错。
+- **`cmd/dataset.rs`**：`ferro dataset collect` —— AIMD out → DeePMD system
+  目录。**一目录一 system**（2026-08-26 改）：同目录的 `.out` 是同一次运行被
+  重启切开的段，合并回去；命名保留目录层级（剥掉公共祖先，其余原样嵌套，
+  文件 stem 不进名字），只有一组时直接写进 `-o` 本身。`-o` 必填，
+  `--overwrite` 拦覆盖。文件按首个 step 排序，重复帧不去重但区间打出来。
+  同目录成分不符报错（不当坏帧丢），单文件解析失败跳过且最后再报一遍。
   `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
   `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
-  **不给 `-o` 即只读**，只读模式另打四张诊断表。`--shuffle` 在**全部判据与
+  **不给 `-o` 即只读**。七张表（三张统计 + 四张诊断）经 `write_all` 出 csv，
+  平铺在 `-o` 根下；诊断恒算（实测挂钟无差别），只读模式全打屏、一字不落盘，
+  给了 `-o` 则只打三张统计表。`--shuffle` 在**全部判据与
   抽帧之后**打乱写出顺序（seed 默认 666）—— 抽帧要看时间序，而打乱不可逆。
   `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱后按
   `--set-size` 切 / `by-source` **一个 system 一个 set**、不打乱不重切，
   并写 `sets_source.txt`）
+- **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 的 24 页经 `include_str!`
+  编译进二进制（208 KB）。topic 跟子命令树同名（`ferro doc dataset filter`），
+  裸命令列出全部；原样输出 markdown（零依赖），stdout 是 tty 时经 `$PAGER`
+  （默认 `less -R`），否则直接打印，pager 起不来就回落
+- **帮助页与 clap 的防漂测试**（`main.rs` 的 `mod help_sync`）：正向断言每个
+  长选项都在其富文本页出现（写短名也算），反向断言页里的每个 `--xxx` 在某个
+  命令上真实存在（允许交叉引用，跳过「there is no --x」这类否定陈述）。
+  页文本从 `include_str!("help.rs")` 按函数名切出来 —— 25 个 `print_*` 改成
+  返回字符串比这个检查本身还大。**上线当场抓到 19 处真漏**：`--metal-units`
+  12 页没写、`--tau`/`--ncore` 在 rotcorr/vacf/vanhove 共 5 处没写；
+  `gr` 的 `--atom-c`/`--label-z` 是有意不写（SelectArgs 与 angle 共享），
+  进 `UNDOCUMENTED` 白名单并写明理由
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存

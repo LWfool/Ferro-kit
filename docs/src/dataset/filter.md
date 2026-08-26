@@ -22,7 +22,7 @@ how you choose the thresholds before committing to them.
 ## The funnel
 
 ```
-all frames  ->  |F|max  ->  |σ|max  ->  [start:end:stride|number]
+all frames -> |F|max -> |σ|max -> min d(O-O) -> Al6 -> [start:end:stride|number] -> shuffle
 ```
 
 | Criterion | Flag | Default | Quantity |
@@ -58,8 +58,7 @@ to the input dataset.
 
 ## Reading the report
 
-Three tables are printed (not written — the dataset is the product; these
-statistics exist to help you pick thresholds and change every run):
+Three tables account for the selection itself:
 
 | Table | What it says |
 |---|---|
@@ -116,6 +115,39 @@ validation split.
 
 Writing into an existing non-empty directory requires `--overwrite`.
 
+### The report files
+
+With `-o`, all seven tables are also written as CSV, flat in the output root:
+
+```
+clean/
+├── 49Z49P02A_0.950_0300K/     the filtered systems, one per input
+├── 49Z49P02A_0.950_1000K/
+├── filter_funnel.csv          ┐
+├── filter_criteria.csv        │ the selection
+├── filter_overlap.csv         ┘
+├── filter_min_oo.csv          ┐
+├── filter_al6.csv             │ the diagnostics
+├── filter_al_cn.csv           │
+└── filter_rcut_scan.csv       ┘
+```
+
+They go through the same writer as every other ferro product, so each carries a
+`#` header with the shared parameters and an `[inputs]` list of the systems, and
+`pandas.read_csv(comment="#")` reads them directly. Several systems stack into
+one file with a `system` column holding the path **relative to `-i`** — nested
+systems `a/md` and `b/md` share a leaf name and would otherwise be
+indistinguishable once stacked.
+
+They sit flat in the root rather than in a `report/` subdirectory on purpose: a
+later `ferro dataset merge -i clean/*` keeps only directories, so the CSVs are
+filtered out by themselves, while a `report/` directory would be picked up as a
+system candidate.
+
+**Without `-o` nothing is written at all** — every table is printed instead, the
+four diagnostics included. With `-o` the diagnostics are written but not printed,
+since a few dozen lines of them would scroll the destination path away.
+
 ## The two geometric criteria
 
 Force and stress are the first-line rules, on by default. These two are optional
@@ -159,9 +191,12 @@ between the collapse peak and the normal one. That trough does not exist in data
 that is still good, which is why no amount of analysis of a healthy dataset can
 produce it.
 
-## Read-only diagnostics
+## The diagnostics
 
-Without `-o`, four more tables are printed to help pick those two values.
+Four more tables help pick those two values. They are always computed: on
+1110 frames of 302 atoms they cost no measurable wall time (0.23 s with them
+against 0.28 s without — the work is spread over every core), and a table that
+exists only in read-only mode is a table that never reaches an archive.
 
 **The cutoff scan is the important one.** On one reference system it goes
 
@@ -187,7 +222,6 @@ very little.
 
 ## Not implemented yet
 
-- **Shuffling and merging** — `ferro dataset merge`.
 - **Multi-layer periodic images.** Cutoffs are checked against the
   minimum-image bound and rejected beyond it, rather than scanning further image
   shells. Not a limitation for cells much larger than the cutoff.

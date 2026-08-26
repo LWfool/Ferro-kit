@@ -521,6 +521,7 @@ Parameters:
   --ncore  INT            Parallel threads (default: all cores)
   -o SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
   --outdir DIR            Write products here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file (needs a pair)
 
 File name — gr_<pair>[_<suffix>].csv, the pair as you wrote it:
@@ -576,6 +577,7 @@ Parameters:
   --ncore      INT    Parallel threads (used in g(r) step)
   -o SUFFIX           Batch tag -> sq_<suffix>.csv   default: sq.csv
   --outdir DIR        Write products here (created if missing)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot              PNG next to the data file (weighted totals only)
 
 Output — wide format, one row per (file, q):
@@ -611,6 +613,7 @@ Parameters:
   --plot                 Generate PNG and open in viewer
   -o SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
   --outdir DIR           Write products here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — msd_<elements>[_<suffix>].csv, elements sorted:
   --elements P,O -> msd_O-P.csv     (so does --elements O,P: it is a set, and the
@@ -650,6 +653,7 @@ Parameters:
   --ncore    INT                Parallel threads
   -o SUFFIX                     Batch tag -> angle_<triplet>_<suffix>.csv
   --outdir DIR                  Write products here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                        Generate PNG and open in viewer
 
 File name — angle_<triplet>[_<suffix>].csv, the triplet as you wrote it:
@@ -683,8 +687,11 @@ Parameters:
   --shift    INT        Time-origin stride             default: 1
   --elements Fe,O,...   Include only these elements    default: all
   --last-n   INT        Use only the last N frames
+  --tau      INT        Lag time in frames             default: half the run
+  --ncore    INT        Parallel threads               default: all cores
   -o SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
   --outdir DIR          Write products here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
   --elements.
@@ -708,8 +715,11 @@ Parameters:
   --dt        FLOAT   Timestep [fs]                     default: 1.0
   --shift     INT     Time-origin stride                default: 1
   --last-n    INT     Use only the last N frames
+  --tau       INT     Lag time in frames                default: half the run
+  --ncore     INT     Parallel threads                  default: all cores
   -o SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
   --outdir DIR        Write products here (created if missing)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — rotcorr_<centre>-<neighbour>[_<suffix>].csv; both are required, so this
   one never falls back to "all". --center O --neighbor H -> rotcorr_O-H.csv
@@ -734,8 +744,10 @@ Parameters:
   --dr       FLOAT      Bin width [Å]                  default: 0.01
   --elements Fe,O,...   Track only these elements       default: all
   --last-n   INT        Use only the last N frames
+  --ncore    INT        Parallel threads                default: all cores
   -o SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
   --outdir DIR          Write products here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv
   without --elements.
@@ -764,6 +776,7 @@ Parameters:
   --ncore    INT      Parallel threads
   -o STEM             Output name stem            default: density.cube
   --outdir DIR        Write the cubes here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
   ferro map density -i traj.dump
@@ -786,6 +799,7 @@ Parameters:
   --ncore    INT      Parallel threads
   -o STEM             Output name stem            default: velocity.cube
   --outdir DIR        Write the cubes here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80"#
@@ -807,6 +821,7 @@ Parameters:
   --ncore    INT      Parallel threads
   -o STEM             Output name stem            default: force.cube
   --outdir DIR        Write the cubes here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
   ferro map force -i traj.dump --elements O"#
@@ -833,6 +848,7 @@ Parameters:
   --ncore   INT       Parallel threads
   -o STEM             Output name stem            default: radius.cube
   --outdir DIR        Write the cubes here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
   ferro map radius -i traj.dump --elements Li --radius 0.7
@@ -873,6 +889,7 @@ Parameters:
   --ncore      INT    Parallel threads
   -o STEM             Output stem (no extension)              default: sdf
   --outdir DIR        Write the cubes here (created if missing)
+  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
   ferro map sdf -i traj.dump --qn 3
@@ -938,60 +955,35 @@ pub fn print_dataset_collect() {
         r#"ferro dataset collect — AIMD output -> DeePMD system directories
 
   Reads CP2K MD output (the stdout log, with coordinates, forces and stress all
-  printed to __STD_OUT__) and writes one DeePMD system directory per input.
+  printed to __STD_OUT__) and writes one DeePMD system per input DIRECTORY.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
-  -o, --outdir DIR        Where the system directories go                  [.]
+  -o, --outdir DIR        Output root (required)
+      --overwrite         Allow writing into an existing non-empty directory
 
-Output layout (one per input):
-  <outdir>/<name>/
-    type.raw          one 0-based integer per atom, indexing type_map.raw
-    type_map.raw      one element symbol per line, sorted by (Z, symbol)
-    set.000/
-      coord.npy       (nframes, natoms*3)   Angstrom
-      box.npy         (nframes, 9)          Angstrom, row-major lattice vectors
-      energy.npy      (nframes, 1)          eV
-      force.npy       (nframes, natoms*3)   eV/Angstrom
-      virial.npy      (nframes, 9)          eV   = stress * volume
+Output layout:
+  <outdir>/<dir below the shared ancestor>/
+    type.raw  type_map.raw  set.000/coord|box|energy|force|virial .npy
 
-  <name> is the input file stem; when several inputs share a stem (CP2K logs
-  are routinely all called total.out) the parent directory is prefixed, giving
-  run1_total / run2_total rather than one overwriting the other.
+  -i 'run*/*.out' -o sets            -> sets/run1/, sets/run2/
+  -i '/s/a/md/x.out' '/s/b/md/x.out' -> sets/a/md/, sets/b/md/
+  -i '*.out'       (one directory)   -> sets/ itself
 
-  Everything is float64. dpdata defaults to float32, but this directory is the
-  head of the pipeline — `filter` and `merge` read it back, and precision lost
-  here cannot be recovered. Narrow to float32 when feeding the trainer.
+One system per directory:
+  The .out files of one directory are the restart segments of one run, so they
+  are reassembled into ONE system. That is the line between the two commands:
+  collect puts back together one run, merge combines different runs.
 
-  One set per input, never split. Splitting exists to give `merge --shuffle`
-  its boundaries, and nothing is shuffled yet at this stage.
-
-Dropped frames (always counted, never silent):
-  SCF not converged     the forces are garbage; keeping them is worse than a gap
-  incomplete block      a job killed mid-step leaves a truncated frame
-  composition changed   guards against block misalignment rather than a real
-                        change of system: if a warning is printed inside an xyz
-                        block, the element column stops holding element symbols
-
-Units and signs:
-  Energy and stress carry their unit in the text ([hartree], [bar]) and it is
-  read from there. CP2K's STRESS_UNIT is an INPUT keyword, so one version can
-  print bar, GPa or atm — a version table cannot answer this. An unrecognised
-  unit is an error, never a default. Forces are the one quantity with no unit
-  printed; they are taken as atomic units (Hartree/Bohr).
-
-  stress keeps the sign CP2K/VASP/QE print (positive = compression), which is
-  the orientation DeePMD's virial uses, so virial = stress * V with no flip.
-  GPUMD's `stress=` keyword uses the opposite (ASE) convention and needs one.
-
-  The stress is the POTENTIAL part only. `MD| Pressure` additionally holds the
-  kinetic term (for the reference run: 2345 + 14134 = 16479 bar of a total
-  16481) and must not be used — it would bake kinetic energy into the potential.
+  Files are ordered by their first MD| Step number; overlapping frames are kept,
+  and every source file's step span is printed so the overlap stays visible.
+  Two compositions in one directory is an error, not a frame-dropping event.
 
 Examples:
-  ferro dataset collect -i total.out
-  ferro dataset collect -i run*/total.out -o data
-  ferro dataset collect -i md1.out md2.out -o /scratch/train"#
+  ferro dataset collect -i 'run*/*.out' -o data
+  ferro dataset collect -i md1.out md2.out -o /scratch/train
+
+Full documentation:  ferro doc dataset collect"#
     );
 }
 
@@ -999,116 +991,47 @@ pub fn print_dataset_filter() {
     println!(
         r#"ferro dataset filter — Drop low-quality frames from a dataset
 
-  Reads DeePMD system directories, decides which frames to keep, and writes the
-  survivors as a new dataset. The input is never modified.
+  Reads DeePMD system directories, keeps the good frames, writes them as a new
+  dataset. The input is never modified.
 
 Parameters:
   -i, --input  DIR...     System directories, or a directory holding them
-                          (searched recursively; a directory with type.raw is
-                          taken as a system and not descended into)
+                          (searched recursively)
   -o, --outdir DIR        Output root; each system is rebuilt under its path
                           relative to -i. OMIT for a read-only run
-  -f, --f-max  EV_PER_A   Drop frames whose largest force magnitude exceeds
-                          this                                        [20.0]
-  -s, --s-max  GPA        Drop frames whose largest |stress component|
-                          exceeds this                                [10.0]
-      --start  N          First SURVIVING frame to take   (0-based, incl.) [0]
-      --end    N          Last SURVIVING frame to take (0-based, INCL.) [last]
-      --stride N          Take every Nth surviving frame                  [1]
+  -f, --f-max  EV_PER_A   Largest force magnitude allowed             [20.0]
+  -s, --s-max  GPA        Largest |stress component| allowed          [10.0]
+      --start  N          First SURVIVING frame to take (0-based)        [0]
+      --end    N          Last SURVIVING frame (0-based, INCLUSIVE)   [last]
+      --stride N          Take every Nth surviving frame                 [1]
   -N, --number N          Take this many surviving frames, spread evenly
       --oo-min [DMIN]     Drop frames whose smallest O-O distance is below
-                          this. Bare --oo-min uses 2.0 A; omit to switch off
-      --al6 [RCUT]        Keep only frames holding a 6-coordinated Al. Bare
+                          this; bare --oo-min uses 2.0 A
+      --al6 [RCUT]        Keep only frames holding a 6-coordinated Al; bare
                           --al6 takes the cutoff from the Al-O RDF
-      --set-size N        Frames per output set; 0 = one set           [400]
+      --shuffle           Shuffle the kept frames, after every other step
+      --seed   N          Seed for --shuffle                          [666]
+      --set-size N        Frames per output set; 0 = one set          [400]
       --overwrite         Allow writing into an existing non-empty directory
 
 The funnel:
-  all frames -> |F|max -> |sigma|max -> min d(O-O) -> Al6 -> [start:end:...]
+  all -> |F|max -> |sigma|max -> min d(O-O) -> Al6 -> [start:end:stride|N] -> shuffle
 
-  Force and stress are the first-line rules and are on by default. The two
-  geometric criteria are optional and independent: both, either, or neither.
-
-  A threshold of 0 switches that criterion off. An explicit zero says "do not
+  A threshold of 0 switches that criterion off — an explicit zero says "do not
   judge", which no small positive number can express.
+  --start/--end/--stride/-N count SURVIVING frames, not original indices.
 
-  --start/--end/--stride/-N count SURVIVING frames, not original frame numbers.
-  `--start 10` means the 10th frame that passed the quality criteria — the only
-  reading that stays meaningful after an unknown number of frames were dropped.
-  The report always names original indices, so kept frames stay traceable.
-
-The two geometric criteria:
-  --al6 keeps frames containing at least one 6-coordinated Al, which is the same
-  rule as "drop frames containing none" — expressed as the latter so all four
-  criteria share one sense and the cross-tabulation stays a single table.
-  Coordination comes from the same classifier `ferro net` uses, so the number
-  means the same thing in both commands.
-
-  Its cutoff can be derived: bare --al6 takes the first minimum of the Al-O g(r)
-  past its first peak, i.e. the outer edge of the first coordination shell,
-  computed per system (compositions differ, so shell positions differ). The
-  value used is always printed, and the mean over systems is reported at the
-  end — a cutoff that decides which frames die cannot be an invisible number.
-
-  --oo-min has no such automatic form and always needs an explicit value. O-O
-  does not bond, so its g(r) has no coordination shell: the first minimum sits
-  around 3.8 A with a depth near 0.7, while healthy frames have their smallest
-  O-O distance BELOW the first O-O peak. The threshold you want comes from the
-  RDF of BROKEN data — the trough between the collapse peak and the normal one —
-  and that trough does not exist in data that is still good.
-
-Read-only diagnostics:
-  Without -o, four more tables are printed to help pick those two values:
-  the distribution of min d(O-O), the number of Al6 per frame, the Al
-  coordination histogram, and a scan of the Al6 selection against its cutoff.
-
-  The scan is the important one. On one reference system it goes 0.9% -> 13.1%
-  -> 41.4% of frames over 2.15 -> 2.45 -> 2.75 A; on another it is 100% flat
-  from 2.1 to 2.6. A steep column means the selection is decided by the cutoff
-  rather than by the structure, and the same table says the opposite thing about
-  the two systems — which is exactly why it is worth printing.
-
-  The min d(O-O) table reports the distribution rather than a count below the
-  threshold, because a count cannot tell an outlier tail from a smooth spread,
-  and only the first is worth filtering away.
-
-Frame order:
-  Kept frames stay in trajectory order unless --shuffle is given, and the
-  shuffle runs LAST — after every criterion and after --stride / --number.
-  That order matters: "take every 3rd frame" says nothing about a shuffled
-  sequence, and once shuffled the time order cannot be recovered.
-
-  Shuffling here and shuffling in `ferro dataset merge` are alternatives, not a
-  sequence. Shuffle in merge if the sets should mix several sources; shuffle
-  here if this dataset is going to a trainer as-is.
-
-Reading the report:
-  [funnel]    how many frames each step left, in execution order
-  [criteria]  per criterion: how many frames it flagged, and how many of those
-              NO other criterion flagged (the exclusive count)
-  [overlap]   frames flagged by both members of each criterion pair
-
-  The exclusive count is the one that matters. The funnel alone cannot tell a
-  useful criterion from a redundant one, because each step only reports on what
-  the previous step left — a criterion that merely re-catches another one's
-  frames still looks productive there. An exclusive count near 0 means the
-  criterion is not earning its place and can be switched off.
-
-  These tables are printed, not written. A dataset is the product here; the
-  statistics are how you choose the thresholds, and they change every run.
-
-Units and signs:
-  -f is eV/Angstrom, taken as the largest force VECTOR magnitude over the atoms
-  of a frame. -s is GPa (converted internally), taken as the largest absolute
-  value among the 9 stress components, so both diagonal and shear outliers are
-  caught. Stress comes from virial/volume, with the volume from |det(box)| —
-  a DeePMD system carries no volume.npy.
+Output:
+  <outdir>/<path relative to -i>/   the filtered systems
+  <outdir>/filter_*.csv            funnel, criteria, overlap + 4 diagnostics
+  Without -o nothing is written; every table is printed instead.
 
 Examples:
   ferro dataset filter -i raw                       # look, write nothing
-  ferro dataset filter -i raw -o clean
   ferro dataset filter -i raw -o clean -f 15 -s 8
-  ferro dataset filter -i raw -o clean -N 500 --set-size 250"#
+  ferro dataset filter -i raw -o clean -N 500 --set-size 250 --shuffle
+
+Full documentation:  ferro doc dataset filter"#
     );
 }
 
@@ -1121,7 +1044,7 @@ pub fn print_dataset_merge() {
 
 Parameters:
   -i, --input  DIR...     System directories to combine (globs allowed)
-  -o, --outdir DIR        Output root; one directory per composition
+  -o, --outdir DIR        Output root; one directory per composition (required)
       --mode   MODE       shuffle | by-source                    [shuffle]
       --seed   N          Shuffle seed; by-source ignores it          [666]
       --set-size N        Frames per output set; 0 = one set          [400]
@@ -1130,42 +1053,24 @@ Parameters:
 
 Grouping:
   NOT by directory name — `init.011` says nothing reliable about its contents.
-  Systems are grouped by their per-atom element sequence, so two of them merge
-  exactly when they hold the same atoms. The output directory is named
-  <natoms>_<formula>, e.g. 7_Al2O4Zn: subscripts are actual counts (not
-  reduced), and the atom-count prefix makes `ls` group equal-sized systems.
-
-Atom order:
-  Systems of one composition may still list their atoms differently and carry
-  different type_map orders. Merging sorts every system into one canonical
-  order — (Z, symbol), the same order `collect` writes — and permutes the
-  per-atom arrays (coord, force) along with them. A DP model is invariant under
-  atom renumbering, so this changes notation, not physics. dpdata sorts
-  alphabetically instead; both are self-describing through type_map.raw.
+  Systems group by their per-atom element sequence and are written as
+  <natoms>_<formula>, e.g. 7_Al2O4Zn (subscripts are actual counts).
 
 The two modes:
-  shuffle     Everything of one composition is concatenated, shuffled with
-              --seed, then cut into sets of --set-size. Every set holds a mix
-              of whatever conditions went in — temperatures, compressions,
-              sources. A remainder is spread across the sets rather than left
-              as a stub, since a set of a dozen frames is useless as a split.
-  by-source   No mixing, no shuffling. Each system is cut into sets ON ITS
-              OWN, so a set never straddles two systems and every set.NNN
-              stays traceable to one condition. --seed does not apply. The
-              mapping is written to sets_source.txt inside the output system.
-
-  Pick by-source when each input is already one condition and you want every
-  set to stay a clean hold-out of it; pick shuffle when you want every set to
-  be statistically like every other.
+  shuffle     One composition concatenated, shuffled with --seed, cut into sets.
+              Every set holds a mix of whatever conditions went in.
+  by-source   No mixing, no shuffling; each system is cut into sets ON ITS OWN,
+              so every set.NNN stays traceable to one condition. The mapping is
+              written to sets_source.txt.
 
   In both modes the remainder is spread evenly rather than left at the end:
-  500 frames at --set-size 400 give 250 + 250, not 400 + 100. The lopsided
-  pair is worse both for training balance and for using a set as a split.
+  500 frames at --set-size 400 give 250 + 250, not 400 + 100.
 
 Examples:
-  ferro dataset merge -i data/*.train -o merged
-  ferro dataset merge -i data/*.train -o merged --seed 42
-  ferro dataset merge -i data/*.train -o merged --mode by-source
-  ferro dataset merge -i clean/* -o merged --set-size 250 --suffix .train"#
+  ferro dataset merge -i 'data/*.train' -o merged
+  ferro dataset merge -i 'data/*.train' -o merged --mode by-source
+  ferro dataset merge -i 'clean/*' -o merged --set-size 250 --suffix .train
+
+Full documentation:  ferro doc dataset merge"#
     );
 }

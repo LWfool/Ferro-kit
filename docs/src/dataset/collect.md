@@ -5,8 +5,8 @@
 directories — the starting point for training a machine-learning potential.
 
 ```bash
-ferro dataset collect -i total.out                 # -> ./total/
-ferro dataset collect -i run*/total.out -o data    # -> data/run1_total/, ...
+ferro dataset collect -i 'run*/*.out' -o data      # -> data/run1/, data/run2/
+ferro dataset collect -i '*.out' -o sys            # -> sys/   (one directory in)
 ```
 
 Currently only **CP2K MD output** is read. VASP and Quantum ESPRESSO are
@@ -46,9 +46,12 @@ A restarted run whose logs were concatenated into one file is fine — restarts
 are detected and reported, and CP2K does not reprint the initial configuration
 on restart, so no duplicate frames arise.
 
+Restart segments left as **separate files in one directory** are also fine; see
+[One system per directory](#one-system-per-directory).
+
 ## Output layout
 
-One system directory per input file:
+One system directory per input **directory**:
 
 ```
 <outdir>/<name>/
@@ -67,10 +70,62 @@ Every array on disk is **two-dimensional**: dpdata flattens with
 is a logical shape, not the stored one. ferro follows the same convention, and
 the files load unchanged with `numpy.load` or `dpdata.LabeledSystem`.
 
-`<name>` is the input file stem. CP2K logs are routinely all called
-`total.out`, so when several inputs share a stem the parent directory is
-prefixed — `run1_total`, `run2_total` — instead of one silently overwriting the
-next.
+`<name>` is the path of the input directory **below the ancestor every input
+shares**, kept nested rather than flattened with separators. A shared prefix
+carries no distinguishing information by definition, so what is left after
+stripping it is exactly what tells the systems apart:
+
+| `-i` | products |
+|---|---|
+| `run*/*.out -o sets` | `sets/run1/`, `sets/run2/` |
+| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md/`, `sets/b/md/` |
+| `*.out -o sys` (one directory) | `sys/` itself |
+| `a/total.out b/md/total.out -o sets` | `sets/a/`, `sets/b/md/` |
+
+The file stem never enters the name — `total.out` and `PZA.out` in the same
+directory produce the same system. With only one input directory the shared
+ancestor is the whole path, `<name>` is empty, and the system is written into
+`-o` itself: there is nothing to tell apart.
+
+`-o` is **required**. The products are a directory tree, and a default of `.`
+would scatter `.npy` files through whatever directory you happened to be in.
+Writing into an existing non-empty directory needs `--overwrite`.
+
+## One system per directory
+
+The `.out` files sitting in one directory are the restart segments of one run,
+so `collect` puts them back together into **one** system rather than one each.
+That is the line between the two commands: `collect` reassembles the pieces of
+**one** run, [`merge`](merge.md) combines **different** runs of the same
+composition.
+
+Files are ordered by their first `MD| Step number`, and each keeps its own
+internal order. Sorting every frame globally would look more thorough, but a run
+restarted without a checkpoint numbers its steps from zero again, and a global
+sort would then interleave two real trajectories. The worst case here degrades
+to "concatenate in file order", which is no worse than not sorting at all.
+
+Overlapping frames are **not** removed. A restart re-runs at most the few steps
+since the last checkpoint, and identical positions and velocities give identical
+energies and forces, so the repeat neither biases nor dilutes the set. The step
+span of every source file is printed so that premise stays checkable:
+
+```
+sets/run1  (2 file(s), 1021 frames)
+  run1/a.out   steps 1-620     620 kept, 0 dropped
+  run1/b.out   steps 500-900   401 kept, 0 dropped
+```
+
+Two files of **different composition** in one directory are an error naming both
+files, not a frame-dropping event: a `type.raw` is written once per directory, so
+the atom sequence must match throughout. Putting two systems in one directory is
+a mistake of the person, not a problem with the data, and the two call for
+completely different responses.
+
+A file that fails to parse is skipped, the rest still become a system, and the
+skipped files are listed again at the end with exit code 1. The second listing is
+not redundant: the system directory looks perfectly normal while holding fewer
+frames than you think.
 
 ### float64, not float32
 
@@ -150,9 +205,11 @@ hand.
 ## What is not done here
 
 - **No filtering.** Removing frames by force/stress magnitude or by geometry is
-  `ferro dataset filter` (not implemented yet).
-- **No merging or shuffling.** Combining same-composition datasets and resizing
-  sets is `ferro dataset merge` (not implemented yet).
+  [`ferro dataset filter`](filter.md).
+- **No cross-run merging or shuffling.** Combining datasets from *different*
+  runs and resizing sets is [`ferro dataset merge`](merge.md). The files of one
+  directory are a different case — they are one run, and `collect` reassembles
+  them.
 - **No extxyz / NEP output.** The pipeline's intermediate format is the DeePMD
   directory; GPUMD's `train.xyz` is an export at the end of the chain, not at
   the start.
