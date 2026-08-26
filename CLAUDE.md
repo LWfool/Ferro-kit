@@ -62,7 +62,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 `ferro-python` 是独立 workspace，需**手动同步**。
 
 **只在用户明确要求时才动版本号**，不要每次改代码就自动 +1。
-`v0.2.1` 之后有一批未发版的破坏性改动，清单见 `dev/overview.md`。
+当前 `0.3.2` **未发版**，其中含破坏性改动（`dataset collect` 的产物布局）却按
+用户要求走了 patch 位 —— 与 `v0.2.1` 同类例外。清单见 `dev/overview.md`。
 
 ## 扩展项目
 
@@ -79,8 +80,14 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
    否则第一个文件的组成会摆在全局参数区冒充全局事实
 3. `ferro-cli/src/cmd/<group>.rs` 加分支：构造参数（**在读第一个文件前**校验）→
    `batch::map_inputs` → `batch::stack` → `batch::write_all`
-4. `ferro-cli/src/help.rs` 加帮助并在 `print_overview` 列出
-5. `docs/src/analysis/<name>.md` 加手册页 + `SUMMARY.md` 挂上
+4. `ferro-cli/src/help.rs` 加帮助并在 `print_overview` 列出。帮助页照同一模板：
+   一句话用途 + **完整参数表** + 输出布局 + 2~3 个例子 +
+   `Full documentation:  ferro doc <topic>`。目标 ≤40 行，**但参数表（含值域
+   枚举）不为凑行数砍** —— 不知道收哪些值就没法敲命令
+5. `docs/src/analysis/<name>.md` 加手册页 + `SUMMARY.md` 挂上 +
+   **`ferro-cli/src/doc.rs` 的 `PAGES` 加一条**（否则第 4 步那行指针指向空）
+6. `main.rs` 的 `mod help_sync` 会自动校验帮助页与 clap 一致，不必手动核对；
+   有意不写的参数进 `UNDOCUMENTED` 并写明理由
 
 **加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
 目前无 CLI 入口（`box_builder` 也是库级）。
@@ -100,7 +107,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | `ferro-analysis/src/network/` | 单文件 `mod.rs`，六张表的统计 |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
 | `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表）、`merge`（分组、规范序、打乱） |
-| `ferro-cli/src/` | `main.rs` 子命令树、`batch.rs` 多输入驱动（对结果类型泛型）、`cmd/`、`help.rs`、`plot.rs` |
+| `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制）、`plot.rs` |
 
 **几条容易违反的**（完整清单在 `dev/issues.md`）：
 
@@ -108,4 +115,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
   正是散在四个 crate 的五处这种解析
 - 列并集下缺失值填 `f64::NAN`（渲染为空字段），**绝不补零** —— 零是「测到了 0」
 - 批内单文件失败：跳过 + 记入 `[inputs]` + **退出码 1**；参数错误在读第一个文件前快速失败
+- **`ferro net` 的帮助页在 `cmd/net.rs` 的 `HELP_EXTRA`**，不在 `help.rs` —— 它紧挨
+  着自己需要的 argv 剥离逻辑。改 net 的参数时别只看 `help.rs`
+- 帮助页与 clap 是**两处手写同一份事实**，靠 `help_sync` 测试盯着。别放宽它的断言
+  来让测试变绿：有意不写的进白名单并写明理由
 - 不按输入文件数分派单/批两条路径，N=1 是 N 的特例

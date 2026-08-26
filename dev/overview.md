@@ -41,6 +41,7 @@ ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一
 ferro net                                                      → 六张堆叠 csv
 ferro dataset collect | filter | merge                         → DeePMD system 目录
 ferro bader | convert | info | job
+ferro doc   <topic>                                            → 手册（编译在二进制里）
 ```
 
 `dataset` 是唯一产物为**目录**（而非文件）的一组：DeePMD 的 system 就是目录。

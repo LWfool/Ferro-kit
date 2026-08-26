@@ -4,7 +4,7 @@ A modular computational-chemistry post-processing toolkit written in Rust, aimed
 **periodic systems** — crystals, surfaces and glasses — and at the MD trajectories
 they produce.
 
-**Version 0.3.1** · 527 tests · MIT
+**Version 0.3.2** (unreleased) · 536 tests · MIT
 
 > **Documentation**
 > [`docs/src/`](docs/src) is the user manual (mdBook): every command, every output
@@ -67,6 +67,7 @@ ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → stacked CSV (
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                       → six stacked CSVs
 ferro bader | convert | info | job
+ferro doc   <topic>                                            → 手册（编译在二进制里）
 ```
 
 ```bash

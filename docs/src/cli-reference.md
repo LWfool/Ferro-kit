@@ -10,6 +10,7 @@ ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一
 ferro net                                                      → 六张堆叠 csv
                                                                  + 可选标注轨迹
 ferro bader | convert | info | job
+ferro doc   <topic>                                            → 手册（编译在二进制里）
 ```
 
 **帮助分三级**：`ferro` 列出分组；`ferro traj` 列出该组命令；`ferro traj gr`（不给
@@ -753,10 +754,31 @@ ferro dataset merge     多个 system → 按成分合并
 | Flag | Description |
 |---|---|
 | `-i <FILE>...` | CP2K MD 的 stdout 日志，支持 glob |
-| `-o <DIR>` | system 目录写到哪里，默认当前目录 |
+| `-o <DIR>` | 输出根目录，**必填**；`-i` 下的目录结构在其中重建 |
+| `--overwrite` | 允许写入已存在的非空目录 |
 
-一个输入一个 system 目录，目录名取文件 stem；stem 撞车（CP2K 日志常全叫
-`total.out`）时改用 `<父目录>_<stem>`，仍撞则报错。
+**一个输入目录一个 system**。同目录的 `.out` 是同一次运行被重启切开的段，
+合并回去 —— 这也是 collect 与 merge 的分界：collect 拼**同一次运行**的碎片，
+merge 合**不同运行**。
+
+目录名取**剥掉公共祖先之后剩下的层级**，原样嵌套不压平，文件 stem 不进名字：
+
+| `-i` | 产物 |
+|---|---|
+| `run*/*.out -o sets` | `sets/run1/`、`sets/run2/` |
+| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md/`、`sets/b/md/` |
+| `*.out -o sys`（只有一个目录） | `sys/` 本身 |
+
+公共前缀按定义不携带区分信息，剥掉之后剩下的必然唯一，所以撞名不再是错误 ——
+撞名就是「该合并」的定义。
+
+文件按首个 `MD| Step number` 排序，文件内保持原序。**重叠帧不去重**（重启只
+重跑 checkpoint 以来的几步，位置速度相同则能量力也相同），但每个源文件的 step
+区间会打出来，让这个前提保持可检验。
+
+同目录**成分不一致直接报错**并指名两个文件，不当作坏帧丢 —— 那是人的错误，
+不是数据的问题。单个 out 解析失败则跳过、用剩下的建 system，跳过清单在最后
+再报一遍并置退出码 1。
 
 要求 CP2K 把坐标、力、应力全部打到 `__STD_OUT__`，这样一个 out 文件自足。
 单位从文本自读（`[hartree]` / `[bar]`），认不出**报错**不默认 —— `STRESS_UNIT`
@@ -811,13 +833,29 @@ ferro dataset merge     多个 system → 按成分合并
 
 阈值 0 关闭该判据：显式的零表达「不判」，小正数表达不了。
 
-报告三张表（只打印不落盘）：`[funnel]` 逐步剩余、`[criteria]` 每条判据判坏多少
-及**独占**多少、`[overlap]` 两两重叠。**独占数才是判据有没有用的证据** —— 漏斗
-每步只在上一步的存活帧上报数，一个只会重复抓别人已抓帧的判据在那里看着也很能干。
+报告三张表：`[funnel]` 逐步剩余、`[criteria]` 每条判据判坏多少及**独占**多少、
+`[overlap]` 两两重叠。**独占数才是判据有没有用的证据** —— 漏斗每步只在上一步的
+存活帧上报数，一个只会重复抓别人已抓帧的判据在那里看着也很能干。
 
-只读模式（不给 `-o`）另打四张诊断表：min d(O–O) 分布、每帧 Al6 个数、Al 配位
-分布、**rcut 敏感性扫描**。最后一张最要紧 —— 一个体系上它可能从 0.9% 陡升到
-41.4%，另一个体系上却是一条 100% 的平线。
+另有四张诊断表：min d(O–O) 分布、每帧 Al6 个数、Al 配位分布、**rcut 敏感性
+扫描**。最后一张最要紧 —— 一个体系上它可能从 0.9% 陡升到 41.4%，另一个体系上
+却是一条 100% 的平线。四张恒定计算：实测 1110 帧 / 302 原子的挂钟时间与不算时
+相同，而只在只读模式算就等于永远落不了盘。
+
+打印与落盘分开：
+
+| | 屏幕 | 落盘 |
+|---|---|---|
+| 无 `-o`（只读） | 七张全打 | **一个字不写** |
+| 有 `-o` | 只打三张统计表 | 七张全写 |
+
+七个 csv **平铺**在 `-o` 根下（`filter_funnel.csv`、`filter_rcut_scan.csv` …），
+经与其余产物同一个 writer，自带 `#` 头与 `[inputs]` 清单。多 system 堆叠成一份，
+行标签是 `system` 列里**相对 `-i` 的路径** —— 嵌套结构下 `a/md` 与 `b/md` 的
+叶子名相同，堆起来就分不出是谁。
+
+平铺而不是塞进 `report/` 子目录是有意的：`expand_dirs` 只收目录，平铺的 csv
+会被后续 `merge -i clean/*` 自动滤掉，而 `report/` 反倒会被收进去当 system 候选。
 
 ### `merge` — 按成分合并
 
@@ -848,6 +886,31 @@ ferro dataset merge     多个 system → 按成分合并
 
 `filter --shuffle` 与 `merge --mode shuffle` 是**二选一不是先后**：要让 set
 混合多个来源就在 merge 打乱，数据集直接喂训练器就在 filter 打乱。
+
+---
+
+## `ferro doc`
+
+本手册的全部页面经 `include_str!` 编译进二进制（24 页，208 KB），所以
+`cargo install` 出去的 ferro 也带着它。
+
+```bash
+ferro doc                          # 列出全部 topic
+ferro doc dataset filter           # 读一页
+ferro doc net > net.md             # 重定向时不分页，是干净文件
+```
+
+**topic 跟子命令树同名**（`dataset filter`、`traj gr`、`net`），所以每个帮助页
+末尾那行 `Full documentation:` 就是下一句要敲的命令，而不是一条要去找的路径。
+不对应单个命令的页用扁平名（`data-model`、`installation`、`python`、
+`cli-reference`）。`gr`、`filter`、`network` 这类简写有别名。
+
+`convert` / `info` / `bader` 没有专页 —— 它们是**本页的小节**，`ferro doc` 按
+小节寻址，取该 `##` 标题到下一个同级标题，于是给出几十行而不是整本。
+
+markdown **原样输出，不渲染**（零依赖）。stdout 是终端时经 `$PAGER`
+（默认 `less -R`），重定向或管道时直接打印 —— `git` 与 `man` 的行为。
+pager 缺失或起不来就回落到打印，不报错。
 
 ---
 
