@@ -393,11 +393,15 @@ Machine-learning datasets
   dataset filter    Drop low-quality frames (force / stress thresholds)
   dataset merge     Combine same-composition datasets, shuffle, resize sets
 
+Manual
+  doc            The user manual, in the binary. `ferro doc` lists the topics;
+                 `ferro doc dataset filter` reads one.
+
 Batch input:
   -i takes several files and expands glob patterns itself — quote them:
     ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan
   Each input is analysed on its own; results stack into ONE csv with a `file` column.
-  A failed input is skipped, listed in the output's [inputs] block, and sets exit code 1.
+  A failed input is skipped, its reason printed, and the exit code set to 1.
 
 Output naming:
   <outdir>/<command>[_<table>][_<label>]_<suffix>.csv
@@ -411,7 +415,7 @@ Output naming:
 Help:
   Any command typed without -i prints its own page: what it computes, the
   parameters, and the shape of what it writes. `-h` gives the short parameter
-  table instead."#,
+  table instead, and `ferro doc <topic>` the full manual page."#,
         env!("CARGO_PKG_VERSION")
     );
 }

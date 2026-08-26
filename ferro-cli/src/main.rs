@@ -10,6 +10,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use ferro::cmd;
+use ferro::doc;
 use ferro::help;
 
 #[derive(Parser)]
@@ -51,6 +52,12 @@ enum Command {
     Dataset {
         #[command(subcommand)]
         cmd: Option<cmd::dataset::DatasetCmd>,
+    },
+    /// Read the user manual (`ferro doc` lists the topics)
+    Doc {
+        /// Topic, named after the subcommand: `dataset filter`, `traj gr`, `net`
+        #[arg(value_name = "TOPIC", num_args = 0..)]
+        topic: Vec<String>,
     },
 }
 
@@ -116,6 +123,10 @@ fn main() -> Result<()> {
         Command::Job(c)     => { cmd::job::run(c)?; 0 }
         Command::Dataset { cmd: None } => {
             help::print_dataset_overview();
+            0
+        }
+        Command::Doc { topic } => {
+            doc::run(topic)?;
             0
         }
         Command::Dataset { cmd: Some(c) } => {
