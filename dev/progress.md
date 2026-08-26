@@ -343,6 +343,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
   info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
+- **extxyz 的 stress/virial 现在是错的**：读侧 `stress` 取不到就回落取 `virial`
+  （两者差一个体积因子），且两侧都没做 ASE 约定（正 = 张）与 `Frame::stress`
+  （正 = 压缩）之间的变号。自读自写的回路里符号错两次相抵，故现有测试全绿。
+  修法与钉符号的测试要求见 `plan.md` 优先级高第一条
 - **`ferro dataset collect` 只读 CP2K**，VASP / QE 待扩；`.out` **未**注册进
   `io_dispatch`（这个扩展名太通用，不能替 CP2K 占下），故 `ferro convert -i x.out`
   仍不认识它

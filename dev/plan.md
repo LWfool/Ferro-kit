@@ -5,6 +5,118 @@
 
 ## 优先级高
 
+### extxyz 的 stress/virial 修正 + GPUMD/NEP 导出（**最高优先**，2026-08-26 提级）
+
+原在「dataset 剩余小项」里作为 GPUMD 接入的前置，现单列并提到最高 —— 它不是
+新特性而是**既有读写的正确性缺陷**，且错得静默：
+
+| 位置 | 现状 | 问题 |
+|---|---|---|
+| `readers/extxyz.rs:45` | `stress` 取不到就回落取 `virial` | 两个键当同一个量读，**差一个体积因子** |
+| 同上 | 读到什么存什么 | ASE/GPUMD 的 `stress=` 是「正 = 张」，Ferro 的 `Frame::stress` 是「正 = 压缩」，**没变号** |
+| `writers/extxyz.rs:47` | 直接把 `frame.stress` 九个数写成 `stress=` | 同样没变号，写出去的 extxyz 对 ASE 而言符号是反的 |
+
+要定的换算（两条内部约定已定死，见 `overview.md` 的 v0.3.1 表）：
+`virial = stress × V` 不变号 · `Frame::stress` 正 = 压缩。故读侧
+`virial` 键要除以 `|det(box)|`（`readers/deepmd.rs` 已有同一条换算，复用而非重写），
+`stress` 键要变号；写侧对称。**无 cell 时读到 `virial` 无法换算 → 报错，不静默当 stress**。
+
+**测试必须钉住符号，且不能只靠自洽**：ferro 写出→ferro 读回这条回路里，符号错两次
+会互相抵消、测试全绿。要一条**外部产生的固定文本 fixture**（GPUMD 的 `train.xyz`
+片段或 ASE 写出的 extxyz），断言读进来的 `Frame::stress` 符号与已知压缩/张状态一致。
+这与 `array_order.rs` 用非对称矩阵测行优先是同一类防护：对称张量下转置静默，
+自洽回路下符号静默。
+
+修完再接**GPUMD/NEP 的 `train.xyz` 导出**（链末 export，不是中间格式）：
+
+- 键名待核对：NEP 的 train.xyz 用单数 `force`，ASE 用复数 `forces`。**读侧两个都收**，
+  写侧按目标写。同理 `virial=` 与 `stress=` 两种下游都存在
+- 命令归属未定：是 `ferro dataset export --format nep`（与 collect/filter/merge 同链）
+  还是 `ferro convert` 的一个目标格式。判据：产物是**一个文件**而非目录，且不需要
+  按成分分组 —— 更像 convert；但输入是 DeePMD system 目录，`convert` 的 `-i` 现在
+  不收目录。倾向前者
+- `config_type` / `weight` 这类 NEP 侧可选键：先不写，需要时再加
+
+---
+
+### DeePMD mixed type 数据的读写（2026-08-26 提出）
+
+现在 `readers/deepmd.rs` / `writers/deepmd.rs` 只做**标准 system**：`type.raw` 一份
+定型，故一个 system 里所有帧的成分必须完全相同 —— 这正是 `collect`「同目录成分不符
+报错」与 `merge`「按 `composition_key` 分组」两条现有约束的来源。
+
+mixed type 布局（**先核对 DeePMD-kit 文档与 dpdata 的 `deepmd/npy/mixed` 再动手**，
+以下是待验证的理解）：
+
+| 文件 | 标准 system | mixed type |
+|---|---|---|
+| `type_map.raw` | 该 system 的元素表 | 全局并集 |
+| `type.raw` | 逐原子真实类型 | **全 0 占位** |
+| `set.NNN/real_atom_types.npy` | 无 | `(nframes, natoms)` 的整型，逐帧逐原子给真实类型 |
+
+要点与判据：
+
+- **价值是装下成分不同的帧**（原子数仍须相同 —— dpdata 的 mixed 也按 natoms 分
+  system）。所以这件事做完，`collect` 的「成分不符报错」和 `merge` 的分组要重新定：
+  是继续分组、还是给一个 `--mixed` 让它们合成一个 system。**默认不改**，因为
+  mixed type 只有 DPA 系列 / 多任务训练吃得下，普通 DeePMD 训练不认
+- 读侧先做：能读回 dpdata 产出的 mixed system，`real_atom_types` 经 `type_map` 映射
+  回元素符号，落进 `Trajectory` 天然装得下（帧与帧的元素本来就各存各的）
+- 写侧作为开关，不改默认布局。`type_map` 的并集需要**可复现的稳定序** ——
+  `merge.rs` 的 `(Z, 符号)` 规范序已满足，沿用同一条（注意与 dpdata 的字母序不同，
+  这条差异 `progress.md`「已知限制」已记）
+- npy 是整型：现有读写走的都是 `float64`（磁盘上一律二维 f64），
+  `real_atom_types.npy` 是 int，**dtype 分支是新的**，读侧要同时收 int32/int64
+- 与 `filter` 的关系：`filter` 现在按 system 读回再写出，mixed system 经它一趟必须
+  仍是 mixed，否则静默降级成「全 0 类型」的坏数据
+
+---
+
+### VASP AIMD 数据读取（2026-08-26 提出）
+
+`readers/vasp.rs` 现在只有 `read_poscar` / `read_contcar`，AIMD 轨迹无入口；
+`dataset collect` 也是直接调 `read_cp2k_out_with_stats`，**没有格式分派**。
+这条要同时补 reader 和 collect 的分派。
+
+**来源三选一**：
+
+| 来源 | 内容 | 代价 |
+|---|---|---|
+| `OUTCAR` | 能量 / 力 / 应力 / 逐帧晶胞全有 | 纯文本，**零新依赖**，可照搬 `cp2k_out.rs` 的 token 锚点 + 区间扫描 |
+| `vasprun.xml` | 同上，且结构化 | 要拉 XML 解析依赖 |
+| `XDATCAR` | **只有坐标**，无力无能量 | 做不了训练集，只能当轨迹 |
+
+倾向 `OUTCAR` —— 与 CP2K 那条路同构，`cp2k_out.rs` 的三条经验（按 token 序列匹配
+而非固定行偏移、区间上界取下一个锚点、数值行不写死下标）可直接复用。
+
+**待核对的坑**（动手前逐条验，别照记忆写）：
+
+- **取哪个能量**：`free  energy   TOTEN` 与 `energy(sigma->0)` 是两个数。dpdata 取
+  sigma→0 那个；要与 dpdata 对拍就得同口径。这条决定要写进 reader 的 doc 注释
+- **应力符号与分量顺序**：`in kB` 行是 Voigt 六分量，顺序是 **XX YY ZZ XY YZ ZX**
+  （不是常见的 YZ XZ XY），单位 kB = kBar，`units.rs` 的 `PressureUnit::Kbar` 已有。
+  符号是否与 Ferro 的「正 = 压缩」一致**必须实测核对**，办法是拿一个已知受压体系
+  或与 dpdata 的结果对拍 —— 对称张量下符号错了不会有任何形状异常
+- **逐帧晶胞**：NPT 下每步都有 `VOLUME and BASIS-vectors` 块，取 `direct lattice
+  vectors` 三行，**行优先**（`matrix3_from_row_major`）
+- **元素与计数**：元素名在 `POTCAR:` / `VRHFIN =` 行（VASP 5+ 有时只在开头出现一次），
+  每种个数在 `ions per type =`，顺序 = POSCAR 顺序。三处都缺就报错，不猜
+- **力块**：`TOTAL-FORCE (eV/Angst)` 锚点，`-----` 夹住；坐标与力同表且坐标是笛卡尔
+- **截断与未收敛**：最后一帧常被中断切掉；与 `cp2k_out` 同策略——缺块的帧宁可丢，
+  丢帧计数由 stats 带出
+- **ML_FF 的 OUTCAR 排版有别**（多机器学习力场块、能量行不同），先只保证纯 AIMD，
+  遇到再说
+
+**CLI 接入**：`collect` 需要格式分派，而**不能靠扩展名** —— `OUTCAR` 没有扩展名，
+`.out` 又太通用（这也是它至今没进 `io_dispatch` 的原因）。判据：collect 是按目录
+批量的，一批里可能 CP2K 与 VASP 混，故走**文件名 + 内容嗅探**（读头若干行找
+`vasp.` 版本横幅 / `CP2K|` 横幅）比加一个全局 `--format` 开关好。
+`io_dispatch` 侧可按前缀 `OUTCAR` 注册只读格式（与 `POSCAR`/`CONTCAR` 的前缀判断
+同一模式），让 `ferro convert -i OUTCAR -o traj.xyz` 也能用；注册时记得
+**`ferro-python/src/io.rs` 是另一处独立的分派**，加格式要两边都看。
+
+---
+
 ### scripts/：net 剩余四张表的画法
 
 四个发表级绘图脚本已完成。**net 六张表里还有四张没有画法**，因为用户明确说还没想好
@@ -123,11 +235,9 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
   多层扫描（`n = floor(rcut / w + 0.5)`）。当前体系盒子远大于阈值，不构成限制
 - **额外键搬运**：`atom_ener` / `fparam` 这类 `Frame` 装不下的项，读时告警、
   写时丢失。真出现时再设计（需要一条绕过 `Trajectory` 的按帧索引搬运通道）
-- **GPUMD/NEP 的 `train.xyz` 导出**：链末的 export。extxyz 读写两侧已有，但
-  `readers/extxyz.rs:45` 把 `virial` 与 `stress` 当同一个量读（差一个体积因子
-  且 GPUMD 里两者反号），`writers/extxyz.rs:47` 写 `stress=` 时也没变号
-  （`Frame::stress` 是「正 = 压缩」，GPUMD 的 `stress=` 是 ASE 约定）。
-  **这两处要在接 GPUMD 之前修**
+- **GPUMD/NEP 的 `train.xyz` 导出**：连同它的前置（extxyz 的 stress/virial
+  符号与体积因子）已单独提为本章第一条，见「extxyz 的 stress/virial 修正 +
+  GPUMD/NEP 导出」
 
 两件**不必新写**的事已经在库里：帧区间与间隔用 `Trajectory::select_indices` /
 `spread_indices`（`convert` 的 `--start/--end/--stride/--number` 就是它）；
