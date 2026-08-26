@@ -7,11 +7,13 @@
 //! - `filter`  — quality selection on an existing dataset (not implemented yet)
 //! - `merge`   — combine same-composition datasets, resize sets (not yet)
 //!
-//! `collect` writes one system directory per input file. Merging inputs into a
-//! single system is NOT done here: a DeePMD system holds one composition, and
-//! deciding which inputs belong together is `merge`'s job.
+//! `collect` writes one system directory per input DIRECTORY: the `.out` files
+//! sitting together are the restart segments of one run, so putting them back
+//! together is restoring a trajectory, not merging datasets. That is the line
+//! between the two commands — `collect` reassembles the pieces of ONE run,
+//! `merge` combines DIFFERENT runs of the same composition.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -27,6 +29,7 @@ use ferro_analysis::ml::merge::{
 };
 use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
+use ferro_core::Trajectory;
 use ferro_io::{
     read_cp2k_out_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
     write_deepmd_npy_bounds, write_deepmd_npy_sets, Cp2kOutStats,
@@ -149,9 +152,13 @@ pub struct CollectCmd {
     #[arg(short, long, num_args = 1..)]
     pub input: Vec<PathBuf>,
 
-    /// Directory to hold the system directories                 [default: .]
+    /// Output root; the directory tree under -i is rebuilt inside it
     #[arg(short, long, value_name = "DIR")]
     pub outdir: Option<PathBuf>,
+
+    /// Allow writing into an existing non-empty output directory
+    #[arg(long)]
+    pub overwrite: bool,
 }
 
 /// True when `ferro dataset collect` was typed with no input.
@@ -181,150 +188,236 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
 }
 
 fn run_collect(args: &CollectCmd) -> Result<usize> {
+    // -o 是必填而不是默认 `.`：产物是一棵目录树，默认落在 cwd 会把 npy
+    // 撒进正在工作的目录。merge 也是必填，filter 的缺省有「只读」这个明确语义
+    let Some(root) = &args.outdir else {
+        bail!("collect needs an output directory (-o DIR)");
+    };
     let inputs = expand_inputs(&args.input)?;
-    let root = args.outdir.clone().unwrap_or_else(|| PathBuf::from("."));
     // 与其余命令一致：路径问题在读第一个文件之前就暴露，而不是跑完才发现写不出去
-    std::fs::create_dir_all(&root)
+    std::fs::create_dir_all(root)
         .with_context(|| format!("cannot create {}", root.display()))?;
 
-    let names = system_names(&inputs)?;
+    let groups = group_by_directory(&inputs);
     let mut failures = 0usize;
+    let mut skipped: Vec<PathBuf> = Vec::new();
 
-    for (path, name) in inputs.iter().zip(&names) {
-        let dir = root.join(name);
-        match collect_one(path, &dir) {
-            Ok(stats) => report(path, &dir, &stats),
+    for group in &groups {
+        let dest = root.join(&group.rel);
+        match collect_group(group, &dest, args.overwrite, &mut skipped) {
+            Ok(()) => {}
             Err(e) => {
-                eprintln!("SKIP {}: {e:#}", path.display());
+                eprintln!("SKIP {}: {e:#}", group.dir.display());
                 failures += 1;
             }
         }
     }
 
+    if !skipped.is_empty() {
+        // 合并语义下坏文件不毒化整个 system，但 system 目录看着是正常的，
+        // 帧数少了却无从察觉 —— 所以这份清单要在最后再说一遍
+        eprintln!("\n{} file(s) skipped and NOT in any system:", skipped.len());
+        for p in &skipped {
+            eprintln!("  {}", p.display());
+        }
+        failures += skipped.len();
+    }
     if failures > 0 {
-        eprintln!("\n{failures} of {} input(s) failed", inputs.len());
+        eprintln!("\n{failures} failure(s)");
     }
     Ok(failures)
 }
 
-fn collect_one(path: &Path, dir: &Path) -> Result<Cp2kOutStats> {
-    let s = path.to_string_lossy().to_string();
-    let (traj, stats) = read_cp2k_out_with_stats(&s)?;
-    write_deepmd_npy(&traj, dir)?;
-    Ok(stats)
+/// The `.out` files of one directory, which become one system.
+struct Group {
+    /// The directory itself, as the user wrote it — for messages.
+    dir: PathBuf,
+    /// Where the system goes under `-o`; empty when there is only one group.
+    rel: PathBuf,
+    files: Vec<PathBuf>,
 }
 
-fn report(path: &Path, dir: &Path, st: &Cp2kOutStats) {
-    println!("{} -> {}", path.display(), dir.display());
-    println!(
-        "  {} step(s), {} kept, {} dropped",
-        st.n_steps, st.n_kept, st.n_dropped()
-    );
-    if st.n_dropped() > 0 {
-        // 丢帧从不静默：5000 帧里丢掉 3000 说明 SCF 设置有问题，用户得当场知道
-        println!(
-            "    SCF not converged {} | incomplete block {} | composition {}",
-            st.n_scf_failed, st.n_incomplete, st.n_bad_composition
-        );
-    }
-    if st.n_restarts > 0 {
-        println!("  {} restart(s) concatenated", st.n_restarts);
-    }
-    if st.n_layout_drift > 0 {
-        println!(
-            "  WARNING: {} frame(s) print their blocks at a different offset than the first;\n           extra output may be interleaved — check a few frames by hand",
-            st.n_layout_drift
-        );
-    }
-}
-
-/// One directory name per input, disambiguated when the file stems collide.
+/// One group per directory, named by the path below the shared ancestor.
 ///
-/// CP2K logs are routinely all named the same thing (`total.out`) and told
-/// apart by their directory, so a bare stem would make `run1/total.out` and
-/// `run2/total.out` overwrite each other. Colliding stems fall back to
-/// `<parent>_<stem>`; if that still collides, it is an error rather than a
-/// silent overwrite.
-fn system_names(inputs: &[PathBuf]) -> Result<Vec<String>> {
-    let stem = |p: &Path| {
-        p.file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "system".to_string())
+/// The files of a directory are the restart segments of one run, so they become
+/// one system rather than one each. Naming keeps the directory structure instead
+/// of flattening it with separators: `-i /s/a/md/x.out /s/b/md/x.out` gives
+/// `a/md` and `b/md`, and the file stem never enters the name at all.
+///
+/// With a single group the shared ancestor is the whole path, so `rel` is empty
+/// and the system is written into `-o` itself — there is nothing to tell apart.
+fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
+    // 分组键取规范化路径，`a/x.out` 与 `./a/y.out` 才落进同一组；
+    // 显示与命名仍用规范化后的路径，两者一致
+    let key_of = |p: &Path| -> PathBuf {
+        let dir = p.parent().unwrap_or(Path::new("."));
+        std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())
     };
-    let mut count: HashMap<String, usize> = HashMap::new();
+
+    let mut order: Vec<PathBuf> = Vec::new();
+    let mut by_dir: BTreeMap<PathBuf, (PathBuf, Vec<PathBuf>)> = BTreeMap::new();
     for p in inputs {
-        *count.entry(stem(p)).or_default() += 1;
+        let k = key_of(p);
+        if !by_dir.contains_key(&k) {
+            order.push(k.clone());
+        }
+        // 显示路径取用户写下的那一个（规范化后是绝对路径，刷屏且认不出）
+        let as_written = p.parent().unwrap_or(Path::new(".")).to_path_buf();
+        by_dir
+            .entry(k)
+            .or_insert_with(|| (as_written, Vec::new()))
+            .1
+            .push(p.clone());
+    }
+    order.sort();
+
+    let ancestor = common_ancestor(&order);
+    order
+        .into_iter()
+        .map(|key| {
+            let rel = key.strip_prefix(&ancestor).unwrap_or(Path::new("")).to_path_buf();
+            let (dir, files) = by_dir.remove(&key).unwrap_or_default();
+            Group { dir, rel, files }
+        })
+        .collect()
+}
+
+/// The longest path prefix every input shares, component by component.
+///
+/// A shared prefix carries no distinguishing information by definition, so what
+/// is left after stripping it is exactly what tells the systems apart.
+fn common_ancestor(dirs: &[PathBuf]) -> PathBuf {
+    let Some(first) = dirs.first() else {
+        return PathBuf::new();
+    };
+    let mut prefix: Vec<_> = first.components().collect();
+    for d in &dirs[1..] {
+        let comps: Vec<_> = d.components().collect();
+        let keep = prefix
+            .iter()
+            .zip(&comps)
+            .take_while(|(a, b)| a == b)
+            .count();
+        prefix.truncate(keep);
+    }
+    prefix.iter().collect()
+}
+
+/// Reads every file of a group, concatenates them, and writes one system.
+fn collect_group(
+    group: &Group,
+    dest: &Path,
+    overwrite: bool,
+    skipped: &mut Vec<PathBuf>,
+) -> Result<()> {
+    if !overwrite && dest.exists() && std::fs::read_dir(dest)?.next().is_some() {
+        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
     }
 
-    let mut names = Vec::with_capacity(inputs.len());
-    let mut seen: HashMap<String, PathBuf> = HashMap::new();
-    for p in inputs {
-        let s = stem(p);
-        let name = if count[&s] == 1 {
-            s
-        } else {
-            let parent = p
-                .parent()
-                .and_then(|d| d.file_name())
-                .map(|d| d.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if parent.is_empty() { s } else { format!("{parent}_{s}") }
-        };
-        if let Some(first) = seen.insert(name.clone(), p.clone()) {
+    // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致
+    let mut parts: Vec<(PathBuf, Trajectory, Cp2kOutStats)> = Vec::new();
+    for path in &group.files {
+        match read_cp2k_out_with_stats(&path.to_string_lossy()) {
+            Ok((traj, stats)) => parts.push((path.clone(), traj, stats)),
+            Err(e) => {
+                eprintln!("SKIP {}: {e:#}", path.display());
+                skipped.push(path.clone());
+            }
+        }
+    }
+    if parts.is_empty() {
+        bail!("no usable file in this directory");
+    }
+
+    // 按首个 step 号排序，文件内保持原序。全局逐帧排序看着更彻底，但重启
+    // 若从 0 重新计数就会把两段真实轨迹交错洗牌，比不排序更糟；这里最坏
+    // 情况退化成「按文件名拼」，不比原来差
+    parts.sort_by(|a, b| {
+        let ka = (a.2.steps.map(|(s, _)| s), a.0.clone());
+        let kb = (b.2.steps.map(|(s, _)| s), b.0.clone());
+        ka.cmp(&kb)
+    });
+
+    // 一个 system 的 type.raw 只写一次，故各文件的原子序列必须逐项相同。
+    // 不一致是「把两个体系放进了一个目录」这个人的错误，不是数据的问题 ——
+    // 当作坏帧丢掉会把它渲染成完全不同的一件事
+    let reference = symbols_of(&parts[0].1);
+    for (path, traj, _) in &parts[1..] {
+        let here = symbols_of(traj);
+        if here != reference {
             bail!(
-                "{} and {} would both write the system directory `{name}`; rename one or pass them separately",
-                first.display(), p.display()
+                "{} and {} hold different compositions ({} vs {}); \
+                 a system holds one composition, so put them in separate directories",
+                parts[0].0.display(),
+                path.display(),
+                formula_of(&reference),
+                formula_of(&here),
             );
         }
-        names.push(name);
     }
-    Ok(names)
+
+    let mut all = Trajectory::new();
+    all.metadata = parts[0].1.metadata.clone();
+    for (_, traj, _) in &parts {
+        all.frames.extend(traj.frames.iter().cloned());
+    }
+
+    report_group(dest, &parts, all.n_frames());
+    write_deepmd_npy(&all, dest)?;
+    Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn symbols_of(traj: &Trajectory) -> Vec<String> {
+    traj.frames
+        .first()
+        .map(|f| f.symbols().into_iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default()
+}
 
-    #[test]
-    fn unique_stems_are_used_as_is() {
-        let inputs = vec![PathBuf::from("a/x.out"), PathBuf::from("b/y.out")];
-        assert_eq!(system_names(&inputs).unwrap(), vec!["x", "y"]);
+/// `Al32O64Zn16` from a per-atom element sequence, for the mismatch message.
+fn formula_of(symbols: &[String]) -> String {
+    let mut count: BTreeMap<&str, usize> = BTreeMap::new();
+    for s in symbols {
+        *count.entry(s.as_str()).or_default() += 1;
     }
+    count.iter().map(|(el, n)| format!("{el}{n}")).collect()
+}
 
-    #[test]
-    fn colliding_stems_fall_back_to_the_parent_directory() {
-        let inputs = vec![PathBuf::from("run1/total.out"), PathBuf::from("run2/total.out")];
-        assert_eq!(system_names(&inputs).unwrap(), vec!["run1_total", "run2_total"]);
-    }
-
-    #[test]
-    fn set_spans_split_within_a_system_and_spread_the_remainder() {
-        // 500 帧 / 400：均分成 250+250，而不是 400+100
-        assert_eq!(set_spans(500, 400), vec![(0, 250), (250, 500)]);
-        assert_eq!(
-            set_spans(2000, 400),
-            vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]
+/// One section per system, one line per source file.
+///
+/// The step span is printed because the overlap of a restart is otherwise
+/// invisible: frames are concatenated without de-duplication, on the grounds
+/// that a restart re-runs at most a few steps and identical positions give
+/// identical energies. That premise is checkable only if the spans are shown.
+fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, Cp2kOutStats)], n_frames: usize) {
+    println!("{}  ({} file(s), {n_frames} frames)", dest.display(), parts.len());
+    for (path, _, st) in parts {
+        let span = match st.steps {
+            Some((a, b)) => format!("steps {a}-{b}"),
+            None => "steps ?".to_string(),
+        };
+        println!(
+            "  {:<40} {span:<20} {} kept, {} dropped",
+            path.display().to_string(),
+            st.n_kept,
+            st.n_dropped()
         );
-        assert_eq!(set_spans(120, 400), vec![(0, 120)]);
-        assert_eq!(set_spans(120, 0), vec![(0, 120)]);
-        // 余数摊开：1000 / 400 -> 3 个 set，334+333+333
-        assert_eq!(set_spans(1000, 400), vec![(0, 334), (334, 667), (667, 1000)]);
-    }
-
-    #[test]
-    fn a_shared_split_suffix_is_inherited_and_a_mixed_one_is_not() {
-        let same = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.train")];
-        assert_eq!(shared_suffix(&same).as_deref(), Some(".train"));
-        let mixed = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.test")];
-        assert_eq!(shared_suffix(&mixed), None);
-        let bare = vec![PathBuf::from("a/sys.001"), PathBuf::from("b/sys.002")];
-        assert_eq!(shared_suffix(&bare), None);
-    }
-
-    #[test]
-    fn a_remaining_collision_is_an_error() {
-        let inputs = vec![PathBuf::from("r/total.out"), PathBuf::from("x/r/total.out")];
-        assert!(system_names(&inputs).is_err());
+        if st.n_dropped() > 0 {
+            // 丢帧从不静默：5000 帧里丢掉 3000 说明 SCF 设置有问题，用户得当场知道
+            println!(
+                "    SCF not converged {} | incomplete block {} | composition {}",
+                st.n_scf_failed, st.n_incomplete, st.n_bad_composition
+            );
+        }
+        if st.n_restarts > 0 {
+            println!("    {} restart(s) concatenated within this file", st.n_restarts);
+        }
+        if st.n_layout_drift > 0 {
+            println!(
+                "    WARNING: {} frame(s) print their blocks at a different offset than the first;\n             extra output may be interleaved — check a few frames by hand",
+                st.n_layout_drift
+            );
+        }
     }
 }
 
@@ -737,4 +830,88 @@ fn shared_suffix(paths: &[PathBuf]) -> Option<String> {
         .iter()
         .all(|p| suffix_of(p).as_deref() == Some(first.as_str()))
         .then_some(first)
+}
+
+// ── tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rels(inputs: &[&str]) -> Vec<String> {
+        let paths: Vec<PathBuf> = inputs.iter().map(PathBuf::from).collect();
+        group_by_directory(&paths)
+            .iter()
+            .map(|g| g.rel.display().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_shared_ancestor_is_stripped_and_the_rest_kept_nested() {
+        // 公共祖先 /s 剥掉，其余层级原样保留 —— 不用分隔符压平
+        assert_eq!(rels(&["/s/a/md/x.out", "/s/b/md/x.out"]), vec!["a/md", "b/md"]);
+        assert_eq!(rels(&["run1/total.out", "run2/total.out"]), vec!["run1", "run2"]);
+    }
+
+    #[test]
+    fn a_single_directory_leaves_an_empty_name() {
+        // 只有一组时公共祖先就是整条路径，产物直接写进 -o 本身
+        assert_eq!(rels(&["/s/run1/a.out", "/s/run1/b.out"]), vec![""]);
+    }
+
+    #[test]
+    fn files_of_one_directory_become_one_group() {
+        let paths: Vec<PathBuf> = ["/s/run1/a.out", "/s/run1/b.out", "/s/run2/c.out"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        let groups = group_by_directory(&paths);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].files.len(), 2);
+        assert_eq!(groups[1].files.len(), 1);
+    }
+
+    #[test]
+    fn uneven_depth_is_kept_as_given() {
+        // 输入本来就不齐，产物忠实反映；find_systems 与 merge 都是递归的
+        assert_eq!(rels(&["/s/a/total.out", "/s/b/md/total.out"]), vec!["a", "b/md"]);
+    }
+
+    #[test]
+    fn the_common_ancestor_stops_at_the_first_difference() {
+        let dirs = vec![PathBuf::from("/s/a/md"), PathBuf::from("/s/a/opt")];
+        assert_eq!(common_ancestor(&dirs), PathBuf::from("/s/a"));
+        let disjoint = vec![PathBuf::from("/x/a"), PathBuf::from("/y/b")];
+        assert_eq!(common_ancestor(&disjoint), PathBuf::from("/"));
+    }
+
+    #[test]
+    fn set_spans_split_within_a_system_and_spread_the_remainder() {
+        // 500 帧 / 400：均分成 250+250，而不是 400+100
+        assert_eq!(set_spans(500, 400), vec![(0, 250), (250, 500)]);
+        assert_eq!(
+            set_spans(2000, 400),
+            vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]
+        );
+        assert_eq!(set_spans(120, 400), vec![(0, 120)]);
+        assert_eq!(set_spans(120, 0), vec![(0, 120)]);
+        // 余数摊开：1000 / 400 -> 3 个 set，334+333+333
+        assert_eq!(set_spans(1000, 400), vec![(0, 334), (334, 667), (667, 1000)]);
+    }
+
+    #[test]
+    fn a_shared_split_suffix_is_inherited_and_a_mixed_one_is_not() {
+        let same = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.train")];
+        assert_eq!(shared_suffix(&same).as_deref(), Some(".train"));
+        let mixed = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.test")];
+        assert_eq!(shared_suffix(&mixed), None);
+        let bare = vec![PathBuf::from("a/sys.001"), PathBuf::from("b/sys.002")];
+        assert_eq!(shared_suffix(&bare), None);
+    }
+
+    #[test]
+    fn a_composition_is_rendered_for_the_mismatch_message() {
+        let syms: Vec<String> = ["O", "Al", "O", "Zn", "O"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(formula_of(&syms), "Al1O3Zn1");
+    }
 }

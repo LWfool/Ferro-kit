@@ -119,6 +119,12 @@ pub struct Cp2kOutStats {
     pub n_layout_drift: usize,
     /// `MD_INI| MD initialization` blocks; > 1 means the run was restarted
     pub n_restarts: usize,
+    /// First and last `MD| Step number` value the file claims.
+    ///
+    /// The span a file covers, not the frames that survived. Restarting from a
+    /// checkpoint makes two files overlap here, and a caller concatenating them
+    /// can only show that overlap if it knows the spans.
+    pub steps: Option<(i64, i64)>,
 }
 
 impl Cp2kOutStats {
@@ -228,11 +234,16 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
 
     let mut stats = Cp2kOutStats::default();
     let mut anchors: Vec<usize> = Vec::new();
+    let mut steps: Vec<i64> = Vec::new();
     let mut scf: Vec<(usize, bool)> = Vec::new();
     let mut version: Option<String> = None;
     for (i, l) in lines.iter().enumerate() {
         if line_matches(l, tag::FRAME) {
             anchors.push(i);
+            // 行末是步号本身；解析不出就不记，锚点本身仍然有效
+            if let Some(n) = l.split_whitespace().last().and_then(|t| t.parse::<i64>().ok()) {
+                steps.push(n);
+            }
         } else if line_matches(l, tag::SCF) {
             // 收敛与否看有没有 NOT 这个词，而不是整句措辞
             let not_converged = l.split_whitespace().any(|t| t == "NOT");
@@ -245,6 +256,10 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
         }
     }
     stats.n_steps = anchors.len();
+    stats.steps = match (steps.first(), steps.last()) {
+        (Some(&a), Some(&b)) => Some((a, b)),
+        _ => None,
+    };
     if anchors.is_empty() {
         bail!("no `MD| Step number` line found; this is not a CP2K MD output");
     }
