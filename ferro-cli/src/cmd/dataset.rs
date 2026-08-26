@@ -391,13 +391,15 @@ fn formula_of(symbols: &[String]) -> String {
 /// identical energies. That premise is checkable only if the spans are shown.
 fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, Cp2kOutStats)], n_frames: usize) {
     println!("{}  ({} file(s), {n_frames} frames)", dest.display(), parts.len());
+    // 列宽按本组实际路径算：写死的宽度装不下真实的 CP2K 目录名，span 列会错开
+    let w = parts.iter().map(|(p, _, _)| p.display().to_string().len()).max().unwrap_or(0);
     for (path, _, st) in parts {
         let span = match st.steps {
             Some((a, b)) => format!("steps {a}-{b}"),
             None => "steps ?".to_string(),
         };
         println!(
-            "  {:<40} {span:<20} {} kept, {} dropped",
+            "  {:<w$}  {span:<16} {} kept, {} dropped",
             path.display().to_string(),
             st.n_kept,
             st.n_dropped()
@@ -487,11 +489,31 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
 
     let mut failures = 0usize;
     let mut auto_rcuts: Vec<f64> = Vec::new();
+    // 报告按表名分组堆叠，行标签用**相对路径**而不是目录名 ——
+    // 嵌套结构下 a/md 与 b/md 的叶子名相同，堆起来就分不出是谁
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: Vec<Vec<(String, ferro_core::Table)>> = Vec::new();
+    let mut summary = crate::batch::Summary::new(&["frames_out"]);
+
     for (sys, rel) in &jobs {
+        let label = rel.display().to_string();
         match filter_one(sys, rel, args, &params) {
-            Ok(rcut) => auto_rcuts.extend(rcut),
+            Ok(one) => {
+                auto_rcuts.extend(one.rcut);
+                summary.ok(label.clone(), one.n_input, one.n_atoms, &[one.n_kept as f64]);
+                for (name, table) in one.tables {
+                    match order.iter().position(|n| *n == name) {
+                        Some(i) => groups[i].push((label.clone(), table)),
+                        None => {
+                            order.push(name);
+                            groups.push(vec![(label.clone(), table)]);
+                        }
+                    }
+                }
+            }
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", sys.display());
+                summary.failed_one(label.clone(), format!("{e:#}"));
                 failures += 1;
             }
         }
@@ -506,19 +528,75 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
             auto_rcuts.len()
         );
     }
+
+    // 报告经 write_table 落盘（分析产物的唯一出口），与 traj / net 同一条路。
+    // 平铺在 -o 根下而不是塞进子目录：expand_dirs 只收 is_dir(),所以 csv 会
+    // 被后续 `merge -i clean/*` 自动滤掉,而一个 report/ 子目录反倒会被收进去
+    if let Some(out) = &args.outdir {
+        let mut tables = Vec::with_capacity(order.len());
+        for (name, parts) in order.into_iter().zip(groups) {
+            let merged = ferro_core::Table::concat_union("system", parts)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            tables.push((name, merged));
+        }
+        let outp = crate::batch::Output {
+            dir: Some(out.clone()),
+            label: None,
+            suffix: None,
+        };
+        println!();
+        crate::batch::write_all(
+            "filter",
+            "ferro dataset filter — frame selection report",
+            &report_params(args, &params),
+            &summary.into_table_named("system"),
+            tables,
+            &outp,
+        )?;
+    }
+
     if failures > 0 {
         eprintln!("\n{failures} of {} system(s) failed", jobs.len());
     }
     Ok(failures)
 }
 
-/// Returns the automatically derived Al-O cutoff, when one was derived.
+/// The shared parameter block at the top of every report file.
+fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
+    let off = |v: f64| if v > 0.0 { format!("{v}") } else { "off".to_string() };
+    let mut v = vec![
+        format!("f_max     = {} eV/Ang", off(args.f_max)),
+        format!("s_max     = {} GPa", off(args.s_max)),
+        format!("oo_min    = {} Ang", off(params.oo_min)),
+        match args.al6.as_deref() {
+            None => "al6       = off".to_string(),
+            Some("auto") => "al6       = on (cutoff from the Al-O RDF, per system)".to_string(),
+            Some(v) => format!("al6       = on (cutoff {v} Ang)"),
+        },
+        format!("set_size  = {}", args.set_size),
+    ];
+    if let Some(seed) = params.shuffle {
+        v.push(format!("shuffle   = yes (seed {seed})"));
+    }
+    v
+}
+
+/// What one system contributed: its report tables and its frame counts.
+struct FilterOne {
+    /// The automatically derived Al-O cutoff, when one was derived.
+    rcut: Option<f64>,
+    tables: Vec<(String, ferro_core::Table)>,
+    n_input: usize,
+    n_kept: usize,
+    n_atoms: usize,
+}
+
 fn filter_one(
     sys: &Path,
     rel: &Path,
     args: &FilterCmd,
     params: &FilterParams,
-) -> Result<Option<f64>> {
+) -> Result<FilterOne> {
     let (traj, warnings) = read_deepmd_npy_with_warnings(sys)?;
     for w in &warnings {
         eprintln!("WARNING: {w}");
@@ -550,11 +628,31 @@ fn filter_one(
     println!("{}", sys.display());
     print_report(&result);
 
-    let Some(out_root) = &args.outdir else {
-        // 诊断只在只读模式算：它比筛选本身贵，而写出时人已经定好参数了
-        print_diagnostics(&traj, &result, &params);
+    // 诊断表恒算：实测 1110 帧 / 302 原子挂钟时间与不算时相同（rayon 跑满），
+    // 而它是选阈值的依据，只在只读模式算就等于永远落不了盘
+    let diagnostics = diagnostic_tables(&traj, &result, &params);
+    let mut tables = result.to_tables();
+    tables.extend(diagnostics.iter().cloned());
+
+    if args.outdir.is_none() {
+        // 只读模式：四张诊断表也打出来，但一个字不落盘
+        for (name, table) in &diagnostics {
+            println!("  [{name}]");
+            print_table(table);
+        }
         println!();
-        return Ok(derived);
+    }
+
+    let one = FilterOne {
+        rcut: derived,
+        tables,
+        n_input: result.n_input,
+        n_kept: result.keep.len(),
+        n_atoms: traj.frames.first().map(|f| f.n_atoms()).unwrap_or(0),
+    };
+
+    let Some(out_root) = &args.outdir else {
+        return Ok(one);
     };
     if result.keep.is_empty() {
         bail!("every frame was dropped; nothing to write");
@@ -568,7 +666,7 @@ fn filter_one(
     let kept = traj.subset(&result.keep);
     write_deepmd_npy_sets(&kept, &dest, args.set_size)?;
     println!("  -> {}\n", dest.display());
-    Ok(derived)
+    Ok(one)
 }
 
 fn print_report(r: &FilterResult) {
@@ -615,27 +713,26 @@ fn find_systems(root: &Path) -> Result<Vec<PathBuf>> {
 
 /// The tables that answer "should I be filtering, and at what value".
 ///
-/// Only printed in read-only mode. A selection whose outcome swings with its
-/// cutoff is chosen by the cutoff rather than by the structure, and a minimum
-/// distance drawn from a smooth distribution has no outliers to remove — neither
-/// is visible from the funnel alone.
-fn print_diagnostics(
+/// A selection whose outcome swings with its cutoff is chosen by the cutoff
+/// rather than by the structure, and a minimum distance drawn from a smooth
+/// distribution has no outliers to remove — neither is visible from the funnel
+/// alone. Only the criteria that are switched on contribute a table.
+fn diagnostic_tables(
     traj: &ferro_core::Trajectory,
     r: &FilterResult,
     params: &FilterParams,
-) {
+) -> Vec<(String, ferro_core::Table)> {
+    let mut out = Vec::new();
     if params.oo_min > 0.0 {
         let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
-        println!("  [min_oo distribution]");
-        print_table(&distribution_table("min d(O-O) [A]", &v, 16));
+        out.push(("min_oo".to_string(), distribution_table("min d(O-O) [A]", &v, 16)));
     }
 
-    let Some(rcut) = params.al6_rcut else { return };
+    let Some(rcut) = params.al6_rcut else { return out };
 
     let n6: Vec<usize> = r.verdicts.iter().filter_map(|x| x.n_al6).collect();
     if !n6.is_empty() {
-        println!("  [Al6 per frame]");
-        print_table(&count_histogram("n_al6", &n6));
+        out.push(("al6".to_string(), count_histogram("n_al6", &n6)));
     }
 
     let mut cut = std::collections::BTreeMap::new();
@@ -643,15 +740,16 @@ fn print_diagnostics(
     let tp = ferro_core::TypeParams::new(cut, Default::default());
     let hist = pooled_coordination(traj, &tp, "Al");
     if !hist.is_empty() {
-        println!("  [Al coordination at rcut = {rcut:.2} A]");
-        print_table(&coordination_table(&hist));
+        let mut t = coordination_table(&hist);
+        t.meta_line(format!("Al coordination at rcut = {rcut:.2} A"));
+        out.push(("al_cn".to_string(), t));
     }
 
     // 以当前截断为中心扫一圈：陡不陡才是这张表要说的事
     let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1).filter(|v| *v > 0.0).collect();
     let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200);
-    println!("  [rcut sensitivity]");
-    print_table(&scan_table(&scan));
+    out.push(("rcut_scan".to_string(), scan_table(&scan)));
+    out
 }
 
 fn print_table(t: &ferro_core::Table) {

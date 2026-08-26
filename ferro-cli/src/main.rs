@@ -129,8 +129,11 @@ fn main() -> Result<()> {
     };
 
     if failures > 0 {
-        // 退出码非零：否则 shell 里 `ferro traj gr ... && next-step` 会把批内失败当成功
-        eprintln!("{failures} input(s) failed; see the [inputs] block in the output file");
+        // 退出码非零：否则 shell 里 `ferro traj gr ... && next-step` 会把批内失败当成功。
+        // 不承诺失败原因在哪个文件里：`[inputs]` 块只有分析命令的 csv 才有，
+        // 而 dataset 的产物是目录。原因每个 SKIP 行都已经说过了，这句的
+        // 唯一职责是解释退出码 —— 指错地方比不指路更糟
+        eprintln!("{failures} input(s) failed; see the messages above");
         std::process::exit(1);
     }
     Ok(())

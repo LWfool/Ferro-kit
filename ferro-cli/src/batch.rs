@@ -401,6 +401,19 @@ impl Summary {
         slot.1.push(value);
     }
 
+    /// One failed row whose label is given directly rather than derived from a path.
+    ///
+    /// `failed` labels rows with the file stem, which is right when the inputs are
+    /// files. A DeePMD system is a directory, and its label is the path relative to
+    /// `-i` — nested systems `a/md` and `b/md` share a stem and would collide.
+    pub fn failed_one(&mut self, file: String, reason: String) {
+        self.file.push(file);
+        self.status.push(reason);
+        for slot in self.extra.iter_mut() {
+            slot.1.push("-".to_string());
+        }
+    }
+
     pub fn failed(&mut self, failures: &[Failure]) {
         for f in failures {
             self.file.push(label_of(&f.path));
@@ -411,10 +424,19 @@ impl Summary {
         }
     }
 
-    pub fn into_table(mut self) -> Table {
+    pub fn into_table(self) -> Table {
+        self.into_table_named("file")
+    }
+
+    /// [`Summary::into_table`] with the row-label column named.
+    ///
+    /// `file` is right for the commands whose inputs are files. `ferro dataset`
+    /// takes system directories, and calling their column `file` would contradict
+    /// the `system` column of the tables the same report carries.
+    pub fn into_table_named(mut self, label: &str) -> Table {
         let rows = self.file.len();
         let mut t = Table::new();
-        t.push_text("file", self.file);
+        t.push_text(label, self.file);
         for (name, mut values) in std::mem::take(&mut self.extra) {
             // note() 只填了部分行时补齐,否则 validate 会拒绝这张表
             while values.len() < rows {
