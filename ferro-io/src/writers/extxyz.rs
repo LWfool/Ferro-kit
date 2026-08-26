@@ -1,14 +1,39 @@
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+
+/// Which key carries the stress tensor in the comment line.
+///
+/// Both are legal extxyz and GPUMD reads either, but they are different
+/// quantities: `stress` is eV/Å³ with ASE's sign (positive = tension), while
+/// `virial` is eV with the sign [`ferro_core::Frame::stress`] already uses
+/// (positive = compression). GPUMD prefers `virial` when a file carries both,
+/// which is why the NEP path writes that one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum StressKey {
+    /// `stress="..."`, eV/Å³, negated on the way out (ASE convention).
+    #[default]
+    Stress,
+    /// `virial="..."`, eV, `stress * V` with no sign change.
+    Virial,
+}
 
 /// 写 extxyz 格式，多帧轨迹写为连续 block。
 pub fn write_extxyz(trajectory: &Trajectory, path: &str) -> Result<()> {
+    write_extxyz_with(trajectory, path, StressKey::Stress)
+}
+
+/// [`write_extxyz`] with a choice of stress key; see [`StressKey`].
+pub fn write_extxyz_with(
+    trajectory: &Trajectory,
+    path: &str,
+    stress_key: StressKey,
+) -> Result<()> {
     let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
     let mut w = BufWriter::new(file);
 
-    for frame in &trajectory.frames {
+    for (fi, frame) in trajectory.frames.iter().enumerate() {
         // Line 1: atom count
         writeln!(w, "{}", frame.n_atoms())?;
 
@@ -44,16 +69,30 @@ pub fn write_extxyz(trajectory: &Trajectory, path: &str) -> Result<()> {
         parts.push(format!("Properties={prop_spec}"));
 
         if let Some(e) = frame.energy { parts.push(format!("energy={}", fmt(e))); }
-        // extxyz 的 stress= 是 ASE 约定(正 = 拉伸),Frame::stress 是正 = 压缩,
-        // 故写出时变号。virial= 不写 —— 两个键就是两处可能互相矛盾的事实,
-        // 读侧为此专门做了交叉校验,没有理由自己生产这种文件
+        // 恒只写一个键 —— 两个键就是两处可能互相矛盾的事实,读侧为此专门做了
+        // 交叉校验,没有理由自己生产这种文件。
+        //   stress= 是 ASE 约定(正 = 拉伸),故变号
+        //   virial= 是 eV 且正 = 压缩,故乘体积、不变号
         if let Some(s) = &frame.stress {
-            let s = -s;
+            let (key, t) = match stress_key {
+                StressKey::Stress => ("stress", -s),
+                StressKey::Virial => {
+                    let cell = frame.cell.as_ref().with_context(|| format!(
+                        "frame {fi} has a stress but no cell; virial= is eV and needs \
+                         the volume. Write stress= instead"
+                    ))?;
+                    let vol = cell.volume();
+                    if vol.abs() < 1e-12 {
+                        bail!("cannot write virial= for a zero-volume cell");
+                    }
+                    ("virial", s * vol)
+                }
+            };
             parts.push(format!(
-                "stress=\"{} {} {} {} {} {} {} {} {}\"",
-                fmt(s[(0,0)]), fmt(s[(0,1)]), fmt(s[(0,2)]),
-                fmt(s[(1,0)]), fmt(s[(1,1)]), fmt(s[(1,2)]),
-                fmt(s[(2,0)]), fmt(s[(2,1)]), fmt(s[(2,2)]),
+                "{key}=\"{} {} {} {} {} {} {} {} {}\"",
+                fmt(t[(0,0)]), fmt(t[(0,1)]), fmt(t[(0,2)]),
+                fmt(t[(1,0)]), fmt(t[(1,1)]), fmt(t[(1,2)]),
+                fmt(t[(2,0)]), fmt(t[(2,1)]), fmt(t[(2,2)]),
             ));
         }
 
@@ -185,6 +224,50 @@ mod tests {
             "{line}");
         // virial= 不写:两个键 = 两处可能互相矛盾的事实
         assert!(!line.contains("virial="), "{line}");
+    }
+
+    #[test]
+    fn test_virial_key_is_stress_times_volume() {
+        // NEP 侧要 virial=:eV,正 = 压缩,故乘体积、不变号。锚点仍是外部换算式
+        // (dpdata 1.0.2 的 virials = -V * stress_ase),不是本 writer 的往返。
+        use nalgebra::Matrix3;
+        let mut traj = bcc_traj();
+        let vol = traj.frames[0].cell.as_ref().unwrap().volume();
+        let sigma = Matrix3::new(0.01, 0.002, 0.003,
+                                 0.002, 0.02, 0.004,
+                                 0.003, 0.004, 0.03);
+        traj.frames[0].stress = Some(-sigma);       // σ_ferro = -σ_ase
+        let path = std::env::temp_dir().join("virial_key.extxyz");
+        write_extxyz_with(&traj, path.to_str().unwrap(), StressKey::Virial).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let line = text.lines().nth(1).unwrap();
+        assert!(line.contains("virial="), "{line}");
+        assert!(!line.contains("stress="), "{line}");
+
+        // 读回:reader 对 virial= 除体积、不变号,应回到 σ_ferro
+        let back = read_extxyz(path.to_str().unwrap()).unwrap();
+        let s = back.first().unwrap().stress.unwrap();
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!((s[(i, j)] + sigma[(i, j)]).abs() < 1e-9);
+            }
+        }
+        // 且文本里的数就是 -V*σ_ase
+        let first: f64 = line.split("virial=\"").nth(1).unwrap()
+            .split_whitespace().next().unwrap().parse().unwrap();
+        assert!((first - (-vol * 0.01)).abs() < 1e-6, "{first}");
+    }
+
+    #[test]
+    fn test_virial_without_cell_is_an_error() {
+        use nalgebra::Matrix3;
+        let mut traj = bcc_traj();
+        traj.frames[0].cell = None;
+        traj.frames[0].stress = Some(Matrix3::identity());
+        let path = std::env::temp_dir().join("virial_nocell.extxyz");
+        let e = write_extxyz_with(&traj, path.to_str().unwrap(), StressKey::Virial)
+            .unwrap_err();
+        assert!(format!("{e:#}").contains("no cell"), "{e:#}");
     }
 
 }

@@ -18,7 +18,7 @@ pub use writers::{
     write_deepmd_npy, write_deepmd_npy_bounds, write_deepmd_npy_sets,
     write_cif, write_pdb, write_xyz,
     write_poscar,
-    write_extxyz,
+    write_extxyz, write_extxyz_with, StressKey,
     write_lammps_data, write_lammps_dump,
     write_qe_input,
     write_cube,
