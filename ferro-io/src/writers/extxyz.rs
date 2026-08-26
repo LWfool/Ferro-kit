@@ -133,7 +133,11 @@ pub fn write_extxyz_with(
     Ok(())
 }
 
-fn fmt(v: f64) -> String { format!("{v:.10}") }
+// -0.0 与 0.0 在这里没有区别,但 "-0.0000000000" 读起来像个 bug
+fn fmt(v: f64) -> String {
+    let v = if v == 0.0 { 0.0 } else { v };
+    format!("{v:.10}")
+}
 fn bool_str(b: bool) -> &'static str { if b { "T" } else { "F" } }
 
 #[cfg(test)]

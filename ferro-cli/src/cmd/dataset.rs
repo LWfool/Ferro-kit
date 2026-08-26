@@ -32,7 +32,8 @@ use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
     read_cp2k_out_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
-    write_deepmd_npy_bounds, write_deepmd_npy_sets, Cp2kOutStats,
+    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, Cp2kOutStats,
+    StressKey,
 };
 
 #[derive(Subcommand, Debug)]
@@ -43,6 +44,182 @@ pub enum DatasetCmd {
     Filter(FilterCmd),
     /// Combine datasets of the same composition
     Merge(MergeCmd),
+}
+
+/// What `filter` / `merge` write out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum OutType {
+    /// DeePMD system directory (`type.raw` + `set.NNN/*.npy`)
+    #[default]
+    Deepmd,
+    /// One extxyz file per system, stress carried as `virial=` (GPUMD / NEP)
+    Nep,
+    /// One extxyz file per system, stress carried as `stress=` (ASE convention)
+    Extxyz,
+}
+
+impl OutType {
+    /// The stress key, or `None` for the DeePMD path.
+    fn stress_key(self) -> Option<StressKey> {
+        match self {
+            Self::Deepmd => None,
+            Self::Nep => Some(StressKey::Virial),
+            Self::Extxyz => Some(StressKey::Stress),
+        }
+    }
+}
+
+/// The three split parts, in output order.
+const SPLIT_PARTS: [(&str, &str); 3] =
+    [("train", ".train"), ("valid", ".valid"), ("test", ".test")];
+
+/// Frame-level train/valid/test split.
+///
+/// Membership is drawn from a shuffled order — taking the tail as a test set
+/// would hand it the end of the trajectory, which is one contiguous stretch of
+/// a single state. The indices of each part are then sorted back into
+/// trajectory order, so only membership is random and the output stays
+/// byte-identical across runs with the same seed.
+///
+/// Note what this cannot fix: frames of one MD run are correlated, so a
+/// frame-level test set still shares its neighbourhood with the training set
+/// and reads optimistic. A split across whole systems is the honest estimate;
+/// this one is the convenient one.
+#[derive(Clone, Copy, Debug)]
+struct Split {
+    valid: f64,
+    test: f64,
+    seed: u64,
+}
+
+impl Split {
+    fn is_off(&self) -> bool {
+        self.valid <= 0.0 && self.test <= 0.0
+    }
+
+    /// Validates the ratios; call before reading any input.
+    fn check(&self) -> Result<()> {
+        for (name, v) in [("--valid-ratio", self.valid), ("--test-ratio", self.test)] {
+            if !(0.0..1.0).contains(&v) {
+                bail!("{name} must be in [0, 1), got {v}");
+            }
+        }
+        if self.valid + self.test >= 1.0 {
+            bail!(
+                "--valid-ratio + --test-ratio = {} leaves nothing for training",
+                self.valid + self.test
+            );
+        }
+        Ok(())
+    }
+
+    /// `[train, valid, test]` frame indices, each in ascending order.
+    fn parts(&self, n: usize, who: &Path) -> Result<[Vec<usize>; 3]> {
+        if self.is_off() {
+            return Ok([(0..n).collect(), Vec::new(), Vec::new()]);
+        }
+        // 比例向上取到至少 1 帧:给了比例却拿到 0 帧,是静默地没有验证集
+        let take = |r: f64| -> usize {
+            if r <= 0.0 { 0 } else { ((n as f64 * r).round() as usize).max(1) }
+        };
+        let (n_valid, n_test) = (take(self.valid), take(self.test));
+        if n_valid + n_test >= n {
+            bail!(
+                "{}: {n} frame(s) cannot give {n_valid} validation + {n_test} test \\
+                 and still leave a training set",
+                who.display()
+            );
+        }
+        let order = shuffle_order(n, self.seed);
+        let mut valid: Vec<usize> = order[..n_valid].to_vec();
+        let mut test: Vec<usize> = order[n_valid..n_valid + n_test].to_vec();
+        let mut train: Vec<usize> = order[n_valid + n_test..].to_vec();
+        for v in [&mut train, &mut valid, &mut test] {
+            v.sort_unstable();
+        }
+        Ok([train, valid, test])
+    }
+}
+
+/// Appends a split suffix to the last component of a path.
+fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
+    if suffix.is_empty() {
+        return p.to_path_buf();
+    }
+    let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    p.with_file_name(format!("{name}{suffix}"))
+}
+
+/// Refuses to write over an existing dataset unless told to.
+fn ensure_writable(dest: &Path, overwrite: bool) -> Result<()> {
+    if overwrite {
+        return Ok(());
+    }
+    let occupied = if dest.is_dir() {
+        std::fs::read_dir(dest)?.next().is_some()
+    } else {
+        dest.exists()
+    };
+    if occupied {
+        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
+    }
+    Ok(())
+}
+
+/// Writes one trajectory in the requested form; returns the path written.
+///
+/// `set_size` only reaches the DeePMD path — an extxyz file has no sets.
+fn write_as(
+    traj: &Trajectory,
+    base: &Path,
+    ty: OutType,
+    set_size: usize,
+    overwrite: bool,
+) -> Result<PathBuf> {
+    match ty.stress_key() {
+        None => {
+            ensure_writable(base, overwrite)?;
+            write_deepmd_npy_sets(traj, base, set_size)?;
+            Ok(base.to_path_buf())
+        }
+        Some(key) => {
+            // 不用 with_extension:base 常带 .train 这类后缀,那会被它当扩展名换掉
+            let path = PathBuf::from(format!("{}.xyz", base.display()));
+            ensure_writable(&path, overwrite)?;
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("cannot create {}", parent.display()))?;
+            }
+            write_extxyz_with(traj, &path.to_string_lossy(), key)?;
+            Ok(path)
+        }
+    }
+}
+
+/// Writes every non-empty part of a split and reports each line.
+fn write_split(
+    traj: &Trajectory,
+    base: &Path,
+    split: &Split,
+    ty: OutType,
+    set_size: usize,
+    overwrite: bool,
+) -> Result<()> {
+    let parts = split.parts(traj.n_frames(), base)?;
+    for (idx, (label, suffix)) in SPLIT_PARTS.iter().enumerate() {
+        if parts[idx].is_empty() {
+            continue;
+        }
+        let suffix = if split.is_off() { "" } else { *suffix };
+        let sub = traj.subset(&parts[idx]);
+        let dest = write_as(&sub, &with_suffix(base, suffix), ty, set_size, overwrite)?;
+        if split.is_off() {
+            println!("  -> {}", dest.display());
+        } else {
+            println!("  {:<5} {:5} frames -> {}", label, parts[idx].len(), dest.display());
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -82,6 +259,18 @@ pub struct MergeCmd {
     /// Allow writing into an existing non-empty output directory
     #[arg(long)]
     pub overwrite: bool,
+
+    /// What to write                                       [default: deepmd]
+    #[arg(long = "type", value_enum, default_value_t = OutType::Deepmd)]
+    pub out_type: OutType,
+
+    /// Fraction of each group's frames held out for validation    [default: 0]
+    #[arg(long, value_name = "F", default_value_t = 0.0)]
+    pub valid_ratio: f64,
+
+    /// Fraction of each group's frames held out for testing       [default: 0]
+    #[arg(long, value_name = "F", default_value_t = 0.0)]
+    pub test_ratio: f64,
 }
 
 #[derive(Args, Debug)]
@@ -144,6 +333,18 @@ pub struct FilterCmd {
     /// Allow writing into an existing non-empty output directory
     #[arg(long)]
     pub overwrite: bool,
+
+    /// What to write                                       [default: deepmd]
+    #[arg(long = "type", value_enum, default_value_t = OutType::Deepmd)]
+    pub out_type: OutType,
+
+    /// Fraction of each system's frames held out for validation   [default: 0]
+    #[arg(long, value_name = "F", default_value_t = 0.0)]
+    pub valid_ratio: f64,
+
+    /// Fraction of each system's frames held out for testing      [default: 0]
+    #[arg(long, value_name = "F", default_value_t = 0.0)]
+    pub test_ratio: f64,
 }
 
 #[derive(Args, Debug)]
@@ -442,8 +643,13 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
             bail!("--al6 cutoff must be positive");
         }
     }
-    if args.seed.is_some() && !args.shuffle {
-        bail!("--seed only means something with --shuffle");
+    let split = filter_split(args);
+    split.check()?;
+    if args.seed.is_some() && !args.shuffle && split.is_off() {
+        bail!("--seed only means something with --shuffle or a split ratio");
+    }
+    if !split.is_off() && args.outdir.is_none() {
+        bail!("a split needs an output directory (-o DIR); a read-only run writes nothing");
     }
     if args.oo_min.is_some_and(|v| v <= 0.0) {
         bail!("--oo-min must be positive (omit the flag to switch the criterion off)");
@@ -658,15 +864,28 @@ fn filter_one(
         bail!("every frame was dropped; nothing to write");
     }
 
-    let dest = out_root.join(rel);
-    if !args.overwrite && dest.exists() && std::fs::read_dir(&dest)?.next().is_some() {
-        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
-    }
     // 筛过的轨迹替换原轨迹，原数据集不动
     let kept = traj.subset(&result.keep);
-    write_deepmd_npy_sets(&kept, &dest, args.set_size)?;
-    println!("  -> {}\n", dest.display());
+    let base = out_root.join(rel);
+    write_split(
+        &kept,
+        &base,
+        &filter_split(args),
+        args.out_type,
+        args.set_size,
+        args.overwrite,
+    )?;
+    println!();
     Ok(one)
+}
+
+/// The split `filter` was asked for; the seed is shared with `--shuffle`.
+fn filter_split(args: &FilterCmd) -> Split {
+    Split {
+        valid: args.valid_ratio,
+        test: args.test_ratio,
+        seed: args.seed.unwrap_or(DEFAULT_SEED),
+    }
 }
 
 fn print_report(r: &FilterResult) {
@@ -793,6 +1012,31 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
     let Some(out_root) = &args.outdir else {
         bail!("merge needs an output directory (-o DIR)");
     };
+    let split = merge_split(args);
+    split.check()?;
+    if !split.is_off() {
+        // by-source 的全部意义是 set 边界落在 system 边界上,每个 set 出自单一
+        // 条件;帧级随机划分正好把这条打碎
+        if args.mode == MergeMode::BySource {
+            bail!(
+                "--mode by-source keeps set boundaries on system edges, which a \
+                 frame-level split would break. Use --mode shuffle, or split the \
+                 systems with `ferro dataset filter`"
+            );
+        }
+        // --suffix 与划分后缀是同一个位置的两个主张
+        if args.suffix.is_some() {
+            bail!("--suffix and the split ratios both name the output suffix; pick one");
+        }
+    }
+    // extxyz 没有 set 的概念,by-source 的边界无处安放 —— 与其写出一个丢了边界
+    // 信息的文件,不如在读第一个 system 之前就说不支持
+    if args.mode == MergeMode::BySource && args.out_type != OutType::Deepmd {
+        bail!(
+            "--mode by-source carries set boundaries, which an extxyz file has \
+             nowhere to put (it has no sets). Use --mode shuffle, or --type deepmd"
+        );
+    }
     let roots = crate::batch::expand_dirs(&args.input)?;
     let mut systems: Vec<PathBuf> = Vec::new();
     for root in &roots {
@@ -800,6 +1044,21 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
     }
     if systems.is_empty() {
         bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
+    }
+    // 已经是 xxx.train 的输入再划一次,会得到 xxx.train.test 这种自相矛盾的名字。
+    // 只看路径,故在读第一条轨迹之前就能判
+    if !split.is_off() {
+        if let Some(had) = systems.iter().find_map(|p| {
+            let name = p.file_name()?.to_str()?;
+            SPLIT_SUFFIXES.iter().find(|s| name.ends_with(**s)).map(|s| (p.clone(), *s))
+        }) {
+            bail!(
+                "{} already carries the split suffix `{}`; splitting an already-split \
+                 dataset would produce names like `X.train.test`. Merge these without \
+                 ratios, or split the unsplit sources",
+                had.0.display(), had.1
+            );
+        }
     }
     std::fs::create_dir_all(out_root)
         .with_context(|| format!("cannot create {}", out_root.display()))?;
@@ -849,16 +1108,11 @@ fn merge_group(
         .collect();
 
     let name = group_name(&sorted[0].1);
-    let suffix = args
-        .suffix
-        .clone()
-        .or_else(|| shared_suffix(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()))
-        .unwrap_or_default();
+    let inherited =
+        shared_suffix(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>());
+    let split = merge_split(args);
+    let suffix = args.suffix.clone().or(inherited).unwrap_or_default();
     let dest = out_root.join(format!("{name}{suffix}"));
-
-    if !args.overwrite && dest.exists() && std::fs::read_dir(&dest)?.next().is_some() {
-        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
-    }
 
     let mut all = ferro_core::Trajectory::new();
     let mut source_spans: Vec<(PathBuf, usize, usize)> = Vec::new();
@@ -883,8 +1137,15 @@ fn merge_group(
             let seed = args.seed.unwrap_or(DEFAULT_SEED);
             let order = shuffle_order(all.n_frames(), seed);
             let mixed = all.subset(&order);
-            write_deepmd_npy_sets(&mixed, &dest, args.set_size)?;
-            println!("  shuffled with seed {seed} -> {}", dest.display());
+            println!("  shuffled with seed {seed}");
+            write_split(
+                &mixed,
+                &dest,
+                &split,
+                args.out_type,
+                args.set_size,
+                args.overwrite,
+            )?;
         }
         MergeMode::BySource => {
             // 不混合、不打乱：每个 system 独立切 set，边界落在 system 边界上，
@@ -898,6 +1159,7 @@ fn merge_group(
                     bounds.push((lo + a, lo + b));
                 }
             }
+            ensure_writable(&dest, args.overwrite)?;
             write_deepmd_npy_bounds(&all, &dest, &bounds)?;
             let mut txt = String::from("# set  frames  source\n");
             for (i, n, p) in &record {
@@ -912,6 +1174,15 @@ fn merge_group(
         }
     }
     Ok(())
+}
+
+/// The split `merge` was asked for; the seed is shared with `--mode shuffle`.
+fn merge_split(args: &MergeCmd) -> Split {
+    Split {
+        valid: args.valid_ratio,
+        test: args.test_ratio,
+        seed: args.seed.unwrap_or(DEFAULT_SEED),
+    }
 }
 
 /// The split suffix every input shares, if they all share one.
@@ -1012,4 +1283,71 @@ mod tests {
         let syms: Vec<String> = ["O", "Al", "O", "Zn", "O"].iter().map(|s| s.to_string()).collect();
         assert_eq!(formula_of(&syms), "Al1O3Zn1");
     }
+    fn split_of(valid: f64, test: f64) -> Split {
+        Split { valid, test, seed: DEFAULT_SEED }
+    }
+
+    #[test]
+    fn a_split_partitions_every_frame_exactly_once() {
+        let [tr, va, te] = split_of(0.2, 0.1).parts(20, Path::new("x")).unwrap();
+        assert_eq!((tr.len(), va.len(), te.len()), (14, 4, 2));
+        let mut all: Vec<usize> = tr.iter().chain(&va).chain(&te).copied().collect();
+        all.sort_unstable();
+        assert_eq!(all, (0..20).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn each_part_keeps_trajectory_order() {
+        // 成员是随机抽的,但每部分内部按帧序排列 —— 同 seed 下产物逐字节可复现
+        let [tr, va, te] = split_of(0.25, 0.25).parts(40, Path::new("x")).unwrap();
+        for part in [&tr, &va, &te] {
+            assert!(part.windows(2).all(|w| w[0] < w[1]), "{part:?}");
+        }
+    }
+
+    #[test]
+    fn a_split_is_not_the_tail_of_the_trajectory() {
+        // 直接切尾巴的话 test 会全是最后几帧;抽样必须先打乱
+        let [_, _, te] = split_of(0.0, 0.25).parts(40, Path::new("x")).unwrap();
+        assert!(te.iter().any(|&i| i < 30), "test set looks like a tail: {te:?}");
+    }
+
+    #[test]
+    fn a_ratio_too_small_to_reach_one_frame_still_gets_one() {
+        // 给了比例却拿到 0 帧,等于静默地没有验证集
+        let [tr, va, _] = split_of(0.01, 0.0).parts(20, Path::new("x")).unwrap();
+        assert_eq!(va.len(), 1);
+        assert_eq!(tr.len(), 19);
+    }
+
+    #[test]
+    fn a_split_that_leaves_no_training_frames_is_an_error() {
+        let e = split_of(0.5, 0.5).parts(4, Path::new("sysA")).unwrap_err();
+        assert!(format!("{e:#}").contains("sysA"), "{e:#}");
+    }
+
+    #[test]
+    fn ratios_are_validated_before_anything_is_read() {
+        assert!(split_of(1.0, 0.0).check().is_err());
+        assert!(split_of(-0.1, 0.0).check().is_err());
+        assert!(split_of(0.6, 0.5).check().is_err());
+        assert!(split_of(0.2, 0.1).check().is_ok());
+        assert!(split_of(0.0, 0.0).check().is_ok());
+    }
+
+    #[test]
+    fn a_split_suffix_lands_on_the_last_component_only() {
+        // sys.train 这种名字里的点不是扩展名,不能被 with_extension 吃掉
+        assert_eq!(with_suffix(Path::new("a/b/sysA"), ".train"),
+                   PathBuf::from("a/b/sysA.train"));
+        assert_eq!(with_suffix(Path::new("a/b/sysA"), ""), PathBuf::from("a/b/sysA"));
+    }
+
+    #[test]
+    fn the_stress_key_follows_the_output_type() {
+        assert_eq!(OutType::Deepmd.stress_key(), None);
+        assert_eq!(OutType::Nep.stress_key(), Some(StressKey::Virial));
+        assert_eq!(OutType::Extxyz.stress_key(), Some(StressKey::Stress));
+    }
+
 }
