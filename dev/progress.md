@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：545 个（全部通过，clippy 零警告）
+## 测试总数：555 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 91（另有 1 个 `#[ignore]`，跑真实 40 MB out，需 `-- --ignored`） |
+| ferro-io | 93（另有 1 个 `#[ignore]`，跑真实 40 MB out，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 195 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 62 + bin 2 + 集成 5） | 69 |
+| ferro-cli（lib 70 + bin 2 + 集成 5） | 77 |
 
 版本号 **0.3.2**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -107,6 +107,9 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
     `train.xyz` 用单数，此前只认复数，读 NEP 数据集会静默丢掉全部受力
   - 符号的依据是**外部实物**：fixture 由 ASE 3.29.0 生成，期望值由 dpdata 1.0.2
     的换算式独立算出（`~/.miniforge3/envs/deepmd`）。自读自写的回路验证不了符号
+  - **写侧可选 `virial=`**（`write_extxyz_with` + `StressKey`，2026-08-26）：eV，
+    正 = 压缩，乘体积不变号；无 cell 报错。GPUMD 两个键都认但都给时取 virial，
+    故 NEP 导出走它。恒只写一个键
 - **`cube.rs`**：`read_cube`（可视化）+ `read_cube_as_chg`（Bader 用：Bohr→Å、索引转置、
   密度缩放 `rho_stored = ρ_cube × V_cell_Bohr`），共用 `parse_header()`
 - **`cp2k_out.rs`**（2026-08-25）：CP2K MD 的 stdout 日志（坐标/力/应力全打到
@@ -256,6 +259,14 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱后按
   `--set-size` 切 / `by-source` **一个 system 一个 set**、不打乱不重切，
   并写 `sets_source.txt`）
+  - **`--type deepmd|nep|extxyz` 与 train/valid/test 划分**（2026-08-26，
+    filter 与 merge 共用 `OutType` / `Split` / `write_split`）：nep 与 extxyz
+    一个 system（merge 是一个成分组）一个 `.xyz`，差别只在应力键；`--set-size`
+    不到达它们。划分默认关，只给 `--test-ratio` 即两路。产物用 dpgen 的目录名
+    后缀 `.train/.valid/.test`（`SPLIT_SUFFIXES` 早已存在，merge 一直在继承它）。
+    成员取自打乱序、各部分内部排回帧序 —— 同 seed 逐字节可复现；比例向上取到
+    至少 1 帧。四处在读第一个文件前失败：by-source + 划分、by-source + 非
+    deepmd、`--suffix` + 划分、输入已带划分后缀
 - **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 的 24 页经 `include_str!`
   编译进二进制（208 KB）。topic 跟子命令树同名（`ferro doc dataset filter`），
   裸命令列出全部；原样输出 markdown（零依赖），stdout 是 tty 时经 `$PAGER`

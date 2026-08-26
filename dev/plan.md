@@ -5,31 +5,6 @@
 
 ## 优先级高
 
-### GPUMD/NEP 的 `train.xyz` 导出（**最高优先**，2026-08-26）
-
-前置的 extxyz 符号/体积因子修正**已完成**（见归档），导出本身仍待做。这轮查证顺带
-把导出要用的约定全部落实了，下次开工不必重查：
-
-| 事实 | 出处 |
-|---|---|
-| `virial=` 单位 eV，**正 = 压缩**，等于 `Frame::stress × V` 不变号 | GPUMD 手册；与 dpdata 1.0.2、extxyz 规格三方一致 |
-| `stress=` 单位 eV/Å³，**正 = 拉伸**（ASE 约定），写出时变号 | 同上 |
-| 两键同在时 **GPUMD 取 virial** | GPUMD 手册。注意 Ferro 的 reader 更严：不一致直接报错 |
-| 力列 `force:R:3` 与 `forces:R:3` **都合法** | GPUMD 手册；读侧已两种都收 |
-| `lattice="ax ay az bx by bz cx cy cz"` | 与 Ferro 现有写法一致，不必改 |
-
-仍要定的：
-
-- **命令归属**：`ferro dataset export --format nep`（与 collect/filter/merge 同链）
-  还是 `ferro convert` 的一个目标格式。判据：产物是**一个文件**而非目录，更像
-  convert；但输入是 DeePMD system 目录，而 `convert` 的 `-i` 现在不收目录。倾向前者
-- **写 `stress=` 还是 `virial=`**：通用 extxyz writer 定的是只写 `stress=`（两个键
-  = 两处可能矛盾的事实）。NEP 侧两个都认，故沿用 `stress=` 即可，除非实测发现
-  GPUMD 对 `stress=` 的处理有别
-- `config_type` / `weight` 这类 NEP 可选键：先不写，需要时再加
-
----
-
 ### DeePMD mixed type 数据的读写（2026-08-26 提出）
 
 现在 `readers/deepmd.rs` / `writers/deepmd.rs` 只做**标准 system**：`type.raw` 一份
@@ -237,8 +212,8 @@ Zn–P–O 这类无异核形成子的体系其 `qn_partner` 与 `qn` 列结构�
   多层扫描（`n = floor(rcut / w + 0.5)`）。当前体系盒子远大于阈值，不构成限制
 - **额外键搬运**：`atom_ener` / `fparam` 这类 `Frame` 装不下的项，读时告警、
   写时丢失。真出现时再设计（需要一条绕过 `Trajectory` 的按帧索引搬运通道）
-- **GPUMD/NEP 的 `train.xyz` 导出**：已单独提为本章第一条「GPUMD/NEP 的
-  `train.xyz` 导出」；它的前置（extxyz 的 stress/virial 符号与体积因子）已完成
+- ~~**GPUMD/NEP 的 `train.xyz` 导出**~~ **已做（2026-08-26）**：走
+  `filter`/`merge` 的 `--type nep`，没有新命令。见归档
 
 两件**不必新写**的事已经在库里：帧区间与间隔用 `Trajectory::select_indices` /
 `spread_indices`（`convert` 的 `--start/--end/--stride/--number` 就是它）；
@@ -402,6 +377,34 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### GPUMD/NEP 导出：`--type` + train/valid/test 划分（2026-08-26，0.3.2）
+
+**原计划是加一个 `ferro dataset export` 子命令，被用户否掉** —— 改为在 `filter` 与
+`merge` 上加 `--type`，划分标签也加在这两处。事后看这个改法更对：NEP 的 `train.xyz`
+本来就是 extxyz，ferro 的 writer 早就能写，真正缺的只是「读 DeePMD system 目录」，
+而 filter/merge 本来就在读；新命令会把同一件事再写一遍。
+
+定下来的判据：
+
+- **一个 system 一个 `.xyz`**，不并成一份 train.xyz。NEP 要的是单份，但那是一句
+  `cat`；分开保留的是「抽掉某个来源不必重跑」的能力
+- **划分产物用目录名后缀** `.train/.valid/.test`，不造 `train/` 子目录 ——
+  `SPLIT_SUFFIXES` 早就在仓里，merge 一直在继承它，这是 dpgen/dpdata 的约定
+- **成员取自打乱序**：直接切尾巴的话 test 全是轨迹末尾一段连续状态。各部分内部
+  再排回帧序，同 seed 下逐字节可复现
+- **比例向上取到至少 1 帧**：给了比例却拿到 0 帧，等于静默地没有验证集
+- **三路是两路的超集**：两个 ratio 各自默认 0，只给 `--test-ratio` 就退化成两路，
+  不必在设计阶段替用户选几路
+- `nep` 与 `extxyz` 两个值只差一个应力键（`virial=` / `stress=`）。留两个值而不是
+  一个，是因为「按下游训练框架命名」比「按文件格式命名」更接近用户提问的方式
+
+**没做、也不该在这里做的**：`weight` / `dipole` / `pol` / `bec` 这些 NEP 可选键。
+`Frame` 装不下它们，硬塞要开一条绕过 `Trajectory` 的通道，与「额外键搬运」是同一件
+待办。
+
+**已知局限（写进帮助页与手册，不是缺陷）**：同一段 MD 的相邻帧高度相关，帧级 test
+仍偏乐观；诚实的估计要按整个 system 划分，做法是把来源分开筛、留一个不动。
 
 ### extxyz 的 stress/virial 修正（2026-08-26，0.3.2）
 

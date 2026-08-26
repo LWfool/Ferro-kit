@@ -90,13 +90,40 @@ other.
 pair is worse both for training balance and for using a set as a validation
 split — and a trailing set of a dozen frames is useless as either.
 
+## What gets written: `--type`
+
+Same three values as `ferro dataset filter`: `deepmd` (default, a system
+directory), `nep` (one `.xyz` per composition, stress as `virial=`) and
+`extxyz` (one `.xyz`, stress as `stress=`). `--type nep` is refused together
+with `--mode by-source` — that mode's whole product is set boundaries, and an
+extxyz file has no sets to put them on.
+
+## Splitting: `--valid-ratio` / `--test-ratio`
+
+Both default to `0` (off) and behave as in `ferro dataset filter`: membership
+comes from the shuffled order, each part is written in frame order, and the
+suffix `.train` / `.valid` / `.test` goes on the output name.
+
+Three combinations are refused before the first system is read:
+
+| refused | why |
+|---|---|
+| `--mode by-source` + a ratio | that mode exists to keep set boundaries on system edges; a frame-level split breaks exactly that |
+| `--suffix` + a ratio | both name the output suffix |
+| inputs already ending in `.train` / `.valid` / `.test` | splitting a split would produce `X.train.test` |
+
+The last one is the common accident: `merge -i 'data/*.train' --test-ratio 0.1`
+looks reasonable and would quietly re-split a dataset someone already divided.
+
 ## The pipeline
 
 ```
 ferro dataset collect  -i md.out    -o raw      # AIMD  -> dataset
 ferro dataset filter   -i raw       -o clean    # drop bad frames
 ferro dataset merge    -i clean/*   -o merged   # combine + shuffle + resize
+ferro dataset merge    -i clean/*   -o nep --type nep --test-ratio 0.1
 ```
 
-Each step reads and writes the same DeePMD directory format, and none of them
-modifies its input.
+The first three steps read and write the same DeePMD directory format and never
+modify their input; the last one leaves that format for GPUMD/NEP, which is the
+end of the chain rather than a step in it.

@@ -151,5 +151,10 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 **新增**：`ferro doc`（手册编译进二进制，`include_str!` 24 页 208 KB，topic 跟
 子命令树同名，tty 下走 `$PAGER`）。
 
+**新增**：`dataset filter` / `merge` 的 `--type deepmd|nep|extxyz` 与
+`--valid-ratio` / `--test-ratio`（均默认关，旧命令行行为不变）。GPUMD/NEP 的
+`train.xyz` 就是 extxyz，故导出**没有新命令** —— 缺的只是「读 system 目录」，
+而 filter/merge 本来就在读。划分产物沿用 dpgen 的目录名后缀 `.train/.valid/.test`。
+
 **新增约定**：`Cp2kOutStats.steps` 带出文件的 step 区间；重复帧**不去重**（重启
 重叠段位置速度相同，能量力也相同），但区间打出来让重叠可见。

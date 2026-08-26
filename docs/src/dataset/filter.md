@@ -99,8 +99,8 @@ order cannot be recovered. Sorting the kept frames of a `-N 500 --shuffle` run
 back into order gives exactly the same `[0, 4, 8, … 1999]` as the run without
 it — the shuffle changes the write order, not which frames were chosen.
 
-`--seed` (default 666) makes it reproducible, and is rejected without
-`--shuffle` rather than silently ignored.
+`--seed` (default 666) makes it reproducible. It is rejected when neither
+`--shuffle` nor a split ratio is given, rather than silently ignored.
 
 Shuffling here and shuffling in `ferro dataset merge` are **alternatives, not a
 sequence**: shuffle in `merge` when sets should mix several sources, shuffle
@@ -114,6 +114,58 @@ spread across the sets rather than left as a stub: 410 frames at `--set-size
 validation split.
 
 Writing into an existing non-empty directory requires `--overwrite`.
+
+### What gets written: `--type`
+
+| `--type` | product | stress carried as |
+|---|---|---|
+| `deepmd` (default) | one **system directory** per input | `virial.npy`, eV |
+| `nep` | one **`.xyz` file** per input | `virial=`, eV |
+| `extxyz` | one **`.xyz` file** per input | `stress=`, eV/Å³, ASE sign |
+
+`nep` and `extxyz` differ only in that key. GPUMD reads either but prefers
+`virial` when a file carries both, so the NEP path writes that one; `extxyz` is
+the neutral choice for anything ASE-flavoured. `--set-size` does not reach
+either of them — an extxyz file has no sets.
+
+A NEP run wants a single `train.xyz`, while this writes one file per system.
+Concatenating them is a `cat`, and keeping them apart until then is what lets
+you drop one source without re-running:
+
+```bash
+ferro dataset filter -i raw -o nep --type nep --test-ratio 0.1
+cat nep/*.train.xyz > train.xyz
+cat nep/*.test.xyz  > test.xyz
+```
+
+### Splitting: `--valid-ratio` / `--test-ratio`
+
+Both default to `0` (off). Giving only `--test-ratio` produces a two-way
+train/test split; giving both produces three parts. The suffix goes on the
+output name, which is dpgen's and dpdata's convention:
+
+```
+clean/
+├── sysA.train/     ┐ --type deepmd
+├── sysA.valid/     │
+├── sysA.test/      ┘
+└── sysB.train.xyz    --type nep
+```
+
+Membership is drawn from a **shuffled** order. Taking the tail instead would
+hand the test set one contiguous stretch of a single state — the end of the
+run. Each part is then written back in frame order, so the same `--seed`
+reproduces the same files byte for byte.
+
+A ratio too small to reach one frame still gets one: asking for a validation
+set and receiving an empty one is worse than a rounding surprise. A split that
+would leave no training frames is an error naming the system.
+
+> **What a frame-level split cannot fix.** Neighbouring frames of one MD run are
+> highly correlated, so a held-out frame usually has a near-twin in the training
+> set and the score reads optimistic. The honest estimate holds out **whole
+> systems** — separate runs, separate conditions. Do that by filtering the
+> sources separately and keeping one aside.
 
 ### The report files
 
