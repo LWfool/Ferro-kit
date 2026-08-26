@@ -118,6 +118,18 @@ let result = calc_gr(&traj, &params).unwrap();
 write_gr(&result, "output.gr", None).unwrap();
 ```
 
+## Selecting by site label holds over a single frame only
+
+`-x`/`-y` resolve partials over `Atom::label` instead of the element. That works
+on one frame and is rejected on a labelled trajectory: `calc_gr` guards the
+per-type particle count frame by frame, and labels shift as the run evolves — on
+the reference trajectory `P_3` goes 149 / 152 / 150 / 150 / 150 over five frames.
+
+The guard is not a limitation of the implementation but of the quantity: a
+partial g(r) normalises by $N_A N_B$, and a count that changes between frames
+has no single value to normalise by. Use `--last-n 1` for one frame, or select
+by element with `-a`/`-b`.
+
 ## Implementation Notes
 
 - Parallelism: per-frame `par_iter` with `fold`/`reduce` accumulation.

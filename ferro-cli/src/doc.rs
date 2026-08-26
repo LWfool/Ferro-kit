@@ -25,6 +25,13 @@ struct Page {
     /// The mdBook source path, shown when listing.
     source: &'static str,
     text: &'static str,
+    /// A `##` heading within `text`, when the topic is one section of a page.
+    ///
+    /// `convert`, `info` and `bader` have no page of their own — they are
+    /// sections of the CLI reference. Printing all 863 lines of it for a
+    /// three-line question is not an answer, and splitting the reference into
+    /// per-command files would leave the one complete reference in pieces.
+    section: Option<&'static str>,
 }
 
 /// Every page of `docs/src/`, in `SUMMARY.md` order.
@@ -37,116 +44,157 @@ const PAGES: &[Page] = &[
         topic: "introduction",
         source: "introduction.md",
         text: include_str!("../../docs/src/introduction.md"),
+        section: None,
     },
     Page {
         topic: "installation",
         source: "installation.md",
         text: include_str!("../../docs/src/installation.md"),
+        section: None,
     },
     Page {
         topic: "data-model",
         source: "data-model.md",
         text: include_str!("../../docs/src/data-model.md"),
+        section: None,
     },
     Page {
         topic: "traj gr",
         source: "analysis/gr.md",
         text: include_str!("../../docs/src/analysis/gr.md"),
+        section: None,
     },
     Page {
         topic: "traj sq",
         source: "analysis/sq.md",
         text: include_str!("../../docs/src/analysis/sq.md"),
+        section: None,
     },
     Page {
         topic: "traj msd",
         source: "analysis/msd.md",
         text: include_str!("../../docs/src/analysis/msd.md"),
+        section: None,
     },
     Page {
         topic: "traj angle",
         source: "analysis/angle.md",
         text: include_str!("../../docs/src/analysis/angle.md"),
+        section: None,
     },
     Page {
         topic: "traj vanhove",
         source: "analysis/vanhove.md",
         text: include_str!("../../docs/src/analysis/vanhove.md"),
+        section: None,
     },
     Page {
         topic: "traj vacf",
         source: "analysis/vacf.md",
         text: include_str!("../../docs/src/analysis/vacf.md"),
+        section: None,
     },
     Page {
         topic: "traj rotcorr",
         source: "analysis/rotcorr.md",
         text: include_str!("../../docs/src/analysis/rotcorr.md"),
+        section: None,
     },
     Page {
         topic: "map density",
         source: "analysis/cube-density.md",
         text: include_str!("../../docs/src/analysis/cube-density.md"),
+        section: None,
     },
     Page {
         topic: "map radius",
         source: "analysis/cube-radius.md",
         text: include_str!("../../docs/src/analysis/cube-radius.md"),
+        section: None,
     },
     Page {
         topic: "map sdf",
         source: "analysis/cube-sdf.md",
         text: include_str!("../../docs/src/analysis/cube-sdf.md"),
+        section: None,
     },
     Page {
         topic: "map chg-sdf",
         source: "analysis/chg-sdf.md",
         text: include_str!("../../docs/src/analysis/chg-sdf.md"),
+        section: None,
     },
     Page {
         topic: "cube-jump",
         source: "analysis/cube-jump.md",
         text: include_str!("../../docs/src/analysis/cube-jump.md"),
+        section: None,
     },
     Page {
         topic: "net",
         source: "analysis/network.md",
         text: include_str!("../../docs/src/analysis/network.md"),
+        section: None,
     },
     Page {
         topic: "dataset collect",
         source: "dataset/collect.md",
         text: include_str!("../../docs/src/dataset/collect.md"),
+        section: None,
     },
     Page {
         topic: "dataset filter",
         source: "dataset/filter.md",
         text: include_str!("../../docs/src/dataset/filter.md"),
+        section: None,
     },
     Page {
         topic: "dataset merge",
         source: "dataset/merge.md",
         text: include_str!("../../docs/src/dataset/merge.md"),
+        section: None,
     },
     Page {
         topic: "job",
         source: "workflow/job-builders.md",
         text: include_str!("../../docs/src/workflow/job-builders.md"),
+        section: None,
     },
     Page {
         topic: "spin",
         source: "workflow/spin.md",
         text: include_str!("../../docs/src/workflow/spin.md"),
+        section: None,
     },
     Page {
         topic: "python",
         source: "python.md",
         text: include_str!("../../docs/src/python.md"),
+        section: None,
+    },
+    Page {
+        topic: "convert",
+        source: "cli-reference.md § ferro convert",
+        text: include_str!("../../docs/src/cli-reference.md"),
+        section: Some("## `ferro convert`"),
+    },
+    Page {
+        topic: "info",
+        source: "cli-reference.md § ferro info",
+        text: include_str!("../../docs/src/cli-reference.md"),
+        section: Some("## `ferro info`"),
+    },
+    Page {
+        topic: "bader",
+        source: "cli-reference.md § ferro bader",
+        text: include_str!("../../docs/src/cli-reference.md"),
+        section: Some("## `ferro bader`"),
     },
     Page {
         topic: "cli-reference",
         source: "cli-reference.md",
         text: include_str!("../../docs/src/cli-reference.md"),
+        section: None,
     },
 ];
 
@@ -181,7 +229,7 @@ pub fn run(topic: &[String]) -> Result<()> {
         .unwrap_or(&asked);
 
     match PAGES.iter().find(|p| p.topic == resolved) {
-        Some(page) => page_out(page.text),
+        Some(page) => page_out(&body(page)),
         None => {
             // 猜错的主题名不该只说「没有」——列表就在手边,直接给出来
             eprintln!("no manual page for `{asked}`\n");
@@ -190,6 +238,38 @@ pub fn run(topic: &[String]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The part of the page this topic addresses.
+///
+/// A whole file when `section` is `None`, otherwise from that heading up to the
+/// next one of the same level — the sub-headings under it belong to the section.
+fn body(page: &Page) -> String {
+    let Some(head) = page.section else {
+        return page.text.to_string();
+    };
+    let level = head.chars().take_while(|c| *c == '#').count();
+    let mut out = String::new();
+    let mut inside = false;
+    for line in page.text.lines() {
+        if line == head {
+            inside = true;
+        } else if inside
+            && line.starts_with('#')
+            && line.chars().take_while(|c| *c == '#').count() <= level
+        {
+            break;
+        }
+        if inside {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if out.is_empty() {
+        // 小节标题改了名而表没跟上 —— 与其给空白,不如给整页
+        return page.text.to_string();
+    }
+    out
 }
 
 fn topic_list() -> String {
@@ -259,6 +339,20 @@ mod tests {
                 !PAGES.iter().any(|p| p.topic == *from),
                 "alias `{from}` shadows a real topic"
             );
+        }
+    }
+
+    #[test]
+    fn every_section_heading_is_present() {
+        for p in PAGES {
+            let Some(head) = p.section else { continue };
+            assert!(
+                p.text.lines().any(|l| l == head),
+                "`{}` addresses `{head}`, which {} does not contain",
+                p.topic,
+                p.source
+            );
+            assert!(body(p).lines().count() > 5, "`{}` resolves to almost nothing", p.topic);
         }
     }
 

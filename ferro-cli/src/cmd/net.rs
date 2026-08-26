@@ -372,65 +372,54 @@ USAGE:
   ferro net -i <FILE>... --<Former>-<Ligand>=<cutoff> [OPTIONS]
 
 PAIR ARGUMENTS (required, at least one):
-  --P-O=2.4            P former, O ligand, cutoff 2.4 Å
-  --Al-O=2.4 --Al-F=2.1
-  The element pair lives in the flag name, so these are stripped from argv before
-  clap parses; everything else follows the usual flag rules.
+  --P-O=2.4 --Al-O=2.4 --Al-F=2.1
+  The element pair lives in the FLAG NAME, so these are stripped from argv
+  before clap parses; everything else follows the usual flag rules.
 
 OPTIONS:
   -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
   -o, --output SUFFIX   Output name suffix: network_<table>_<suffix>.csv
       --outdir DIR      Write every product here, tables and --export-traj alike
-                        (created if missing; default: current dir)
       --last-n N        Use only the last N frames (skip equilibration)
-      --ncore N         Parallel threads (default: all cores)
+      --ncore N         Parallel threads                            [all cores]
       --metal-units     LAMMPS metal units; only affects --export-traj extxyz
-      --modifier E,E    Elements counted for coordination only: no bridging count,
-                        no part in ligand classification. Give each a cutoff too
-      --qn E,E          Formers reported as a Qn speciation. REPLACES the default
-                        list (B,P,Si); every other former is described by its
-                        coordination number
+      --modifier E,E    Elements counted for coordination only: no bridging
+                        count, no part in ligand classification. Give each a
+                        cutoff too
+      --qn E,E          Formers reported as a Qn speciation. REPLACES the
+                        default list (B,P,Si); every other former is described
+                        by its coordination number
       --export-traj [FMT]
-                        Also write the classified trajectory, one file per input:
-                        <input stem>_types[_<suffix>].<ext>
+                        Also write the classified trajectory, one file per
+                        input: <input stem>_types[_<suffix>].<ext>
                         FMT is lammpstrj (default) or extxyz
 
-LABELS:
-  Printed with this run's elements filled in when the analysis starts, and
-  repeated in the header of every file that has a label column.
+OUTPUT — six stacked CSVs, each with a `file` column and a `#` header
+describing its own columns (`pandas.read_csv(comment='#')` drops it):
 
-  NOTE: an exported trajectory can be selected by element (-a/-b/-c) over any
-  number of frames, but by label (-x/-y/-z) only from a SINGLE frame — g(r)
-  requires a fixed particle count per type and labels change as the run evolves.
-  Use --last-n 1, or select by element.
+  network_composition.csv   every species at a glance
+  network_qn.csv            Qn speciation
+  network_qn_partner.csv    the same, split by partner element
+  network_ligand_type.csv   free / non-bridging / bridging / tricluster
+  network_coordination.csv  coordination numbers, formers + modifiers
+  network_linkage.csv       bridge connectivity: both ends and the ligand
 
-OUTPUT — stacked CSVs, each with a `file` column. Every file carries a `#` header
-describing its own columns; `pandas.read_csv(comment='#')` drops it.
+  The Qn tables are omitted when no former is a Qn element; a reason is printed.
+  n counts HOMOPOLAR bridges only (P-O-P), as in the literature's Q^n_m;
+  total bridges = n + sum(m).
 
-  network_composition.csv   every species at a glance: P-Q2, Al_4, O_b, Zn_4 …
-                            each as a fraction of its own element
-  network_qn.csv            Qn speciation — the plain distribution, readable as-is.
-                            n counts HOMOPOLAR bridges only (P-O-P), as in the
-                            literature's Q^n_m; total bridges = n + sum(m)
-  network_qn_partner.csv    the same, split by partner element: Q^n_m (m = P-O-Al)
-  network_ligand_type.csv   ligand speciation: free / non-bridging / bridging /
-                            tricluster, with the formers each one joins
-  network_coordination.csv  coordination number distribution, formers + modifiers
-  network_linkage.csv       bridge connectivity, both ends and the ligand between
-
-  Labels come in two vocabularies. Distribution tables name the structural UNIT
-  (P-Q2); the linkage table and the exported trajectory name the ATOM (P_2, Al_4),
-  because a bridge joins atoms while a Qn unit contains several. -x/-y select on
-  the atom form.
-
-  The first two are omitted when no former is a Qn element; a reason is printed.
+  Labels come in TWO vocabularies: distribution tables name the structural UNIT
+  (P-Q2), the linkage table and the exported trajectory name the ATOM (P_2).
+  -x/-y select on the atom form, and only over a SINGLE frame.
 
 EXAMPLES:
   ferro net -i traj.lammpstrj --P-O=2.4
   ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
   ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
   ferro net -i traj.lammpstrj --P-O=2.4 --last-n 50 --export-traj
-  ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al";
+  ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
+
+Full documentation:  ferro doc net";
 
 
 #[cfg(test)]

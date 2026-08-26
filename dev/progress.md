@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：535 个（全部通过，clippy 零警告）
+## 测试总数：536 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
@@ -12,7 +12,7 @@
 | ferro-structure | 72 |
 | ferro-analysis | 195 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 61 + bin 2 + 集成 5） | 68 |
+| ferro-cli（lib 62 + bin 2 + 集成 5） | 69 |
 
 版本号 **0.3.2**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -249,7 +249,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 的 24 页经 `include_str!`
   编译进二进制（208 KB）。topic 跟子命令树同名（`ferro doc dataset filter`），
   裸命令列出全部；原样输出 markdown（零依赖），stdout 是 tty 时经 `$PAGER`
-  （默认 `less -R`），否则直接打印，pager 起不来就回落
+  （默认 `less -R`），否则直接打印，pager 起不来就回落。
+  **支持按小节寻址**（`Page.section`）：`convert` / `info` / `bader` 没有手册
+  专页，是 `cli-reference.md` 的小节，取该 `##` 到下一个同级标题 —— 99 行而
+  不是整本 863 行
 - **帮助页与 clap 的防漂测试**（`main.rs` 的 `mod help_sync`）：正向断言每个
   长选项都在其富文本页出现（写短名也算），反向断言页里的每个 `--xxx` 在某个
   命令上真实存在（允许交叉引用，跳过「there is no --x」这类否定陈述）。
@@ -258,6 +261,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   12 页没写、`--tau`/`--ncore` 在 rotcorr/vacf/vanhove 共 5 处没写；
   `gr` 的 `--atom-c`/`--label-z` 是有意不写（SelectArgs 与 angle 共享），
   进 `UNDOCUMENTED` 白名单并写明理由
+- **帮助页全部按同一模板**（2026-08-26）：一句话用途 + 完整参数表 + 输出布局 +
+  2~3 个例子 + `Full documentation:  ferro doc <topic>`。23 页里 19 页 ≤40 行；
+  超标的 4 页（顶层 61 / net 54 / convert 59 含 27 行生成的格式表 /
+  cp2k 47 / filter 43）大头都是参数表本身 —— **参数表不为凑行数砍**
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存

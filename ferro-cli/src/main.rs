@@ -165,6 +165,10 @@ mod help_sync {
     use clap::CommandFactory;
 
     const HELP_SRC: &str = include_str!("help.rs");
+    /// `ferro net` keeps its page next to the argv-stripping it needs, not in
+    /// `help.rs`. Left out of the scan it would be the one command the check
+    /// never sees — and it has 10 options.
+    const NET_SRC: &str = include_str!("cmd/net.rs");
 
     /// Which rich page belongs to which subcommand path.
     ///
@@ -187,6 +191,7 @@ mod help_sync {
         (&["convert"], "print_convert"),
         (&["info"], "print_info"),
         (&["bader"], "print_bader"),
+        (&["net"], "HELP_EXTRA"),
         (&["dataset", "collect"], "print_dataset_collect"),
         (&["dataset", "filter"], "print_dataset_filter"),
         (&["dataset", "merge"], "print_dataset_merge"),
@@ -201,8 +206,15 @@ mod help_sync {
     const UNDOCUMENTED: &[(&[&str], &str)] =
         &[(&["traj", "gr"], "atom-c"), (&["traj", "gr"], "label-z")];
 
-    /// The body of `fn <name>(` up to the closing brace in column 0.
+    /// The body of `fn <name>(` up to the closing brace in column 0, or — for
+    /// `ferro net` — the `HELP_EXTRA` string constant in `cmd/net.rs`.
     fn page(name: &str) -> &'static str {
+        if name == "HELP_EXTRA" {
+            let at = NET_SRC.find("const HELP_EXTRA").expect("cmd/net.rs has no HELP_EXTRA");
+            let rest = &NET_SRC[at..];
+            let end = rest.find("\";").map(|i| i + 2).unwrap_or(rest.len());
+            return &rest[..end];
+        }
         let needle = format!("fn {name}() {{");
         let at = HELP_SRC
             .find(&needle)
@@ -296,7 +308,11 @@ mod help_sync {
                 }
                 let name: String =
                     bytes[i + 2..j].iter().collect::<String>().trim_matches('-').to_string();
-                if !name.is_empty() {
+                // `--P-O=2.4` 是 net 的配对参数：元素对写在**参数名**里,clap 建模
+                // 不了,所以 main 在解析前就从 argv 剥离了。clap 永远不知道它,
+                // 断言它存在必然失败。判据取那个 `=` —— 别处的参数从不这么写
+                let assigned = j < bytes.len() && bytes[j] == '=';
+                if !name.is_empty() && !assigned {
                     out.push(name);
                 }
                 i = j.max(i + 2);
