@@ -93,24 +93,54 @@ struct Split {
 }
 
 impl Split {
-    fn is_off(&self) -> bool {
-        self.valid <= 0.0 && self.test <= 0.0
+    /// Parses `--ratio`: `train:valid:test`, or `train:test` with two fields.
+    ///
+    /// The numbers are weights, not fractions — `8:1:1` and `80:10:10` are the
+    /// same split — so no one has to make them sum to one. Two fields mean
+    /// train:test because that is the pair NEP asks for (`train.xyz` +
+    /// `test.xyz`) and the order the phrase "train/test split" already implies;
+    /// every run prints the three parts by name, so a misread shows up on the
+    /// first line of output rather than in a silently mislabelled dataset.
+    fn parse(spec: &str, seed: u64) -> Result<Self> {
+        let fields: Vec<&str> = spec.split(':').map(|f| f.trim()).collect();
+        let bad = || {
+            anyhow::anyhow!(
+                "--ratio must look like 8:1:1 (train:valid:test) or 9:1 \
+                 (train:test), got {spec:?}"
+            )
+        };
+        if !(2..=3).contains(&fields.len()) {
+            return Err(bad());
+        }
+        let mut w = Vec::with_capacity(3);
+        for f in &fields {
+            let v: f64 = f.parse().map_err(|_| bad())?;
+            if !v.is_finite() || v < 0.0 {
+                bail!("--ratio takes non-negative numbers, got {f:?}");
+            }
+            w.push(v);
+        }
+        let (train, valid, test) = match w.len() {
+            2 => (w[0], 0.0, w[1]),
+            _ => (w[0], w[1], w[2]),
+        };
+        let total = train + valid + test;
+        if total <= 0.0 {
+            bail!("--ratio is all zeros, so nothing would be written");
+        }
+        if valid <= 0.0 && test <= 0.0 {
+            bail!("--ratio {spec:?} holds out nothing; omit --ratio instead");
+        }
+        Ok(Split { valid: valid / total, test: test / total, seed })
     }
 
-    /// Validates the ratios; call before reading any input.
-    fn check(&self) -> Result<()> {
-        for (name, v) in [("--valid-ratio", self.valid), ("--test-ratio", self.test)] {
-            if !(0.0..1.0).contains(&v) {
-                bail!("{name} must be in [0, 1), got {v}");
-            }
-        }
-        if self.valid + self.test >= 1.0 {
-            bail!(
-                "--valid-ratio + --test-ratio = {} leaves nothing for training",
-                self.valid + self.test
-            );
-        }
-        Ok(())
+    /// The split off state, used when `--ratio` is absent.
+    fn off(seed: u64) -> Self {
+        Split { valid: 0.0, test: 0.0, seed }
+    }
+
+    fn is_off(&self) -> bool {
+        self.valid <= 0.0 && self.test <= 0.0
     }
 
     /// `[train, valid, test]` frame indices, each in ascending order.
@@ -264,13 +294,9 @@ pub struct MergeCmd {
     #[arg(long = "type", value_enum, default_value_t = OutType::Deepmd)]
     pub out_type: OutType,
 
-    /// Fraction of each group's frames held out for validation    [default: 0]
-    #[arg(long, value_name = "F", default_value_t = 0.0)]
-    pub valid_ratio: f64,
-
-    /// Fraction of each group's frames held out for testing       [default: 0]
-    #[arg(long, value_name = "F", default_value_t = 0.0)]
-    pub test_ratio: f64,
+    /// Split each group train:valid:test, e.g. 8:1:1 (or 9:1 for train:test)
+    #[arg(long, value_name = "A:B:C")]
+    pub ratio: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -338,13 +364,9 @@ pub struct FilterCmd {
     #[arg(long = "type", value_enum, default_value_t = OutType::Deepmd)]
     pub out_type: OutType,
 
-    /// Fraction of each system's frames held out for validation   [default: 0]
-    #[arg(long, value_name = "F", default_value_t = 0.0)]
-    pub valid_ratio: f64,
-
-    /// Fraction of each system's frames held out for testing      [default: 0]
-    #[arg(long, value_name = "F", default_value_t = 0.0)]
-    pub test_ratio: f64,
+    /// Split each system train:valid:test, e.g. 8:1:1 (or 9:1 for train:test)
+    #[arg(long, value_name = "A:B:C")]
+    pub ratio: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -643,13 +665,12 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
             bail!("--al6 cutoff must be positive");
         }
     }
-    let split = filter_split(args);
-    split.check()?;
+    let split = filter_split(args)?;
     if args.seed.is_some() && !args.shuffle && split.is_off() {
-        bail!("--seed only means something with --shuffle or a split ratio");
+        bail!("--seed only means something with --shuffle or --ratio");
     }
     if !split.is_off() && args.outdir.is_none() {
-        bail!("a split needs an output directory (-o DIR); a read-only run writes nothing");
+        bail!("--ratio needs an output directory (-o DIR); a read-only run writes nothing");
     }
     if args.oo_min.is_some_and(|v| v <= 0.0) {
         bail!("--oo-min must be positive (omit the flag to switch the criterion off)");
@@ -870,7 +891,7 @@ fn filter_one(
     write_split(
         &kept,
         &base,
-        &filter_split(args),
+        &filter_split(args)?,
         args.out_type,
         args.set_size,
         args.overwrite,
@@ -880,11 +901,11 @@ fn filter_one(
 }
 
 /// The split `filter` was asked for; the seed is shared with `--shuffle`.
-fn filter_split(args: &FilterCmd) -> Split {
-    Split {
-        valid: args.valid_ratio,
-        test: args.test_ratio,
-        seed: args.seed.unwrap_or(DEFAULT_SEED),
+fn filter_split(args: &FilterCmd) -> Result<Split> {
+    let seed = args.seed.unwrap_or(DEFAULT_SEED);
+    match &args.ratio {
+        None => Ok(Split::off(seed)),
+        Some(spec) => Split::parse(spec, seed),
     }
 }
 
@@ -1012,8 +1033,7 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
     let Some(out_root) = &args.outdir else {
         bail!("merge needs an output directory (-o DIR)");
     };
-    let split = merge_split(args);
-    split.check()?;
+    let split = merge_split(args)?;
     if !split.is_off() {
         // by-source 的全部意义是 set 边界落在 system 边界上,每个 set 出自单一
         // 条件;帧级随机划分正好把这条打碎
@@ -1026,7 +1046,7 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
         }
         // --suffix 与划分后缀是同一个位置的两个主张
         if args.suffix.is_some() {
-            bail!("--suffix and the split ratios both name the output suffix; pick one");
+            bail!("--suffix and --ratio both name the output suffix; pick one");
         }
     }
     // extxyz 没有 set 的概念,by-source 的边界无处安放 —— 与其写出一个丢了边界
@@ -1055,7 +1075,7 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
             bail!(
                 "{} already carries the split suffix `{}`; splitting an already-split \
                  dataset would produce names like `X.train.test`. Merge these without \
-                 ratios, or split the unsplit sources",
+                 --ratio, or split the unsplit sources",
                 had.0.display(), had.1
             );
         }
@@ -1110,7 +1130,7 @@ fn merge_group(
     let name = group_name(&sorted[0].1);
     let inherited =
         shared_suffix(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>());
-    let split = merge_split(args);
+    let split = merge_split(args)?;
     let suffix = args.suffix.clone().or(inherited).unwrap_or_default();
     let dest = out_root.join(format!("{name}{suffix}"));
 
@@ -1177,11 +1197,11 @@ fn merge_group(
 }
 
 /// The split `merge` was asked for; the seed is shared with `--mode shuffle`.
-fn merge_split(args: &MergeCmd) -> Split {
-    Split {
-        valid: args.valid_ratio,
-        test: args.test_ratio,
-        seed: args.seed.unwrap_or(DEFAULT_SEED),
+fn merge_split(args: &MergeCmd) -> Result<Split> {
+    let seed = args.seed.unwrap_or(DEFAULT_SEED);
+    match &args.ratio {
+        None => Ok(Split::off(seed)),
+        Some(spec) => Split::parse(spec, seed),
     }
 }
 
@@ -1283,13 +1303,13 @@ mod tests {
         let syms: Vec<String> = ["O", "Al", "O", "Zn", "O"].iter().map(|s| s.to_string()).collect();
         assert_eq!(formula_of(&syms), "Al1O3Zn1");
     }
-    fn split_of(valid: f64, test: f64) -> Split {
-        Split { valid, test, seed: DEFAULT_SEED }
+    fn split_of(spec: &str) -> Split {
+        Split::parse(spec, DEFAULT_SEED).unwrap()
     }
 
     #[test]
     fn a_split_partitions_every_frame_exactly_once() {
-        let [tr, va, te] = split_of(0.2, 0.1).parts(20, Path::new("x")).unwrap();
+        let [tr, va, te] = split_of("7:2:1").parts(20, Path::new("x")).unwrap();
         assert_eq!((tr.len(), va.len(), te.len()), (14, 4, 2));
         let mut all: Vec<usize> = tr.iter().chain(&va).chain(&te).copied().collect();
         all.sort_unstable();
@@ -1299,7 +1319,7 @@ mod tests {
     #[test]
     fn each_part_keeps_trajectory_order() {
         // 成员是随机抽的,但每部分内部按帧序排列 —— 同 seed 下产物逐字节可复现
-        let [tr, va, te] = split_of(0.25, 0.25).parts(40, Path::new("x")).unwrap();
+        let [tr, va, te] = split_of("2:1:1").parts(40, Path::new("x")).unwrap();
         for part in [&tr, &va, &te] {
             assert!(part.windows(2).all(|w| w[0] < w[1]), "{part:?}");
         }
@@ -1308,31 +1328,54 @@ mod tests {
     #[test]
     fn a_split_is_not_the_tail_of_the_trajectory() {
         // 直接切尾巴的话 test 会全是最后几帧;抽样必须先打乱
-        let [_, _, te] = split_of(0.0, 0.25).parts(40, Path::new("x")).unwrap();
+        let [_, _, te] = split_of("3:0:1").parts(40, Path::new("x")).unwrap();
         assert!(te.iter().any(|&i| i < 30), "test set looks like a tail: {te:?}");
     }
 
     #[test]
     fn a_ratio_too_small_to_reach_one_frame_still_gets_one() {
         // 给了比例却拿到 0 帧,等于静默地没有验证集
-        let [tr, va, _] = split_of(0.01, 0.0).parts(20, Path::new("x")).unwrap();
+        let [tr, va, _] = split_of("99:1:0").parts(20, Path::new("x")).unwrap();
         assert_eq!(va.len(), 1);
         assert_eq!(tr.len(), 19);
     }
 
     #[test]
     fn a_split_that_leaves_no_training_frames_is_an_error() {
-        let e = split_of(0.5, 0.5).parts(4, Path::new("sysA")).unwrap_err();
+        let e = split_of("0.001:1:1").parts(4, Path::new("sysA")).unwrap_err();
         assert!(format!("{e:#}").contains("sysA"), "{e:#}");
     }
 
     #[test]
-    fn ratios_are_validated_before_anything_is_read() {
-        assert!(split_of(1.0, 0.0).check().is_err());
-        assert!(split_of(-0.1, 0.0).check().is_err());
-        assert!(split_of(0.6, 0.5).check().is_err());
-        assert!(split_of(0.2, 0.1).check().is_ok());
-        assert!(split_of(0.0, 0.0).check().is_ok());
+    fn a_ratio_is_weights_not_fractions() {
+        // 8:1:1 与 80:10:10 是同一个划分 —— 用户不必凑成和为 1
+        let a = split_of("8:1:1").parts(100, Path::new("x")).unwrap();
+        let b = split_of("80:10:10").parts(100, Path::new("x")).unwrap();
+        assert_eq!(a[0].len(), b[0].len());
+        assert_eq!((a[0].len(), a[1].len(), a[2].len()), (80, 10, 10));
+    }
+
+    #[test]
+    fn two_fields_mean_train_and_test() {
+        // 9:1 的 1 是 test,不是 valid;每次运行都按名字打出各部分帧数,
+        // 解释错了第一行输出就看得见
+        let [tr, va, te] = split_of("9:1").parts(100, Path::new("x")).unwrap();
+        assert_eq!((tr.len(), va.len(), te.len()), (90, 0, 10));
+    }
+
+    #[test]
+    fn a_malformed_ratio_is_rejected_with_the_expected_shape() {
+        for bad in ["", "8", "8:1:1:1", "8:x:1", "8:-1:1", "0:0:0", "10:0:0"] {
+            let e = Split::parse(bad, DEFAULT_SEED).unwrap_err();
+            let msg = format!("{e:#}");
+            assert!(
+                msg.contains("--ratio"),
+                "{bad:?} produced an unhelpful message: {msg}"
+            );
+        }
+        assert!(Split::parse("8:1:1", DEFAULT_SEED).is_ok());
+        assert!(Split::parse(" 8 : 1 : 1 ", DEFAULT_SEED).is_ok());
+        assert!(Split::parse("0.8:0.1:0.1", DEFAULT_SEED).is_ok());
     }
 
     #[test]

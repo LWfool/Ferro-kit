@@ -914,13 +914,13 @@ Parameters:
       --al6 [RCUT]        Keep only frames holding a 6-coordinated Al; bare
                           --al6 takes the cutoff from the Al-O RDF
       --shuffle           Shuffle the kept frames, after every other step
-      --seed   N          Seed for --shuffle and for the split         [666]
+      --seed   N          Seed for --shuffle and for --ratio            [666]
       --set-size N        Frames per output set; 0 = one set          [400]
       --type   WHAT       deepmd | nep | extxyz                    [deepmd]
                           nep/extxyz write ONE .xyz per system instead of a
                           system directory; nep carries stress as virial=
-      --valid-ratio F     Hold out this fraction for validation        [0.0]
-      --test-ratio  F     Hold out this fraction for testing           [0.0]
+      --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
+                          mean train:test (9:1). Weights, not fractions
       --overwrite         Allow writing into an existing non-empty directory
 
 The funnel:
@@ -939,7 +939,7 @@ Output:
 Examples:
   ferro dataset filter -i raw                       # look, write nothing
   ferro dataset filter -i raw -o clean -f 15 -s 8
-  ferro dataset filter -i raw -o nep --type nep --test-ratio 0.1
+  ferro dataset filter -i raw -o nep --type nep --ratio 8:1:1
 
 Full documentation:  ferro doc dataset filter"#
     );
@@ -961,8 +961,8 @@ Parameters:
       --type   WHAT       deepmd | nep | extxyz                    [deepmd]
                           nep/extxyz write ONE .xyz per group instead of a
                           system directory; nep carries stress as virial=
-      --valid-ratio F     Hold out this fraction for validation        [0.0]
-      --test-ratio  F     Hold out this fraction for testing           [0.0]
+      --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
+                          mean train:test (9:1). Weights, not fractions
       --suffix EXT        Force this suffix; default inherits a shared one
       --overwrite         Allow writing into an existing non-empty directory
 
@@ -982,7 +982,7 @@ The two modes:
   500 frames at --set-size 400 give 250 + 250, not 400 + 100.
 
 Splitting:
-  A ratio appends .train / .valid / .test to the output name (dpgen's
+  --ratio appends .train / .valid / .test to the output name (dpgen's
   convention). Membership is drawn from the shuffled order, so a test set is
   not the tail of a run; each part is then written in frame order.
   Refused on purpose: --mode by-source (its set boundaries would not survive
@@ -992,7 +992,7 @@ Splitting:
 Examples:
   ferro dataset merge -i 'data/*.train' -o merged
   ferro dataset merge -i 'data/*.train' -o merged --mode by-source
-  ferro dataset merge -i 'clean/*' -o nep --type nep --test-ratio 0.1
+  ferro dataset merge -i 'clean/*' -o nep --type nep --ratio 9:1
 
 Full documentation:  ferro doc dataset merge"#
     );

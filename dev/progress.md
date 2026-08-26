@@ -262,7 +262,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   - **`--type deepmd|nep|extxyz` 与 train/valid/test 划分**（2026-08-26，
     filter 与 merge 共用 `OutType` / `Split` / `write_split`）：nep 与 extxyz
     一个 system（merge 是一个成分组）一个 `.xyz`，差别只在应力键；`--set-size`
-    不到达它们。划分默认关，只给 `--test-ratio` 即两路。产物用 dpgen 的目录名
+    不到达它们。`--ratio` 收 `8:1:1`（权重非分数），两段即 train:test；
+    不给就不划分。产物用 dpgen 的目录名
     后缀 `.train/.valid/.test`（`SPLIT_SUFFIXES` 早已存在，merge 一直在继承它）。
     成员取自打乱序、各部分内部排回帧序 —— 同 seed 逐字节可复现；比例向上取到
     至少 1 帧。四处在读第一个文件前失败：by-source + 划分、by-source + 非

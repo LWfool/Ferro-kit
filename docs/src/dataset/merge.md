@@ -98,21 +98,22 @@ directory), `nep` (one `.xyz` per composition, stress as `virial=`) and
 with `--mode by-source` — that mode's whole product is set boundaries, and an
 extxyz file has no sets to put them on.
 
-## Splitting: `--valid-ratio` / `--test-ratio`
+## Splitting: `--ratio`
 
-Both default to `0` (off) and behave as in `ferro dataset filter`: membership
-comes from the shuffled order, each part is written in frame order, and the
-suffix `.train` / `.valid` / `.test` goes on the output name.
+`--ratio 8:1:1` is train:valid:test and `9:1` is train:test, exactly as in
+`ferro dataset filter`: the numbers are weights rather than fractions,
+membership comes from the shuffled order, each part is written in frame order,
+and the suffix `.train` / `.valid` / `.test` goes on the output name.
 
 Three combinations are refused before the first system is read:
 
 | refused | why |
 |---|---|
-| `--mode by-source` + a ratio | that mode exists to keep set boundaries on system edges; a frame-level split breaks exactly that |
-| `--suffix` + a ratio | both name the output suffix |
+| `--mode by-source` + `--ratio` | that mode exists to keep set boundaries on system edges; a frame-level split breaks exactly that |
+| `--suffix` + `--ratio` | both name the output suffix |
 | inputs already ending in `.train` / `.valid` / `.test` | splitting a split would produce `X.train.test` |
 
-The last one is the common accident: `merge -i 'data/*.train' --test-ratio 0.1`
+The last one is the common accident: `merge -i 'data/*.train' --ratio 9:1`
 looks reasonable and would quietly re-split a dataset someone already divided.
 
 ## The pipeline
@@ -121,7 +122,7 @@ looks reasonable and would quietly re-split a dataset someone already divided.
 ferro dataset collect  -i md.out    -o raw      # AIMD  -> dataset
 ferro dataset filter   -i raw       -o clean    # drop bad frames
 ferro dataset merge    -i clean/*   -o merged   # combine + shuffle + resize
-ferro dataset merge    -i clean/*   -o nep --type nep --test-ratio 0.1
+ferro dataset merge    -i clean/*   -o nep --type nep --ratio 9:1
 ```
 
 The first three steps read and write the same DeePMD directory format and never

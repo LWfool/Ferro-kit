@@ -133,16 +133,20 @@ Concatenating them is a `cat`, and keeping them apart until then is what lets
 you drop one source without re-running:
 
 ```bash
-ferro dataset filter -i raw -o nep --type nep --test-ratio 0.1
+ferro dataset filter -i raw -o nep --type nep --ratio 8:1:1
 cat nep/*.train.xyz > train.xyz
 cat nep/*.test.xyz  > test.xyz
 ```
 
-### Splitting: `--valid-ratio` / `--test-ratio`
+### Splitting: `--ratio`
 
-Both default to `0` (off). Giving only `--test-ratio` produces a two-way
-train/test split; giving both produces three parts. The suffix goes on the
-output name, which is dpgen's and dpdata's convention:
+`--ratio 8:1:1` is train:valid:test. Two fields mean **train:test** — `9:1`
+holds out a tenth for testing and no validation set, which is the pair a NEP
+run asks for. The numbers are **weights, not fractions**: `8:1:1` and
+`80:10:10` are the same split, and nothing has to sum to one.
+
+Without `--ratio` nothing is split. The suffix goes on the output name, which
+is dpgen's and dpdata's convention:
 
 ```
 clean/
@@ -157,9 +161,13 @@ hand the test set one contiguous stretch of a single state — the end of the
 run. Each part is then written back in frame order, so the same `--seed`
 reproduces the same files byte for byte.
 
-A ratio too small to reach one frame still gets one: asking for a validation
+A share too small to reach one frame still gets one: asking for a validation
 set and receiving an empty one is worse than a rounding surprise. A split that
 would leave no training frames is an error naming the system.
+
+Every run prints the three parts by name with their frame counts, so a `9:1`
+read the wrong way round shows up on the first line of output rather than in a
+mislabelled dataset.
 
 > **What a frame-level split cannot fix.** Neighbouring frames of one MD run are
 > highly correlated, so a held-out frame usually has a near-twin in the training
