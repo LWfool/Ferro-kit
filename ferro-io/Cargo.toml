@@ -10,3 +10,5 @@ thiserror.workspace = true
 anyhow.workspace = true
 ndarray.workspace = true
 ndarray-npy.workspace = true
+# vasprun.xml：流式拉取,不建 DOM —— AIMD 的 vasprun 常有几百 MB
+quick-xml = "0.38"

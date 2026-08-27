@@ -2,7 +2,9 @@ pub mod readers;
 pub mod writers;
 
 pub use readers::{
-    read_cp2k_out, read_cp2k_out_with_stats, Cp2kOutStats,
+    read_aimd_with_stats, read_cp2k_out, read_cp2k_out_with_stats,
+    read_vasp_outcar, read_vasp_outcar_with_stats, read_vasprun,
+    read_vasprun_with_stats, sniff, AimdFormat, AimdStats,
     read_deepmd_npy, read_deepmd_npy_with_warnings,
     read_cif, read_pdb, read_xyz,
     read_poscar, read_contcar,

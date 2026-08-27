@@ -59,6 +59,7 @@
 
 use anyhow::{bail, Context, Result};
 use ferro_core::units::{convert_pressure, PressureUnit, BOHR_TO_ANG, HARTREE_TO_EV};
+use super::aimd::{AimdFormat, AimdStats};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 
@@ -107,39 +108,13 @@ fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
 /// surrounding text (the SCF line above the anchor, the block line count, the
 /// first frame's composition); the counts travel out so the caller can report
 /// them instead of the reader printing behind its back.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Cp2kOutStats {
-    /// `MD| Step number` anchors seen, i.e. MD steps the file claims
-    pub n_steps: usize,
-    pub n_kept: usize,
-    pub n_scf_failed: usize,
-    pub n_incomplete: usize,
-    pub n_bad_composition: usize,
-    /// Frames whose block offsets differ from the first frame's
-    pub n_layout_drift: usize,
-    /// `MD_INI| MD initialization` blocks; > 1 means the run was restarted
-    pub n_restarts: usize,
-    /// First and last `MD| Step number` value the file claims.
-    ///
-    /// The span a file covers, not the frames that survived. Restarting from a
-    /// checkpoint makes two files overlap here, and a caller concatenating them
-    /// can only show that overlap if it knows the spans.
-    pub steps: Option<(i64, i64)>,
-}
-
-impl Cp2kOutStats {
-    pub fn n_dropped(&self) -> usize {
-        self.n_scf_failed + self.n_incomplete + self.n_bad_composition
-    }
-}
-
 /// Reads a CP2K MD output file, discarding the statistics.
 pub fn read_cp2k_out(path: &str) -> Result<Trajectory> {
     Ok(read_cp2k_out_with_stats(path)?.0)
 }
 
 /// Reads a CP2K MD output file and reports what was dropped.
-pub fn read_cp2k_out_with_stats(path: &str) -> Result<(Trajectory, Cp2kOutStats)> {
+pub fn read_cp2k_out_with_stats(path: &str) -> Result<(Trajectory, AimdStats)> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("cannot open {path}"))?;
     parse_cp2k_out(&content).with_context(|| format!("parsing {path}"))
@@ -229,10 +204,10 @@ fn read_xyz_block(lines: &[&str], head: usize, n: usize) -> Option<(Vec<String>,
     Some((syms, vecs))
 }
 
-fn parse_cp2k_out(content: &str) -> Result<(Trajectory, Cp2kOutStats)> {
+fn parse_cp2k_out(content: &str) -> Result<(Trajectory, AimdStats)> {
     let lines: Vec<&str> = content.lines().collect();
 
-    let mut stats = Cp2kOutStats::default();
+    let mut stats = AimdStats::new(AimdFormat::Cp2kOut);
     let mut anchors: Vec<usize> = Vec::new();
     let mut steps: Vec<i64> = Vec::new();
     let mut scf: Vec<(usize, bool)> = Vec::new();

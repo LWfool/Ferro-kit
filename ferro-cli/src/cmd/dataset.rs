@@ -31,8 +31,8 @@ use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, Filter
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
-    read_cp2k_out_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
-    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, Cp2kOutStats,
+    read_aimd_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
+    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdStats,
     StressKey,
 };
 
@@ -538,9 +538,9 @@ fn collect_group(
     }
 
     // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致
-    let mut parts: Vec<(PathBuf, Trajectory, Cp2kOutStats)> = Vec::new();
+    let mut parts: Vec<(PathBuf, Trajectory, AimdStats)> = Vec::new();
     for path in &group.files {
-        match read_cp2k_out_with_stats(&path.to_string_lossy()) {
+        match read_aimd_with_stats(path) {
             Ok((traj, stats)) => parts.push((path.clone(), traj, stats)),
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", path.display());
@@ -564,6 +564,19 @@ fn collect_group(
     // 一个 system 的 type.raw 只写一次，故各文件的原子序列必须逐项相同。
     // 不一致是「把两个体系放进了一个目录」这个人的错误，不是数据的问题 ——
     // 当作坏帧丢掉会把它渲染成完全不同的一件事
+    // 一个真实的 VASP 运行目录里 OUTCAR 与 vasprun.xml 同时存在,记的是同一批
+    // 帧。collect 的规则是「同目录的文件 = 同一次运行的分段」,照此拼接会把帧数
+    // 悄悄翻倍 —— 成分一致、两个文件各自也都读得通,不会有任何别的症状
+    let fmt0 = parts[0].2.format;
+    if let Some((path, _, other)) = parts.iter().find(|(_, _, st)| st.format != fmt0) {
+        bail!(
+            "{} is {} but {} is {}. A run directory holds both, and they record \
+             the same frames — concatenating them would double the dataset. \
+             Narrow -i to one of the two",
+            parts[0].0.display(), fmt0.name(), path.display(), other.format.name(),
+        );
+    }
+
     let reference = symbols_of(&parts[0].1);
     for (path, traj, _) in &parts[1..] {
         let here = symbols_of(traj);
@@ -612,8 +625,12 @@ fn formula_of(symbols: &[String]) -> String {
 /// invisible: frames are concatenated without de-duplication, on the grounds
 /// that a restart re-runs at most a few steps and identical positions give
 /// identical energies. That premise is checkable only if the spans are shown.
-fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, Cp2kOutStats)], n_frames: usize) {
-    println!("{}  ({} file(s), {n_frames} frames)", dest.display(), parts.len());
+fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frames: usize) {
+    let fmt = parts[0].2.format;
+    println!(
+        "{}  ({} file(s), {n_frames} frames, {})",
+        dest.display(), parts.len(), fmt.name()
+    );
     // 列宽按本组实际路径算：写死的宽度装不下真实的 CP2K 目录名，span 列会错开
     let w = parts.iter().map(|(p, _, _)| p.display().to_string().len()).max().unwrap_or(0);
     for (path, _, st) in parts {
@@ -628,7 +645,10 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, Cp2kOutStats)], n_fr
             st.n_dropped()
         );
         if st.n_dropped() > 0 {
-            // 丢帧从不静默：5000 帧里丢掉 3000 说明 SCF 设置有问题，用户得当场知道
+            // 丢帧从不静默：5000 帧里丢掉 3000 说明 SCF 设置有问题，用户得当场知道。
+            // 判据随格式变（OUTCAR 读 VASP 自己的结论，vasprun 只能数 SCF 步），
+            // 所以把它一并打出来 —— 否则同一次运行换个来源、丢帧数不同会没人说得清
+            println!("    convergence rule: {}", st.format.convergence_rule());
             println!(
                 "    SCF not converged {} | incomplete block {} | composition {}",
                 st.n_scf_failed, st.n_incomplete, st.n_bad_composition
