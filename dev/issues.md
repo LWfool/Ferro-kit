@@ -538,6 +538,33 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 - **报错消息里也不许用 `as_slice()`**。它是列优先，会把张量打成转置，读日志的人
   据此判断「哪一侧错了」时会被带偏。走 `matrix3_row_major`
 
+## VASP AIMD 读取编码陷阱（2026-08-27）
+
+- **`<field>` 表头也是文本**。vasprun 的 `<array name="atoms">` 里，
+  `<field type="string">element</field>` 会被当成元素符号,于是 297 个原子读出
+  298 个物种、每帧判 incomplete、**整个文件读成 0 帧**。只取 `<c>` 里的文字。
+  这个 bug 是实际写的时候踩到的,症状（空轨迹）离原因（多了一个物种）很远
+- **vasprun 的 `<energy>` 每个 `<scstep>` 都有一份**。第一个是未收敛的 SCF 迭代值
+  （实测 33072.96 vs 收敛的 −1929.96）,收敛值是 calculation 层的最后一个。
+  取错不会报错,只是全部标签都错
+- **`in kB` 的顺序是 `XX YY ZZ XY YZ ZX`**,不是 extxyz 规格的 `XX YY ZZ YZ XZ XY`。
+  搞混只换 xy 与 yz,对角线看不出来。三个独立来源一致(dpdata 的下标映射、
+  `private/dp_makedataliu.py` 的 `[[0,3,5,3,1,4,5,4,2]]`、ASE 的 `[[0,1,2,4,5,3]]`)
+- **符号不变**。VASP 的 `in kB` 与 `Frame::stress` 都是正 = 压缩;ASE 读同一行时
+  变号,是因为它自己的约定相反。别看到 ASE 变号就跟着变
+- **体积要用 `|det|`**。参考脚本用 `cell[0,0]*cell[1,1]*cell[2,2]`,只对正交胞成立;
+  三斜胞下静默给出错的 virial
+- **晶胞不能继承上一帧**。定胞运行里继承与不继承逐位相同,所以这个 bug 在现有数据
+  上完全测不出来,只会在第一次跑变胞时显形。缺胞块的帧宁可丢
+- **能量取 `free energy TOTEN`,不是 `energy(sigma->0)`**。力是自由能对坐标的导数,
+  配 `sigma->0` 等于给模型两半不同的泛函。（`plan.md` 曾写「dpdata 取 sigma->0」,
+  是错的,已更正）
+- **别用固定行偏移**。dpdata 从 `FORCE on cell` 往下数 14 行取 `in kB`,而它对
+  ML_FF 用的是 4 —— 偏移是某一种排版的属性,不是格式的属性
+- **同目录混格式会静默翻倍**。真实 VASP 目录里 `OUTCAR` 与 `vasprun.xml` 记同一批
+  帧,而 collect 把同目录的文件当作一次运行的分段拼接。成分一致、两边都读得通,
+  没有任何别的症状
+
 ## dataset 划分 / --type 编码陷阱（2026-08-26）
 
 - **`with_extension` 会吃掉 `.train`**。输出基名常是 `sysA.train`，

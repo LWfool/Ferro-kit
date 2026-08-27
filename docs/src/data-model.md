@@ -61,6 +61,7 @@ QUIP 与 GPUMD 所说的 `virial`。
 | extxyz 的 `stress=` | eV/Å³，正 = 拉伸 | 读写两侧**变号** |
 | extxyz 的 `virial=` | eV，正 = 压缩 | 除以 `\|det(box)\|`，**不变号**；没有 `Lattice` 就报错 |
 | DeePMD 的 `virial.npy` | eV，正 = 压缩 | `stress × V`，不变号 |
+| VASP 的 `in kB` 行 | kBar，正 = 压缩，Voigt 顺序 `XX YY ZZ XY YZ ZX` | 换算单位，**不变号** |
 
 extxyz 若同时给了 `stress=` 与 `virial=`，两者必须自洽（`virial ≈ stress × V`），
 否则报错 —— 不会替你挑一个。另外该张量必须**对称**（extxyz 规格如此要求），

@@ -9,9 +9,42 @@ ferro dataset collect -i 'run*/*.out' -o data      # -> data/run1/, data/run2/
 ferro dataset collect -i '*.out' -o sys            # -> sys/   (one directory in)
 ```
 
-Currently only **CP2K MD output** is read. VASP and Quantum ESPRESSO are
-planned; the parsing layer and the writing layer are kept separate so adding a
-source means writing only the former.
+Three sources are read: **CP2K MD output**, **VASP `OUTCAR`** and **VASP
+`vasprun.xml`**. Quantum ESPRESSO is still planned.
+
+### Which reader gets the file
+
+By **content**, not by name. The first lines of the file carry an unambiguous
+banner — `CP2K|`, `vasp.6.4.2`, or an `<?xml` declaration — and naming cannot
+be trusted to do this job: VASP writes `OUTCAR` with no extension at all,
+people rename it to `run.outcar`, and `.out` is too generic to belong to any
+one program. An unrecognised file is an error that names what *is* recognised.
+
+> **One format per directory.** A real VASP run directory holds `OUTCAR` *and*
+> `vasprun.xml`, and they record the same frames. Since `collect` treats the
+> files of one directory as segments of one run, feeding it both would
+> concatenate the same frames twice and silently double the dataset — the
+> composition matches and both files parse, so nothing else would look wrong.
+> Mixing formats within one directory is refused; narrow `-i` to one of them.
+
+### CP2K vs VASP: what differs
+
+| | CP2K | VASP OUTCAR | vasprun.xml |
+|---|---|---|---|
+| energy | `ENERGY\| Total FORCE_EVAL` | `free  energy   TOTEN` | last `e_fr_energy` of the calculation |
+| convergence | `SCF run converged` | VASP's own `EDIFF is reached` | inferred: SCF steps < `NELM` |
+| species | element column of the xyz block | `VRHFIN` × `ions per type` | `<atominfo>` |
+| restarts | `MD_INI` blocks | ionic step counter going backwards | not detected |
+
+The two VASP paths do **not** use the same convergence rule, so the same run
+can drop a different number of frames depending on which file you point at.
+The rule that applied is printed with the per-directory report rather than left
+for you to guess.
+
+`energy(sigma->0)` is deliberately *not* used: the forces VASP prints are the
+derivatives of the free energy, so pairing them with the extrapolated energy
+would give a model two halves of different functionals. dpdata makes the same
+choice, which keeps datasets converted by either tool comparable.
 
 ## What CP2K must print
 
@@ -186,6 +219,11 @@ Three kinds of frame are discarded, and the counts are always reported:
 | incomplete block | a job killed mid-step leaves a truncated frame |
 | composition changed | guards against block misalignment, see below |
 
+For VASP a frame is also dropped when it has **no cell block of its own**. The
+cell is never inherited from the previous frame: in a fixed-cell run the two are
+identical so the bug would be invisible, and it would then produce silently
+wrong data the first time someone ran a variable-cell job.
+
 The composition check is not really about the system changing. The two xyz
 blocks CP2K prints per step — coordinates then forces — are *byte-for-byte
 indistinguishable*: same atom count, same `i = …, time = …, E = …` comment
@@ -213,6 +251,10 @@ hand.
 - **No extxyz / NEP output.** The pipeline's intermediate format is the DeePMD
   directory; GPUMD's `train.xyz` is an export at the end of the chain, not at
   the start.
-- **`.out` is not registered with `ferro convert`.** That extension is far too
-  generic to be claimed for CP2K, so the CP2K MD reader is reachable only
-  through `ferro dataset collect`.
+- **None of these formats is registered with `ferro convert`.** `.out` is far
+  too generic to be claimed for CP2K, and `OUTCAR` has no extension at all, so
+  the AIMD readers are reachable only through `ferro dataset collect`.
+- **No ML force-field OUTCARs.** A VASP run driven by its machine-learned force
+  field prints `free  energy ML TOTEN` and `ML FORCE` instead, and its block
+  layout differs by more than the names. Without a sample to check against,
+  guessing would be worse than declining.

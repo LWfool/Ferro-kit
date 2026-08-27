@@ -858,8 +858,9 @@ pub fn print_dataset_collect() {
     println!(
         r#"ferro dataset collect — AIMD output -> DeePMD system directories
 
-  Reads CP2K MD output (the stdout log, with coordinates, forces and stress all
-  printed to __STD_OUT__) and writes one DeePMD system per input DIRECTORY.
+  Reads CP2K MD output, VASP OUTCAR or VASP vasprun.xml and writes one DeePMD
+  system per input DIRECTORY. The format is decided by the file's own banner,
+  not by its name.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
@@ -879,9 +880,20 @@ One system per directory:
   are reassembled into ONE system. That is the line between the two commands:
   collect puts back together one run, merge combines different runs.
 
-  Files are ordered by their first MD| Step number; overlapping frames are kept,
+  Files are ordered by their first step number; overlapping frames are kept,
   and every source file's step span is printed so the overlap stays visible.
   Two compositions in one directory is an error, not a frame-dropping event.
+
+  A VASP run directory holds OUTCAR *and* vasprun.xml, recording the SAME
+  frames — feeding both would double the dataset in silence, so mixing formats
+  within one directory is refused. Narrow -i to one of them.
+
+Per format:
+  CP2K          energy ENERGY| Total FORCE_EVAL   converged: "SCF run converged"
+  OUTCAR        energy free energy TOTEN          converged: "EDIFF is reached"
+  vasprun.xml   energy last e_fr_energy           converged: SCF steps < NELM
+  The two VASP rules differ, so the same run can drop a different number of
+  frames depending on which file you point at; the rule used is printed.
 
 Examples:
   ferro dataset collect -i 'run*/*.out' -o data

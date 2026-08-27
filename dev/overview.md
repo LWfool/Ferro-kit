@@ -130,6 +130,7 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 | **落盘矩阵一律行优先**，取九个数走 `matrix3_row_major`，禁用 nalgebra 的 `as_slice()`（它是列优先，且对称张量下这个错误完全静默） | `array_order.rs` |
 | **`Frame::stress` 的符号 = 正为压缩**，与 CP2K/VASP/QE 输出一致、与 ASE/GPUMD 的 stress 相反；`virial = stress × V` 不变号 | `frame.rs` 字段文档 |
 | **单位从输出文本自读**，认不出报错不默认 —— CP2K 的 `STRESS_UNIT` 是输入关键字，单位不是版本的函数 | `readers/cp2k_out.rs` |
+| **AIMD 的能量取自由能**（CP2K 的 `FORCE_EVAL`、VASP 的 `free energy TOTEN`），不取 `sigma->0` —— 力是自由能对坐标的导数，配 `sigma->0` 等于给模型两半不同的泛函 | `readers/vasp_outcar.rs` |
 
 `v0.3.1` 是纯新增，故升 patch 位。
 
@@ -150,6 +151,12 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 
 **新增**：`ferro doc`（手册编译进二进制，`include_str!` 24 页 208 KB，topic 跟
 子命令树同名，tty 下走 `$PAGER`）。
+
+**新增**：VASP AIMD 读取 —— `readers/vasp_outcar.rs` 与 `readers/vasprun.rs`，
+`collect` 改为**按文件头几行的横幅嗅探**格式（VASP 写的叫 `OUTCAR` 无扩展名，
+`.out` 又太通用，按名字判必然开一串特例）。`Cp2kOutStats` 下沉改名为
+`AimdStats`（第二个使用者到齐，符合 CLAUDE.md 的下沉判据）。新增依赖
+`quick-xml`（净新增 1 个 crate，流式不建 DOM —— AIMD 的 vasprun 常有几百 MB）。
 
 **新增**：`dataset filter` / `merge` 的 `--type deepmd|nep|extxyz` 与
 `--ratio 8:1:1`（train:valid:test，两段即 train:test；默认不划分，旧命令行行为不变）。GPUMD/NEP 的

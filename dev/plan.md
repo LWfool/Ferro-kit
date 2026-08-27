@@ -38,62 +38,6 @@ mixed type 布局（**先核对 DeePMD-kit 文档与 dpdata 的 `deepmd/npy/mixe
 
 ---
 
-### VASP AIMD 数据读取（2026-08-26 提出）
-
-`readers/vasp.rs` 现在只有 `read_poscar` / `read_contcar`，AIMD 轨迹无入口；
-`dataset collect` 也是直接调 `read_cp2k_out_with_stats`，**没有格式分派**。
-这条要同时补 reader 和 collect 的分派。
-
-**来源三选一**：
-
-| 来源 | 内容 | 代价 |
-|---|---|---|
-| `OUTCAR` | 能量 / 力 / 应力 / 逐帧晶胞全有 | 纯文本，**零新依赖**，可照搬 `cp2k_out.rs` 的 token 锚点 + 区间扫描 |
-| `vasprun.xml` | 同上，且结构化 | 要拉 XML 解析依赖 |
-| `XDATCAR` | **只有坐标**，无力无能量 | 做不了训练集，只能当轨迹 |
-
-倾向 `OUTCAR` —— 与 CP2K 那条路同构，`cp2k_out.rs` 的三条经验（按 token 序列匹配
-而非固定行偏移、区间上界取下一个锚点、数值行不写死下标）可直接复用。
-
-**待核对的坑**（动手前逐条验，别照记忆写）：
-
-- **取哪个能量**：`free  energy   TOTEN` 与 `energy(sigma->0)` 是两个数。dpdata 取
-  sigma→0 那个；要与 dpdata 对拍就得同口径。这条决定要写进 reader 的 doc 注释
-- **应力符号与分量顺序**：`in kB` 行是 Voigt 六分量，顺序是 **XX YY ZZ XY YZ ZX**
-  （不是常见的 YZ XZ XY），单位 kB = kBar，`units.rs` 的 `PressureUnit::Kbar` 已有。
-  符号是否与 Ferro 的「正 = 压缩」一致**必须实测核对**，办法是拿一个已知受压体系
-  或与 dpdata 的结果对拍 —— 对称张量下符号错了不会有任何形状异常
-- **逐帧晶胞**：NPT 下每步都有 `VOLUME and BASIS-vectors` 块，取 `direct lattice
-  vectors` 三行，**行优先**（`matrix3_from_row_major`）
-- **元素与计数**：元素名在 `POTCAR:` / `VRHFIN =` 行（VASP 5+ 有时只在开头出现一次），
-  每种个数在 `ions per type =`，顺序 = POSCAR 顺序。三处都缺就报错，不猜
-- **力块**：`TOTAL-FORCE (eV/Angst)` 锚点，`-----` 夹住；坐标与力同表且坐标是笛卡尔
-- **截断与未收敛**：最后一帧常被中断切掉；与 `cp2k_out` 同策略——缺块的帧宁可丢，
-  丢帧计数由 stats 带出
-- **ML_FF 的 OUTCAR 排版有别**（多机器学习力场块、能量行不同），先只保证纯 AIMD，
-  遇到再说
-
-**CLI 接入**：`collect` 需要格式分派，而**不能靠扩展名** —— `OUTCAR` 没有扩展名，
-`.out` 又太通用（这也是它至今没进 `io_dispatch` 的原因）。判据：collect 是按目录
-批量的，一批里可能 CP2K 与 VASP 混，故走**文件名 + 内容嗅探**（读头若干行找
-`vasp.` 版本横幅 / `CP2K|` 横幅）比加一个全局 `--format` 开关好。
-`io_dispatch` 侧可按前缀 `OUTCAR` 注册只读格式（与 `POSCAR`/`CONTCAR` 的前缀判断
-同一模式），让 `ferro convert -i OUTCAR -o traj.xyz` 也能用；注册时记得
-**`ferro-python/src/io.rs` 是另一处独立的分派**，加格式要两边都看。
-
-**Voigt 顺序表（`ferro-io/src/voigt.rs`）跟着这条待办建**：extxyz 那轮本打算先建，
-但 6 分量在 extxyz 侧已决定拒收，表在那里没有调用者，先建等于先造一个没人用的抽象。
-两条已实证的顺序可直接写进去：
-
-| 来源 | 6 分量顺序 | 实证 |
-|---|---|---|
-| extxyz 规格 / ASE | `xx yy zz` `yz xz xy` | `ase/stress.py:84` |
-| VASP `in kB` / GPUMD `stress_*.out` | `xx yy zz` `xy yz zx` | `ase/io/vasp_parsers/vasp_outcar_parsers.py:93` 的 `[[0,1,2,4,5,3]]` 重排 |
-
-LAMMPS 那条**没有实证，先不写** —— 半可信的表比没有表危险。
-
----
-
 ### scripts/：net 剩余四张表的画法
 
 四个发表级绘图脚本已完成。**net 六张表里还有四张没有画法**，因为用户明确说还没想好
@@ -252,6 +196,20 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 - 注意与「批处理输入」是两件事：这里是**命令**的批处理（一个脚本跑多条命令），
   那里是**输入文件**的批处理（一条命令跑多个轨迹）。两者可叠加但互不依赖
 
+### VASP：ML_FF 的 OUTCAR 与 io_dispatch 注册（2026-08-27 提出）
+
+两件被这一轮明确划在范围外的事：
+
+- **ML_FF 的 OUTCAR**：VASP 的机器学习力场跑出来的输出用 `free  energy ML TOTEN`
+  与 `ML FORCE`。dpdata 用一个 `ml=True` 开关切 token，但它给两者的行偏移是
+  `[14, 4]` —— **块结构本身就不同**，不只是换个名字。没有样例就没法验，等有输出
+  再补；`vasp_outcar.rs` 的锚点已经是多候选表的形状，加 token 不必重构
+- **`io_dispatch` 注册**：`ferro convert -i OUTCAR -o traj.xyz` 现在不认识。要动
+  `io_dispatch.rs` 的两处 match、`supported_formats()` 那张有测试盯着的清单，以及
+  `ferro-python/src/io.rs` 那处独立分派。判据要先定：`OUTCAR` 没有扩展名，而
+  `io_dispatch` 现在是按扩展名（加 `POSCAR`/`CONTCAR` 的前缀特例）分派的 ——
+  是给它加内容嗅探，还是只按前缀认 `OUTCAR*`
+
 ### CP2K 的 EXTXYZ 把 atom kind 写进 species 列（2026-08-26 提出）
 
 CP2K 新版的 `MOTION/PRINT/TRAJECTORY` 多了 `FORMAT EXTXYZ`，而它的
@@ -377,6 +335,50 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### VASP AIMD 读取：OUTCAR + vasprun.xml（2026-08-27，0.3.2）
+
+原计划只做 OUTCAR，用户要求**两个都做**。实测 `quick-xml` 与 `roxmltree` **各自只
+净新增 1 个 crate**（零传递依赖），代价不是问题；选 `quick-xml` 的**流式**是因为
+DOM 的内存约为文件的 5–10 倍，而这条链的输入本来就是几百 MB。
+
+**被查证推翻的原计划**（两条，都在动手前）：
+
+1. 上一轮写的「dpdata 取 `energy(sigma->0)`」**是错的**。`dpdata/formats/vasp/
+   outcar.py:118` 取的是 `free  energy   TOTEN`，用户的 `private/dp_makedataliu.py`
+   也是（`lines[-3].split()[-2]`）。理由本身也站得住：力是自由能的导数
+2. 原计划「同目录既有 OUTCAR 又有 vasprun 时优先 vasprun、回落 OUTCAR」被用户
+   否掉 —— 改为**由用户指名文件**（跟 CP2K 端一样），程序不做目录级偏好判断。
+   于是分派改成读头几行认横幅，而不是一张扩展名特例表
+
+**定下来的判据**：
+
+- **格式按内容嗅探,不按名字**。VASP 写的叫 `OUTCAR`（无扩展名），用户手上那份叫
+  `50Z50P_0.970_3000K.outcar`，`.out` 又谁都可能用 —— 按名字判必然要开一串特例，
+  而横幅是唯一的
+- **同目录混格式报错**。真实运行目录里两个文件并存且记同一批帧，按 collect
+  「同目录 = 同一次运行的分段」拼接会让数据集**悄悄翻倍**：成分一致、两个文件
+  各自也都读得通，不会有别的症状
+- **晶胞逐帧各读各的**，缺块的帧丢弃而不继承上一帧。定胞下继承与不继承逐位相同，
+  这个 bug 只会在第一次跑变胞时显形 —— 与 `array_order.rs` 的转置同族
+- **`in kB` 是 VASP 自己的 Voigt 顺序 `XX YY ZZ XY YZ ZX`**，与 extxyz 规格的
+  `XX YY ZZ YZ XZ XY` 不同。三个独立来源一致（dpdata 的下标映射、用户脚本的
+  `[[0,3,5,3,1,4,5,4,2]]`、ASE 的 `[[0,1,2,4,5,3]]` 重排）
+- **体积用 `|det|`**，不用三个对角线相乘（用户脚本是后者，只对正交胞成立）
+- 两条 VASP 路径的**收敛判据不同**（OUTCAR 有 VASP 自己的 `EDIFF is reached`，
+  vasprun 只能数 `<scstep>` 与 `NELM` 比），故判据随 stats 打进报告 —— 否则同一次
+  运行换个来源、丢帧数不同会没人说得清
+
+**实测发现的两处坑**（都不会报错，只会给出错的数）：vasprun 的 `<energy>` 每个
+`<scstep>` 都有一份，收敛值是最后一个（取第一个得到 33072.96 这种数）；
+`<array name="atoms">` 的 `<field>` 表头也是文本，当成元素会得到 298 个物种、
+每帧判 incomplete、整个文件读成空 —— 后者是实际写代码时踩到的。
+
+**验证**：`tests/` 两份从真实文件裁出的 fixture（OUTCAR 340 KB、vasprun 188 KB，
+dpdata 仍能正常读）；`#[ignore]` 的全量对拍（2000 帧 / 425 帧）与 dpdata 逐位一致，
+virial 差 8.5e-9 相对量 —— dpdata 用的 eV/Å³→GPa 常数是 160.2176621，`units.rs`
+用 CODATA 2018 的 160.2176634。用户那份 OUTCAR 本身是**两段拼的**
+（1..1575 接 1..425，第 1576 步被中断），正好验到重启计数与截断帧丢弃。
 
 ### GPUMD/NEP 导出：`--type` + train/valid/test 划分（2026-08-26，0.3.2）
 

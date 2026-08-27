@@ -3,12 +3,12 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：555 个（全部通过，clippy 零警告）
+## 测试总数：574 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 93（另有 1 个 `#[ignore]`，跑真实 40 MB out，需 `-- --ignored`） |
+| ferro-io | 110（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 195 |
 | ferro-workflow | 23 |
@@ -129,6 +129,17 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   专用类型，否则 analysis 要依赖 io）。**dpdata 的 float32 与 ferro 的 float64
   都收**；`virial → stress` 除以 `|det(box)|`（system 里没有 volume.npy）；
   额外键（`atom_ener` 等）**告警而非静默丢**
+- **`vasp_outcar.rs` / `vasprun.rs`**（2026-08-27）：VASP AIMD 两条路。口径三方
+  实证一致（dpdata 1.0.2、用户的 `private/dp_makedataliu.py`、ASE 的 OUTCAR 解析）：
+  能量取 `free energy TOTEN`（不是 `sigma->0`）；`in kB` 六个数按 VASP 自己的
+  **`XX YY ZZ XY YZ ZX`**（与 extxyz 规格的 `XX YY ZZ YZ XZ XY` 不同），转 eV/Å³
+  **不变号**；体积走 `|det|` 而非三个对角线相乘（后者只对正交胞成立）。
+  **晶胞逐帧各读各的**，缺块的帧丢弃而不继承 —— 定胞下这个 bug 逐位不可见。
+  收敛判据：OUTCAR 读 VASP 自己的 `EDIFF is reached`，vasprun 只能数
+  `<scstep>` 与 `NELM` 比，两者会对同一次运行给出不同的丢帧数，故判据随 stats
+  打出来。vasprun 走 `quick-xml` **流式**，不建 DOM
+- **`aimd.rs`**（2026-08-27）：`AimdStats`（原 `Cp2kOutStats`）+ `AimdFormat` +
+  `sniff`（读头 64 行认横幅）+ `read_aimd_with_stats`
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
 
 ### ferro-structure
@@ -328,6 +339,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | `thiserror` | 2.0 | workspace | |
 | `anyhow` | 1.0 | workspace | |
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 `issues.md` |
+| `quick-xml` | 0.38 | ferro-io | vasprun.xml；净新增 1 个 crate，零传递依赖 |
 | `clap` | 4.5 | ferro-cli | derive |
 | `plotters` | 0.3 | ferro-cli | `default-features = false` + 必须保留 `ttf`；backend 为 `bitmap` |
 | `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；**运行时未验证** |
@@ -365,9 +377,14 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
   info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
-- **`ferro dataset collect` 只读 CP2K**，VASP / QE 待扩；`.out` **未**注册进
-  `io_dispatch`（这个扩展名太通用，不能替 CP2K 占下），故 `ferro convert -i x.out`
-  仍不认识它
+- **`ferro dataset collect` 读 CP2K / VASP OUTCAR / vasprun.xml**，QE 待扩；三者
+  **都未**注册进 `io_dispatch`（`.out` 太通用、`OUTCAR` 根本没有扩展名），故
+  `ferro convert -i OUTCAR` 仍不认识它们
+- **VASP 的变胞（NPT）路径只经手工构造的文本验证**：用户现有的两份真实数据
+  （2000 帧 OUTCAR、425 帧 vasprun）都是定胞 NVT，且用户明确说 VASP 侧不涉及
+  NPT。逐帧读胞的代码有测试钉住「第 2 帧的胞来自第 2 帧」，但没有真实变胞数据
+- **不支持 ML_FF 的 OUTCAR**（`free energy ML TOTEN` / `ML FORCE`）：无样例可验，
+  且 dpdata 对两者用的行偏移不同（14 vs 4），说明差别不止 token 名
 - `dataset` 三步（collect / filter / merge）已齐；几何判据只覆盖最小镜像范围，
   未做多层镜像扫描（小胞体系需要时再补）
 - **merge 的规范序取 (Z, 符号)**，dpdata 取字母序；两者都靠 `type_map.raw`
