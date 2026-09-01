@@ -5,6 +5,70 @@
 
 ## 优先级高
 
+### 近距接触结构的定向构造（2026-09-01 提出）
+
+训练集在**阳离子对的短程区完全空白**，势函数在那儿是纯外推，可以给出任意低的能量
+—— MD 里原子互相穿透就是这么来的。dpgen 高温采样在统计上到不了这个区域（能到的
+那些帧又正好被 `filter` 删掉），只能人为构造。
+
+实测锚点（`tests/43Z43P15A_NPT_5.lammpstrj`，5 帧 / 2004 原子，逐对 g(r) 首个非零 bin）：
+
+| 对 | 训练集见过的最近 r | 第一峰 | 性质 |
+|---|---|---|---|
+| P-P | **2.73 Å** | 2.89 | 阳离子对，隔一个桥氧 |
+| Al-Al | **2.83 Å** | 4.41 | 阳离子对，基本不相邻，洞最深 |
+| P-Al | 2.81 | 3.19 | |
+| Zn-Zn | 2.43 | 5.19 | |
+| P-O / Al-O | 1.41 / 1.57 | 1.51 / 1.75 | 成键对，采样充分，优先级最低 |
+
+**与 `filter` 的冲突**：`Criterion` 四条里几何判据只有 `OoMin`，P-P/Al-Al 的间距
+不在判据内；但 `filter.rs:219` 的 `m > f_max` 会**按力删掉**这些帧 —— 压近的对必然
+给出几十到上百 eV/Å。这一刀迟早要落：要么给这批结构一条绕过 filter 的通道，要么
+让 `f_max` 对它们不生效。
+
+#### 调研结论（2026-09-01，源码逐个读过，不必重查）
+
+**没有任何主流结构工具做「定向压缩指定原子对」**，六个工具全是各向同性随机抖动：
+
+| 工具 | 入口 | 方向 | 模长 | 最小间距 |
+|---|---|---|---|---|
+| ASE | `Atoms.rattle(stdev)` | 逐分量高斯 | 高斯 σ=stdev | 不管，默认 seed=42 |
+| pymatgen | `Structure.perturb(d, min_distance)` | 高斯归一化 | U[min_d, d]，**按半径非按体积** | 不管；`is_valid(tol=0.5)` 事后查 |
+| dpdata | `System.perturb(...)` | 高斯归一化 | `uniform`=`U^(1/3)·d` 球内均匀 · `normal`=σ d/√3 · `const` | 不管 |
+| dpgen | `create_random_disturb.py` | **立方体归一化，偏向 ⟨111⟩** | U[0, dmax) | 不管 |
+| hiphive | `mc_rattle(std, d_min)` | 高斯 MC 累积 | ~`n_iter^0.5·std` | **管**，`erf((d−d_min)/width)` 软接受 |
+| ASE GA（`ase_ga`） | `closest_distances_generator` + `atoms_too_close` | — | — | **管**，blmin=共价半径×ratio，硬拒绝 |
+
+- **dpdata 的 `perturb` 是 dpgen 那个脚本的修正版**：方向偏置与模长分布两个缺陷都改
+  对了。要统计微扰用 dpdata，别用 dpgen 的 `pert_atom`
+- hiphive 与 ASE GA 是唯二管最小间距的，方向**正好相反** —— 它们在阻止近距接触
+- 社区解决排斥壁的两条路是**配合使用**不是二选一：① **二聚体解离曲线**（真空两原子
+  扫 d，通常只放大于某阈值的距离，更短处交给 ZBL）；② **ZBL 混入** —— NEP 内置
+  `zbl`，DeePMD 走 `use_srtab` + `sw_rmin`/`sw_rmax`（按对分列的表格势，按最近邻
+  距离 softmin 平滑切入）。两者**管的不是同一段**：ZBL 管 d→0，数据管 1.5–2.7 Å
+
+#### 已定 / 待定
+
+**已定**：实现落 Rust（`ferro-structure`），不写 Python 脚本。判据不是「Rust 更快」，
+而是这功能要的三件 Ferro 已有、ASE 侧没有：选对用 `ml/geometry.rs::first_shell_cutoff`、
+推整个配位多面体用 `ferro-core::cluster::build_network_graph` 的 former–ligand 邻接、
+事后自检用 `min_pair_distance`。
+
+**待定**（编号沿用 grilling 的轮次，答案未落）：
+
+| # | 决策 | 备选 |
+|---|---|---|
+| Q7 | 选哪一对压 | 全局最近 / 全帧随机 / **第一壳内随机**（截断走 `first_shell_cutoff` 算，别写死） |
+| Q8 | 推的时候动什么 | 只动两个原子 / **整个配位多面体刚性平移** / 推完弛豫。只动两原子会造出「P-P 近 + P-O 键长坏」的混合异常，DFT 的力归因不清 |
+| Q9 | 扫描还是随机距离 | **扫描**（文献一致）：E(d) 单调性是可自动检查的判据 |
+| Q10 | 二聚体 vs 凝聚相压缩 | 文献做前者，用户描述的是后者；建议先 (a) 量洞深再决定投不投 (b) |
+| Q11 | 先上 ZBL 还是先造数据 | 成本不对称：ZBL 是改一行 `input.json`。先封极短程再看中间区漏不漏。答案会改变 Q10 的扫描下界 |
+| Q12 | 「多近算太近」的数从哪来 | **上界取表里「见过的最近 r」**（洞的上边缘），**下界取共价半径和**（ASE GA 的 blmin 口径）。`first_shell_cutoff` 不合适 —— 它找的是第一峰**之后**的极小，比第一峰还大，方向反了 |
+
+依赖 Q7–Q12 的下游：每条扫描取几个点、压完怎么自检没撞出第三个更近的接触。
+
+---
+
 ### DeePMD mixed type 数据的读写（2026-08-26 提出）
 
 现在 `readers/deepmd.rs` / `writers/deepmd.rs` 只做**标准 system**：`type.raw` 一份
@@ -269,7 +333,7 @@ pip install target/wheels/*.whl
 |---|---|
 | `rotate.rs` | 菜单 3、4（绕笛卡尔轴/键/指定向量旋转、旋转矩阵） |
 | `orient.rs` | 菜单 5/6/8/11（对齐键/向量/最长轴/平面到笛卡尔轴或平面） |
-| `disturb.rs` | 菜单 18 / `displace_geom`(1879)（高斯随机位移，默认 σ=0.03 Å） |
+| `disturb.rs` | 菜单 18 / `displace_geom`(1879)（高斯随机位移，默认 σ=0.03 Å）。**注意这里的 `disturb.rs` 是各向同性随机抖动**，与「近距接触结构的定向构造」（优先级高）不是同一件事；两者若都要，得先定是一个文件两个入口还是两个文件 |
 | `select.rs` | `util.f90:985 str2arr`（`"2,3,7-10"` 选择语法） |
 | `substitute.rs` | 无直接对应（Multiwfn 仅 15/16 加删原子） |
 
