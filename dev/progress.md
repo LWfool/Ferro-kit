@@ -165,7 +165,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | `angle.rs` | 键角分布 | `AngleParams::ends` 按用户写的 `-a`/`-c` 顺序分派 cutoff |
 | `vanhove.rs` `vacf.rs` `rotcorr.rs` | 自关联 / 速度自关联 / 转动相关 | |
 | `cube_density.rs` | 3D 密度/速度/力分布 | |
+| `cube_radius.rs` | 硬球占据图 | `ferro map radius` |
+| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 10 个测试，但**没有 CLI 入口**，`lib.rs` 的再导出清单里也漏了它（只能走 `md::calc_cube_jump`）。手册页与 `ferro doc cube-jump` 都在位。见 `plan.md` |
 | `cube_sdf.rs` | 团簇 SDF（Kabsch 对齐） | 用 `ferro_core::build_network_graph`，已去 petgraph |
+| `scattering_data.rs` | X 射线 / 中子散射因子表 | 供 `sq.rs` 加权 |
 
 `gr.rs` 的字段：`rho_g = ⟨ρ_f·g_f⟩`（供 S(q) 逐帧变换重构）、`volume_std`（两遍算法）、
 `rho = N·⟨1/V⟩`。粒子数守恒校验：逐帧比对总数与分组计数，不符即 `Err`。

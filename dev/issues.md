@@ -599,6 +599,19 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 | `convert` 的行数 | 按总行数判断超标 | 其中 **27 行是 `supported_formats()` 生成的**格式表 —— 那正是这页存在的理由。手写部分只有 32 行 |
 | zsh 里量行数 | `for c in "traj gr"; do $F $c; done` | **zsh 默认不对未加引号的变量做分词**（与 bash 相反），`ferro "traj gr"` 成了一个参数，量出来全是 7 行的 clap 报错。要写 `${=c}` |
 
+## 全库简化审计发现的陷阱（2026-09-03）
+
+一次只读的全库扫描，四组待办与行号在 `plan.md`「全库简化审计」。**这里只放
+下次改代码时会再踩的判据。**
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 全局 | 拿 `cargo clippy` 零警告当「没有死代码」 | **库 crate 里 `pub` 项不触发 `dead_code` lint**。审计确认的 250 行死代码全部躲过了它，其中两个整文件（`geometry.rs`、`trajectory_analysis.rs`）还被 `lib.rs` 的 `pub use ...::*` 再导出。查死代码要按名字逐个 grep 全仓引用，不能靠编译器 |
+| `md/cube_density.rs` `cube_radius.rs` `cube_jump.rs` | `build_avg_frame` 直接对三个笛卡尔分量求平均 | **跨周期边界的原子平均出来在盒子中间**，是错的。三份实现逐字相同，所以这个 bug 也有三份。合并时按分数坐标解缠（`cube_jump.rs:83 unwrap_single` 已有现成的做法）再平均 |
+| `readers/` 的 `floats` 辅助 | 看见四个同名函数就想全合成一个 | `vasp.rs` / `chgcar.rs` / `lammps_data.rs` 三个是 `map_while`（**遇到非数字即停**），`vasp_outcar.rs:56` 是 `filter_map`（**跳过非数字继续**）—— 后者是为了 `in kB` 这类行首带标签的行。语义不同，合并会静默改变解析行为 |
+| 化学式渲染 | 以为只有一处 | 有两套：`ml/merge.rs:89 group_name` 省略计数 1（`Al2O4Zn`），`cmd/dataset.rs:614 formula_of` 不省略（`Al1O3Zn1`，测试钉住）。同一份数据在目录名和报错里长得不一样 |
+| `md/mod.rs` 的 `pub use` 与 `lib.rs` 的 `pub use md::{...}` | 以为加了模块就导出了 | **两处手写同一份清单**。`cube_jump` 在 `md/mod.rs` 导出了、在 `lib.rs` 漏了，于是只能走 `ferro_analysis::md::calc_cube_jump`。加分析模块时两处都要看 |
+
 ## network 重构（0.2.1）编码陷阱
 
 | 位置 | 陷阱 | 正确做法 |

@@ -245,6 +245,95 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 
 ## 优先级中
 
+### 全库简化审计（2026-09-03，逐条核实过，不必重查）
+
+一次只读的全库扫描，六个 crate 都读了。**`cargo clippy` 零警告并不说明没有冗余**
+—— 库 crate 里 `pub` 项不触发 `dead_code` lint，下面 A 组 250 行全部躲过了它。
+
+四组按风险从低到高排，互相独立，可分别落地。行号是 2026-09-03 的状态。
+
+#### A 组：确认的死代码（约 250 行，零风险）
+
+全仓（含 `ferro-python`、`scripts/`、`docs/`）零引用，逐条核实过：
+
+| 位置 | 行数 | 说明 |
+|---|---|---|
+| `ferro-analysis/src/trajectory_analysis.rs` | **113**（整文件） | 文件头自称「旧接口，保持编译兼容」。四个 `pub fn` 全零调用，且 `mean_squared_displacement` 是 `md/msd.rs` 的劣化版（无 PBC 解缠、无时间原点平均）；`radius_of_gyration_trajectory` 与 `geometry::radius_of_gyration` 循环体逐字相同 |
+| `ferro-analysis/src/geometry.rs` | **104**（整文件） | 五个 `pub fn` 全零调用。注意 `ferro-io` 那两处 `bounding_box` 是它自己的另一个函数（返回六元组），不是这个 |
+| `ferro-workflow/src/templates.rs` | **25**（整文件） | 两个模板零调用，其中 `orca_sp_template` 是 Ferro 根本不支持的 ORCA |
+| `ferro-cli/src/args/corr.rs` | **8**（整文件） | `CorrMode`，0.2.0 前 `--mode` 时代遗留 |
+| `ferro-cli/src/args/traj.rs:5` | 8 | `TrajMode`，同上。同文件的 `SqWeightingCli` 在用，保留 |
+| `ferro-workflow/Cargo.toml:8` | — | `serde` 是未使用依赖。**已实测**：删掉后 `cargo check -p ferro-workflow` 通过 |
+
+删 `geometry.rs` / `trajectory_analysis.rs` 要连 `ferro-analysis/src/lib.rs` 的
+`pub mod` 与 `pub use ...::*` 一起动（两个 glob 再导出目前什么也没导出去）。
+
+#### B 组：逐字重复的实现（约 90 行，低风险）
+
+1. **`floats(line, min)` × 3** —— `readers/vasp.rs:105`、`chgcar.rs:119`、
+   `lammps_data.rs:199`，前两个连错误文案都一样。⚠️ 第四个
+   `vasp_outcar.rs:56` 是**不同语义**（`filter_map` 而非 `map_while`，为了跳过
+   `in kB` 行首的标签），**不能合进去**
+2. **`build_avg_frame` × 3**（19 行）—— `md/cube_density.rs:135`、
+   `cube_radius.rs:146`、`cube_jump.rs:101`。**附带发现**：三份都不做 PBC 解缠，
+   跨边界原子的平均位置是错的 —— 这个 bug 也复制了三份，合并时一并修
+3. **`lammps_cell_matrix` + `bounding_box` 各 × 2** —— `writers/lammps_dump.rs:134,139`
+   与 `lammps_data.rs:110,119`，只差空白
+4. **`filter_split` / `merge_split`**（`cmd/dataset.rs:924` / `:1220`）七行逐字相同，
+   只是收的参数结构体不同
+5. **测试临时文件辅助 × 13** —— 五个名字（`tmp` / `write_tmp`）、两种返回类型
+   （`String` / `PathBuf`），实现都是同四行。收成 `ferro-io` 的一个
+   `pub(crate) mod testutil`
+
+#### C 组：同一件事的两种写法（不是重复，是不一致）
+
+1. **化学式渲染两套**：`ml/merge.rs:89 group_name` 出 `Al2O4Zn`（计数为 1 时省略
+   下标），`cmd/dataset.rs:614 formula_of` 出 `Al1O3Zn1`（测试 `:1324` 钉住了）。
+   同一份数据在**目录名**和**成分不符的报错**里长得不一样，排查时会误导。
+   统一走哪一套要先定 —— 目录名那套（省略 1）更像化学式，报错那套（不省略）
+   在比对两个组成时对齐更好读
+2. **`write_cube(path, cube)` 参数顺序反了** —— 其余 12 个 writer 全是 `(data, path)`
+3. **`.context(format!(...))` 七处急切求值** —— 六处在文件打开路径上可忽略，但
+   `readers/xyz.rs:42` **在逐原子循环内**，每读一个原子分配一个 String
+
+#### D 组：结构性（收益最大，diff 也最大）
+
+1. **`cmd/traj.rs` 七个 `run_*` 重复同一套八步骨架** —— `expand_inputs` →
+   `init_threads` → println → `map_inputs` → 空检查 → `stack` → `Summary` →
+   `write_all`，约 25 行/个 × 7 ≈ **175 行样板**。**同仓已有先例**：
+   `cmd/map.rs:203` 的 `drive()` 就是这么收的，且不违反「`batch.rs` 对结果类型
+   泛型、不认识任何分析类型」—— 传闭包即可。变化的部分是六处：params 构造、
+   label、calc 闭包与错误文案、`Summary` 的额外列、表名与标题、出图
+2. **`network/mod.rs:330 to_tables` 266 行**造六张表 —— 纯提取成六个
+   `fn *_table(&self) -> (String, Table)`，无逻辑改动。266 行里大头是每张表的
+   `meta_line` 说明文本，提取后每个函数约 40 行
+
+#### 一个要拍板的
+
+`Atom` / `Frame` / `Cell` / `Trajectory` 上有 `derive(Serialize, Deserialize)`，
+但**全仓从来没有序列化过**（无 `serde_json`，无 JSON/YAML 出口，`ferro-python`
+也不用）。作为库的核心类型给下游留着是合理的，但 Ferro 目前没有那个下游。
+删掉可省 `serde` + `serde_derive`，以及 `ferro-core`/`ferro-io`/`ferro-analysis`
+三处 `nalgebra` 的 `serde-serialize` feature（后两个 crate 本身零 serde 用法，
+那个 feature 现在纯属噪声，即使保留 derive 也该摘掉）。
+
+### `ferro map jump`：丢失的 CLI 入口（2026-09-03 审计发现）
+
+`ferro-analysis/src/md/cube_jump.rs` **429 行实现完整、10 个单元测试、已从
+`md/mod.rs` 导出**，但没有任何 CLI 入口，`lib.rs` 的 `pub use md::{...}` 清单里
+也漏了它 —— 0.2.0 把八个 `fe-*` 合并成单个 `ferro` 时，`fe-cube -m jump` 没有
+跟着搬过来。
+
+**这不是死代码，是漏登记的待办**：`docs/src/analysis/cube-jump.md` 开头就写着
+「仅库函数，没有 CLI 入口……待 `map jump` 补上」，`SUMMARY.md` 也挂着这一页，
+即手册已经对用户承诺了。此前 `plan.md` 里却没有这一条。
+
+补的时候按 `map` 现有形状走：`cmd/map.rs:223 run_grid` 的 `drive()` 已经把
+「一输入一 `.cube`」的遍历收好了，`calc_cube_jump` 的签名与
+`calc_cube_density` / `calc_cube_radius` 同形，接一个分支 + 一个 `JumpCmd`
+参数结构体即可。手册页与 `doc.rs` 的 `PAGES` **都已经在位**（`ferro doc cube-jump`
+现在就能打出来），缺的只有 `help.rs` 的帮助页与 `print_map_overview` 里的一行。
+
 ### ferro-cli：REPL / 脚本模式（2026-08-11 由高降中）
 
 `main.rs` 现在是子命令分发器，裸 `ferro` 打印分类总览。REPL 落地时改为

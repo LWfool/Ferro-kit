@@ -103,7 +103,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | 位置 | 内容 |
 |---|---|
 | `ferro-core/src/` | `atom/cell/frame/trajectory`、`table.rs`、`network_type.rs`（`AtomType`）、`cluster.rs`、`spin.rs`、`data/`（元素、化合物、Qn 名单） |
-| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `cube_density` `cube_sdf` |
+| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `cube_density` `cube_radius` `cube_jump`（**无 CLI 入口**，见 `dev/plan.md`）`cube_sdf` `scattering_data` |
 | `ferro-analysis/src/network/` | 单文件 `mod.rs`，六张表的统计 |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
 | `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表）、`merge`（分组、规范序、打乱） |
