@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：574 个（全部通过，clippy 零警告）
+## 测试总数：577 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
 | ferro-io | 110（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
-| ferro-analysis | 195 |
+| ferro-analysis | 198 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 70 + bin 2 + 集成 5） | 77 |
+| ferro-cli（lib 72 + bin 2 + 集成 5） | 79 |
 
 版本号 **0.3.2**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -23,6 +23,16 @@ DeePMD npy 读写、`ml` 模块、`array_order`），没有破坏性变更 —�
 
 `v0.3.2`（未发版）含破坏性改动（`collect` 的产物布局），但按用户要求走 patch 位；
 清单见 `overview.md`。
+
+**2026-09-12 的简化重构**（锚点 tag `v3.2.0-alpha1` = 重构前）：按 `CLAUDE.md`
+的 R1–R6 重做了一次全库审计，落地九个提交。判据换成 Rule of Three 之后，上一轮
+列的重复条目**大半判为有意保留**（两处不到门槛），真正合并的只有三条 ×3 以上的：
+`ferro-io` 的测试临时文件辅助 ×13 → `testutil`、四份 `floats` → `readers/util`、
+三份 `build_avg_frame` → `md/util`。另有 `cmd/traj.rs` 七个 `run_*` 的共享前半段
+收进 `drive()`、`network` 的 `to_tables` 266 行拆成六个建表方法。
+
+这一轮**唯一改变输出的**是 `build_avg_frame` 的 PBC 解缠修复（见下）；
+其余八个提交的 93 个产物逐字节零差异。零调用清单整体搁置，见 `plan.md`。
 
 ## 锚点 tag
 
@@ -168,6 +178,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | `cube_radius.rs` | 硬球占据图 | `ferro map radius` |
 | `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 10 个测试，但**没有 CLI 入口**，`lib.rs` 的再导出清单里也漏了它（只能走 `md::calc_cube_jump`）。手册页与 `ferro doc cube-jump` 都在位。见 `plan.md` |
 | `cube_sdf.rs` | 团簇 SDF（Kabsch 对齐） | 用 `ferro_core::build_network_graph`，已去 petgraph |
+| `util.rs` | `build_avg_frame`（cube 文件头的时间平均帧） | 2026-09-12 由三份逐字相同的实现合并而来，同时修掉三份都带的 PBC bug：解缠在**参考帧 cell** 的分数坐标下做，故没跨边界的原子逐位不变 |
 | `scattering_data.rs` | X 射线 / 中子散射因子表 | 供 `sq.rs` 加权 |
 
 `gr.rs` 的字段：`rho_g = ⟨ρ_f·g_f⟩`（供 S(q) 逐帧变换重构）、`volume_std`（两遍算法）、
@@ -364,11 +375,15 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **REPL / 脚本模式未实现**。`main.rs` 是可用的子命令分发器，裸 `ferro` 打印分类总览
 - 代码库未纳入 rustfmt 管理，格式为手工维护（含刻意的列对齐）；是否采用见 `plan.md`
 - `cube_density.rs:188` 用参考帧体积归一化，NPT 下同类偏差；需先定义「NPT 下 3D 密度图
-  指什么」再动（见 `issues.md`）
+  指什么」再动（见 `issues.md`）。**2026-09-12 修 `build_avg_frame` 的 PBC 解缠时
+  刻意没碰这个口径**：解缠一律走参考帧的 cell，于是没跨边界的原子逐位不变，
+  改动严格局限在那个 bug 上
 - **按标签选型只在单帧成立**：`traj gr -x P_3 -y O_b` 对多帧标注轨迹会被 `calc_gr` 的
   逐类型粒子数守恒守卫拒绝（实测 `P_3`：149/152/150/150/150）。多帧请按元素选
 - `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
   「一输入一产物」相反。**优先级高**
+- **`write_cube` 的参数顺序已于 2026-09-12 改为 `(cube, path)`**，与其余 12 个
+  writer 一致（破坏性，但 0.3.2 未发版且波及面只有仓内 7 处）
 - **`ferro bader` 的三个 `.dat` 写在当前目录**，名字是 `<输入stem>_ACF.dat`。VASP 的
   电荷密度一律叫 `CHGCAR`，故同一目录连跑两个体系后一次静默盖掉前一次。已在帮助页
   与手册告知，`--outdir` 待做（`plan.md` 优先级高）

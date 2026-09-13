@@ -245,77 +245,62 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 
 ## 优先级中
 
-### 全库简化审计（2026-09-03，逐条核实过，不必重查）
+### 零调用清单（2026-09-12 实测快照，判断待定）
 
-一次只读的全库扫描，六个 crate 都读了。**`cargo clippy` 零警告并不说明没有冗余**
-—— 库 crate 里 `pub` 项不触发 `dead_code` lint，下面 A 组 250 行全部躲过了它。
+这不是待删清单。**多数功能还没有进入实际使用、没有调试过**，因此没法区分
+「需求确定但 CLI 层还没接」与「写代码过程中的遗留」——`cube_jump` 就是前者的
+现成例子（429 行实现 + 10 个测试 + 手册页都在位，缺的只是 CLI 入口）。
 
-四组按风险从低到高排，互相独立，可分别落地。行号是 2026-09-03 的状态。
+留这份快照是为了**将来能做 diff**：等这批功能跑起来之后重扫一次，「用起来了」
+与「始终没人碰」自动分开。现在删掉任何一条，都是拿判断力换行数。
 
-#### A 组：确认的死代码（约 250 行，零风险）
+按 2026-09-12 的实测（727 个生产函数，扫描排除 `#[cfg(test)]`）：
 
-全仓（含 `ferro-python`、`scripts/`、`docs/`）零引用，逐条核实过：
-
-| 位置 | 行数 | 说明 |
+| 类别 | 位置 | 行 |
 |---|---|---|
-| `ferro-analysis/src/trajectory_analysis.rs` | **113**（整文件） | 文件头自称「旧接口，保持编译兼容」。四个 `pub fn` 全零调用，且 `mean_squared_displacement` 是 `md/msd.rs` 的劣化版（无 PBC 解缠、无时间原点平均）；`radius_of_gyration_trajectory` 与 `geometry::radius_of_gyration` 循环体逐字相同 |
-| `ferro-analysis/src/geometry.rs` | **104**（整文件） | 五个 `pub fn` 全零调用。注意 `ferro-io` 那两处 `bounding_box` 是它自己的另一个函数（返回六元组），不是这个 |
-| `ferro-workflow/src/templates.rs` | **25**（整文件） | 两个模板零调用，其中 `orca_sp_template` 是 Ferro 根本不支持的 ORCA |
-| `ferro-cli/src/args/corr.rs` | **8**（整文件） | `CorrMode`，0.2.0 前 `--mode` 时代遗留 |
-| `ferro-cli/src/args/traj.rs:5` | 8 | `TrajMode`，同上。同文件的 `SqWeightingCli` 在用，保留 |
-| `ferro-workflow/Cargo.toml:8` | — | `serde` 是未使用依赖。**已实测**：删掉后 `cargo check -p ferro-workflow` 通过 |
+| 整文件零引用 | `ferro-analysis/src/trajectory_analysis.rs`（文件头自称「旧接口，保持编译兼容」；4 个 `pub fn` 里 2 个连测试都没有，2 个只有自己的测试） | 113 |
+| 整文件零引用 | `ferro-analysis/src/geometry.rs`（`distance`/`angle`/`dihedral`/`radius_of_gyration`/`bounding_box`，3 个测试；`docs/src/` 零提及） | 104 |
+| 整文件零引用 | `ferro-workflow/src/templates.rs`（其中 `orca_sp_template` 是 Ferro 不支持的 ORCA） | 25 |
+| 整文件零引用 | `ferro-cli/src/args/corr.rs`（`CorrMode`）· `args/traj.rs:5`（`TrajMode`），0.2.0 前 `--mode` 时代遗留 | 8 + 8 |
+| 单位转换链 | `ferro-core/src/units.rs` 的 `convert_length` / `convert_energy` / `convert_time` **生产零调用**（只有自己的测试），连带 6 个私有方法只服务它们。四个 `convert_*` 里只有 `convert_pressure` 活着（vasprun / vasp_outcar / cp2k_out / filter / dataset 共 5 处） | ~55 |
+| 被绕过的算法 | `ferro-analysis/src/dft/bader_grid.rs:375 max_neargrid` —— 见下一条 | 20 |
+| 取代方案只落实了一半 | `ferro-core/src/network_type.rs:233 display_rank` 生产零调用（`class_rank` 有 3 处）。`progress.md` 说两者一起取代了三个 `*_label_order`，实际只落实了一半 | 8 |
+| 基础访问器 | `Frame::geometric_center` / `atom_mut` / `wrap_all` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames` / `time_at`、`Atom::distance_to`、`Table::n_cols`、`compounds::with_density`、`ClusterResult::ids`、`ml/diagnostics.rs:177,182`、`filter::is_clean`、`qn_elements::has_qn`、`charge_grid::lat_dist_i` | ~50 |
+| 未使用依赖 | `ferro-workflow/Cargo.toml:8` 的 `serde`（实测删掉后 `cargo check -p ferro-workflow` 通过） | — |
 
-删 `geometry.rs` / `trajectory_analysis.rs` 要连 `ferro-analysis/src/lib.rs` 的
-`pub mod` 与 `pub use ...::*` 一起动（两个 glob 再导出目前什么也没导出去）。
+**方法上要记住的一条**：`cargo clippy` 零警告不说明没有死代码 —— 库 crate 里
+`pub` 项不触发 `dead_code` lint，上面全部躲过了它。查零调用要按名字逐个 grep
+全仓，不能靠编译器。
 
-#### B 组：逐字重复的实现（约 90 行，低风险）
+另一个待拍板的：`Atom`/`Frame`/`Cell`/`Trajectory` 上的 `derive(Serialize,
+Deserialize)` 全仓从未序列化过。**但有半条是无条件该做的**：`ferro-io` 与
+`ferro-analysis` 的 `nalgebra` 开了 `serde-serialize` feature 而这两个 crate
+本身零 serde 用法，即使保留 derive 也该摘掉这两个 feature。
 
-1. **`floats(line, min)` × 3** —— `readers/vasp.rs:105`、`chgcar.rs:119`、
-   `lammps_data.rs:199`，前两个连错误文案都一样。⚠️ 第四个
-   `vasp_outcar.rs:56` 是**不同语义**（`filter_map` 而非 `map_while`，为了跳过
-   `in kB` 行首的标签），**不能合进去**
-2. **`build_avg_frame` × 3**（19 行）—— `md/cube_density.rs:135`、
-   `cube_radius.rs:146`、`cube_jump.rs:101`。**附带发现**：三份都不做 PBC 解缠，
-   跨边界原子的平均位置是错的 —— 这个 bug 也复制了三份，合并时一并修
-3. **`lammps_cell_matrix` + `bounding_box` 各 × 2** —— `writers/lammps_dump.rs:134,139`
-   与 `lammps_data.rs:110,119`，只差空白
-4. **`filter_split` / `merge_split`**（`cmd/dataset.rs:924` / `:1220`）七行逐字相同，
-   只是收的参数结构体不同
-5. **测试临时文件辅助 × 13** —— 五个名字（`tmp` / `write_tmp`）、两种返回类型
-   （`String` / `PathBuf`），实现都是同四行。收成 `ferro-io` 的一个
-   `pub(crate) mod testutil`
+### `max_neargrid` 被绕过（2026-09-12 发现）
 
-#### C 组：同一件事的两种写法（不是重复，是不一致）
+三件事实，处置未定：
 
-1. **化学式渲染两套**：`ml/merge.rs:89 group_name` 出 `Al2O4Zn`（计数为 1 时省略
-   下标），`cmd/dataset.rs:614 formula_of` 出 `Al1O3Zn1`（测试 `:1324` 钉住了）。
-   同一份数据在**目录名**和**成分不符的报错**里长得不一样，排查时会误导。
-   统一走哪一套要先定 —— 目录名那套（省略 1）更像化学式，报错那套（不省略）
-   在比对两个组成时对齐更好读
-2. **`write_cube(path, cube)` 参数顺序反了** —— 其余 12 个 writer 全是 `(data, path)`
-3. **`.context(format!(...))` 七处急切求值** —— 六处在文件打开路径上可忽略，但
-   `readers/xyz.rs:42` **在逐原子循环内**，每读一个原子分配一个 String
+- `bader_neargrid:542` 直接调 `step_neargrid` 把上升循环内联了，因而绕过了
+  `max_neargrid`（`bader_grid.rs:375`，20 行）
+- 两个兄弟都在用：`max_ongrid` ← `refine_edge:464`，`max_offgrid` ← `bader_offgrid:744`。
+  三条路里只有 near-grid 这条不对称
+- `dev/bader.md` 有 **3 处**写着 `max_neargrid` 的规格（含 known=1 / known=2
+  两种退出条件那条陷阱），删函数要跟着改
 
-#### D 组：结构性（收益最大，diff 也最大）
+**不预先定处置方向**：Bader 是本仓唯一「对着 Fortran 逆向出来」的模块，删还是
+让 `bader_neargrid` 用回它以恢复三条路对称，该在真要动这个算法的时候连着算法
+一起判断。现在定一个方向，只会让将来的人跳过这次判断。
 
-1. **`cmd/traj.rs` 七个 `run_*` 重复同一套八步骨架** —— `expand_inputs` →
-   `init_threads` → println → `map_inputs` → 空检查 → `stack` → `Summary` →
-   `write_all`，约 25 行/个 × 7 ≈ **175 行样板**。**同仓已有先例**：
-   `cmd/map.rs:203` 的 `drive()` 就是这么收的，且不违反「`batch.rs` 对结果类型
-   泛型、不认识任何分析类型」—— 传闭包即可。变化的部分是六处：params 构造、
-   label、calc 闭包与错误文案、`Summary` 的额外列、表名与标题、出图
-2. **`network/mod.rs:330 to_tables` 266 行**造六张表 —— 纯提取成六个
-   `fn *_table(&self) -> (String, Table)`，无逻辑改动。266 行里大头是每张表的
-   `meta_line` 说明文本，提取后每个函数约 40 行
+### 带速度的测试 fixture（2026-09-12 提出）
 
-#### 一个要拍板的
+`tests/` 两条 fixture **没有速度数据**，于是 `vacf` / `vanhove` / `rotcorr`
+跑不到写文件那一步 —— 这三个命令端到端从来没验过（0.2.0 改名那轮就只验了
+gr/angle/msd/sq/net/map），2026-09-12 的 golden master 基线也盖不到它们。
 
-`Atom` / `Frame` / `Cell` / `Trajectory` 上有 `derive(Serialize, Deserialize)`，
-但**全仓从来没有序列化过**（无 `serde_json`，无 JSON/YAML 出口，`ferro-python`
-也不用）。作为库的核心类型给下游留着是合理的，但 Ferro 目前没有那个下游。
-删掉可省 `serde` + `serde_derive`，以及 `ferro-core`/`ferro-io`/`ferro-analysis`
-三处 `nalgebra` 的 `serde-serialize` feature（后两个 crate 本身零 serde 用法，
-那个 feature 现在纯属噪声，即使保留 derive 也该摘掉）。
+补一条带 `vx vy vz` 列的 LAMMPS dump（5 帧即可）就能把三个命令纳入。
+注意**不能**用全零速度顶替：VACF 在全零速度下是退化情形，跑得通但看不出
+实现对不对，那是假的安全网。
 
 ### `ferro map jump`：丢失的 CLI 入口（2026-09-03 审计发现）
 
