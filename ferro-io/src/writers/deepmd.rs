@@ -206,6 +206,11 @@ pub fn write_deepmd_npy_bounds(
 }
 
 /// `[lo, hi)` frame ranges, the remainder spread instead of left as a stub set.
+///
+/// **`cmd/dataset.rs`'s `set_spans` is the same fourteen lines.**  Two copies is under the
+/// rule-of-three threshold so neither was merged, but the spread-the-remainder rule is
+/// written down as a cross-mode rule in `dev/issues.md` — if you change one, change the
+/// other, or the two paths will split sets differently and nothing will say so.
 fn set_bounds(nf: usize, set_size: usize) -> Vec<(usize, usize)> {
     if set_size == 0 || nf <= set_size {
         return vec![(0, nf)];

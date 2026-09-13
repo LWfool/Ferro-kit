@@ -86,6 +86,11 @@ pub fn composition_key(traj: &Trajectory) -> Vec<String> {
 /// glance and to make `ls` group systems of equal size together. Elements run
 /// alphabetically, which is how a formula is normally read, independent of the
 /// (Z, symbol) order used for `type_map`.
+///
+/// A count of 1 drops its subscript (`Al2O4Zn`), unlike `cmd/dataset.rs`'s `formula_of`
+/// (`Al2O4Zn1`).  The two are deliberately different, not an oversight: this one is read
+/// as a name in an `ls` listing, that one is read stacked against a second formula in a
+/// mismatch message, where the padded columns are what make the difference visible.
 pub fn group_name(traj: &Trajectory) -> String {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     if let Some(f) = traj.frames.first() {
