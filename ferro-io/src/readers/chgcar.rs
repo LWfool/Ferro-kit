@@ -162,11 +162,7 @@ Direct
  10.0  20.0  30.0  40.0  50.0  60.0  70.0  80.0
 ";
 
-    fn tmp(name: &str, content: &str) -> String {
-        let p = std::env::temp_dir().join(name);
-        std::fs::write(&p, content).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as tmp;
 
     #[test]
     fn test_read_frame_atoms() {

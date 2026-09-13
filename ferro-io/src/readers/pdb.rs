@@ -114,11 +114,7 @@ ATOM      1  C   UNK A   1       1.400   0.000   0.000  1.00  0.00           C
 ENDMDL
 ";
 
-    fn write_tmp(name: &str, content: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(name);
-        std::fs::write(&path, content).unwrap();
-        path
-    }
+    use crate::testutil::write_tmp;
 
     #[test]
     fn test_single_frame() {

@@ -1,6 +1,9 @@
 pub mod readers;
 pub mod writers;
 
+#[cfg(test)]
+pub(crate) mod testutil;
+
 pub use readers::{
     read_aimd_with_stats, read_cp2k_out, read_cp2k_out_with_stats,
     read_vasp_outcar, read_vasp_outcar_with_stats, read_vasprun,

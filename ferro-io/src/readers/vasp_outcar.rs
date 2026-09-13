@@ -388,11 +388,7 @@ mod tests {
   free  energy   TOTEN  =       -20.00000000 eV
 "#;
 
-    fn tmp(name: &str, body: &str) -> String {
-        let p = std::env::temp_dir().join(name);
-        std::fs::write(&p, body).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as tmp;
 
     #[test]
     fn reads_two_real_frames() {
