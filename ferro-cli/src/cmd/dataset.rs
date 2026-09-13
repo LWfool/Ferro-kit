@@ -935,9 +935,7 @@ fn print_report(r: &FilterResult) {
     }
     for (name, table) in r.to_tables() {
         println!("  [{name}]");
-        for line in table.to_comment_lines() {
-            println!("    {line}");
-        }
+        print_table(&table);
     }
 }
 

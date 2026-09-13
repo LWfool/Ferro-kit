@@ -170,9 +170,7 @@ fn find_card(lines: &[&str], card: &str) -> Option<usize> {
 }
 
 fn find_card_with_unit(lines: &[&str], card: &str) -> Option<(usize, String)> {
-    lines.iter().position(|l| {
-        l.to_uppercase().split_whitespace().next() == Some(card)
-    }).map(|pos| {
+    find_card(lines, card).map(|pos| {
         let l = lines[pos].to_lowercase();
         let unit = l.find('{')
             .and_then(|s| l.find('}').map(|e| l[s+1..e].trim().to_string()))
