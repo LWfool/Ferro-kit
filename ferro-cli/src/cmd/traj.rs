@@ -22,6 +22,8 @@ use crate::args::traj::SqWeightingCli;
 use crate::batch::{self, Summary};
 use crate::help;
 use crate::plot::{open_plot, plot_angle, plot_gr, plot_msd, plot_sq};
+use ferro_core::Trajectory;
+use std::path::PathBuf;
 
 #[derive(Subcommand, Debug)]
 pub enum TrajCmd {
@@ -263,26 +265,49 @@ pub fn print_help(cmd: &TrajCmd) {
 
 // ─── 各分析 ──────────────────────────────────────────────────────────────────
 
-fn run_gr(c: &GrCmd) -> Result<usize> {
-    let (group_by, pair) = c.select.resolve_pair()?;
-    let params = c.knobs.params(group_by);
-    // label 进文件名,故在读第一个文件之前校验并建目录
-    let out = c.common.out(Some(match &pair {
-        Some((a, b)) => batch::file_label(&[a, b])?,
-        None => batch::file_label::<&str>(&[])?,
-    }));
+/// What [`drive`] hands back: one result per input that parsed, the inputs that did not,
+/// and the prepared output location.
+type Driven<T> = (Vec<(PathBuf, T)>, Vec<batch::Failure>, batch::Output);
+
+/// The half of the pipeline all seven analyses share: prepare the output directory,
+/// expand the inputs, start the thread pool, run one analysis per file, and refuse an
+/// empty result set.
+///
+/// It stops there on purpose.  The second half — the `Summary` columns, the product name
+/// and title, and the plot — differs in every one of the seven, and threading those
+/// through as five more closures would cost more to read than the eight lines it saves.
+/// `cmd/map.rs::drive` draws the line at the same place.
+///
+/// The output directory is built **before the first file is read**, because the label
+/// goes into the file name and a bad selection should fail immediately rather than after
+/// a long batch.
+fn drive<T>(
+    common: &CommonArgs,
+    label: Option<String>,
+    calc: impl Fn(&Trajectory) -> Result<T>,
+) -> Result<Driven<T>> {
+    let out = common.out(label);
     out.prepare()?;
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
+    let inputs = batch::expand_inputs(&common.input)?;
+    common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
 
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        Ok(calc_gr(&traj, &params)?)
-    });
+    let (results, failures) = batch::map_inputs(&inputs, |p| calc(&common.load(p)?));
     if results.is_empty() {
         return Err(anyhow!("every input failed; nothing to write"));
     }
+    Ok((results, failures, out))
+}
+
+fn run_gr(c: &GrCmd) -> Result<usize> {
+    let (group_by, pair) = c.select.resolve_pair()?;
+    let params = c.knobs.params(group_by);
+    let label = match &pair {
+        Some((a, b)) => batch::file_label(&[a, b])?,
+        None => batch::file_label::<&str>(&[])?,
+    };
+    let (results, failures, out) =
+        drive(&c.common, Some(label), |traj| Ok(calc_gr(traj, &params)?))?;
 
     let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
     let tables = batch::stack(&results, |r: &GrResult| Ok(r.to_tables(pair_ref)?))?;
@@ -333,27 +358,17 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
     // S(q) 恒输出全部 partial 与两条 total:主产物是那两条 total,partial 是能加回
     // total 的诊断分解,只留一对反而看不出闭合。故这里没有类型选择,也没有 label 段
     let gr_params = c.knobs.params(GroupBy::Element);
-    let out = c.common.out(None);
-    out.prepare()?;
     let sq_params = SqParams {
         q_min: c.q_min,
         q_max: c.q_max,
         dq: c.dq,
         weighting: c.weighting.clone().into(),
     };
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        let gr = calc_gr(&traj, &gr_params)?;
+    let (results, failures, out) = drive(&c.common, None, |traj| {
+        let gr = calc_gr(traj, &gr_params)?;
         let sq = calc_sq_from_gr(&gr, &sq_params);
         Ok((gr, sq))
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    })?;
 
     let tables =
         batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| Ok(sq.to_tables(gr)?))?;
@@ -408,19 +423,9 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         fit_range,
         ..MsdParams::default()
     };
-    let out = c.common.out(Some(batch::set_label(c.elements.as_ref())?));
-    out.prepare()?;
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        Ok(calc_msd(&traj, &params)?)
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    let label = batch::set_label(c.elements.as_ref())?;
+    let (results, failures, out) =
+        drive(&c.common, Some(label), |traj| Ok(calc_msd(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &MsdResult| Ok(r.to_tables()))?;
 
@@ -487,15 +492,14 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         group_by,
         ends,
     };
-    let out = c.common.out(Some(match slots.iter().all(|s| s.is_some()) {
+    let label = match slots.iter().all(|s| s.is_some()) {
         true => batch::file_label(&[
             slots[0].as_ref().unwrap(),
             slots[1].as_ref().unwrap(),
             slots[2].as_ref().unwrap(),
         ])?,
         false => batch::file_label::<&str>(&[])?,
-    }));
-    out.prepare()?;
+    };
 
     let triplet_keys = slots.iter().all(|s| s.is_some()).then(|| {
         let (a, b, cc) = (
@@ -506,13 +510,8 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         (format!("{a}-{b}-{cc}"), format!("{cc}-{b}-{a}"))
     });
 
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        let mut result = calc_angle(&traj, &params)
+    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
+        let mut result = calc_angle(traj, &params)
             .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
         // 指定三元组时过滤输出（端原子已规范排序，两种顺序均检查）
         if let Some((key1, key2)) = &triplet_keys {
@@ -525,10 +524,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
             }
         }
         Ok(result)
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    })?;
 
     let tables = batch::stack(&results, |r: &AngleResult| Ok(r.to_tables()))?;
 
@@ -575,20 +571,11 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
         tau: c.time.tau,
         elements: c.elements.clone(),
     };
-    let out = c.common.out(Some(batch::set_label(c.elements.as_ref())?));
-    out.prepare()?;
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        calc_vacf(&traj, &params)
+    let label = batch::set_label(c.elements.as_ref())?;
+    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
+        calc_vacf(traj, &params)
             .ok_or_else(|| anyhow!("VACF calc failed (missing velocities or empty trajectory?)"))
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    })?;
 
     let tables = batch::stack(&results, |r: &VacfResult| Ok(r.to_tables()))?;
     let mut summary = Summary::new(&["origins"]);
@@ -615,8 +602,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         .ok_or_else(|| anyhow!("--neighbor is required for rotcorr (run without -i to see help)"))?;
 
     // 两个参数都是必填的(上面已 bail),所以 rotcorr 恒有 label,走不到 "all"
-    let out = c.common.out(Some(batch::file_label(&[&center, &neighbor])?));
-    out.prepare()?;
+    let label = batch::file_label(&[&center, &neighbor])?;
 
     let params = RotCorrParams {
         center,
@@ -626,18 +612,10 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         shift: c.time.shift,
         tau: c.time.tau,
     };
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        calc_rotcorr(&traj, &params)
+    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
+        calc_rotcorr(traj, &params)
             .ok_or_else(|| anyhow!("RotCorr calc failed (no matching atom pairs found?)"))
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    })?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
     let mut summary = Summary::new(&["origins"]);
@@ -667,20 +645,11 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
         elements: c.elements.clone(),
         ..VanHoveParams::default()
     };
-    let out = c.common.out(Some(batch::set_label(c.elements.as_ref())?));
-    out.prepare()?;
-    let inputs = batch::expand_inputs(&c.common.input)?;
-    c.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = c.common.load(p)?;
-        calc_vanhove(&traj, &params)
+    let label = batch::set_label(c.elements.as_ref())?;
+    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
+        calc_vanhove(traj, &params)
             .ok_or_else(|| anyhow!("VanHove calc failed (trajectory too short?)"))
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    })?;
 
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
     // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼
