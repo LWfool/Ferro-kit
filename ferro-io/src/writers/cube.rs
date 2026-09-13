@@ -6,7 +6,7 @@ use ferro_core::CubeData;
 use ferro_core::units::ANG_TO_BOHR;
 use ferro_core::data::elements::by_symbol;
 
-pub fn write_cube(path: &str, cube: &CubeData) -> Result<()> {
+pub fn write_cube(cube: &CubeData, path: &str) -> Result<()> {
     let file = std::fs::File::create(path)
         .with_context(|| format!("cannot create {path}"))?;
     let mut w = BufWriter::new(file);
@@ -93,7 +93,7 @@ mod tests {
         let path = std::env::temp_dir().join("roundtrip.cube");
         let path_str = path.to_str().unwrap();
 
-        write_cube(path_str, &original).expect("write_cube failed");
+        write_cube(&original, path_str).expect("write_cube failed");
         let loaded = read_cube(path_str).expect("read_cube failed");
 
         // 原子数
@@ -121,7 +121,7 @@ mod tests {
     fn test_write_produces_valid_header() {
         let cube = make_test_cube();
         let path = std::env::temp_dir().join("header_check.cube");
-        write_cube(path.to_str().unwrap(), &cube).unwrap();
+        write_cube(&cube, path.to_str().unwrap()).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
         let mut lines = content.lines();
@@ -136,7 +136,7 @@ mod tests {
     fn test_write_atomic_number() {
         let cube = make_test_cube();
         let path = std::env::temp_dir().join("z_check.cube");
-        write_cube(path.to_str().unwrap(), &cube).unwrap();
+        write_cube(&cube, path.to_str().unwrap()).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
         // 原子行在第 7 行（2注释 + 1原点 + 3体素 + 1原子）
