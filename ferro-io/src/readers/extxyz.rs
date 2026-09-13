@@ -384,11 +384,7 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
         format!("{:#}", read_extxyz(&tmp(name, text)).unwrap_err())
     }
 
-    fn tmp(name: &str, c: &str) -> String {
-        let p = std::env::temp_dir().join(name);
-        std::fs::write(&p, c).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as tmp;
 
     #[test]
     fn test_basic() {

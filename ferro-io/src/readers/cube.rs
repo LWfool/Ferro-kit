@@ -253,11 +253,7 @@ comment
  1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0
 ";
 
-    fn write_tmp(name: &str, content: &str) -> String {
-        let p = std::env::temp_dir().join(name);
-        std::fs::write(&p, content).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as write_tmp;
 
     // ── CubeData tests ────────────────────────────────────────────────────────
 

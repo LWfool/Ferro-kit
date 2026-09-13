@@ -245,11 +245,7 @@ Atoms # full
 6 2 2  0.417 9.242  0.587  0.000
 ";
 
-    fn tmp(n: &str, c: &str) -> String {
-        let p = std::env::temp_dir().join(n);
-        std::fs::write(&p, c).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as tmp;
 
     #[test]
     fn test_water_full() {

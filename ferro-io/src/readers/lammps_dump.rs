@@ -296,11 +296,7 @@ ITEM: ATOMS id type element x y z
 2 1 Fe 1.445 1.435 1.435
 ";
 
-    fn tmp(n: &str, c: &str) -> String {
-        let p = std::env::temp_dir().join(n);
-        std::fs::write(&p, c).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as tmp;
 
     const DUMP_VEL: &str = "ITEM: TIMESTEP
 0

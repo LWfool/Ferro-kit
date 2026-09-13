@@ -137,11 +137,7 @@ Direct
   0.0 0.0 0.0
 ";
 
-    fn tmp(name: &str, content: &str) -> String {
-        let p = std::env::temp_dir().join(name);
-        std::fs::write(&p, content).unwrap();
-        p.to_str().unwrap().to_string()
-    }
+    use crate::testutil::write_tmp_str as tmp;
 
     #[test]
     fn test_bcc_fe() {
