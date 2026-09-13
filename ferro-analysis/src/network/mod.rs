@@ -328,105 +328,121 @@ impl NetworkResult {
     /// The `qn` and `qn_partner` tables are **omitted entirely** when no former is a
     /// Qn element: a header-only file reads as "measured, and it was zero".
     pub fn to_tables(&self) -> Vec<(String, Table)> {
-        let mut out = Vec::with_capacity(6);
-
         let mut formers: Vec<&String> = self.qn_dist.keys().collect();
         formers.sort();
         let mut elems: Vec<&String> = self.cn_dist.keys().collect();
         elems.sort();
 
-        // qn：Qn 的**边际**分布 —— 打开文件就能读的那张
-        if !formers.is_empty() {
-            let (mut l_col, mut f_col, mut v_col) = (Vec::new(), Vec::new(), Vec::new());
-            let mut bins = Vec::new();
-            for former in &formers {
-                for (n, b) in &self.qn_dist[*former] {
-                    l_col.push(species_label(former, Some(*n), 0));
-                    f_col.push((*former).clone());
-                    v_col.push(*n as f64);
-                    bins.push(*b);
-                }
-            }
-            let mut t = Table::new();
-            t.push_text("label", l_col).push_text("former", f_col).push_num("qn", v_col);
-            push_bins(&mut t, &bins);
-            for line in [
-                "table   : Qn speciation — one row per (former, Qn).",
-                "          n = HOMOPOLAR connections only (P-O-P for a P), following",
-                "          the literature's Q^n_m / P^n_(mAl,xB): the heteropolar ones",
-                "          are the m values in network_qn_partner.csv, and the TOTAL",
-                "          bridge count is n + Sum(m), not n.  A P-Q1 row therefore",
-                "          still contains phosphorus with any number of P-O-Al bridges",
-                "label   : structural unit, <element>-Q<n>.  NOTE this is the UNIT",
-                "          vocabulary; the exported trajectory labels the same site as",
-                "          P_2 (atom vocabulary), which is what -x/-y select on",
-                "former  : network former element",
-                "qn      : homopolar connections on the site (the literature's n)",
-                "count   : occurrences summed over all frames",
-                "fraction: mean over frames of that frame's fraction of this former",
-                "sd      : sample std (ddof=1) of the per-frame fraction; a spread",
-                "          between snapshots, NOT a standard error — MD frames correlate",
-                "note    : formers described by coordination number instead (Al, …) are",
-                "          absent here by design; read network_coordination.csv for them",
-            ] { t.meta_line(line); }
-            out.push(("qn".to_string(), t));
-        }
+        let mut out = Vec::with_capacity(6);
+        out.extend(self.qn_table(&formers));
+        out.extend(self.qn_partner_table());
+        out.push(self.ligand_type_table());
+        out.push(self.coordination_table(&elems));
+        out.push(self.composition_table(&formers, &elems));
+        out.push(self.linkage_table());
+        out
+    }
 
-        // qn_partner：Qn × 伙伴元素的**联合**分布，文献的 Q^n(mAl) 记号
-        if !self.qn_partner_dist.is_empty() {
-            let partner_elems: Vec<String> = {
-                let mut s: Vec<String> = self.qn_partner_dist.values()
-                    .flat_map(|rows| rows.iter().flat_map(|((_, to), _)| to.keys().cloned()))
-                    .collect();
-                s.sort();
-                s.dedup();
-                s
-            };
-            let mut pf: Vec<&String> = self.qn_partner_dist.keys().collect();
-            pf.sort();
-            let (mut l_col, mut f_col, mut v_col) = (Vec::new(), Vec::new(), Vec::new());
-            let mut m_cols: Vec<Vec<f64>> = vec![Vec::new(); partner_elems.len()];
-            let mut bins = Vec::new();
-            for former in &pf {
-                for ((n, to), b) in &self.qn_partner_dist[*former] {
-                    l_col.push(species_label(former, Some(*n), 0));
-                    f_col.push((*former).clone());
-                    v_col.push(*n as f64);
-                    for (i, p) in partner_elems.iter().enumerate() {
-                        m_cols[i].push(to.get(p).copied().unwrap_or(0) as f64);
-                    }
-                    bins.push(*b);
-                }
-            }
-            let mut t = Table::new();
-            t.push_text("label", l_col).push_text("former", f_col).push_num("qn", v_col);
-            for (p, col) in partner_elems.iter().zip(m_cols) {
-                t.push_num(format!("m_{p}"), col);
-            }
-            push_bins(&mut t, &bins);
-            for line in [
-                "table   : Q^n_m — the Qn distribution split by partner element.",
-                "          network_qn.csv is this table's marginal over the m_ columns.",
-                "label   : structural unit, <element>-Q<n>; repeats across the rows",
-                "          that share a Qn.  The partner split is kept in columns",
-                "          rather than folded into the label: with two heteropolar",
-                "          partners the label would grow to P-Q1(2Al,1B), and these",
-                "          columns are what you filter on anyway",
-                "qn      : homopolar connections on the site (the literature's n)",
-                "m_<X>   : HETEROPOLAR connections to element X (the literature's m).",
-                "          The former's own element has no column: it would repeat qn",
-                "          exactly.  Total bridging connections = qn + Sum(m_).",
-                "          A ligand shared by 3 formers connects this site to TWO",
-                "          partners and contributes 2, so qn + Sum(m_) can exceed the",
-                "          number of bridging oxygens — see n_bo in the composition",
-                "          table for that count",
-                "count/fraction/sd: as in network_qn.csv, but re-accumulated at this",
-                "          granularity — sd cannot be summed across partner rows,",
-                "          the terms are correlated",
-            ] { t.meta_line(line); }
-            out.push(("qn_partner".to_string(), t));
+    /// `qn` — the **marginal** Qn distribution.  `None` when no former is a Qn element.
+    fn qn_table(&self, formers: &[&String]) -> Option<(String, Table)> {
+        if formers.is_empty() {
+            return None;
         }
+        let (mut l_col, mut f_col, mut v_col) = (Vec::new(), Vec::new(), Vec::new());
+        let mut bins = Vec::new();
+        for former in formers {
+            for (n, b) in &self.qn_dist[*former] {
+                l_col.push(species_label(former, Some(*n), 0));
+                f_col.push((*former).clone());
+                v_col.push(*n as f64);
+                bins.push(*b);
+            }
+        }
+        let mut t = Table::new();
+        t.push_text("label", l_col).push_text("former", f_col).push_num("qn", v_col);
+        push_bins(&mut t, &bins);
+        for line in [
+            "table   : Qn speciation — one row per (former, Qn).",
+            "          n = HOMOPOLAR connections only (P-O-P for a P), following",
+            "          the literature's Q^n_m / P^n_(mAl,xB): the heteropolar ones",
+            "          are the m values in network_qn_partner.csv, and the TOTAL",
+            "          bridge count is n + Sum(m), not n.  A P-Q1 row therefore",
+            "          still contains phosphorus with any number of P-O-Al bridges",
+            "label   : structural unit, <element>-Q<n>.  NOTE this is the UNIT",
+            "          vocabulary; the exported trajectory labels the same site as",
+            "          P_2 (atom vocabulary), which is what -x/-y select on",
+            "former  : network former element",
+            "qn      : homopolar connections on the site (the literature's n)",
+            "count   : occurrences summed over all frames",
+            "fraction: mean over frames of that frame's fraction of this former",
+            "sd      : sample std (ddof=1) of the per-frame fraction; a spread",
+            "          between snapshots, NOT a standard error — MD frames correlate",
+            "note    : formers described by coordination number instead (Al, …) are",
+            "          absent here by design; read network_coordination.csv for them",
+        ] { t.meta_line(line); }
+        Some(("qn".to_string(), t))
+    }
 
+    /// `qn_partner` — the **joint** Qn × partner-element distribution, the literature's Q^n(mAl).
+    fn qn_partner_table(&self) -> Option<(String, Table)> {
+        if self.qn_partner_dist.is_empty() {
+            return None;
+        }
+        let partner_elems: Vec<String> = {
+            let mut s: Vec<String> = self.qn_partner_dist.values()
+                .flat_map(|rows| rows.iter().flat_map(|((_, to), _)| to.keys().cloned()))
+                .collect();
+            s.sort();
+            s.dedup();
+            s
+        };
+        let mut pf: Vec<&String> = self.qn_partner_dist.keys().collect();
+        pf.sort();
+        let (mut l_col, mut f_col, mut v_col) = (Vec::new(), Vec::new(), Vec::new());
+        let mut m_cols: Vec<Vec<f64>> = vec![Vec::new(); partner_elems.len()];
+        let mut bins = Vec::new();
+        for former in &pf {
+            for ((n, to), b) in &self.qn_partner_dist[*former] {
+                l_col.push(species_label(former, Some(*n), 0));
+                f_col.push((*former).clone());
+                v_col.push(*n as f64);
+                for (i, p) in partner_elems.iter().enumerate() {
+                    m_cols[i].push(to.get(p).copied().unwrap_or(0) as f64);
+                }
+                bins.push(*b);
+            }
+        }
+        let mut t = Table::new();
+        t.push_text("label", l_col).push_text("former", f_col).push_num("qn", v_col);
+        for (p, col) in partner_elems.iter().zip(m_cols) {
+            t.push_num(format!("m_{p}"), col);
+        }
+        push_bins(&mut t, &bins);
+        for line in [
+            "table   : Q^n_m — the Qn distribution split by partner element.",
+            "          network_qn.csv is this table's marginal over the m_ columns.",
+            "label   : structural unit, <element>-Q<n>; repeats across the rows",
+            "          that share a Qn.  The partner split is kept in columns",
+            "          rather than folded into the label: with two heteropolar",
+            "          partners the label would grow to P-Q1(2Al,1B), and these",
+            "          columns are what you filter on anyway",
+            "qn      : homopolar connections on the site (the literature's n)",
+            "m_<X>   : HETEROPOLAR connections to element X (the literature's m).",
+            "          The former's own element has no column: it would repeat qn",
+            "          exactly.  Total bridging connections = qn + Sum(m_).",
+            "          A ligand shared by 3 formers connects this site to TWO",
+            "          partners and contributes 2, so qn + Sum(m_) can exceed the",
+            "          number of bridging oxygens — see n_bo in the composition",
+            "          table for that count",
+            "count/fraction/sd: as in network_qn.csv, but re-accumulated at this",
+            "          granularity — sd cannot be summed across partner rows,",
+            "          the terms are correlated",
+        ] { t.meta_line(line); }
+        Some(("qn_partner".to_string(), t))
+    }
+
+    /// `ligand_type` — partner elements as data columns, not encoded into the label.
+    fn ligand_type_table(&self) -> (String, Table) {
         // ligand_type：伙伴元素以数据列给出,不编码进标签
         let (mut lbl, mut ty) = (Vec::new(), Vec::new());
         let (mut fa, mut fb) = (Vec::new(), Vec::new());
@@ -457,12 +473,15 @@ impl NetworkResult {
             "          literature's BO-fraction convention.  In a two-ligand system",
             "          (--Al-O and --Al-F) O_b is a fraction of O, not of O+F",
         ] { t.meta_line(line); }
-        out.push(("ligand_type".to_string(), t));
+        ("ligand_type".to_string(), t)
+    }
 
+    /// `coordination` — formers and modifiers share one table.
+    fn coordination_table(&self, elems: &[&String]) -> (String, Table) {
         // coordination：形成子与修饰子共用一张表
         let (mut e_col, mut v_col) = (Vec::new(), Vec::new());
         let mut bins = Vec::new();
-        for elem in &elems {
+        for elem in elems {
             for (v, b) in &self.cn_dist[*elem] {
                 e_col.push((*elem).clone());
                 v_col.push(*v as f64);
@@ -483,21 +502,24 @@ impl NetworkResult {
             "fraction: denominator is that element's atom count, so it sums to 1",
             "          within each element",
         ] { t.meta_line(line); }
-        out.push(("coordination".to_string(), t));
+        ("coordination".to_string(), t)
+    }
 
+    /// `composition` — one row per species, the denominator always *that element*'s atom count.
+    fn composition_table(&self, formers: &[&String], elems: &[&String]) -> (String, Table) {
         // composition：一物种一行,分母恒为**该元素**的原子数。
         // 每个元素只出现一种刻画:Qn 形成子出 Qn,其余形成子与修饰子出配位数,
         // 配体出类型。故「每个元素的 fraction 求和为 1」是一条可核对的恒等式
         let (mut l_col, mut e_col) = (Vec::new(), Vec::new());
         let mut bins = Vec::new();
-        for former in &formers {
+        for former in formers {
             for (n, b) in &self.qn_dist[*former] {
                 l_col.push(species_label(former, Some(*n), 0));
                 e_col.push((*former).clone());
                 bins.push(*b);
             }
         }
-        for elem in &elems {
+        for elem in elems {
             // Qn 形成子已由上一段给出,不再按配位数重复一遍
             if self.qn_dist.contains_key(*elem) { continue; }
             for (v, b) in &self.cn_dist[*elem] {
@@ -537,8 +559,11 @@ impl NetworkResult {
             "means   : mean Qn and mean CN are in the [inputs] block above, one line",
             "          per input; they are per-input scalars, not rows",
         ] { t.meta_line(line); }
-        out.push(("composition".to_string(), t));
+        ("composition".to_string(), t)
+    }
 
+    /// `linkage` — one row per (ligand × the state of both ends) combination.
+    fn linkage_table(&self) -> (String, Table) {
         // linkage：一行一种「配体 × 两端位点状态」的组合
         let mut txt: [Vec<String>; 4] = Default::default();
         let mut nums: [Vec<f64>; 5] = Default::default();
@@ -589,9 +614,7 @@ impl NetworkResult {
             "          involvement.  Both ends carry both numbers, so \"what is the",
             "          homopolar count of that 4-coordinate Al\" is answerable",
         ] { t.meta_line(line); }
-        out.push(("linkage".to_string(), t));
-
-        out
+        ("linkage".to_string(), t)
     }
 }
 
