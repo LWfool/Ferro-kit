@@ -1,6 +1,7 @@
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{ensure, Context, Result};
+use super::util::floats;
 
 pub fn read_poscar(path: &str) -> Result<Trajectory> {
     let content = std::fs::read_to_string(path)
@@ -102,13 +103,6 @@ fn parse_poscar(content: &str) -> Result<Trajectory> {
     Ok(traj)
 }
 
-fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
-    let v: Vec<f64> = line.split_whitespace()
-        .map_while(|s| s.parse::<f64>().ok())
-        .collect();
-    ensure!(v.len() >= min, "expected ≥{min} floats, got {}", v.len());
-    Ok(v)
-}
 
 #[cfg(test)]
 mod tests {
