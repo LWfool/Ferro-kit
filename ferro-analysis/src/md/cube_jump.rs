@@ -13,10 +13,11 @@
 //!
 //! Parallelism: per-atom par_iter; each atom independently unwraps and accumulates, then results are reduced.
 
-use ferro_core::{CubeData, Frame, Trajectory};
+use ferro_core::{CubeData, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use rayon::prelude::*;
+use super::util::build_avg_frame;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -97,27 +98,6 @@ fn voxel_idx(fx: f64, fy: f64, fz: f64, nx: usize, ny: usize, nz: usize) -> (usi
     (ix, iy, iz)
 }
 
-/// 构造时间平均帧（供 cube 文件头使用）。
-fn build_avg_frame(traj: &Trajectory) -> Frame {
-    let ref_f = traj.frames.first().unwrap();
-    let n = ref_f.atoms.len();
-    let mut pos_sum = vec![Vector3::<f64>::zeros(); n];
-    let mut valid = 0usize;
-    for frame in &traj.frames {
-        if frame.atoms.len() != n { continue; }
-        for (s, a) in pos_sum.iter_mut().zip(frame.atoms.iter()) {
-            *s += a.position;
-        }
-        valid += 1;
-    }
-    let mut out = ref_f.clone();
-    if valid > 0 {
-        for (a, s) in out.atoms.iter_mut().zip(pos_sum.iter()) {
-            a.position = s / valid as f64;
-        }
-    }
-    out
-}
 
 // ─── 主函数 ──────────────────────────────────────────────────────────────────
 

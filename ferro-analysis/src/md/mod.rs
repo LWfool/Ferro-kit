@@ -20,6 +20,8 @@ pub mod cube_radius;
 pub mod cube_sdf;
 pub mod scattering_data;
 
+pub(crate) mod util;
+
 pub use gr::{GrParams, GrResult, GroupBy, calc_gr};
 pub use sq::{SqParams, SqResult, SqWeighting, calc_sq_from_gr};
 pub use msd::{MsdParams, MsdResult, calc_msd};
