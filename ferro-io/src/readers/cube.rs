@@ -19,6 +19,7 @@ use anyhow::{bail, Context, Result};
 use ferro_core::{Atom, Cell, ChargeGrid, CubeData, Frame};
 use ferro_core::units::BOHR_TO_ANG;
 use ferro_core::data::elements::by_number;
+use super::util::floats as parse_floats;
 
 // ─── 内部中间结构 ─────────────────────────────────────────────────────────────
 
@@ -205,15 +206,6 @@ fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
-fn parse_floats(line: &str, min: usize) -> Result<Vec<f64>> {
-    let v: Vec<f64> = line.split_whitespace()
-        .map_while(|s| s.parse::<f64>().ok())
-        .collect();
-    if v.len() < min {
-        bail!("expected ≥{min} numbers on line '{line}', got {}", v.len());
-    }
-    Ok(v)
-}
 
 // ─── 测试 ─────────────────────────────────────────────────────────────────────
 

@@ -17,6 +17,8 @@ pub mod deepmd;
 pub mod qe;
 pub mod cube;
 
+pub(crate) mod util;
+
 pub use xyz::read_xyz;
 pub use pdb::read_pdb;
 pub use cif::read_cif;

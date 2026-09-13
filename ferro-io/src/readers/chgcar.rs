@@ -6,6 +6,7 @@
 use ferro_core::{Atom, Cell, ChargeGrid, Frame};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{ensure, Context, Result};
+use super::util::floats;
 
 /// Read a VASP CHGCAR file, returning the structural frame and charge density grid.
 pub fn read_chgcar(path: &str) -> Result<(Frame, ChargeGrid)> {
@@ -116,13 +117,6 @@ fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
     Ok((frame, chg))
 }
 
-fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
-    let v: Vec<f64> = line.split_whitespace()
-        .map_while(|s| s.parse::<f64>().ok())
-        .collect();
-    ensure!(v.len() >= min, "expected ≥{min} floats, got {}", v.len());
-    Ok(v)
-}
 
 #[cfg(test)]
 mod tests {

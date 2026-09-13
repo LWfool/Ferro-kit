@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{Context, Result};
+use super::util::floats;
 
 pub fn read_lammps_data(path: &str) -> Result<Trajectory> {
     let content = std::fs::read_to_string(path)
@@ -196,13 +197,6 @@ fn is_section_header(line: &str) -> bool {
     || line.starts_with("Atoms #")
 }
 
-fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
-    let v: Vec<f64> = line.split_whitespace()
-        .map_while(|s| s.parse::<f64>().ok())
-        .collect();
-    anyhow::ensure!(v.len() >= min, "expected ≥{min} floats in {line:?}");
-    Ok(v)
-}
 
 fn element_from_mass(mass: f64) -> &'static str {
     ferro_core::data::elements::ELEMENTS
