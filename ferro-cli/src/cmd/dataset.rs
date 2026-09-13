@@ -611,6 +611,10 @@ fn symbols_of(traj: &Trajectory) -> Vec<String> {
 }
 
 /// `Al32O64Zn16` from a per-atom element sequence, for the mismatch message.
+///
+/// Counts of 1 keep their subscript here, unlike `ml/merge.rs`'s `group_name` — the two
+/// formulas in a mismatch message are read one above the other, and dropping the `1`s
+/// misaligns the element that differs.  Directory names have the opposite need.
 fn formula_of(symbols: &[String]) -> String {
     let mut count: BTreeMap<&str, usize> = BTreeMap::new();
     for s in symbols {
@@ -1030,6 +1034,9 @@ const DEFAULT_SET_SIZE: usize = 400;
 /// remainder is spread rather than left at the end: 500 frames at 400 gives
 /// 250 + 250, not 400 + 100 — the lopsided pair is worse for both training
 /// balance and for using a set as a validation split.
+///
+/// **`ferro-io`'s `writers/deepmd.rs::set_bounds` is the same fourteen lines** — see the
+/// note there before changing either.
 fn set_spans(n: usize, set_size: usize) -> Vec<(usize, usize)> {
     if set_size == 0 || n <= set_size {
         return vec![(0, n)];
