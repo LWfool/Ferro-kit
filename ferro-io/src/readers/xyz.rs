@@ -39,7 +39,7 @@ pub fn read_xyz(path: &str) -> Result<Trajectory> {
         for i in 0..n_atoms {
             let line = lines
                 .next()
-                .context(format!("missing atom line {}", i + 1))?
+                .with_context(|| format!("missing atom line {}", i + 1))?
                 .context("read error")?;
             let parts: Vec<&str> = line.split_whitespace().collect();
             anyhow::ensure!(

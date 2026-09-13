@@ -341,7 +341,7 @@ fn build_family(acc: ChgAcc, voxel_size: f64, half_n: usize) -> ChgSdfFamily {
     let spacing = Matrix3::from_diagonal(&Vector3::repeat(voxel_size));
 
     // cube 文件头：参考团簇原子（局部坐标，锚在原点）
-    let ref_frame = build_ref_frame(&acc.reference, origin);
+    let ref_frame = build_ref_frame(&acc.reference);
 
     let rmsd_stats = ChgRmsdStats {
         mean: if n_clusters > 1 { acc.rmsd_sum / (n_clusters - 1) as f64 } else { 0.0 },
@@ -361,7 +361,7 @@ fn build_family(acc: ChgAcc, voxel_size: f64, half_n: usize) -> ChgSdfFamily {
 }
 
 /// 构建参考团簇的 Frame（用于 cube 文件原子头），坐标为局部笛卡尔（锚在原点）。
-fn build_ref_frame(snapshot: &ClusterSnapshot, _origin: Vector3<f64>) -> Frame {
+fn build_ref_frame(snapshot: &ClusterSnapshot) -> Frame {
     use crate::md::cube_sdf::type_to_element;
     let mut frame = Frame::new();
     for (t, &pos) in snapshot.types.iter().zip(&snapshot.positions) {

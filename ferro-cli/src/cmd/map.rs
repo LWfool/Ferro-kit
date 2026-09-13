@@ -235,7 +235,7 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
         let name = mode_name(&mode);
         let file = if stem.is_empty() { format!("{name}.cube") } else { format!("{name}_{stem}.cube") };
         let path = out.join_str(&file);
-        write_cube(&path, &result.cube)?;
+        write_cube(&result.cube, &path)?;
         println!(
             "Cube ({name}) -> {path}  [{} frames, {} atoms]",
             result.n_frames, result.n_atoms
@@ -258,7 +258,7 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
 
         let file = if stem.is_empty() { "radius.cube".to_string() } else { format!("radius_{stem}.cube") };
         let path = out.join_str(&file);
-        write_cube(&path, &result.cube)?;
+        write_cube(&result.cube, &path)?;
         println!(
             "Cube (radius={:.3}Å) -> {path}  [{} frames, {} atoms]",
             params.radius, result.n_frames, result.n_atoms
@@ -301,7 +301,7 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
             let mut labels: Vec<_> = family.grids.keys().collect();
             labels.sort();
             for label in &labels {
-                write_cube(&out.join_str(&format!("{fam_prefix}_{label}.cube")), &family.grids[*label])?;
+                write_cube(&family.grids[*label], &out.join_str(&format!("{fam_prefix}_{label}.cube")))?;
                 total_files += 1;
             }
             println!(
@@ -364,7 +364,7 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     for (fam_idx, family) in families.iter().enumerate() {
         let fam_stem = if multi_family { format!("{stem}_fam{fam_idx}") } else { stem.to_string() };
         let path = out.join_str(&format!("{}_Q{}.cube", fam_stem, c.cluster.qn));
-        write_cube(&path, &family.cube)?;
+        write_cube(&family.cube, &path)?;
         total_files += 1;
         println!(
             "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {path}",
