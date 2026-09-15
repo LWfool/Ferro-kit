@@ -371,7 +371,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - **`ferro-python` 能编译**（2026-08-12 复核：`cargo clean && cargo check` 干净通过）。
   真问题是它作为独立 workspace 被主 workspace 的 `cargo build/test/clippy` 全部跳过，
   断裂不会被自动发现；改公共 API 后须手动补跑。待办是 **pyo3 0.29 的运行时验证**
-  （本机无 maturin），优先级中
+  （本机无 maturin），优先级低
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入；
   无 CLI / Python 入口，只能作为库函数调用
 - `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化为静态表
