@@ -255,21 +255,6 @@ gr/angle/msd/sq/net/map），2026-09-12 的 golden master 基线也盖不到它�
 参数结构体即可。手册页与 `doc.rs` 的 `PAGES` **都已经在位**（`ferro doc cube-jump`
 现在就能打出来），缺的只有 `help.rs` 的帮助页与 `print_map_overview` 里的一行。
 
-### ferro-cli：REPL / 脚本模式（2026-08-11 由高降中）
-
-`main.rs` 现在是子命令分发器，裸 `ferro` 打印分类总览。REPL 落地时改为
-**tty 进 REPL、管道读 stdin**（`python`/`node`/`irb` 的惯例；`isatty` 判断，CI 里
-`echo ... | ferro` 不会挂住）。
-
-- 依赖 `rustyline`；三种模式：交互 REPL、脚本文件（`ferro -f workflow.mf`）、管道输入
-- **必须在同一进程内链接全部命令**：`read` 之后轨迹要留在内存里给后续命令用，
-  这正是 REPL 相对 shell 循环的全部价值。这条也是 0.2.0 决定合并成单二进制的理由 ——
-  子进程分发做不到状态保持，而链接进来之后再包一层 `fe-*` 前端就是重复
-- 脚本语法应建在**已经定型**的子命令树上（`gr -a P -b O` 直接复用 `cmd::traj` 的
-  参数结构体），不要另起一套
-- 注意与「批处理输入」是两件事：这里是**命令**的批处理（一个脚本跑多条命令），
-  那里是**输入文件**的批处理（一条命令跑多个轨迹）。两者可叠加但互不依赖
-
 ### VASP：ML_FF 的 OUTCAR 与 io_dispatch 注册（2026-08-27 提出）
 
 两件被这一轮明确划在范围外的事：
@@ -300,33 +285,6 @@ XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素�
 CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
 文件里），故这条与应力无关，是纯粹的标签映射问题。
 
-### ferro-python：pyo3 0.29 运行时验证
-
-0.21 → 0.29 只做了类型层验证。本机无 maturin，`cargo build` 在 macOS link 阶段过不了
-（`extension-module` 需 `-undefined dynamic_lookup`）：
-
-```bash
-pip install maturin
-cd ferro-python && maturin build --interpreter "$(which python)"
-pip install target/wheels/*.whl
-```
-
-冒烟测试要覆盖：读 xyz/cif/lammpstrj、`supercell`、`write`、
-**新拆的 `gr_pair` / `gr_all`（含 `by="label"`）**、`msd`。
-
-### 是否采用 rustfmt（待定，暂缓）
-
-收益：把格式从代码审查面里移除。代价三点：
-
-1. 一次性约 80 文件的大 diff，`git blame` 在这些行上全部指向那一次提交
-2. 会拆掉现有的刻意列对齐（`gr.rs` 的 `WelfordStats`、`angle.rs` 的 `CellList`、
-   `units.rs` 的枚举表）
-3. 生成文件要显式排除：`rustfmt.toml` 的 `ignore` 仅 nightly 可用，stable 上需给
-   `cp2k_basis_db.rs` 的静态表加 `#[rustfmt::skip]`
-
-若采用：单独一次纯格式提交（`style: adopt rustfmt`）+ 固定 `rustfmt.toml`，
-不要混进特性或依赖升级提交。
-
 ### 搁置项
 
 - **`vanhove` 加 `tau` 列**：现在一次只算一个 τ、写在 `#` 头里。加列后将来支持多 τ 是
@@ -355,6 +313,48 @@ pip install target/wheels/*.whl
 ---
 
 ## 优先级低
+
+### ferro-cli：REPL / 脚本模式（2026-08-11 由高降中，2026-09-15 降低）
+
+`main.rs` 现在是子命令分发器，裸 `ferro` 打印分类总览。REPL 落地时改为
+**tty 进 REPL、管道读 stdin**（`python`/`node`/`irb` 的惯例；`isatty` 判断，CI 里
+`echo ... | ferro` 不会挂住）。
+
+- 依赖 `rustyline`；三种模式：交互 REPL、脚本文件（`ferro -f workflow.mf`）、管道输入
+- **必须在同一进程内链接全部命令**：`read` 之后轨迹要留在内存里给后续命令用，
+  这正是 REPL 相对 shell 循环的全部价值。这条也是 0.2.0 决定合并成单二进制的理由 ——
+  子进程分发做不到状态保持，而链接进来之后再包一层 `fe-*` 前端就是重复
+- 脚本语法应建在**已经定型**的子命令树上（`gr -a P -b O` 直接复用 `cmd::traj` 的
+  参数结构体），不要另起一套
+- 注意与「批处理输入」是两件事：这里是**命令**的批处理（一个脚本跑多条命令），
+  那里是**输入文件**的批处理（一条命令跑多个轨迹）。两者可叠加但互不依赖
+
+### ferro-python：pyo3 0.29 运行时验证（2026-09-15 由中降低）
+
+0.21 → 0.29 只做了类型层验证。本机无 maturin，`cargo build` 在 macOS link 阶段过不了
+（`extension-module` 需 `-undefined dynamic_lookup`）：
+
+```bash
+pip install maturin
+cd ferro-python && maturin build --interpreter "$(which python)"
+pip install target/wheels/*.whl
+```
+
+冒烟测试要覆盖：读 xyz/cif/lammpstrj、`supercell`、`write`、
+**新拆的 `gr_pair` / `gr_all`（含 `by="label"`）**、`msd`。
+
+### 是否采用 rustfmt（待定，暂缓；2026-09-15 由中降低）
+
+收益：把格式从代码审查面里移除。代价三点：
+
+1. 一次性约 80 文件的大 diff，`git blame` 在这些行上全部指向那一次提交
+2. 会拆掉现有的刻意列对齐（`gr.rs` 的 `WelfordStats`、`angle.rs` 的 `CellList`、
+   `units.rs` 的枚举表）
+3. 生成文件要显式排除：`rustfmt.toml` 的 `ignore` 仅 nightly 可用，stable 上需给
+   `cp2k_basis_db.rs` 的静态表加 `#[rustfmt::skip]`
+
+若采用：单独一次纯格式提交（`style: adopt rustfmt`）+ 固定 `rustfmt.toml`，
+不要混进特性或依赖升级提交。
 
 ### `ferro doc` 的 markdown 渲染（2026-08-26 提出，已量过代价）
 
