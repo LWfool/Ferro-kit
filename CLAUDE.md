@@ -62,8 +62,12 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 `ferro-python` 是独立 workspace，需**手动同步**。
 
 **只在用户明确要求时才动版本号**，不要每次改代码就自动 +1。
-当前 `0.3.2` **未发版**，其中含破坏性改动（`dataset collect` 的产物布局）却按
-用户要求走了 patch 位 —— 与 `v0.2.1` 同类例外。清单见 `dev/overview.md`。
+当前 `0.3.3`，**`0.3.2` 与 `0.3.3` 都未发版**，两批都含破坏性改动却按用户要求
+走了 patch 位（0.3.2 是 `dataset collect` 的产物布局，0.3.3 是 `-o` 的语义）——
+与 `v0.2.1` 同类例外。清单见 `dev/overview.md`。
+
+**`-o` 恒为路径**：写多个产物的命令指目录，`convert` / `job` 指文件；批次标记走
+`-s/--suffix`。目录缺失时经 `outpath.rs` 询问，非交互环境须给 `--mkdir`。
 
 ## 扩展项目
 

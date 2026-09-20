@@ -668,8 +668,12 @@ golden master 的差异失去唯一解释。
 不需要任何屏蔽 —— 而「需要屏蔽的东西太多」正是 golden master 最常见的失败原因。
 两次跑同一版二进制自比对零差异，93 个产物（含 npy 二进制）全部确定。
 
-盖不到的：`vacf` / `vanhove` / `rotcorr`（fixture 无速度）、`bader` /
-`map chg-sdf`（无 CHGCAR / cube fixture）、`map velocity` / `force`（无速度）。
+盖不到的：`vacf` / `vanhove` / `rotcorr`（fixture 无速度）、`map chg-sdf`
+（无 cube fixture）、`map velocity` / `force`（无速度）。
+
+**`bader` 已补上**（2026-09-20）：`tests/CHGCAR_2atoms` 是 8×8×8 的合成网格，
+三种方法 × 三份报告都能端到端对拍。它的密度处处高于真空阈值，故 `vacchg` 恒为 0
+—— 真空路径仍未覆盖，见 `plan.md` 的 weight 缺陷一条。
 
 
 ## network 重构（0.2.1）编码陷阱
