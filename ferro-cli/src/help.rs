@@ -234,6 +234,9 @@ Parameters:
   -m, --method NAME       ongrid | neargrid | offgrid | weight     [neargrid]
   -r, --refine INT        Edge refinement: -1 auto, -2 single pass, N passes [-1]
   -v, --vacval FLOAT      Vacuum density threshold [e/Å³]             [1e-3]
+  -o, --output DIR        Where the reports go    [the input's own directory]
+  -s, --suffix SUFFIX     Tag -> <stem>_ACF_<suffix>.dat
+      --mkdir             Create -o without asking (needed with no terminal)
   -h, --help              Short parameter table
 
 Choosing a method:
@@ -246,15 +249,17 @@ Output — three Henkelman-format .dat files named after the INPUT stem
   <stem>_ACF.dat  <stem>_BCF.dat  <stem>_AVF.dat
   Kept in the Henkelman layout (not csv) because external tools parse them.
 
-  CAUTION: written to the CURRENT DIRECTORY; there is no --outdir yet. VASP
-  names every charge density CHGCAR, so two systems run from one working
-  directory both write CHGCAR_ACF.dat and the second silently overwrites the
-  first. Until --outdir lands, cd into each system's directory.
+  They land NEXT TO THE INPUT, not in the current directory — the one command
+  that defaults that way. VASP names every charge density CHGCAR, so run1/CHGCAR
+  and run2/CHGCAR would otherwise both write CHGCAR_ACF.dat into wherever you
+  happen to be standing. Use -o to collect them elsewhere, -s to tell two runs
+  of the same input apart.
 
 Examples:
   ferro bader -i CHGCAR
   ferro bader -i CHGCAR --method weight
   ferro bader -i CHGCAR --method neargrid --refine 3 --vacval 1e-4
+  ferro bader -i run1/CHGCAR -o reports -s weight --mkdir
 
 Full documentation:  ferro doc bader"#
     );
