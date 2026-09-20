@@ -30,9 +30,13 @@ pub struct JobCmd {
     #[arg(short, long)]
     pub software: Option<String>,
 
-    /// Output file (default: job.gjf / job.inp)
+    /// Output file, or a directory to put the default name in (job.gjf / job.inp / pw.in)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Create the output directory without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
 
     /// Use LAMMPS metal units for dump files
     #[arg(long)]
@@ -185,8 +189,34 @@ fn multi_frame_warning(input: &Path, n_frames: usize) -> Option<String> {
     ))
 }
 
+/// Resolves `-o` against the software's default file name.
+///
+/// `-o` may be the file itself (`-o opt.inp`), or a directory to drop the default name
+/// into (`-o runs/a/` -> `runs/a/job.inp`). Only a trailing separator makes it a
+/// directory: reading an existing `runs/a` as one would make the same command line mean
+/// different things depending on what happens to be on disk.
+fn resolve_output(output: Option<&Path>, default_name: &str, mkdir: bool) -> Result<PathBuf> {
+    // 收 Option<&Path> 而不是 &JobCmd:run 里 `if let Some(m) = args.method` 之类
+    // 已把 args 部分移动,再借整个结构体就是 E0507 那一族(见 dev/issues.md)
+    let path = match output {
+        None => PathBuf::from(default_name),
+        Some(p) => {
+            let raw = p.to_string_lossy();
+            if raw.ends_with(std::path::MAIN_SEPARATOR) || raw.ends_with('/') {
+                p.join(default_name)
+            } else {
+                p.to_path_buf()
+            }
+        }
+    };
+    crate::outpath::ensure_parent(&path, mkdir)?;
+    Ok(path)
+}
+
 pub fn run(args: &JobCmd) -> Result<()> {
     // 原实现按值消费各字段;克隆一份保持函数体不变
+    let out_arg = args.output.clone();
+    let mkdir = args.mkdir;
     let args = args.clone();
 
     // 无 -s → 概览
@@ -250,11 +280,9 @@ pub fn run(args: &JobCmd) -> Result<()> {
             if let Some(m) = args.method { builder.method = m; }
             if let Some(b) = args.basis  { builder.basis_set = b; }
             let content = builder.build()?;
-            let out = args.output.as_deref()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "job.gjf".to_string());
+            let out = resolve_output(out_arg.as_deref(), "job.gjf", mkdir)?;
             std::fs::write(&out, content)?;
-            println!("Gaussian input written to: {out}");
+            println!("Gaussian input written to: {}", out.display());
         }
         "cp2k" => {
             let mut builder = Cp2kJobBuilder::new(frame);
@@ -358,11 +386,9 @@ pub fn run(args: &JobCmd) -> Result<()> {
             };
 
             let content = builder.build()?;
-            let out = args.output.as_deref()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "job.inp".to_string());
+            let out = resolve_output(out_arg.as_deref(), "job.inp", mkdir)?;
             std::fs::write(&out, content)?;
-            println!("CP2K input written to: {out}");
+            println!("CP2K input written to: {}", out.display());
         }
         "qe" | "espresso" | "pwscf" => {
             let mut builder = QeJobBuilder::new(frame);
@@ -405,11 +431,9 @@ pub fn run(args: &JobCmd) -> Result<()> {
             builder.md.temperature = args.temperature;
 
             let content = builder.build()?;
-            let out = args.output.as_deref()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "pw.in".to_string());
+            let out = resolve_output(out_arg.as_deref(), "pw.in", mkdir)?;
             std::fs::write(&out, content)?;
-            println!("Quantum ESPRESSO input written to: {out}");
+            println!("Quantum ESPRESSO input written to: {}", out.display());
         }
         other => bail!("Unsupported software: {other}  (gaussian | cp2k | qe)"),
     }

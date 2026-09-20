@@ -11,9 +11,13 @@ pub struct ConvertCmd {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Output file (format auto-detected)
+    /// Output file (format auto-detected); may name a directory that does not exist yet
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Create the output directory without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
 
     /// First frame to take (0-based, inclusive)               [default: 0]
     #[arg(long, value_name = "N")]
@@ -54,6 +58,18 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     if input == output {
         bail!("Input and output paths are identical");
     }
+
+    // 目标格式正是从文件名推断的,故 -o 必须以文件名收尾。以分隔符结尾时
+    // file_name() 为 None(Rust 与 pathlib 一样丢掉末尾分隔符,但目录本身没有
+    // 扩展名可判),报错并给出可直接抄的写法
+    if ends_with_separator(output) {
+        let shown = output.display();
+        bail!(
+            "-o '{shown}' names a directory, but convert needs a file name — the target \
+             format comes from it. Try -o '{shown}conf.extxyz'"
+        );
+    }
+    crate::outpath::ensure_parent(output, args.mkdir)?;
 
     // 参数级错误在读第一个文件之前失败：轨迹可能是几个 GB，读完再报「--start 比
     // --end 大」是白等。跨参数的一致性能在这里查的都查掉
@@ -131,6 +147,16 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     Ok(())
 }
 
+/// True when the user wrote a trailing separator (`-o out/`).
+///
+/// `Path` drops it the way `pathlib` does — `Path::new("out/").file_name()` is `Some("out")`
+/// — so the raw text is the only place that intent survives. Every other command reads
+/// such a path as a directory; `convert` cannot, having no default file name to put in it.
+fn ends_with_separator(p: &Path) -> bool {
+    let s = p.to_string_lossy();
+    s.ends_with(std::path::MAIN_SEPARATOR) || s.ends_with('/')
+}
+
 /// Zero-padded width for frame indices, at least 4 so `ls` sorts the products in
 /// frame order.
 fn index_width(max_index: usize) -> usize {
@@ -166,7 +192,24 @@ mod tests {
             stride: None,
             number: None,
             metal_units: false,
+            mkdir: false,
         }
+    }
+
+    /// `-o out/` has no file name, and convert reads the format out of the file name.
+    #[test]
+    fn a_trailing_separator_is_refused_with_a_usable_hint() {
+        let c = cmd(Some("in.xyz"), Some("out/"));
+        let err = run(&c).unwrap_err().to_string();
+        assert!(err.contains("names a directory"), "{err}");
+        assert!(err.contains("conf.extxyz"), "错误信息要给出可直接抄的写法: {err}");
+    }
+
+    #[test]
+    fn a_path_with_directories_is_taken_as_written() {
+        assert!(!ends_with_separator(Path::new("out/conf.extxyz")));
+        assert!(ends_with_separator(Path::new("out/")));
+        assert!(!ends_with_separator(Path::new("out")));
     }
 
     fn fixture() -> PathBuf {
