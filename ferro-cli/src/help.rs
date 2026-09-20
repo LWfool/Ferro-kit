@@ -14,7 +14,9 @@ Supported software:
 
 Common options:
   -i, --input  PATH   Input structure file (xyz, cif, pdb, POSCAR, …)
-  -o, --output PATH   Output file (default: job.gjf / job.inp)
+  -o, --output PATH   Output file, or a directory written with a trailing / to
+                      hold the default name (job.gjf / job.inp / pw.in)
+      --mkdir         Create -o's directory without asking
       --metal-units   LAMMPS metal units for dump files
 
 Full documentation:  ferro doc job"#
@@ -155,12 +157,14 @@ Supported formats:
 
 Parameters:
   -i, --input  FILE       Input file  (format from its name)
-  -o, --output FILE       Output file — a full PATH here, unlike the analysis
-                          commands where -o is a suffix
+  -o, --output FILE       Output file; may include directories that do not exist
+                          yet (--mkdir creates them). A trailing / is refused:
+                          the target format comes from the file name
       --start  N          First frame to take      (0-based, inclusive) [0]
       --end    N          Last frame to take       (0-based, INCLUSIVE) [last]
       --stride N          Take every Nth frame within [start, end]      [1]
       --number N          Take this many frames, spread evenly, both ends kept
+      --mkdir             Create -o's directory without asking
       --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces
                           eV/Å); default is real units
   -h, --help              Short parameter table (this page adds the formats)
@@ -178,7 +182,7 @@ How many files come out — decided by the target format, not by a flag:
 Examples:
   ferro convert -i input.cif -o POSCAR
   ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
-  ferro convert -i traj.dump -o conf.vasp --number 20
+  ferro convert -i traj.dump -o out/conf.vasp --number 20 --mkdir
 
 Full documentation:  ferro doc convert"#,
         crate::io_dispatch::supported_formats()
