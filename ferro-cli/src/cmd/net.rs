@@ -263,7 +263,6 @@ fn export_labelled(
         None => format!("{stem}_types.{ext}"),
     };
     let path = out.join(&name);
-    let path = path.to_string_lossy().into_owned();
     match fmt {
         ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, ferro_io::LammpsUnits::Real)?,
         ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
@@ -274,7 +273,7 @@ fn export_labelled(
              wrote the element instead"
         );
     }
-    println!("        traj -> {path}");
+    println!("        traj -> {}", path.display());
     Ok(())
 }
 

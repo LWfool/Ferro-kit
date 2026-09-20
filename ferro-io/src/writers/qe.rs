@@ -1,3 +1,4 @@
+use std::path::Path;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -12,10 +13,11 @@ use anyhow::{Context, Result};
 /// 两者分属 ferro-io / ferro-workflow 中间层，按架构不能互相依赖，故 QE 卡片
 /// 格式（ATOMIC_SPECIES / CELL_PARAMETERS / ATOMIC_POSITIONS）各写一份，
 /// 修改其一须同步另一处。
-pub fn write_qe_input(trajectory: &Trajectory, path: &str) -> Result<()> {
+pub fn write_qe_input(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    let path_ = path.display();
     let frame = trajectory.first().context("trajectory is empty")?;
 
-    let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     let prefix = trajectory.metadata.source.as_deref().unwrap_or("ferro");
@@ -107,7 +109,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("bcc_rt.qe");
-        let p = path.to_str().unwrap();
+        let p = &path;
         let orig = bcc_traj();
         write_qe_input(&orig, p).unwrap();
 

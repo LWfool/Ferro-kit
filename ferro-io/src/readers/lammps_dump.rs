@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ferro_core::data::elements::{LabelSplit, split_element_label};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
@@ -20,10 +21,11 @@ pub enum LammpsUnits {
     Metal,
 }
 
-pub fn read_lammps_dump(path: &str, units: LammpsUnits) -> Result<Trajectory> {
+pub fn read_lammps_dump(path: &Path, units: LammpsUnits) -> Result<Trajectory> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_lammps_dump(&content, units).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_lammps_dump(&content, units).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
@@ -296,7 +298,7 @@ ITEM: ATOMS id type element x y z
 2 1 Fe 1.445 1.435 1.435
 ";
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     const DUMP_VEL: &str = "ITEM: TIMESTEP
 0

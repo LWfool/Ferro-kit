@@ -47,18 +47,19 @@ fn read(path: &str, metal_units: bool) -> PyResult<PyTrajectory> {
     } else {
         LammpsUnits::Real
     };
+    let p = std::path::Path::new(path);
     let traj = match detect(path).as_str() {
-        "xyz" => read_xyz(path).map_err(pyerr)?,
-        "extxyz" => read_extxyz(path).map_err(pyerr)?,
-        "pdb" => read_pdb(path).map_err(pyerr)?,
-        "cif" => read_cif(path).map_err(pyerr)?,
-        "poscar" => read_poscar(path).map_err(pyerr)?,
-        "contcar" => read_contcar(path).map_err(pyerr)?,
-        "in" | "qe" => read_qe_input(path).map_err(pyerr)?,
-        "inp" => read_cp2k_inp(path).map_err(pyerr)?,
-        "restart" => read_cp2k_restart(path).map_err(pyerr)?,
-        "lammpstrj" | "dump" | "lammps" => read_lammps_dump(path, units).map_err(pyerr)?,
-        "data" | "lmp" => read_lammps_data(path).map_err(pyerr)?,
+        "xyz" => read_xyz(p).map_err(pyerr)?,
+        "extxyz" => read_extxyz(p).map_err(pyerr)?,
+        "pdb" => read_pdb(p).map_err(pyerr)?,
+        "cif" => read_cif(p).map_err(pyerr)?,
+        "poscar" => read_poscar(p).map_err(pyerr)?,
+        "contcar" => read_contcar(p).map_err(pyerr)?,
+        "in" | "qe" => read_qe_input(p).map_err(pyerr)?,
+        "inp" => read_cp2k_inp(p).map_err(pyerr)?,
+        "restart" => read_cp2k_restart(p).map_err(pyerr)?,
+        "lammpstrj" | "dump" | "lammps" => read_lammps_dump(p, units).map_err(pyerr)?,
+        "data" | "lmp" => read_lammps_data(p).map_err(pyerr)?,
         other => {
             return Err(pyerr(format!(
                 "unsupported input format '{other}' for path '{path}'"
@@ -81,15 +82,16 @@ fn write(traj: &PyTrajectory, path: &str, metal_units: bool) -> PyResult<()> {
         LammpsUnits::Real
     };
     let t = &traj.inner;
+    let p = std::path::Path::new(path);
     match detect(path).as_str() {
-        "xyz" => write_xyz(t, path).map_err(pyerr),
-        "extxyz" => write_extxyz(t, path).map_err(pyerr),
-        "pdb" => write_pdb(t, path).map_err(pyerr),
-        "cif" => write_cif(t, path).map_err(pyerr),
-        "poscar" => write_poscar(t, path).map_err(pyerr),
-        "in" | "qe" => write_qe_input(t, path).map_err(pyerr),
-        "data" | "lmp" => write_lammps_data(t, path).map_err(pyerr),
-        "lammpstrj" | "dump" => write_lammps_dump(t, path, units).map_err(pyerr),
+        "xyz" => write_xyz(t, p).map_err(pyerr),
+        "extxyz" => write_extxyz(t, p).map_err(pyerr),
+        "pdb" => write_pdb(t, p).map_err(pyerr),
+        "cif" => write_cif(t, p).map_err(pyerr),
+        "poscar" => write_poscar(t, p).map_err(pyerr),
+        "in" | "qe" => write_qe_input(t, p).map_err(pyerr),
+        "data" | "lmp" => write_lammps_data(t, p).map_err(pyerr),
+        "lammpstrj" | "dump" => write_lammps_dump(t, p, units).map_err(pyerr),
         other => Err(pyerr(format!(
             "unsupported output format '{other}' for path '{path}'"
         ))),

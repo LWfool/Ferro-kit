@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::Trajectory;
 use std::fs::File;
@@ -8,8 +9,9 @@ use anyhow::{Context, Result};
 ///
 /// 周期性帧：用分数坐标（`_atom_site_fract_*`），写 P1 对称性。
 /// 非周期性帧：用 Cartesian 坐标（`_atom_site_Cartn_*`），省略晶格参数。
-pub fn write_cif(trajectory: &Trajectory, path: &str) -> Result<()> {
-    let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
+pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    let path_ = path.display();
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     for (idx, frame) in trajectory.frames.iter().enumerate() {
@@ -128,7 +130,7 @@ mod tests {
     #[test]
     fn test_roundtrip_periodic() {
         let path = std::env::temp_dir().join("bcc_fe_rt.cif");
-        let path_str = path.to_str().unwrap();
+        let path_str = &path;
 
         let mut traj = Trajectory::from_frame(make_bcc_frame());
         traj.metadata.source = Some("BCC_Fe".to_string());
@@ -147,7 +149,7 @@ mod tests {
     #[test]
     fn test_roundtrip_nonperiodic() {
         let path = std::env::temp_dir().join("water_rt.cif");
-        let path_str = path.to_str().unwrap();
+        let path_str = &path;
 
         let mut frame = Frame::new();
         frame.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.119)));
@@ -165,7 +167,7 @@ mod tests {
     #[test]
     fn test_multi_frame_block_names() {
         let path = std::env::temp_dir().join("multi_frame.cif");
-        let path_str = path.to_str().unwrap();
+        let path_str = &path;
 
         let mut traj = Trajectory::new();
         traj.add_frame(make_bcc_frame());

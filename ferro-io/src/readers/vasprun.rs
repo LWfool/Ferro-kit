@@ -17,6 +17,7 @@
 //! megabytes on a long run, and holding one in memory as a tree costs several
 //! times that.
 
+use std::path::Path;
 use std::io::BufReader;
 
 use anyhow::{bail, Context, Result};
@@ -29,7 +30,7 @@ use quick_xml::Reader;
 use super::aimd::{AimdFormat, AimdStats};
 
 /// Reads a vasprun.xml, discarding the statistics.
-pub fn read_vasprun(path: &str) -> Result<Trajectory> {
+pub fn read_vasprun(path: &Path) -> Result<Trajectory> {
     Ok(read_vasprun_with_stats(path)?.0)
 }
 
@@ -63,8 +64,9 @@ struct State {
 }
 
 /// Reads a vasprun.xml and reports what was dropped.
-pub fn read_vasprun_with_stats(path: &str) -> Result<(Trajectory, AimdStats)> {
-    let file = std::fs::File::open(path).with_context(|| format!("cannot open {path}"))?;
+pub fn read_vasprun_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+    let path_ = path.display();
+    let file = std::fs::File::open(path).with_context(|| format!("cannot open {path_}"))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
     reader.config_mut().trim_text(true);
 
@@ -75,7 +77,7 @@ pub fn read_vasprun_with_stats(path: &str) -> Result<(Trajectory, AimdStats)> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Err(e) => bail!("{path}: malformed XML at byte {}: {e}", reader.buffer_position()),
+            Err(e) => bail!("{path_}: malformed XML at byte {}: {e}", reader.buffer_position()),
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
@@ -216,7 +218,7 @@ pub fn read_vasprun_with_stats(path: &str) -> Result<(Trajectory, AimdStats)> {
     }
 
     if st.elements.is_empty() {
-        bail!("{path}: no <atominfo> species list found");
+        bail!("{path_}: no <atominfo> species list found");
     }
     Ok((traj, stats))
 }
@@ -266,7 +268,7 @@ mod tests {
 
     #[test]
     fn reads_two_real_frames() {
-        let (traj, stats) = read_vasprun_with_stats(FIXTURE).unwrap();
+        let (traj, stats) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(stats.n_kept, 2);
         assert_eq!(stats.n_dropped(), 0);
@@ -282,14 +284,14 @@ mod tests {
     /// fails the completeness check and the file reads as empty.
     #[test]
     fn the_column_headers_are_not_mistaken_for_species() {
-        let (traj, _) = read_vasprun_with_stats(FIXTURE).unwrap();
+        let (traj, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
         assert_eq!(traj.first().unwrap().n_atoms(), 297);
     }
 
     /// Reference values from dpdata 1.0.2 on the same file.
     #[test]
     fn matches_dpdata_on_the_real_fixture() {
-        let (traj, _) = read_vasprun_with_stats(FIXTURE).unwrap();
+        let (traj, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
         let f0 = &traj.frames[0];
         assert!((f0.energy.unwrap() - -1929.96163538).abs() < 1e-8);
         assert!((traj.frames[1].energy.unwrap() - -1933.54154614).abs() < 1e-8);
@@ -319,7 +321,7 @@ mod tests {
     /// is the answer. Nothing about the wrong choice looks wrong.
     #[test]
     fn the_energy_is_the_converged_one_not_the_first_scf_step() {
-        let (traj, _) = read_vasprun_with_stats(FIXTURE).unwrap();
+        let (traj, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
         let e = traj.frames[0].energy.unwrap();
         assert!(e < -1000.0 && e > -3000.0, "{e} looks like an SCF iterate");
     }
@@ -329,7 +331,7 @@ mod tests {
         let p = std::env::temp_dir().join("broken.xml");
         std::fs::write(&p, "<?xml version=\"1.0\"?><modeling><calculation>").unwrap();
         // 截断的 XML 要么报错、要么给出 0 帧,但绝不能装作读到了东西
-        match read_vasprun_with_stats(p.to_str().unwrap()) {
+        match read_vasprun_with_stats(&p) {
             Err(e) => assert!(format!("{e:#}").contains("atominfo") || format!("{e:#}").contains("XML")),
             Ok((t, _)) => assert_eq!(t.n_frames(), 0),
         }

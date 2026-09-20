@@ -137,11 +137,10 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
 /// Reads any recognised AIMD output, reporting what was dropped.
 pub fn read_aimd_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let fmt = sniff(path)?;
-    let name = path.to_string_lossy();
     match fmt {
-        AimdFormat::Cp2kOut => super::cp2k_out::read_cp2k_out_with_stats(&name),
-        AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(&name),
-        AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(&name),
+        AimdFormat::Cp2kOut => super::cp2k_out::read_cp2k_out_with_stats(path),
+        AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
+        AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
     }
 }
 

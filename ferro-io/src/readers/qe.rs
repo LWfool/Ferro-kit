@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
@@ -5,10 +6,11 @@ use anyhow::{bail, Context, Result};
 
 const BOHR: f64 = 0.52917721;
 
-pub fn read_qe_input(path: &str) -> Result<Trajectory> {
+pub fn read_qe_input(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_qe(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_qe(&content).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_qe(content: &str) -> Result<Trajectory> {
@@ -250,7 +252,7 @@ CELL_PARAMETERS {angstrom}
 0.0   0.0   2.87
 ";
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn test_water() {

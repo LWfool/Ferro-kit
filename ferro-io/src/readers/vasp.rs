@@ -1,15 +1,17 @@
+use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{ensure, Context, Result};
 use super::util::floats;
 
-pub fn read_poscar(path: &str) -> Result<Trajectory> {
+pub fn read_poscar(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_poscar(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_poscar(&content).with_context(|| format!("parsing {path_}"))
 }
 
-pub fn read_contcar(path: &str) -> Result<Trajectory> {
+pub fn read_contcar(path: &Path) -> Result<Trajectory> {
     read_poscar(path)
 }
 
@@ -131,7 +133,7 @@ Direct
   0.0 0.0 0.0
 ";
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn test_bcc_fe() {

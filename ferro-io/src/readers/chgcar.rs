@@ -3,16 +3,18 @@
 //! Returns `(Frame, ChargeGrid)` — the structural data and the volumetric charge density.
 //! Density values are stored as-is (`ρ × V_cell`), not normalized, per VASP convention.
 
+use std::path::Path;
 use ferro_core::{Atom, Cell, ChargeGrid, Frame};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{ensure, Context, Result};
 use super::util::floats;
 
 /// Read a VASP CHGCAR file, returning the structural frame and charge density grid.
-pub fn read_chgcar(path: &str) -> Result<(Frame, ChargeGrid)> {
+pub fn read_chgcar(path: &Path) -> Result<(Frame, ChargeGrid)> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_chgcar(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_chgcar(&content).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
@@ -156,7 +158,7 @@ Direct
  10.0  20.0  30.0  40.0  50.0  60.0  70.0  80.0
 ";
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn test_read_frame_atoms() {

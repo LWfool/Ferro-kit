@@ -24,6 +24,7 @@
 //! never by a fixed line offset — dpdata reads the stress 14 lines below its
 //! anchor, and that offset is a property of one VASP version's layout.
 
+use std::path::Path;
 use std::io::{BufRead, BufReader};
 
 use anyhow::{bail, Context, Result};
@@ -34,7 +35,7 @@ use super::aimd::{AimdFormat, AimdStats};
 use ferro_core::units::{convert_pressure, PressureUnit};
 
 /// Reads a VASP OUTCAR, discarding the statistics.
-pub fn read_vasp_outcar(path: &str) -> Result<Trajectory> {
+pub fn read_vasp_outcar(path: &Path) -> Result<Trajectory> {
     Ok(read_vasp_outcar_with_stats(path)?.0)
 }
 
@@ -92,8 +93,9 @@ struct Pending {
 }
 
 /// Reads a VASP OUTCAR and reports what was dropped.
-pub fn read_vasp_outcar_with_stats(path: &str) -> Result<(Trajectory, AimdStats)> {
-    let file = std::fs::File::open(path).with_context(|| format!("cannot open {path}"))?;
+pub fn read_vasp_outcar_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+    let path_ = path.display();
+    let file = std::fs::File::open(path).with_context(|| format!("cannot open {path_}"))?;
     let reader = BufReader::new(file);
     let mut stats = AimdStats::new(AimdFormat::VaspOutcar);
 
@@ -112,7 +114,7 @@ pub fn read_vasp_outcar_with_stats(path: &str) -> Result<(Trajectory, AimdStats)
     let mut skip_before_atoms = 0usize;
 
     for line in reader.lines() {
-        let line = line.with_context(|| format!("reading {path}"))?;
+        let line = line.with_context(|| format!("reading {path_}"))?;
 
         // ── 头部:元素与计数 ──────────────────────────────────────────────
         if line.contains("VRHFIN") {
@@ -135,7 +137,7 @@ pub fn read_vasp_outcar_with_stats(path: &str) -> Result<(Trajectory, AimdStats)
             match &counts {
                 None => counts = Some(here),
                 Some(prev) if *prev != here => bail!(
-                    "{path}: two `ions per type` lines disagree ({prev:?} vs {here:?})"
+                    "{path_}: two `ions per type` lines disagree ({prev:?} vs {here:?})"
                 ),
                 Some(_) => {}
             }
@@ -242,7 +244,7 @@ pub fn read_vasp_outcar_with_stats(path: &str) -> Result<(Trajectory, AimdStats)
     finish(&mut pending, &mut traj, &mut stats, &elements);
 
     if elements.is_empty() {
-        bail!("{path}: no ionic step found (no `Iteration N( 1)` anchor)");
+        bail!("{path_}: no ionic step found (no `Iteration N( 1)` anchor)");
     }
     Ok((traj, stats))
 }
@@ -252,17 +254,18 @@ fn resolve_elements(
     symbols: &[String],
     counts: &Option<Vec<usize>>,
     seen: &mut Vec<Vec<String>>,
-    path: &str,
+    path: &Path,
 ) -> Result<Vec<String>> {
+    let path_ = path.display();
     let counts = counts
         .as_ref()
-        .with_context(|| format!("{path}: no `ions per type` line before the first step"))?;
+        .with_context(|| format!("{path_}: no `ions per type` line before the first step"))?;
     if counts.is_empty() {
-        bail!("{path}: `ions per type` names no species");
+        bail!("{path_}: `ions per type` names no species");
     }
     if symbols.len() < counts.len() {
         bail!(
-            "{path}: {} VRHFIN symbol(s) for {} species in `ions per type`. \
+            "{path_}: {} VRHFIN symbol(s) for {} species in `ions per type`. \
              A VASP <= 6.3 bug drops species names from OUTCAR; vasprun.xml \
              carries them properly",
             symbols.len(), counts.len()
@@ -278,7 +281,7 @@ fn resolve_elements(
         for other in seen.iter().skip(1) {
             if other != first {
                 bail!(
-                    "{path}: the species list changes within the file ({first:?} \
+                    "{path_}: the species list changes within the file ({first:?} \
                      then {other:?})"
                 );
             }
@@ -388,11 +391,11 @@ mod tests {
   free  energy   TOTEN  =       -20.00000000 eV
 "#;
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn reads_two_real_frames() {
-        let (traj, stats) = read_vasp_outcar_with_stats(FIXTURE).unwrap();
+        let (traj, stats) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(stats.n_kept, 2);
         assert_eq!(stats.n_dropped(), 0);
@@ -412,7 +415,7 @@ mod tests {
     /// implementation, not this reader's own round trip.
     #[test]
     fn matches_dpdata_on_the_real_fixture() {
-        let (traj, _) = read_vasp_outcar_with_stats(FIXTURE).unwrap();
+        let (traj, _) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();
         let f0 = &traj.frames[0];
         assert!((f0.energy.unwrap() - -2041.07506914).abs() < 1e-8);
         assert!((traj.frames[1].energy.unwrap() - -2045.47272826).abs() < 1e-8);
@@ -443,7 +446,7 @@ mod tests {
 
     #[test]
     fn the_stress_is_symmetric_and_positive_for_compression() {
-        let (traj, _) = read_vasp_outcar_with_stats(FIXTURE).unwrap();
+        let (traj, _) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();
         let s = traj.frames[0].stress.unwrap();
         for (i, j) in [(0, 1), (0, 2), (1, 2)] {
             assert!((s[(i, j)] - s[(j, i)]).abs() < 1e-15);

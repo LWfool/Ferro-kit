@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::Trajectory;
 use std::fs::File;
@@ -6,10 +7,11 @@ use anyhow::{Context, Result};
 
 /// 写 LAMMPS data 文件，atom_style full，real 单位（长度 Å）。
 /// 周期性帧写晶格信息；非周期性帧写最小包围盒。
-pub fn write_lammps_data(trajectory: &Trajectory, path: &str) -> Result<()> {
+pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    let path_ = path.display();
     let frame = trajectory.first().context("trajectory is empty")?;
 
-    let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     let comment = trajectory.metadata.source.as_deref().unwrap_or("LAMMPS data file written by ferro");
@@ -148,7 +150,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("bcc_rt.lammps");
-        let p = path.to_str().unwrap();
+        let p = &path;
         write_lammps_data(&bcc_traj(), p).unwrap();
 
         let loaded = read_lammps_data(p).unwrap();

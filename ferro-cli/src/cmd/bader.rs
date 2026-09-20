@@ -35,8 +35,6 @@ pub fn run(args: &BaderCmd) -> Result<()> {
     let Some(input) = &args.input else {
         bail!("bader needs an input file: -i <CHGCAR|FILE.cube>");
     };
-    let path = input.to_str().unwrap_or_default();
-
     // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等
     let method = match args.method.to_lowercase().as_str() {
         "ongrid"   => BaderMethod::OnGrid,
@@ -53,9 +51,9 @@ pub fn run(args: &BaderCmd) -> Result<()> {
         .unwrap_or(false);
 
     let (frame, chg) = if is_cube {
-        read_cube_as_chg(path)?
+        read_cube_as_chg(input)?
     } else {
-        read_chgcar(path)?
+        read_chgcar(input)?
     };
 
     println!("Bader analysis: method={:?}, refine={}, vacval={:.1e}", method, args.refine, args.vacval);

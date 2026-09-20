@@ -1,13 +1,15 @@
+use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{Context, Result};
 use super::util::floats;
 
-pub fn read_lammps_data(path: &str) -> Result<Trajectory> {
+pub fn read_lammps_data(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_lammps_data(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_lammps_data(&content).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_lammps_data(content: &str) -> Result<Trajectory> {
@@ -239,7 +241,7 @@ Atoms # full
 6 2 2  0.417 9.242  0.587  0.000
 ";
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn test_water_full() {

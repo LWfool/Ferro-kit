@@ -1,12 +1,14 @@
+use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
-pub fn read_extxyz(path: &str) -> Result<Trajectory> {
+pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_extxyz(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_extxyz(&content).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_extxyz(content: &str) -> Result<Trajectory> {
@@ -384,7 +386,7 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
         format!("{:#}", read_extxyz(&tmp(name, text)).unwrap_err())
     }
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn test_basic() {

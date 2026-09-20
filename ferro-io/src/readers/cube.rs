@@ -14,6 +14,7 @@
 //!   - `read_cube`       → `CubeData`         (visualisation / density maps)
 //!   - `read_cube_as_chg` → `(Frame, ChargeGrid)` (Bader charge analysis)
 
+use std::path::Path;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 use ferro_core::{Atom, Cell, ChargeGrid, CubeData, Frame};
@@ -114,10 +115,11 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 // ─── 公共入口：CubeData（可视化 / 密度图）────────────────────────────────────
 
 /// Read a Gaussian cube file into `CubeData` (for visualisation and density maps).
-pub fn read_cube(path: &str) -> Result<CubeData> {
+pub fn read_cube(path: &Path) -> Result<CubeData> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_cube(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_cube(&content).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_cube(content: &str) -> Result<CubeData> {
@@ -150,10 +152,11 @@ fn parse_cube(content: &str) -> Result<CubeData> {
 /// which is the standard used by Quantum ESPRESSO `pp.x` and Gaussian.
 /// ChargeGrid internally stores `rho_stored = ρ_phys × V_cell`, so the conversion is:
 /// `rho_stored = cube_value × V_cell_Bohr` (unit-independent invariant).
-pub fn read_cube_as_chg(path: &str) -> Result<(Frame, ChargeGrid)> {
+pub fn read_cube_as_chg(path: &Path) -> Result<(Frame, ChargeGrid)> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_cube_as_chg(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_cube_as_chg(&content).with_context(|| format!("parsing {path_}"))
 }
 
 fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
@@ -245,7 +248,7 @@ comment
  1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0
 ";
 
-    use crate::testutil::write_tmp_str as write_tmp;
+    use crate::testutil::write_tmp;
 
     // ── CubeData tests ────────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+use std::path::Path;
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
 use std::fs::File;
@@ -5,8 +6,9 @@ use std::io::{BufRead, BufReader};
 use anyhow::{Context, Result};
 
 /// 读取 XYZ 文件，支持多帧（多个连续 block）。
-pub fn read_xyz(path: &str) -> Result<Trajectory> {
-    let file = File::open(path).context(format!("cannot open {path}"))?;
+pub fn read_xyz(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
+    let file = File::open(path).context(format!("cannot open {path_}"))?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
     let mut traj = Trajectory::new();
@@ -94,7 +96,7 @@ C  1.4  0.0  0.1
     #[test]
     fn test_single_frame() {
         let path = write_tmp("test_water.xyz", WATER_XYZ);
-        let traj = read_xyz(path.to_str().unwrap()).unwrap();
+        let traj = read_xyz(&path).unwrap();
         assert_eq!(traj.n_frames(), 1);
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 3);
@@ -105,7 +107,7 @@ C  1.4  0.0  0.1
     #[test]
     fn test_multi_frame() {
         let path = write_tmp("test_multi.xyz", MULTI_XYZ);
-        let traj = read_xyz(path.to_str().unwrap()).unwrap();
+        let traj = read_xyz(&path).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(traj.frame(0).unwrap().n_atoms(), 2);
         assert_eq!(traj.frame(1).unwrap().n_atoms(), 2);

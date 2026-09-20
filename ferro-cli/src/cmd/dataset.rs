@@ -220,7 +220,7 @@ fn write_as(
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("cannot create {}", parent.display()))?;
             }
-            write_extxyz_with(traj, &path.to_string_lossy(), key)?;
+            write_extxyz_with(traj, &path, key)?;
             Ok(path)
         }
     }
