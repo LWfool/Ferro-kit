@@ -4,6 +4,7 @@
 //! `ferro-analysis`. Analysis code now only builds a `Table`; deciding what the bytes
 //! look like happens here.
 
+use std::path::Path;
 use ferro_core::Table;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -26,17 +27,19 @@ pub enum TableFormat {
 /// (see [`ferro_core::Column::cell`]), so `pandas.read_csv` reads them back as `NaN`.
 ///
 /// The table is validated first — a ragged table fails before the file is created.
-pub fn write_table(table: &Table, path: &str, format: TableFormat) -> Result<()> {
+pub fn write_table(table: &Table, path: &Path, format: TableFormat) -> Result<()> {
+    let path_ = path.display();
     if let Err(e) = table.validate() {
-        bail!("refusing to write {path}: {e}");
+        bail!("refusing to write {path_}: {e}");
     }
     match format {
         TableFormat::Csv => write_csv(table, path),
     }
 }
 
-fn write_csv(table: &Table, path: &str) -> Result<()> {
-    let file = File::create(path).context(format!("cannot create {path}"))?;
+fn write_csv(table: &Table, path: &Path) -> Result<()> {
+    let path_ = path.display();
+    let file = File::create(path).context(format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     for line in &table.meta {
@@ -75,8 +78,8 @@ mod tests {
     use super::*;
     use ferro_core::Table;
 
-    fn tmp(name: &str) -> String {
-        std::env::temp_dir().join(name).to_string_lossy().into_owned()
+    fn tmp(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(name)
     }
 
     fn sample() -> Table {

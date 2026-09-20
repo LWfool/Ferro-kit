@@ -4,30 +4,29 @@ use ferro_core::Trajectory;
 use ferro_io::{self, LammpsUnits, *};
 
 pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Trajectory> {
-    let s = path.to_str().unwrap_or_default();
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
     if upper.starts_with("POSCAR") {
-        return read_poscar(s);
+        return read_poscar(path);
     }
     if upper.starts_with("CONTCAR") {
-        return read_contcar(s);
+        return read_contcar(path);
     }
 
     match path.extension().and_then(|e| e.to_str()) {
-        Some("xyz")                      => Ok(read_xyz(s)?),
-        Some("pdb")                      => Ok(read_pdb(s)?),
-        Some("cif")                      => Ok(read_cif(s)?),
-        Some("extxyz")                   => Ok(read_extxyz(s)?),
-        Some("vasp") | Some("pos")       => read_poscar(s),
-        Some("lammps") | Some("data") | Some("lmp") => Ok(read_lammps_data(s)?),
-        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(s, lammps_units)?),
-        Some("inp")                      => Ok(read_cp2k_inp(s)?),
-        Some("restart")                  => Ok(read_cp2k_restart(s)?),
-        Some("in") | Some("qe")          => Ok(read_qe_input(s)?),
+        Some("xyz")                      => Ok(read_xyz(path)?),
+        Some("pdb")                      => Ok(read_pdb(path)?),
+        Some("cif")                      => Ok(read_cif(path)?),
+        Some("extxyz")                   => Ok(read_extxyz(path)?),
+        Some("vasp") | Some("pos")       => read_poscar(path),
+        Some("lammps") | Some("data") | Some("lmp") => Ok(read_lammps_data(path)?),
+        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(path, lammps_units)?),
+        Some("inp")                      => Ok(read_cp2k_inp(path)?),
+        Some("restart")                  => Ok(read_cp2k_restart(path)?),
+        Some("in") | Some("qe")          => Ok(read_qe_input(path)?),
         Some(ext) => bail!("Unsupported input format: .{ext}"),
-        None      => bail!("Cannot determine format (no extension): {s}"),
+        None      => bail!("Cannot determine format (no extension): {}", path.display()),
     }
 }
 
@@ -48,25 +47,24 @@ pub fn read_trajectory_tail(
 }
 
 pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnits) -> Result<()> {
-    let s = path.to_str().unwrap_or_default();
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
     if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
-        return write_poscar(traj, s);
+        return write_poscar(traj, path);
     }
 
     match path.extension().and_then(|e| e.to_str()) {
-        Some("xyz")                      => Ok(write_xyz(traj, s)?),
-        Some("pdb")                      => Ok(write_pdb(traj, s)?),
-        Some("cif")                      => Ok(write_cif(traj, s)?),
-        Some("extxyz")                   => Ok(write_extxyz(traj, s)?),
-        Some("vasp") | Some("pos")       => write_poscar(traj, s),
-        Some("lammps") | Some("data") | Some("lmp") => Ok(write_lammps_data(traj, s)?),
-        Some("dump") | Some("lammpstrj") => Ok(write_lammps_dump(traj, s, lammps_units)?),
-        Some("in") | Some("qe")          => Ok(write_qe_input(traj, s)?),
+        Some("xyz")                      => Ok(write_xyz(traj, path)?),
+        Some("pdb")                      => Ok(write_pdb(traj, path)?),
+        Some("cif")                      => Ok(write_cif(traj, path)?),
+        Some("extxyz")                   => Ok(write_extxyz(traj, path)?),
+        Some("vasp") | Some("pos")       => write_poscar(traj, path),
+        Some("lammps") | Some("data") | Some("lmp") => Ok(write_lammps_data(traj, path)?),
+        Some("dump") | Some("lammpstrj") => Ok(write_lammps_dump(traj, path, lammps_units)?),
+        Some("in") | Some("qe")          => Ok(write_qe_input(traj, path)?),
         Some(ext) => bail!("Unsupported output format: .{ext}"),
-        None      => bail!("Cannot determine format (no extension): {s}"),
+        None      => bail!("Cannot determine format (no extension): {}", path.display()),
     }
 }
 

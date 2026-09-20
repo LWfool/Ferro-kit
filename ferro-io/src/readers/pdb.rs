@@ -1,3 +1,4 @@
+use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::Vector3;
 use std::fs::File;
@@ -5,8 +6,9 @@ use std::io::{BufRead, BufReader};
 use anyhow::{Context, Result};
 
 /// 读取 PDB 文件，支持多模型（MODEL/ENDMDL 记录）。
-pub fn read_pdb(path: &str) -> Result<Trajectory> {
-    let file = File::open(path).context(format!("cannot open {path}"))?;
+pub fn read_pdb(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
+    let file = File::open(path).context(format!("cannot open {path_}"))?;
     let reader = BufReader::new(file);
 
     let mut traj = Trajectory::new();
@@ -119,7 +121,7 @@ ENDMDL
     #[test]
     fn test_single_frame() {
         let path = write_tmp("test_water.pdb", WATER_PDB);
-        let traj = read_pdb(path.to_str().unwrap()).unwrap();
+        let traj = read_pdb(&path).unwrap();
         assert_eq!(traj.n_frames(), 1);
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 3);
@@ -130,7 +132,7 @@ ENDMDL
     #[test]
     fn test_multi_model() {
         let path = write_tmp("test_multi.pdb", MULTI_PDB);
-        let traj = read_pdb(path.to_str().unwrap()).unwrap();
+        let traj = read_pdb(&path).unwrap();
         assert_eq!(traj.n_frames(), 2);
     }
 }

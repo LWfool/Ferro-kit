@@ -327,7 +327,7 @@ pub fn write_all(
         }
         let path = out_path(mode, &name, out);
         // ferro-io 的 writer 路径统一是 &str(九个 writer 都如此),故在此转换一次
-        write_table(&table, &path.to_string_lossy(), TableFormat::Csv)?;
+        write_table(&table, &path, TableFormat::Csv)?;
         println!("{:<12} -> {}", name.to_uppercase(), path.display());
         if first.as_os_str().is_empty() {
             first = path;

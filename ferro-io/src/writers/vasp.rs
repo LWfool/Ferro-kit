@@ -1,14 +1,16 @@
+use std::path::Path;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{Context, Result};
 
 /// 写 VASP5 POSCAR 格式，坐标使用 Direct（分数坐标），原子按元素分组。
-pub fn write_poscar(trajectory: &Trajectory, path: &str) -> Result<()> {
+pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    let path_ = path.display();
     let frame = trajectory.first().context("trajectory is empty")?;
     let cell = frame.cell.as_ref().context("frame has no cell (POSCAR requires periodic frame)")?;
 
-    let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     // Comment
@@ -72,7 +74,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("bcc_rt.poscar");
-        let p = path.to_str().unwrap();
+        let p = &path;
         let orig = bcc_traj();
         write_poscar(&orig, p).unwrap();
 

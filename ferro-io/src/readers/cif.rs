@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
@@ -424,13 +425,14 @@ fn block_to_frame(block: &CifBlock) -> Result<Frame> {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /// 读取 CIF 文件，每个 `data_` block 对应轨迹中的一帧。
-pub fn read_cif(path: &str) -> Result<Trajectory> {
+pub fn read_cif(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
     let input = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
+        .with_context(|| format!("cannot open {path_}"))?;
     let tokens = tokenize(&input);
     let blocks = parse_blocks(&tokens);
 
-    ensure!(!blocks.is_empty(), "no data_ blocks found in {path}");
+    ensure!(!blocks.is_empty(), "no data_ blocks found in {path_}");
 
     let mut traj = Trajectory::new();
     if let Some(name) = blocks.first().map(|b| b.name.clone()) {
@@ -561,7 +563,7 @@ Si1  Si  0.0  0.0  0.0
     #[test]
     fn test_p1_two_atoms() {
         let path = write_tmp("test_p1.cif", P1_CIF);
-        let traj = read_cif(path.to_str().unwrap()).unwrap();
+        let traj = read_cif(&path).unwrap();
         assert_eq!(traj.n_frames(), 1);
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 2);
@@ -575,7 +577,7 @@ Si1  Si  0.0  0.0  0.0
     #[test]
     fn test_bcc_symmetry_expansion() {
         let path = write_tmp("test_bcc.cif", BCC_CIF);
-        let traj = read_cif(path.to_str().unwrap()).unwrap();
+        let traj = read_cif(&path).unwrap();
         let frame = traj.first().unwrap();
         // 1 asymmetric atom × 2 symops = 2 Fe atoms
         assert_eq!(frame.n_atoms(), 2);
@@ -586,7 +588,7 @@ Si1  Si  0.0  0.0  0.0
     #[test]
     fn test_uncertainty_stripped() {
         let path = write_tmp("test_unc.cif", UNCERTAINTY_CIF);
-        let traj = read_cif(path.to_str().unwrap()).unwrap();
+        let traj = read_cif(&path).unwrap();
         let [a, ..] = traj.first().unwrap().cell.as_ref().unwrap().lengths();
         assert!((a - 5.431).abs() < 1e-3);
     }

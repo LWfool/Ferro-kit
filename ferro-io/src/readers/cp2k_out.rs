@@ -57,6 +57,7 @@
 //! `MD| Pressure` additionally contains the kinetic term and must not be used
 //! for a training set.
 
+use std::path::Path;
 use anyhow::{bail, Context, Result};
 use ferro_core::units::{convert_pressure, PressureUnit, BOHR_TO_ANG, HARTREE_TO_EV};
 use super::aimd::{AimdFormat, AimdStats};
@@ -109,15 +110,16 @@ fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
 /// first frame's composition); the counts travel out so the caller can report
 /// them instead of the reader printing behind its back.
 /// Reads a CP2K MD output file, discarding the statistics.
-pub fn read_cp2k_out(path: &str) -> Result<Trajectory> {
+pub fn read_cp2k_out(path: &Path) -> Result<Trajectory> {
     Ok(read_cp2k_out_with_stats(path)?.0)
 }
 
 /// Reads a CP2K MD output file and reports what was dropped.
-pub fn read_cp2k_out_with_stats(path: &str) -> Result<(Trajectory, AimdStats)> {
+pub fn read_cp2k_out_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_cp2k_out(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_cp2k_out(&content).with_context(|| format!("parsing {path_}"))
 }
 
 // 方括号里的单位标注: "ENERGY| ... [hartree]  -2059.5" -> "hartree"
@@ -588,7 +590,7 @@ mod tests {
     #[test]
     #[ignore]
     fn reads_the_reference_output() {
-        let (traj, st) = read_cp2k_out_with_stats("../examples/total.out").unwrap();
+        let (traj, st) = read_cp2k_out_with_stats(Path::new("../examples/total.out")).unwrap();
         println!("{st:?}");
         println!("frames={} atoms={:?}", traj.n_frames(), traj.n_atoms());
         let f = &traj.frames[0];

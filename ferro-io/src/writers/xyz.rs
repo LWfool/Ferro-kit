@@ -1,11 +1,13 @@
+use std::path::Path;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{Context, Result};
 
 /// 将轨迹写入 XYZ 文件。多帧轨迹写为连续的多个 XYZ block。
-pub fn write_xyz(trajectory: &Trajectory, path: &str) -> Result<()> {
-    let file = File::create(path).context(format!("cannot create {path}"))?;
+pub fn write_xyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    let path_ = path.display();
+    let file = File::create(path).context(format!("cannot create {path_}"))?;
     let mut writer = BufWriter::new(file);
 
     for (i, frame) in trajectory.frames.iter().enumerate() {
@@ -49,7 +51,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("roundtrip_water.xyz");
-        let path_str = path.to_str().unwrap();
+        let path_str = &path;
         let original = make_traj();
         write_xyz(&original, path_str).unwrap();
 

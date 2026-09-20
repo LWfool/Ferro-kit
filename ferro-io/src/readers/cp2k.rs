@@ -1,15 +1,17 @@
+use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
-pub fn read_cp2k_inp(path: &str) -> Result<Trajectory> {
+pub fn read_cp2k_inp(path: &Path) -> Result<Trajectory> {
+    let path_ = path.display();
     let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path}"))?;
-    parse_cp2k(&content).with_context(|| format!("parsing {path}"))
+        .with_context(|| format!("cannot open {path_}"))?;
+    parse_cp2k(&content).with_context(|| format!("parsing {path_}"))
 }
 
 /// CP2K restart 与 inp 格式相同，共用同一解析器。
-pub fn read_cp2k_restart(path: &str) -> Result<Trajectory> {
+pub fn read_cp2k_restart(path: &Path) -> Result<Trajectory> {
     read_cp2k_inp(path)
 }
 
@@ -269,7 +271,7 @@ mod tests {
 &END FORCE_EVAL
 ";
 
-    use crate::testutil::write_tmp_str as tmp;
+    use crate::testutil::write_tmp as tmp;
 
     #[test]
     fn test_water_abc() {

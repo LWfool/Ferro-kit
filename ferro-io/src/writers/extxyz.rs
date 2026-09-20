@@ -1,3 +1,4 @@
+use std::path::Path;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -20,17 +21,18 @@ pub enum StressKey {
 }
 
 /// 写 extxyz 格式，多帧轨迹写为连续 block。
-pub fn write_extxyz(trajectory: &Trajectory, path: &str) -> Result<()> {
+pub fn write_extxyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
     write_extxyz_with(trajectory, path, StressKey::Stress)
 }
 
 /// [`write_extxyz`] with a choice of stress key; see [`StressKey`].
 pub fn write_extxyz_with(
     trajectory: &Trajectory,
-    path: &str,
+    path: &Path,
     stress_key: StressKey,
 ) -> Result<()> {
-    let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
+    let path_ = path.display();
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     for (fi, frame) in trajectory.frames.iter().enumerate() {
@@ -173,7 +175,7 @@ mod tests {
         let traj = Trajectory::from_frame(frame);
 
         let path = std::env::temp_dir().join("label_col.extxyz");
-        let p = path.to_str().unwrap();
+        let p = &path;
         write_extxyz(&traj, p).unwrap();
 
         let text = std::fs::read_to_string(p).unwrap();
@@ -194,7 +196,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("bcc_rt.extxyz");
-        let p = path.to_str().unwrap();
+        let p = &path;
         let orig = bcc_traj();
         write_extxyz(&orig, p).unwrap();
 
@@ -219,7 +221,7 @@ mod tests {
             0.002, 0.02, 0.004,
             0.003, 0.004, 0.03));
         let path = std::env::temp_dir().join("stress_sign.extxyz");
-        write_extxyz(&traj, path.to_str().unwrap()).unwrap();
+        write_extxyz(&traj, &path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let line = text.lines().nth(1).unwrap();
         assert!(
@@ -242,14 +244,14 @@ mod tests {
                                  0.003, 0.004, 0.03);
         traj.frames[0].stress = Some(-sigma);       // σ_ferro = -σ_ase
         let path = std::env::temp_dir().join("virial_key.extxyz");
-        write_extxyz_with(&traj, path.to_str().unwrap(), StressKey::Virial).unwrap();
+        write_extxyz_with(&traj, &path, StressKey::Virial).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let line = text.lines().nth(1).unwrap();
         assert!(line.contains("virial="), "{line}");
         assert!(!line.contains("stress="), "{line}");
 
         // 读回:reader 对 virial= 除体积、不变号,应回到 σ_ferro
-        let back = read_extxyz(path.to_str().unwrap()).unwrap();
+        let back = read_extxyz(&path).unwrap();
         let s = back.first().unwrap().stress.unwrap();
         for i in 0..3 {
             for j in 0..3 {
@@ -269,7 +271,7 @@ mod tests {
         traj.frames[0].cell = None;
         traj.frames[0].stress = Some(Matrix3::identity());
         let path = std::env::temp_dir().join("virial_nocell.extxyz");
-        let e = write_extxyz_with(&traj, path.to_str().unwrap(), StressKey::Virial)
+        let e = write_extxyz_with(&traj, &path, StressKey::Virial)
             .unwrap_err();
         assert!(format!("{e:#}").contains("no cell"), "{e:#}");
     }

@@ -1,3 +1,4 @@
+use std::path::Path;
 use crate::readers::lammps_dump::LammpsUnits;
 use ferro_core::Trajectory;
 use std::fs::File;
@@ -8,8 +9,9 @@ const EV_TO_KCAL: f64 = 1.0 / 0.04336410; // eV/Å → kcal/(mol·Å)
 
 /// 写 LAMMPS dump 文件。
 /// 包含列：id type element x y z [vx vy vz] [fx fy fz] [q]
-pub fn write_lammps_dump(trajectory: &Trajectory, path: &str, units: LammpsUnits) -> Result<()> {
-    let file = File::create(path).with_context(|| format!("cannot create {path}"))?;
+pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnits) -> Result<()> {
+    let path_ = path.display();
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     // type 编号在**整条轨迹**上确定一次。逐帧重建会让编号跟着「该帧碰巧先出现
@@ -180,7 +182,7 @@ mod tests {
                                 metadata: Default::default() };
 
         let path = std::env::temp_dir().join("type_stable.lammpstrj");
-        let p = path.to_str().unwrap();
+        let p = &path;
         write_lammps_dump(&traj, p, LammpsUnits::Real).unwrap();
 
         let text = std::fs::read_to_string(p).unwrap();
@@ -200,7 +202,7 @@ mod tests {
     fn test_roundtrip() {
         use crate::readers::lammps_dump::LammpsUnits;
         let path = std::env::temp_dir().join("bcc_rt.dump");
-        let p = path.to_str().unwrap();
+        let p = &path;
         let orig = bcc_traj();
         write_lammps_dump(&orig, p, LammpsUnits::Real).unwrap();
 

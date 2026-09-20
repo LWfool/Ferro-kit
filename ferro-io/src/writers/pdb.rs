@@ -1,11 +1,13 @@
+use std::path::Path;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{Context, Result};
 
 /// 将轨迹写入 PDB 文件。多帧使用 MODEL/ENDMDL 记录。
-pub fn write_pdb(trajectory: &Trajectory, path: &str) -> Result<()> {
-    let file = File::create(path).context(format!("cannot create {path}"))?;
+pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    let path_ = path.display();
+    let file = File::create(path).context(format!("cannot create {path_}"))?;
     let mut writer = BufWriter::new(file);
 
     if let Some(source) = &trajectory.metadata.source {
@@ -73,7 +75,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("roundtrip_water.pdb");
-        let path_str = path.to_str().unwrap();
+        let path_str = &path;
         let original = make_traj();
         write_pdb(&original, path_str).unwrap();
 

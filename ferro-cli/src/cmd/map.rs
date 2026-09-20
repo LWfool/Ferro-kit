@@ -234,11 +234,11 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
 
         let name = mode_name(&mode);
         let file = if stem.is_empty() { format!("{name}.cube") } else { format!("{name}_{stem}.cube") };
-        let path = out.join_str(&file);
+        let path = out.join(&file);
         write_cube(&result.cube, &path)?;
         println!(
-            "Cube ({name}) -> {path}  [{} frames, {} atoms]",
-            result.n_frames, result.n_atoms
+            "Cube ({name}) -> {}  [{} frames, {} atoms]",
+            path.display(), result.n_frames, result.n_atoms
         );
         Ok(())
     })
@@ -257,11 +257,11 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
             .ok_or_else(|| anyhow!("Cube radius calc failed (missing cell?)"))?;
 
         let file = if stem.is_empty() { "radius.cube".to_string() } else { format!("radius_{stem}.cube") };
-        let path = out.join_str(&file);
+        let path = out.join(&file);
         write_cube(&result.cube, &path)?;
         println!(
-            "Cube (radius={:.3}Å) -> {path}  [{} frames, {} atoms]",
-            params.radius, result.n_frames, result.n_atoms
+            "Cube (radius={:.3}Å) -> {}  [{} frames, {} atoms]",
+            params.radius, path.display(), result.n_frames, result.n_atoms
         );
         Ok(())
     })
@@ -301,7 +301,7 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
             let mut labels: Vec<_> = family.grids.keys().collect();
             labels.sort();
             for label in &labels {
-                write_cube(&family.grids[*label], &out.join_str(&format!("{fam_prefix}_{label}.cube")))?;
+                write_cube(&family.grids[*label], &out.join(&format!("{fam_prefix}_{label}.cube")))?;
                 total_files += 1;
             }
             println!(
@@ -311,7 +311,7 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
                 family.rmsd_stats.mean,
                 family.rmsd_stats.max,
                 family.rmsd_stats.n_warned,
-                out.join_str(&fam_prefix),
+                out.join(&fam_prefix).display(),
             );
         }
         println!(
@@ -337,7 +337,7 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
 
     let mut pairs = Vec::with_capacity(c.cube_files.len());
     for path in &c.cube_files {
-        let (frame, chg) = read_cube_as_chg(path.to_str().unwrap_or_default())
+        let (frame, chg) = read_cube_as_chg(path)
             .map_err(|e| anyhow!("读取 {} 失败: {e}", path.display()))?;
         pairs.push((frame, chg));
     }
@@ -363,16 +363,17 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     let mut total_files = 0usize;
     for (fam_idx, family) in families.iter().enumerate() {
         let fam_stem = if multi_family { format!("{stem}_fam{fam_idx}") } else { stem.to_string() };
-        let path = out.join_str(&format!("{}_Q{}.cube", fam_stem, c.cluster.qn));
+        let path = out.join(&format!("{}_Q{}.cube", fam_stem, c.cluster.qn));
         write_cube(&family.cube, &path)?;
         total_files += 1;
         println!(
-            "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {path}",
+            "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {}",
             family.signature,
             family.n_clusters,
             family.rmsd_stats.mean,
             family.rmsd_stats.max,
             family.rmsd_stats.n_warned,
+            path.display(),
         );
     }
     println!(
