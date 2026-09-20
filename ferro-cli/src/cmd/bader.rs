@@ -75,9 +75,9 @@ pub fn run(args: &BaderCmd) -> Result<()> {
     let bcf_path = format!("{stem}_BCF.dat");
     let avf_path = format!("{stem}_AVF.dat");
 
-    result.write_acf(&acf_path, &frame)?;
-    result.write_bcf(&bcf_path)?;
-    result.write_avf(&avf_path)?;
+    std::fs::write(&acf_path, result.acf_text(&frame))?;
+    std::fs::write(&bcf_path, result.bcf_text())?;
+    std::fs::write(&avf_path, result.avf_text())?;
 
     println!("Output: {acf_path}, {bcf_path}, {avf_path}");
 
