@@ -107,7 +107,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | `ferro-analysis/src/network/` | 单文件 `mod.rs`，六张表的统计 |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
 | `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表）、`merge`（分组、规范序、打乱） |
-| `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制）、`plot.rs` |
+| `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`outpath.rs`（`-o` 的目录创建与确认）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制）、`plot.rs` |
 
 **几条容易违反的**（完整清单在 `dev/issues.md`）：
 

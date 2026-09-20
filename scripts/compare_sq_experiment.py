@@ -86,7 +86,7 @@ def load_experiment(xlsx):
 def compute(traj, outdir, r_max, ferro_bin, d2sq_bin):
     fe_out = fc.run_ferro(
         ferro_bin,
-        ["traj", "sq", "-i", traj, "-o", "exp",
+        ["traj", "sq", "-i", traj, "-s", "exp",
          "--q-min", Q_MIN, "--q-max", Q_MAX, "--dq", DQ,
          "--r-min", R_MIN, "--r-max", r_max, "--dr", DR,
          "--weighting", "both"],

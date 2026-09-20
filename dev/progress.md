@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：577 个（全部通过，clippy 零警告）
+## 测试总数：591 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
@@ -12,9 +12,9 @@
 | ferro-structure | 72 |
 | ferro-analysis | 198 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 72 + bin 2 + 集成 5） | 79 |
+| ferro-cli（lib 83 + bin 2 + 集成 8） | 93 |
 
-版本号 **0.3.2**（workspace 统一；ferro-python 已同步）。
+版本号 **0.3.3**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
 
 `v0.3.1` 相对 `v0.3.0` **全部是新增**（`ferro dataset` 三步、CP2K out reader、
@@ -244,8 +244,11 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 
 ### ferro-analysis / dft
 
-- `bader.rs`：`BaderAnalyzer` builder、`BaderResult`、ACF/BCF/AVF 输出（Henkelman 格式，
-  外部工具按它解析，故**不走 `Table`**）
+- `bader.rs`：`BaderAnalyzer` builder、`BaderResult`、`acf_text`/`bcf_text`/`avf_text`
+  （Henkelman 格式，外部工具按它解析，故**不走 `Table`**）。2026-09-20 起只**渲染文本**，
+  落盘由 CLI 做 —— 分析层碰文件系统的唯一例外就此消失
+- **`tests/CHGCAR_2atoms`**（8×8×8 合成网格，9 KB）：CHGCAR reader → 分析 → 报告
+  这条链的端到端 fixture，此前只有内存里构造网格的单元测试
 - `bader_grid.rs`：on-grid / near-grid / off-grid 三种梯度上升，含边缘精化
 - `bader_weight.rs`：Yu-Trinkle weight 方法（WS Voronoi + 流分配）
 - `chg_sdf.rs`：电荷密度团簇 SDF（Kabsch 对齐 + pull 插值旋转子格）
@@ -270,6 +273,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 - 每个子命令自带参数结构体（`--dt` 在 `msd` 与 `vacf` 下语义不同，不共用字段；
   旧 `fe-traj` 是 29 个字段的大结构体）。`CommonArgs` / `SelectArgs` 经
   `#[command(flatten)]` 接入
+- **`-o` 恒为路径**（2026-09-20 起，`--outdir` 已删）：写多个产物的命令（13 个分析
+  命令、`chg-sdf`、`bader`、`dataset`）指目录，只写一个文件的（`convert`、`job`）
+  指文件；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
+  `[y/N]`，非交互环境报错并指明 `--mkdir`，询问都在读第一个输入之前
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
   零匹配报错）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
@@ -279,6 +286,9 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   文件 stem 不进名字），只有一组时直接写进 `-o` 本身。`-o` 必填，
   `--overwrite` 拦覆盖。文件按首个 step 排序，重复帧不去重但区间打出来。
   同目录成分不符报错（不当坏帧丢），单文件解析失败跳过且最后再报一遍。
+  **产物默认带 `.train`**（2026-09-20 起，`filter` 与 `merge`；`collect` 不加），
+  `--ratio` 划分出的三部分是 `.train`/`.valid`/`.test`；已带后缀不叠加，`merge`
+  遇到混合后缀报错，`.train` 输入可再划分而 `.valid`/`.test` 拒绝。
   `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
   `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
   **不给 `-o` 即只读**。七张表（三张统计 + 四张诊断）经 `write_all` 出 csv，
@@ -388,9 +398,9 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
   「一输入一产物」相反。**优先级高**
 - **`write_cube` 的参数顺序已于 2026-09-12 改为 `(cube, path)`**，与其余 12 个
   writer 一致（破坏性，但 0.3.2 未发版且波及面只有仓内 7 处）
-- **`ferro bader` 的三个 `.dat` 写在当前目录**，名字是 `<输入stem>_ACF.dat`。VASP 的
-  电荷密度一律叫 `CHGCAR`，故同一目录连跑两个体系后一次静默盖掉前一次。已在帮助页
-  与手册告知，`--outdir` 待做（`plan.md` 优先级高）
+- **`ferro bader` 的三个 `.dat` 默认写在输入文件旁边**（2026-09-20 起），名字是
+  `<输入stem>_ACF[_<-s 后缀>].dat`，`-o` 可改目录。这是全仓唯一不默认当前目录的
+  命令：VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然互相覆盖
 - **`ferro job` 只用输入的第 0 帧**，多帧输入其余帧丢弃。2026-08-24 起**会告警**
   （`multi_frame_warning`，三行：帧数、忽略数、变通命令），不再是静默的。变通是先
   `ferro convert --number N` 抽成单帧文件再逐个跑 job；让 job 自己选帧见 `plan.md`

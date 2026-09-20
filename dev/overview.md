@@ -44,12 +44,12 @@ ferro bader | convert | info | job
 ferro doc   <topic>                                            → 手册（编译在二进制里）
 ```
 
-`dataset` 是唯一产物为**目录**（而非文件）的一组：DeePMD 的 system 就是目录。
-故它的 `-o` 是输出根目录，不是文件名后缀 —— 与下面那条约定的例外，已在各自
-帮助页写明。
+`dataset` 的产物是**目录**（DeePMD 的 system 就是目录），故它的 `-o` 是输出根目录。
+0.3.3 把这一条推成了全仓规则，它不再是例外。
 
 `-i` 恒为多值并自展开 glob；逐文件独立分析，结果堆叠成一份带 `file` 列的 csv。
-`-o` 是**文件名后缀**，不是路径；路径走 `--outdir`。
+**`-o` 恒为路径**（0.3.3 起）：写多个产物的命令指目录，`convert` / `job` 指文件；
+批次标记走 `-s/--suffix`。目录缺失时先问 `[y/N]`，非交互环境须给 `--mkdir`。
 
 参数与输出列结构见 `docs/src/cli-reference.md`。
 
@@ -165,3 +165,23 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 
 **新增约定**：`Cp2kOutStats.steps` 带出文件的 step 区间；重复帧**不去重**（重启
 重叠段位置速度相同，能量力也相同），但区间打出来让重叠可见。
+
+## `v0.3.3`（2026-09-20，未发版）
+
+**含破坏性改动但按用户明确要求走 patch 位** —— 与 `v0.2.1`、`v0.3.2` 同一类例外。
+`v0.3.2` 亦未单独发版，两批改动会一并进入下一个发布点。
+
+| 改动 | 影响 |
+|---|---|
+| **`-o` 恒为路径，`--outdir` 删除** | 13 个分析命令加 `chg-sdf` 的 `-o` 由「文件名后缀」变为「输出目录」；旧命令行 `-o cmp` 不报错，但含义变成写进 `cmp/` 目录 |
+| **批次标记改 `-s/--suffix`** | `dataset filter` 的 `-s` 仍是 `--s-max`，`job` 的 `-s` 仍是 software（两者不收批次标记，不冲突） |
+| **新增 `--mkdir` 与创建确认** | 目录不存在时向 stderr 问 `[y/N]`；**非交互环境（脚本、CI）不给 `--mkdir` 会报错退出** |
+| `convert` 的 `-o` 可带目录 | 以分隔符结尾则报错（格式从文件名推断）；`job` 的 `-o` 以分隔符结尾则放默认名 |
+| **`bader` 报告改写到输入旁边** | 默认位置由当前目录改为 `-i` 所在目录；新增 `-o` / `-s` |
+| **`dataset` 产物默认带 `.train`** | `filter` / `merge` 的输出目录名多出 `.train`（`collect` 不加）；`merge` 遇混合后缀报错；`.valid`/`.test` 不能再划分 |
+| `dataset` 的 `--outdir` 改名 `--output` | 短名 `-o` 不变 |
+
+**内部**：`ferro-io` 的 reader/writer 路径参数由 `&str` 统一为 `&Path`；
+`BaderResult` 的三个 `write_*` 改为 `*_text()` 返回字符串，落盘移到 CLI ——
+`ferro-analysis` 不再碰文件系统。新增 `tests/CHGCAR_2atoms` 与
+`ferro-cli/tests/bader_reports.rs`。

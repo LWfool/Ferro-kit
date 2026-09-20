@@ -77,7 +77,7 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
     # ferro：不给配对参数则输出全部 partial + 两条 total
     fe_sq = fc.run_ferro(
         ferro_bin,
-        ["traj", "sq", "-i", traj, "-o", "cmp",
+        ["traj", "sq", "-i", traj, "-s", "cmp",
          "--q-min", Q_MIN, "--q-max", Q_MAX, "--dq", DQ,
          "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR,
          "--weighting", "both"],
@@ -95,7 +95,7 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
     # 配对已由 label 段进文件名，-o 与 S(q) 共用同一个批次标记
     fe_gr = fc.run_ferro(
         ferro_bin,
-        ["traj", "gr", "-a", "O", "-b", "O", "-i", traj, "-o", "cmp",
+        ["traj", "gr", "-a", "O", "-b", "O", "-i", traj, "-s", "cmp",
          "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR],
         outdir,
         fc.product_name("gr", label=fc.file_label("O", "O"), suffix="cmp"))

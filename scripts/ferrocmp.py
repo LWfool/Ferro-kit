@@ -63,8 +63,9 @@ def run(cmd, expect, cwd=None, check_returncode=False):
 def run_ferro(ferro_bin, argv, outdir, product):
     """跑一条 ferro 子命令，返回它写出的产物路径。
 
-    `-o` 是后缀不是路径，故以 `outdir` 为工作目录调用；`argv` 里的输入路径必须
-    已经是绝对路径。`product` 是预期文件名，用 `product_name()` 拼，别手写。
+    批次后缀走 `-s`，产物落在当前目录，故以 `outdir` 为工作目录调用；`argv` 里的
+    输入路径必须已经是绝对路径（0.3.3 起 ferro 的 `-o` 是输出目录，这里用不上它：
+    cwd 就是 outdir）。`product` 是预期文件名，用 `product_name()` 拼，别手写。
     """
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
