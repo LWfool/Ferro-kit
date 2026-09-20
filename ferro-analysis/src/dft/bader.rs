@@ -4,8 +4,7 @@
 //! See `dev/bader.md` for detailed implementation notes.
 
 use ferro_core::{ChargeGrid, Frame};
-use std::io::{BufWriter, Write};
-use ferro_core::error::{ChemError, Result};
+use std::fmt::Write;
 
 /// Bader analysis method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,7 +94,7 @@ pub struct BaderResult {
 /// let result = BaderAnalyzer::new(chg, frame)
 ///     .method(BaderMethod::Weight)
 ///     .run();
-/// result.write_acf("ACF.dat")?;
+/// std::fs::write("ACF.dat", result.acf_text(&frame))?;
 /// ```
 pub struct BaderAnalyzer {
     chg: ChargeGrid,
@@ -157,19 +156,18 @@ impl BaderAnalyzer {
 }
 
 impl BaderResult {
-    /// Write ACF.dat (Atom-Centered File): per-atom Bader charge summary.
+    /// Renders ACF.dat (Atom-Centered File): per-atom Bader charge summary.
     ///
     /// Columns: atom# | X | Y | Z | charge | min_distance | atomic_volume
-    pub fn write_acf(&self, path: &str, frame: &Frame) -> Result<()> {
-        let f = std::fs::File::create(path)
-            .map_err(ChemError::IoError)?;
-        let mut w = BufWriter::new(f);
+    ///
+    /// Returns the text rather than writing it: `ferro-analysis` does no file I/O,
+    /// the caller decides where this lands.
+    pub fn acf_text(&self, frame: &Frame) -> String {
+        let mut w = String::new();
 
-        writeln!(w, "# ACF.dat — Bader charge analysis (ferro v{})", env!("CARGO_PKG_VERSION"))
-            .map_err(ChemError::IoError)?;
-        writeln!(w, "# {:>5} {:>12} {:>12} {:>12} {:>14} {:>14} {:>14}",
-                 "Atom", "X", "Y", "Z", "Charge", "MinDist", "Volume")
-            .map_err(ChemError::IoError)?;
+        let _ = writeln!(w, "# ACF.dat — Bader charge analysis (ferro v{})", env!("CARGO_PKG_VERSION"));
+        let _ = writeln!(w, "# {:>5} {:>12} {:>12} {:>12} {:>14} {:>14} {:>14}",
+                 "Atom", "X", "Y", "Z", "Charge", "MinDist", "Volume");
 
         for (i, charge) in self.ionchg.iter().enumerate() {
             let vol = self.ionvol.get(i).copied().unwrap_or(0.0);
@@ -180,32 +178,25 @@ impl BaderResult {
             let min_dist = if min_dist == f64::MAX { 0.0 } else { min_dist };
             let pos = frame.atoms.get(i).map(|a| a.position).unwrap_or_default();
 
-            writeln!(w, " {:>5} {:>12.6} {:>12.6} {:>12.6} {:>14.6} {:>14.6} {:>14.6}",
-                     i + 1, pos.x, pos.y, pos.z, charge, min_dist, vol)
-                .map_err(ChemError::IoError)?;
+            let _ = writeln!(w, " {:>5} {:>12.6} {:>12.6} {:>12.6} {:>14.6} {:>14.6} {:>14.6}",
+                     i + 1, pos.x, pos.y, pos.z, charge, min_dist, vol);
         }
 
-        writeln!(w, "\n# Vacuum charge: {:.6} e,  Vacuum volume: {:.6} A^3", self.vacchg, self.vacvol)
-            .map_err(ChemError::IoError)?;
-        writeln!(w, "# Total: {:.6} e", self.ionchg.iter().sum::<f64>() + self.vacchg)
-            .map_err(ChemError::IoError)?;
+        let _ = writeln!(w, "\n# Vacuum charge: {:.6} e,  Vacuum volume: {:.6} A^3", self.vacchg, self.vacvol);
+        let _ = writeln!(w, "# Total: {:.6} e", self.ionchg.iter().sum::<f64>() + self.vacchg);
 
-        Ok(())
+        w
     }
 
-    /// Write BCF.dat (Bader-Centered File): per-volume summary.
+    /// Renders BCF.dat (Bader-Centered File): per-volume summary.
     ///
     /// Columns: volume# | X | Y | Z | charge | assigned_atom | distance
-    pub fn write_bcf(&self, path: &str) -> Result<()> {
-        let f = std::fs::File::create(path)
-            .map_err(ChemError::IoError)?;
-        let mut w = BufWriter::new(f);
+    pub fn bcf_text(&self) -> String {
+        let mut w = String::new();
 
-        writeln!(w, "# BCF.dat — Bader volume analysis (ferro v{})", env!("CARGO_PKG_VERSION"))
-            .map_err(ChemError::IoError)?;
-        writeln!(w, "# {:>5} {:>12} {:>12} {:>12} {:>14} {:>10} {:>14}",
-                 "Vol", "X", "Y", "Z", "Charge", "Atom", "Distance")
-            .map_err(ChemError::IoError)?;
+        let _ = writeln!(w, "# BCF.dat — Bader volume analysis (ferro v{})", env!("CARGO_PKG_VERSION"));
+        let _ = writeln!(w, "# {:>5} {:>12} {:>12} {:>12} {:>14} {:>10} {:>14}",
+                 "Vol", "X", "Y", "Z", "Charge", "Atom", "Distance");
 
         for v in 0..self.nvols {
             let x = self.volpos_car.get(v).map(|p| p[0]).unwrap_or(0.0);
@@ -215,22 +206,18 @@ impl BaderResult {
             let nn = self.nnion.get(v).map(|&i| i + 1).unwrap_or(0);
             let dist = self.iondist.get(v).copied().unwrap_or(0.0);
 
-            writeln!(w, " {:>5} {:>12.6} {:>12.6} {:>12.6} {:>14.6} {:>10} {:>14.6}",
-                     v + 1, x, y, z, chg, nn, dist)
-                .map_err(ChemError::IoError)?;
+            let _ = writeln!(w, " {:>5} {:>12.6} {:>12.6} {:>12.6} {:>14.6} {:>10} {:>14.6}",
+                     v + 1, x, y, z, chg, nn, dist);
         }
 
-        Ok(())
+        w
     }
 
-    /// Write AVF.dat (Atom-Volume File): per-atom list of assigned volume indices.
-    pub fn write_avf(&self, path: &str) -> Result<()> {
-        let f = std::fs::File::create(path)
-            .map_err(ChemError::IoError)?;
-        let mut w = BufWriter::new(f);
+    /// Renders AVF.dat (Atom-Volume File): per-atom list of assigned volume indices.
+    pub fn avf_text(&self) -> String {
+        let mut w = String::new();
 
-        writeln!(w, "# AVF.dat — Atom-Volume assignment (ferro v{})", env!("CARGO_PKG_VERSION"))
-            .map_err(ChemError::IoError)?;
+        let _ = writeln!(w, "# AVF.dat — Atom-Volume assignment (ferro v{})", env!("CARGO_PKG_VERSION"));
 
         let nions = self.ionchg.len();
         for i in 0..nions {
@@ -239,10 +226,10 @@ impl BaderResult {
                 .map(|(v, _)| v + 1)
                 .collect();
             let line = vols.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(" ");
-            writeln!(w, " {:>5} : {}", i + 1, line).map_err(ChemError::IoError)?;
+            let _ = writeln!(w, " {:>5} : {}", i + 1, line);
         }
 
-        Ok(())
+        w
     }
 }
 
@@ -355,30 +342,29 @@ mod tests {
         assert!(result.nnion.contains(&1), "atom 1 should be assigned to a volume");
     }
 
+    /// 三份报告的内容,不再是「文件建出来了」—— 渲染改为返回文本之后,
+    /// 断言可以直接落在每一行上。
     #[test]
-    fn test_bader_output_files() {
+    fn test_bader_reports_render() {
         let (frame, chg) = two_peak_system();
         let result = BaderAnalyzer::new(chg, frame.clone())
             .method(BaderMethod::OnGrid)
             .refine(0)
             .run();
 
-        let dir = std::env::temp_dir();
-        let acf = dir.join("test_acf.dat");
-        let bcf = dir.join("test_bcf.dat");
-        let avf = dir.join("test_avf.dat");
+        let acf = result.acf_text(&frame);
+        assert!(acf.starts_with("# ACF.dat"), "{acf}");
+        // 表头两行 + 每原子一行 + 空行 + 真空两行
+        let rows = acf.lines().filter(|l| l.starts_with(" ")).count();
+        assert_eq!(rows, frame.n_atoms());
+        assert!(acf.contains("# Total:"));
 
-        result.write_acf(acf.to_str().unwrap(), &frame).unwrap();
-        result.write_bcf(bcf.to_str().unwrap()).unwrap();
-        result.write_avf(avf.to_str().unwrap()).unwrap();
+        let bcf = result.bcf_text();
+        assert!(bcf.starts_with("# BCF.dat"), "{bcf}");
+        assert_eq!(bcf.lines().filter(|l| l.starts_with(" ")).count(), result.nvols);
 
-        assert!(acf.exists());
-        assert!(bcf.exists());
-        assert!(avf.exists());
-
-        // Cleanup
-        let _ = std::fs::remove_file(&acf);
-        let _ = std::fs::remove_file(&bcf);
-        let _ = std::fs::remove_file(&avf);
+        let avf = result.avf_text();
+        assert!(avf.starts_with("# AVF.dat"), "{avf}");
+        assert_eq!(avf.lines().filter(|l| l.starts_with(" ")).count(), frame.n_atoms());
     }
 }
