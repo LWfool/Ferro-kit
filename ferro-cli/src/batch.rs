@@ -218,32 +218,28 @@ pub fn set_label(parts: Option<&Vec<String>>) -> Result<String> {
 /// `write_all` would otherwise take eight positional arguments.
 #[derive(Clone, Debug, Default)]
 pub struct Output {
-    /// `--outdir`; `None` = the current directory.
+    /// `-o`, the output directory; `None` = the current directory.
     pub dir: Option<PathBuf>,
     /// What was analysed (`P-O`, `O-P-O`, `all`). `None` for modes with no selection.
     pub label: Option<String>,
-    /// `-o`, the batch tag.
+    /// `-s`, the batch tag.
     pub suffix: Option<String>,
+    /// `--mkdir`: create `dir` without asking.
+    pub mkdir: bool,
 }
 
 impl Output {
-    /// Creates `--outdir` if it does not exist. Call once, **before the first input is
+    /// Creates `-o` if it does not exist. Call once, **before the first input is
     /// read**, so a bad path fails alongside the other parameter errors rather than
     /// after a long analysis.
     pub fn prepare(&self) -> Result<()> {
-        if let Some(d) = &self.dir {
-            if !d.exists() {
-                std::fs::create_dir_all(d)
-                    .map_err(|e| anyhow::anyhow!("cannot create --outdir '{}': {e}", d.display()))?;
-                println!("Created: {}", d.display());
-            } else if !d.is_dir() {
-                bail!("--outdir '{}' exists and is not a directory", d.display());
-            }
+        match &self.dir {
+            Some(d) => crate::outpath::ensure_dir(d, self.mkdir),
+            None => Ok(()),
         }
-        Ok(())
     }
 
-    /// Places a finished file name inside `--outdir`.
+    /// Places a finished file name inside `-o`.
     pub fn join(&self, name: &str) -> PathBuf {
         match &self.dir {
             Some(d) => d.join(name),
@@ -258,10 +254,10 @@ impl Output {
     }
 }
 
-/// Output file name: `<outdir>/<mode>[_<table>][_<label>]_<suffix>.csv`.
+/// Output file name: `<-o dir>/<mode>[_<table>][_<label>]_<suffix>.csv`.
 ///
 /// The table name is dropped when it merely repeats the mode (the single-table case).
-/// `label` says what was analysed and `suffix` (`-o`) tags the batch; label comes first
+/// `label` says what was analysed and `suffix` (`-s`) tags the batch; label comes first
 /// so `ls gr_P-O_*` lists one pair across every batch.
 pub fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
     let mut stem =
@@ -526,6 +522,7 @@ mod tests {
             dir: None,
             label: label.map(str::to_string),
             suffix: suffix.map(str::to_string),
+            mkdir: false,
         }
     }
 
@@ -545,11 +542,12 @@ mod tests {
     }
 
     #[test]
-    fn test_out_path_honours_outdir() {
+    fn test_out_path_honours_the_output_dir() {
         let o = Output {
             dir: Some(PathBuf::from("results/700K")),
             label: Some("P-O".into()),
             suffix: None,
+            mkdir: false,
         };
         assert_eq!(out_path("gr", "gr", &o), PathBuf::from("results/700K/gr_P-O.csv"));
     }
@@ -587,7 +585,7 @@ mod tests {
     fn test_output_prepare_creates_missing_dir() {
         let base = std::env::temp_dir().join(format!("ferro_outdir_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        let o = Output { dir: Some(base.join("deep/nested")), ..Default::default() };
+        let o = Output { dir: Some(base.join("deep/nested")), mkdir: true, ..Default::default() };
         o.prepare().unwrap();
         assert!(o.dir.as_ref().unwrap().is_dir(), "缺失目录应被创建");
         o.prepare().unwrap(); // 已存在时是 no-op

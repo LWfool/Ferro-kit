@@ -18,13 +18,17 @@ pub struct CommonArgs {
     #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
-    /// Output name suffix: results go to <command>[_<table>][_<label>]_<suffix>.csv
-    #[arg(short, long, value_name = "SUFFIX")]
-    pub output: Option<String>,
+    /// Directory to write every product into (default: current dir)
+    #[arg(short, long, value_name = "DIR")]
+    pub output: Option<PathBuf>,
 
-    /// Directory to write every product into (created if missing; default: current dir)
-    #[arg(long, value_name = "DIR")]
-    pub outdir: Option<PathBuf>,
+    /// Batch tag appended to every product name: <command>[_<table>][_<label>]_<suffix>.csv
+    #[arg(short, long, value_name = "SUFFIX")]
+    pub suffix: Option<String>,
+
+    /// Create the output directory without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
 
     /// Use only the last N frames (skip equilibration)
     #[arg(long)]
@@ -57,7 +61,7 @@ impl CommonArgs {
     }
 
     pub fn suffix(&self) -> Option<&str> {
-        self.output.as_deref()
+        self.suffix.as_deref()
     }
 
     /// Builds the naming/placement bundle for this run.
@@ -66,9 +70,10 @@ impl CommonArgs {
     /// modes that have no type selection (`sq`, `net`, `map`).
     pub fn out(&self, label: Option<String>) -> crate::batch::Output {
         crate::batch::Output {
-            dir: self.outdir.clone(),
+            dir: self.output.clone(),
             label,
-            suffix: self.output.clone(),
+            suffix: self.suffix.clone(),
+            mkdir: self.mkdir,
         }
     }
 }

@@ -82,7 +82,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         bail!("Every cutoff names a modifier element; at least one former is required");
     }
 
-    // net 没有类型选择,故无 label 段;--outdir 在读第一个文件之前建好
+    // net 没有类型选择,故无 label 段;-o 的目录在读第一个文件之前建好
     let out = cmd.common.out(None);
     out.prepare()?;
 
@@ -377,8 +377,9 @@ PAIR ARGUMENTS (required, at least one):
 
 OPTIONS:
   -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
-  -o, --output SUFFIX   Output name suffix: network_<table>_<suffix>.csv
-      --outdir DIR      Write every product here, tables and --export-traj alike
+  -o, --output DIR      Write every product here, tables and --export-traj alike;
+                        --mkdir creates it without asking
+  -s, --suffix SUFFIX   Output name suffix: network_<table>_<suffix>.csv
       --last-n N        Use only the last N frames (skip equilibration)
       --ncore N         Parallel threads                            [all cores]
       --metal-units     LAMMPS metal units; only affects --export-traj extxyz

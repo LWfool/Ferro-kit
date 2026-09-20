@@ -791,6 +791,7 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
             tables.push((name, merged));
         }
         let outp = crate::batch::Output {
+            mkdir: true,
             dir: Some(out.clone()),
             label: None,
             suffix: None,

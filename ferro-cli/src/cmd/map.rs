@@ -125,12 +125,17 @@ pub struct ChgSdfCmd {
     /// QE pp.x cube files (one per MD frame)
     #[arg(long = "cubes", num_args = 1..)]
     pub cube_files: Vec<PathBuf>,
-    /// Output file stem
-    #[arg(short, long)]
-    pub output: Option<String>,
-    /// Directory to write the cubes into (created if missing; default: current dir)
-    #[arg(long, value_name = "DIR")]
-    pub outdir: Option<PathBuf>,
+    /// Directory to write the cubes into (default: current dir)
+    #[arg(short, long, value_name = "DIR")]
+    pub output: Option<PathBuf>,
+
+    /// Batch tag appended to the product name: chg_sdf[_<suffix>]_Q<n>.cube
+    #[arg(short, long, value_name = "SUFFIX")]
+    pub suffix: Option<String>,
+
+    /// Create the output directory without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
     /// Sub-grid boundary margin [Å]
     #[arg(long = "chg-padding", default_value = "6.0")]
     pub chg_padding: f64,
@@ -328,7 +333,12 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
 /// separately in `dev/plan.md`.
 fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     // 这个命令不走 CommonArgs(它吃 --cubes 而不是 -i),所以 Output 自己拼
-    let out = batch::Output { dir: c.outdir.clone(), ..Default::default() };
+    let out = batch::Output {
+        dir: c.output.clone(),
+        suffix: c.suffix.clone(),
+        mkdir: c.mkdir,
+        ..Default::default()
+    };
     out.prepare()?;
 
     if let Some(n) = c.ncore {
@@ -355,14 +365,17 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     let result = calc_chg_sdf(&pairs, &params)
         .ok_or_else(|| anyhow!("未找到 Q{} 团簇，请检查参数", c.cluster.qn))?;
 
-    let stem = c.output.as_deref().unwrap_or("chg_sdf");
+    let stem = match c.suffix.as_deref().filter(|s| !s.is_empty()) {
+        Some(tag) => format!("chg_sdf_{tag}"),
+        None => "chg_sdf".to_string(),
+    };
     let multi_family = result.families.len() > 1;
     let mut families: Vec<_> = result.families.values().collect();
     families.sort_by(|a, b| a.signature.cmp(&b.signature));
 
     let mut total_files = 0usize;
     for (fam_idx, family) in families.iter().enumerate() {
-        let fam_stem = if multi_family { format!("{stem}_fam{fam_idx}") } else { stem.to_string() };
+        let fam_stem = if multi_family { format!("{stem}_fam{fam_idx}") } else { stem.clone() };
         let path = out.join(&format!("{}_Q{}.cube", fam_stem, c.cluster.qn));
         write_cube(&family.cube, &path)?;
         total_files += 1;

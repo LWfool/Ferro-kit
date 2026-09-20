@@ -304,20 +304,20 @@ Manual
 
 Batch input:
   -i takes several files and expands glob patterns itself — quote them:
-    ferro traj gr -i 'runs/*/prod.dump' -a P -b O -o scan
+    ferro traj gr -i 'runs/*/prod.dump' -a P -b O -s scan
   Each input is analysed on its own; results stack into ONE csv with a `file`
   column. A failed input is skipped, its reason printed, exit code set to 1.
 
 Output naming:
-  <outdir>/<command>[_<table>][_<label>]_<suffix>.csv
-  --outdir DIR   where every product goes (created if missing; default: cwd)
-  -o SUFFIX      batch tag, chosen by you
+  <-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
+  -o DIR         where every product goes; asked before creating, --mkdir skips
+  -s SUFFIX      batch tag, chosen by you
   <label>        what was analysed: `traj gr -a P -b O` -> gr_P-O.csv, no
                  selection -> gr_all.csv. Label before suffix, so
                  `ls gr_P-O_*` lists one pair across every batch.
 
-  `dataset` is the exception: its products are DIRECTORIES, so -o is an output
-  root rather than a suffix.
+  -o is a DIRECTORY for every command whose run writes several products, and the
+  output FILE itself for `convert` and `job`, which write exactly one.
 
 Help:
   A command typed without -i prints its own page; `-h` gives the short parameter
@@ -348,8 +348,8 @@ Commands:
 
 Common options:
   -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output SUFFIX   Batch tag -> <command>[_<table>][_<label>]_<suffix>.csv
-      --outdir DIR      Write every product here (created if missing; default: .)
+  -o, --output DIR      Write every product here; --mkdir creates it unasked
+  -s, --suffix SUFFIX   Batch tag -> <command>[_<table>][_<label>]_<suffix>.csv
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
       --metal-units     LAMMPS metal units (velocities in A/ps)
@@ -382,7 +382,8 @@ Commands:
 
 Common options:
   -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output STEM     Output file stem (default depends on the command)
+  -o, --output DIR      Write the cubes here; --mkdir creates it unasked
+  -s, --suffix STEM     Output file stem (default depends on the command)
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
       --metal-units     LAMMPS metal units (velocities in A/ps)
@@ -422,8 +423,8 @@ Parameters:
   --dr     FLOAT          Histogram bin width [Å]                   [0.002]
   --last-n INT            Use only the last N frames
   --ncore  INT            Parallel threads                    [all cores]
-  -o SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
-  --outdir DIR            Write products here (created if missing)
+  -o DIR                  Output directory; --mkdir creates it unasked
+  -s SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file (needs a pair)
 
@@ -460,8 +461,8 @@ Parameters:
   --dr         FLOAT      g(r) bin width [Å]                        [0.002]
   --last-n     INT        Use only the last N frames
   --ncore      INT        Parallel threads (used in the g(r) step)
-  -o SUFFIX               Batch tag -> sq_<suffix>.csv
-  --outdir DIR            Write products here (created if missing)
+  -o DIR                  Output directory; --mkdir creates it unasked
+  -s SUFFIX               Batch tag -> sq_<suffix>.csv
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file (weighted totals only)
 
@@ -497,8 +498,8 @@ Parameters:
   --last-n    INT        Use only the last N frames
   --ncore     INT        Parallel threads
   --plot                 Generate PNG and open in viewer
-  -o SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
-  --outdir DIR           Write products here (created if missing)
+  -o DIR                 Output directory; --mkdir creates it unasked
+  -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — msd_<elements>[_<suffix>].csv, elements sorted:
@@ -538,8 +539,8 @@ Parameters:
   --d-angle   FLOAT       Histogram bin width [°]                      [0.1]
   --last-n    INT         Use only the last N frames
   --ncore     INT         Parallel threads                       [all cores]
-  -o SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
-  --outdir DIR            Write products here (created if missing)
+  -o DIR                  Output directory; --mkdir creates it unasked
+  -s SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file
 
@@ -575,8 +576,8 @@ Parameters:
   --last-n   INT        Use only the last N frames
   --tau      INT        Lag time in frames             default: half the run
   --ncore    INT        Parallel threads               default: all cores
-  -o SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
-  --outdir DIR          Write products here (created if missing)
+  -o DIR                Output directory; --mkdir creates it unasked
+  -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
@@ -605,8 +606,8 @@ Parameters:
   --last-n    INT     Use only the last N frames
   --tau       INT     Lag time in frames                default: half the run
   --ncore     INT     Parallel threads                  default: all cores
-  -o SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
-  --outdir DIR        Write products here (created if missing)
+  -o DIR              Output directory; --mkdir creates it unasked
+  -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — rotcorr_<centre>-<neighbour>[_<suffix>].csv; both are required, so this
@@ -635,8 +636,8 @@ Parameters:
   --elements Fe,O,...   Track only these elements       default: all
   --last-n   INT        Use only the last N frames
   --ncore    INT        Parallel threads                default: all cores
-  -o SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
-  --outdir DIR          Write products here (created if missing)
+  -o DIR                Output directory; --mkdir creates it unasked
+  -s SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 File name — vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv
@@ -666,8 +667,8 @@ Parameters:
   --elements Fe,O     Count only these elements   default: all
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
-  -o STEM             Output name stem            default: density.cube
-  --outdir DIR        Write the cubes here (created if missing)
+  -o DIR              Output directory; --mkdir creates it unasked
+  -s STEM             Output name stem            default: density.cube
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
@@ -691,8 +692,8 @@ Parameters:
   --elements Fe,O     Include only these elements default: all
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
-  -o STEM             Output name stem            default: velocity.cube
-  --outdir DIR        Write the cubes here (created if missing)
+  -o DIR              Output directory; --mkdir creates it unasked
+  -s STEM             Output name stem            default: velocity.cube
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
@@ -715,8 +716,8 @@ Parameters:
   --elements Fe,O     Include only these elements default: all
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
-  -o STEM             Output name stem            default: force.cube
-  --outdir DIR        Write the cubes here (created if missing)
+  -o DIR              Output directory; --mkdir creates it unasked
+  -s STEM             Output name stem            default: force.cube
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
@@ -744,8 +745,8 @@ Parameters:
   --elements Fe,O     Include only these elements default: all
   --last-n  INT       Use only the last N frames
   --ncore   INT       Parallel threads
-  -o STEM             Output name stem            default: radius.cube
-  --outdir DIR        Write the cubes here (created if missing)
+  -o DIR              Output directory; --mkdir creates it unasked
+  -s STEM             Output name stem            default: radius.cube
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
@@ -787,8 +788,8 @@ Parameters:
   --rmsd-warn  FLOAT  RMSD warning threshold [Å]              default: 0.5
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads
-  -o STEM             Output stem (no extension)              default: sdf
-  --outdir DIR        Write the cubes here (created if missing)
+  -o DIR              Output directory; --mkdir creates it unasked
+  -s STEM             Output stem (no extension)              default: sdf
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Example:
@@ -827,8 +828,8 @@ Parameters:
   --chg-padding FLOAT   Sub-grid boundary margin [Å]           default: 6.0
   --rmsd-warn  FLOAT    RMSD warning threshold [Å]             default: 0.5
   --ncore      INT      Parallel threads
-  -o STEM               Output stem (no extension)             default: chg_sdf
-  --outdir DIR          Write the cubes here (created if missing)
+  -o DIR                Output directory; --mkdir creates it unasked
+  -s STEM               Output stem (no extension)             default: chg_sdf
 
 Example:
   ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
