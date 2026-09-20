@@ -17,7 +17,7 @@
 PairStats，故此参数无对应物，这里显式传 2.3 但不使用其结果。
 
 **0.2.0 的产物形状**（详见 ferrocmp.py 的模块 docstring）：
-  * `-o` 是文件名后缀不是路径 → 以 outdir 为工作目录调用
+  * 批次后缀走 `-s`，产物落在当前目录 → 以 outdir 为工作目录调用
   * gr 是长表 `file,r,center,neighbor,gr,cn` → 按 center/neighbor 选行，不按列名取列
   * 产物名带 label 段（2026-08-13 起）：`gr_P-O_cmp.csv` → 用 `fc.product_name()` 拼
 
@@ -57,10 +57,10 @@ def compute(traj, outdir, ferro_bin, d2a_bin):
         print(f"[{tag}]")
 
         # ferro：-a 是中心元素、-b 是近邻元素；-o 给的是后缀，产物落在 outdir 下。
-        # 配对已经由 label 段进了文件名，故 -o 只留一个批次标记，不再重复 tag
+        # 配对已经由 label 段进了文件名，故 -s 只留一个批次标记，不再重复 tag
         fe_out = fc.run_ferro(
             ferro_bin,
-            ["traj", "gr", "-a", a, "-b", b, "-i", traj, "-o", SUFFIX,
+            ["traj", "gr", "-a", a, "-b", b, "-i", traj, "-s", SUFFIX,
              "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR],
             outdir,
             fc.product_name("gr", label=fc.file_label(a, b), suffix=SUFFIX))

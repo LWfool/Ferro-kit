@@ -102,10 +102,10 @@ def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
         tag = f"{a}-{b}-{c}"
         print(f"[{tag}]")
 
-        # ferro：-a/-b/-c 是【元素】，-b 为中心原子；-o 是后缀，产物落在 outdir 下。
-        # 三元组已经由 label 段进了文件名，故 -o 只留一个批次标记，不再重复 tag
+        # ferro：-a/-b/-c 是【元素】，-b 为中心原子；-s 是批次后缀，产物落在 cwd 下。
+        # 三元组已经由 label 段进了文件名，故 -s 只留一个批次标记，不再重复 tag
         fe_argv = ["traj", "angle", "-a", a, "-b", b, "-c", c,
-                   "-i", traj, "-o", SUFFIX,
+                   "-i", traj, "-s", SUFFIX,
                    "--r-cut-ab", R_CUT_AB, "--r-cut-bc", R_CUT_BC,
                    "--d-angle", D_ANGLE]
         if align_binning:

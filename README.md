@@ -103,10 +103,13 @@ path. A failing input is skipped, listed in the `[inputs]` block of the output, 
 exit code 1; argument errors fail before the first file is read.
 
 ```
-<outdir>/<command>[_<table>][_<label>]_<suffix>.csv
+<-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
 ```
 
-`--outdir` is where products go; `-o` is a **suffix, not a path**. The label segment
+`-o` is where products go — a path, for every command: the output **directory** for the
+runs that write several products, the output **file** for `convert` and `job`. A missing
+directory is created after a `[y/N]` prompt, or straight away with `--mkdir` (which
+scripts and CI must pass, having no terminal to answer). `-s` tags the batch. The label segment
 says what was analysed, so `traj gr -a P -b O` writes `gr_P-O.csv` and an unfiltered run
 writes `gr_all.csv`. Missing values under a column union are written as empty fields
 (`NaN` on read-back) — never as zero.

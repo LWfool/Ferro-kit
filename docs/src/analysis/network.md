@@ -239,8 +239,9 @@ ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `-i <FILE>...` | — | 输入轨迹，多值并自展开 glob（引号括起来）。缺省时打印帮助 |
-| `-o <SUFFIX>` | — | 输出**文件名后缀**（不是路径）：`network_<表>_<后缀>.csv` |
-| `--outdir <DIR>` | 当前目录 | 六张表与 `--export-traj` 的轨迹都写进这里（不存在则创建） |
+| `-o <DIR>` | 当前目录 | 六张表与 `--export-traj` 的轨迹都写进这里。目录不存在时先询问，`--mkdir` 免问 |
+| `-s <SUFFIX>` | — | 批次标记：`network_<表>_<后缀>.csv` |
+| `--mkdir` | 关 | 不询问直接创建 `-o` 的目录（非交互环境必须给） |
 | `--last-n N` | 全部帧 | 仅使用尾部 N 帧 |
 | `--ncore N` | 全部核心 | 并行线程数 |
 | `--metal-units` | 关 | LAMMPS metal 单位。统计不读速度/力，**只对 `--export-traj extxyz` 有影响** |

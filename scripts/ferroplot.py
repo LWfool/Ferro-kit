@@ -129,7 +129,11 @@ def save(fig, stem, outdir=None):
 
 
 def add_outdir_arg(parser):
-    """`--outdir`，与 ferro CLI 同名同义。"""
+    """`--outdir`：出图脚本自己的输出目录。
+
+    ferro CLI 侧这个参数已并进 `-o`（0.3.3 起 `-o` 恒为路径），这里保持
+    `--outdir` 不动 —— 绘图脚本的 `-o` 另有含义（产物名后缀）。
+    """
     parser.add_argument(
         "--outdir", type=Path, default=None,
         help="产物目录（不存在则创建；默认当前目录）",

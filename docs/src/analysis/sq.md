@@ -110,8 +110,8 @@ in `scripts/trajcheck.py`.
 `sq` 不再另写一份 `gr`；需要 $g(r)$ 就单独跑 `ferro traj gr`。
 
 所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**，
-`--outdir` 给目录。
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给目录，
+`-s` 给文件名后缀。
 
 ### 没有类型选择
 

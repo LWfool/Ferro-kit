@@ -599,6 +599,34 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 | `convert` 的行数 | 按总行数判断超标 | 其中 **27 行是 `supported_formats()` 生成的**格式表 —— 那正是这页存在的理由。手写部分只有 32 行 |
 | zsh 里量行数 | `for c in "traj gr"; do $F $c; done` | **zsh 默认不对未加引号的变量做分词**（与 bash 相反），`ferro "traj gr"` 成了一个参数，量出来全是 7 行的 clap 报错。要写 `${=c}` |
 
+## `-o` 语义统一 / 路径类型编码陷阱（2026-09-20）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 「只给目录」的判据 | 看 `-o` 指向的路径**是不是已存在的目录** | 只认用户写的**尾部分隔符**。按磁盘状态判，同一条命令行今天写 `gr_out.csv`、明天写进 `out/`，而且不报错 |
+| `Path` 与尾部分隔符 | 以为 `Path` 保留它 | `Path::new("out/").file_name()` 是 `Some("out")` —— 与 pathlib 一样被吃掉。要判断只能看原始字符串（`to_string_lossy().ends_with(...)`） |
+| 非交互环境下缺目录 | 自动创建 | **报错并指明 `--mkdir`**。脚本里没人能回答 `[y/N]`，而静默创建会把拼错的路径变成一次看着成功的运行 |
+| 确认提示写到哪 | stdout | stderr。`ferro ... > out.txt` 时提示仍要看得见，而 stdout 可能正被管道接走 |
+| `bader` 的默认输出位置 | 跟其余命令一样默认当前目录 | 默认**输入文件所在目录**。VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然写同一个 `CHGCAR_ACF.dat`。这是唯一的例外，帮助页与手册都写明 |
+| `job` 的 `-o` 解析函数 | 收 `&JobCmd` | 收 `Option<&Path>`。`run` 里 `if let Some(m) = args.method` 已经把 `args` 部分移动，再借整个结构体就是 E0507（与 0.2.0 那次同一族） |
+| 改 `path: &str` 为 `&Path` | 以为只是换类型 | 消息里的 `{path}` 全部要改 —— `Path` 没有 `Display`。本轮 24 处，靠 `let path_ = path.display();` 统一 |
+| 只改 writer 不改 reader | 「plan 里写的是 writer」 | 半边改完之后 `io_dispatch` 读侧仍要 `to_str()`，crate 里两种签名并存。一起改 |
+| dataset 的默认后缀 | 无条件追加 `.train` | 名字已以划分后缀结尾时不加（否则 `sysA.train.train`）；划分时先剥掉 `.train` 再给三部分命名 |
+| merge 的后缀继承 | 用 `Option<String>`（共享则 Some） | `None` 同时表示「都没有」与「混着不同部分」。默认值变成 `.train` 之后这两者必须分开：都没有→`.train`，混着→**报错**，否则测试数据会被标成训练集。改为三态枚举 |
+| 「已划分过的输入不许再划」 | 一律拒绝带后缀的输入 | 默认后缀是 `.train` 之后，几乎所有产物都带后缀，一律拒绝等于禁掉「filter 之后 merge 时再划分」。`.train` 放行（剥掉再命名），`.valid`/`.test` 才拒绝 —— 从留出集里切训练集会毁掉它被留出的理由 |
+
+## bader weight 方法的真空电荷取错（2026-09-20 发现，未修）
+
+`bader_weight.rs:265` 取 `volchg[nvols]` 当真空电荷，但该数组在 weight 方法里是
+**1 索引**的（上方几行的注释自己写着 `volchg is 1-indexed`），`[nvols]` 于是指向
+最后一个 Bader 体积。`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]`，那边是
+对的 —— 两份代码索引基准不同，而这个下标在两边长得一样。
+
+后果：ACF 末尾的 `Total` 行虚高一个体积的电荷。`tests/CHGCAR_2atoms` 上报
+158.98 e，网格实际只有 105.99 e（逐原子的 `ionchg` 是对的，只有 `vacchg` 被污染）。
+`ferro-cli/tests/bader_reports.rs` 的真空断言因此只跑 `ongrid` / `neargrid`，
+注释里指名了这条。
+
 ## 全库简化审计发现的陷阱（2026-09-03 提出，2026-09-12 按 Rule of Three 重做）
 
 两轮审计的判据不同：第一轮找「死代码 / 重复」，第二轮按 `CLAUDE.md` 的

@@ -40,8 +40,9 @@ ferro doc   <topic>                                            → 手册（编�
 | Flag | Description |
 |---|---|
 | `-i <FILE>...` | 输入文件，**多值**并自展开 glob 模式（引号括起来，让 shell 别动它） |
-| `-o <SUFFIX>` | 输出**文件名后缀**，不是路径：产物落在 `<命令>[_<表>][_<label>]_<后缀>.csv` |
-| `--outdir <DIR>` | 产物写入该目录（不存在则创建并打印一行）；默认当前目录 |
+| `-o <DIR>` | 产物写入该目录；默认当前目录。目录不存在时**先问一句**（`[y/N]`，写到 stderr），`--mkdir` 免问 |
+| `-s <SUFFIX>` | 批次标记，追加在产物名末尾：`<命令>[_<表>][_<label>]_<后缀>.csv` |
+| `--mkdir` | 不询问直接创建 `-o` 的目录。**非交互环境（脚本、CI）下必须给**，否则报错退出 |
 | `--last-n N` | 只用尾部 N 帧（跳过平衡段） |
 | `--ncore N` | 并行线程数（默认全部核心） |
 | `--metal-units` | LAMMPS metal 单位（速度 Å/ps，力 eV/Å）。**只影响速度与力**，坐标与晶胞两种单位下都是 Å，故对 gr/sq/msd/angle/rotcorr/vanhove/net 无影响 |
@@ -52,7 +53,7 @@ ferro doc   <topic>                                            → 手册（编�
 分派会让产物形态取决于 glob 当天匹配到几个文件。
 
 ```bash
-ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -o scan
+ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -s scan
 ```
 
 每个输入独立分析，结果堆叠成**一份**带 `file` 列的 csv。元素集不同的输入取列并集，
@@ -61,15 +62,15 @@ ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -o scan
 `{a,b}` 花括号不支持，交给 shell 展开。
 
 产物是逐输入的命令（`ferro map` 的 cube、`ferro net --export-traj` 的轨迹）例外：
-文件名必须掺输入 stem，否则第二个输入会覆盖第一个。`--outdir` 对这两类同样生效。
+文件名必须掺输入 stem，否则第二个输入会覆盖第一个。`-o` 对这两类同样生效。
 
 ### 产物命名
 
 ```
-<outdir>/<命令>[_<表>][_<label>]_<后缀>.csv
+<-o 目录>/<命令>[_<表>][_<label>]_<后缀>.csv
 ```
 
-`label` 说的是**算了什么**，由类型选择填出来；`-o` 是批次标记。label 排在 suffix
+`label` 说的是**算了什么**，由类型选择填出来；`-s` 是批次标记。label 排在 suffix
 之前，所以 `ls gr_P-O_*` 能列出同一对在各个批次里的结果。
 
 | 命令 | label 来源 | 例 |
@@ -204,7 +205,8 @@ stem 也掺进文件名，另算一件事。
 | Flag | Default | Description |
 |---|---|---|
 | `-i <file>` | (required) | 输入文件（单个）；省略则打印格式表 |
-| `-o <file>` | (required) | 输出文件。**这里是完整路径**，与分析命令的 `-o` 是后缀不同。多帧写出时序号插进文件名部分，路径不变 |
+| `-o <file>` | (required) | 输出文件，可带目录（`-o out/run1/x.extxyz`）。缺的父目录先问一句，`--mkdir` 免问。**以 `/` 结尾会报错**——目标格式正是从文件名推断的。多帧写出时序号插进文件名部分，路径不变 |
+| `--mkdir` | off | 不询问直接创建 `-o` 的父目录 |
 | `--start` / `--end` / `--stride` / `--number` | 见上 | 选帧 |
 | `--metal-units` | off | LAMMPS dump 按 metal 单位读写（速度 Å/ps、力 eV/Å） |
 
@@ -729,17 +731,19 @@ ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 
 这三个是 Henkelman 组的 bader 格式，外部工具在解析，故不随其余产物迁到 csv。
 
-> **注意：会互相覆盖。** 它们写在**当前目录**，且 `bader` 目前没有 `--outdir`。
-> VASP 的电荷密度一律叫 `CHGCAR`，所以在同一个工作目录连跑两个体系，两次都写
-> `CHGCAR_ACF.dat`，后一次静默盖掉前一次。在 `--outdir` 落地之前，请 `cd` 进各
-> 体系自己的目录跑，或先把输入改名。
+三份报告**默认写在输入文件旁边**（`-i run1/CHGCAR` → `run1/CHGCAR_ACF.dat`），
+是全仓唯一不默认写当前目录的命令。VASP 的电荷密度一律叫 `CHGCAR`，落在输入旁边
+各自的运行目录里才不会互相覆盖。`-o <DIR>` 收集到别处，`-s <SUFFIX>` 区分同一
+输入的两次不同参数（`<stem>_ACF_<后缀>.dat`）。
 
 ---
 
 ## `ferro dataset`
 
-机器学习训练集的三步流水线。与其余命令的两点不同：产物是**目录**（DeePMD 的
-system 就是目录），故 `-o` 是输出**根目录**而非文件名后缀；且不接 `CommonArgs`。
+机器学习训练集的三步流水线。与其余命令的不同：产物是**目录**（DeePMD 的
+system 就是目录），故 `-o` 是输出**根目录**；且不接 `CommonArgs`。
+`filter` 与 `merge` 的产物默认带 `.train` 后缀，`--ratio` 划分出的三部分分别是
+`.train` / `.valid` / `.test`；名字已以这三者之一结尾时不再叠加。
 
 ```
 ferro dataset collect   AIMD 输出   → DeePMD system 目录
@@ -866,7 +870,7 @@ merge 合**不同运行**。
 | `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
 | `--seed <N>` | 666 | `shuffle` 的种子；`by-source` 不用 |
 | `--set-size <N>` | 400 | 每个输出 set 的帧数；0 表示不切 |
-| `--suffix <EXT>` | 继承 | 强制输出目录后缀；默认继承组内共同的 `.train`/`.test`/`.valid` |
+| `--suffix <EXT>` | 见右 | 强制输出目录后缀。默认：组内共享同一后缀就继承，全都没有则用 `.train`；**混着不同部分则报错**，不会把测试数据标成训练集 |
 | `--overwrite` | | 允许写入已存在的非空目录 |
 
 **分组不看目录名** —— `init.011` 说明不了里面装的是什么。按逐原子的元素序列
