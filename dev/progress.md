@@ -53,7 +53,11 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | 出图 | `ferroplot.py` | `plot_gr/angle/sq/net.py` | 发表级 pdf（+ png 看效果） |
 
 对拍侧的产物名一律由 `ferrocmp.product_name()` 拼（`batch::out_path` 的镜像），
-调用点不写文件名字符串；四个脚本均已按 label 段复跑验证。
+调用点不写文件名字符串；四个脚本均已按 label 段复跑验证（2026-08-14）。
+
+**2026-09-20 起未复跑**：`-o` 改为输出目录之后，四个脚本传给 ferro 的批次标记
+从 `-o` 改成了 `-s`（它们以 outdir 为 cwd，用不到 `-o`）。改动是机械的，但没有
+dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前先确认这一处。
 
 出图侧样式 `['science','vibrant']` + LaTeX + 四边框；每个脚本顶部一个 `CFG` 配置块。
 `plot_net.py` 的 x 轴是**成分**（`file` 列），100 % 堆积柱；`--partner` 展开成
@@ -378,7 +382,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 
 ## 已知限制
 
-- **`ferro-python` 能编译**（2026-08-12 复核：`cargo clean && cargo check` 干净通过）。
+- **`ferro-python` 能编译**（2026-09-20 复核：`-o` 那轮改了它的 io 分派层，
+  `cargo check` 干净通过；运行时仍未验证）。
   真问题是它作为独立 workspace 被主 workspace 的 `cargo build/test/clippy` 全部跳过，
   断裂不会被自动发现；改公共 API 后须手动补跑。待办是 **pyo3 0.29 的运行时验证**
   （本机无 maturin），优先级低

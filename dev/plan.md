@@ -187,6 +187,27 @@ Deserialize)` 全仓从未序列化过。**但有半条是无条件该做的**�
 `ferro-analysis` 的 `nalgebra` 开了 `serde-serialize` feature 而这两个 crate
 本身零 serde 用法，即使保留 derive 也该摘掉这两个 feature。
 
+### bader weight 的真空电荷取错（2026-09-20 发现，处置未定）
+
+`bader_weight.rs:265` 用 `volchg[nvols]` 当真空电荷，而该数组在 weight 方法里是
+**1 索引**的（上方几行的注释自己写着），取到的是最后一个 Bader 体积。
+`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]`，那边是对的。
+
+实测（`tests/CHGCAR_2atoms`）：ACF 末尾的 `Total` 报 158.98 e，网格实际只有
+105.99 e。逐原子的 `ionchg` 不受影响，被污染的只有 `vacchg` 与由它加出来的
+`Total`，以及 ACF 的真空行。
+
+**改一个下标就够，但会改变 weight 方法的产物**，所以没有顺手混进 `-o` 那一轮：
+bug 修复的 diff 要能一眼说清「变的都该变」（判据同 `build_avg_frame` 那条）。
+修的时候连带做三件事：
+
+- `ferro-cli/tests/bader_reports.rs` 的真空断言把 `Weight` 加回来（现在注释里
+  指名跳过它）
+- 真空非空的情形现有 fixture 盖不到 —— `CHGCAR_2atoms` 的密度处处高于阈值，
+  三条路的 `vacchg` 都是 0，所以这个 bug 只在 `Total` 行上看得出来。要钉住修复
+  得再加一个带真空区的 fixture，或给现有的调 `--vacval`
+- `dev/bader.md` 未提真空桶的索引基准，修完补一句
+
 ### `max_neargrid` 被绕过（2026-09-12 发现）
 
 三件事实，处置未定：
