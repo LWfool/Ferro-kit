@@ -73,6 +73,13 @@ impl OutType {
 const SPLIT_PARTS: [(&str, &str); 3] =
     [("train", ".train"), ("valid", ".valid"), ("test", ".test")];
 
+/// dpgen / dpdata split suffixes, recognised on input and written on output.
+const SPLIT_SUFFIXES: [&str; 3] = [".train", ".test", ".valid"];
+
+/// What an unsplit product is called: everything filter and merge write is training
+/// data unless a split says otherwise.
+const TRAIN_SUFFIX: &str = ".train";
+
 /// Frame-level train/valid/test split.
 ///
 /// Membership is drawn from a shuffled order — taking the tail as a test set
@@ -226,7 +233,32 @@ fn write_as(
     }
 }
 
+/// The split suffix `name` already carries, if any.
+fn split_suffix_of(name: &str) -> Option<&'static str> {
+    SPLIT_SUFFIXES.iter().copied().find(|s| name.ends_with(s))
+}
+
+/// Strips a trailing `.train` so the parts of a split can be named afresh.
+///
+/// Only `.train` is stripped, and only the split path reaches this: `.valid` / `.test`
+/// inputs are refused before any file is read, because slicing a training set out of a
+/// held-out set is a mistake, not a workflow.
+fn without_train_suffix(base: &Path) -> PathBuf {
+    let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
+        return base.to_path_buf();
+    };
+    match name.strip_suffix(TRAIN_SUFFIX) {
+        Some(stem) => base.with_file_name(stem),
+        None => base.to_path_buf(),
+    }
+}
+
 /// Writes every non-empty part of a split and reports each line.
+///
+/// Unsplit output still gets `.train`: everything `filter` and `merge` write is meant
+/// for training unless a split says otherwise, and an unlabelled directory downstream is
+/// one nobody can place. A name that already ends in a split suffix keeps it — appending
+/// would give `sysA.train.train`.
 fn write_split(
     traj: &Trajectory,
     base: &Path,
@@ -235,19 +267,25 @@ fn write_split(
     set_size: usize,
     overwrite: bool,
 ) -> Result<()> {
+    if split.is_off() {
+        let named = match base.file_name().and_then(|n| n.to_str()) {
+            Some(name) if split_suffix_of(name).is_some() => base.to_path_buf(),
+            _ => with_suffix(base, TRAIN_SUFFIX),
+        };
+        let dest = write_as(traj, &named, ty, set_size, overwrite)?;
+        println!("  -> {}", dest.display());
+        return Ok(());
+    }
+
+    let stem = without_train_suffix(base);
     let parts = split.parts(traj.n_frames(), base)?;
     for (idx, (label, suffix)) in SPLIT_PARTS.iter().enumerate() {
         if parts[idx].is_empty() {
             continue;
         }
-        let suffix = if split.is_off() { "" } else { *suffix };
         let sub = traj.subset(&parts[idx]);
-        let dest = write_as(&sub, &with_suffix(base, suffix), ty, set_size, overwrite)?;
-        if split.is_off() {
-            println!("  -> {}", dest.display());
-        } else {
-            println!("  {:<5} {:5} frames -> {}", label, parts[idx].len(), dest.display());
-        }
+        let dest = write_as(&sub, &with_suffix(&stem, suffix), ty, set_size, overwrite)?;
+        println!("  {:<5} {:5} frames -> {}", label, parts[idx].len(), dest.display());
     }
     Ok(())
 }
@@ -268,7 +306,11 @@ pub struct MergeCmd {
 
     /// Output root; one directory per composition is created under it
     #[arg(short, long, value_name = "DIR")]
-    pub outdir: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+
+    /// Create the output root without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
 
     /// How frames from different sources are laid out         [default: shuffle]
     #[arg(long, value_enum, default_value_t = MergeMode::Shuffle)]
@@ -308,7 +350,11 @@ pub struct FilterCmd {
     /// Output root; each system is rebuilt under its path relative to -i.
     /// Omit for a read-only run that only reports.
     #[arg(short, long, value_name = "DIR")]
-    pub outdir: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+
+    /// Create the output root without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
 
     /// Drop frames whose largest force magnitude exceeds this, eV/A; 0 = off
     #[arg(short = 'f', long, value_name = "EV_PER_A", default_value_t = 20.0)]
@@ -377,7 +423,11 @@ pub struct CollectCmd {
 
     /// Output root; the directory tree under -i is rebuilt inside it
     #[arg(short, long, value_name = "DIR")]
-    pub outdir: Option<PathBuf>,
+    pub output: Option<PathBuf>,
+
+    /// Create the output root without asking (required when there is no terminal)
+    #[arg(long)]
+    pub mkdir: bool,
 
     /// Allow writing into an existing non-empty output directory
     #[arg(long)]
@@ -413,13 +463,12 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
 fn run_collect(args: &CollectCmd) -> Result<usize> {
     // -o 是必填而不是默认 `.`：产物是一棵目录树，默认落在 cwd 会把 npy
     // 撒进正在工作的目录。merge 也是必填，filter 的缺省有「只读」这个明确语义
-    let Some(root) = &args.outdir else {
+    let Some(root) = &args.output else {
         bail!("collect needs an output directory (-o DIR)");
     };
     let inputs = expand_inputs(&args.input)?;
     // 与其余命令一致：路径问题在读第一个文件之前就暴露，而不是跑完才发现写不出去
-    std::fs::create_dir_all(root)
-        .with_context(|| format!("cannot create {}", root.display()))?;
+    crate::outpath::ensure_dir(root, args.mkdir)?;
 
     let groups = group_by_directory(&inputs);
     let mut failures = 0usize;
@@ -693,7 +742,7 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     if args.seed.is_some() && !args.shuffle && split.is_off() {
         bail!("--seed only means something with --shuffle or --ratio");
     }
-    if !split.is_off() && args.outdir.is_none() {
+    if !split.is_off() && args.output.is_none() {
         bail!("--ratio needs an output directory (-o DIR); a read-only run writes nothing");
     }
     if args.oo_min.is_some_and(|v| v <= 0.0) {
@@ -730,10 +779,13 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     if jobs.is_empty() {
         bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
     }
+    // merge 侧同一条守卫:只看路径,故在读第一条轨迹之前就判得出
+    if !split.is_off() {
+        refuse_held_out_inputs(&jobs.iter().map(|(sys, _)| sys.clone()).collect::<Vec<_>>())?;
+    }
 
-    if let Some(out) = &args.outdir {
-        std::fs::create_dir_all(out)
-            .with_context(|| format!("cannot create {}", out.display()))?;
+    if let Some(out) = &args.output {
+        crate::outpath::ensure_dir(out, args.mkdir)?;
     } else {
         println!("(read-only: no -o given, nothing will be written)\n");
     }
@@ -783,7 +835,7 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     // 报告经 write_table 落盘（分析产物的唯一出口），与 traj / net 同一条路。
     // 平铺在 -o 根下而不是塞进子目录：expand_dirs 只收 is_dir(),所以 csv 会
     // 被后续 `merge -i clean/*` 自动滤掉,而一个 report/ 子目录反倒会被收进去
-    if let Some(out) = &args.outdir {
+    if let Some(out) = &args.output {
         let mut tables = Vec::with_capacity(order.len());
         for (name, parts) in order.into_iter().zip(groups) {
             let merged = ferro_core::Table::concat_union("system", parts)
@@ -886,7 +938,7 @@ fn filter_one(
     let mut tables = result.to_tables();
     tables.extend(diagnostics.iter().cloned());
 
-    if args.outdir.is_none() {
+    if args.output.is_none() {
         // 只读模式：四张诊断表也打出来，但一个字不落盘
         for (name, table) in &diagnostics {
             println!("  [{name}]");
@@ -903,7 +955,7 @@ fn filter_one(
         n_atoms: traj.frames.first().map(|f| f.n_atoms()).unwrap_or(0),
     };
 
-    let Some(out_root) = &args.outdir else {
+    let Some(out_root) = &args.output else {
         return Ok(one);
     };
     if result.keep.is_empty() {
@@ -1023,9 +1075,6 @@ fn print_table(t: &ferro_core::Table) {
 
 // ── merge ────────────────────────────────────────────────────────────────────
 
-/// dpgen / dpdata split suffixes an output directory may inherit.
-const SPLIT_SUFFIXES: [&str; 3] = [".train", ".test", ".valid"];
-
 /// Frames per set unless told otherwise.
 const DEFAULT_SET_SIZE: usize = 400;
 
@@ -1056,7 +1105,7 @@ fn set_spans(n: usize, set_size: usize) -> Vec<(usize, usize)> {
 }
 
 fn run_merge(args: &MergeCmd) -> Result<usize> {
-    let Some(out_root) = &args.outdir else {
+    let Some(out_root) = &args.output else {
         bail!("merge needs an output directory (-o DIR)");
     };
     let split = merge_split(args)?;
@@ -1091,23 +1140,10 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
     if systems.is_empty() {
         bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
     }
-    // 已经是 xxx.train 的输入再划一次,会得到 xxx.train.test 这种自相矛盾的名字。
-    // 只看路径,故在读第一条轨迹之前就能判
     if !split.is_off() {
-        if let Some(had) = systems.iter().find_map(|p| {
-            let name = p.file_name()?.to_str()?;
-            SPLIT_SUFFIXES.iter().find(|s| name.ends_with(**s)).map(|s| (p.clone(), *s))
-        }) {
-            bail!(
-                "{} already carries the split suffix `{}`; splitting an already-split \
-                 dataset would produce names like `X.train.test`. Merge these without \
-                 --ratio, or split the unsplit sources",
-                had.0.display(), had.1
-            );
-        }
+        refuse_held_out_inputs(&systems)?;
     }
-    std::fs::create_dir_all(out_root)
-        .with_context(|| format!("cannot create {}", out_root.display()))?;
+    crate::outpath::ensure_dir(out_root, args.mkdir)?;
 
     // 分组不看目录名 —— init.011 这类名字说明不了里面装的是什么。
     // 按逐原子的元素序列（规范序）分组，成分相同才合并
@@ -1154,10 +1190,31 @@ fn merge_group(
         .collect();
 
     let name = group_name(&sorted[0].1);
-    let inherited =
-        shared_suffix(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>());
     let split = merge_split(args)?;
-    let suffix = args.suffix.clone().or(inherited).unwrap_or_default();
+    // 划分时后缀由 write_split 给三部分各自命名,这里不能先贴一个
+    let suffix = if split.is_off() {
+        match args.suffix.clone() {
+            Some(forced) => forced,
+            None => match suffix_survey(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()) {
+                SuffixSurvey::Bare => TRAIN_SUFFIX.to_string(),
+                SuffixSurvey::Shared(s) => s,
+                SuffixSurvey::Mixed(seen) => {
+                    let lines: Vec<String> = seen
+                        .iter()
+                        .map(|(p, s)| format!("  {} -> {s}", p.display()))
+                        .collect();
+                    bail!(
+                        "this composition mixes split parts, so the merged set belongs to \
+                         no one of them:\n{}\nMerge one part at a time, or name the result \
+                         with --suffix",
+                        lines.join("\n")
+                    );
+                }
+            },
+        }
+    } else {
+        String::new()
+    };
     let dest = out_root.join(format!("{name}{suffix}"));
 
     let mut all = ferro_core::Trajectory::new();
@@ -1231,20 +1288,61 @@ fn merge_split(args: &MergeCmd) -> Result<Split> {
     }
 }
 
-/// The split suffix every input shares, if they all share one.
-fn shared_suffix(paths: &[PathBuf]) -> Option<String> {
-    let suffix_of = |p: &PathBuf| -> Option<String> {
-        let name = p.file_name()?.to_str()?;
-        SPLIT_SUFFIXES
-            .iter()
-            .find(|s| name.ends_with(**s))
-            .map(|s| s.to_string())
-    };
-    let first = suffix_of(&paths[0])?;
-    paths
+/// What the inputs say about which part of a split they are.
+enum SuffixSurvey {
+    /// No input carries a split suffix — the output is plain training data.
+    Bare,
+    /// Every input carries the same one; the output inherits it.
+    Shared(String),
+    /// Different parts in one group. Merging a training set into a test set is a
+    /// glob written too wide far more often than it is a plan.
+    Mixed(Vec<(PathBuf, String)>),
+}
+
+/// Reads the split suffixes off the input paths.
+fn suffix_survey(paths: &[PathBuf]) -> SuffixSurvey {
+    let seen: Vec<(PathBuf, Option<&str>)> = paths
         .iter()
-        .all(|p| suffix_of(p).as_deref() == Some(first.as_str()))
-        .then_some(first)
+        .map(|p| {
+            let s = p.file_name().and_then(|n| n.to_str()).and_then(split_suffix_of);
+            (p.clone(), s)
+        })
+        .collect();
+    if seen.iter().all(|(_, s)| s.is_none()) {
+        return SuffixSurvey::Bare;
+    }
+    let first = seen[0].1;
+    if seen.iter().all(|(_, s)| *s == first) {
+        // 全体一致且非 None
+        return SuffixSurvey::Shared(first.unwrap_or(TRAIN_SUFFIX).to_string());
+    }
+    SuffixSurvey::Mixed(
+        seen.into_iter()
+            .map(|(p, s)| (p, s.unwrap_or("(none)").to_string()))
+            .collect(),
+    )
+}
+
+/// Refuses to split inputs that are already a held-out part.
+///
+/// `.train` is fine and common — everything unsplit now carries it, and re-splitting a
+/// training set is a normal thing to want; `without_train_suffix` keeps the names from
+/// growing into `X.train.test`. `.valid` / `.test` are refused: carving a training set
+/// out of a held-out set silently destroys what it was held out for.
+fn refuse_held_out_inputs(systems: &[PathBuf]) -> Result<()> {
+    let held = systems.iter().find_map(|p| {
+        let name = p.file_name()?.to_str()?;
+        split_suffix_of(name).filter(|s| *s != TRAIN_SUFFIX).map(|s| (p.clone(), s))
+    });
+    if let Some((path, suffix)) = held {
+        bail!(
+            "{} is the `{suffix}` part of a split; splitting it again would carve a \
+             training set out of held-out data. Split the `.train` part, or the \
+             unsplit sources",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 // ── tests ───────────────────────────────────────────────────────────────────
@@ -1314,14 +1412,37 @@ mod tests {
         assert_eq!(set_spans(1000, 400), vec![(0, 334), (334, 667), (667, 1000)]);
     }
 
+    /// 后缀继承:一致就继承,没有就是训练数据,混着就说不清这份产物是哪一部分。
     #[test]
-    fn a_shared_split_suffix_is_inherited_and_a_mixed_one_is_not() {
-        let same = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.train")];
-        assert_eq!(shared_suffix(&same).as_deref(), Some(".train"));
-        let mixed = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.test")];
-        assert_eq!(shared_suffix(&mixed), None);
+    fn the_survey_separates_shared_bare_and_mixed_inputs() {
+        let same = vec![PathBuf::from("a/x.test"), PathBuf::from("b/y.test")];
+        assert!(matches!(suffix_survey(&same), SuffixSurvey::Shared(s) if s == ".test"));
         let bare = vec![PathBuf::from("a/sys.001"), PathBuf::from("b/sys.002")];
-        assert_eq!(shared_suffix(&bare), None);
+        assert!(matches!(suffix_survey(&bare), SuffixSurvey::Bare));
+        let mixed = vec![PathBuf::from("a/x.train"), PathBuf::from("b/y.test")];
+        assert!(matches!(suffix_survey(&mixed), SuffixSurvey::Mixed(_)));
+        // 一半带后缀一半不带也是混合 —— 默认的 .train 会把无名的那半也断言成训练集
+        let half = vec![PathBuf::from("a/x.train"), PathBuf::from("b/sys.002")];
+        assert!(matches!(suffix_survey(&half), SuffixSurvey::Mixed(_)));
+    }
+
+    /// 已经划分过的输入:.train 可以再划(剥掉后缀重新命名),.valid / .test 拒绝。
+    #[test]
+    fn splitting_accepts_train_and_refuses_held_out_parts() {
+        refuse_held_out_inputs(&[PathBuf::from("a/x.train"), PathBuf::from("b/y")]).unwrap();
+        let err = refuse_held_out_inputs(&[PathBuf::from("a/x.valid")]).unwrap_err().to_string();
+        assert!(err.contains("held-out"), "{err}");
+        assert_eq!(without_train_suffix(Path::new("o/sysA.train")), PathBuf::from("o/sysA"));
+        assert_eq!(without_train_suffix(Path::new("o/sysA")), PathBuf::from("o/sysA"));
+    }
+
+    /// 不叠加:名字已经以划分后缀结尾时不再追加。
+    #[test]
+    fn a_name_that_already_carries_a_suffix_keeps_it() {
+        assert_eq!(split_suffix_of("sysA.train"), Some(".train"));
+        assert_eq!(split_suffix_of("sysA.test"), Some(".test"));
+        assert_eq!(split_suffix_of("sysA"), None);
+        assert_eq!(split_suffix_of("init.011"), None);
     }
 
     #[test]

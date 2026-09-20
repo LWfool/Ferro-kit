@@ -874,11 +874,12 @@ pub fn print_dataset_collect() {
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
-  -o, --outdir DIR        Output root (required)
+  -o, --output DIR        Output root (required)
+      --mkdir             Create -o without asking (needed with no terminal)
       --overwrite         Allow writing into an existing non-empty directory
 
 Output layout:
-  <outdir>/<dir below the shared ancestor>/
+  <-o dir>/<dir below the shared ancestor>/
     type.raw  type_map.raw  set.000/coord|box|energy|force|virial .npy
 
   -i 'run*/*.out' -o sets            -> sets/run1/, sets/run2/
@@ -923,8 +924,9 @@ pub fn print_dataset_filter() {
 Parameters:
   -i, --input  DIR...     System directories, or a directory holding them
                           (searched recursively)
-  -o, --outdir DIR        Output root; each system is rebuilt under its path
+  -o, --output DIR        Output root; each system is rebuilt under its path
                           relative to -i. OMIT for a read-only run
+      --mkdir             Create -o without asking (needed with no terminal)
   -f, --f-max  EV_PER_A   Largest force magnitude allowed             [20.0]
   -s, --s-max  GPA        Largest |stress component| allowed          [10.0]
       --start  N          First SURVIVING frame to take (0-based)        [0]
@@ -953,8 +955,11 @@ The funnel:
   --start/--end/--stride/-N count SURVIVING frames, not original indices.
 
 Output:
-  <outdir>/<path relative to -i>/   the filtered systems (.xyz if --type nep)
-  <outdir>/filter_*.csv            funnel, criteria, overlap + 4 diagnostics
+  <-o dir>/<path relative to -i>.train/  filtered systems (.xyz if --type nep)
+  <-o dir>/filter_*.csv                  funnel, criteria, overlap + 4 diagnostics
+
+  Products carry .train unless --ratio splits them into .train/.valid/.test;
+  a name that already ends in one of those keeps it rather than doubling up.
   Without -o nothing is written; every table is printed instead.
   A split appends .train / .valid / .test to each name (dpgen's convention).
 
@@ -976,7 +981,8 @@ pub fn print_dataset_merge() {
 
 Parameters:
   -i, --input  DIR...     System directories to combine (globs allowed)
-  -o, --outdir DIR        Output root; one directory per composition (required)
+  -o, --output DIR        Output root; one directory per composition (required)
+      --mkdir             Create -o without asking (needed with no terminal)
       --mode   MODE       shuffle | by-source                    [shuffle]
       --seed   N          Shuffle seed; by-source ignores it          [666]
       --set-size N        Frames per output set; 0 = one set          [400]
@@ -985,7 +991,9 @@ Parameters:
                           system directory; nep carries stress as virial=
       --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
                           mean train:test (9:1). Weights, not fractions
-      --suffix EXT        Force this suffix; default inherits a shared one
+      --suffix EXT        Force this suffix. Default: the one every input
+                          shares, else .train; inputs from different parts of a
+                          split are refused rather than silently relabelled
       --overwrite         Allow writing into an existing non-empty directory
 
 Grouping:
