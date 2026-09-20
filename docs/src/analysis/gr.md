@@ -93,7 +93,7 @@ centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than t
 （`CN(A→B) = Σ hist/(N_A·steps)`）——这个区别写进了表结构而不是文档注脚。
 
 所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**文件名后缀**。
+`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
 
 
 $g(r)$ is **symmetric** — `A-B` and `B-A` are pointwise identical.  $CN(r)$ is **directed** —
