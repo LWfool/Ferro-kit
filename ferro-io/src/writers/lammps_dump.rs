@@ -45,10 +45,16 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
 
         let is_triclinic = xy != 0.0 || xz != 0.0 || yz != 0.0;
         if is_triclinic {
+            // 三斜时 dump 的六个数是 *_bound（倾斜后的外接盒），不是 xlo/xhi ——
+            // 倾斜向量会把盒子探出 [0, l) 之外，bound 把那部分包进来。写成 xlo/xhi
+            // 的话 reader 端 hi-lo 得到的边长偏小，而读写两侧一致地错时往返测试
+            // 全绿（与 extxyz 应力符号同一个陷阱）
+            let (xlo_b, xhi_b) = (min4(0.0, xy, xz, xy + xz), lx + max4(0.0, xy, xz, xy + xz));
+            let (ylo_b, yhi_b) = (yz.min(0.0), ly + yz.max(0.0));
             writeln!(w, "ITEM: BOX BOUNDS xy xz yz pp pp pp")?;
-            writeln!(w, "{:.10} {:.10} {:.10}", 0.0, lx, xy)?;
-            writeln!(w, "{:.10} {:.10} {:.10}", 0.0, ly, xz)?;
-            writeln!(w, "{:.10} {:.10} {:.10}", 0.0, lz, yz)?;
+            writeln!(w, "{xlo_b:.10} {xhi_b:.10} {xy:.10}")?;
+            writeln!(w, "{ylo_b:.10} {yhi_b:.10} {xz:.10}")?;
+            writeln!(w, "{:.10} {:.10} {yz:.10}", 0.0, lz)?;
         } else {
             writeln!(w, "ITEM: BOX BOUNDS pp pp pp")?;
             writeln!(w, "{:.10} {:.10}", 0.0, lx)?;
@@ -119,6 +125,9 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
     w.flush()?;
     Ok(())
 }
+
+fn min4(a: f64, b: f64, c: f64, d: f64) -> f64 { a.min(b).min(c).min(d) }
+fn max4(a: f64, b: f64, c: f64, d: f64) -> f64 { a.max(b).max(c).max(d) }
 
 fn cell_to_lammps(cell: &ferro_core::Cell) -> (f64, f64, f64, f64, f64, f64) {
     let [a, b, c] = cell.lengths();
@@ -211,5 +220,51 @@ mod tests {
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");
+    }
+
+    /// 三斜时写出的六个数是 `*_bound`，不是 xlo/xhi。
+    ///
+    /// Asserted on the literal text rather than through a read-back: the reader
+    /// applies the inverse of whatever the writer does, so a round-trip stays green
+    /// even when both sides share the same wrong convention — the same trap as the
+    /// extxyz stress sign. Expected values follow the LAMMPS dump spec,
+    /// xlo_bound = xlo + MIN(0,xy,xz,xy+xz) and xhi_bound = xhi + MAX(...).
+    #[test]
+    fn test_triclinic_writes_bound_not_xlo_xhi() {
+        // lx/ly/lz = 10/12/14, xy/xz/yz = 2/-3/1
+        let cell = Cell::from_matrix(nalgebra::Matrix3::new(
+            10.0, 0.0, 0.0,
+            2.0, 12.0, 0.0,
+            -3.0, 1.0, 14.0,
+        ));
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        frame.add_atom(Atom::new("Si", Vector3::new(0.5, 0.5, 0.5)));
+        let mut traj = Trajectory::new();
+        traj.add_frame(frame);
+        let path = std::env::temp_dir().join("tri_w.dump");
+        write_lammps_dump(&traj, &path, crate::readers::lammps_dump::LammpsUnits::Metal).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        let box_lines: Vec<&str> = text
+            .lines()
+            .skip_while(|l| !l.starts_with("ITEM: BOX BOUNDS"))
+            .skip(1)
+            .take(3)
+            .collect();
+        let nums: Vec<Vec<f64>> = box_lines
+            .iter()
+            .map(|l| l.split_whitespace().map(|s| s.parse().unwrap()).collect())
+            .collect();
+        // xlo_b = min(0,2,-3,-1) = -3 ; xhi_b = 10 + max(0,2,-3,-1) = 12
+        let want = [[-3.0, 12.0, 2.0], [0.0, 13.0, -3.0], [0.0, 14.0, 1.0]];
+        for (i, row) in want.iter().enumerate() {
+            for (j, w) in row.iter().enumerate() {
+                assert!(
+                    (nums[i][j] - w).abs() < 1e-9,
+                    "box line {i} field {j}: got {}, want {w} (bound, not xlo/xhi)",
+                    nums[i][j]
+                );
+            }
+        }
     }
 }

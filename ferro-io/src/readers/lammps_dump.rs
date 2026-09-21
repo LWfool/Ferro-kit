@@ -79,10 +79,15 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
         // User request C: also detect triclinic by value count (≥3 values per line)
         // already handled above: vals.len() >= 3 sets tilt
 
-        let lx = hi[0] - lo[0];
-        let ly = hi[1] - lo[1];
-        let lz = hi[2] - lo[2];
         let (xy, xz, yz) = (tilt[0], tilt[1], tilt[2]);
+        // 三斜时这六个数是 *_bound（倾斜后的外接盒），真实边长要把倾斜量减回去：
+        //   lx = (xhi_b - xlo_b) - |xy| - |xz|,  ly = (yhi_b - ylo_b) - |yz|
+        // 该式与规格的 MAX(0,xy,xz,xy+xz) - MIN(...) 在四个象限上恒等，
+        // 与 ase/io/lammpsrun.py::construct_cell 一致。正交时三个倾斜量为 0，
+        // 退化成 hi - lo，故这个分支对既有的正交轨迹逐位不变
+        let lx = (hi[0] - lo[0]) - xy.abs() - xz.abs();
+        let ly = (hi[1] - lo[1]) - yz.abs();
+        let lz = hi[2] - lo[2];
 
         let cell = if is_triclinic || xy != 0.0 || xz != 0.0 || yz != 0.0 {
             Cell::from_matrix(Matrix3::new(
@@ -405,5 +410,35 @@ ITEM: ATOMS id type element x y z
         let vx = traj.first().unwrap().velocities.as_ref().unwrap()[0].x;
         // 2.0 Å/ps × 1e-3 = 0.002 Å/fs
         assert!((vx - 0.002).abs() < 1e-12, "metal units: vx should be 0.002 Å/fs, got {vx}");
+    }
+
+    /// 三斜盒子行是 `*_bound`，真实边长要把倾斜量减回去。
+    ///
+    /// The numbers come from `tests/triclinic_2frames.lammpstrj`, whose cell was
+    /// cross-checked against `ase.io.read(..., format="lammps-dump-text")`:
+    /// lx/ly/lz = 10/12/14 with xy/xz/yz = 2/-3/1. Reading the bounds as xlo/xhi
+    /// would give lx = 15 and ly = 13 — plausible numbers, wrong cell.
+    #[test]
+    fn test_triclinic_bounds_are_not_xlo_xhi() {
+        const TRI: &str = "ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+1
+ITEM: BOX BOUNDS xy xz yz pp pp pp
+-3.0 12.0 2.0
+0.0 13.0 -3.0
+0.0 14.0 1.0
+ITEM: ATOMS id type element x y z
+1 1 Si 0.5 0.5 0.5
+";
+        let traj = read_lammps_dump(&tmp("tri.dump", TRI), LammpsUnits::Metal).unwrap();
+        let m = traj.first().unwrap().cell.as_ref().unwrap().matrix;
+        // 行优先：行 = 晶格矢量
+        let want = [[10.0, 0.0, 0.0], [2.0, 12.0, 0.0], [-3.0, 1.0, 14.0]];
+        for (i, row) in want.iter().enumerate() {
+            for (j, w) in row.iter().enumerate() {
+                assert!((m[(i, j)] - w).abs() < 1e-10, "cell[{i}][{j}]: got {}, want {w}", m[(i, j)]);
+            }
+        }
     }
 }
