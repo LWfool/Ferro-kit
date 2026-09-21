@@ -21,7 +21,7 @@ use std::path::Path;
 use std::io::BufReader;
 
 use anyhow::{bail, Context, Result};
-use ferro_core::units::{convert_pressure, PressureUnit};
+use ferro_core::units::{convert_pressure, PressureUnit, BOLTZMANN_EV_K};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use quick_xml::events::Event;
@@ -61,6 +61,7 @@ struct State {
     forces: Option<Vec<Vector3<f64>>>,
     stress_kb: Option<Matrix3<f64>>,
     energy: Option<f64>,
+    kinetic: Option<f64>,
 }
 
 /// Reads a vasprun.xml and reports what was dropped.
@@ -135,6 +136,9 @@ pub fn read_vasprun_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
                     if field == "e_fr_energy" {
                         // 每帧覆盖:最后一个才是收敛值
                         st.energy = text.trim().parse().ok();
+                    } else if field == "kinetic" {
+                        // 离子动能(eV),温度由它反算 —— vasprun 不打印温度本身
+                        st.kinetic = text.trim().parse().ok();
                     }
                 } else if st.in_atoms_array && st.in_c {
                     // rc/c 交替给出元素与 type 编号,取第一列
@@ -250,6 +254,13 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
     }
     frame.forces = st.forces.clone();
     frame.energy = Some(energy);
+    // vasprun 没有温度字段(只有输入参数 TEBEG),按 T = 2*E_kin/(3N*k_B) 反算。
+    // 除数是 3N 不是 3N-3:OUTCAR 的 EKIN=4.268142 eV / N=296 与它自己打印的
+    // 111.55 K 对拍确认了这一点。这一列是导出量,报告的表头会注明
+    frame.temperature = st
+        .kinetic
+        .filter(|_| n > 0)
+        .map(|ek| 2.0 * ek / (3.0 * n as f64 * BOLTZMANN_EV_K));
     // <varray name="stress"> 是 kB 的完整 3x3,顺序无歧义;符号与 OUTCAR 同,不变
     if let Some(kb) = st.stress_kb {
         frame.stress = Some(kb.map(|v| {
@@ -265,6 +276,25 @@ mod tests {
     use super::*;
 
     const FIXTURE: &str = "../tests/vasp_vasprun_2frames.xml";
+
+    /// vasprun has no temperature field, so it is derived from the ionic
+    /// kinetic energy with `T = 2*E_kin/(3N*k_B)`. The divisor is 3N, not 3N-3:
+    /// the OUTCAR of a comparable run prints 111.55 K next to EKIN = 4.268142 eV
+    /// for N = 296, which only 3N reproduces.
+    #[test]
+    fn derives_temperature_from_ionic_kinetic_energy() {
+        let (traj, _) =
+            read_vasprun_with_stats(Path::new("../tests/vasp_vasprun_2frames.xml")).unwrap();
+        let n = traj.frames[0].n_atoms() as f64;
+        for (i, f) in traj.frames.iter().enumerate() {
+            let t = f.temperature.expect("temperature should be derived");
+            assert!(t > 0.0 && t < 20000.0, "frame {i}: implausible T = {t}");
+            // 反解回动能,确认用的是 3N
+            let ek = t * 3.0 * n * ferro_core::units::BOLTZMANN_EV_K / 2.0;
+            assert!(ek > 0.0, "frame {i}: E_kin = {ek}");
+            println!("frame {i}: T = {t:.2} K  (N = {n}, E_kin = {ek:.5} eV)");
+        }
+    }
 
     #[test]
     fn reads_two_real_frames() {

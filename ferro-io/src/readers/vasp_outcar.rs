@@ -90,6 +90,7 @@ struct Pending {
     positions: Vec<Vector3<f64>>,
     forces: Vec<Vector3<f64>>,
     energy: Option<f64>,
+    temperature: Option<f64>,
 }
 
 /// Reads a VASP OUTCAR and reports what was dropped.
@@ -211,6 +212,16 @@ pub fn read_vasp_outcar_with_stats(path: &Path) -> Result<(Trajectory, AimdStats
             p.converged = Some(line.contains("EDIFF is reached"));
             continue;
         }
+        // 离子温度。VASP 把它印在 EKIN_LAT(晶格自由度动能)那一行的括号里,
+        // 标签因此有误导性 —— 它是离子温度,不是晶格温度:实测
+        // EKIN=4.268142 eV、N=296 时 2*EKIN/(3N*k_B)=111.56,与该行打印的
+        // 111.55 吻合。取 `(temperature` 之后的那个浮点,不写死列
+        if has_tokens(&line, &["kin.", "lattice"]) {
+            let mut it = line.split_whitespace().skip_while(|t| !t.starts_with("(temperature"));
+            it.next();
+            p.temperature = it.next().and_then(|t| t.parse::<f64>().ok());
+            continue;
+        }
         if line.trim_start().starts_with("in kB") {
             let v = floats(&line);
             if v.len() >= 6 {
@@ -324,6 +335,7 @@ fn finish(
     }
     frame.forces = Some(p.forces.clone());
     frame.energy = Some(energy);
+    frame.temperature = p.temperature;
     // in kB 的六个数是 VASP 自己的 Voigt 顺序 XX YY ZZ XY YZ ZX,与 extxyz 规格的
     // XX YY ZZ YZ XZ XY 不同。符号不变:VASP 与 Frame::stress 都是正 = 压缩
     if let Some(kb) = p.stress_kb {
@@ -525,5 +537,28 @@ mod tests {
             read_vasp_outcar_with_stats(&tmp("restart.outcar", &body)).unwrap();
         assert_eq!(traj.n_frames(), 4);
         assert_eq!(stats.n_restarts, 1);
+    }
+
+    /// The ionic temperature is printed inside the parentheses of the EKIN_LAT
+    /// line, whose own value is a different quantity.
+    ///
+    /// The fixture pins both halves of that trap: `EKIN_LAT = 0.000000` on both
+    /// frames while the temperatures are 0.00 and 111.55 K, so picking the first
+    /// float of the line would pass frame 0 and fail frame 1. The 111.55 also
+    /// cross-checks the constant the vasprun reader derives with:
+    /// 2 * 4.268142 / (3 * 296 * k_B) = 111.554.
+    #[test]
+    fn reads_ion_temperature_not_the_lattice_one() {
+        let (traj, _) =
+            read_vasp_outcar_with_stats(Path::new("../tests/vasp_OUTCAR_2frames")).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        let got: Vec<f64> = traj.frames.iter().map(|f| f.temperature.unwrap()).collect();
+        assert!((got[0] - 0.0).abs() < 1e-9, "frame 0: got {}", got[0]);
+        assert!((got[1] - 111.55).abs() < 1e-9, "frame 1: got {}", got[1]);
+
+        // 与 vasprun 那条路用的是同一个式子:由 111.55 反解 EKIN,应回到 4.268142
+        let n = 296.0;
+        let ek = got[1] * 3.0 * n * ferro_core::units::BOLTZMANN_EV_K / 2.0;
+        assert!((ek - 4.268142).abs() < 5e-4, "EKIN back-solve: got {ek}, want 4.268142");
     }
 }

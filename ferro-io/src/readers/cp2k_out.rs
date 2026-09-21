@@ -91,6 +91,9 @@ mod tag {
     pub const SCF: &[&[&str]] = &[&["SCF", "run"]];
     /// One per MD initialisation; more than one means the run was restarted.
     pub const RESTART: &[&[&str]] = &[&["MD_INI|", "MD", "initialization"]];
+    /// Instantaneous ionic temperature of the step. The line carries **two**
+    /// numbers, instantaneous then running average — take the first.
+    pub const TEMPERATURE: &[&[&str]] = &[&["MD|", "Temperature", "[K]"]];
     /// Banner line carrying the CP2K release, kept for the trajectory metadata.
     pub const VERSION: &[&[&str]] = &[&["CP2K|", "version", "string:"]];
 }
@@ -276,6 +279,18 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, AimdStats)> {
 
         // 帧的后半在锚点之后，上界是下一个锚点
         let hi = anchors.get(k + 1).copied().unwrap_or(lines.len());
+        // 温度在锚点之后、坐标块之前。MD_INI| 的那一行在第一个锚点之前，
+        // 按锚点定位天然排除，不必像参考脚本那样另做一次掩码
+        let mut temperature = None;
+        for l in lines.iter().take(hi).skip(a) {
+            if line_matches(l, tag::TEMPERATURE) {
+                // 两个数：瞬时、累计平均。取第一个 —— 取第二个不会报错，
+                // 只会得到一条越来越平的曲线
+                temperature = l.split_whitespace().find_map(|t| t.parse::<f64>().ok());
+                break;
+            }
+        }
+
         let mut heads: Vec<(usize, usize)> = Vec::new(); // (行号, 原子数)
         let mut i = a;
         while i < hi && heads.len() < 2 {
@@ -405,6 +420,7 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, AimdStats)> {
         );
         frame.atoms = atoms;
         frame.energy = energy;
+        frame.temperature = temperature;
         frame.forces = Some(forces.iter().map(|f| f * force_factor).collect());
         frame.stress = stress;
         frames.push(frame);
@@ -583,6 +599,24 @@ mod tests {
         let (traj, st) = parse_cp2k_out(&MINI[..cut]).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_scf_failed, 1);
+    }
+
+    /// End-to-end against a real CP2K MD log, cut from `examples/total.out`.
+    ///
+    /// The temperature line carries the instantaneous value and the running
+    /// average; this fixture was chosen because the two differ from frame 2 on
+    /// (866.567046 vs 915.738083), so reading the wrong column fails here
+    /// instead of producing a plausible, slowly flattening curve.
+    #[test]
+    fn reads_temperature_from_the_instantaneous_column() {
+        let (traj, st) =
+            read_cp2k_out_with_stats(Path::new("../tests/cp2k_out_3frames.out")).unwrap();
+        assert_eq!(traj.n_frames(), 3, "stats: {st:?}");
+        let want = [964.909119, 866.567046, 724.603525];
+        for (i, w) in want.iter().enumerate() {
+            let got = traj.frames[i].temperature.expect("temperature should be read");
+            assert!((got - w).abs() < 1e-9, "frame {i}: got {got}, want {w}");
+        }
     }
 
     /// Runs against a real 40 MB restarted run; `examples/` is gitignored, so
