@@ -223,7 +223,7 @@ bug 修复的 diff 要能一眼说清「变的都该变」（判据同 `build_av
 让 `bader_neargrid` 用回它以恢复三条路对称，该在真要动这个算法的时候连着算法
 一起判断。现在定一个方向，只会让将来的人跳过这次判断。
 
-### 带速度的测试 fixture（2026-09-12 提出）
+### 带速度的测试 fixture（2026-09-12 提出，2026-09-21 仍未做）
 
 `tests/` 两条 fixture **没有速度数据**，于是 `vacf` / `vanhove` / `rotcorr`
 跑不到写文件那一步 —— 这三个命令端到端从来没验过（0.2.0 改名那轮就只验了
@@ -258,7 +258,9 @@ gr/angle/msd/sq/net/map），2026-09-12 的 golden master 基线也盖不到它�
   与 `ML FORCE`。dpdata 用一个 `ml=True` 开关切 token，但它给两者的行偏移是
   `[14, 4]` —— **块结构本身就不同**，不只是换个名字。没有样例就没法验，等有输出
   再补；`vasp_outcar.rs` 的锚点已经是多候选表的形状，加 token 不必重构
-- **`io_dispatch` 注册**：`ferro convert -i OUTCAR -o traj.xyz` 现在不认识。要动
+- **`io_dispatch` 注册**（2026-09-21 复核：**仍未做，本轮有意绕开**）：把 LAMMPS
+  导出挂在 `dataset collect --type inspect` 上而不是 `convert` 上，于是下面这条
+  判据一次也没被逼着定。`ferro convert -i OUTCAR -o traj.xyz` 依旧不认识。要动
   `io_dispatch.rs` 的两处 match、`supported_formats()` 那张有测试盯着的清单，以及
   `ferro-python/src/io.rs` 那处独立分派。判据要先定：`OUTCAR` 没有扩展名，而
   `io_dispatch` 现在是按扩展名（加 `POSCAR`/`CONTCAR` 的前缀特例）分派的 ——
@@ -404,6 +406,44 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### cp2k_grep_strInfo.py 的能力合并：LAMMPS 导出 + 逐帧标量（2026-09-21）
+
+用户在 `private/` 放了一个 626 行的脚本要求合并。**先做的是对账**：它的九项能力
+里 Ferro 已有六项且实现更稳健（VASP/CP2K 读取、DeePMD 写出与 8:1:1 划分、
+lammpstrj/data 导出），`outputLammpsin` 甚至引用了一个**根本没定义**的
+`LAMMPSIN` 变量。真正缺的只有三样：CP2K 多文件布局、DeePMD mixed type、
+逐帧标量序列。
+
+**用户选的范围是 LAMMPS 导出 + 逐帧标量**，另两样留在优先级高那一栏。
+
+六个提交，顺序即依赖：三斜 bug → `Frame` 字段 → 三个 reader 填温度 →
+`collect` 的 `-o` 与 `.db` → `--type inspect` → 文档。
+
+**被实测推翻或修正的**：
+
+- **原以为缺的是 LAMMPS writer，实测 Ferro 的两个 writer 已支持三斜**，
+  `cell_to_lammps` 与脚本的 `getLammpsCell` 逐行同构。真正的断点是**入口**：
+  `io_dispatch` 不认 `.out`/`OUTCAR`/`vasprun.xml`
+- **却发现了一处脚本对、Ferro 错的**：dump 的三斜盒子行是 `*_bound` 不是
+  `xlo/xhi`，而 Ferro 读写两侧一致地错，往返测试全绿。用户当时的指示是
+  「只取能力，不记录这些问题」，但这一条涉及 Ferro 本身，提出后用户判为「修，
+  且记录」。**教训是对账要做到实现层，不能停在能力清单**
+- **原计划的 `time_fs` 列去掉**：设计时说「step 与 time_fs 是 CP2K 锚点上现成的」，
+  这话对**文件**成立、对 `Frame` 不成立 —— 两者都没被带出来。实测三条路里
+  `step` 有两条、`time_fs` 只有一条，故只加 `Frame.step`
+- **脚本在 VASP 路抓的温度一度被怀疑是错的**（正则 `temperature +([\d\.]+) K`
+  命中的是 `EKIN_LAT` 行）。实测**它是对的**：那个括号标的是离子温度，
+  `EKIN=4.268142` / `N=296` 反算得 111.56 与打印的 111.55 吻合
+- **`-o` 的形态被用户改过两轮**：先定「`--type inspect` 时 `-o` 改写 inspect 位置」
+  （与 bader 同构），再改成「`-o` 完全交给数据集，inspect 位置固定、给了 `-o`
+  报错」。`collect` 的 `-o` 也从必填改为可选
+- **后缀从 `.train` 改成 `.db`**：用户先说可能不需要后缀，最后定为全部加 `.db`
+
+**明确划在范围外**：CP2K 多文件布局（`-pos-1.xyz`/`-frc-1.xyz`/`-1.cell`）·
+DeePMD mixed type · `io_dispatch` 注册 · 抽帧参数 · `ferro info` 的「只报首尾
+两帧」。脚本里**不照搬**的四处：体积用对角线乘积、CP2K 固定行偏移（只认
+NVT/NPT_I）、质量表读 `~/.emacs.d` 的 elisp、倾斜折叠的除数写错。
 
 ### 三项小待办：&Path、bader --outdir、-o 语义统一（2026-08-13 提出，2026-09-20 落地）
 
