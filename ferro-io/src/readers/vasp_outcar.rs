@@ -336,6 +336,7 @@ fn finish(
     frame.forces = Some(p.forces.clone());
     frame.energy = Some(energy);
     frame.temperature = p.temperature;
+    frame.step = Some(p.step);
     // in kB 的六个数是 VASP 自己的 Voigt 顺序 XX YY ZZ XY YZ ZX,与 extxyz 规格的
     // XX YY ZZ YZ XZ XY 不同。符号不变:VASP 与 Frame::stress 都是正 = 压缩
     if let Some(kb) = p.stress_kb {
@@ -344,7 +345,6 @@ fn finish(
         let (xy, yz, zx) = (e(kb[3]), e(kb[4]), e(kb[5]));
         frame.stress = Some(Matrix3::new(xx, xy, zx, xy, yy, yz, zx, yz, zz));
     }
-    let _ = p.step;
     traj.add_frame(frame);
     stats.n_kept += 1;
 }

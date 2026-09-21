@@ -267,6 +267,7 @@ pub fn build_box(
         stress: None,
         velocities: None,
         temperature: None,
+        step: None,
     })
 }
 

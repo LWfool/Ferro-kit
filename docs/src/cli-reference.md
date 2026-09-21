@@ -759,8 +759,10 @@ ferro dataset merge     多个 system → 按成分合并
 
 | Flag | Description |
 |---|---|
-| `-i <FILE>...` | CP2K MD 的 stdout 日志，支持 glob |
-| `-o <DIR>` | 输出根目录，**必填**；`-i` 下的目录结构在其中重建 |
+| `-i <FILE>...` | CP2K MD 的 stdout 日志 / VASP OUTCAR / vasprun.xml，支持 glob |
+| `-o <DIR>` | 输出根目录，**可选**；不给则产物落在各输入目录的同级 |
+| `--type <WHAT>` | `deepmd`（DeePMD system）\| `inspect`（只出诊断，不出数据集）[deepmd] |
+| `--mkdir` | 不询问直接创建 `-o`（无终端时必须给） |
 | `--overwrite` | 允许写入已存在的非空目录 |
 
 **一个输入目录一个 system**。同目录的 `.out` 是同一次运行被重启切开的段，
@@ -771,12 +773,35 @@ merge 合**不同运行**。
 
 | `-i` | 产物 |
 |---|---|
-| `run*/*.out -o sets` | `sets/run1/`、`sets/run2/` |
-| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md/`、`sets/b/md/` |
-| `*.out -o sys`（只有一个目录） | `sys/` 本身 |
+| `/data/md/*.out`（不给 `-o`） | `/data/md.db/` |
+| `run*/*.out -o sets` | `sets/run1.db/`、`sets/run2.db/` |
+| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`、`sets/b/md.db/` |
+| `*.out -o sys`（只有一个目录） | `sys.db/` 本身 |
 
 公共前缀按定义不携带区分信息，剥掉之后剩下的必然唯一，所以撞名不再是错误 ——
 撞名就是「该合并」的定义。
+
+产物目录名**恒带 `.db`**（database），标的是「原始收集数据」。它**不是**划分
+后缀：`.train`/`.valid`/`.test` 说的是划分的哪一部分，`.db` 说的是数据从哪来。
+不进那张表是有代价考量的 —— 「`.valid` 不许再划分」那条守卫读的正是同一张表，
+`.db` 进去会被一起拒掉。`filter` / `merge` 在命名自己的产物前剥掉它，于是
+`md.db` 筛成 `md.train` 而不是 `md.db.train`；两段后缀还会让 `merge` 的共享
+后缀检查（只看末尾一段）失去唯一解。
+
+不给 `-o` 时产物写在 AIMD 目录**同级**。早先定的「`-o` 必填」反对的是默认值
+`.`（会把 npy 撒进正在工作的目录），而跟着输入走的默认值撒不到别处去。
+
+**`--type inspect`**：只写诊断、不写数据集，三个文件落在
+`<AIMD 目录>/ferro_inspect/`，`-o` 在这条路上**报错**（没有数据集可安置）：
+
+| 文件 | 内容 |
+|---|---|
+| `<目录名>.lammpstrj` | 全部帧，拿去看 |
+| `<目录名>.data` | **末帧**，拿去接着跑（第 0 帧是你喂进去的初始构型） |
+| `<目录名>_info.csv` | 逐帧 `frame` `step` `temperature` `energy` `volume` `density` `source`；运行摘要在 `#` 头 |
+
+温度在 CP2K 与 OUTCAR 是直读的；vasprun.xml 不打印它，由离子动能按
+`T = 2·E_kin/(3N·k_B)` 反算，`#` 头会注明。缺失值渲染成**空字段**，不补零。
 
 文件按首个 `MD| Step number` 排序，文件内保持原序。**重叠帧不去重**（重启只
 重跑 checkpoint 以来的几步，位置速度相同则能量力也相同），但每个源文件的 step
@@ -796,7 +821,7 @@ merge 合**不同运行**。
 产物：
 
 ```
-<outdir>/<name>/
+<outdir>/<name>.db/
   type.raw          逐原子的类型索引，0 基
   type_map.raw      元素符号，按 (Z, 符号) 排序
   set.000/coord.npy (nframes, natoms*3)  Å

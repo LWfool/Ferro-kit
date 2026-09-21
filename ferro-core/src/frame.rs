@@ -59,6 +59,13 @@ pub struct Frame {
     /// CP2K and VASP OUTCAR print it directly; vasprun.xml does not, so that
     /// reader derives it from the ionic kinetic energy and says so.
     pub temperature: Option<f64>,
+    /// The MD step number the engine gave this frame, when it prints one.
+    ///
+    /// Kept because `collect` stitches restart segments without de-duplicating
+    /// them: overlapping frames are genuinely identical, and the step number is
+    /// what makes that overlap visible instead of silently doubling a run.
+    /// CP2K and VASP OUTCAR number their ionic steps; vasprun.xml does not.
+    pub step: Option<i64>,
 }
 
 impl Frame {
@@ -76,6 +83,7 @@ impl Frame {
             stress: None,
             velocities: None,
             temperature: None,
+            step: None,
         }
     }
 

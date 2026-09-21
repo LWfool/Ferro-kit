@@ -46,6 +46,23 @@ pub enum DatasetCmd {
     Merge(MergeCmd),
 }
 
+/// What `collect` produces.
+///
+/// A separate enum from [`OutType`] on purpose. `collect` cannot write nep/extxyz
+/// today, so the two value sets do not overlap beyond `deepmd`; folding `Inspect`
+/// into `OutType` would list it in `filter --help` and `merge --help`, where it is
+/// rejected at run time — and the help/clap drift test checks option *names*, not
+/// value sets, so that dishonesty would go unnoticed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
+pub enum CollectType {
+    /// DeePMD system directory (`type.raw` + `set.NNN/*.npy`)
+    #[default]
+    Deepmd,
+    /// Diagnostics only: trajectory, last structure and per-frame scalars.
+    /// Writes no dataset.
+    Inspect,
+}
+
 /// What `filter` / `merge` write out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, clap::ValueEnum)]
 pub enum OutType {
@@ -460,6 +477,10 @@ pub struct CollectCmd {
     /// Allow writing into an existing non-empty output directory
     #[arg(long)]
     pub overwrite: bool,
+
+    /// What to write                                       [default: deepmd]
+    #[arg(long = "type", value_enum, default_value_t = CollectType::Deepmd)]
+    pub out_type: CollectType,
 }
 
 /// True when `ferro dataset collect` was typed with no input.
@@ -489,6 +510,15 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
 }
 
 fn run_collect(args: &CollectCmd) -> Result<usize> {
+    let inspect = args.out_type == CollectType::Inspect;
+    // -o 的含义是「数据集写到哪」，而 --type inspect 一个 npy 都不写。静默忽略
+    // 会让用户回头去那个目录找数据集 —— 参数级错误在读第一个文件之前失败
+    if inspect && args.output.is_some() {
+        bail!(
+            "--type inspect writes no dataset; its three files always go to <AIMD dir>/{}. Drop -o, or drop --type inspect",
+            crate::cmd::inspect::DIR_NAME
+        );
+    }
     let inputs = expand_inputs(&args.input)?;
     // 与其余命令一致：路径问题在读第一个文件之前就暴露，而不是跑完才发现写不出去
     if let Some(root) = &args.output {
@@ -500,8 +530,12 @@ fn run_collect(args: &CollectCmd) -> Result<usize> {
     let mut skipped: Vec<PathBuf> = Vec::new();
 
     for group in &groups {
-        let dest = collect_dest(args.output.as_deref(), group);
-        match collect_group(group, &dest, args.overwrite, &mut skipped) {
+        let dest = if inspect {
+            group.dir.join(crate::cmd::inspect::DIR_NAME)
+        } else {
+            collect_dest(args.output.as_deref(), group)
+        };
+        match collect_group(group, &dest, args.overwrite, inspect, &mut skipped) {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", group.dir.display());
@@ -644,9 +678,11 @@ fn collect_group(
     group: &Group,
     dest: &Path,
     overwrite: bool,
+    inspect: bool,
     skipped: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    if !overwrite && dest.exists() && std::fs::read_dir(dest)?.next().is_some() {
+    // inspect 那条路自己查，因为它的目录是 ferro_inspect/ 而不是 system 目录
+    if !inspect && !overwrite && dest.exists() && std::fs::read_dir(dest)?.next().is_some() {
         bail!("{} exists and is not empty (pass --overwrite)", dest.display());
     }
 
@@ -707,12 +743,30 @@ fn collect_group(
 
     let mut all = Trajectory::new();
     all.metadata = parts[0].1.metadata.clone();
-    for (_, traj, _) in &parts {
+    // 逐帧记下来自哪个文件：collect 拼的是重启切开的段，接缝正是最该看的地方
+    let mut sources: Vec<String> = Vec::new();
+    for (path, traj, _) in &parts {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        sources.extend(std::iter::repeat_n(name, traj.n_frames()));
         all.frames.extend(traj.frames.iter().cloned());
     }
 
     report_group(dest, &parts, all.n_frames());
-    write_deepmd_npy(&all, dest)?;
+    if inspect {
+        let name = group
+            .dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "run".to_string());
+        for p in crate::cmd::inspect::write_all(&all, dest, &name, &sources, overwrite)? {
+            println!("  -> {}", p.display());
+        }
+    } else {
+        write_deepmd_npy(&all, dest)?;
+    }
     Ok(())
 }
 
