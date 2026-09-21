@@ -49,6 +49,16 @@ pub struct Frame {
     pub stress: Option<Matrix3<f64>>,
     /// 每个原子的速度（Å/fs），顺序与 atoms 一致
     pub velocities: Option<Vec<Vector3<f64>>>,
+    /// Instantaneous ionic temperature (K), as an MD engine reports it per step.
+    ///
+    /// `None` for everything that is not an MD frame — a relaxation, a POSCAR, a
+    /// CIF. It lives here rather than in a parallel array because it is a
+    /// per-frame quantity: `select`/`stride` must carry it along, and a side
+    /// channel would silently shift out of step with the frames.
+    ///
+    /// CP2K and VASP OUTCAR print it directly; vasprun.xml does not, so that
+    /// reader derives it from the ionic kinetic energy and says so.
+    pub temperature: Option<f64>,
 }
 
 impl Frame {
@@ -65,6 +75,7 @@ impl Frame {
             forces: None,
             stress: None,
             velocities: None,
+            temperature: None,
         }
     }
 

@@ -148,6 +148,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         forces: None,
         stress: None,
         velocities: None,
+        temperature: None,
     })
 }
 

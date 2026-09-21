@@ -44,6 +44,9 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 
         // Scalar properties in comment
         let energy: Option<f64> = kv.get("energy").and_then(|s| s.parse().ok());
+        // 非标准键，但 MD 产出的 extxyz 常带着它。读侧收下是纯收益（别人的文件里
+        // 有就别丢）；写侧不写 —— 见 writers/extxyz.rs
+        let temperature: Option<f64> = kv.get("temperature").and_then(|s| s.parse().ok());
         let stress = read_stress(&kv, cell.as_ref())
             .with_context(|| format!("frame {}", traj.n_frames()))?;
 
@@ -71,6 +74,7 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
         };
         frame.energy = energy;
         frame.stress = stress;
+        frame.temperature = temperature;
 
         let mut all_forces: Vec<Vector3<f64>> = Vec::new();
         let mut all_vels: Vec<Vector3<f64>> = Vec::new();
@@ -387,6 +391,27 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
     }
 
     use crate::testutil::write_tmp as tmp;
+
+    /// `Temperature=` is read back; the writer deliberately never emits it.
+    #[test]
+    fn test_temperature_is_read_but_never_written() {
+        const T: &str = "1
+Lattice=\"3.0 0.0 0.0 0.0 3.0 0.0 0.0 0.0 3.0\" Properties=species:S:1:pos:R:3 Temperature=866.567046 energy=-1.0 pbc=\"T T T\"
+Si 0.0 0.0 0.0
+";
+        let traj = read_extxyz(&tmp("temp.extxyz", T)).unwrap();
+        let t = traj.first().unwrap().temperature.expect("Temperature= should be read");
+        assert!((t - 866.567046).abs() < 1e-9, "got {t}");
+
+        // 写侧不带它出去
+        let out = std::env::temp_dir().join("temp_out.extxyz");
+        crate::writers::extxyz::write_extxyz(&traj, &out).unwrap();
+        let text = std::fs::read_to_string(&out).unwrap();
+        assert!(
+            !text.to_lowercase().contains("temperature="),
+            "writer must not emit Temperature=, got:\n{text}"
+        );
+    }
 
     #[test]
     fn test_basic() {

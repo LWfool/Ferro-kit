@@ -71,6 +71,10 @@ pub fn write_extxyz_with(
         parts.push(format!("Properties={prop_spec}"));
 
         if let Some(e) = frame.energy { parts.push(format!("energy={}", fmt(e))); }
+        // frame.temperature 有意不写。reader 收它,writer 不写:filter / merge 的
+        // 输入是 DeePMD npy 系统,那里根本没有温度,开了这个键之后产物里有没有
+        // `Temperature=` 就取决于数据走的哪条路 —— 产物形态随来源而变,正是
+        // issues.md 反复记的那类静默差异。等 convert 能直读 AIMD 输出时再一起开
         // 恒只写一个键 —— 两个键就是两处可能互相矛盾的事实,读侧为此专门做了
         // 交叉校验,没有理由自己生产这种文件。
         //   stress= 是 ASE 约定(正 = 拉伸),故变号
