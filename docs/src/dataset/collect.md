@@ -84,10 +84,10 @@ Restart segments left as **separate files in one directory** are also fine; see
 
 ## Output layout
 
-One system directory per input **directory**:
+One system directory per input **directory**, named `<name>.db`:
 
 ```
-<outdir>/<name>/
+<outdir>/<name>.db/
 ├── type.raw          one 0-based integer per atom, indexing type_map.raw
 ├── type_map.raw      one element symbol per line, sorted by (Z, symbol)
 └── set.000/
@@ -110,19 +110,81 @@ stripping it is exactly what tells the systems apart:
 
 | `-i` | products |
 |---|---|
-| `run*/*.out -o sets` | `sets/run1/`, `sets/run2/` |
-| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md/`, `sets/b/md/` |
-| `*.out -o sys` (one directory) | `sys/` itself |
-| `a/total.out b/md/total.out -o sets` | `sets/a/`, `sets/b/md/` |
+| `/data/md/*.out` (no `-o`) | `/data/md.db/` |
+| `run*/*.out -o sets` | `sets/run1.db/`, `sets/run2.db/` |
+| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`, `sets/b/md.db/` |
+| `*.out -o sys` (one directory) | `sys.db/` itself |
+| `a/total.out b/md/total.out -o sets` | `sets/a.db/`, `sets/b/md.db/` |
 
 The file stem never enters the name — `total.out` and `PZA.out` in the same
 directory produce the same system. With only one input directory the shared
 ancestor is the whole path, `<name>` is empty, and the system is written into
 `-o` itself: there is nothing to tell apart.
 
-`-o` is **required**. The products are a directory tree, and a default of `.`
-would scatter `.npy` files through whatever directory you happened to be in.
-Writing into an existing non-empty directory needs `--overwrite`.
+`-o` is **optional**. Without it the system lands **beside** the AIMD directory
+it came from, which keeps a collected dataset next to the run that produced it.
+An earlier default of `.` was rejected for scattering `.npy` files through
+whatever directory you happened to be in; a default that follows the input
+cannot do that. Writing into an existing non-empty directory needs
+`--overwrite`.
+
+### The `.db` suffix
+
+Every `collect` product carries `.db`, with or without `-o`. It marks raw
+collected data — what came off the run, before any filtering.
+
+It is deliberately **not** one of the split suffixes (`.train` / `.valid` /
+`.test`): those say which part of a split a system is, `.db` says where it came
+from. Keeping it out of that set matters, because the guard that refuses to
+re-split a held-out `.valid` set reads the same list, and would otherwise refuse
+`.db` inputs too.
+
+`filter` and `merge` strip it before naming their own products, so a collected
+`md.db` filters to `md.train`, not `md.db.train`. Two stacked suffixes would
+also break `merge`'s shared-suffix check, which reads only the trailing segment.
+
+## Inspecting a run instead of collecting it
+
+`--type inspect` writes diagnostics and **no dataset**. The three files go into
+a `ferro_inspect/` folder inside the AIMD directory itself, so each run keeps its
+own diagnostics next to the output that produced them — CP2K logs are very often
+all called `total.out` and are told apart only by their directory.
+
+```
+<AIMD dir>/ferro_inspect/
+├── <dir>.lammpstrj   every frame, for viewing
+├── <dir>.data        the LAST frame, to carry on from
+└── <dir>_info.csv    one row per frame + a `#` summary header
+```
+
+The last frame rather than the first: frame 0 is the structure you fed CP2K, and
+you already have it; the last one is what this run produced.
+
+`_info.csv` is a normal ferro table — `pandas.read_csv(path, comment="#")`:
+
+| column | meaning |
+|---|---|
+| `frame` | index within the collected system |
+| `step` | the MD step number the engine printed (empty for vasprun.xml) |
+| `temperature` | K |
+| `energy` | eV |
+| `volume` | Å³, from `abs(det(cell))` |
+| `density` | g/cm³ |
+| `source` | which input file this frame came from |
+
+`step` and `source` together are what make a restart seam visible. `collect`
+deliberately does not de-duplicate the overlapping frames a restart produces, and
+these two columns are how you see that overlap rather than silently doubling a
+run.
+
+The `#` header carries the run summary: atom count and composition, frame count,
+the frame-0 cell, and mean ± sd for temperature and density. A quantity no frame
+carries is left out of the header rather than reported as zero, and missing
+values in the table render as **empty fields**, never `0`.
+
+`-o` is refused with `--type inspect`: it means "where the dataset goes", and
+there is no dataset on this path. Silently ignoring it would send you looking for
+a dataset in a directory that never received one.
 
 ## One system per directory
 

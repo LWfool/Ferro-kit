@@ -874,17 +874,35 @@ pub fn print_dataset_collect() {
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
-  -o, --output DIR        Output root (required)
+  -o, --output DIR        Output root; default is beside each input
+      --type   WHAT       deepmd (DeePMD system) | inspect (diagnostics only)
+                                                                    [deepmd]
       --mkdir             Create -o without asking (needed with no terminal)
       --overwrite         Allow writing into an existing non-empty directory
 
-Output layout:
-  <-o dir>/<dir below the shared ancestor>/
-    type.raw  type_map.raw  set.000/coord|box|energy|force|virial .npy
+Output layout (--type deepmd):
+  Without -o, beside the AIMD directory itself:
+    /data/md/*.out                   -> /data/md.db/
+  With -o, the tree below the shared ancestor is rebuilt inside it:
+    -i 'run*/*.out' -o sets          -> sets/run1.db/, sets/run2.db/
+    -i '/s/a/md/x.out' '/s/b/md/x.out' -> sets/a/md.db/, sets/b/md.db/
+    -i '*.out'       (one directory) -> sets.db/ itself
 
-  -i 'run*/*.out' -o sets            -> sets/run1/, sets/run2/
-  -i '/s/a/md/x.out' '/s/b/md/x.out' -> sets/a/md/, sets/b/md/
-  -i '*.out'       (one directory)   -> sets/ itself
+  Each holds:  type.raw  type_map.raw  set.000/coord|box|energy|force|virial .npy
+
+  The .db marks raw collected data. filter and merge strip it before naming
+  their own products, so md.db filters to md.train, not md.db.train.
+
+Output layout (--type inspect):
+  Three files in <AIMD dir>/ferro_inspect/, and NO dataset. -o is refused here
+  because there is no dataset to place:
+    <dir>.lammpstrj   every frame, for viewing
+    <dir>.data        the LAST frame, to carry on from
+    <dir>_info.csv    per frame: step, temperature, energy, volume, density,
+                      source file; the run summary sits in the # header
+
+  Temperature comes straight from CP2K and OUTCAR. vasprun.xml does not print
+  it, so it is derived from the ionic kinetic energy and the header says so.
 
 One system per directory:
   The .out files of one directory are the restart segments of one run, so they
@@ -907,8 +925,9 @@ Per format:
   frames depending on which file you point at; the rule used is printed.
 
 Examples:
+  ferro dataset collect -i 'run*/*.out'
   ferro dataset collect -i 'run*/*.out' -o data
-  ferro dataset collect -i md1.out md2.out -o /scratch/train
+  ferro dataset collect -i 'md/*.out' --type inspect
 
 Full documentation:  ferro doc dataset collect"#
     );

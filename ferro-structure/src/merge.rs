@@ -116,6 +116,7 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
         stress: None,
         velocities: None,
         temperature: None,
+        step: None,
     })
 }
 

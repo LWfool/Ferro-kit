@@ -421,6 +421,9 @@ fn parse_cp2k_out(content: &str) -> Result<(Trajectory, AimdStats)> {
         frame.atoms = atoms;
         frame.energy = energy;
         frame.temperature = temperature;
+        // 直接从锚点行取,不用上面那个并行的 steps —— 某个锚点的步号解析不出时
+        // 那个 Vec 会整体错位一位,而错位读到的是别帧的步号,不报错
+        frame.step = lines[a].split_whitespace().last().and_then(|t| t.parse::<i64>().ok());
         frame.forces = Some(forces.iter().map(|f| f * force_factor).collect());
         frame.stress = stress;
         frames.push(frame);
