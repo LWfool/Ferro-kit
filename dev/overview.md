@@ -40,6 +40,7 @@ ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
 ferro net                                                      → 六张堆叠 csv
 ferro dataset collect | filter | merge                         → DeePMD system 目录
+            collect --type inspect                             → 诊断三件套（不出数据集）
 ferro bader | convert | info | job
 ferro doc   <topic>                                            → 手册（编译在二进制里）
 ```
@@ -185,3 +186,30 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 `BaderResult` 的三个 `write_*` 改为 `*_text()` 返回字符串，落盘移到 CLI ——
 `ferro-analysis` 不再碰文件系统。新增 `tests/CHGCAR_2atoms` 与
 `ferro-cli/tests/bader_reports.rs`。
+
+## 2026-09-21 的一批（版本号**仍是 0.3.3**，未发版）
+
+**含破坏性改动，但按用户明确要求不升版本号** —— 这一批没有自己的版本号，
+它与 `v0.3.2`、`v0.3.3` 挤在同一个 `0.3.3` 里，一并进入下一个发布点。
+翻 git 历史时注意：**`0.3.3` 这个版本号下有三批改动，且都是破坏性的**。
+
+起因是把 `private/cp2k_grep_strInfo.py` 的能力并进来。该脚本的九项能力里 Ferro
+已有六项且实现更稳健，真正合进来的是 **LAMMPS 导出 + 逐帧标量序列**；CP2K 的
+多文件布局与 DeePMD mixed type 明确划在范围外（仍在 `plan.md`）。
+
+| 改动 | 影响 |
+|---|---|
+| **LAMMPS dump 三斜盒子行改 `*_bound`** | 读写两侧口径都变。正交胞产物**逐字节不变**；三斜胞此前写出的盒子偏小，OVITO / ASE / LAMMPS `read_dump` 读到的都是错的 |
+| **`collect` 的 `-o` 由必填改可选** | 不给时产物落在 AIMD 目录**同级** |
+| **`collect` 的产物目录名恒带 `.db`** | `sets/run1/` → `sets/run1.db/`；`filter`/`merge` 会剥掉它再命名自己的产物 |
+| 新增 `collect --type inspect` | 只出诊断三件套，不出数据集；`-o` 在这条路上报错 |
+| `Frame` 加 `temperature` / `step` 两个字段 | 三条 AIMD 路都填（vasprun 的温度是反算的，无步号） |
+| extxyz 读侧收 `Temperature=` | 写侧**不写** |
+
+推翻的旧判据两条，都写进了 `issues.md`：
+
+- **「`collect` 的 `-o` 必填」**（0.3.2 定）。原判据反对的是默认值 `.`（会把 npy
+  撒进正在工作的目录），而跟着输入走的默认值撒不到别处去。结论改为：**默认值必须
+  跟着输入走，不能是 `.`**
+- **「`collect` 不加后缀」**（0.3.3 定，理由是产物是没筛过的原始数据、不该标成
+  训练集）。改为加 `.db`（database），但它**不是**划分后缀，不进 `SPLIT_SUFFIXES`

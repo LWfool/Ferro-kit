@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：591 个（全部通过，clippy 零警告）
+## 测试总数：602 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 110（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-io | 116（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 198 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 83 + bin 2 + 集成 8） | 93 |
+| ferro-cli（lib 88 + bin 2 + 集成 8） | 98 |
 
 版本号 **0.3.3**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -42,6 +42,16 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 **`v0.3.2-alpha1`**（指向 `c7627ff`）= 2026-09-12 简化重构前的最后状态。命名带
 `-alpha1` 而不是直接用 `v0.3.2`：0.3.2 **尚未发版**，占掉那个名字会让将来的发版点
 无名可用（`v0.1.15` 当年能直接用版本号，是因为它已经发过了）。
+
+## tests/ 的 fixture
+
+| 文件 | 来源 | 覆盖 |
+|---|---|---|
+| `43Z43P15A_NPT_5.lammpstrj` / `70Z30P00A_NVT_5.lammpstrj` | 生产轨迹等间隔取 5 帧 | 正交胞，一 NPT 一 NVT |
+| `CHGCAR_2atoms` | 8×8×8 合成网格 | Bader 端到端 |
+| `vasp_OUTCAR_2frames` / `vasp_vasprun_2frames.xml` | 真实 VASP 运行裁出 | 定胞 NVT；温度 0.00 / 111.55 K |
+| **`cp2k_out_3frames.out`**（2026-09-21） | `examples/total.out` 裁 3 帧，165 KB | CP2K 端到端。**此前一份 CP2K 样例都没有**，那条链只有代码里构造的字符串。选这三帧是因为第 2、3 帧的瞬时温度与累计平均**不相等**，取错列会当场失败 |
+| **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见 |
 
 ## scripts/
 
@@ -102,6 +112,10 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   nalgebra 是列优先且无开关，`as_slice()` 给出的是转置，而 npy 的 box/virial、
   extxyz 的 `Lattice`、GPUMD 的 `lattice` 全要行优先。测试用**非对称**矩阵 ——
   对称张量（stress）被转置后数值不变，这个错误只在 cell 上暴露、在 stress 上静默
+- **`Frame.temperature` / `Frame.step`**（2026-09-21）：逐帧标量，跟着帧走而不是
+  与帧数组并行的旁路 —— 后者在 `select` / `stride` 之后立刻错位且不报错。
+  `temperature` 三条 AIMD 路都填（vasprun 的是反算的），`step` 只有 CP2K 与
+  OUTCAR 有。`units.rs` 连带新增 `BOLTZMANN_EV_K`
 - **帧选择**（2026-08-22）：`Trajectory::select(start, end, stride)` /
   `select_indices` / `spread_indices`。区间是 **0 基闭区间**，与 `ferro info`
   打印的帧号对齐；`spread_indices` 是 `--number` 的等间隔且**恒含两端**。
@@ -311,6 +325,12 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     成员取自打乱序、各部分内部排回帧序 —— 同 seed 逐字节可复现；比例向上取到
     至少 1 帧。四处在读第一个文件前失败：by-source + 划分、by-source + 非
     deepmd、`--suffix` + 划分、输入已带划分后缀
+- **`cmd/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断
+  产物（`.lammpstrj` 全帧 / `.data` **末帧** / `_info.csv` 逐帧标量表），落在
+  `<AIMD 目录>/ferro_inspect/`，**不写任何 npy**，`-o` 在这条路上报错。
+  `_info.csv` 是一张 `Table`：摘要进 `#` 头，表体列
+  `frame step temperature energy volume density source`。`step` 与 `source`
+  两列是重启接缝的可见性来源 —— collect 有意不对重叠帧去重
 - **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 的 24 页经 `include_str!`
   编译进二进制（208 KB）。topic 跟子命令树同名（`ferro doc dataset filter`），
   裸命令列出全部；原样输出 markdown（零依赖），stdout 是 tty 时经 `$PAGER`
@@ -416,7 +436,17 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - `ferro-python` 仍只暴露 gr/msd，未包 net
 - **`ferro dataset collect` 读 CP2K / VASP OUTCAR / vasprun.xml**，QE 待扩；三者
   **都未**注册进 `io_dispatch`（`.out` 太通用、`OUTCAR` 根本没有扩展名），故
-  `ferro convert -i OUTCAR` 仍不认识它们
+  `ferro convert -i OUTCAR` 仍不认识它们。2026-09-21 加 `--type inspect` 时
+  **有意绕开了**这条待办：LAMMPS 导出挂在 collect 上而不是 convert 上，于是
+  `io_dispatch` 的注册判据（按内容嗅探还是按前缀）仍未定，见 `plan.md`
+- **`--type inspect` 的产物会落进 `-i` 的 glob 射程**：产物默认写在 AIMD 目录内
+  （`ferro_inspect/`）或同级（`.db`），所以 `-i 'data/**/*'` 重跑时会把上一轮的
+  产物当输入收进来。它们认不出横幅，**失败得很响**（跳过 + 退出码 1），不会静默
+  污染数据，但 `-i` 写成 `*.out` / `OUTCAR` 这类具体模式更省事
+- **vasprun.xml 的温度是反算量**：该格式不打印瞬时温度（只有输入参数 `TEBEG`），
+  由 `<i name="kinetic">` 按 `T = 2·E_kin/(3N·k_B)` 得来，`_info.csv` 的 `#` 头
+  会注明。同一次运行读 OUTCAR 与读 vasprun 得到的温度因此**来源不同** —— 与两者
+  收敛判据不同、丢帧数不同是同一族问题
 - **VASP 的变胞（NPT）路径只经手工构造的文本验证**：用户现有的两份真实数据
   （2000 帧 OUTCAR、425 帧 vasprun）都是定胞 NVT，且用户明确说 VASP 侧不涉及
   NPT。逐帧读胞的代码有测试钉住「第 2 帧的胞来自第 2 帧」，但没有真实变胞数据
