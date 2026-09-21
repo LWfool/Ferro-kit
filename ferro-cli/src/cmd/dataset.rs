@@ -80,6 +80,15 @@ const SPLIT_SUFFIXES: [&str; 3] = [".train", ".test", ".valid"];
 /// data unless a split says otherwise.
 const TRAIN_SUFFIX: &str = ".train";
 
+/// What `collect` calls its products — raw, unfiltered data straight off an AIMD run.
+///
+/// Not a split suffix: it says where the data came from, not which part of a split
+/// it is, so it never enters `SPLIT_SUFFIXES`. Putting it there would make the
+/// "a `.valid` input must not be split again" guard reject `.db` inputs too.
+/// `filter` and `merge` strip it before naming their own products, so a collected
+/// `run1.db` filters to `run1.train` rather than `run1.db.train`.
+const COLLECT_SUFFIX: &str = ".db";
+
 /// Frame-level train/valid/test split.
 ///
 /// Membership is drawn from a shuffled order — taking the tail as a test set
@@ -243,6 +252,21 @@ fn split_suffix_of(name: &str) -> Option<&'static str> {
 /// Only `.train` is stripped, and only the split path reaches this: `.valid` / `.test`
 /// inputs are refused before any file is read, because slicing a training set out of a
 /// held-out set is a mistake, not a workflow.
+/// Strips a trailing `.db` so a collected system can be renamed by filter / merge.
+///
+/// Applied before the split logic: `.db` is not one of the split suffixes, so
+/// leaving it on would stack a second suffix onto the name and break `merge`'s
+/// shared-suffix check, which reads only the trailing segment.
+fn without_collect_suffix(base: &Path) -> PathBuf {
+    let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
+        return base.to_path_buf();
+    };
+    match name.strip_suffix(COLLECT_SUFFIX) {
+        Some(stem) => base.with_file_name(stem),
+        None => base.to_path_buf(),
+    }
+}
+
 fn without_train_suffix(base: &Path) -> PathBuf {
     let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
         return base.to_path_buf();
@@ -267,6 +291,10 @@ fn write_split(
     set_size: usize,
     overwrite: bool,
 ) -> Result<()> {
+    // collect 的 `.db` 先剥掉：它说的是「数据从哪来」，不是划分的哪一部分。
+    // 留着就会叠成 run1.db.train，而 merge 的共享后缀检查只看末尾那一段
+    let base = &without_collect_suffix(base);
+
     if split.is_off() {
         let named = match base.file_name().and_then(|n| n.to_str()) {
             Some(name) if split_suffix_of(name).is_some() => base.to_path_buf(),
@@ -421,7 +449,7 @@ pub struct CollectCmd {
     #[arg(short, long, num_args = 1..)]
     pub input: Vec<PathBuf>,
 
-    /// Output root; the directory tree under -i is rebuilt inside it
+    /// Output root; default is beside each input, as <AIMD dir>.db
     #[arg(short, long, value_name = "DIR")]
     pub output: Option<PathBuf>,
 
@@ -461,21 +489,18 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
 }
 
 fn run_collect(args: &CollectCmd) -> Result<usize> {
-    // -o 是必填而不是默认 `.`：产物是一棵目录树，默认落在 cwd 会把 npy
-    // 撒进正在工作的目录。merge 也是必填，filter 的缺省有「只读」这个明确语义
-    let Some(root) = &args.output else {
-        bail!("collect needs an output directory (-o DIR)");
-    };
     let inputs = expand_inputs(&args.input)?;
     // 与其余命令一致：路径问题在读第一个文件之前就暴露，而不是跑完才发现写不出去
-    crate::outpath::ensure_dir(root, args.mkdir)?;
+    if let Some(root) = &args.output {
+        crate::outpath::ensure_dir(root, args.mkdir)?;
+    }
 
     let groups = group_by_directory(&inputs);
     let mut failures = 0usize;
     let mut skipped: Vec<PathBuf> = Vec::new();
 
     for group in &groups {
-        let dest = root.join(&group.rel);
+        let dest = collect_dest(args.output.as_deref(), group);
         match collect_group(group, &dest, args.overwrite, &mut skipped) {
             Ok(()) => {}
             Err(e) => {
@@ -498,6 +523,45 @@ fn run_collect(args: &CollectCmd) -> Result<usize> {
         eprintln!("\n{failures} failure(s)");
     }
     Ok(failures)
+}
+
+/// Where one group's system directory goes.
+///
+/// Without `-o` the system lands **beside** the AIMD directory it came from —
+/// `/data/md/*.out` gives `/data/md.db`. That is the shape dpgen and the
+/// reference script use, and it keeps a collected dataset next to the run that
+/// produced it. A default of `.` was rejected earlier for scattering npy files
+/// into the working directory; a default that follows the input cannot do that,
+/// which is why `-o` is no longer required.
+///
+/// With `-o` the directory tree below the shared ancestor is rebuilt inside it.
+/// Either way the name carries `.db`, so a downstream `filter -i` sees one shape.
+fn collect_dest(root: Option<&Path>, group: &Group) -> PathBuf {
+    let with_suffix = |p: &Path| -> PathBuf {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("system");
+        // 已经带着 .db 的不叠加（重跑同一条命令时 -i 可能指到上一轮的产物旁）
+        if name.ends_with(COLLECT_SUFFIX) {
+            p.to_path_buf()
+        } else {
+            p.with_file_name(format!("{name}{COLLECT_SUFFIX}"))
+        }
+    };
+    match root {
+        // rel 为空表示只有一组，产物直接写进 -o 本身（既有语义，不动）
+        Some(r) if group.rel.as_os_str().is_empty() => with_suffix(r),
+        Some(r) => with_suffix(&r.join(&group.rel)),
+        None => {
+            // 用用户写下的路径，不 canonicalize —— 规范化后是绝对路径，刷屏且认不出。
+            // `with_file_name` 换掉末级组件，同级正是要的位置。只有 `.` / `..`
+            // 这类没有末级名字的（`-i *.out` 在当前目录）才回落到规范化
+            if group.dir.file_name().is_some() {
+                with_suffix(&group.dir)
+            } else {
+                let dir = group.dir.canonicalize().unwrap_or_else(|_| group.dir.clone());
+                with_suffix(&dir)
+            }
+        }
+    }
 }
 
 /// The `.out` files of one directory, which become one system.
@@ -1443,6 +1507,44 @@ mod tests {
         assert_eq!(split_suffix_of("sysA.test"), Some(".test"));
         assert_eq!(split_suffix_of("sysA"), None);
         assert_eq!(split_suffix_of("init.011"), None);
+    }
+
+    /// `.db` is stripped, and it is not a split suffix.
+    #[test]
+    fn the_collect_suffix_is_stripped_and_is_not_a_split_suffix() {
+        assert_eq!(without_collect_suffix(Path::new("o/run1.db")), PathBuf::from("o/run1"));
+        assert_eq!(without_collect_suffix(Path::new("o/run1")), PathBuf::from("o/run1"));
+        // 不进 SPLIT_SUFFIXES：否则「.valid 不许再划分」那条守卫会连 .db 一起拒掉
+        assert_eq!(split_suffix_of("run1.db"), None);
+        // 一批全 .db 判为「都没有划分后缀」→ .train，而不是混合后缀报错
+        assert!(matches!(
+            suffix_survey(&[PathBuf::from("a.db"), PathBuf::from("b.db")]),
+            SuffixSurvey::Bare
+        ));
+    }
+
+    /// The default destination sits beside the AIMD directory and carries `.db`.
+    #[test]
+    fn collect_defaults_beside_the_input_and_never_doubles_the_suffix() {
+        let g = |dir: &str, rel: &str| Group {
+            dir: PathBuf::from(dir),
+            rel: PathBuf::from(rel),
+            files: vec![],
+        };
+        // 不给 -o：同级，加 .db
+        assert_eq!(collect_dest(None, &g("data/md", "")), PathBuf::from("data/md.db"));
+        // 给了 -o：重建目录结构，末级同样加 .db
+        assert_eq!(
+            collect_dest(Some(Path::new("out")), &g("data/md", "a/md")),
+            PathBuf::from("out/a/md.db")
+        );
+        // rel 为空 = 只有一组，写进 -o 本身
+        assert_eq!(
+            collect_dest(Some(Path::new("out")), &g("data/md", "")),
+            PathBuf::from("out.db")
+        );
+        // 已带 .db 的不叠加
+        assert_eq!(collect_dest(None, &g("data/md.db", "")), PathBuf::from("data/md.db"));
     }
 
     #[test]
