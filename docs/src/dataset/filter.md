@@ -16,6 +16,12 @@ output **root**; each system is rebuilt under its path relative to `-i`, so
 `raw/500K/a.train` becomes `clean/500K/a.train` and two systems with the same
 name under different parents cannot overwrite each other.
 
+A `.db` suffix — what `collect` puts on raw collected data — is **stripped**
+before the output is named, so `raw/500K/a.db` becomes `clean/500K/a.train`
+rather than `clean/500K/a.db.train`. `.db` says where the data came from, not
+which part of a split it is, so it never stacks with `.train` / `.valid` /
+`.test`.
+
 **Omitting `-o` is the read-only mode.** It reports and writes nothing, which is
 how you choose the thresholds before committing to them.
 

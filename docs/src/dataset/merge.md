@@ -29,8 +29,19 @@ Subscripts are **actual counts, not reduced** — `Al96O192Zn48` is 336 atoms �
 and the atom-count prefix makes `ls` group systems of equal size together.
 
 The suffix is inherited when every input in the group shares one of `.train`,
-`.test`, `.valid`; `--suffix` overrides, and inputs without a common suffix
-produce a bare name.
+`.test`, `.valid`, and `--suffix` overrides it. Otherwise:
+
+| the group's inputs | the merged name gets |
+|---|---|
+| all share one split suffix | that suffix |
+| none carries one — including a group of `.db` systems straight from `collect` | `.train` |
+| mixes two different split suffixes | **an error** |
+
+A group of `.db` inputs counts as "none": `.db` marks where the data came from,
+not which part of a split it is, so it is stripped and the merged set is named
+`.train` like any other unsplit product. Mixing `.train` with `.test` is refused
+rather than defaulted, because the merged set would belong to neither and
+silently calling it training data is the expensive mistake.
 
 ## Atom order is canonicalised
 

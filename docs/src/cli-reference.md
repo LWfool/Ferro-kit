@@ -145,6 +145,11 @@ ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
 - VASP 文件常常没有扩展名，故**前缀与扩展名两条路都认**：`POSCAR`、`CONTCAR`、
   `conf.vasp`、`conf.pos` 都走同一对 reader/writer。
 
+**三斜胞的 LAMMPS dump**：盒子行写的是 LAMMPS 规格的 `*_bound`（倾斜后的外接盒），
+不是 `xlo/xhi`。2026-09-21 之前 ferro 读写两侧都按 `xlo/xhi` 处理，自己读自己写
+没问题、喂给 OVITO / ASE / LAMMPS `read_dump` 则盒子偏小。**正交胞产物不受影响**
+（三个倾斜量为 0 时两种写法逐位相同）。
+
 **能不能带速度/力取决于两侧都支持**：`.dump` 转 `.xyz` 会静默丢掉速度，因为
 纯 XYZ 没地方放。要保留就转 `.extxyz`。
 
@@ -745,10 +750,12 @@ ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 机器学习训练集的三步流水线。与其余命令的不同：产物是**目录**（DeePMD 的
 system 就是目录），故 `-o` 是输出**根目录**；且不接 `CommonArgs`。
 `filter` 与 `merge` 的产物默认带 `.train` 后缀，`--ratio` 划分出的三部分分别是
-`.train` / `.valid` / `.test`；名字已以这三者之一结尾时不再叠加。
+`.train` / `.valid` / `.test`；名字已以这三者之一结尾时不再叠加。`collect` 的
+产物带 `.db`（原始收集数据），它**不是**划分后缀，被 `filter` / `merge` 剥掉后
+才命名自己的产物 —— `md.db` 筛成 `md.train`，不会叠成 `md.db.train`。
 
 ```
-ferro dataset collect   AIMD 输出   → DeePMD system 目录
+ferro dataset collect   AIMD 输出   → DeePMD system 目录（--type inspect 出诊断）
 ferro dataset filter    system 目录 → 筛过的 system 目录
 ferro dataset merge     多个 system → 按成分合并
 ```
