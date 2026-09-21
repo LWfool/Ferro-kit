@@ -61,6 +61,7 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
         forces: None,
         stress: None,
         velocities: None,
+        temperature: None,
     })
 }
 
