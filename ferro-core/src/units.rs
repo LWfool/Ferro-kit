@@ -52,6 +52,12 @@ pub const AVOGADRO: f64 = 6.022_140_76e23;
 /// 1 amu = 1/N_A g 且 1 Å³ = 1e-24 cm³，两者之比即 `1e24 / AVOGADRO`。
 pub const AMU_ANG3_TO_G_CM3: f64 = 1e24 / AVOGADRO;
 
+/// Boltzmann 常数（eV/K）。
+///
+/// CODATA 2018 下 k_B = 1.380649e-23 J/K 与 e = 1.602176634e-19 C 都是精确值，
+/// 故这个比值也是精确的。用于从离子动能反算瞬时温度：`T = 2·E_kin/(3N·k_B)`。
+pub const BOLTZMANN_EV_K: f64 = 8.617_333_262e-5;
+
 // ── 长度 ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
