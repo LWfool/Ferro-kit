@@ -10,7 +10,8 @@ Trajectory
         ├── Vec<Atom>           — atomic species, positions, optional properties
         ├── Option<Cell>        — None = non-periodic
         ├── [bool; 3]           — pbc flags per axis
-        └── Optional results    — energy, forces, stress, velocities
+        └── Optional results    — energy, forces, stress, velocities,
+                                  temperature, step
 ```
 
 ## Atom
@@ -42,8 +43,25 @@ pub struct Frame {
     pub forces: Option<Vec<Vector3<f64>>>, // eV/Å
     pub stress: Option<Matrix3<f64>>,    // eV/Å³
     pub velocities: Option<Vec<Vector3<f64>>>, // Å/fs (internal standard)
+    pub temperature: Option<f64>,        // K, instantaneous ionic temperature
+    pub step: Option<i64>,               // MD step number, when the engine prints one
 }
 ```
+
+`temperature` and `step` are filled by the AIMD readers and are `None` for
+everything else (a POSCAR, a CIF, a relaxation). They live on the frame rather
+than in arrays beside the trajectory because they are per-frame quantities:
+`select` / `--stride` must carry them along, and a parallel array would shift out
+of step with the frames without any error.
+
+What fills them:
+
+| reader | `temperature` | `step` |
+|---|---|---|
+| CP2K out | `MD\| Temperature [K]`, the instantaneous column | `MD\| Step number` |
+| VASP OUTCAR | the value in `(temperature X K)` — despite the label it is the *ionic* temperature | ionic iteration |
+| vasprun.xml | **derived**: `T = 2·E_kin/(3N·k_B)` from `<i name="kinetic">`, because the format does not print it | — |
+| extxyz | `Temperature=` when present (read only; the writer never emits it) | — |
 
 `pbc = [false,false,false]` → molecular system.  
 `pbc = [true,true,false]` → surface / slab.
