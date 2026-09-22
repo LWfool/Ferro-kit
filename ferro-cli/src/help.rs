@@ -868,10 +868,9 @@ pub fn print_dataset_collect() {
     println!(
         r#"ferro dataset collect — AIMD output -> DeePMD system directories
 
-  Reads CP2K MD output, CP2K single-point output, VASP OUTCAR or VASP
-  vasprun.xml and writes one DeePMD system per input DIRECTORY. The format is
-  decided by the file's own banner, not by its name; the two CP2K layouts are
-  told apart by GLOBAL| Run type. Pass --format when that is not enough.
+  Reads CP2K or VASP output and writes one DeePMD system per input DIRECTORY —
+  the files of one directory are the restart segments of one run. The format
+  comes from each file's own banner; --format overrides that.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
@@ -884,68 +883,11 @@ Parameters:
       --mkdir             Create -o without asking (needed with no terminal)
       --overwrite         Allow writing into an existing non-empty directory
 
-Output layout (--type deepmd):
-  Without -o, beside the AIMD directory itself:
-    /data/md/*.out                   -> /data/md.db/
-  With -o, the tree below the shared ancestor is rebuilt inside it:
-    -i 'run*/*.out' -o sets          -> sets/run1.db/, sets/run2.db/
-    -i '/s/a/md/x.out' '/s/b/md/x.out' -> sets/a/md.db/, sets/b/md.db/
-    -i '*.out'       (one directory) -> sets.db/ itself
-
-  Each holds:  type.raw  type_map.raw  set.000/coord|box|energy|force|virial .npy
-
-  The .db marks raw collected data. filter and merge strip it before naming
-  their own products, so md.db filters to md.train, not md.db.train.
-
-Output layout (--type inspect):
-  Three files in <AIMD dir>/ferro_inspect/, and NO dataset. -o is refused here
-  because there is no dataset to place:
-    <dir>.lammpstrj   every frame, for viewing
-    <dir>.data        the LAST frame, to carry on from
-    <dir>_info.csv    per frame: step, temperature, energy, volume, density,
-                      source file; the run summary sits in the # header
-
-  Temperature comes straight from CP2K and OUTCAR. vasprun.xml does not print
-  it, so it is derived from the ionic kinetic energy and the header says so.
-
-One system per directory:
-  The .out files of one directory are the restart segments of one run, so they
-  are reassembled into ONE system. That is the line between the two commands:
-  collect puts back together one run, merge combines different runs.
-
-  Files are ordered by their first step number; overlapping frames are kept,
-  and every source file's step span is printed so the overlap stays visible.
-  Two compositions in one directory is an error, not a frame-dropping event.
-
-  A batch of single points collects the same way: one directory per
-  composition, one frame per file, ordered by name since there is no step
-  number. Concatenating them into one file works too — the anchor is the
-  ENERGY| line — but then a dropped frame can no longer be traced to a file.
-
-  A VASP run directory holds OUTCAR *and* vasprun.xml, recording the SAME
-  frames — feeding both would double the dataset in silence, so mixing formats
-  within one directory is refused. Narrow -i to one of them.
-
-Per format:
-  CP2K MD       energy ENERGY| Total FORCE_EVAL   converged: "SCF run converged"
-  CP2K point    energy ENERGY| Total FORCE_EVAL   converged: "SCF run converged"
-  OUTCAR        energy free energy TOTEN          converged: "EDIFF is reached"
-  vasprun.xml   energy last e_fr_energy           converged: SCF steps < NELM
-  The two VASP rules differ, so the same run can drop a different number of
-  frames depending on which file you point at; the rule used is printed.
-
-CP2K specifics:
-  Two generations implemented: 2023-2024 (energy [a.u.]: + ATOMIC FORCES table)
-  and 2025-2026 (energy [hartree] + FORCES| block). 2025-2026 is read silently;
-  2024 and earlier prints a NOTE naming its version and is then read anyway.
-  Spot-check one frame when you see that note.
-
-  A kind name that differs from the element (Fe1/Fe2 for two spin guesses) is
-  kept as the atom's label; type_map.raw is still built from the ELEMENT, so
-  the two become one training type. The mapping is printed once per system.
-
-  Missing stress is not a dropped frame — it just means no virial. Missing
-  forces IS, since force.npy is not optional in a DeePMD system.
+Output:
+  <dir>.db/       one system per input directory: type.raw type_map.raw
+                  set.NNN/coord|box|energy|force|virial .npy
+  --type inspect  three diagnostic files in <dir>/ferro_inspect/ and NO
+                  dataset, so -o is refused on that path
 
 Examples:
   ferro dataset collect -i 'run*/*.out'
@@ -989,21 +931,10 @@ Parameters:
                           mean train:test (9:1). Weights, not fractions
       --overwrite         Allow writing into an existing non-empty directory
 
-The funnel:
-  all -> |F|max -> |sigma|max -> min d(O-O) -> Al6 -> [start:end:stride|N] -> shuffle
-
-  A threshold of 0 switches that criterion off — an explicit zero says "do not
-  judge", which no small positive number can express.
-  --start/--end/--stride/-N count SURVIVING frames, not original indices.
-
 Output:
-  <-o dir>/<path relative to -i>.train/  filtered systems (.xyz if --type nep)
-  <-o dir>/filter_*.csv                  funnel, criteria, overlap + 4 diagnostics
-
-  Products carry .train unless --ratio splits them into .train/.valid/.test;
-  a name that already ends in one of those keeps it rather than doubling up.
+  <-o>/<path below -i>.train/  filtered systems (one .xyz with --type nep)
+  <-o>/filter_*.csv            funnel, criteria, overlap + 4 diagnostic tables
   Without -o nothing is written; every table is printed instead.
-  A split appends .train / .valid / .test to each name (dpgen's convention).
 
 Examples:
   ferro dataset filter -i raw                       # look, write nothing
@@ -1038,28 +969,11 @@ Parameters:
                           split are refused rather than silently relabelled
       --overwrite         Allow writing into an existing non-empty directory
 
-Grouping:
-  NOT by directory name — `init.011` says nothing reliable about its contents.
-  Systems group by their per-atom element sequence and are written as
-  <natoms>_<formula>, e.g. 7_Al2O4Zn (subscripts are actual counts).
-
-The two modes:
-  shuffle     One composition concatenated, shuffled with --seed, cut into sets.
-              Every set holds a mix of whatever conditions went in.
-  by-source   No mixing, no shuffling; each system is cut into sets ON ITS OWN,
-              so every set.NNN stays traceable to one condition. The mapping is
-              written to sets_source.txt.
-
-  In both modes the remainder is spread evenly rather than left at the end:
-  500 frames at --set-size 400 give 250 + 250, not 400 + 100.
-
-Splitting:
-  --ratio appends .train / .valid / .test to the output name (dpgen's
-  convention). Membership is drawn from the shuffled order, so a test set is
-  not the tail of a run; each part is then written in frame order.
-  Refused on purpose: --mode by-source (its set boundaries would not survive
-  a frame-level split), --suffix (it names the same thing), and inputs that
-  already carry a .train/.valid/.test suffix.
+Output:
+  <-o>/<natoms>_<formula>/     one directory per composition, e.g. 7_Al2O4Zn
+                               (or one .xyz with --type nep), suffixed .train
+  --mode by-source also writes sets_source.txt; --ratio splits into
+  .train / .valid / .test.
 
 Examples:
   ferro dataset merge -i 'data/*.train' -o merged
