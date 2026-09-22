@@ -13,7 +13,7 @@ use ferro_core::Trajectory;
 /// Which AIMD program wrote a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AimdFormat {
-    Cp2kOut,
+    Cp2kMd,
     VaspOutcar,
     VaspXml,
 }
@@ -22,7 +22,7 @@ impl AimdFormat {
     /// Human-readable name, for messages.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Cp2kOut => "CP2K output",
+            Self::Cp2kMd => "CP2K output",
             Self::VaspOutcar => "VASP OUTCAR",
             Self::VaspXml => "VASP vasprun.xml",
         }
@@ -34,7 +34,7 @@ impl AimdFormat {
     /// drop counts between them deserves to be told which one applied.
     pub fn convergence_rule(self) -> &'static str {
         match self {
-            Self::Cp2kOut => "SCF run converged",
+            Self::Cp2kMd => "SCF run converged",
             Self::VaspOutcar => "EDIFF reached",
             Self::VaspXml => "SCF steps < NELM",
         }
@@ -124,7 +124,7 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
         return Ok(AimdFormat::VaspOutcar);
     }
     if head.contains("CP2K|") || head.contains("**** **** ******  **  PROGRAM STARTED") {
-        return Ok(AimdFormat::Cp2kOut);
+        return Ok(AimdFormat::Cp2kMd);
     }
     bail!(
         "{}: cannot tell which program wrote this. Recognised: VASP OUTCAR \
@@ -138,7 +138,7 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
 pub fn read_aimd_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let fmt = sniff(path)?;
     match fmt {
-        AimdFormat::Cp2kOut => super::cp2k_out::read_cp2k_out_with_stats(path),
+        AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md_with_stats(path),
         AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
         AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
     }

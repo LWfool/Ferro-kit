@@ -50,7 +50,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | `43Z43P15A_NPT_5.lammpstrj` / `70Z30P00A_NVT_5.lammpstrj` | 生产轨迹等间隔取 5 帧 | 正交胞，一 NPT 一 NVT |
 | `CHGCAR_2atoms` | 8×8×8 合成网格 | Bader 端到端 |
 | `vasp_OUTCAR_2frames` / `vasp_vasprun_2frames.xml` | 真实 VASP 运行裁出 | 定胞 NVT；温度 0.00 / 111.55 K |
-| **`cp2k_out_3frames.out`**（2026-09-21） | `examples/total.out` 裁 3 帧，165 KB | CP2K 端到端。**此前一份 CP2K 样例都没有**，那条链只有代码里构造的字符串。选这三帧是因为第 2、3 帧的瞬时温度与累计平均**不相等**，取错列会当场失败 |
+| **`cp2k_md_3frames.out`**（2026-09-21） | `examples/total.out` 裁 3 帧，165 KB | CP2K 端到端。**此前一份 CP2K 样例都没有**，那条链只有代码里构造的字符串。选这三帧是因为第 2、3 帧的瞬时温度与累计平均**不相等**，取错列会当场失败 |
 | **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见 |
 
 ## scripts/

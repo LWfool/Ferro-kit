@@ -624,7 +624,7 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 | 同上，reader 侧 | 用 `hi - lo` 当边长 | `lx = (xhi_b − xlo_b) − \|xy\| − \|xz\|`、`ly = (yhi_b − ylo_b) − \|yz\|`（与 `ase/io/lammpsrun.py::construct_cell` 一致；该式与规格的 MAX−MIN 差在四个象限上恒等）。**读写两侧一致地错时往返测试全绿** —— 与 extxyz 应力符号同一个陷阱，所以 writer 的测试必须断言**文本**而不是读回来比 |
 | 正交胞 | 拿它验三斜修复 | 三个倾斜量为 0 时两种写法逐位相同，正交轨迹上这个 bug **完全不可见**。`tests/` 原本一条三斜 fixture 都没有，只能合成一条 |
 | 脚本的倾斜折叠 | 照抄 | 参考脚本写 `xz -= round(xz/ly)*ly`、`yz -= round(yz/lz)*lz`，而 LAMMPS 的约束是 `\|xz\| ≤ lx/2`、`\|yz\| ≤ ly/2` —— 那两个除数是错的。Ferro 不做折叠 |
-| `MD\| Temperature [K]` | 取行末那个数 | 该行有**两个**：瞬时、累计平均。取第二个不报错，只会给出一条越来越平的曲线。`tests/cp2k_out_3frames.out` 选这三帧正因为第 2、3 帧两列不等 |
+| `MD\| Temperature [K]` | 取行末那个数 | 该行有**两个**：瞬时、累计平均。取第二个不报错，只会给出一条越来越平的曲线。`tests/cp2k_md_3frames.out` 选这三帧正因为第 2、3 帧两列不等 |
 | OUTCAR 的温度 | 以为 `(temperature X K)` 是晶格温度 | 它印在 `EKIN_LAT` 行的括号里，但那是**离子**温度：实测该行 `EKIN_LAT` 恒为 0 而括号里是 111.55，后者由 `EKIN=4.268142` / `N=296` 按 `2E/(3N·k_B)` 得来。按 token 取 `(temperature` 之后那个浮点，别取行内第一个（那是 EKIN_LAT 的 0） |
 | vasprun 的温度 | 用 `<i name="TEBEG">` | 那是**输入参数**（恒温器设定点），不是瞬时值。vasprun 不打印温度，只能由 `<i name="kinetic">` 反算，**除数是 `3N` 不是 `3N−3`**（依据是 OUTCAR 那一对数）。导出量要在表头注明，否则同一次运行换个来源、数字对不上却没人解释得了 |
 | CP2K 的逐帧 step | 用与 `anchors` 并行的那个 `steps` Vec | 它只在解析成功时 push，某个锚点的步号解析不出就整体错位一位，而错位读到的是**别帧**的步号，不报错。从锚点行 `lines[a]` 直接取 |
