@@ -29,20 +29,26 @@ output](#single-point-output).
 
 ### Which CP2K releases
 
-ferro's layout is verified against **2025** and **2026** (2026 carried the 2025
-layout forward unchanged). Older releases are still read — the anchors are
-token sequences, not column positions, and the blocks that did change have both
-forms coded — but each file earns a `NOTE:` line in the report naming its
-version, because nothing here has been checked against an actual run of that
-release. It is a prompt to spot-check one frame, not a refusal.
+Two generations are implemented, differing in two blocks:
 
-Three things moved between releases:
+| | **2023 – 2024** | **2025 – 2026** |
+|---|---|---|
+| energy | `energy [a.u.]:` | `energy [hartree]` |
+| forces | `ATOMIC FORCES in [a.u.]` | `FORCES\| Atomic forces [hartree/bohr]` |
+| stress | `STRESS\| Analytical …` | same |
+| coordinates, kind block, `CELL\|` | identical | identical |
 
-| | ≤ 7.1 | 8.1 – 2024 | 2025 + |
-|---|---|---|---|
-| energy | `energy (a.u.):` | `energy [a.u.]:` | `energy [hartree]` |
-| forces | `ATOMIC FORCES in [a.u.]` | same | `FORCES\| Atomic forces` |
-| stress | ` STRESS TENSOR [GPa]` | `STRESS\| Analytical …` | same |
+**2025 – 2026 is read silently**; 2026 carried the 2025 layout forward
+unchanged. **2024 and earlier gets a `NOTE:` line** naming its version and is
+then read anyway — the note is a prompt to spot-check one frame, not a refusal.
+It exists because ferro has no *single-point* output from those releases to
+test against; the block shapes were read off real 2023.1 / 2023.2 / 2024.1 AIMD
+logs instead.
+
+Releases before 8.1 wrote `energy (a.u.):` in round brackets and a stress block
+with no `STRESS|` prefix. Both are still handled — there is a real 6.1 output in
+the test suite — but they are old enough to be out of consideration rather than
+supported.
 
 The unit is always read from the text, never from the version: `STRESS_UNIT` is
 a CP2K *input* keyword, so the same release can print bar or GPa.

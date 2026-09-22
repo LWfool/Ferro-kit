@@ -8,7 +8,7 @@
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 132（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-io | 133（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 198 |
 | ferro-workflow | 23 |
@@ -164,7 +164,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   夹住，于是 `cat` 起来的 N 份单点输出天然读成 N 帧。两代力块（`FORCES|` 与
   `ATOMIC FORCES`）、两代应力块、三种能量括号写法都认。kind 名进 `label`，
   `element` 恒取坐标表里的真元素。`CELL|` 精确匹配，不含 `CELL_TOP|`/`CELL_REF|`。
-  缺应力不丢帧（没有 virial 而已），缺力必丢（`force.npy` 不是可选项）
+  缺应力不丢帧（没有 virial 而已），缺力必丢（`force.npy` 不是可选项）。
+  明确实现 **2023–2024** 与 **2025–2026** 两代，后者静默、前者每文件打一行
+  `NOTE:` 后照常提取
 - **`writers/deepmd.rs`**（2026-08-25）：DeePMD system 目录（`type.raw` +
   `type_map.raw` + `set.NNN/*.npy`）。磁盘上一律二维 `float64`；
   `virial = stress × V` 不变号；半有半无的属性直接报错。`write_deepmd_npy_sets`
