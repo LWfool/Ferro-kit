@@ -72,6 +72,15 @@ pub struct AimdStats {
     /// checkpoint makes two files overlap here, and a caller concatenating them
     /// can only show that overlap if it knows the spans.
     pub steps: Option<(i64, i64)>,
+    /// Program version the file reports, when it prints one.
+    pub version: Option<String>,
+    /// Why that version deserves a second look, or `None` when it does not.
+    ///
+    /// CP2K reprints its log layout between releases, and ferro has fixtures
+    /// for only some of them. A reader that recognises the blocks anyway still
+    /// says so here rather than printing behind the caller's back — same rule
+    /// as the drop counts above.
+    pub version_note: Option<String>,
 }
 
 impl AimdStats {
@@ -86,6 +95,8 @@ impl AimdStats {
             n_layout_drift: 0,
             n_restarts: 0,
             steps: None,
+            version: None,
+            version_note: None,
         }
     }
 
