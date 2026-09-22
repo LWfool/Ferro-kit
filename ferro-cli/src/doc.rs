@@ -196,6 +196,12 @@ const PAGES: &[Page] = &[
         text: include_str!("../../docs/src/cli-reference.md"),
         section: None,
     },
+    Page {
+        topic: "changelog",
+        source: "changelog.md",
+        text: include_str!("../../docs/src/changelog.md"),
+        section: None,
+    },
 ];
 
 /// Topics that are one command's page but reachable under a shorter name too.

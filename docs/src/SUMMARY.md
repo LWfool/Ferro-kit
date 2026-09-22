@@ -43,3 +43,4 @@
 # Reference
 
 - [CLI Reference](cli-reference.md)
+- [Changelog](changelog.md)
