@@ -32,7 +32,7 @@ use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
     read_aimd_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
-    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdStats,
+    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdFormat, AimdStats,
     StressKey,
 };
 
@@ -755,6 +755,7 @@ fn collect_group(
     }
 
     report_group(dest, &parts, all.n_frames());
+    report_kind_labels(&all);
     if inspect {
         let name = group
             .dir
@@ -805,9 +806,11 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frame
     // 列宽按本组实际路径算：写死的宽度装不下真实的 CP2K 目录名，span 列会错开
     let w = parts.iter().map(|(p, _, _)| p.display().to_string().len()).max().unwrap_or(0);
     for (path, _, st) in parts {
-        let span = match st.steps {
-            Some((a, b)) => format!("steps {a}-{b}"),
-            None => "steps ?".to_string(),
+        let span = match (st.steps, st.format) {
+            (Some((a, b)), _) => format!("steps {a}-{b}"),
+            // 单点没有步号,"steps ?" 会被读成"步号丢了",而其实是没有步号这回事
+            (None, AimdFormat::Cp2kSp) => format!("{} single point(s)", st.n_steps),
+            (None, _) => "steps ?".to_string(),
         };
         println!(
             "  {:<w$}  {span:<16} {} kept, {} dropped",
@@ -834,7 +837,37 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frame
                 st.n_layout_drift
             );
         }
+        // 版本提示由 reader 判定、这里打印:库自己 print 就没人关得掉,
+        // 而 collect 一次要读几十个文件
+        if let Some(note) = &st.version_note {
+            println!("    NOTE: {note}");
+        }
     }
+}
+
+/// Prints the kind names CP2K carried in, once per system.
+///
+/// `type_map.raw` is built from the ELEMENT, so two kinds sharing one element
+/// (`Fe1`/`Fe2`, a spin guess) become one training type. That is the right
+/// default for a DeePMD model, but it throws away a distinction the person
+/// deliberately made in the CP2K input, so it is said out loud rather than
+/// left to be discovered in the type map.
+fn report_kind_labels(traj: &Trajectory) {
+    let Some(first) = traj.first() else { return };
+    let mut seen: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for a in &first.atoms {
+        if let Some(l) = a.label.as_deref() {
+            *seen.entry((l, a.element.as_str())).or_default() += 1;
+        }
+    }
+    if seen.is_empty() {
+        return;
+    }
+    let pairs: Vec<String> = seen
+        .iter()
+        .map(|((label, element), n)| format!("{label} -> {element} ({n})"))
+        .collect();
+    println!("    kind names kept as labels, type_map uses the element: {}", pairs.join("  "));
 }
 
 // ── filter ───────────────────────────────────────────────────────────────────
