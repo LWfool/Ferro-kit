@@ -821,15 +821,10 @@ dpdata 插件里炸成 `TypeError: unsupported operand type(s) for *: 'NoneType'
 NotImplementedError`；ferro 这边不依赖那张表。另外它的版本号正则是
 `\d{1,4}\.\d`，小数点后只收一位。
 
-对表结果（同一份 2025.2 单点输出，457 原子）：
+**与 dpdata 的逐项对拍结果写在手册里**，不在这儿：
+`docs/src/dataset/collect.md` 的 "Checked against dpdata"（`ferro doc dataset
+collect`）。那是给用户看的证据，重复一份只会两处分岔。
 
-| 量 | max\|diff\| | 相对 |
-|---|---|---|
-| energies | 3.2e-10 | 1.4e-15 |
-| coords | 0 | 0 |
-| forces | 4.4e-11 | 5.7e-12 |
-| cells | 0 | 0 |
-| virials | 2.8e-14 | 2.1e-16 |
-
-`atom_names` 的**顺序**两边不同（dpdata 按首次出现，ferro 按 `(Z, 符号)`），
-这是有意的差异，见 `writers/deepmd.rs`；比对 coords/forces 前按坐标排序对齐。
+对拍时唯一的操作陷阱：`atom_names` 的**顺序**两边不同（dpdata 按首次出现，
+ferro 按 `(Z, 符号)`，见 `writers/deepmd.rs`），所以比对逐原子的量之前必须先
+配对，不能直接按下标比。

@@ -843,6 +843,11 @@ merge 合**不同运行**。单点批次同理：一个目录放同一成分的�
 进 `label`，`type_map.raw` 仍按 element 建，所以两者合成一个训练类型。映射关系
 每个 system 打印一次。dpdata 的 CP2K 插件默认相反（拿 kind 名当元素）。
 
+**与 dpdata 的对拍**：单点与 AIMD 逐项比过 cp2kdata 0.7.4（CP2K 2025.2）。
+AIMD 全 2000 帧的能量、坐标、力逐位相同，应力相对差 1.2e-15；单点五项全部
+对上。完整数字与四点说明（力残差的来源、MD 首帧、坐标/力为何无法经 cp2kdata
+验证、晶胞精度）见 `ferro doc dataset collect` 的 "Checked against dpdata"。
+
 丢帧三类，**始终计数**：SCF 未收敛 / 块截断（含力数与原子数不等）/ 组成不符。
 单点缺应力**不算**丢帧 —— 没开 `STRESS_TENSOR` 的单点照样是好数据，只是没有
 virial；缺力则必丢，`force.npy` 在 DeePMD 里不是可选项。
