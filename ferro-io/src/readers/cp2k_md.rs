@@ -521,7 +521,7 @@ mod tests {
     /// parenthesised group": that would read the unit as `QS` on every release.
     #[test]
     fn the_energy_unit_is_read_in_all_three_bracketings() {
-        let hartree = -1766.225653832774242 * HARTREE_TO_EV;
+        let hartree = -1_766.225_653_832_774_2 * HARTREE_TO_EV;
         for line in [
             " ENERGY| Total FORCE_EVAL ( QS ) energy (a.u.):            -1766.225653832774242",
             " ENERGY| Total FORCE_EVAL ( QS ) energy [a.u.]:            -1766.225653832774242",

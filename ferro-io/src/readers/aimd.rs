@@ -14,6 +14,7 @@ use ferro_core::Trajectory;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AimdFormat {
     Cp2kMd,
+    Cp2kSp,
     VaspOutcar,
     VaspXml,
 }
@@ -22,7 +23,8 @@ impl AimdFormat {
     /// Human-readable name, for messages.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Cp2kMd => "CP2K output",
+            Self::Cp2kMd => "CP2K MD output",
+            Self::Cp2kSp => "CP2K single-point output",
             Self::VaspOutcar => "VASP OUTCAR",
             Self::VaspXml => "VASP vasprun.xml",
         }
@@ -35,6 +37,7 @@ impl AimdFormat {
     pub fn convergence_rule(self) -> &'static str {
         match self {
             Self::Cp2kMd => "SCF run converged",
+            Self::Cp2kSp => "SCF run converged",
             Self::VaspOutcar => "EDIFF reached",
             Self::VaspXml => "SCF steps < NELM",
         }
@@ -105,6 +108,17 @@ impl AimdStats {
     }
 }
 
+/// The value of CP2K's `GLOBAL| Run type` line, when the head holds one.
+fn run_type(head: &str) -> Option<String> {
+    head.lines()
+        .find(|l| {
+            let mut it = l.split_whitespace();
+            ["GLOBAL|", "Run", "type"].iter().all(|t| it.next() == Some(*t))
+        })
+        .and_then(|l| l.split_whitespace().last())
+        .map(|v| v.to_string())
+}
+
 /// Identifies an AIMD output file by its content, not by its name.
 ///
 /// Naming cannot carry this: VASP writes `OUTCAR` with no extension at all,
@@ -118,7 +132,8 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
         .with_context(|| format!("cannot open {}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut head = String::new();
-    for _ in 0..64 {
+    // CP2K 的 `GLOBAL| Run type` 在第 40~50 行之间,比横幅还靠后一点
+    for _ in 0..96 {
         let mut line = String::new();
         if reader.read_line(&mut line)? == 0 {
             break;
@@ -135,7 +150,13 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
         return Ok(AimdFormat::VaspOutcar);
     }
     if head.contains("CP2K|") || head.contains("**** **** ******  **  PROGRAM STARTED") {
-        return Ok(AimdFormat::Cp2kMd);
+        // 同一个 .out 扩展名下 CP2K 写两种完全不同的布局,由它自己的 run type
+        // 区分。读不到那一行时按 MD 走:那是 ferro 一直以来的行为,而单点 reader
+        // 找不到 ENERGY| 锚点会给出点名的错误,倒过来则不然
+        return Ok(match run_type(&head).as_deref() {
+            Some("ENERGY") | Some("ENERGY_FORCE") => AimdFormat::Cp2kSp,
+            _ => AimdFormat::Cp2kMd,
+        });
     }
     bail!(
         "{}: cannot tell which program wrote this. Recognised: VASP OUTCAR \
@@ -150,6 +171,7 @@ pub fn read_aimd_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let fmt = sniff(path)?;
     match fmt {
         AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md_with_stats(path),
+        AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp_with_stats(path),
         AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
         AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
     }
@@ -169,6 +191,21 @@ mod tests {
         // 这两份 fixture 的名字都不是 VASP 自己写出来的名字
         assert_eq!(sniff(&p("vasp_OUTCAR_2frames")).unwrap(), AimdFormat::VaspOutcar);
         assert_eq!(sniff(&p("vasp_vasprun_2frames.xml")).unwrap(), AimdFormat::VaspXml);
+    }
+
+    /// Two CP2K layouts share the `.out` extension; the run type tells them apart.
+    #[test]
+    fn a_cp2k_out_is_split_by_its_run_type_not_its_extension() {
+        assert_eq!(sniff(&p("cp2k_md_3frames.out")).unwrap(), AimdFormat::Cp2kMd);
+        assert_eq!(sniff(&p("5Al_0003_1500K_f394.out")).unwrap(), AimdFormat::Cp2kSp);
+    }
+
+    #[test]
+    fn a_run_type_line_is_found_wherever_cp2k_puts_it() {
+        let head = " GLOBAL| Run type                                          ENERGY_FORCE\n";
+        assert_eq!(run_type(head).as_deref(), Some("ENERGY_FORCE"));
+        // MD_PAR| 之类的别行不该被当成 run type
+        assert_eq!(run_type(" MD_PAR| Ensemble type   NVT\n"), None);
     }
 
     #[test]
