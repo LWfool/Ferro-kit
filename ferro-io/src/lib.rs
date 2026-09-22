@@ -5,7 +5,7 @@ pub mod writers;
 pub(crate) mod testutil;
 
 pub use readers::{
-    read_aimd_with_stats, read_cp2k_md, read_cp2k_md_with_stats, read_cp2k_sp,
+    read_aimd_as, read_aimd_with_stats, read_cp2k_md, read_cp2k_md_with_stats, read_cp2k_sp,
     read_cp2k_sp_with_stats,
     read_vasp_outcar, read_vasp_outcar_with_stats, read_vasprun,
     read_vasprun_with_stats, sniff, AimdFormat, AimdStats,
