@@ -686,6 +686,62 @@ mod tests {
         assert!(err.contains("MD") && err.contains("single point"), "{err}");
     }
 
+    /// The 6.1 layout, against cp2kdata's own reading of the same file.
+    ///
+    /// Every number below comes from `tests/test_energy_force/v6.1/normal/answer/`
+    /// in that project, so this pins ferro to an independent implementation
+    /// rather than to its own output. The file is worth keeping whole: it is the
+    /// only fixture where all three old-format blocks appear at once, on a
+    /// triclinic cell, with two kinds sharing one element.
+    #[test]
+    fn the_old_layout_agrees_with_cp2kdata_on_a_real_file() {
+        let (traj, st) = read_cp2k_sp_with_stats(Path::new("../tests/cp2k_sp_v61.out")).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert_eq!(st.n_dropped(), 0);
+        assert_eq!(st.version.as_deref(), Some("6.1"));
+        assert!(st.version_note.is_some(), "6.1 未验证,该带提示");
+
+        let f = &traj.frames[0];
+        assert_eq!(f.n_atoms(), 30);
+        assert_eq!(f.count_element("Fe"), 12);
+        assert_eq!(f.count_element("O"), 18);
+
+        // energy (a.u.): -1766.2256538327742
+        assert!((f.energy.unwrap() - -1_766.225_653_832_774_2 * HARTREE_TO_EV).abs() < 1e-6);
+
+        // 三斜胞,gamma = 120 度:b 的 x 分量是负的,行优先存放
+        // 按 (行,列) 点名取,不用 iter() —— nalgebra 是列优先,顺着迭代
+        // 比出来的是转置,而转置在这个胞上恰好也"差不多对"
+        let m = f.cell.as_ref().unwrap().matrix;
+        assert!((m[(0, 0)] - 5.038).abs() < 1e-9);
+        assert!((m[(1, 0)] - -2.519).abs() < 1e-9, "b 的 x 分量:行优先存放才是 m[(1,0)]");
+        assert!((m[(1, 1)] - 4.363).abs() < 1e-9);
+        assert!((m[(2, 2)] - 13.772).abs() < 1e-9);
+
+        // atomic_forces_list[0][0] = [2.1561e-4, 3.4116e-4, 3.17438e-3] Hartree/Bohr
+        let fac = HARTREE_TO_EV / BOHR_TO_ANG;
+        let f0 = f.forces.as_ref().unwrap()[0];
+        assert!((f0.x - 2.156_1e-4 * fac).abs() < 1e-9, "{f0:?}");
+        assert!((f0.z - 3.174_38e-3 * fac).abs() < 1e-9, "{f0:?}");
+
+        // stress_tensor_list[0] 的对角,单位 GPa,符号照抄不变
+        let s = f.stress.unwrap();
+        for (i, want) in [-7.957_282_23, -8.056_781_06, -8.184_447_53].into_iter().enumerate() {
+            let gpa = s[(i, i)] * 160.217_663_4;
+            assert!((gpa - want).abs() < 1e-5, "对角 {i}: {gpa} vs {want}");
+        }
+        assert!((s[(0, 1)] * 160.217_663_4 - -0.076_865_33).abs() < 1e-6);
+
+        // Fe1/Fe2 是两个 kind、同一个元素。element 必须是 Fe,区分留在 label
+        let fe: Vec<_> = f.atoms.iter().filter(|a| a.element == "Fe").collect();
+        assert_eq!(fe.len(), 12, "两个 kind 都得算成 Fe");
+        let labels: std::collections::BTreeSet<_> =
+            fe.iter().filter_map(|a| a.label.as_deref()).collect();
+        assert_eq!(labels, ["Fe1", "Fe2"].into_iter().collect());
+        // O 的 kind 名就是 O,不该凭空多一个 label
+        assert!(f.atoms.iter().filter(|a| a.element == "O").all(|a| a.label.is_none()));
+    }
+
     #[test]
     fn reads_the_reference_single_point() {
         let (traj, st) =
