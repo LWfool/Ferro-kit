@@ -376,6 +376,91 @@ $$P_\text{total} = \frac{2}{3}\frac{E_\text{kin}}{V} + \frac{1}{3}\mathrm{Tr}\,\
 against `MD| Pressure = 16480.9 bar` — the 1.6 bar residual is rounding in the
 printed values.
 
+## Checked against dpdata
+
+Every quantity below was compared, number by number, against
+[cp2kdata](https://github.com/robinzyb/cp2kdata) 0.7.4 reading the same file —
+the reference implementation of CP2K support for
+[dpdata](https://github.com/deepmodeling/dpdata). CP2K 2025.2 throughout.
+
+### Single point — 457 atoms, via dpdata
+
+`dpdata.LabeledSystem(out, fmt="cp2kdata/e_f")` against the `deepmd/npy` system
+`collect` writes. Atoms were paired **explicitly by position** rather than
+sorted, so a permutation could not hide in the comparison; the pairing came out
+as the identity and every element matched.
+
+| | max\|diff\| | relative |
+|---|---|---|
+| energies | 3.2e-10 | 1.4e-15 |
+| cells | 0 | 0 |
+| coords | 0 | 0 |
+| forces | 4.4e-11 | 5.7e-12 |
+| virials | 2.8e-14 | 2.1e-16 |
+
+### AIMD — 2000 frames, 112 atoms
+
+| | result |
+|---|---|
+| energy, all 2000 frames | max\|diff\| **0** |
+| stress, all 2000 frames | relative 1.2e-15 |
+| coords, 2000 × 112 × 3 | **0** |
+| forces, 2000 × 112 × 3 | **0** |
+| duplicate frames at the restart seam | none |
+
+### Four things the comparison makes explicit
+
+**The force residual is a constant, not the parser.** `BOHR_TO_ANG` is written
+to ten digits (`0.529_177_210_9`) where CODATA 2018 has
+`0.529177210903`, a relative difference of 5.669e-12 — which is the force
+residual, to the digit. Redo the same comparison using ferro's own constants on
+both sides and the forces come out bit-identical. The energy residual, 1.4e-15,
+is ordinary floating-point noise: `HARTREE_TO_EV` *is* the CODATA 2018 value and
+dpdata simply carries two more digits from its own derivation.
+
+**The initial configuration of an MD segment is not collected.** Frames are
+anchored on `MD| Step number`, and CP2K dumps the starting structure *before*
+the first such line. For the reference run that is 1 frame out of 2001. The
+restart point is skipped too, but it has no trajectory block of its own, so
+nothing complete is lost there — which is also why the seam produces no
+duplicate frames.
+
+**Coordinates and forces are not verifiable through cp2kdata.** Its
+`parse_pos_xyz` / `parse_frc_xyz` read `*-pos-*.xyz` and `*frc*.xyz` *sibling
+files*; given a self-contained log it raises `No atomic coordinates found in
+cp2k output`. The figures above therefore come from an independent extractor
+written against the xyz format itself, cross-checked with the `i = N, time = …,
+E = …` comment that CP2K writes into every block — which is what pins each frame
+to its energy without either parser having a say. If you want that leg covered
+by a third-party implementation instead, have CP2K also write `-pos-1.xyz` and
+`-frc-1.xyz`; dpdata reads those.
+
+**The cell is read at full precision, cp2kdata's at three decimals.** ferro
+takes the 12-field line after the force block; cp2kdata takes `CELL| Vector`,
+which CP2K prints rounded:
+
+```
+cp2kdata  [11.415      11.415       8.029    ]
+ferro     [11.41476108 11.41495281  8.02853232]
+```
+
+Rounding ferro's to three decimals reproduces cp2kdata's exactly. Under NVT
+cp2kdata repeats that rounded cell for every frame, so its volumes — and hence
+its virials — carry a ~1e-4 relative offset that ferro does not.
+
+### The virial sign, checked across formats
+
+Agreeing with cp2kdata alone cannot rule out both being wrong the same way, so
+the same comparison was run on a VASP `OUTCAR` through dpdata's own reader,
+which shares no code with cp2kdata. Energies, coordinates, forces and cells come
+out identical and the virial trace agrees in sign and magnitude
+(+1170.9134 eV both ways).
+
+The 8e-9 residual there is neither tool's parser either: VASP prints the virial
+twice, once as `Total` (eV, directly) and once as `in kB`, and **both** ferro
+and dpdata reconstruct it from `in kB` × volume. That path inherits the coarser
+printed precision — 385.09371 eV against the 385.09354 eV on the `Total` line.
+
 ## Dropped frames
 
 Three kinds of frame are discarded, and the counts are always reported:
