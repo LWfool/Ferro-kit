@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：602 个（全部通过，clippy 零警告）
+## 测试总数：622 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 133（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-io | 134（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
-| ferro-analysis | 198 |
+| ferro-analysis | 199 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 88 + bin 2 + 集成 8） | 98 |
+| ferro-cli（lib 89 + bin 2 + 集成 8） | 99 |
 
 版本号 **0.3.3**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -185,7 +185,11 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `<scstep>` 与 `NELM` 比，两者会对同一次运行给出不同的丢帧数，故判据随 stats
   打出来。vasprun 走 `quick-xml` **流式**，不建 DOM
 - **`aimd.rs`**（2026-08-27）：`AimdStats`（原 `Cp2kOutStats`）+ `AimdFormat` +
-  `sniff`（读头 64 行认横幅）+ `read_aimd_with_stats`
+  `sniff`（读头 96 行认横幅）+ `read_aimd_as(path, fmt)` + 它的嗅探包装
+  `read_aimd_with_stats`。2026-09-22 拆成两个：调用方在自己更清楚格式时
+  （`collect --format`）绕开嗅探。同日 `sniff` 的 CP2K 分支改为**读不到
+  `GLOBAL| Run type` 就报错**并点名 `--format` —— 此前默认按 MD 走，
+  一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
 
 ### ferro-structure
@@ -268,7 +272,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   100%）—— 同一张表给出相反提示，这是它的价值
 - 四条判据同一语义：「保留含 Al6 的帧」写成「删除不含 Al6 的帧」，交叉表不分裂
 - **`merge.rs`**：`composition_key`（逐原子元素序列，分组用，**不看目录名**）、
-  `sort_atoms`（规范序 (Z,符号)，coord/force 跟同一置换，box/energy 不动）、
+  `sort_atoms`（规范序 (Z,符号)；coord/**force/velocities/bonds** 跟同一置换 ——
+  后两者 2026-09-22 补上，此前静默错位；box/energy 与原子编号无关，不动。
+  置换取自第 0 帧再套到全部帧，故**独立写出的文件必须各自排完再拼**）、
   `group_name`（`112_Al32O64Zn16`，下标是实际计数不约分）、`shuffle_order`
   （seed 默认 666，不给也可复现）
 - `to_tables()` 出 funnel / criteria / overlap 三张表，**计数走预格式化文本**
@@ -318,6 +324,13 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   文件 stem 不进名字），只有一组时直接写进 `-o` 本身。`-o` 必填，
   `--overwrite` 拦覆盖。文件按首个 step 排序，重复帧不去重但区间打出来。
   同目录成分不符报错（不当坏帧丢），单文件解析失败跳过且最后再报一遍。
+  **每个文件读完当场 `sort_atoms`**（2026-09-22）：CP2K 按输入列原子的顺序写
+  坐标表，同一体系的两次单点常常顺序不同，此前被当成两个体系拒绝。排完再比
+  成分，于是剩下的差异必然是计数差异，报错点名到元素。
+  **`--format`**（2026-09-22）：`cp2k/md`/`cp2k/sp`/`vasp/outcar`/`vasp/xml`，
+  压过嗅探。嗅探仍跑，降为两件事的依据 —— 不一致时的一行 `NOTE:`，以及
+  「同目录 OUTCAR + vasprun.xml」那条守卫的比较对象（`--format` 一给，
+  `stats.format` 就恒等于它，守卫会失效）。
   **产物默认带 `.train`**（2026-09-20 起，`filter` 与 `merge`；`collect` 不加），
   `--ratio` 划分出的三部分是 `.train`/`.valid`/`.test`；已带后缀不叠加，`merge`
   遇到混合后缀报错，`.train` 输入可再划分而 `.valid`/`.test` 拒绝。
@@ -360,10 +373,15 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   12 页没写、`--tau`/`--ncore` 在 rotcorr/vacf/vanhove 共 5 处没写；
   `gr` 的 `--atom-c`/`--label-z` 是有意不写（SelectArgs 与 angle 共享），
   进 `UNDOCUMENTED` 白名单并写明理由
-- **帮助页全部按同一模板**（2026-08-26）：一句话用途 + 完整参数表 + 输出布局 +
-  2~3 个例子 + `Full documentation:  ferro doc <topic>`。23 页里 19 页 ≤40 行；
-  超标的 4 页（顶层 61 / net 54 / convert 59 含 27 行生成的格式表 /
-  cp2k 47 / filter 43）大头都是参数表本身 —— **参数表不为凑行数砍**
+- **帮助页全部按同一模板**（2026-09-22 重定为五段）：一句话用途 +
+  `Parameters:`（完整）+ `Output:`（≤4 行）+ `Examples:` +
+  `Full documentation:  ferro doc <topic>`，目标 ≤30 行。判据与口径一律进手册。
+  25 页推平：`collect` 96 → 28 行、net 55 → 30、顶层 66 → 49、convert 43 → 33、
+  bader 44 → 32、info 32 → 20。仍超 30 行的三页（`job -s cp2k` 48、
+  `dataset filter` 41、顶层 49）大头是参数表与命令列表本身 —— **不为凑行数砍**。
+  顺带修掉的不一致：`job -s cp2k` 有两个 `Output:`（一个其实是参数分组）、
+  `msd`/`vacf`/`rotcorr`/`vanhove` 的 `File name —` 段、net 的大写小节名、
+  `job -s gaussian` 页里两处中文说明
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
@@ -468,8 +486,13 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   且 dpdata 对两者用的行偏移不同（14 vs 4），说明差别不止 token 名
 - `dataset` 三步（collect / filter / merge）已齐；几何判据只覆盖最小镜像范围，
   未做多层镜像扫描（小胞体系需要时再补）
-- **merge 的规范序取 (Z, 符号)**，dpdata 取字母序；两者都靠 `type_map.raw`
-  自描述，但同一份数据经 ferro 与经 dpdata 合并，`type.raw` 的数字会不同
+- **规范序取 (Z, 符号)**（`collect` 自 2026-09-22 起也排，不只 `merge`），
+  dpdata 取字母序；两者都靠 `type_map.raw` 自描述，但同一份数据经 ferro 与经
+  dpdata 处理，`type.raw` 的数字会不同。
+  磁盘顺序对训练没有影响：**DeePMD-kit 加载时自己按类型重排**
+  （`deepmd/utils/data.py` 的 `_make_idx_map`，默认 `sort_atoms=True`，
+  非 mixed type 的 descriptor 要求如此）。ferro 排完之后 `type.raw` 单调不减，
+  那个 lexsort 成为恒等置换
 - **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
   `io_dispatch.rs` 走。2026-08 加的 `.vasp`/`.pos` 扩展名只有 CLI 认，Python 侧仍只认
   `POSCAR`/`CONTCAR` 前缀。两处 match 分支本就是分开维护，改一处不会波及另一处，
