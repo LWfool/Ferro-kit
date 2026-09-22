@@ -113,16 +113,16 @@ fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
 /// first frame's composition); the counts travel out so the caller can report
 /// them instead of the reader printing behind its back.
 /// Reads a CP2K MD output file, discarding the statistics.
-pub fn read_cp2k_out(path: &Path) -> Result<Trajectory> {
-    Ok(read_cp2k_out_with_stats(path)?.0)
+pub fn read_cp2k_md(path: &Path) -> Result<Trajectory> {
+    Ok(read_cp2k_md_with_stats(path)?.0)
 }
 
 /// Reads a CP2K MD output file and reports what was dropped.
-pub fn read_cp2k_out_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_cp2k_md_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("cannot open {path_}"))?;
-    parse_cp2k_out(&content).with_context(|| format!("parsing {path_}"))
+    parse_cp2k_md(&content).with_context(|| format!("parsing {path_}"))
 }
 
 // 方括号里的单位标注: "ENERGY| ... [hartree]  -2059.5" -> "hartree"
@@ -209,10 +209,10 @@ fn read_xyz_block(lines: &[&str], head: usize, n: usize) -> Option<(Vec<String>,
     Some((syms, vecs))
 }
 
-fn parse_cp2k_out(content: &str) -> Result<(Trajectory, AimdStats)> {
+fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
     let lines: Vec<&str> = content.lines().collect();
 
-    let mut stats = AimdStats::new(AimdFormat::Cp2kOut);
+    let mut stats = AimdStats::new(AimdFormat::Cp2kMd);
     let mut anchors: Vec<usize> = Vec::new();
     let mut steps: Vec<i64> = Vec::new();
     let mut scf: Vec<(usize, bool)> = Vec::new();
@@ -518,10 +518,10 @@ mod tests {
 
     #[test]
     fn relayouts_parse_identically() {
-        let (base, base_st) = parse_cp2k_out(MINI).unwrap();
+        let (base, base_st) = parse_cp2k_md(MINI).unwrap();
         let b = &base.frames[0];
         for (name, text) in variants() {
-            let (t, st) = parse_cp2k_out(&text)
+            let (t, st) = parse_cp2k_md(&text)
                 .unwrap_or_else(|e| panic!("{name}: {e:#}"));
             assert_eq!(st, base_st, "{name}: stats differ");
             assert_eq!(t.n_frames(), 1, "{name}");
@@ -549,21 +549,21 @@ mod tests {
             " STRESS|                        x                   y                   z\n",
             " STRESS|                        x                   y                   z\n STRESS|  (in the cell frame)\n",
         );
-        let (t, _) = parse_cp2k_out(&text).unwrap();
-        let (base, _) = parse_cp2k_out(MINI).unwrap();
+        let (t, _) = parse_cp2k_md(&text).unwrap();
+        let (base, _) = parse_cp2k_md(MINI).unwrap();
         assert_eq!(t.frames[0].stress, base.frames[0].stress);
     }
 
     #[test]
     fn version_string_reaches_the_metadata() {
         let text = format!(" CP2K| version string:                 CP2K version 2024.1\n{MINI}");
-        let (t, _) = parse_cp2k_out(&text).unwrap();
+        let (t, _) = parse_cp2k_md(&text).unwrap();
         assert_eq!(t.metadata.source.as_deref(), Some("CP2K 2024.1 out"));
     }
 
     #[test]
     fn parses_units_and_drops_unconverged_frames() {
-        let (traj, st) = parse_cp2k_out(MINI).unwrap();
+        let (traj, st) = parse_cp2k_md(MINI).unwrap();
         assert_eq!(st.n_steps, 2);
         assert_eq!(st.n_kept, 1);
         assert_eq!(st.n_scf_failed, 1);
@@ -591,7 +591,7 @@ mod tests {
     #[test]
     fn unknown_stress_unit_is_an_error() {
         let bad = MINI.replace("[bar]", "[atm]");
-        let err = parse_cp2k_out(&bad).unwrap_err().to_string();
+        let err = parse_cp2k_md(&bad).unwrap_err().to_string();
         assert!(err.contains("atm"), "{err}");
     }
 
@@ -599,7 +599,7 @@ mod tests {
     fn truncated_last_frame_is_dropped_not_fatal() {
         // 砍掉最后一帧的力块之后的一切，模拟作业被 kill
         let cut = MINI.find("       2       2.000").unwrap();
-        let (traj, st) = parse_cp2k_out(&MINI[..cut]).unwrap();
+        let (traj, st) = parse_cp2k_md(&MINI[..cut]).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_scf_failed, 1);
     }
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn reads_temperature_from_the_instantaneous_column() {
         let (traj, st) =
-            read_cp2k_out_with_stats(Path::new("../tests/cp2k_out_3frames.out")).unwrap();
+            read_cp2k_md_with_stats(Path::new("../tests/cp2k_md_3frames.out")).unwrap();
         assert_eq!(traj.n_frames(), 3, "stats: {st:?}");
         let want = [964.909119, 866.567046, 724.603525];
         for (i, w) in want.iter().enumerate() {
@@ -627,7 +627,7 @@ mod tests {
     #[test]
     #[ignore]
     fn reads_the_reference_output() {
-        let (traj, st) = read_cp2k_out_with_stats(Path::new("../examples/total.out")).unwrap();
+        let (traj, st) = read_cp2k_md_with_stats(Path::new("../examples/total.out")).unwrap();
         println!("{st:?}");
         println!("frames={} atoms={:?}", traj.n_frames(), traj.n_atoms());
         let f = &traj.frames[0];
