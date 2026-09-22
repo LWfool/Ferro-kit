@@ -83,8 +83,16 @@ mod tag {
         &["ENERGY|", "Total", "FORCE_EVAL"],
         &["ENERGY|", "Total", "force_eval"],
     ];
-    /// Header of the analytical stress tensor block; carries the unit.
-    pub const STRESS: &[&[&str]] = &[&["STRESS|", "Analytical", "stress", "tensor"]];
+    /// Header of the stress tensor block; carries the unit.
+    ///
+    /// The second form is CP2K <= 7.1, which printed the block with no `STRESS|`
+    /// prefix at all. Without it those releases parse into frames that simply
+    /// have no stress — no error, no virial, nothing to notice until the model
+    /// trains badly.
+    pub const STRESS: &[&[&str]] = &[
+        &["STRESS|", "Analytical", "stress", "tensor"],
+        &["STRESS", "TENSOR"],
+    ];
     /// Any `STRESS|` line — the numeric rows of the block are a subset.
     pub const STRESS_ROW: &[&[&str]] = &[&["STRESS|"]];
     /// SCF convergence verdict; the wording after this differs by method.
@@ -96,6 +104,39 @@ mod tag {
     pub const TEMPERATURE: &[&[&str]] = &[&["MD|", "Temperature", "[K]"]];
     /// Banner line carrying the CP2K release, kept for the trajectory metadata.
     pub const VERSION: &[&[&str]] = &[&["CP2K|", "version", "string:"]];
+}
+
+/// Releases whose MD log layout ferro has actually been run against.
+///
+/// 2025 is the fixture (`tests/cp2k_md_3frames.out`); 2026 carried the 2025
+/// layout forward unchanged. Everything else parses too — the token anchors
+/// above are deliberately release-agnostic — but it has only ever been checked
+/// against cp2kdata's reading of it, so it earns a note rather than silence.
+const VERIFIED_MAJORS: &[&str] = &["2025", "2026"];
+
+/// Says whether `version` is one ferro has a fixture for, and why not if not.
+///
+/// The verdict travels out through [`AimdStats`] instead of being printed here:
+/// a library that prints cannot be silenced by the one command that already
+/// knows the answer, and `collect` reads dozens of files in a row.
+fn version_note(version: Option<&str>) -> Option<String> {
+    let Some(v) = version else {
+        return Some(
+            "no `CP2K| version string` line, so the release could not be checked; \
+             ferro's CP2K layout is verified for 2025 and 2026"
+                .to_string(),
+        );
+    };
+    // 主版本号是第一段:"2025.2" -> "2025","7.1" -> "7"
+    let major = v.split('.').next().unwrap_or(v);
+    if VERIFIED_MAJORS.contains(&major) {
+        return None;
+    }
+    Some(format!(
+        "CP2K {v}: ferro's layout is verified for 2025 and 2026 only. This file \
+         parsed, but the block layout is older and was matched on token anchors \
+         alone — spot-check one frame's energy and forces before training on it"
+    ))
 }
 
 /// True when the line's leading tokens match any of `candidates`.
@@ -132,8 +173,23 @@ fn unit_in_brackets(line: &str) -> Option<&str> {
     Some(line[start + 1..end].trim())
 }
 
+// 能量行的单位标注在版本间换过两次括号:
+//   <=7.1    ENERGY| Total FORCE_EVAL ( QS ) energy (a.u.):   -1766.2
+//   8.1-2024 ENERGY| Total FORCE_EVAL ( QS ) energy [a.u.]:    -551.5
+//   2025+    ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]   -75.6
+// 取"数值前一个 token"而不是"第一个括号",因为行里更早还有一个 `( QS )`
+fn energy_unit(line: &str) -> Option<&str> {
+    let toks: Vec<&str> = line.split_whitespace().collect();
+    let t = toks.get(toks.len().checked_sub(2)?)?;
+    Some(
+        t.trim_end_matches(':')
+            .trim_start_matches(['[', '('])
+            .trim_end_matches([']', ')']),
+    )
+}
+
 fn energy_to_ev(line: &str) -> Result<f64> {
-    let unit = unit_in_brackets(line).unwrap_or("");
+    let unit = energy_unit(line).unwrap_or("");
     let factor = match unit.to_ascii_lowercase().as_str() {
         "hartree" | "a.u." | "au" => HARTREE_TO_EV,
         "ev" => 1.0,
@@ -235,6 +291,8 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
             version = l.split_whitespace().last().map(|v| v.to_string());
         }
     }
+    stats.version_note = version_note(version.as_deref());
+    stats.version = version.clone();
     stats.n_steps = anchors.len();
     stats.steps = match (steps.first(), steps.last()) {
         (Some(&a), Some(&b)) => Some((a, b)),
@@ -384,7 +442,14 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
                     if row == 3 {
                         break;
                     }
-                    if !line_matches(l, tag::STRESS_ROW) {
+                    // 新格式行首是 `STRESS|`,<=7.1 行首直接是行标 X/Y/Z。
+                    // 两种都收,但仍要求行首是这两者之一 —— 否则块后面的
+                    // 特征向量行(三列浮点)会被当成矩阵行读进来
+                    let row_label = l
+                        .split_whitespace()
+                        .next()
+                        .is_some_and(|t| matches!(t, "X" | "Y" | "Z" | "x" | "y" | "z"));
+                    if !line_matches(l, tag::STRESS_ROW) && !row_label {
                         continue;
                     }
                     let f: Vec<&str> = l.split_whitespace().collect();
@@ -449,6 +514,73 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CP2K moved the energy unit between brackets twice; all three parse.
+    ///
+    /// The `( QS )` earlier on the line is why this cannot be "the first
+    /// parenthesised group": that would read the unit as `QS` on every release.
+    #[test]
+    fn the_energy_unit_is_read_in_all_three_bracketings() {
+        let hartree = -1766.225653832774242 * HARTREE_TO_EV;
+        for line in [
+            " ENERGY| Total FORCE_EVAL ( QS ) energy (a.u.):            -1766.225653832774242",
+            " ENERGY| Total FORCE_EVAL ( QS ) energy [a.u.]:            -1766.225653832774242",
+            " ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]          -1766.225653832774242",
+        ] {
+            let got = energy_to_ev(line).unwrap_or_else(|e| panic!("{line}: {e}"));
+            assert!((got - hartree).abs() < 1e-9, "{line} -> {got}");
+        }
+        assert_eq!(energy_unit(" ENERGY| ... energy (a.u.):  -1.0"), Some("a.u."));
+    }
+
+    /// An unverified release is reported, not refused.
+    #[test]
+    fn a_release_without_a_fixture_earns_a_note_rather_than_a_refusal() {
+        assert_eq!(version_note(Some("2025.2")), None);
+        assert_eq!(version_note(Some("2026.1")), None, "2026 沿用 2025 布局");
+        let old = version_note(Some("7.1")).expect("7.1 未验证,该有提示");
+        assert!(old.contains("7.1") && old.contains("2025"), "{old}");
+        assert!(version_note(None).is_some(), "没有版本行也该提示");
+    }
+
+    /// CP2K <= 7.1 printed the stress block with no `STRESS|` prefix.
+    ///
+    /// Asserts the tensor, not just that parsing succeeded: the failure this
+    /// guards against is a frame that comes back fine but carries no stress,
+    /// which only shows up as a missing `virial.npy` much later.
+    #[test]
+    fn the_prefixless_stress_block_of_old_releases_is_read() {
+        let old = MINI.replace(
+            " STRESS| Analytical stress tensor [bar]\n\
+             \x20STRESS|                        x                   y                   z\n\
+             \x20STRESS|      x        1.00000000000E+04   0.00000000000E+00   0.00000000000E+00\n\
+             \x20STRESS|      y        0.00000000000E+00   2.00000000000E+04   0.00000000000E+00\n\
+             \x20STRESS|      z        0.00000000000E+00   0.00000000000E+00   3.00000000000E+04\n",
+            " STRESS TENSOR [GPa]\n\
+             \n\
+             \x20           X               Y               Z\n\
+             \x20 X       1.00000000      0.00000000      0.00000000\n\
+             \x20 Y       0.00000000      2.00000000      0.00000000\n\
+             \x20 Z       0.00000000      0.00000000      3.00000000\n\
+             \n\
+             \x20 1/3 Trace(stress tensor):   2.00000000E+00\n\
+             \n\
+             \x20EIGENVECTORS AND EIGENVALUES OF THE STRESS TENSOR\n\
+             \n\
+             \x20        1.00000000      2.00000000      3.00000000\n",
+        );
+        assert!(old.contains("STRESS TENSOR [GPa]"), "替换没生效,测试在测别的东西");
+        let (traj, _) = parse_cp2k_md(&old).unwrap();
+        let s = traj.frames[0].stress.expect("旧格式应力块必须读出来");
+        // 1 GPa 与 10 kbar 是同一个应力,两条路必须给出同一个张量
+        let (base, _) = parse_cp2k_md(MINI).unwrap();
+        let b = base.frames[0].stress.unwrap();
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!((s[(i, j)] - b[(i, j)]).abs() < 1e-12, "({i},{j}) {s:?} vs {b:?}");
+            }
+        }
+    }
 
     // 两帧的迷你 out：第二帧的 SCF 故意不收敛
     const MINI: &str = concat!(
