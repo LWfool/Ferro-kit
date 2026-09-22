@@ -84,10 +84,14 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
    否则第一个文件的组成会摆在全局参数区冒充全局事实
 3. `ferro-cli/src/cmd/<group>.rs` 加分支：构造参数（**在读第一个文件前**校验）→
    `batch::map_inputs` → `batch::stack` → `batch::write_all`
-4. `ferro-cli/src/help.rs` 加帮助并在 `print_overview` 列出。帮助页照同一模板：
-   一句话用途 + **完整参数表** + 输出布局 + 2~3 个例子 +
-   `Full documentation:  ferro doc <topic>`。目标 ≤40 行，**但参数表（含值域
-   枚举）不为凑行数砍** —— 不知道收哪些值就没法敲命令
+4. `ferro-cli/src/help.rs` 加帮助并在 `print_overview` 列出。帮助页照同一模板，
+   **五段，且只有五段**：一句话用途 + `Parameters:`（完整，含值域枚举与默认值）
+   + `Output:`（≤4 行：产物叫什么、落在哪）+ `Examples:`（2~3 条）+
+   `Full documentation:  ferro doc <topic>`。目标 ≤30 行，**参数表与命令列表
+   不为凑行数砍** —— 不知道收哪些值就没法敲命令。
+
+   判据、口径、为什么这么设计**一律进手册**：帮助页答「怎么敲」，手册答
+   「为什么」。2026-09-22 按这条把 25 页推平了一遍（collect 96 → 28 行）
 5. `docs/src/analysis/<name>.md` 加手册页 + `SUMMARY.md` 挂上 +
    **`ferro-cli/src/doc.rs` 的 `PAGES` 加一条**（否则第 4 步那行指针指向空）
 6. `main.rs` 的 `mod help_sync` 会自动校验帮助页与 clap 一致，不必手动核对；
