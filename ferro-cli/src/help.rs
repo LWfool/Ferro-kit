@@ -932,9 +932,10 @@ Per format:
   frames depending on which file you point at; the rule used is printed.
 
 CP2K specifics:
-  Layout verified for 2025 and 2026. Older releases still parse — the energy,
-  force and stress blocks each changed once and both forms are coded — but
-  every file prints a NOTE naming its version. Spot-check one frame.
+  Two generations implemented: 2023-2024 (energy [a.u.]: + ATOMIC FORCES table)
+  and 2025-2026 (energy [hartree] + FORCES| block). 2025-2026 is read silently;
+  2024 and earlier prints a NOTE naming its version and is then read anyway.
+  Spot-check one frame when you see that note.
 
   A kind name that differs from the element (Fe1/Fe2 for two spin guesses) is
   kept as the atom's label; type_map.raw is still built from the ELEMENT, so

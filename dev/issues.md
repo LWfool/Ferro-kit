@@ -792,17 +792,34 @@ golden master 的差异失去唯一解释。
 提示文本里必须**点名版本号**。只说"版本未验证"的提示，用户下一步还得自己去 grep
 文件头才知道是哪一版。
 
-## 装在环境里的 cp2kdata 与 private/ 里的不是一份（2026-09-22）
+**最终口径（2026-09-22 用户定）**：明确实现两代——**2023–2024** 与
+**2025–2026**。2025–2026 静默，2024 及之前打提示后照常提取。7.1 及更早"过老，
+暂不考虑"，但既有的解析代码与 `cp2k_sp_v61.out` 保留：它是 `ATOMIC FORCES` 块
+唯一的真实文件样例，而那个块 2023–2024 也在用。
 
-`~/.miniforge3/envs/deepmd` 里的 **cp2kdata 0.7.3（PyPI 最新发布）读不了 CP2K
-2025 的单点输出**：它的 `ENERGIES_RE` 是 `energy\s\S{6}:`，恰好只匹配 `(a.u.)`
-与 `[a.u.]` 这两个 6 字符带冒号的写法，而 2025 写的是 `[hartree]` 且**没有冒号**。
-失败形式是 `parse_energies_list` 返回 `None`，然后在 dpdata 插件里炸成
-`TypeError: unsupported operand type(s) for *: 'NoneType' and 'float'`。
+## cp2kdata 的版本上限（2026-09-22 查证，已装新版）
 
-`private/cp2kdata` 是 git 检出，HEAD 在 `220836a Add support for cp2k-2025`，
-比 0.7.3 新。**要跟 dpdata 对表必须 `PYTHONPATH=private/cp2kdata`**，否则对的是
-一个读不了这份数据的版本。
+deepmd 环境里原本是 **cp2kdata 0.7.3（PyPI 最新发布），它的上限是 2024.1**，
+读不了 CP2K 2025 的输出。逐块看：
+
+| | 0.7.3 | `private/` 的 0.7.4 |
+|---|---|---|
+| MD cell 版本表 | `9.1 2022.2 2023.1 2023.2 2024.1` + `7.1` | 另加 `2024.2 2025.1 2025.2` |
+| 能量 | `energy\s\S{6}:` —— 只中 `(a.u.):` 与 `[a.u.]:` | 另加 `[hartree]`（**无冒号**） |
+| 力 | 只有 `ATOMIC FORCES in [a.u.]` | 另加 `FORCES\| Atomic forces` |
+| 应力 | `STRESS TENSOR [GPa]`、`STRESS\| Analytical … [GPa]` | 另加 `[bar]` |
+
+2025 的输出在 0.7.3 下失败形式是 `parse_energies_list` 返回 `None`，然后在
+dpdata 插件里炸成 `TypeError: unsupported operand type(s) for *: 'NoneType' and
+'float'` —— 看起来像 dpdata 的错，其实是版本不够。
+
+**已按用户授权把 `private/cp2kdata`（0.7.4，HEAD `eb1d2a8`）装进 deepmd 环境**
+（`pip install --no-deps --no-build-isolation .`），所以对表不再需要
+`PYTHONPATH`。用户已用 dpgen 验过这一版。
+
+注意 0.7.4 的 MD cell 版本表里**仍然没有 2026**，届时会 `raise
+NotImplementedError`；ferro 这边不依赖那张表。另外它的版本号正则是
+`\d{1,4}\.\d`，小数点后只收一位。
 
 对表结果（同一份 2025.2 单点输出，457 原子）：
 

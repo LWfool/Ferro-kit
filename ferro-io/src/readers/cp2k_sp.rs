@@ -62,34 +62,38 @@ use nalgebra::{Matrix3, Vector3};
 
 use super::aimd::{AimdFormat, AimdStats};
 
-/// Releases whose single-point log layout ferro has been run against.
+/// Releases whose single-point log layout is read without comment.
 ///
-/// 2025 is the fixture (`tests/5Al_0003_1500K_f394.out`); 2026 carried the 2025
-/// layout forward unchanged. Older releases print a different force block and a
-/// different stress block; both are handled below, but only ever checked
-/// against cp2kdata's reading of them, so they earn a note.
+/// 2025 is the fixture (`tests/5Al_0003_1500K_f394.out`) and 2026 carried its
+/// layout forward unchanged. There is a second supported generation, 2023–2024,
+/// which differs in two blocks; it parses too but says so, because ferro has no
+/// single-point output from those releases to check against — only AIMD ones,
+/// from which the block shapes were read off.
 const VERIFIED_MAJORS: &[&str] = &["2025", "2026"];
 
-/// Says whether `version` is one ferro has a fixture for, and why not if not.
+/// Generations whose block layout is implemented, for the note's wording.
+const SUPPORTED_GENERATIONS: &str = "2023-2024 and 2025-2026";
+
+/// Says whether `version` is one ferro reads silently, and what to check if not.
 ///
 /// Travels out through [`AimdStats`] rather than being printed here: `collect`
 /// reads dozens of files in a row and a library that prints cannot be silenced.
 fn version_note(version: Option<&str>) -> Option<String> {
     let Some(v) = version else {
-        return Some(
+        return Some(format!(
             "no `CP2K| version string` line, so the release could not be checked; \
-             ferro's CP2K layout is verified for 2025 and 2026"
-                .to_string(),
-        );
+             ferro implements {SUPPORTED_GENERATIONS}"
+        ));
     };
     let major = v.split('.').next().unwrap_or(v);
     if VERIFIED_MAJORS.contains(&major) {
         return None;
     }
     Some(format!(
-        "CP2K {v}: ferro's single-point layout is verified for 2025 and 2026 only. \
-         This file uses the older `ATOMIC FORCES` block, read with rules ported \
-         from cp2kdata — spot-check one frame's forces before training on it"
+        "CP2K {v}: ferro implements {SUPPORTED_GENERATIONS} and has a fixture only \
+         for 2025-2026. This file was read with the older layout (`energy [a.u.]:` \
+         and the `ATOMIC FORCES` table) — spot-check one frame's energy and forces \
+         before training on it"
     ))
 }
 
@@ -676,6 +680,76 @@ mod tests {
         }
         // 圆括号的能量也得读出来
         assert!((traj.frames[0].energy.unwrap() - new.frames[0].energy.unwrap()).abs() < 1e-12);
+    }
+
+    /// The 2023–2024 generation: `[a.u.]:` energy, `ATOMIC FORCES`, GPa stress.
+    ///
+    /// Every block shape below was read off real 2023.1 / 2023.2 / 2024.1 outputs
+    /// (cp2kdata's `test_dpdata/`), where the coordinate table, the kind block and
+    /// the `CELL|` block are byte-identical in shape to 2025 — only the energy
+    /// bracketing and the force table differ. Those files are all AIMD runs, so
+    /// there is no single-point fixture for the generation to read whole; this
+    /// pins the combination instead.
+    #[test]
+    fn the_2023_2024_generation_parses_to_the_same_numbers() {
+        let older = MINI
+            .replace("CP2K version 2025.2", "CP2K version 2024.1")
+            .replace(
+                "energy [hartree]            -10.000000000000000",
+                "energy [a.u.]:              -10.000000000000000",
+            )
+            .replace(
+                concat!(
+                    " FORCES| Atomic forces [hartree/bohr]\n",
+                    " FORCES|   Atom     x               y               z               |f|\n",
+                    " FORCES|      1  1.00000000E-02  0.00000000E+00  0.00000000E+00   1.00000000E-02\n",
+                    " FORCES|      2 -1.00000000E-02  0.00000000E+00  0.00000000E+00   1.00000000E-02\n",
+                    " FORCES| Sum     0.00000000E+00  0.00000000E+00  0.00000000E+00\n",
+                ),
+                concat!(
+                    " ATOMIC FORCES in [a.u.]\n",
+                    "\n",
+                    " # Atom   Kind   Element          X              Y              Z\n",
+                    "      1      1      Si          0.01000000     0.00000000     0.00000000\n",
+                    "      2      2      O          -0.01000000     0.00000000     0.00000000\n",
+                    " SUM OF ATOMIC FORCES           0.00000000     0.00000000     0.00000000     0.00000000\n",
+                ),
+            )
+            // 1e4 bar = 1 GPa,同一个应力换个单位写,结果必须一样
+            .replace(
+                concat!(
+                    " STRESS| Analytical stress tensor [bar]\n",
+                    " STRESS|                        x                   y                   z\n",
+                    " STRESS|      x        1.00000000000E+04   0.00000000000E+00   0.00000000000E+00\n",
+                    " STRESS|      y        0.00000000000E+00   2.00000000000E+04   0.00000000000E+00\n",
+                    " STRESS|      z        0.00000000000E+00   0.00000000000E+00   3.00000000000E+04\n",
+                ),
+                concat!(
+                    " STRESS| Analytical stress tensor [GPa]\n",
+                    " STRESS|                        x                   y                   z\n",
+                    " STRESS|      x        1.00000000000E+00   0.00000000000E+00   0.00000000000E+00\n",
+                    " STRESS|      y        0.00000000000E+00   2.00000000000E+00   0.00000000000E+00\n",
+                    " STRESS|      z        0.00000000000E+00   0.00000000000E+00   3.00000000000E+00\n",
+                ),
+            );
+        assert!(older.contains("ATOMIC FORCES") && older.contains("[GPa]"), "替换没生效");
+
+        let (old, st) = parse_cp2k_sp(&older).unwrap();
+        let (new, _) = parse_cp2k_sp(MINI).unwrap();
+        let note = st.version_note.expect("2024 该带提示");
+        assert!(note.contains("2024.1") && note.contains("2023-2024"), "{note}");
+
+        let (a, b) = (&old.frames[0], &new.frames[0]);
+        assert!((a.energy.unwrap() - b.energy.unwrap()).abs() < 1e-12);
+        for (fa, fb) in a.forces.as_ref().unwrap().iter().zip(b.forces.as_ref().unwrap()) {
+            assert!((fa - fb).norm() < 1e-12, "{fa:?} vs {fb:?}");
+        }
+        let (sa, sb) = (a.stress.unwrap(), b.stress.unwrap());
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!((sa[(i, j)] - sb[(i, j)]).abs() < 1e-12, "({i},{j})");
+            }
+        }
     }
 
     /// An MD output must not be read here — it is a different layout entirely.
