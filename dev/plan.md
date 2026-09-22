@@ -33,6 +33,10 @@ mixed type 布局（**先核对 DeePMD-kit 文档与 dpdata 的 `deepmd/npy/mixe
   这条差异 `progress.md`「已知限制」已记）
 - npy 是整型：现有读写走的都是 `float64`（磁盘上一律二维 f64），
   `real_atom_types.npy` 是 int，**dtype 分支是新的**，读侧要同时收 int32/int64
+- **`sort_atoms` 不能无脑套用**（2026-09-22 查证）：DeePMD-kit 在 mixed type 下
+  明确**不**按类型排序（`deepmd/utils/data.py` 的 `sort_atoms` 文档写着
+  "except mixed types"），因为 `real_atom_types` 是逐帧各异的。而 `collect`
+  现在无条件排 —— 两者相遇时要先定 mixed system 的规范序是什么
 - 与 `filter` 的关系：`filter` 现在按 system 读回再写出，mixed system 经它一趟必须
   仍是 mixed，否则静默降级成「全 0 类型」的坏数据
 
@@ -444,6 +448,26 @@ lammpstrj/data 导出），`outputLammpsin` 甚至引用了一个**根本没定�
 DeePMD mixed type · `io_dispatch` 注册 · 抽帧参数 · `ferro info` 的「只报首尾
 两帧」。脚本里**不照搬**的四处：体积用对角线乘积、CP2K 固定行偏移（只认
 NVT/NPT_I）、质量表读 `~/.emacs.d` 的 elisp、倾斜折叠的除数写错。
+
+### 原子顺序 + --format + 帮助页精简（2026-09-22 落地）
+
+起因是实测 `collect -i 1Al/*.out` 报「different compositions」而两个化学式打出来
+一模一样。落地清单见 `overview.md`「2026-09-22 的第二批」。
+
+**被实测推翻的两条原计划**：
+
+- **「删掉嗅探，完全依赖 `--format`」**（用户最初的要求，理由是版本多、易错、
+  难维护）。查证后留下了：`sniff` 40 行且不含任何版本知识，担心的那部分全在四个
+  reader 的块匹配里。留着它换来一行 NOTE 与那条一目录一格式的守卫
+- **「`--format` 必填」**（我最初的推荐）。用户改为「有 format 用 format，没有就
+  嗅探，探不到才报错」，旧命令行因此一条都不用改
+
+**动手前查了本机 deepmd 环境**，两条结论都进了 `overview.md`：DeePMD-kit 加载时
+自己按类型排序（所以磁盘顺序对训练无影响），dpdata 的 `append` 在 atom_types
+不一致时自动排两边（所以这是领域内的既有做法，不是 ferro 的发明）。
+
+**划在范围外**：`filter` / `merge` 的 `--format`（它们读 npy，不需要）·
+`io_dispatch` 注册 `.out`（第三轮绕开）· mixed type 下的规范序（见优先级高那栏）。
 
 ### cp2kdata 的能力合并：CP2K 单点读取（2026-09-22 落地）
 

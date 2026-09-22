@@ -287,6 +287,53 @@ system 打印一次映射表，照 LAMMPS dump reader 的先例。
 **dpdata 的 CP2K 插件默认相反**（`true_symbols=False`，拿 kind 名当 `atom_names`），
 所以同一份输出两边建出的 type_map 可能不同。
 
+## 2026-09-22 的第二批（版本号**仍是 0.3.3**，未发版）
+
+起因是实测 `ferro dataset collect -i 1Al/*.out` 报「different compositions」而
+两个化学式打出来一模一样。根因是 collect 用**逐原子原始顺序**比较成分、却用
+**计数**渲染报错，而 CP2K 按输入文件列原子的顺序写坐标表，同一体系的两次单点
+计算原子顺序常常不同。
+
+| 改动 | 影响 |
+|---|---|
+| **collect 逐文件规范排序** | 产物的 `type.raw` / `coord.npy` / `force.npy` 原子顺序与旧产物不同。同成分不同顺序的文件从此能合并 |
+| `sort_atoms` 补 `velocities` / `bonds` 置换 | 此前只置换 `forces`，另两个静默错位。merge 路看不见（system 不存速度与键），collect 的诊断导出会看见 |
+| 成分报错点名差异元素 | `differing: Al 2 vs 3`，不再只并排两个化学式 |
+| **新增 `collect --format`** | `cp2k/md` / `cp2k/sp` / `vasp/outcar` / `vasp/xml`。嗅探仍跑，降为出 NOTE 与喂守卫 |
+| `sniff` 对 CP2K 缺 run type 改报错 | 此前默认按 MD 走，一份被裁过头的单点日志会报成「MD 找不到锚点」 |
+| **25 页帮助全部精简为五段** | `collect` 96 → 28 行。删掉的是判据与口径，手册里逐条核对过都已有 |
+| 手册新增 `changelog.md` | `ferro doc changelog`。从 v0.3.0 起，只写「旧 → 新」命令行对照 |
+
+### 为什么无条件重排、不给开关
+
+查了本机 deepmd 环境（`~/.miniforge3/envs/deepmd`）的两份实现，两边都在做同一
+件事：
+
+- **DeePMD-kit 3.1.3 加载时就重排**。`deepmd/utils/data.py` 的 `_make_idx_map`
+  默认 `sort_atoms=True`，用 `np.lexsort((idx, atom_type))` 按类型稳定排序；
+  文档字符串写明非 mixed type 的 descriptor **要求**如此。磁盘顺序对训练没有
+  影响
+- **dpdata 1.0.2 的 `append` 自动排**。`system.py:491` 在 `atom_types` 不一致时
+  调 `sort_atom_types()` 重排两边，注释写着 "allow to append a system with
+  different atom_types order" —— 正是 collect 要做的事
+
+顺带对上了一个口径：ferro 的 `type_map` 按 `(Z, 符号)` 排，重排后 `type.raw`
+单调不减，于是 DeePMD 内部那个 lexsort 成为**恒等置换**。
+
+给开关等于承认「不排」也是一种合法产物，而它唯一的效果是让同目录的两个文件因为
+原子顺序不同而无法合并。`merge` 一直是无条件排的，collect 不排才是那个例外。
+
+**mixed type 是例外**：DeePMD 在那条路上明确不排序（`real_atom_types` 逐帧各异）。
+`plan.md` 的 mixed type 待办已记下这一条。
+
+### 为什么嗅探没有按最初的要求删掉
+
+用户最初提的是「删除嗅探，完全依赖 `--format`」，理由是版本多、易错、难维护。
+查证后留下了：`sniff` 只有 40 行且**不含任何版本知识** —— 担心的那部分全在四个
+reader 的块匹配里，删掉 `sniff` 一行都减不掉。留着它换来两样东西：与 `--format`
+不一致时的一行 NOTE（否则手滑写错与有意覆盖长得一样），以及「同目录 OUTCAR +
+vasprun.xml」那条守卫的比较对象（`--format` 一给，`stats.format` 就恒等于它）。
+
 ### 晶胞精度：明确选了低精度的那个源
 
 `CELL| Vector` 的分量只打 3 位小数，而 `|a|` 与角度打 6 位。从长度+角度重建更
