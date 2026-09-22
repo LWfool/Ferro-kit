@@ -47,3 +47,6 @@ config/secrets.yml
 CLAUDE.md
 # 比较脚本的输出（scripts/compare_*.py）
 cmp_out/
+
+# mdBook 构建产物（本地 mdbook build 生成）
+docs/book/
