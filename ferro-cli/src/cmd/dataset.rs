@@ -686,11 +686,15 @@ fn collect_group(
         bail!("{} exists and is not empty (pass --overwrite)", dest.display());
     }
 
-    // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致
+    // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致。
+    //
+    // 每个文件读完**当场**排进规范序，而不是拼好之后排一次：sort_atoms 的置换取自
+    // 第 0 帧再套到全部帧，先拼后排就会拿第一个文件的原子顺序去重排第二个文件的
+    // 原子。产物看着完全正常，数值全错。两个独立写出的文件本就各有各的原子顺序
     let mut parts: Vec<(PathBuf, Trajectory, AimdStats)> = Vec::new();
     for path in &group.files {
         match read_aimd_with_stats(path) {
-            Ok((traj, stats)) => parts.push((path.clone(), traj, stats)),
+            Ok((traj, stats)) => parts.push((path.clone(), sort_atoms(&traj), stats)),
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", path.display());
                 skipped.push(path.clone());
@@ -726,17 +730,20 @@ fn collect_group(
         );
     }
 
+    // 比较的是规范序列（上面逐文件排过），所以剩下的差异必然是计数差异 ——
+    // 「同成分不同原子顺序」这个原因已经不存在了
     let reference = symbols_of(&parts[0].1);
     for (path, traj, _) in &parts[1..] {
         let here = symbols_of(traj);
         if here != reference {
             bail!(
-                "{} and {} hold different compositions ({} vs {}); \
+                "{} and {} hold different compositions ({} vs {}; {}); \
                  a system holds one composition, so put them in separate directories",
                 parts[0].0.display(),
                 path.display(),
                 formula_of(&reference),
                 formula_of(&here),
+                composition_diff(&reference, &here),
             );
         }
     }
@@ -789,6 +796,38 @@ fn formula_of(symbols: &[String]) -> String {
         *count.entry(s.as_str()).or_default() += 1;
     }
     count.iter().map(|(el, n)| format!("{el}{n}")).collect()
+}
+
+/// The elements whose counts differ, as `Al 2 vs 3`.
+///
+/// Two formulas printed side by side answer "are they different" but not "where":
+/// `Al2O303P100Zn50 vs Al2O303P100Zn50` used to be a possible message, back when
+/// the comparison ran on unsorted sequences and the formulas could not show it.
+/// The sequences are canonical now, so every remaining difference is a count.
+fn composition_diff(a: &[String], b: &[String]) -> String {
+    let count = |v: &[String]| {
+        let mut m: BTreeMap<String, usize> = BTreeMap::new();
+        for s in v {
+            *m.entry(s.clone()).or_default() += 1;
+        }
+        m
+    };
+    let (ca, cb) = (count(a), count(b));
+    let diffs: Vec<String> = ca
+        .keys()
+        .chain(cb.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|el| {
+            let (na, nb) = (ca.get(el).copied().unwrap_or(0), cb.get(el).copied().unwrap_or(0));
+            (na != nb).then(|| format!("{el} {na} vs {nb}"))
+        })
+        .collect();
+    if diffs.is_empty() {
+        "same counts, different atom order".to_string()
+    } else {
+        format!("differing: {}", diffs.join(", "))
+    }
 }
 
 /// One section per system, one line per source file.
@@ -1515,6 +1554,87 @@ mod tests {
         // 公共祖先 /s 剥掉，其余层级原样保留 —— 不用分隔符压平
         assert_eq!(rels(&["/s/a/md/x.out", "/s/b/md/x.out"]), vec!["a/md", "b/md"]);
         assert_eq!(rels(&["run1/total.out", "run2/total.out"]), vec!["run1", "run2"]);
+    }
+
+    /// One CP2K single point of the same two atoms, written in a chosen order.
+    ///
+    /// `si_first` flips only the order the atoms appear in — the physics is
+    /// identical, which is what makes the assertion below sharp.
+    fn sp_text(si_first: bool) -> String {
+        let head = " CP2K| version string:                                       CP2K version 2025.2\n\
+                    \x20GLOBAL| Run type                                                   ENERGY_FORCE\n\
+                    \x20CELL| Volume [angstrom^3]:                                           125.000000\n\
+                    \x20CELL| Vector a [angstrom]:       5.000     0.000     0.000   |a| =     5.000000\n\
+                    \x20CELL| Vector b [angstrom]:       0.000     5.000     0.000   |b| =     5.000000\n\
+                    \x20CELL| Vector c [angstrom]:       0.000     0.000     5.000   |c| =     5.000000\n\
+                    \x20CELL| Periodicity                                                           XYZ\n\n\
+                    \x20MODULE QUICKSTEP: ATOMIC COORDINATES IN ANGSTROM\n\n\
+                    \x20\x20 Atom Kind Element         X             Y             Z       Z(eff)     Mass\n";
+        let si = "Si   14      0.000000      0.000000      0.000000   4.0000  28.0855";
+        let ox = "O     8      1.000000      0.000000      0.000000   6.0000  15.9994";
+        let (first, second) = if si_first { (si, ox) } else { (ox, si) };
+        // 力跟着各自的原子走：Si 受 +x，O 受 -x
+        let (f1, f2) = if si_first { (1.0, -1.0) } else { (-1.0, 1.0) };
+        format!(
+            "{head}      1    1 {first}\n      2    2 {second}\n\n\
+             \x20*** SCF run converged in     4 steps ***\n\n\
+             \x20ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]            -10.000000000000000\n\n\
+             \x20FORCES| Atomic forces [hartree/bohr]\n\
+             \x20FORCES|   Atom     x               y               z               |f|\n\
+             \x20FORCES|      1 {f1:.8E}  0.00000000E+00  0.00000000E+00   1.00000000E-02\n\
+             \x20FORCES|      2 {f2:.8E}  0.00000000E+00  0.00000000E+00   1.00000000E-02\n\
+             \x20FORCES| Sum     0.00000000E+00  0.00000000E+00  0.00000000E+00\n",
+            f1 = f1 * 1e-2,
+            f2 = f2 * 1e-2,
+        )
+    }
+
+    /// Two files of one composition written in different atom orders are one system.
+    ///
+    /// CP2K writes the atoms in whatever order the input listed them, so two single
+    /// points of the same material routinely disagree. Before the canonical sort this
+    /// was an error message holding two identical formulas.
+    #[test]
+    fn files_whose_atom_order_differs_collect_into_one_system() {
+        let dir = std::env::temp_dir().join("ferro_collect_atom_order");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.out"), sp_text(true)).unwrap();
+        std::fs::write(dir.join("b.out"), sp_text(false)).unwrap();
+
+        let group = Group {
+            dir: dir.clone(),
+            rel: PathBuf::new(),
+            files: vec![dir.join("a.out"), dir.join("b.out")],
+        };
+        let dest = dir.join("out.db");
+        let mut skipped = Vec::new();
+        collect_group(&group, &dest, false, false, &mut skipped).unwrap();
+        assert!(skipped.is_empty());
+
+        let (traj, _) = read_deepmd_npy_with_warnings(&dest).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        // 规范序是 (Z, 符号)：O(8) 在前，Si(14) 在后 —— 与写出的顺序无关
+        let elems: Vec<&str> = traj.frames[0].atoms.iter().map(|a| a.element.as_str()).collect();
+        assert_eq!(elems, vec!["O", "Si"]);
+
+        // 两份文件描述的是同一个构型，重排之后两帧必须逐位相同
+        let (f0, f1) = (&traj.frames[0], &traj.frames[1]);
+        for i in 0..2 {
+            assert!(
+                (f0.atoms[i].position - f1.atoms[i].position).norm() < 1e-12,
+                "atom {i}: {:?} vs {:?}",
+                f0.atoms[i].position,
+                f1.atoms[i].position
+            );
+            let (a, b) = (f0.forces.as_ref().unwrap()[i], f1.forces.as_ref().unwrap()[i]);
+            assert!((a - b).norm() < 1e-12, "force {i}: {a:?} vs {b:?}");
+        }
+        // 力确实跟着原子走了，而不是两帧都成了零
+        assert!(f0.forces.as_ref().unwrap()[0].x < 0.0, "O 受 -x");
+        assert!(f0.forces.as_ref().unwrap()[1].x > 0.0, "Si 受 +x");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
