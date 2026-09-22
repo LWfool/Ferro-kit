@@ -31,7 +31,7 @@ use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, Filter
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
-    read_aimd_with_stats, read_deepmd_npy_with_warnings, write_deepmd_npy,
+    read_aimd_as, read_deepmd_npy_with_warnings, write_deepmd_npy,
     write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdFormat, AimdStats,
     StressKey,
 };
@@ -481,6 +481,38 @@ pub struct CollectCmd {
     /// What to write                                       [default: deepmd]
     #[arg(long = "type", value_enum, default_value_t = CollectType::Deepmd)]
     pub out_type: CollectType,
+
+    /// Read the inputs as this format instead of trusting their banner
+    #[arg(long, value_enum, value_name = "FMT")]
+    pub format: Option<InputFormat>,
+}
+
+/// The AIMD layout a file is to be read as, when the user names it.
+///
+/// The four values mirror [`AimdFormat`] one for one. VASP is two values rather
+/// than one `vasp/md`: OUTCAR and vasprun.xml record the same frames but decide
+/// convergence differently, so they drop a different number of them.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum InputFormat {
+    #[value(name = "cp2k/md")]
+    Cp2kMd,
+    #[value(name = "cp2k/sp")]
+    Cp2kSp,
+    #[value(name = "vasp/outcar")]
+    VaspOutcar,
+    #[value(name = "vasp/xml")]
+    VaspXml,
+}
+
+impl From<InputFormat> for AimdFormat {
+    fn from(f: InputFormat) -> Self {
+        match f {
+            InputFormat::Cp2kMd => AimdFormat::Cp2kMd,
+            InputFormat::Cp2kSp => AimdFormat::Cp2kSp,
+            InputFormat::VaspOutcar => AimdFormat::VaspOutcar,
+            InputFormat::VaspXml => AimdFormat::VaspXml,
+        }
+    }
 }
 
 /// True when `ferro dataset collect` was typed with no input.
@@ -525,6 +557,8 @@ fn run_collect(args: &CollectCmd) -> Result<usize> {
         crate::outpath::ensure_dir(root, args.mkdir)?;
     }
 
+    let fmt = args.format.map(AimdFormat::from);
+
     let groups = group_by_directory(&inputs);
     let mut failures = 0usize;
     let mut skipped: Vec<PathBuf> = Vec::new();
@@ -535,7 +569,7 @@ fn run_collect(args: &CollectCmd) -> Result<usize> {
         } else {
             collect_dest(args.output.as_deref(), group)
         };
-        match collect_group(group, &dest, args.overwrite, inspect, &mut skipped) {
+        match collect_group(group, &dest, args.overwrite, inspect, fmt, &mut skipped) {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", group.dir.display());
@@ -679,6 +713,7 @@ fn collect_group(
     dest: &Path,
     overwrite: bool,
     inspect: bool,
+    format: Option<AimdFormat>,
     skipped: &mut Vec<PathBuf>,
 ) -> Result<()> {
     // inspect 那条路自己查，因为它的目录是 ferro_inspect/ 而不是 system 目录
@@ -692,8 +727,38 @@ fn collect_group(
     // 第 0 帧再套到全部帧，先拼后排就会拿第一个文件的原子顺序去重排第二个文件的
     // 原子。产物看着完全正常，数值全错。两个独立写出的文件本就各有各的原子顺序
     let mut parts: Vec<(PathBuf, Trajectory, AimdStats)> = Vec::new();
+    // 嗅探结果单独留一份：--format 一给，stats.format 就恒等于它，下面那条
+    // 「同目录两种格式」的守卫会失去比较的对象。嗅探本来就要跑（它出告警），
+    // 守卫白拿
+    let mut sniffed: Vec<(PathBuf, AimdFormat)> = Vec::new();
     for path in &group.files {
-        match read_aimd_with_stats(path) {
+        let banner = ferro_io::sniff(path);
+        if let Ok(f) = &banner {
+            sniffed.push((path.clone(), *f));
+        }
+        let fmt = match (format, &banner) {
+            // 用户说了算，但手滑写错与有意覆盖长得一样，所以说一声
+            (Some(asked), Ok(seen)) if *seen != asked => {
+                eprintln!(
+                    "NOTE: {} looks like {} but --format says {}; reading as {}",
+                    path.display(),
+                    seen.name(),
+                    asked.name(),
+                    asked.name()
+                );
+                asked
+            }
+            (Some(asked), _) => asked,
+            (None, _) => match banner {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("SKIP {}: {e:#}", path.display());
+                    skipped.push(path.clone());
+                    continue;
+                }
+            },
+        };
+        match read_aimd_as(path, fmt) {
             Ok((traj, stats)) => parts.push((path.clone(), sort_atoms(&traj), stats)),
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", path.display());
@@ -720,14 +785,15 @@ fn collect_group(
     // 一个真实的 VASP 运行目录里 OUTCAR 与 vasprun.xml 同时存在,记的是同一批
     // 帧。collect 的规则是「同目录的文件 = 同一次运行的分段」,照此拼接会把帧数
     // 悄悄翻倍 —— 成分一致、两个文件各自也都读得通,不会有任何别的症状
-    let fmt0 = parts[0].2.format;
-    if let Some((path, _, other)) = parts.iter().find(|(_, _, st)| st.format != fmt0) {
-        bail!(
-            "{} is {} but {} is {}. A run directory holds both, and they record \
-             the same frames — concatenating them would double the dataset. \
-             Narrow -i to one of the two",
-            parts[0].0.display(), fmt0.name(), path.display(), other.format.name(),
-        );
+    if let Some((first, fmt0)) = sniffed.first() {
+        if let Some((path, other)) = sniffed.iter().find(|(_, f)| f != fmt0) {
+            bail!(
+                "{} is {} but {} is {}. A run directory holds both, and they record \
+                 the same frames — concatenating them would double the dataset. \
+                 Narrow -i to one of the two",
+                first.display(), fmt0.name(), path.display(), other.name(),
+            );
+        }
     }
 
     // 比较的是规范序列（上面逐文件排过），所以剩下的差异必然是计数差异 ——
@@ -1609,7 +1675,7 @@ mod tests {
         };
         let dest = dir.join("out.db");
         let mut skipped = Vec::new();
-        collect_group(&group, &dest, false, false, &mut skipped).unwrap();
+        collect_group(&group, &dest, false, false, None, &mut skipped).unwrap();
         assert!(skipped.is_empty());
 
         let (traj, _) = read_deepmd_npy_with_warnings(&dest).unwrap();

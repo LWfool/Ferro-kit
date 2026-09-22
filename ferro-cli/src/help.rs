@@ -871,11 +871,14 @@ pub fn print_dataset_collect() {
   Reads CP2K MD output, CP2K single-point output, VASP OUTCAR or VASP
   vasprun.xml and writes one DeePMD system per input DIRECTORY. The format is
   decided by the file's own banner, not by its name; the two CP2K layouts are
-  told apart by GLOBAL| Run type.
+  told apart by GLOBAL| Run type. Pass --format when that is not enough.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
   -o, --output DIR        Output root; default is beside each input
+      --format FMT        Read the inputs as this format instead of trusting
+                          the banner. cp2k/md | cp2k/sp | vasp/outcar |
+                          vasp/xml                            [from banner]
       --type   WHAT       deepmd (DeePMD system) | inspect (diagnostics only)
                                                                     [deepmd]
       --mkdir             Create -o without asking (needed with no terminal)
