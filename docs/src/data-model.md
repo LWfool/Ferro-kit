@@ -173,7 +173,8 @@ Atom { element: "P".into(), label: Some("P_3".into()), .. }
 |---|---|
 | LAMMPS dump reader | `element` 列写成 `P_3` 时拆成 `element="P"` + `label="P_3"`，读完打印一次映射表 |
 | extxyz reader | 独立的 `label:S:1` 列 |
-| CIF / CP2K / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
+| CIF / CP2K inp / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
+| CP2K 单点 out reader | `&KIND` 的名字（`ATOMIC KIND INFORMATION` 块），**仅在它与元素不同时**才填。同元素多 kind 是常见做法（`Fe1`/`Fe2` 给两组磁矩初猜），也见过 kind 名干脆是另一个元素符号的取代体系——所以 `element` 恒取坐标表里的真元素，kind 名只进 `label` |
 | `ferro net --export-traj` | 分类结果写进 `label`，`element` 保持元素 |
 
 ### 谁会写出 `label`

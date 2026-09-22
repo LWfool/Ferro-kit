@@ -868,9 +868,10 @@ pub fn print_dataset_collect() {
     println!(
         r#"ferro dataset collect — AIMD output -> DeePMD system directories
 
-  Reads CP2K MD output, VASP OUTCAR or VASP vasprun.xml and writes one DeePMD
-  system per input DIRECTORY. The format is decided by the file's own banner,
-  not by its name.
+  Reads CP2K MD output, CP2K single-point output, VASP OUTCAR or VASP
+  vasprun.xml and writes one DeePMD system per input DIRECTORY. The format is
+  decided by the file's own banner, not by its name; the two CP2K layouts are
+  told apart by GLOBAL| Run type.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed
@@ -913,16 +914,34 @@ One system per directory:
   and every source file's step span is printed so the overlap stays visible.
   Two compositions in one directory is an error, not a frame-dropping event.
 
+  A batch of single points collects the same way: one directory per
+  composition, one frame per file, ordered by name since there is no step
+  number. Concatenating them into one file works too — the anchor is the
+  ENERGY| line — but then a dropped frame can no longer be traced to a file.
+
   A VASP run directory holds OUTCAR *and* vasprun.xml, recording the SAME
   frames — feeding both would double the dataset in silence, so mixing formats
   within one directory is refused. Narrow -i to one of them.
 
 Per format:
-  CP2K          energy ENERGY| Total FORCE_EVAL   converged: "SCF run converged"
+  CP2K MD       energy ENERGY| Total FORCE_EVAL   converged: "SCF run converged"
+  CP2K point    energy ENERGY| Total FORCE_EVAL   converged: "SCF run converged"
   OUTCAR        energy free energy TOTEN          converged: "EDIFF is reached"
   vasprun.xml   energy last e_fr_energy           converged: SCF steps < NELM
   The two VASP rules differ, so the same run can drop a different number of
   frames depending on which file you point at; the rule used is printed.
+
+CP2K specifics:
+  Layout verified for 2025 and 2026. Older releases still parse — the energy,
+  force and stress blocks each changed once and both forms are coded — but
+  every file prints a NOTE naming its version. Spot-check one frame.
+
+  A kind name that differs from the element (Fe1/Fe2 for two spin guesses) is
+  kept as the atom's label; type_map.raw is still built from the ELEMENT, so
+  the two become one training type. The mapping is printed once per system.
+
+  Missing stress is not a dropped frame — it just means no virial. Missing
+  forces IS, since force.npy is not optional in a DeePMD system.
 
 Examples:
   ferro dataset collect -i 'run*/*.out'
