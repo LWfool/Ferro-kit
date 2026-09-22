@@ -151,12 +151,17 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
     }
     if head.contains("CP2K|") || head.contains("**** **** ******  **  PROGRAM STARTED") {
         // 同一个 .out 扩展名下 CP2K 写两种完全不同的布局,由它自己的 run type
-        // 区分。读不到那一行时按 MD 走:那是 ferro 一直以来的行为,而单点 reader
-        // 找不到 ENERGY| 锚点会给出点名的错误,倒过来则不然
-        return Ok(match run_type(&head).as_deref() {
-            Some("ENERGY") | Some("ENERGY_FORCE") => AimdFormat::Cp2kSp,
-            _ => AimdFormat::Cp2kMd,
-        });
+        // 区分。读不到那一行就说出来:此前默认按 MD 走,于是一份被裁过头的单点
+        // 日志会静默变成「MD 找不到 Step number 锚点」,报的错与真正的原因无关
+        return match run_type(&head).as_deref() {
+            Some("ENERGY") | Some("ENERGY_FORCE") => Ok(AimdFormat::Cp2kSp),
+            Some(_) => Ok(AimdFormat::Cp2kMd),
+            None => bail!(
+                "{}: a CP2K banner but no `GLOBAL| Run type` line, so the layout \
+                 cannot be told apart. Pass --format cp2k/md or --format cp2k/sp",
+                path.display()
+            ),
+        };
     }
     bail!(
         "{}: cannot tell which program wrote this. Recognised: VASP OUTCAR \
@@ -166,15 +171,22 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
     )
 }
 
-/// Reads any recognised AIMD output, reporting what was dropped.
-pub fn read_aimd_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
-    let fmt = sniff(path)?;
+/// Reads an AIMD output as the given format, reporting what was dropped.
+///
+/// The format is a parameter rather than something decided here, so a caller
+/// holding a better answer than the banner — the user, typically — can say so.
+pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdStats)> {
     match fmt {
         AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md_with_stats(path),
         AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp_with_stats(path),
         AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
         AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
     }
+}
+
+/// Reads any recognised AIMD output, identifying the format by its banner.
+pub fn read_aimd_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+    read_aimd_as(path, sniff(path)?)
 }
 
 #[cfg(test)]
@@ -206,6 +218,20 @@ mod tests {
         assert_eq!(run_type(head).as_deref(), Some("ENERGY_FORCE"));
         // MD_PAR| 之类的别行不该被当成 run type
         assert_eq!(run_type(" MD_PAR| Ensemble type   NVT\n"), None);
+    }
+
+    /// A CP2K file with no run type is ambiguous, and says so.
+    ///
+    /// Defaulting to MD used to hide this: a truncated single-point log became
+    /// "MD| Step number not found", an error about the wrong thing entirely.
+    #[test]
+    fn a_cp2k_file_without_a_run_type_asks_for_format() {
+        let f = std::env::temp_dir().join("ferro_no_run_type.out");
+        std::fs::write(&f, " CP2K| version string: CP2K version 2025.2\n hello\n").unwrap();
+        let msg = format!("{:#}", sniff(&f).unwrap_err());
+        assert!(msg.contains("--format cp2k/md"), "{msg}");
+        assert!(msg.contains("Run type"), "{msg}");
+        let _ = std::fs::remove_file(&f);
     }
 
     #[test]

@@ -29,7 +29,7 @@ pub use extxyz::read_extxyz;
 pub use lammps_data::read_lammps_data;
 pub use lammps_dump::{read_lammps_dump, LammpsUnits};
 pub use cp2k::{read_cp2k_inp, read_cp2k_restart};
-pub use aimd::{read_aimd_with_stats, sniff, AimdFormat, AimdStats};
+pub use aimd::{read_aimd_as, read_aimd_with_stats, sniff, AimdFormat, AimdStats};
 pub use cp2k_md::{read_cp2k_md, read_cp2k_md_with_stats};
 pub use cp2k_sp::{read_cp2k_sp, read_cp2k_sp_with_stats};
 pub use vasp_outcar::{read_vasp_outcar, read_vasp_outcar_with_stats};
