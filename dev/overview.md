@@ -213,3 +213,68 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
   跟着输入走，不能是 `.`**
 - **「`collect` 不加后缀」**（0.3.3 定，理由是产物是没筛过的原始数据、不该标成
   训练集）。改为加 `.db`（database），但它**不是**划分后缀，不进 `SPLIT_SUFFIXES`
+
+## 2026-09-22 的一批（版本号**仍是 0.3.3**，未发版）
+
+起因是 `private/cp2kdata`（robinzyb/cp2kdata，MIT），核心需求是**单点能数据的
+读取**——把一批 FP 计算的输出收成训练集。范围只取能量 / 力 / 坐标 / 盒子 /
+应力五项，与 MD 端一致；cube、pdos、Mulliken / Hirshfeld 布居、振动频率、偶极、
+DFT+U 占据数**全部不取**（要么 Ferro 已有更稳健的实现，要么 `Frame` 里没有存放
+处）。GEO_OPT / CELL_OPT 也不取——cp2kdata 里那两条路的坐标根本不来自 `.out`，
+而是去 glob `*pos*.xyz`，属于已划在范围外的 CP2K 多文件布局。
+
+| 改动 | 影响 |
+|---|---|
+| **`cp2k_out.rs` 改名 `cp2k_md.rs`** | `read_cp2k_out*` → `read_cp2k_md*`；`AimdFormat::Cp2kOut` → `Cp2kMd`；fixture 同步改名。纯机械，行为零变化 |
+| 新增 `readers/cp2k_sp.rs` | CP2K 单点（`ENERGY` / `ENERGY_FORCE`）reader，`AimdFormat::Cp2kSp` |
+| `sniff` 按 `GLOBAL| Run type` 二次分派 | 同一个 `CP2K|` 横幅下两套布局，此前一律当 MD |
+| `AimdStats` 加 `version` / `version_note` | 版本判定在 reader，打印在 CLI |
+| **MD 路补两处老版本的块** | `energy (a.u.):` 的圆括号写法、无 `STRESS|` 前缀的 ` STRESS TENSOR [GPa]` |
+| `collect` 报告加两行 | 版本提示、CP2K kind 名映射 |
+
+### 为什么单点单开一个文件而不是在 `cp2k_md.rs` 里分支
+
+用户明确要求**不共用单位与数据抽取**（"强行兼容可能会给未来造成隐患"）。事实上
+两者也确实无可共用之处：MD 的帧锚点是 `MD| Step number`、坐标与力是两个 xyz 块；
+单点的锚点是 `ENERGY| Total FORCE_EVAL`、坐标与力是两张表。两个 `version_note`
+函数看着像重复，但它们判定的是不同的东西（MD 需要 xyz 块与 cell 行，单点需要坐标
+表与力表），将来会各自分岔——按 `CLAUDE.md` 的 R6，没有同一个变化原因就不合。
+
+### 版本策略：提示而不是拒绝
+
+用户最初提的是白名单 + 拒绝，查证后收敛成**照常解析 + 打提示**。查了 cp2kdata
+全部 28 份 fixture，格式断代是三段：
+
+| | ≤ 7.1 | 8.1 – 2024 | 2025 + |
+|---|---|---|---|
+| 能量 | `energy (a.u.):` | `energy [a.u.]:` | `energy [hartree]` |
+| 力 | `ATOMIC FORCES in [a.u.]` | 同左 | `FORCES| Atomic forces` |
+| 应力 | ` STRESS TENSOR [GPa]` | `STRESS| Analytical …` | 同左 |
+
+即「2025/2026 + 可能还有 2023/2024」这个白名单里装着**两种**布局，不是一种。
+2025/2026 有 fixture 因而无提示（2026 沿用 2025 布局，据用户确认）；其余照常
+解析并每个文件打一行 `NOTE:` 点名版本。
+
+硬拒绝被否掉的理由：它会把**没见过但格式没变**的将来版本一并挡掉，而
+`cp2k_md.rs` 的模块文档里早就写着相反的判断（token 匹配而非版本表，且
+`STRESS_UNIT` 是输入关键字、不是版本的函数）。
+
+### kind 名进 `label`，`type_map` 仍按 element
+
+CP2K 允许同元素多 kind。查 fixture 时发现两种：`Fe1`/`Fe2`（自旋初猜），以及
+v7.1 那份里 kind 名叫 `Al` 而坐标表 Element 列是 `Fe 26` 的取代体系。
+
+`element` 恒取坐标表里的真元素，kind 名只在与元素不同时进 `label`。
+`type_map.raw` 仍按 element 建，于是 `Fe1`/`Fe2` 合成一个训练类型——DeePMD
+模型本就是按元素参数化的。但这扔掉了用户特意做出的区分，所以 `collect` 每个
+system 打印一次映射表，照 LAMMPS dump reader 的先例。
+
+**dpdata 的 CP2K 插件默认相反**（`true_symbols=False`，拿 kind 名当 `atom_names`），
+所以同一份输出两边建出的 type_map 可能不同。
+
+### 晶胞精度：明确选了低精度的那个源
+
+`CELL| Vector` 的分量只打 3 位小数，而 `|a|` 与角度打 6 位。从长度+角度重建更
+精确但会**强制 a 轴沿 x**，且 ≤7.1 连 `|a|` 都只有 3 位、根本无处可重建。实测
+体积相对误差 1.16e-4，20 GPa 下 virial 绝对偏差 3.8e-3 eV，低于 virial 训练
+RMSE 一到两个数量级——**按矢量行读，不复杂化**。

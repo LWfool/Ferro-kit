@@ -9,8 +9,9 @@ ferro dataset collect -i 'run*/*.out' -o data      # -> data/run1/, data/run2/
 ferro dataset collect -i '*.out' -o sys            # -> sys/   (one directory in)
 ```
 
-Three sources are read: **CP2K MD output**, **VASP `OUTCAR`** and **VASP
-`vasprun.xml`**. Quantum ESPRESSO is still planned.
+Four sources are read: **CP2K MD output**, **CP2K single-point output**
+(`ENERGY` / `ENERGY_FORCE`), **VASP `OUTCAR`** and **VASP `vasprun.xml`**.
+Quantum ESPRESSO is still planned.
 
 ### Which reader gets the file
 
@@ -19,6 +20,32 @@ banner — `CP2K|`, `vasp.6.4.2`, or an `<?xml` declaration — and naming canno
 be trusted to do this job: VASP writes `OUTCAR` with no extension at all,
 people rename it to `run.outcar`, and `.out` is too generic to belong to any
 one program. An unrecognised file is an error that names what *is* recognised.
+
+CP2K writes **two completely different layouts** under that one banner, so a
+second line decides between them: `GLOBAL| Run type`. `ENERGY` and
+`ENERGY_FORCE` go to the single-point reader, anything else to the MD reader.
+The two share no anchor and no block — see [Single-point
+output](#single-point-output).
+
+### Which CP2K releases
+
+ferro's layout is verified against **2025** and **2026** (2026 carried the 2025
+layout forward unchanged). Older releases are still read — the anchors are
+token sequences, not column positions, and the blocks that did change have both
+forms coded — but each file earns a `NOTE:` line in the report naming its
+version, because nothing here has been checked against an actual run of that
+release. It is a prompt to spot-check one frame, not a refusal.
+
+Three things moved between releases:
+
+| | ≤ 7.1 | 8.1 – 2024 | 2025 + |
+|---|---|---|---|
+| energy | `energy (a.u.):` | `energy [a.u.]:` | `energy [hartree]` |
+| forces | `ATOMIC FORCES in [a.u.]` | same | `FORCES\| Atomic forces` |
+| stress | ` STRESS TENSOR [GPa]` | `STRESS\| Analytical …` | same |
+
+The unit is always read from the text, never from the version: `STRESS_UNIT` is
+a CP2K *input* keyword, so the same release can print bar or GPa.
 
 > **One format per directory.** A real VASP run directory holds `OUTCAR` *and*
 > `vasprun.xml`, and they record the same frames. Since `collect` treats the
@@ -29,7 +56,10 @@ one program. An unrecognised file is an error that names what *is* recognised.
 
 ### CP2K vs VASP: what differs
 
-| | CP2K | VASP OUTCAR | vasprun.xml |
+CP2K here is the MD path; the single-point one is described
+[below](#single-point-output).
+
+| | CP2K MD | VASP OUTCAR | vasprun.xml |
 |---|---|---|---|
 | energy | `ENERGY\| Total FORCE_EVAL` | `free  energy   TOTEN` | last `e_fr_energy` of the calculation |
 | convergence | `SCF run converged` | VASP's own `EDIFF is reached` | inferred: SCF steps < `NELM` |
@@ -46,7 +76,7 @@ derivatives of the free energy, so pairing them with the extrapolated energy
 would give a model two halves of different functionals. dpdata makes the same
 choice, which keeps datasets converted by either tool comparable.
 
-## What CP2K must print
+## What a CP2K MD run must print
 
 The run log must be self-contained — coordinates, forces and the stress tensor
 all going to `__STD_OUT__` rather than to sibling files:
@@ -81,6 +111,75 @@ on restart, so no duplicate frames arise.
 
 Restart segments left as **separate files in one directory** are also fine; see
 [One system per directory](#one-system-per-directory).
+
+## Single-point output
+
+A batch of FP calculations — one `ENERGY_FORCE` run per structure — collects
+the same way. Put the outputs of one composition in one directory and each file
+contributes its frame:
+
+```
+scf/0001/  a.out  b.out  c.out     ->  scf/0001.db/   3 frames
+scf/0002/  a.out  b.out            ->  scf/0002.db/   2 frames
+```
+
+Files within a directory are ordered by **name**, since a single point has no
+step number to sort on.
+
+Concatenating the outputs into one file also works — the frame anchor is the
+`ENERGY| Total FORCE_EVAL` line, so N energies read as N frames. Keeping them
+separate is still better: the report then says which *file* a dropped frame
+came from, and that is exactly what you want when three jobs out of two hundred
+failed to converge.
+
+### What a single point must print
+
+Less than an MD run: no `&MOTION` block at all, because coordinates and forces
+come from the tables CP2K prints at `MEDIUM` print level anyway.
+
+```
+&GLOBAL
+  PRINT_LEVEL MEDIUM      ! LOW omits the coordinate table
+  RUN_TYPE ENERGY_FORCE   ! ENERGY works too, but prints no forces
+&END GLOBAL
+
+&FORCE_EVAL
+  STRESS_TENSOR ANALYTICAL    ! optional — no stress just means no virial
+  &PRINT
+    &FORCES
+    &END FORCES
+    &STRESS_TENSOR
+    &END STRESS_TENSOR
+  &END PRINT
+&END FORCE_EVAL
+```
+
+`RUN_TYPE ENERGY` prints no forces, and a frame without forces cannot enter a
+DeePMD system — `force.npy` is not optional there. Such frames are dropped and
+counted, not written with zeros.
+
+### Kind names
+
+CP2K lets one element carry several *kinds* — `&KIND Fe1` and `&KIND Fe2` with
+different magnetisation guesses, or a kind whose name is a different element
+symbol entirely after a substitution. ferro keeps both readings:
+[`Atom::element`](../data-model.md#atom) is the real element from the
+coordinate table, [`Atom::label`](../data-model.md#element-vs-label) is the kind
+name, filled only when the two differ.
+
+`type_map.raw` is built from the **element**, so `Fe1` and `Fe2` become one
+training type. That is the right default — a DeePMD model is parameterised per
+element — but it does discard a distinction you made on purpose, so `collect`
+prints the mapping once per system rather than leaving you to find it:
+
+```
+kind names kept as labels, type_map uses the element: Fe1 -> Fe (6)  Fe2 -> Fe (6)
+```
+
+> dpdata's CP2K plugin defaults the other way (`true_symbols=False` writes the
+> *kind* names into `atom_names`), so a dataset built there and one built here
+> can differ in their type map from the same output. If you need the kinds split
+> into separate types, say so and it can become a flag.
 
 ## Output layout
 

@@ -8,7 +8,7 @@
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
-| ferro-io | 116（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-io | 132（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
 | ferro-analysis | 198 |
 | ferro-workflow | 23 |
@@ -51,6 +51,8 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | `CHGCAR_2atoms` | 8×8×8 合成网格 | Bader 端到端 |
 | `vasp_OUTCAR_2frames` / `vasp_vasprun_2frames.xml` | 真实 VASP 运行裁出 | 定胞 NVT；温度 0.00 / 111.55 K |
 | **`cp2k_md_3frames.out`**（2026-09-21） | `examples/total.out` 裁 3 帧，165 KB | CP2K 端到端。**此前一份 CP2K 样例都没有**，那条链只有代码里构造的字符串。选这三帧是因为第 2、3 帧的瞬时温度与累计平均**不相等**，取错列会当场失败 |
+| **`5Al_0003_1500K_f394.out`**（2026-09-22，用户提供） | 真实 CP2K 2025.2 单点，457 原子 | 新布局：`FORCES|`、`STRESS| … [bar]`、`CELL_TOP|` 干扰项 |
+| **`cp2k_sp_v61.out`**（2026-09-22） | cp2kdata 的 `test_energy_force/v6.1/normal/output`，MIT，107 KB 整份照抄 | 老布局三个块一次到齐：`energy (a.u.):`、`ATOMIC FORCES in [a.u.]`、无前缀的 ` STRESS TENSOR [GPa]`；外加 gamma=120 的三斜胞与 `Fe1`/`Fe2` 两个 kind。断言数值全取自 cp2kdata 自己的 `answer/`，是跟独立实现对表 |
 | **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见 |
 
 ## scripts/
@@ -144,7 +146,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     故 NEP 导出走它。恒只写一个键
 - **`cube.rs`**：`read_cube`（可视化）+ `read_cube_as_chg`（Bader 用：Bohr→Å、索引转置、
   密度缩放 `rho_stored = ρ_cube × V_cell_Bohr`），共用 `parse_header()`
-- **`cp2k_out.rs`**（2026-08-25）：CP2K MD 的 stdout 日志（坐标/力/应力全打到
+- **`cp2k_md.rs`**（2026-08-25，2026-09-22 由 `cp2k_out.rs` 改名）：CP2K MD 的 stdout 日志（坐标/力/应力全打到
   `__STD_OUT__` 时一个文件自足）。定位靠 `MD| Step number` 锚点 + **区间内扫描**，
   不用固定行偏移（偏移随 ensemble 变，NVT/NPT_I/NPT_F 差 10/18/20 行）；区间上界
   是下一个锚点，缺块的帧宁可丢也不借下一帧的数据。单位从文本自读
@@ -152,7 +154,17 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   计数由 `Cp2kOutStats` 带出。
   **文本锚点按 token 序列匹配**（`mod tag` 一张多候选表），对列宽、对齐、缩进
   与制表符免疫；数值行不写死下标（应力靠「解得出三个浮点」筛，cell 从尾部取）。
-  四种排版变形 + 多一行表头 + cell 多一列，均有测试钉住结果逐位相同
+  四种排版变形 + 多一行表头 + cell 多一列，均有测试钉住结果逐位相同。
+  2026-09-22 补两处老版本的块：`energy (a.u.):` 的圆括号写法（此前整份 bail 在
+  `unknown energy unit []`）、无 `STRESS|` 前缀的 ` STRESS TENSOR [GPa]`（此前帧
+  照读、stress 恒 None、数据集少一个 virial.npy，全程无错误）
+- **`cp2k_sp.rs`**（2026-09-22）：CP2K 单点（`ENERGY` / `ENERGY_FORCE`）。与
+  `cp2k_md.rs` **不共用任何单位或抽取函数**，两者无一处布局相同。帧锚点是
+  `ENERGY| Total FORCE_EVAL`：坐标与胞向前找、力与应力向后找，两侧由相邻锚点
+  夹住，于是 `cat` 起来的 N 份单点输出天然读成 N 帧。两代力块（`FORCES|` 与
+  `ATOMIC FORCES`）、两代应力块、三种能量括号写法都认。kind 名进 `label`，
+  `element` 恒取坐标表里的真元素。`CELL|` 精确匹配，不含 `CELL_TOP|`/`CELL_REF|`。
+  缺应力不丢帧（没有 virial 而已），缺力必丢（`force.npy` 不是可选项）
 - **`writers/deepmd.rs`**（2026-08-25）：DeePMD system 目录（`type.raw` +
   `type_map.raw` + `set.NNN/*.npy`）。磁盘上一律二维 `float64`；
   `virial = stress × V` 不变号；半有半无的属性直接报错。`write_deepmd_npy_sets`

@@ -766,7 +766,7 @@ ferro dataset merge     多个 system → 按成分合并
 
 | Flag | Description |
 |---|---|
-| `-i <FILE>...` | CP2K MD 的 stdout 日志 / VASP OUTCAR / vasprun.xml，支持 glob |
+| `-i <FILE>...` | CP2K MD 日志 / CP2K 单点输出 / VASP OUTCAR / vasprun.xml，支持 glob |
 | `-o <DIR>` | 输出根目录，**可选**；不给则产物落在各输入目录的同级 |
 | `--type <WHAT>` | `deepmd`（DeePMD system）\| `inspect`（只出诊断，不出数据集）[deepmd] |
 | `--mkdir` | 不询问直接创建 `-o`（无终端时必须给） |
@@ -774,7 +774,12 @@ ferro dataset merge     多个 system → 按成分合并
 
 **一个输入目录一个 system**。同目录的 `.out` 是同一次运行被重启切开的段，
 合并回去 —— 这也是 collect 与 merge 的分界：collect 拼**同一次运行**的碎片，
-merge 合**不同运行**。
+merge 合**不同运行**。单点批次同理：一个目录放同一成分的若干个 `ENERGY_FORCE`
+输出，每个文件贡献一帧。
+
+**读哪个 reader 由文件内容决定**，不看名字。CP2K 在同一个 `CP2K|` 横幅下写
+两套完全不同的布局，由 `GLOBAL| Run type` 分：`ENERGY` / `ENERGY_FORCE` 走
+单点 reader，其余走 MD reader。
 
 目录名取**剥掉公共祖先之后剩下的层级**，原样嵌套不压平，文件 stem 不进名字：
 
@@ -812,18 +817,33 @@ merge 合**不同运行**。
 
 文件按首个 `MD| Step number` 排序，文件内保持原序。**重叠帧不去重**（重启只
 重跑 checkpoint 以来的几步，位置速度相同则能量力也相同），但每个源文件的 step
-区间会打出来，让这个前提保持可检验。
+区间会打出来，让这个前提保持可检验。单点没有步号，退化成**按文件名排序**，
+那一列打的是 `N single point(s)` 而不是 `steps ?`。
 
 同目录**成分不一致直接报错**并指名两个文件，不当作坏帧丢 —— 那是人的错误，
 不是数据的问题。单个 out 解析失败则跳过、用剩下的建 system，跳过清单在最后
 再报一遍并置退出码 1。
 
-要求 CP2K 把坐标、力、应力全部打到 `__STD_OUT__`，这样一个 out 文件自足。
+**MD** 要求 CP2K 把坐标、力、应力全部打到 `__STD_OUT__`，这样一个 out 文件
+自足。**单点**不需要 `&MOTION`，坐标与力用 `PRINT_LEVEL MEDIUM` 本来就会打的
+那两张表；帧锚点是 `ENERGY| Total FORCE_EVAL`，所以 `cat` 起来的 N 份单点输出
+读成 N 帧。
+
 单位从文本自读（`[hartree]` / `[bar]`），认不出**报错**不默认 —— `STRESS_UNIT`
 是 CP2K 的输入关键字，同一版本能吐 bar / GPa / atm。力是唯一无单位标注的量，
 按 a.u. 兜底。
 
-丢帧三类，**始终计数**：SCF 未收敛 / 块截断 / 组成不符。
+**CP2K 版本**：布局在 2025 / 2026 上验证过。更老的版本照常解析（能量括号、
+力块、应力块三处换过写法，两种形式都认），但每个文件多打一行 `NOTE:` 点名版本
+—— 提示抽查一帧，不是拒绝。
+
+**CP2K kind 名**：同元素多 kind（`Fe1`/`Fe2`）时，`element` 取真元素、kind 名
+进 `label`，`type_map.raw` 仍按 element 建，所以两者合成一个训练类型。映射关系
+每个 system 打印一次。dpdata 的 CP2K 插件默认相反（拿 kind 名当元素）。
+
+丢帧三类，**始终计数**：SCF 未收敛 / 块截断（含力数与原子数不等）/ 组成不符。
+单点缺应力**不算**丢帧 —— 没开 `STRESS_TENSOR` 的单点照样是好数据，只是没有
+virial；缺力则必丢，`force.npy` 在 DeePMD 里不是可选项。
 
 产物：
 
