@@ -57,6 +57,9 @@ MD (--qe-task md|vc-md):
   --md-steps INT      Number of MD steps                               [10000]
   --temperature F     Target temperature [K]                          [298.15]
 
+Output:
+  One pw.x input, the path -o names (pw.in by default). Only frame 0 is used.
+
 Examples:
   ferro job -s qe -i crystal.cif
   ferro job -s qe -i metal.cif --smearing mp --kpoints 8 8 8
@@ -79,13 +82,16 @@ Parameters:
 Charge / spin (shared):
   --charge INT        Override total system charge
   --multiplicity INT  Override spin multiplicity 2S+1 (highest priority)
-  --auto-spin         Guess multiplicity from structure:
-                        magmom 求和 → 氧化态+Hund → 电子数奇偶下限
+  --auto-spin         Guess multiplicity from the structure: magmom sum, then
+                      oxidation state + Hund, then the electron-parity floor
 
-Example:
+Output:
+  One .gjf, the path -o names (job.gjf by default). Only frame 0 is used.
+
+Examples:
   ferro job -s gaussian -i mol.xyz
   ferro job -s gaussian -i mol.xyz -m PBE0 -b def2-TZVP -o sp.gjf
-  ferro job -s gaussian -i FeCl3.xyz --auto-spin            # 推断高自旋多重度
+  ferro job -s gaussian -i FeCl3.xyz --auto-spin      # high-spin multiplicity
   ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 
 Full documentation:  ferro doc job"#
@@ -117,7 +123,7 @@ Charge / spin (shared by all three targets):
   --multiplicity INT  Override 2S+1 (highest priority; disables auto-spin)
   --auto-spin         Guess it from the structure (see `ferro doc spin`)
 
-Output:
+What CP2K prints:
   --atom-charge STR   none | mulliken | hirshfeld | hirshfeld-i         [none]
   --cube STR          none | density | elf | hartree                    [none]
   --molden            Export a Molden wavefunction file
@@ -131,8 +137,10 @@ MD (--task md):
   --traj-freq INT     Write the trajectory every N steps                  [100]
   --barostat          NPT with a flexible cell
 
-  The exact per-element basis and pseudopotential names are resolved from a
-  2829-entry database; --cp2k-basis only picks the family.
+Output:
+  One .inp, the path -o names (job.inp by default). Only frame 0 is used. The
+  per-element basis and pseudopotential names come from a 2829-entry database;
+  --cp2k-basis only picks the family.
 
 Examples:
   ferro job -s cp2k -i glass.xyz
@@ -169,15 +177,10 @@ Parameters:
                           eV/Å); default is real units
   -h, --help              Short parameter table (this page adds the formats)
 
-Frame selection:
-  --end is INCLUSIVE and 0-based, matching the numbers `ferro info` prints.
-  --stride (a spacing) and --number (a total) cannot be combined.
-
-How many files come out — decided by the target format, not by a flag:
-  one file          if the format holds a trajectory (Frames column above)
-  one file PER FRAME if it holds a single structure (POSCAR, data, QE)
-                    -> POSCAR_0000, conf_0002.vasp; the number is the index in
-                       the ORIGINAL trajectory, zero-padded to 4 digits
+Output:
+  One file when the target format holds a trajectory (Frames column above),
+  one file PER FRAME when it holds a single structure (POSCAR, data, QE):
+  POSCAR_0000, conf_0002.vasp — the index is the ORIGINAL frame number
 
 Examples:
   ferro convert -i input.cif -o POSCAR
@@ -203,17 +206,10 @@ Parameters:
                           eV/Å); default is real units
   -h, --help              Short parameter table
 
-Reported for the FIRST and the LAST frame only, not every frame:
-  atoms + per-element composition · cell a b c / α β γ · volume · density
-  (g/cm³) · per-axis PBC flags · whether energy / forces / velocities are there
-
-  Density is omitted when there is no cell — undefined without a volume, and a
-  placeholder would read like a measurement. For a mean ± σ over ALL frames,
-  read the `# volume = <mean> +/- <std>` header any `ferro traj` product carries.
-
-  A symbol missing from the element table falls back to 1 amu, which drags the
-  density DOWN with no other visible sign — so a warning naming how many atoms
-  fell back follows the density line. Treat the number as invalid until it goes.
+Output — stdout, the FIRST and the LAST frame only:
+  atoms + composition, cell a b c / alpha beta gamma, volume, density (g/cm³),
+  per-axis PBC flags, and whether energy / forces / velocities are present.
+  No cell means no density line rather than a placeholder.
 
 Examples:
   ferro info -i input.xyz
@@ -231,11 +227,13 @@ pub fn print_bader() {
   Partitions the charge density into atomic basins along its zero-flux surfaces
   and reports the charge, volume and surface distance of each.
 
-Input (format from the file name):  .cube = Gaussian / QE pp.x   anything else = VASP CHGCAR
-
 Parameters:
-  -i, --input  FILE       Charge density file
-  -m, --method NAME       ongrid | neargrid | offgrid | weight     [neargrid]
+  -i, --input  FILE       Charge density file; .cube is Gaussian / QE pp.x,
+                          anything else is read as a VASP CHGCAR
+  -m, --method NAME       ongrid (cheapest, staircased basins) | neargrid
+                          (accurate on ordinary cells) | offgrid (interpolated,
+                          slower, no grid bias) | weight (Yu-Trinkle, for
+                          strongly skewed cells)                   [neargrid]
   -r, --refine INT        Edge refinement: -1 auto, -2 single pass, N passes [-1]
   -v, --vacval FLOAT      Vacuum density threshold [e/Å³]             [1e-3]
   -o, --output DIR        Where the reports go    [the input's own directory]
@@ -243,21 +241,11 @@ Parameters:
       --mkdir             Create -o without asking (needed with no terminal)
   -h, --help              Short parameter table
 
-Choosing a method:
-  neargrid   Default; accurate on ordinary cells
-  ongrid     Cheapest, but staircased basin surfaces bias the charges
-  offgrid    Interpolated gradients — slower, no grid bias
-  weight     Yu-Trinkle; use it for strongly skewed (non-orthogonal) cells
-
-Output — three Henkelman-format .dat files named after the INPUT stem
-  <stem>_ACF.dat  <stem>_BCF.dat  <stem>_AVF.dat
-  Kept in the Henkelman layout (not csv) because external tools parse them.
-
-  They land NEXT TO THE INPUT, not in the current directory — the one command
-  that defaults that way. VASP names every charge density CHGCAR, so run1/CHGCAR
-  and run2/CHGCAR would otherwise both write CHGCAR_ACF.dat into wherever you
-  happen to be standing. Use -o to collect them elsewhere, -s to tell two runs
-  of the same input apart.
+Output:
+  <stem>_ACF.dat  <stem>_BCF.dat  <stem>_AVF.dat, in Henkelman's layout because
+  external tools parse them. They land NEXT TO THE INPUT rather than in the
+  current directory: VASP calls every charge density CHGCAR, so two runs would
+  otherwise overwrite one another. -o collects them elsewhere, -s tags them.
 
 Examples:
   ferro bader -i CHGCAR
@@ -311,26 +299,14 @@ Manual
   doc            The user manual, in the binary. `ferro doc` lists the topics;
                  `ferro doc dataset filter` reads one.
 
-Batch input:
-  -i takes several files and expands glob patterns itself — quote them:
-    ferro traj gr -i 'runs/*/prod.dump' -a P -b O -s scan
-  Each input is analysed on its own; results stack into ONE csv with a `file`
-  column. A failed input is skipped, its reason printed, exit code set to 1.
-
-Output naming:
-  <-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
-  -o DIR         where every product goes; asked before creating, --mkdir skips
-  -s SUFFIX      batch tag, chosen by you
-  <label>        what was analysed: `traj gr -a P -b O` -> gr_P-O.csv, no
-                 selection -> gr_all.csv. Label before suffix, so
-                 `ls gr_P-O_*` lists one pair across every batch.
-
-  -o is a DIRECTORY for every command whose run writes several products, and the
-  output FILE itself for `convert` and `job`, which write exactly one.
-
-Help:
-  A command typed without -i prints its own page; `-h` gives the short parameter
-  table; `ferro doc <topic>` gives the full manual page.
+Conventions:
+  -i takes several files and expands globs itself — quote them. Each input is
+  analysed on its own and the results stack into ONE csv carrying a `file`
+  column; a failed input is skipped and the exit code is 1.
+  -o is a DIRECTORY for the commands that write several products, the output
+  FILE for `convert` and `job`. -s tags a batch:
+    <-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
+  A command typed without -i prints its own page; -h gives the short table.
 
 Full documentation:  ferro doc cli-reference"#,
         env!("CARGO_PKG_VERSION")
@@ -364,11 +340,9 @@ Common options:
       --metal-units     LAMMPS metal units (velocities in A/ps)
 
 Selecting types (gr / angle only):
-  -a -b -c              by chemical element   (e.g. -a P -b O)
-  -x -y -z              by site label         (e.g. -x P_2 -y O_b)
-  The two groups are mutually exclusive. For gr the first is the centre and the second
-  the neighbour, and the order matters for CN. sq has no type selection: its partials
-  sum back to the weighted totals, so filtering to one pair hides that closure."#
+  -a -b -c by element (-a P -b O), -x -y -z by site label (-x P_2 -y O_b); the
+  two groups exclude each other. For gr the first is the centre, and the order
+  matters for CN. sq takes no selection — every pair is always written."#
     );
 }
 
@@ -397,10 +371,10 @@ Common options:
       --ncore  N        Parallel threads (default: all cores)
       --metal-units     LAMMPS metal units (velocities in A/ps)
 
-Multiple inputs:
-  Unlike ferro traj, the product is one 3-D grid file per input — there is nothing to
-  stack. File names therefore carry the input stem (density_<stem>.cube) so several
-  inputs cannot overwrite each other. No summary table, no plot."#
+Output:
+  One 3-D grid file per input, not a stacked table — nothing here stacks. The
+  name carries the input stem (density_<stem>.cube) so inputs cannot overwrite
+  one another. No summary table, no plot."#
     );
 }
 
@@ -410,22 +384,15 @@ pub fn print_gr() {
     println!(
         r#"ferro traj gr — Radial Distribution Function and Coordination Number
 
-  g(r) and CN(r) for every ordered pair of types, into one file.
-  Requires a periodic cell.
-
-  g(r) is symmetric (A-B = B-A); CN(r) is DIRECTED — A-B is the average number
-  of B around each A, so the two generally differ.
-
-Selecting a pair (centre first, neighbour second):
-  -a ELEM  -b ELEM        by element:    -a P -b O  -> O around each P
-  -x LABEL -y LABEL       by site label:  -x P_2 -y O_b
-  (mutually exclusive; omit both for every pair)
-
-  NOTE: -x/-y hold over a SINGLE frame only — g(r) needs a fixed particle count
-  per type and labels shift as the run evolves. Use --last-n 1, or select by
-  element.
+  g(r) and CN(r) for every ordered pair of types, into one file. Needs a
+  periodic cell. g(r) is symmetric (A-B = B-A) but CN(r) is DIRECTED, so the
+  two directions of a pair generally differ.
 
 Parameters:
+  -a ELEM  -b ELEM        Pair by element, CENTRE first: -a P -b O gives O
+                          around each P; omit both pairs for every pair
+  -x LABEL -y LABEL       Select by site label: -x P_2 -y O_b. SINGLE frame
+                          only; excludes -a/-b. Use --last-n 1
   --r-min  FLOAT          Min cutoff radius [Å]                     [0.001]
   --r-max  FLOAT          Max cutoff radius [Å]                    [10.005]
                           (clamped to half the smallest interplanar spacing)
@@ -437,8 +404,9 @@ Parameters:
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file (needs a pair)
 
-Output — long format, one row per (file, pair, r): file pair r g_r cn_r
-  File name: gr_<pair>[_<suffix>].csv; no selection -> gr_all.csv
+Output:
+  gr_<pair>[_<suffix>].csv, long format: file pair r g_r cn_r
+  No selection -> gr_all.csv
 
 Examples:
   ferro traj gr -i traj.dump -a P -b O
@@ -454,11 +422,8 @@ pub fn print_sq() {
         r#"ferro traj sq — Structure Factor S(q)
 
   S(q) by Fourier transform of g(r) (Faber-Ziman), weighted by XRD
-  (Waasmaier-Kirfel) form factors or neutron scattering lengths.
-
-  No type selection: EVERY pair is written, always. The primary product is the
-  pair of totals; the partials are a decomposition that sums back to them, and
-  keeping one pair would hide exactly that closure. Filter columns in pandas.
+  (Waasmaier-Kirfel) form factors or neutron scattering lengths. No type
+  selection: EVERY pair is written, always. Filter columns in pandas.
 
 Parameters:
   --q-min      FLOAT      Min q [Å⁻¹]                                 [0.1]
@@ -475,12 +440,10 @@ Parameters:
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file (weighted totals only)
 
-Output — WIDE format, one row per (file, q):
-  file  q  total_xrd  total_neutron  then three columns per pair
+Output:
+  sq[_<suffix>].csv, WIDE format, one row per (file, q):
+  file q total_xrd total_neutron, then three columns per pair
   (_sq unweighted, _xrd and _neutron carrying w_ij(q)*S_ij(q))
-
-  Wide, not long like gr: the totals are one value per q. Inputs with different
-  element sets contribute different pair columns; gaps stay empty (NaN).
 
 Examples:
   ferro traj sq -i traj.dump
@@ -494,8 +457,9 @@ Full documentation:  ferro doc traj sq"#
 pub fn print_msd() {
     println!(
         r#"ferro traj msd — Mean Square Displacement
-  Computes MSD(t) = <|r(t₀+t) − r(t₀)|²> averaged over time origins.
-  Outputs total MSD and per-axis (a/b/c) components.
+
+  MSD(t) = <|r(t₀+t) − r(t₀)|²> averaged over time origins, with the total and
+  the per-axis (a/b/c) components.
 
 Parameters:
   --dt        FLOAT      Timestep between frames [fs]   default: 1.0
@@ -511,12 +475,11 @@ Parameters:
   -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-File name — msd_<elements>[_<suffix>].csv, elements sorted:
-  --elements P,O -> msd_O-P.csv     (so does --elements O,P: it is a set, and the
-                                     same data must not land under two names)
-  no --elements  -> msd_all.csv
+Output:
+  msd_<elements>[_<suffix>].csv, elements SORTED so one set has one name
+  (--elements P,O and O,P both give msd_O-P.csv); no --elements -> msd_all.csv
 
-Example:
+Examples:
   ferro traj msd -i traj.xyz --dt 2.0
   ferro traj msd -i traj.dump --elements Li --dt 1.0 --last-n 2000
   ferro traj msd -i traj.dump --dt 1.0 --fit-range 0.3,0.8 --plot
@@ -529,14 +492,14 @@ pub fn print_angle() {
     println!(
         r#"ferro traj angle — Bond Angle Distribution
 
-  P(θ) for all A-B-C triplets within cutoff distances. B is the central atom.
-
-Selecting a triplet (all three required):
-  -a ELEM  -b ELEM  -c ELEM      by element,    B is the centre
-  -x LABEL -y LABEL -z LABEL     by site label, Y is the centre
-  (mutually exclusive)
+  P(θ) for all A-B-C triplets within cutoff distances. B is the central atom,
+  and each geometric angle is counted ONCE: a PO4 tetrahedron gives 6 O-P-O
+  angles, not 12.
 
 Parameters:
+  -a ELEM -b ELEM -c ELEM  Triplet by element,    B is the centre (all three
+                           are required; excludes -x/-y/-z)
+  -x LBL  -y LBL  -z LBL   Triplet by site label, Y is the centre
   --r-cut-ab  FLOAT       End-A-to-centre-B cutoff [Å]                 [2.3]
   --r-cut-bc  FLOAT       End-C-to-centre-B cutoff [Å]                 [2.3]
                           A is what -a/-x names, C what -c/-z names. Without a
@@ -553,12 +516,10 @@ Parameters:
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
   --plot                  PNG next to the data file
 
-Output — long format: file triplet theta count p
-  File name: angle_<triplet>[_<suffix>].csv, triplet as you wrote it
-  (-a O -b P -c O -> angle_O-P-O.csv); no triplet -> angle_all.csv
-
-  Each geometric angle is counted ONCE: a PO4 tetrahedron gives 6 O-P-O angles,
-  not 12.
+Output:
+  angle_<triplet>[_<suffix>].csv, long format: file triplet theta count p
+  The triplet is spelled as you wrote it (-a O -b P -c O -> angle_O-P-O.csv);
+  no triplet -> angle_all.csv
 
 Examples:
   ferro traj angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
@@ -574,9 +535,9 @@ Full documentation:  ferro doc traj angle"#
 pub fn print_vacf() {
     println!(
         r#"ferro traj vacf — Velocity Autocorrelation Function
-  Computes C_v(t) = <v(t₀)·v(t₀+t)> / <v²(t₀)>, averaged over origins.
-  Also outputs running integral (Green-Kubo diffusion coefficient).
-  Requires frame.velocities in the input file.
+
+  C_v(t) = <v(t₀)·v(t₀+t)> / <v²(t₀)> averaged over origins, plus its running
+  integral (Green-Kubo D). Needs velocities in the input file.
 
 Parameters:
   --dt       FLOAT      Timestep [fs]                 default: 1.0
@@ -589,10 +550,11 @@ Parameters:
   -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-File name — vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
-  --elements.
+Output:
+  vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
+  --elements
 
-Example:
+Examples:
   ferro traj vacf -i traj.dump --dt 2.0
   ferro traj vacf -i traj.dump --elements O --last-n 1000
 
@@ -603,8 +565,9 @@ Full documentation:  ferro doc traj vacf"#
 pub fn print_rotcorr() {
     println!(
         r#"ferro traj rotcorr — Rotational Correlation Function
-  Computes C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors.
-  --center and --neighbor are required to define the bond direction.
+
+  C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors. --center and
+  --neighbor are required: they define the bond direction.
 
 Parameters:
   --center    ELEM    Central atom element (required)   e.g. O
@@ -619,10 +582,11 @@ Parameters:
   -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-File name — rotcorr_<centre>-<neighbour>[_<suffix>].csv; both are required, so this
-  one never falls back to "all". --center O --neighbor H -> rotcorr_O-H.csv
+Output:
+  rotcorr_<centre>-<neighbour>[_<suffix>].csv — never falls back to "all",
+  since both ends are required (--center O --neighbor H -> rotcorr_O-H.csv)
 
-Example:
+Examples:
   ferro traj rotcorr -i traj.xyz --center O --neighbor H
   ferro traj rotcorr -i traj.dump --center O --neighbor H --dt 2.0
 
@@ -633,8 +597,8 @@ Full documentation:  ferro doc traj rotcorr"#
 pub fn print_vanhove() {
     println!(
         r#"ferro traj vanhove — Van Hove Self-Correlation Function
-  Computes Gs(r, τ) = probability distribution of atomic displacements
-  over a fixed time lag τ.
+
+  Gs(r, τ), the distribution of atomic displacements over a fixed time lag τ.
 
 Parameters:
   --tau      INT        Lag time in frames              default: half trajectory
@@ -649,10 +613,11 @@ Parameters:
   -s SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-File name — vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv
-  without --elements.
+Output:
+  vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv without
+  --elements
 
-Example:
+Examples:
   ferro traj vanhove -i traj.xyz --tau 100
   ferro traj vanhove -i traj.dump --elements Li --tau 500 --dt 2.0
 
@@ -665,9 +630,9 @@ Full documentation:  ferro doc traj vanhove"#
 pub fn print_cube_density() {
     println!(
         r#"ferro map density — Spatial Number Density
-  Divides the simulation box into nx×ny×nz voxels and computes
-  the time-averaged atom number density [atoms/Å³] per voxel.
-  Output is a Gaussian cube file (readable by VESTA / VMD).
+
+  Splits the box into nx*ny*nz voxels and averages the atom number density
+  [atoms/Å³] over time.
 
 Parameters:
   --nx INT            Grid points along a axis    default: 50
@@ -678,9 +643,12 @@ Parameters:
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: density.cube
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-Example:
+Output:
+  <stem>.cube, one per input — a Gaussian cube VESTA and VMD read directly
+
+Examples:
   ferro map density -i traj.dump
   ferro map density -i traj.dump --nx 100 --ny 100 --nz 100 --elements Li
 
@@ -691,8 +659,8 @@ Full documentation:  ferro doc map density"#
 pub fn print_cube_velocity() {
     println!(
         r#"ferro map velocity — Spatial Velocity Distribution
-  Computes the time-averaged speed |v| per voxel [Å/fs].
-  Requires frame.velocities in the input file.
+
+  Time-averaged speed |v| per voxel [Å/fs]. Needs velocities in the input.
 
 Parameters:
   --nx INT            Grid points along a axis    default: 50
@@ -703,9 +671,12 @@ Parameters:
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: velocity.cube
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-Example:
+Output:
+  <stem>.cube, one per input
+
+Examples:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80
 
 Full documentation:  ferro doc map velocity"#
@@ -715,8 +686,8 @@ Full documentation:  ferro doc map velocity"#
 pub fn print_cube_force() {
     println!(
         r#"ferro map force — Spatial Force Distribution
-  Computes the time-averaged force magnitude |f| per voxel [eV/Å].
-  Requires frame.forces in the input file.
+
+  Time-averaged force magnitude |f| per voxel [eV/Å]. Needs forces in the input.
 
 Parameters:
   --nx INT            Grid points along a axis    default: 50
@@ -727,9 +698,12 @@ Parameters:
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: force.cube
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-Example:
+Output:
+  <stem>.cube, one per input
+
+Examples:
   ferro map force -i traj.dump --elements O
 
 Full documentation:  ferro doc map force"#
@@ -739,12 +713,10 @@ Full documentation:  ferro doc map force"#
 pub fn print_cube_radius() {
     println!(
         r#"ferro map radius — Hard-Sphere Spatial Occupancy Map
-  For each voxel, counts how many (frame, atom) pairs have the selected
-  atom within --radius Å of the voxel centre.  Applies the minimum-image
-  convention for periodic cells.  Output is a Gaussian cube file.
 
-  Unlike -m density (Gaussian broadening / bin-count), this mode uses a
-  hard binary criterion: voxel is marked if any atom overlaps it.
+  Counts, per voxel, the (frame, atom) pairs with an atom within --radius of
+  the voxel centre, under the minimum-image convention. The criterion is hard
+  and binary, unlike the broadened count `map density` makes.
 
 Parameters:
   --nx      INT       Grid points along a axis    default: 50
@@ -756,9 +728,12 @@ Parameters:
   --ncore   INT       Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: radius.cube
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-Example:
+Output:
+  <stem>.cube, one per input
+
+Examples:
   ferro map radius -i traj.dump --elements Li --radius 0.7
   ferro map radius -i traj.dump --elements Li --radius 1.0 --nx 100 --ny 100 --nz 100
 
@@ -769,20 +744,10 @@ Full documentation:  ferro doc map radius"#
 pub fn print_cube_sdf() {
     println!(
         r#"ferro map sdf — Cluster Spatial Distribution Function
-  Identifies Qn-type clusters (connected components of network-former atoms
-  linked by bridging ligands), aligns each cluster to a reference via
-  Kabsch rotation, and accumulates per-atom-type 3D probability density maps.
-  Clusters with identical atom-type composition are grouped into the same
-  family. The first cluster encountered per family is used as the reference.
-  Outputs one Gaussian cube file per atom type per family.
 
-  Atom-type labels:
-    Former (e.g. P):  P0 / P1 / P2 / P3  (individual Qn connectivity)
-    Ligand  (e.g. O): Of (free), On (non-bridging), Ob (bridging)
-    Modifier (e.g. Zn): element symbol
-
-  Output files:  <stem>_<atom_type>.cube           (single family)
-                 <stem>_fam<N>_<atom_type>.cube     (multiple families)
+  Finds Qn clusters, aligns each to a reference by Kabsch rotation and
+  accumulates a 3D probability density per atom type. Clusters of identical
+  composition form one family, referenced to the first one seen.
 
 Parameters:
   --qn         INT    Target Qn cluster level (0/1/2/3)       default: 3
@@ -799,9 +764,14 @@ Parameters:
   --ncore      INT    Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output stem (no extension)              default: sdf
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
-Example:
+Output:
+  <stem>_<atom_type>.cube, or <stem>_fam<N>_<atom_type>.cube with more than
+  one family. Types are P0..P3 (former Qn), Of/On/Ob (free / non-bridging /
+  bridging ligand) and the element symbol for a modifier.
+
+Examples:
   ferro map sdf -i traj.dump --qn 3
   ferro map sdf -i traj.dump --qn 2 --modifier Zn --cutoff-ml 2.8 -o q2_sdf
   ferro map sdf -i traj.dump --qn 1 --grid-res 0.05 --sigma 2.0 --last-n 500
@@ -813,18 +783,10 @@ Full documentation:  ferro doc map sdf"#
 pub fn print_cube_chg_sdf() {
     println!(
         r#"ferro map chg-sdf — Averaged Charge-Density Cluster SDF
-  Reads multiple QE pp.x cube files (one per MD frame), identifies Qn
-  clusters with the same logic as -m sdf, extracts a cubic sub-grid of
-  the charge density centered on the cluster anchor, applies the Kabsch
-  rotation to align the sub-grid to a common reference frame, and
-  accumulates the averaged charge density.
 
-  Input: --cubes <file1.cube> <file2.cube> ...
-  Each cube file contains both atomic structure and charge density.
-  All cube files must have the same grid resolution (i.e. same QE cutoff).
-
-  Output values are in ChargeGrid convention (ρ_phys × V_cell).
-  The output cube file can be visualised directly in VESTA or VMD.
+  Finds Qn clusters as `map sdf` does, cuts the charge density around each
+  cluster anchor, Kabsch-aligns the sub-grids and averages them. All the input
+  cubes must share one grid resolution, i.e. one QE cutoff.
 
 Parameters:
   --cubes      FILE...  QE pp.x cube files (required, one per frame)
@@ -840,7 +802,11 @@ Parameters:
   -o DIR                Output directory; --mkdir creates it unasked
   -s STEM               Output stem (no extension)             default: chg_sdf
 
-Example:
+Output:
+  <stem>.cube — ONE cube from all the inputs together, unlike the rest of
+  `map`. Values follow the ChargeGrid convention (rho_phys * V_cell).
+
+Examples:
   ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
   ferro map chg-sdf --cubes f1.cube f2.cube --qn 0 --chg-padding 5.0
 

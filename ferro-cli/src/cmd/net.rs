@@ -367,15 +367,14 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> 
 const HELP_EXTRA: &str = "\
 ferro net — Glass network topology
 
-USAGE:
-  ferro net -i <FILE>... --<Former>-<Ligand>=<cutoff> [OPTIONS]
+  Classifies every atom as former, ligand or modifier from the pair cutoffs you
+  give, and reports six tables. At least one pair is required.
 
-PAIR ARGUMENTS (required, at least one):
-  --P-O=2.4 --Al-O=2.4 --Al-F=2.1
-  The element pair lives in the FLAG NAME, so these are stripped from argv
-  before clap parses; everything else follows the usual flag rules.
-
-OPTIONS:
+Parameters:
+  --<Former>-<Ligand>=<cutoff>
+                        Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1. The element
+                        pair lives in the FLAG NAME, so these are stripped from
+                        argv before clap parses. At least one is required
   -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
   -o, --output DIR      Write every product here, tables and --export-traj alike;
                         --mkdir creates it without asking
@@ -394,9 +393,8 @@ OPTIONS:
                         input: <input stem>_types[_<suffix>].<ext>
                         FMT is lammpstrj (default) or extxyz
 
-OUTPUT — six stacked CSVs, each with a `file` column and a `#` header
-describing its own columns (`pandas.read_csv(comment='#')` drops it):
-
+Output — six stacked csv, each with a `file` column and its own `#` header
+(`pandas.read_csv(comment='#')` drops it):
   network_composition.csv   every species at a glance
   network_qn.csv            Qn speciation
   network_qn_partner.csv    the same, split by partner element
@@ -404,15 +402,11 @@ describing its own columns (`pandas.read_csv(comment='#')` drops it):
   network_coordination.csv  coordination numbers, formers + modifiers
   network_linkage.csv       bridge connectivity: both ends and the ligand
 
-  The Qn tables are omitted when no former is a Qn element; a reason is printed.
-  n counts HOMOPOLAR bridges only (P-O-P), as in the literature's Q^n_m;
-  total bridges = n + sum(m).
+  n counts HOMOPOLAR bridges only (the literature's Q^n_m); total bridges =
+  n + sum(m). The Qn tables are dropped, with a reason, when no former is a
+  Qn element.
 
-  Labels come in TWO vocabularies: distribution tables name the structural UNIT
-  (P-Q2), the linkage table and the exported trajectory name the ATOM (P_2).
-  -x/-y select on the atom form, and only over a SINGLE frame.
-
-EXAMPLES:
+Examples:
   ferro net -i traj.lammpstrj --P-O=2.4
   ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
   ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
