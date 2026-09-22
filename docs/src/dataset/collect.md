@@ -25,7 +25,37 @@ CP2K writes **two completely different layouts** under that one banner, so a
 second line decides between them: `GLOBAL| Run type`. `ENERGY` and
 `ENERGY_FORCE` go to the single-point reader, anything else to the MD reader.
 The two share no anchor and no block — see [Single-point
-output](#single-point-output).
+output](#single-point-output). A CP2K file with **no** run type line is an
+error rather than a guess: a log truncated above that line would otherwise be
+read as MD and fail with "no `MD| Step number` found", an error about the
+wrong thing entirely.
+
+### Saying the format yourself
+
+`--format` overrides the banner:
+
+```bash
+ferro dataset collect -i 'sp/*.log' --format cp2k/sp
+```
+
+| value | reader |
+|---|---|
+| `cp2k/md` | CP2K MD output |
+| `cp2k/sp` | CP2K single point (`ENERGY` / `ENERGY_FORCE`) |
+| `vasp/outcar` | VASP `OUTCAR` |
+| `vasp/xml` | VASP `vasprun.xml` |
+
+VASP is two values rather than one `vasp/md`: the two files record the same
+frames but [decide convergence differently](#cp2k-vs-vasp-what-differs), so
+they drop a different number of them.
+
+Reach for it when the banner cannot answer — a log that was trimmed from the
+top, a layout ferro has not seen, a file whose head was rewritten by a job
+scheduler. **The banner is still read**, for two things: a one-line `NOTE:`
+when it disagrees with what you asked (silence would make a typo and a
+deliberate override look identical), and the one-format-per-directory check
+below, which has nothing else to compare once `--format` fixes every file to
+the same value.
 
 ### Which CP2K releases
 
