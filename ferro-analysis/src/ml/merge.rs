@@ -45,6 +45,11 @@ pub fn canonical_order(elements: &[String]) -> Vec<usize> {
 }
 
 /// Reorders every frame's atoms — and the per-atom arrays — into canonical order.
+///
+/// The permutation comes from frame 0 and is applied to every frame, so this is
+/// only correct for a trajectory whose atom order is constant. Files that were
+/// written independently must each be sorted on their own, *before* being
+/// concatenated.
 pub fn sort_atoms(traj: &Trajectory) -> Trajectory {
     let Some(first) = traj.frames.first() else {
         return traj.clone();
@@ -54,14 +59,26 @@ pub fn sort_atoms(traj: &Trajectory) -> Trajectory {
     if order.iter().enumerate().all(|(i, &j)| i == j) {
         return traj.clone();
     }
+    // bonds 存的是原子编号，跟着置换走要的是反向映射：old -> new
+    let mut new_of = vec![0usize; order.len()];
+    for (new, &old) in order.iter().enumerate() {
+        new_of[old] = new;
+    }
 
     let mut out = traj.clone();
     for f in &mut out.frames {
         let atoms: Vec<_> = order.iter().map(|&i| f.atoms[i].clone()).collect();
         f.atoms = atoms;
-        // 力是逐原子量，必须跟着同一个置换走；能量/盒子/应力与原子编号无关
+        // 逐原子的旁路数组必须跟着同一个置换走；能量/盒子/应力与原子编号无关。
+        // Frame 上共三个：forces、velocities 与 bonds —— 漏掉任何一个都是静默的
         if let Some(forces) = &f.forces {
             f.forces = Some(order.iter().map(|&i| forces[i]).collect());
+        }
+        if let Some(velocities) = &f.velocities {
+            f.velocities = Some(order.iter().map(|&i| velocities[i]).collect());
+        }
+        if let Some(bonds) = &f.bonds {
+            f.bonds = Some(bonds.iter().map(|&(a, b)| (new_of[a], new_of[b])).collect());
         }
     }
     out
@@ -154,6 +171,31 @@ mod tests {
         assert!((f.forces.as_ref().unwrap()[0].x - 0.1).abs() < 1e-12);
         assert_eq!(f.atoms[1].element, "Zn");
         assert_eq!(f.atoms[1].position.x, 0.0);
+    }
+
+    /// Velocities and bonds are per-atom too, and were once left behind.
+    ///
+    /// A DeePMD system carries neither, so `merge` never showed the bug; the
+    /// diagnostics `collect` exports (a dump with velocities) do.
+    #[test]
+    fn sorting_carries_velocities_and_bonds_too() {
+        let mut t = traj_of(&["Zn", "O", "Al"]);
+        let f = &mut t.frames[0];
+        f.velocities = Some(
+            (0..3).map(|i| Vector3::new(i as f64 * 10.0, 0.0, 0.0)).collect(),
+        );
+        // Zn(0)-O(1) 与 O(1)-Al(2)；排序后 O->0, Al->1, Zn->2
+        f.bonds = Some(vec![(0, 1), (1, 2)]);
+
+        let s = sort_atoms(&t);
+        let f = &s.frames[0];
+        let v = f.velocities.as_ref().unwrap();
+        assert_eq!(f.atoms[0].element, "O");
+        assert!((v[0].x - 10.0).abs() < 1e-12, "O 的速度必须跟过来");
+        assert!((v[2].x - 0.0).abs() < 1e-12, "Zn 的速度也是");
+        // 键连的是原子，不是位置：两端都要重编号。端点的先后不动 —— 规范成
+        // a < b 是另一件事，这里只做重编号
+        assert_eq!(f.bonds.clone().unwrap(), vec![(2, 0), (0, 1)]);
     }
 
     #[test]
