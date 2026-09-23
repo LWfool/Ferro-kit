@@ -313,7 +313,7 @@ The `O_b` row is aggregated from three rows of `ligand_type` (Al-Al / Al-P / P-P
 **re-accumulated frame by frame** rather than summed over the three — the variance of a sum of correlated terms is not the sum of the variances.
 
 The former `network_average.csv` has been removed.  Its two means are still in the `[inputs]` block of every file
-(`mean_qn P=0.95  mean_n_bo Al=4.12 P=2.40  mean_cn Al=4.12 P=4.00 Zn=4.10`)，
+(`mean_qn P=0.95  mean_n_bo Al=4.12 P=2.40  mean_cn Al=4.12 P=4.00 Zn=4.10`),
 and can also be recomputed exactly from this table: $\sum_n n \cdot f_n = 0.946$.  Note that `mean_qn`
 (homonuclear connections) and `mean_n_bo` (bridging-oxygen count) are two different quantities; they are given side by side precisely to make the statement obvious.
 

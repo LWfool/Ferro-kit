@@ -1,26 +1,26 @@
 # CLI Reference
 
-**一个二进制 `ferro`**，子命令按**产物**分组（不是按实现它的 crate）。
-0.2.0 起原来的八个 `fe-*` 二进制已全部删除，不留兼容层——输出格式同期变更，留着
-`fe-traj` 会让旧脚本「跑成功」却吐出自己解析不了的 csv，静默坏数据比命令消失难查。
+**One binary, `ferro`**, with the subcommands grouped by **output** rather than by the crate that
+implements them.  Since 0.2.0 the eight original `fe-*` binaries have all been removed, with no
+compatibility layer — the output formats changed at the same time, and keeping `fe-traj` would let an old script "succeed" while emitting a csv it cannot parse itself.  Silently bad data is harder to track down than a command that is gone.
 
 ```
-ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
-ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
-ferro net                                                      → 六张堆叠 csv
-                                                                 + 可选标注轨迹
+ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → stacked csv + optional PNG
+ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
+ferro net                                                      → six stacked csv
+                                                                 + optional labelled trajectory
 ferro bader | convert | info | job
-ferro doc   <topic>                                            → 手册（编译在二进制里）
+ferro doc   <topic>                                            → the manual (compiled into the binary)
 ```
 
-**帮助分三级**：`ferro` 列出分组；`ferro traj` 列出该组命令；`ferro traj gr`（不给
-`-i`）打印该命令的参数、输出列结构与示例。叶子命令 `convert` / `info` / `bader`
-同理：不给 `-i` 就打印自己那一页。
+**The help has three levels**: `ferro` lists the groups; `ferro traj` lists the commands in that group;
+`ferro traj gr` (without `-i`) prints that command's parameters, output column structure and examples.
+The leaf commands `convert` / `info` / `bader` work the same way: without `-i` they print their own page.
 
-两套帮助并存且各有用处：**裸命令**给富文本页（格式清单、输出结构、告警说明），
-**`-h`** 给 clap 的简短参数表。`job` 是唯一的例外，它自己接管了 `-h`。
+Two kinds of help coexist and each has its use: **the bare command** gives the rich page (format lists,
+output structure, warning notes), **`-h`** gives clap's short parameter table.  `job` is the only exception — it takes over `-h` itself.
 
-| 旧命令（0.2.0 前） | 新命令 |
+| Old command (before 0.2.0) | New command |
 |---|---|
 | `fe-traj -m gr` | `ferro traj gr` |
 | `fe-corr -m vacf` | `ferro traj vacf` |
@@ -34,322 +34,322 @@ ferro doc   <topic>                                            → 手册（编�
 
 ## Common Flags
 
-`traj` / `map` / `net` 的每个命令都 flatten 了同一组 `CommonArgs`（`convert` / `info` /
-`job` / `bader` / `dataset` **不接**，各有自己的参数）：
+Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`convert` / `info` /
+`job` / `bader` / `dataset` do **not** take it; each has its own parameters):
 
 | Flag | Description |
 |---|---|
-| `-i <FILE>...` | 输入文件，**多值**并自展开 glob 模式（引号括起来，让 shell 别动它） |
-| `-o <DIR>` | 产物写入该目录；默认当前目录。目录不存在时**先问一句**（`[y/N]`，写到 stderr），`--mkdir` 免问 |
-| `-s <SUFFIX>` | 批次标记，追加在产物名末尾：`<命令>[_<表>][_<label>]_<后缀>.csv` |
-| `--mkdir` | 不询问直接创建 `-o` 的目录。**非交互环境（脚本、CI）下必须给**，否则报错退出 |
-| `--last-n N` | 只用尾部 N 帧（跳过平衡段） |
-| `--ncore N` | 并行线程数（默认全部核心） |
-| `--metal-units` | LAMMPS metal 单位（速度 Å/ps，力 eV/Å）。**只影响速度与力**，坐标与晶胞两种单位下都是 Å，故对 gr/sq/msd/angle/rotcorr/vanhove/net 无影响 |
+| `-i <FILE>...` | input files; takes **several values** and expands glob patterns itself (quote them so the shell leaves them alone) |
+| `-o <DIR>` | the output goes into this directory, the current directory by default.  When it does not exist ferro **asks first** (`[y/N]`, on stderr); `--mkdir` skips the question |
+| `-s <SUFFIX>` | batch marker, appended to the output name: `<command>[_<table>][_<label>]_<suffix>.csv` |
+| `--mkdir` | create the `-o` directory without asking.  **Required in non-interactive environments (scripts, CI)**, which otherwise error out |
+| `--last-n N` | use only the last N frames (skipping the equilibration stage) |
+| `--ncore N` | number of parallel threads (all cores by default) |
+| `--metal-units` | LAMMPS metal units (velocity in Å/ps, force in eV/Å).  **Affects velocities and forces only** — coordinates and cells are in Å under either unit system, so gr/sq/msd/angle/rotcorr/vanhove/net are unaffected |
 
-### 批处理
+### Batch processing
 
-`-i` 恒为多值。**只有一条代码路径**：单输入是 N=1 的特例，不是特殊模式——按文件数
-分派会让产物形态取决于 glob 当天匹配到几个文件。
+`-i` always takes several values.  There is **only one code path**: a single input is the N=1 case, not a
+special mode — dispatching on the file count would make the shape of the output depend on how many files the glob happened to match that day.
 
 ```bash
 ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -s scan
 ```
 
-每个输入独立分析，结果堆叠成**一份**带 `file` 列的 csv。元素集不同的输入取列并集，
-**缺的留空（NaN），不补零、不插值**。失败的输入被跳过、在输出的 `[inputs]` 块里留下
-原因、并使**退出码为 1**（否则 shell 里 `&&` 串联会把批内失败当成功）。
-`{a,b}` 花括号不支持，交给 shell 展开。
+Each input is analysed independently and the results are stacked into **one** csv with a `file` column.
+Inputs with different element sets take the union of the columns; **what is missing stays empty (NaN),
+never padded with zeros, never interpolated**.  A failing input is skipped, leaves its reason in the `[inputs]` block of the output, and makes the **exit code 1** (otherwise an `&&` chain in the shell would take a failure inside the batch for success).
+Brace expansion `{a,b}` is not supported; leave that to the shell.
 
-产物是逐输入的命令（`ferro map` 的 cube、`ferro net --export-traj` 的轨迹）例外：
-文件名必须掺输入 stem，否则第二个输入会覆盖第一个。`-o` 对这两类同样生效。
+Commands whose output is per-input (the cubes of `ferro map`, the trajectory of `ferro net --export-traj`)
+are the exception: the input stem has to be part of the file name, otherwise the second input would overwrite the first.  `-o` applies to these two as well.
 
-### 产物命名
+### Output naming
 
 ```
-<-o 目录>/<命令>[_<表>][_<label>]_<后缀>.csv
+<-o directory>/<command>[_<table>][_<label>]_<suffix>.csv
 ```
 
-`label` 说的是**算了什么**，由类型选择填出来；`-s` 是批次标记。label 排在 suffix
-之前，所以 `ls gr_P-O_*` 能列出同一对在各个批次里的结果。
+`label` says **what was computed** and is filled in by the type selection; `-s` is the batch marker.  The
+label comes before the suffix, so `ls gr_P-O_*` lists the results for one pair across all batches.
 
-| 命令 | label 来源 | 例 |
+| Command | Where the label comes from | Example |
 |---|---|---|
-| `traj gr` | `-a/-b` 或 `-x/-y` | `gr_P-O.csv`、`gr_P_3-O_b.csv`、无筛选 `gr_all.csv` |
-| `traj angle` | `-a/-b/-c` 或 `-x/-y/-z` | `angle_O-P-O.csv`、无筛选 `angle_all.csv` |
-| `traj msd` / `vacf` / `vanhove` | `--elements`，**排序去重** | `msd_O-P.csv`、无筛选 `msd_all.csv` |
-| `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv`（两者必填，走不到 `all`） |
-| `traj sq` | 无（见下） | `sq.csv` |
-| `ferro net`、`ferro map` | 无 | `network_qn.csv`、`density.cube` |
+| `traj gr` | `-a/-b` or `-x/-y` | `gr_P-O.csv`, `gr_P_3-O_b.csv`, `gr_all.csv` with no selection |
+| `traj angle` | `-a/-b/-c` or `-x/-y/-z` | `angle_O-P-O.csv`, `angle_all.csv` with no selection |
+| `traj msd` / `vacf` / `vanhove` | `--elements`, **sorted and deduplicated** | `msd_O-P.csv`, `msd_all.csv` with no selection |
+| `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv` (both are required, so `all` is never reached) |
+| `traj sq` | none (see below) | `sq.csv` |
+| `ferro net`, `ferro map` | none | `network_qn.csv`, `density.cube` |
 
-两条容易混的规则：
+Two rules that are easily confused:
 
-- **`gr` / `angle` 按你写的顺序拼**，`-a P -b O` 与 `-a O -b P` 落到两个文件。这是对的：
-  `g(r)` 对称但 `CN` 有向，两份数据本就不同。
-- **`--elements` 排序后拼**，因为它是个集合：`O,P` 与 `P,O` 选中同一批原子，同一份数据
-  不能落到两个文件名下。
+- **`gr` / `angle` join the parts in the order you wrote them**, so `-a P -b O` and `-a O -b P` land in two
+  files.  That is correct: `g(r)` is symmetric but `CN` is directed, so the two are genuinely different data.
+- **`--elements` is sorted before joining**, because it is a set: `O,P` and `P,O` select the same atoms, and
+  one set of data must not end up under two file names.
 
-选中的元素/标签会成为**路径的一段**，所以拼名前校验字符集 `[A-Za-z0-9_+-]`，违规
-**在读第一个文件之前**报错。替换成下划线的做法被否掉了——那会让 `-a P/2` 与 `-a P_2`
-静默写进同一个文件。
+The selected elements/labels become **part of a path**, so the character set `[A-Za-z0-9_+-]` is validated
+before the name is assembled, and a violation errors out **before the first file is read**.  Substituting
+underscores was rejected — it would let `-a P/2` and `-a P_2` write silently into the same file.
 
-### 类型选择（gr / angle）
+### Type selection (gr / angle)
 
-两组互斥：
+The two groups are mutually exclusive:
 
-| Flag | 含义 |
+| Flag | Meaning |
 |---|---|
-| `-a` / `-b` / `-c` | 按 `Atom::element` 选（元素） |
-| `-x` / `-y` / `-z` | 按 `Atom::label` 选（位点标签） |
+| `-a` / `-b` / `-c` | select by `Atom::element` (the element) |
+| `-x` / `-y` / `-z` | select by `Atom::label` (the site label) |
 
-第一个槽是中心（pair）或端原子 A（triplet）。**顺序有意义**：`g(r)` 对称但 `CN` 有向。
+The first slot is the centre (for a pair) or end atom A (for a triplet).  **The order matters**: `g(r)` is symmetric but `CN` is directed.
 
-**`traj sq` 没有类型选择**：`-a/-b` 与 `-x/-y` 已移除。$S(q)$ 的主产物是两条 total，
-partial 是能加回 total 的诊断分解（$\sum w_{ij}S_{ij} = \mathrm{total}$），只留一对
-恰好把这条闭合藏起来；要看某一对在 pandas 里选列即可。按 label 分辨的 partial 一并
-移除——一个位点标签对应的原子数往往不足以让它的 partial 显出信号。库层的
-`GroupBy::Label` 不动。
+**`traj sq` has no type selection**: `-a/-b` and `-x/-y` have been removed.  The primary output of $S(q)$ is
+the two totals, and the partials are a diagnostic decomposition that adds back to the total
+($\sum w_{ij}S_{ij} = \mathrm{total}$); keeping only one pair would hide exactly that closure, and selecting
+columns in pandas is enough to look at one pair.  Partials resolved by label went with them — the atom
+count behind a single site label is usually too small for its partial to show any signal.  `GroupBy::Label` in the library is untouched.
 
 ---
 
 ## `ferro convert`
 
-格式转换。读写两侧的格式都由**文件名**决定，没有 `--from` / `--to`。
+Format conversion.  The format on both sides is decided by the **file name**; there is no `--from` / `--to`.
 
 ```bash
-ferro convert                              # 不带 -i：打印下面这张表
+ferro convert                              # without -i: prints the table below
 ferro convert -i input.xyz -o output.pdb
 ferro convert -i input.cif -o POSCAR
 ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
 ```
 
-| 格式 | 由什么识别 | 读 | 写 | 写出几帧 |
+| Format | Recognised by | Read | Write | Frames written |
 |---|---|:-:|:-:|---|
-| XYZ | `.xyz` | y | y | 全部 |
-| extended XYZ | `.extxyz` | y | y | 全部 |
-| PDB | `.pdb` | y | y | 全部（MODEL 记录） |
-| CIF | `.cif` | y | y | 全部（多个 data block） |
-| LAMMPS dump | `.dump` `.lammpstrj` | y | y | 全部 |
-| VASP | `.vasp` `.pos`，或 `POSCAR*` / `CONTCAR*` 前缀 | y | y | **只第一帧** |
-| LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **只第一帧** |
-| QE (pw.x) | `.in` `.qe` | y | y | **只第一帧** |
+| XYZ | `.xyz` | y | y | all |
+| extended XYZ | `.extxyz` | y | y | all |
+| PDB | `.pdb` | y | y | all (MODEL records) |
+| CIF | `.cif` | y | y | all (several data blocks) |
+| LAMMPS dump | `.dump` `.lammpstrj` | y | y | all |
+| VASP | `.vasp` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **first frame only** |
+| LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **first frame only** |
+| QE (pw.x) | `.in` `.qe` | y | y | **first frame only** |
 | CP2K input | `.inp` | y | — | — |
 | CP2K restart | `.restart` | y | — | — |
 
-三点容易踩的：
+Things that trip people up:
 
-- **CP2K 的两种输入只读不写**。要生成 CP2K 输入走 `ferro job -s cp2k`，
-  它写的是完整算例设置，不是裸坐标。
-- **「只第一帧」是静默的**：500 帧的轨迹写成 POSCAR 得到第 0 帧，不报错。
-- 写到 `CONTCAR` 这个名字得到的是 **POSCAR 格式**的内容。
-- VASP 文件常常没有扩展名，故**前缀与扩展名两条路都认**：`POSCAR`、`CONTCAR`、
-  `conf.vasp`、`conf.pos` 都走同一对 reader/writer。
+- **The two CP2K input formats are read-only.**  To generate a CP2K input use `ferro job -s cp2k`,
+  which writes a complete calculation setup rather than bare coordinates.
+- **"First frame only" is silent**: writing a 500-frame trajectory as a POSCAR gives frame 0, with no error.
+- Writing to the name `CONTCAR` produces content in **POSCAR format**.
+- VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
+  `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
 
-**三斜胞的 LAMMPS dump**：盒子行写的是 LAMMPS 规格的 `*_bound`（倾斜后的外接盒），
-不是 `xlo/xhi`。2026-09-21 之前 ferro 读写两侧都按 `xlo/xhi` 处理，自己读自己写
-没问题、喂给 OVITO / ASE / LAMMPS `read_dump` 则盒子偏小。**正交胞产物不受影响**
-（三个倾斜量为 0 时两种写法逐位相同）。
+**LAMMPS dump with a triclinic cell**: the box lines carry LAMMPS's `*_bound` (the bounding box after
+tilting), not `xlo/xhi`.  Before 2026-09-21 ferro treated them as `xlo/xhi` on both read and write, which
+was self-consistent but handed OVITO / ASE / LAMMPS `read_dump` a box that was too small.
+**Orthorhombic output is unaffected** (with all three tilt factors 0 the two forms are bit-for-bit identical).
 
-**能不能带速度/力取决于两侧都支持**：`.dump` 转 `.xyz` 会静默丢掉速度，因为
-纯 XYZ 没地方放。要保留就转 `.extxyz`。
+**Whether velocities and forces survive depends on both sides supporting them**: `.dump` to `.xyz` silently
+drops the velocities, because plain XYZ has nowhere to put them.  Convert to `.extxyz` to keep them.
 
-### 选帧
+### Frame selection
 
 ```bash
-ferro convert -i traj.dump -o sub.extxyz --start 100            # 跳过弛豫段
+ferro convert -i traj.dump -o sub.extxyz --start 100            # skip the relaxation stage
 ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
-ferro convert -i traj.dump -o POSCAR --stride 50                # 每 50 帧一个
-ferro convert -i traj.dump -o conf.lmp --number 20              # 等间隔取 20 个
+ferro convert -i traj.dump -o POSCAR --stride 50                # one every 50 frames
+ferro convert -i traj.dump -o conf.lmp --number 20              # 20 frames at even intervals
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--start N` | `0` | 起始帧，**0 基，含** |
-| `--end N` | 最后一帧 | 结束帧，**0 基，含** |
-| `--stride N` | `1` | 在 `[start, end]` 内每 N 帧取一个 |
-| `--number N` | — | 在 `[start, end]` 内**等间隔取 N 个**，含两端；与 `--stride` 互斥 |
+| `--start N` | `0` | first frame, **0-based, inclusive** |
+| `--end N` | last frame | last frame, **0-based, inclusive** |
+| `--stride N` | `1` | take one frame every N within `[start, end]` |
+| `--number N` | — | take **N frames at even intervals** within `[start, end]`, both ends included; mutually exclusive with `--stride` |
 
-三条语义要记住：
+Three points of semantics to remember:
 
-- **闭区间、0 基**，与 `ferro info` 打印的帧号一致：`info` 显示末帧是 `Frame 4`，
-  那么 `--end 4` 就覆盖到它。（半开区间要写 `--end 5`，与 `info` 对不上，故不采用。）
-- **`--stride` 与 `--number` 不能同时给**，clap 在解析阶段就报错。一个是间隔、
-  一个是总数，同一组合表达两种意图；静默忽略其中一个是更坏的选择。
-- **`--number` 恒含两端**。末帧往往是最平衡的构型，固定步长走法会系统性漏掉它。
-  要的比现有帧数多时给出每帧一次，不会补重复。
+- **Closed interval, 0-based**, matching the frame numbers `ferro info` prints: when `info` shows the last
+  frame as `Frame 4`, `--end 4` reaches it.  (A half-open interval would need `--end 5`, which does not line up with `info`, so it was not adopted.)
+- **`--stride` and `--number` cannot be given together**; clap rejects that while parsing.  One is an
+  interval and the other a total, so the combination states two intentions at once; silently ignoring one of them would be the worse choice.
+- **`--number` always includes both ends.**  The last frame is often the best-equilibrated configuration, and
+  a fixed-stride walk would systematically miss it.  When more frames are asked for than exist, each frame is given once; nothing is duplicated to make up the count.
 
-### 产物是一个文件还是 N 个
+### One file or N files
 
-**由目标格式决定，没有开关**：
+**The target format decides; there is no switch**:
 
-| 目标格式 | 产物 |
+| Target format | Output |
 |---|---|
-| 装得下轨迹（`.xyz` `.extxyz` `.pdb` `.cif` `.dump`） | **一个**多帧文件 |
-| 只装一个结构（`POSCAR` `.vasp`/`.pos` `.lmp`/`.data` `.in`/`.qe`） | **一帧一个**文件 |
+| holds a trajectory (`.xyz` `.extxyz` `.pdb` `.cif` `.dump`) | **one** multi-frame file |
+| holds a single structure (`POSCAR` `.vasp`/`.pos` `.lmp`/`.data` `.in`/`.qe`) | **one file per frame** |
 
-往 POSCAR 写 20 帧本来就只能是 20 个文件，所以不必再要用户记一个开关。
+Writing 20 frames as POSCAR can only ever be 20 files, so there is no switch for the user to remember.
 
-序号插在**扩展名之前**，且用的是**原轨迹里的帧索引**（不是「第几个抽出来的」），
-产物因此能直接对回轨迹：
+The index is inserted **before the extension** and is the **frame index in the original trajectory** (not
+"the n-th one selected"), so the output maps straight back onto the trajectory:
 
 ```
 -o POSCAR    --stride 2   →  POSCAR_0000      POSCAR_0002      POSCAR_0004
 -o conf.vasp --number 3   →  conf_0000.vasp   conf_0002.vasp   conf_0004.vasp
 ```
 
-补零至少 4 位，保证 `ls` 按帧序排。`POSCAR` 这类靠**前缀**识别的名字加了序号仍能
-被读回（`POSCAR_0002` 依然匹配 `POSCAR*`）。**只选中一帧时写一个文件、不加序号**，
-无论什么格式。
+The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.  Names recognised by a
+**prefix**, such as `POSCAR`, can still be read back with an index attached (`POSCAR_0002` still matches
+`POSCAR*`).  **When only one frame is selected, one file is written with no index**, whatever the format.
 
-`-i` 目前只接受**单个文件**。多输入 + 抽帧会让不同轨迹的产物名互撞，需要把输入
-stem 也掺进文件名，另算一件事。
+`-i` currently accepts a **single file** only.  Several inputs plus frame selection would make the output
+names of different trajectories collide; that needs the input stem in the file name as well, which is a separate piece of work.
 
-**元素列始终写干净的元素符号**，无论 `Atom::label` 是什么。只有
-`ferro net --export-traj` 会把标签折进 LAMMPS dump 的元素列。
+**The element column always carries clean element symbols**, whatever `Atom::label` holds.  Only
+`ferro net --export-traj` folds the label into the element column of a LAMMPS dump.
 
 | Flag | Default | Description |
 |---|---|---|
-| `-i <file>` | (required) | 输入文件（单个）；省略则打印格式表 |
-| `-o <file>` | (required) | 输出文件，可带目录（`-o out/run1/x.extxyz`）。缺的父目录先问一句，`--mkdir` 免问。**以 `/` 结尾会报错**——目标格式正是从文件名推断的。多帧写出时序号插进文件名部分，路径不变 |
-| `--mkdir` | off | 不询问直接创建 `-o` 的父目录 |
-| `--start` / `--end` / `--stride` / `--number` | 见上 | 选帧 |
-| `--metal-units` | off | LAMMPS dump 按 metal 单位读写（速度 Å/ps、力 eV/Å） |
+| `-i <file>` | (required) | input file (a single one); omit it to print the format table |
+| `-o <file>` | (required) | output file, may include directories (`-o out/run1/x.extxyz`).  A missing parent directory is asked about first; `--mkdir` skips the question.  **A trailing `/` is an error** — the target format is inferred from the file name.  When several frames are written the index goes into the file-name part and the path is unchanged |
+| `--mkdir` | off | create the parent directory of `-o` without asking |
+| `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
+| `--metal-units` | off | read and write LAMMPS dump in metal units (velocity in Å/ps, force in eV/Å) |
 
 ---
 
 ## `ferro info`
 
-打印结构 / 轨迹摘要：帧数、元素组成、晶胞参数、体积、**质量密度**。
-可读的格式与 `ferro convert` 完全相同。
+Prints a summary of a structure or trajectory: frame count, element composition, cell parameters, volume
+and **mass density**.  The readable formats are exactly those of `ferro convert`.
 
 ```bash
-ferro info                          # 不带 -i：打印这一页说明
+ferro info                          # without -i: prints this page
 ferro info -i input.xyz
 ferro info -i traj.lammpstrj
 ```
 
-逐帧报告 —— **只报第一帧与最后一帧**，不是每一帧：
+Per-frame report — **the first and the last frame only**, not every frame:
 
-| 行 | 内容 |
+| Row | Content |
 |---|---|
-| `Atoms` | 总数 + 逐元素组成 |
-| `Cell` | a b c（Å）与 α β γ（°）；非周期体系为 `none (non-periodic)` |
+| `Atoms` | total count plus the per-element composition |
+| `Cell` | a b c (Å) and α β γ (°); `none (non-periodic)` for a non-periodic system |
 | `Volume` | Å³ |
-| `Density` | **g/cm³** = Σ(原子质量) / 晶胞体积。质量优先取文件里的显式值，否则查元素表 |
-| `PBC` | 逐轴周期性标志 |
-| `Energy` / `Forces` / `Velocities` | 该帧是否携带 |
+| `Density` | **g/cm³** = Σ(atomic masses) / cell volume.  Masses are taken from the file when given explicitly, otherwise from the element table |
+| `PBC` | the periodicity flag per axis |
+| `Energy` / `Forces` / `Velocities` | whether the frame carries them |
 
-密度的两条边界：
+Two edge cases for the density:
 
-- **无晶胞则整行不打印**，不写 `n/a` 之类的占位符 —— 没有体积就没有密度，
-  占位符读起来像一个测量结果。
-- **未知元素会把密度拉低**。元素表里查不到的符号（散落的位点标签，或 PDB
-  行过短退化出的 `X`）在 `effective_mass()` 里回退成 1 amu，除了数值变小之外
-  没有任何征兆。故密度行后会跟一条告警，指名有几个原子、什么符号触发了回退：
+- **Without a cell the row is not printed at all**, and no `n/a` placeholder is written — no volume means
+  no density, and a placeholder reads like a measurement.
+- **Unknown elements pull the density down.**  A symbol that is not in the element table (a stray site
+  label, or the `X` that a too-short PDB line degenerates into) falls back to 1 amu in `effective_mass()`,
+  with no symptom other than a smaller number.  The density row is therefore followed by a warning naming how many atoms and which symbols triggered the fallback:
 
   ```
   Density: 0.0765 g/cm³
            WARNING: 2 atom(s) not in the element table (Xx×2) counted as 1 amu — the density is too low
   ```
 
-  **告警在就别用那个数。**
+  **When the warning is there, do not use that number.**
 
-第一帧与最后一帧的体积不同即为 NPT 轨迹，密度会随之漂移。要全轨迹的
-mean ± σ，读任一 `ferro traj` 产物文件头里的 `# volume = <mean> +/- <std>`。
+A different volume on the first and the last frame means an NPT trajectory, and the density drifts with it.
+For the mean ± σ over the whole trajectory, read `# volume = <mean> +/- <std>` from the header of any `ferro traj` output.
 
-读取带位点标签的 LAMMPS dump 时会打印一次 element/label 的拆分映射表。
+Reading a LAMMPS dump that carries site labels prints the element/label split mapping once.
 
 | Flag | Default | Description |
 |---|---|---|
-| `-i <file>` | (required) | 输入文件；省略则打印这一页说明 |
-| `--metal-units` | off | LAMMPS dump 按 metal 单位读（速度 Å/ps、力 eV/Å） |
+| `-i <file>` | (required) | input file; omit it to print this page |
+| `--metal-units` | off | read LAMMPS dump in metal units (velocity in Å/ps, force in eV/Å) |
 
 ---
 
 ## `ferro job`
 
-为 **Gaussian**、**CP2K**、**Quantum ESPRESSO** 生成输入文件。不给 `-s` 打印总览；
-给了 `-s <software>` 但不给 `-i` 打印该软件的专属帮助。导览见
-[Job Builders](workflow/job-builders.md)。
+Generates input files for **Gaussian**, **CP2K** and **Quantum ESPRESSO**.  Without `-s` it prints an
+overview; with `-s <software>` but no `-i` it prints that software's own help.  For a guided tour see
+[Job Builders](workflow/job-builders.md).
 
 ```bash
-ferro job                                    # 总览
-ferro job -s cp2k                            # CP2K 专属帮助
+ferro job                                    # overview
+ferro job -s cp2k                            # CP2K-specific help
 ferro job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
 ferro job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
 ferro job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
 ```
 
-**只用输入的第 0 帧**（一个结构对应一个输入文件）。给一条多帧轨迹会打三行 `[warn]`
-（帧数、忽略了几帧、可直接抄的抽帧命令），但仍然只生成第 0 帧的输入——轨迹的第 0 帧
-往往是最没弛豫的构型。要从轨迹里选特定帧或批量生成，先用 `ferro convert` 抽出来：
+**Only frame 0 of the input is used** (one structure per input file).  Handing it a multi-frame trajectory
+prints three `[warn]` lines (the frame count, how many frames were ignored, and a frame-selection command
+to copy), but still generates the input for frame 0 only — and frame 0 is often the least relaxed configuration.  To pick a particular frame, or to generate a batch, extract them with `ferro convert` first:
 
 ```bash
-ferro convert -i traj.dump -o conf.vasp --number 20       # 抽 20 个构型
+ferro convert -i traj.dump -o conf.vasp --number 20       # extract 20 configurations
 for f in conf_*.vasp; do
   ferro job -i "$f" -s cp2k --task energy -o "${f%.vasp}.inp"
 done
 ```
 
-### Charge / Spin（三种目标共用）
+### Charge / Spin (shared by all three targets)
 
 | Flag | Default | Description |
 |---|---|---|
-| `--charge` | (from file) | 覆盖体系总电荷（在自旋推断之前生效） |
-| `--multiplicity` | (from file) | 强制多重度 2S+1；优先级最高，会关掉 auto-spin |
-| `--auto-spin` | off（cp2k/qe 默认开） | 从结构推断多重度 |
+| `--charge` | (from file) | override the total charge of the system (applied before the spin is inferred) |
+| `--multiplicity` | (from file) | force the multiplicity 2S+1; highest priority, and it turns auto-spin off |
+| `--auto-spin` | off (on by default for cp2k/qe) | infer the multiplicity from the structure |
 
-推断链（magmom → 氧化态 + Hund 规则 → 电子数奇偶下限）见
-[Spin Estimation](workflow/spin.md)。
+The inference chain (magmom → oxidation states + Hund's rule → parity bound on the electron count) is
+described in [Spin Estimation](workflow/spin.md).
 
 ### Gaussian
 
 | Flag | Default | Description |
 |---|---|---|
-| `-m <method>` | (required) | DFT 方法，如 `B3LYP`、`PBE0` |
-| `-b <basis>` | (required) | 基组，如 `6-31G*`、`def2-TZVP` |
-| `-o <file>` | `job.gjf` | 输出文件 |
+| `-m <method>` | (required) | DFT method, e.g. `B3LYP`, `PBE0` |
+| `-b <basis>` | (required) | basis set, e.g. `6-31G*`, `def2-TZVP` |
+| `-o <file>` | `job.gjf` | output file |
 
 ### CP2K
 
-#### 任务与电子结构
+#### Task and electronic structure
 
 | Flag | Default | Candidates |
 |---|---|---|
 | `--task` | `energy` | `energy`, `force`, `geo-opt`, `cell-opt`, `md`, `freq` |
 | `--functional` | `pbe` | `pbe`, `blyp`, `pbe0`, `b3lyp`, `revpbe`, `pbesol`, `scan`, `r2scan`, `hse06` |
-| `--cp2k-basis` | `dzvp-molopt-sr` | `dzvp-molopt-sr`, `tzvp-molopt`, `tzv2p-molopt`, `dzvp-gth`, `tzvp-gth`, `pob-dzvp`, `pob-tzvp`（全电子），或任意自定义字符串 |
+| `--cp2k-basis` | `dzvp-molopt-sr` | `dzvp-molopt-sr`, `tzvp-molopt`, `tzv2p-molopt`, `dzvp-gth`, `tzvp-gth`, `pob-dzvp`, `pob-tzvp` (all-electron), or any custom string |
 | `--dispersion` | `none` | `none`, `d3`, `d3bj` |
-| `--scf` | `diag` | `diag`（金属/大体系）, `ot`（绝缘体） |
-| `--pbc` | (auto) | `xyz`, `z`, `none`；省略时从晶胞自动判断 |
-| `--kpoints` | (none) | 三个整数，如 `--kpoints 2 2 2` |
-| `--cutoff` | `400` | 平面波截断 [Ry] |
-| `--rel-cutoff` | `50` | 相对截断 [Ry] |
-| `--smear` | off | 启用 Fermi–Dirac 展宽 |
+| `--scf` | `diag` | `diag` (metals / large systems), `ot` (insulators) |
+| `--pbc` | (auto) | `xyz`, `z`, `none`; inferred from the cell when omitted |
+| `--kpoints` | (none) | three integers, e.g. `--kpoints 2 2 2` |
+| `--cutoff` | `400` | plane-wave cutoff [Ry] |
+| `--rel-cutoff` | `50` | relative cutoff [Ry] |
+| `--smear` | off | enable Fermi–Dirac smearing |
 
-#### 输出
+#### Output
 
 | Flag | Default | Candidates |
 |---|---|---|
 | `--atom-charge` | `none` | `none`, `mulliken`, `hirshfeld`, `hirshfeld-i` |
 | `--cube` | `none` | `none`, `density`, `elf`, `hartree` |
-| `--molden` | off | 导出 Molden 轨道文件 |
-| `--project` | `ferro` | CP2K project 名 |
+| `--molden` | off | export a Molden orbital file |
+| `--project` | `ferro` | CP2K project name |
 
-#### MD（仅 `--task md`）
+#### MD (`--task md` only)
 
 | Flag | Default | Description |
 |---|---|---|
-| `--md-steps` | `10000` | MD 步数 |
-| `--md-timestep` | `1.0` | 步长 [fs] |
-| `--temperature` | `298.15` | 温度 [K] |
+| `--md-steps` | `10000` | number of MD steps |
+| `--md-timestep` | `1.0` | time step [fs] |
+| `--temperature` | `298.15` | temperature [K] |
 | `--thermostat` | `csvr` | `csvr`, `nose`, `langevin`, `none` |
-| `--traj-freq` | `100` | 轨迹写出频率 [步] |
-| `--barostat` | off | 启用 NPT 压浴 |
+| `--traj-freq` | `100` | trajectory output frequency [steps] |
+| `--barostat` | off | enable an NPT barostat |
 
-> 基组与赝势名**逐元素**从 2829 条数据库解析（PBE / SCAN / 全电子，价电子数 `q`
-> 一致）。`--cp2k-basis` 选族，元素专属名自动填入。见
-> [Job Builders](workflow/job-builders.md#precise-basis--pseudopotential-matching)。
+> Basis-set and pseudopotential names are resolved **per element** from a 2829-entry database (PBE / SCAN /
+> all-electron, with a consistent valence-electron count `q`).  `--cp2k-basis` picks the family and the
+> element-specific names are filled in automatically.  See [Job Builders](workflow/job-builders.md#precise-basis--pseudopotential-matching).
 
 ### Quantum ESPRESSO
 
@@ -363,30 +363,30 @@ ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
 |---|---|---|
 | `--qe-task` | `scf` | `scf`, `nscf`, `bands`, `relax`, `vc-relax`, `md`, `vc-md` |
 | `--qe-functional` | `pbe` | `pbe`, `pbesol`, `revpbe`, `blyp`, `scan`, `r2scan`, `pbe0`, `hse06` |
-| `--ecutwfc` | `50` | 平面波截断 [Ry] |
-| `--smearing` | `none` | `none`, `gaussian`, `mp`, `mv`, `fd`（金属用 mp/mv） |
-| `--kpoints` | (Gamma) | 三个整数 → Monkhorst-Pack 网格 |
-| `--pseudo-dir` | `./pseudo` | 赝势目录（`<El>.UPF`） |
-| `--md-steps` | `10000` | MD 步数（`--qe-task md`/`vc-md`） |
-| `--temperature` | `298.15` | MD 目标温度 [K] |
-| `-o <file>` | `pw.in` | 输出文件 |
+| `--ecutwfc` | `50` | plane-wave cutoff [Ry] |
+| `--smearing` | `none` | `none`, `gaussian`, `mp`, `mv`, `fd` (mp/mv for metals) |
+| `--kpoints` | (Gamma) | three integers → a Monkhorst-Pack grid |
+| `--pseudo-dir` | `./pseudo` | pseudopotential directory (`<El>.UPF`) |
+| `--md-steps` | `10000` | number of MD steps (`--qe-task md`/`vc-md`) |
+| `--temperature` | `298.15` | target MD temperature [K] |
+| `-o <file>` | `pw.in` | output file |
 
-`ibrav = 0`；晶胞按 `CELL_PARAMETERS angstrom` 从结构写出。自旋走共用推断器 →
-`nspin` / `tot_magnetization`。
+`ibrav = 0`; the cell is written from the structure as `CELL_PARAMETERS angstrom`.  The spin goes through
+the shared inference chain → `nspin` / `tot_magnetization`.
 
 ---
 
 ## `ferro traj`
 
-七个轨迹分析，共用同一条导出管线：一份长表或宽表 csv + 可选 PNG。
+Seven trajectory analyses sharing one export pipeline: a single long or wide csv plus an optional PNG.
 
 ```bash
 ferro traj <command> -i traj.lammpstrj [flags] -o <suffix>
 ```
 
-### `gr` — 径向分布函数
+### `gr` — radial distribution function
 
-$g(r)$ 与配位数 $\text{CN}(r)$。
+$g(r)$ and the coordination number $\text{CN}(r)$.
 
 ```bash
 ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -o run1
@@ -394,18 +394,18 @@ ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -o run1
 
 | Flag | Default | Description |
 |---|---|---|
-| `--r-min` | 0.001 | 最小半径 [Å] |
-| `--r-max` | 10.005 | 最大半径 [Å]；clamp 到最小**面间距**的一半（非最短边长） |
-| `--dr` | 0.002 | 分箱宽度 [Å] |
-| `--plot` | off | 另写 PNG（两格：g(r) \| CN(r)），需要指定配对 |
+| `--r-min` | 0.001 | minimum radius [Å] |
+| `--r-max` | 10.005 | maximum radius [Å]; clamped to half the smallest **interplanar spacing** (not the shortest edge length) |
+| `--dr` | 0.002 | bin width [Å] |
+| `--plot` | off | also write a PNG (two panels: g(r) \| CN(r)); requires a pair to be given |
 
-**长表**：`file, r, center, neighbor, gr, cn`。类型进数据列，故元素集不同的轨迹可直接
-堆叠；不给 `-a/-b` 是加行而不是加列。`gr` 对称（`A-B` == `B-A`），`cn` 有向
-（`CN(A→B)`），这个区别写进了 `center`/`neighbor` 两列而不是文档注脚。
+**Long table**: `file, r, center, neighbor, gr, cn`.  The types go into data columns, so trajectories with
+different element sets stack directly; omitting `-a/-b` adds rows rather than columns.  `gr` is symmetric
+(`A-B` == `B-A`) and `cn` is directed (`CN(A→B)`), a distinction written into the `center`/`neighbor` columns rather than into a footnote.
 
-### `sq` — 结构因子
+### `sq` — structure factor
 
-对 $g(r)$ 做傅里叶变换得到 $S(q)$。
+$S(q)$ from the Fourier transform of $g(r)$.
 
 ```bash
 ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -o run1
@@ -413,19 +413,19 @@ ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -o run1
 
 | Flag | Default | Description |
 |---|---|---|
-| `--q-min` | 0.1 | 最小 $q$ [Å⁻¹] |
-| `--q-max` | 25.0 | 最大 $q$ [Å⁻¹] |
-| `--dq` | 0.02 | $q$ 分箱宽度 [Å⁻¹] |
+| `--q-min` | 0.1 | minimum $q$ [Å⁻¹] |
+| `--q-max` | 25.0 | maximum $q$ [Å⁻¹] |
+| `--dq` | 0.02 | $q$ bin width [Å⁻¹] |
 | `--weighting` | `both` | `none`, `xrd`, `neutron`, `both` |
-| `--plot` | off | 另写 PNG（两格：XRD \| Neutron） |
+| `--plot` | off | also write a PNG (two panels: XRD \| Neutron) |
 
-`gr` 的 `--r-min` / `--r-max` / `--dr` 同样生效——它们决定被变换的那条 $g(r)$ 的范围。
+The `--r-min` / `--r-max` / `--dr` of `gr` apply here too — they set the range of the $g(r)$ being transformed.
 
-**宽表**：`file, q, total_xrd, total_neutron`，其后每个配对三列
-（`_sq` / `_xrd` / `_neutron`，只出规范半边）。主产物是两条 total（一行一个 $q$），
-加权 partial 是能求和还原 total 的诊断分解。
+**Wide table**: `file, q, total_xrd, total_neutron`, then three columns per pair (`_sq` / `_xrd` /
+`_neutron`, canonical half only).  The primary output is the two totals (one $q$ per row); the weighted
+partials are a diagnostic decomposition that sums back to the total.
 
-### `msd` — 均方位移
+### `msd` — mean squared displacement
 
 ```bash
 ferro traj msd -i traj.lammpstrj --dt 2.0 --shift 10 --elements Li --fit-range 0.3,0.8 -o run1
@@ -433,15 +433,15 @@ ferro traj msd -i traj.lammpstrj --dt 2.0 --shift 10 --elements Li --fit-range 0
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dt` | 1.0 | 步长 [fs] |
-| `--shift` | 1 | 时间原点间隔 [帧] |
-| `--elements` | (全部) | 逗号分隔的元素过滤 |
-| `--fit-range` | (无) | `FMIN,FMAX` 线性拟合窗口（轨迹分数）→ 自扩散系数 D |
-| `--plot` | off | 另写 PNG（2×2：total \| a \| b \| c） |
+| `--dt` | 1.0 | time step [fs] |
+| `--shift` | 1 | spacing between time origins [frames] |
+| `--elements` | (all) | comma-separated element filter |
+| `--fit-range` | (none) | `FMIN,FMAX` linear-fit window (as a fraction of the trajectory) → the self-diffusion coefficient D |
+| `--plot` | off | also write a PNG (2×2: total \| a \| b \| c) |
 
-给了 `--fit-range` 即计算并打印 $D = \text{slope}/6$ 与 $R^2$（与 `--plot` 无关）。
+Giving `--fit-range` computes and prints $D = \text{slope}/6$ and $R^2$ (independently of `--plot`).
 
-### `angle` — 键角分布
+### `angle` — bond angle distribution
 
 ```bash
 ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 -o run1
@@ -449,21 +449,21 @@ ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 
 
 | Flag | Default | Description |
 |---|---|---|
-| `--r-cut-ab` | 2.3 | 端 A 到中心 B 的截断 [Å] —— A 是 `-a`/`-x` 给的那个 |
-| `--r-cut-bc` | 2.3 | 端 C 到中心 B 的截断 [Å] —— C 是 `-c`/`-z` 给的那个 |
-| `--angle-min` | 0.0 | 直方图下界 [°] |
-| `--angle-max` | 180.0 | 直方图上界 [°]（闭区间） |
-| `--d-angle` | 0.1 | 分箱宽度 [°] |
-| `--plot` | off | 另写 PNG，图例含 mean ± std |
+| `--r-cut-ab` | 2.3 | cutoff from end A to centre B [Å] — A is the one given by `-a`/`-x` |
+| `--r-cut-bc` | 2.3 | cutoff from end C to centre B [Å] — C is the one given by `-c`/`-z` |
+| `--angle-min` | 0.0 | lower bound of the histogram [°] |
+| `--angle-max` | 180.0 | upper bound of the histogram [°] (inclusive) |
+| `--d-angle` | 0.1 | bin width [°] |
+| `--plot` | off | also write a PNG, with mean ± std in the legend |
 
-不指定三元组时两个截断回落到规范 (Z, 符号) 顺序；两端同类型时两者都取
-`min(--r-cut-ab, --r-cut-bc)`。区间外的角被**丢弃**，不只是不显示。
+Without a triplet the two cutoffs fall back to the canonical (Z, symbol) order; when both ends are the
+same type they both take `min(--r-cut-ab, --r-cut-bc)`.  Angles outside the range are **discarded**, not merely hidden.
 
-**长表**：`file, angle, end_a, center, end_c, count, p`。保留整数 `count` 与归一化
-`p` 两列——整数直方图是与 `dump2analysis` 逐 bin 对拍的依据。详见
-[Bond Angle Distribution](analysis/angle.md)。
+**Long table**: `file, angle, end_a, center, end_c, count, p`.  Both the integer `count` and the normalised
+`p` are kept — the integer histogram is what the bin-by-bin cross-check against `dump2analysis` rests on.
+See [Bond Angle Distribution](analysis/angle.md) for details.
 
-### `vacf` — 速度自相关
+### `vacf` — velocity autocorrelation
 
 ```bash
 ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --metal-units -o run1
@@ -471,16 +471,16 @@ ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --metal-units -o run1
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dt` | 1.0 | 步长 [fs] |
-| `--shift` | 1 | 时间原点间隔 [帧] |
-| `--tau` | (全部) | 滞后窗口 [帧] |
-| `--elements` | (全部) | 元素过滤 |
+| `--dt` | 1.0 | time step [fs] |
+| `--shift` | 1 | spacing between time origins [frames] |
+| `--tau` | (all) | lag window [frames] |
+| `--elements` | (all) | element filter |
 
-列：`file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
+Columns: `file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
 
-### `rotcorr` — 转动相关
+### `rotcorr` — rotational correlation
 
-分子取向矢量的 $C_2(t)$。
+$C_2(t)$ of a molecular orientation vector.
 
 ```bash
 ferro traj rotcorr -i traj.lammpstrj --center P --neighbor O --r-cut 2.4 --dt 2.0 -o run1
@@ -488,16 +488,16 @@ ferro traj rotcorr -i traj.lammpstrj --center P --neighbor O --r-cut 2.4 --dt 2.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--center` | (required) | 中心原子元素 |
-| `--neighbor` | (required) | 近邻原子元素 |
-| `--r-cut` | 1.2 | 成键搜索截断 [Å] |
-| `--dt` | 1.0 | 步长 [fs] |
-| `--shift` | 1 | 时间原点间隔 [帧] |
-| `--tau` | (全部) | 滞后窗口 [帧] |
+| `--center` | (required) | element of the centre atom |
+| `--neighbor` | (required) | element of the neighbour atom |
+| `--r-cut` | 1.2 | cutoff for the bond search [Å] |
+| `--dt` | 1.0 | time step [fs] |
+| `--shift` | 1 | spacing between time origins [frames] |
+| `--tau` | (all) | lag window [frames] |
 
-列：`file, time, c2, integral`
+Columns: `file, time, c2, integral`
 
-### `vanhove` — Van Hove 自关联
+### `vanhove` — Van Hove self-correlation
 
 ```bash
 ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o run1
@@ -505,36 +505,36 @@ ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o
 
 | Flag | Default | Description |
 |---|---|---|
-| `--tau` | (末帧) | 滞后 [帧] |
-| `--dt` | 1.0 | 步长 [fs] |
-| `--shift` | 1 | 时间原点间隔 [帧] |
-| `--r-max` | 10.0 | 最大位移 [Å] |
-| `--dr` | 0.01 | 分箱宽度 [Å] |
-| `--elements` | (全部) | 元素过滤 |
+| `--tau` | (last frame) | lag [frames] |
+| `--dt` | 1.0 | time step [fs] |
+| `--shift` | 1 | spacing between time origins [frames] |
+| `--r-max` | 10.0 | maximum displacement [Å] |
+| `--dr` | 0.01 | bin width [Å] |
+| `--elements` | (all) | element filter |
 
-列：`file, r, gs`
+Columns: `file, r, gs`
 
-### 绘图
+### Plotting
 
-`--plot` 出一张 PNG 分格，**一格一个量、一条曲线一个输入文件**；颜色按文件跨格一致，
-图例只画第一格。500 dpi，一格 2708×2083 px。
+`--plot` produces one PNG of panels, **one quantity per panel and one curve per input file**; the colours
+are consistent across panels by file, and only the first panel carries the legend.  500 dpi, 2708×2083 px per panel.
 
-`--plot` **冻结在自查质量**，不会去追 matplotlib：数据是长表 csv，一行 seaborn 就是
-一张正经图（`sns.lineplot(data=df, x="r", y="gr", hue="file")`），对数轴、误差棒、
-主题这些属于 Python。
+`--plot` is **frozen at the level of a self-check** and will not chase matplotlib: the data is a long-table
+csv, and one line of seaborn already gives a proper figure (`sns.lineplot(data=df, x="r", y="gr", hue="file")`);
+log axes, error bars and themes belong in Python.
 
 ---
 
 ## `ferro map`
 
-3-D 空间分布图（Gaussian cube 格式）。**逐输入一个 `.cube`**，没有可堆叠的表也没有图，
-故文件名必带输入 stem（`density_<stem>.cube`）。
+3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table and
+no plot, so the file name always carries the input stem (`density_<stem>.cube`).
 
 ```bash
 ferro map <command> -i traj.lammpstrj [flags] -o <suffix>
 ```
 
-### `density` — 原子数密度
+### `density` — atom number density
 
 ```bash
 ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -o run1
@@ -542,26 +542,26 @@ ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -o run
 
 | Flag | Default | Description |
 |---|---|---|
-| `--nx/ny/nz` | 50 | 网格维度 |
-| `--elements` | (全部) | 元素过滤 |
+| `--nx/ny/nz` | 50 | grid dimensions |
+| `--elements` | (all) | element filter |
 
-### `velocity` — 逐体素平均速率
+### `velocity` — mean speed per voxel
 
-需要轨迹带速度（LAMMPS metal dump 请加 `--metal-units`）。
+Requires a trajectory carrying velocities (add `--metal-units` for a LAMMPS metal dump).
 
 ```bash
 ferro map velocity -i traj.lammpstrj --metal-units -o run1
 ```
 
-### `force` — 逐体素平均力大小
+### `force` — mean force magnitude per voxel
 
-需要轨迹带力。
+Requires a trajectory carrying forces.
 
 ```bash
 ferro map force -i traj.lammpstrj -o run1
 ```
 
-### `radius` — 硬球占据
+### `radius` — hard-sphere occupancy
 
 ```bash
 ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o run1
@@ -569,11 +569,11 @@ ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 
 
 | Flag | Default | Description |
 |---|---|---|
-| `--radius` | 0.7 | 硬球半径 [Å] |
-| `--nx/ny/nz` | 50 | 网格维度 |
-| `--elements` | (全部) | 元素过滤 |
+| `--radius` | 0.7 | hard-sphere radius [Å] |
+| `--nx/ny/nz` | 50 | grid dimensions |
+| `--elements` | (all) | element filter |
 
-### `sdf` — 团簇 SDF
+### `sdf` — cluster SDF
 
 ```bash
 ferro map sdf -i traj.lammpstrj --qn 3 --former P --ligand O --cutoff-fl 2.4 \
@@ -582,23 +582,23 @@ ferro map sdf -i traj.lammpstrj --qn 3 --former P --ligand O --cutoff-fl 2.4 \
 
 | Flag | Default | Description |
 |---|---|---|
-| `--qn` | 3 | 目标 $Q_n$ 级别（0–3） |
-| `--former` | `P` | 网络形成子元素 |
-| `--ligand` | `O` | 桥联配体元素 |
-| `--cutoff-fl` | 2.4 | 形成子–配体截断 [Å] |
-| `--modifier` | (无) | 修饰子阳离子元素 |
-| `--cutoff-ml` | 2.8 | 修饰子–配体截断 [Å] |
-| `--grid-res` | 0.1 | 体素尺寸 [Å] |
-| `--sigma` | 1.5 | 高斯展宽 [体素] |
-| `--padding` | 3.0 | 网格边界余量 [Å] |
-| `--rmsd-warn` | 0.5 | RMSD 告警阈值 [Å] |
+| `--qn` | 3 | target $Q_n$ level (0–3) |
+| `--former` | `P` | network former element |
+| `--ligand` | `O` | bridging ligand element |
+| `--cutoff-fl` | 2.4 | network former–ligand cutoff [Å] |
+| `--modifier` | (none) | modifier cation element |
+| `--cutoff-ml` | 2.8 | modifier–ligand cutoff [Å] |
+| `--grid-res` | 0.1 | voxel size [Å] |
+| `--sigma` | 1.5 | Gaussian broadening [voxels] |
+| `--padding` | 3.0 | grid boundary margin [Å] |
+| `--rmsd-warn` | 0.5 | RMSD warning threshold [Å] |
 
-产物：逐原子类型一个 `<stem>_<label>.cube`（多族时 `<stem>_fam<N>_<label>.cube`）。
+Output: one `<stem>_<label>.cube` per atom type (`<stem>_fam<N>_<label>.cube` when there are several families).
 
-### `chg-sdf` — 电荷密度 SDF
+### `chg-sdf` — charge-density SDF
 
-从一组 QE `pp.x` 电荷密度 cube 计算 Qn 团簇周围取向平均的电子密度。**不用 `-i`**，
-改接 `--cubes`。
+Computes the orientationally averaged electron density around Qn clusters from a set of QE `pp.x`
+charge-density cubes.  It does **not** use `-i`; it takes `--cubes` instead.
 
 ```bash
 ferro map chg-sdf --cubes frame_000.cube frame_001.cube frame_002.cube \
@@ -607,28 +607,28 @@ ferro map chg-sdf --cubes frame_000.cube frame_001.cube frame_002.cube \
 
 | Flag | Default | Description |
 |---|---|---|
-| `--cubes <files…>` | (required) | QE pp.x cube 文件，一帧一个 |
-| `--qn` | `3` | 目标 Qn 级别（0–3） |
-| `--former` | `P` | 网络形成子元素 |
-| `--ligand` | `O` | 桥联配体元素 |
-| `--cutoff-fl` | `2.4` | 形成子–配体截断 [Å] |
-| `--modifier` | (无) | 修饰子阳离子元素 |
-| `--cutoff-ml` | `2.8` | 修饰子–配体截断 [Å] |
-| `--chg-padding` | `6.0` | 子网格边界余量 [Å] |
-| `--rmsd-warn` | `0.5` | 对齐 RMSD 告警阈值 [Å] |
+| `--cubes <files…>` | (required) | QE pp.x cube files, one per frame |
+| `--qn` | `3` | target Qn level (0–3) |
+| `--former` | `P` | network former element |
+| `--ligand` | `O` | bridging ligand element |
+| `--cutoff-fl` | `2.4` | network former–ligand cutoff [Å] |
+| `--modifier` | (none) | modifier cation element |
+| `--cutoff-ml` | `2.8` | modifier–ligand cutoff [Å] |
+| `--chg-padding` | `6.0` | sub-grid boundary margin [Å] |
+| `--rmsd-warn` | `0.5` | alignment RMSD warning threshold [Å] |
 
-产物：`<stem>_Q<n>.cube`（一签名族一个文件）。算法见
-[Averaged Charge-Density SDF](analysis/chg-sdf.md)。
+Output: `<stem>_Q<n>.cube` (one file per signature family).  For the algorithm see
+[Averaged Charge-Density SDF](analysis/chg-sdf.md).
 
-> `--cubes` 是 `ferro map` 里唯一「多输入聚合成**一张** SDF」的模式，与该组其余
-> 「一输入一产物」的语义相反。拆分需先定义带样本计数的中间产物格式（跨文件加权平均
-> 不可交换），见 `dev/plan.md`。
+> `--cubes` is the only mode in `ferro map` that aggregates several inputs into **one** SDF, the opposite
+> of the "one input, one output" semantics of the rest of the group.  Splitting it up requires first
+> defining an intermediate format that carries the sample count (a weighted average across files does not commute); see `dev/plan.md`.
 
 ---
 
 ## `ferro net`
 
-玻璃网络拓扑：桥接配体数（P 的 Qn）、配体分类、配位数、桥联统计。
+Glass network topology: bridging-ligand count (the Qn of P), ligand classification, coordination number and linkage statistics.
 
 ```bash
 ferro net -i traj.lammpstrj --P-O=2.4
@@ -638,354 +638,354 @@ ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 ```
 
-### 配对参数（必需，至少一个）
+### Pair parameters (required, at least one)
 
-截断用 `--<Former>-<Ligand>=<cutoff>` 格式（元素首字母大写）。元素对写在**参数名**
-里，clap 建模不了，故 `main` 在解析前先把它们从 argv 剥离。
+Cutoffs use the form `--<Former>-<Ligand>=<cutoff>` (element symbols capitalised).  The element pair lives
+in the **parameter name**, which clap cannot model, so `main` strips them out of argv before parsing.
 
 ```
---P-O=2.4     P-O 截断 2.4 Å（P 为形成子，O 为配体）
---Al-O=2.4    同一体系可有多个形成子
---Al-F=2.1    同一形成子可有多种配体
---Zn-O=2.6    配合 --modifier Zn 时视为修饰子–配体截断
+--P-O=2.4     P-O cutoff 2.4 Å (P is the network former, O the ligand)
+--Al-O=2.4    one system may have several network formers
+--Al-F=2.1    one network former may have several ligand species
+--Zn-O=2.6    read as a modifier-ligand cutoff when --modifier Zn is given
 ```
 
-### 普通参数
+### Ordinary parameters
 
-| 参数 | 默认值 | 说明 |
+| Parameter | Default | Notes |
 |---|---|---|
-| `-i <FILE>...` | — | 输入轨迹（缺省显示帮助） |
-| `-o <DIR>` | 当前目录 | 输出目录；不存在时先询问，`--mkdir` 免问 |
-| `-s <SUFFIX>` | — | 批次标记，追加在产物名末尾 |
-| `--mkdir` | 关 | 不询问直接创建 `-o`（非交互环境必须给） |
-| `--last-n N` | 全部 | 仅用尾部 N 帧 |
-| `--ncore N` | 全部核心 | 线程数 |
-| `--metal-units` | 关 | 统计不读速度/力；只对 `--export-traj extxyz` 有影响 |
-| `--modifier E,E` | — | **只计配位数**的元素，不参与桥接计数与配体分类。须同时给出各自的截断，否则报错 |
-| `--qn E,E` | `B,P,Si` | 报 Qn 的形成子。**替换**默认名单而非叠加；点名非形成子或已被 `--modifier` 占用的元素会报错 |
-| `--export-traj [FMT]` | — | 另写标注轨迹：`lammpstrj`（默认）或 `extxyz` |
+| `-i <FILE>...` | — | input trajectories (shows the help when omitted) |
+| `-o <DIR>` | current directory | output directory; ferro asks first when it does not exist, `--mkdir` skips the question |
+| `-s <SUFFIX>` | — | batch marker, appended to the output name |
+| `--mkdir` | off | create `-o` without asking (required in non-interactive environments) |
+| `--last-n N` | all | use only the last N frames |
+| `--ncore N` | all cores | number of threads |
+| `--metal-units` | off | the statistics read neither velocities nor forces; affects `--export-traj extxyz` only |
+| `--modifier E,E` | — | elements that count towards **coordination number only**, taking no part in the bridge count or the ligand classification.  Their cutoffs must be given as well, otherwise ferro errors out |
+| `--qn E,E` | `B,P,Si` | network formers to report Qn for.  **Replaces** the default list rather than adding to it; naming a non-former, or an element already taken by `--modifier`, errors out |
+| `--export-traj [FMT]` | — | also write a labelled trajectory: `lammpstrj` (default) or `extxyz` |
 
-### 输出
+### Output
 
-六张 csv，各带 `file` 列。**每个文件的 `#` 头里有它自己的逐列说明**，
-`pandas.read_csv(comment="#")` 会丢掉整块。
+Six csv files, each with a `file` column.  **The `#` header of every file carries its own column-by-column
+description**, which `pandas.read_csv(comment="#")` drops as a whole.
 
-| 文件 | 装什么 |
+| File | What it holds |
 |---|---|
-| `network_composition.csv` | **结构组成一览**：`P-Q2` `Al_4` `O_b` `Zn_4`，各占其元素的比例（每元素求和为 1） |
-| `network_qn.csv` | Qn 分布，打开文件即可读 |
-| `network_qn_partner.csv` | 同上按伙伴元素拆开，即 $Q^n(m\mathrm{Al})$ |
-| `network_ligand_type.csv` | 配体分类，`label` 读作 `Al-O_b-P` |
-| `network_coordination.csv` | 配位数分布（形成子 + 修饰子） |
-| `network_linkage.csv` | 桥的连接情况：配体元素 + 两端位点状态 |
+| `network_composition.csv` | **an overview of the structural composition**: `P-Q2` `Al_4` `O_b` `Zn_4`, each as a fraction of its own element (summing to 1 per element) |
+| `network_qn.csv` | the Qn distribution, readable as soon as the file is opened |
+| `network_qn_partner.csv` | the same, split by partner element, i.e. $Q^n(m\mathrm{Al})$ |
+| `network_ligand_type.csv` | the ligand classification; `label` reads as `Al-O_b-P` |
+| `network_coordination.csv` | the coordination-number distribution (network formers + modifiers) |
+| `network_linkage.csv` | how the bridges connect: the ligand element plus the site state at both ends |
 
-**Qn 只报给 Qn 形成子**（默认 `B,P,Si`）。Al 之类的形成子由配位数刻画，不出现在前两
-个文件的行里，但仍在 `m_Al` 列、`ligand_type` 与 `linkage` 中。没有 Qn 形成子时前两
-个文件整个不写，屏幕打印原因。
+**Qn is reported only for Qn network formers** (`B,P,Si` by default).  Network formers such as Al are
+characterised by coordination number and do not appear as rows in the first two files, but they are still
+in the `m_Al` column, in `ligand_type` and in `linkage`.  When there is no Qn network former the first two files are not written at all, and the reason is printed to the screen.
 
-标签有**两套词汇**：分布表（`composition` / `qn` / `qn_partner`）用**单元**词汇
-`P-Q2`，因为它们数的是结构单元；`linkage` 与导出轨迹用**原子**词汇 `P_2` / `Al_4`，
-因为桥联连的是原子、轨迹标签又必须能拆回 element。非 Qn 形成子两者相同（`Al_4`，
-数字是**配位数**）。配体 `O_f` / `O_n` / `O_b` / `O_t`，修饰子裸元素符号。
-运行时按本次参数打印一次。**下游 `-x/-y` 认原子词汇**。
+The labels come in **two vocabularies**: the distribution tables (`composition` / `qn` / `qn_partner`) use
+the **unit** vocabulary `P-Q2`, because they count structural units; `linkage` and the exported trajectory
+use the **atom** vocabulary `P_2` / `Al_4`, because a linkage joins atoms and a trajectory label must be
+splittable back into an element.  For non-Qn network formers the two coincide (`Al_4`, where the number is
+the **coordination number**).  Ligands are `O_f` / `O_n` / `O_b` / `O_t`, modifiers are bare element symbols.  The table is printed once per run for the parameters actually given.  **Downstream `-x/-y` use the atom vocabulary.**
 
-`--export-traj` 逐输入写 `<输入 stem>_types[_<后缀>].<ext>`。
+`--export-traj` writes `<input stem>_types[_<suffix>].<ext>` per input.
 
-详细说明（口径、`sd` 的含义、pandas 分析范例、两种导出格式的差别、按标签选型的
-单帧限制）见 [Glass Network Analysis](analysis/network.md)。
+For the details (the statements behind the numbers, what `sd` means, pandas examples, how the two export
+formats differ, and the single-frame restriction on selecting by label) see [Glass Network Analysis](analysis/network.md).
 
 ---
 
 ## `ferro bader`
 
-从 DFT 电荷密度做 Bader 电荷分解。支持 VASP CHGCAR 与 Gaussian/QE cube。
+Bader charge decomposition from a DFT charge density.  VASP CHGCAR and Gaussian/QE cube are supported.
 
 ```bash
-ferro bader                                # 不带 -i：打印方法与输出说明
+ferro bader                                # without -i: prints the methods and the output description
 ferro bader -i CHGCAR                      # VASP CHGCAR
 ferro bader -i charge.cube                 # Gaussian/QE cube
-ferro bader -i CHGCAR --method weight      # Yu-Trinkle weight 方法
+ferro bader -i CHGCAR --method weight      # the Yu-Trinkle weight method
 ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `-i <file>` | (required) | 输入（`.cube` → cube reader；其余 → CHGCAR reader） |
+| `-i <file>` | (required) | input (`.cube` → the cube reader; anything else → the CHGCAR reader) |
 | `-m, --method` | `neargrid` | `ongrid` \| `neargrid` \| `offgrid` \| `weight` |
-| `-r, --refine` | `-1` | 边缘精化：`-1` 自动、`-2` 单遍、`N` 跑 N 遍 |
-| `-v, --vacval` | `1e-3` | 真空密度阈值 [e/Å³] |
+| `-r, --refine` | `-1` | edge refinement: `-1` automatic, `-2` a single pass, `N` for N passes |
+| `-v, --vacval` | `1e-3` | vacuum density threshold [e/Å³] |
 
-**没有 `-o`**：输出文件名由输入文件的 stem 决定（见下）。
+**There is no `-o`**: the output file names are decided by the stem of the input file (see below).
 
-### 四种方法怎么选
+### Choosing among the four methods
 
-| 方法 | 说明 |
+| Method | Notes |
 |---|---|
-| `neargrid` | 默认。带累积离格修正的梯度上升 + 边缘精化，常规晶胞下准确 |
-| `ongrid` | 最省，只在格点间最陡上升。盆地表面呈阶梯状，电荷系统性偏一点 |
-| `offgrid` | 插值梯度，更慢但无格点偏置 |
-| `weight` | Yu-Trinkle：格点按流量**权重拆分**到多个盆地，而非整点归属。**强倾斜（非正交）晶胞用它** —— on/near grid 依赖的梯度方向在那里有已知近似误差 |
+| `neargrid` | the default.  Gradient ascent with an accumulated off-grid correction plus edge refinement; accurate for ordinary cells |
+| `ongrid` | the cheapest, ascending steepest between grid points only.  The basin surfaces come out stepped and the charges are systematically a little off |
+| `offgrid` | an interpolated gradient: slower, but with no grid bias |
+| `weight` | Yu-Trinkle: a grid point is **split by weight** across several basins according to the flux, rather than assigned whole.  **Use it for strongly tilted (non-orthogonal) cells** — the gradient directions that on/near grid rely on have a known approximation error there |
 
-### 输出文件
+### Output files
 
-三个 Henkelman 格式的 `.dat`，**以输入文件的 stem 命名**：
+Three `.dat` files in Henkelman format, **named after the stem of the input file**:
 
-| 文件 | 内容 |
+| File | Content |
 |---|---|
-| `<输入stem>_ACF.dat` | Atomic Charges File —— 逐原子 Bader 电荷、体积、到表面的最小距离 |
-| `<输入stem>_BCF.dat` | Bader Charge File —— 逐 Bader 体积的电荷、体积、坐标 |
-| `<输入stem>_AVF.dat` | Atomic Volume File —— 原子 → Bader 体积索引映射 |
+| `<input stem>_ACF.dat` | Atomic Charges File — the Bader charge, volume and minimum distance to the surface, per atom |
+| `<input stem>_BCF.dat` | Bader Charge File — the charge, volume and coordinates of each Bader volume |
+| `<input stem>_AVF.dat` | Atomic Volume File — the atom → Bader volume index mapping |
 
-这三个是 Henkelman 组的 bader 格式，外部工具在解析，故不随其余产物迁到 csv。
+These three follow the bader format of the Henkelman group and are parsed by external tools, which is why they did not move to csv with the rest of the outputs.
 
-三份报告**默认写在输入文件旁边**（`-i run1/CHGCAR` → `run1/CHGCAR_ACF.dat`），
-是全仓唯一不默认写当前目录的命令。VASP 的电荷密度一律叫 `CHGCAR`，落在输入旁边
-各自的运行目录里才不会互相覆盖。`-o <DIR>` 收集到别处，`-s <SUFFIX>` 区分同一
-输入的两次不同参数（`<stem>_ACF_<后缀>.dat`）。
+The three reports are **written next to the input file by default** (`-i run1/CHGCAR` →
+`run1/CHGCAR_ACF.dat`), which makes this the only command in the repository that does not default to the
+current directory.  VASP charge densities are all called `CHGCAR`, and only landing next to the input, in
+their own run directories, do they avoid overwriting each other.  `-o <DIR>` collects them elsewhere, and `-s <SUFFIX>` tells two runs with different parameters on the same input apart (`<stem>_ACF_<suffix>.dat`).
 
 ---
 
 ## `ferro dataset`
 
-机器学习训练集的三步流水线。与其余命令的不同：产物是**目录**（DeePMD 的
-system 就是目录），故 `-o` 是输出**根目录**；且不接 `CommonArgs`。
-`filter` 与 `merge` 的产物默认带 `.train` 后缀，`--ratio` 划分出的三部分分别是
-`.train` / `.valid` / `.test`；名字已以这三者之一结尾时不再叠加。`collect` 的
-产物带 `.db`（原始收集数据），它**不是**划分后缀，被 `filter` / `merge` 剥掉后
-才命名自己的产物 —— `md.db` 筛成 `md.train`，不会叠成 `md.db.train`。
+A three-step pipeline for machine-learning training sets.  What sets it apart from the other commands:
+the output is a **directory** (a DeePMD system is a directory), so `-o` is the output **root directory**;
+and it does not take `CommonArgs`.  The output of `filter` and `merge` carries a `.train` suffix by
+default, and the three parts `--ratio` splits out are `.train` / `.valid` / `.test`; a name already ending
+in one of them does not get another.  The output of `collect` carries `.db` (raw collected data), which is
+**not** a split suffix: `filter` / `merge` strip it before naming their own output — `md.db` filters into `md.train`, not `md.db.train`.
 
 ```
-ferro dataset collect   AIMD 输出   → DeePMD system 目录（--type inspect 出诊断）
-ferro dataset filter    system 目录 → 筛过的 system 目录
-ferro dataset merge     多个 system → 按成分合并
+ferro dataset collect   AIMD output      → DeePMD system directory (--type inspect for diagnostics)
+ferro dataset filter    system directory → a filtered system directory
+ferro dataset merge     several systems  → merged by composition
 ```
 
-三步各自读写同一种目录格式，**没有一步会改动自己的输入**。
+All three steps read and write the same directory format, and **none of them modifies its own input**.
 
-### `collect` — AIMD 输出转数据集
+### `collect` — AIMD output into a dataset
 
 | Flag | Description |
 |---|---|
-| `-i <FILE>...` | CP2K MD 日志 / CP2K 单点输出 / VASP OUTCAR / vasprun.xml，支持 glob |
-| `-o <DIR>` | 输出根目录，**可选**；不给则产物落在各输入目录的同级 |
-| `--type <WHAT>` | `deepmd`（DeePMD system）\| `inspect`（只出诊断，不出数据集）[deepmd] |
-| `--mkdir` | 不询问直接创建 `-o`（无终端时必须给） |
-| `--overwrite` | 允许写入已存在的非空目录 |
+| `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported |
+| `-o <DIR>` | output root directory, **optional**; without it the output lands next to each input directory |
+| `--type <WHAT>` | `deepmd` (a DeePMD system) \| `inspect` (diagnostics only, no dataset) [deepmd] |
+| `--mkdir` | create `-o` without asking (required when there is no terminal) |
+| `--overwrite` | allow writing into an existing non-empty directory |
 
-**一个输入目录一个 system**。同目录的 `.out` 是同一次运行被重启切开的段，
-合并回去 —— 这也是 collect 与 merge 的分界：collect 拼**同一次运行**的碎片，
-merge 合**不同运行**。单点批次同理：一个目录放同一成分的若干个 `ENERGY_FORCE`
-输出，每个文件贡献一帧。
+**One system per input directory.**  The `.out` files in one directory are segments of a single run cut
+apart by restarts, and are joined back together — this is also the dividing line between collect and
+merge: collect joins the fragments of **one run**, merge combines **different runs**.  The same applies to
+a batch of single points: one directory holds several `ENERGY_FORCE` outputs of the same composition, each file contributing one frame.
 
-**读哪个 reader 由文件内容决定**，不看名字。CP2K 在同一个 `CP2K|` 横幅下写
-两套完全不同的布局，由 `GLOBAL| Run type` 分：`ENERGY` / `ENERGY_FORCE` 走
-单点 reader，其余走 MD reader。
+**Which reader is used is decided by the content of the file**, not by its name.  CP2K writes two
+completely different layouts under the same `CP2K|` banner, told apart by `GLOBAL| Run type`:
+`ENERGY` / `ENERGY_FORCE` go to the single-point reader, everything else to the MD reader.
 
-目录名取**剥掉公共祖先之后剩下的层级**，原样嵌套不压平，文件 stem 不进名字：
+The directory name is **what is left after the common ancestor is stripped**, nested as it was rather than flattened, and the file stem does not go into the name:
 
-| `-i` | 产物 |
+| `-i` | Output |
 |---|---|
-| `/data/md/*.out`（不给 `-o`） | `/data/md.db/` |
-| `run*/*.out -o sets` | `sets/run1.db/`、`sets/run2.db/` |
-| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`、`sets/b/md.db/` |
-| `*.out -o sys`（只有一个目录） | `sys.db/` 本身 |
+| `/data/md/*.out` (no `-o`) | `/data/md.db/` |
+| `run*/*.out -o sets` | `sets/run1.db/`, `sets/run2.db/` |
+| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`, `sets/b/md.db/` |
+| `*.out -o sys` (a single directory) | `sys.db/` itself |
 
-公共前缀按定义不携带区分信息，剥掉之后剩下的必然唯一，所以撞名不再是错误 ——
-撞名就是「该合并」的定义。
+A common prefix carries no distinguishing information by definition, so what remains after stripping it is
+necessarily unique and a name collision is no longer an error — a collision is the definition of "these belong together".
 
-产物目录名**恒带 `.db`**（database），标的是「原始收集数据」。它**不是**划分
-后缀：`.train`/`.valid`/`.test` 说的是划分的哪一部分，`.db` 说的是数据从哪来。
-不进那张表是有代价考量的 —— 「`.valid` 不许再划分」那条守卫读的正是同一张表，
-`.db` 进去会被一起拒掉。`filter` / `merge` 在命名自己的产物前剥掉它，于是
-`md.db` 筛成 `md.train` 而不是 `md.db.train`；两段后缀还会让 `merge` 的共享
-后缀检查（只看末尾一段）失去唯一解。
+The output directory name **always carries `.db`** (database), marking it as raw collected data.  It is
+**not** a split suffix: `.train`/`.valid`/`.test` say which part of a split something is, `.db` says where
+the data came from.  Keeping it out of that table was a deliberate trade-off — the guard that forbids
+splitting a `.valid` again reads exactly that table, and `.db` would be rejected along with them.
+`filter` / `merge` strip it before naming their own output, so `md.db` filters into `md.train` rather than
+`md.db.train`; two stacked suffixes would also leave `merge`'s shared-suffix check (which looks at the last segment only) without a unique answer.
 
-不给 `-o` 时产物写在 AIMD 目录**同级**。早先定的「`-o` 必填」反对的是默认值
-`.`（会把 npy 撒进正在工作的目录），而跟着输入走的默认值撒不到别处去。
+Without `-o` the output is written **next to** the AIMD directory.  The earlier rule that "`-o` is
+mandatory" was aimed at a default of `.`, which would scatter npy files into the directory being worked in; a default that follows the input cannot scatter them anywhere else.
 
-**`--type inspect`**：只写诊断、不写数据集，三个文件落在
-`<AIMD 目录>/ferro_inspect/`，`-o` 在这条路上**报错**（没有数据集可安置）：
+**`--type inspect`**: writes diagnostics only and no dataset.  The three files land in
+`<AIMD directory>/ferro_inspect/`, and `-o` **errors out** on this path (there is no dataset to place):
 
-| 文件 | 内容 |
+| File | Content |
 |---|---|
-| `<目录名>.lammpstrj` | 全部帧，拿去看 |
-| `<目录名>.data` | **末帧**，拿去接着跑（第 0 帧是你喂进去的初始构型） |
-| `<目录名>_info.csv` | 逐帧 `frame` `step` `temperature` `energy` `volume` `density` `source`；运行摘要在 `#` 头 |
+| `<directory name>.lammpstrj` | all frames, for looking at |
+| `<directory name>.data` | the **last frame**, for continuing a run (frame 0 is the initial configuration you fed in) |
+| `<directory name>_info.csv` | per frame: `frame` `step` `temperature` `energy` `volume` `density` `source`; the run summary is in the `#` header |
 
-温度在 CP2K 与 OUTCAR 是直读的；vasprun.xml 不打印它，由离子动能按
-`T = 2·E_kin/(3N·k_B)` 反算，`#` 头会注明。缺失值渲染成**空字段**，不补零。
+The temperature is read directly from CP2K and from OUTCAR; vasprun.xml does not print it, so it is
+back-calculated from the ionic kinetic energy as `T = 2·E_kin/(3N·k_B)`, which the `#` header notes.  Missing values are rendered as **empty fields**, never padded with zeros.
 
-文件按首个 `MD| Step number` 排序，文件内保持原序。**重叠帧不去重**（重启只
-重跑 checkpoint 以来的几步，位置速度相同则能量力也相同），但每个源文件的 step
-区间会打出来，让这个前提保持可检验。单点没有步号，退化成**按文件名排序**，
-那一列打的是 `N single point(s)` 而不是 `steps ?`。
+Files are ordered by their first `MD| Step number`, and the order within a file is kept.  **Overlapping
+frames are not deduplicated** (a restart only reruns the few steps since the checkpoint, and identical
+positions and velocities give identical energies and forces), but the step range of every source file is
+printed so that this premise stays checkable.  Single points have no step number and fall back to **ordering by file name**; that column then reads `N single point(s)` instead of `steps ?`.
 
-同目录**成分不一致直接报错**并指名两个文件，不当作坏帧丢 —— 那是人的错误，
-不是数据的问题。单个 out 解析失败则跳过、用剩下的建 system，跳过清单在最后
-再报一遍并置退出码 1。
+Inconsistent compositions in one directory **error out immediately**, naming both files, rather than being
+dropped as bad frames — that is human error, not a problem with the data.  A single out file that fails to
+parse is skipped and the system is built from the rest; the skip list is reported again at the end and the exit code is set to 1.
 
-**MD** 要求 CP2K 把坐标、力、应力全部打到 `__STD_OUT__`，这样一个 out 文件
-自足。**单点**不需要 `&MOTION`，坐标与力用 `PRINT_LEVEL MEDIUM` 本来就会打的
-那两张表；帧锚点是 `ENERGY| Total FORCE_EVAL`，所以 `cat` 起来的 N 份单点输出
-读成 N 帧。
+**MD** requires CP2K to print coordinates, forces and stress all to `__STD_OUT__`, which makes one out
+file self-contained.  **Single points** need no `&MOTION`: the coordinates and forces come from the two
+tables that `PRINT_LEVEL MEDIUM` prints anyway.  The frame anchor is `ENERGY| Total FORCE_EVAL`, so N
+single-point outputs concatenated with `cat` read as N frames.
 
-单位从文本自读（`[hartree]` / `[bar]`），认不出**报错**不默认 —— `STRESS_UNIT`
-是 CP2K 的输入关键字，同一版本能吐 bar / GPa / atm。力是唯一无单位标注的量，
-按 a.u. 兜底。
+Units are read from the text itself (`[hartree]` / `[bar]`), and an unrecognised one **errors out** rather
+than defaulting — `STRESS_UNIT` is a CP2K input keyword, and one version can emit bar, GPa or atm.
+Forces are the only quantity with no unit annotation and fall back to a.u.
 
-**CP2K 版本**：实现两代——**2023–2024**（`energy [a.u.]:` + `ATOMIC FORCES` 表）
-与 **2025–2026**（`energy [hartree]` + `FORCES|` 块）；坐标表、kind 块、`CELL|`
-两代同形。2025–2026 静默读；**2024 及之前每个文件多打一行 `NOTE:` 点名版本，
-然后照常提取**——提示抽查一帧，不是拒绝。8.1 之前的圆括号能量与无前缀应力块
-也仍然认，但那些版本已在考虑范围之外。
+**CP2K versions**: two generations are implemented — **2023–2024** (`energy [a.u.]:` plus the
+`ATOMIC FORCES` table) and **2025–2026** (`energy [hartree]` plus the `FORCES|` block); the coordinate
+table, the kind block and `CELL|` have the same shape in both.  2025–2026 is read silently; **2024 and
+earlier get one extra `NOTE:` line per file naming the version, and are then extracted as usual** — the
+note asks for a spot-check of one frame, it is not a refusal.  The parenthesised energy and the unprefixed stress block of pre-8.1 versions are still recognised, but those versions are out of scope.
 
-**CP2K kind 名**：同元素多 kind（`Fe1`/`Fe2`）时，`element` 取真元素、kind 名
-进 `label`，`type_map.raw` 仍按 element 建，所以两者合成一个训练类型。映射关系
-每个 system 打印一次。dpdata 的 CP2K 插件默认相反（拿 kind 名当元素）。
+**CP2K kind names**: with several kinds per element (`Fe1`/`Fe2`), `element` takes the real element and
+the kind name goes into `label`, while `type_map.raw` is still built from elements, so the two merge into
+one training type.  The mapping is printed once per system.  The CP2K plugin of dpdata defaults to the opposite (taking the kind name as the element).
 
-**与 dpdata 的对拍**：单点与 AIMD 逐项比过 cp2kdata 0.7.4（CP2K 2025.2）。
-AIMD 全 2000 帧的能量、坐标、力逐位相同，应力相对差 1.2e-15；单点五项全部
-对上。完整数字与四点说明（力残差的来源、MD 首帧、坐标/力为何无法经 cp2kdata
-验证、晶胞精度）见 `ferro doc dataset collect` 的 "Checked against dpdata"。
+**Cross-check against dpdata**: both single points and AIMD were compared item by item against cp2kdata
+0.7.4 (CP2K 2025.2).  Across all 2000 AIMD frames the energies, coordinates and forces are bit-for-bit
+identical and the stress differs by 1.2e-15 relative; all five single-point quantities agree.  For the full
+numbers and the four accompanying notes (where the force residual comes from, the first MD frame, why coordinates and forces cannot be verified through cp2kdata, and cell precision) see "Checked against dpdata" in `ferro doc dataset collect`.
 
-丢帧三类，**始终计数**：SCF 未收敛 / 块截断（含力数与原子数不等）/ 组成不符。
-单点缺应力**不算**丢帧 —— 没开 `STRESS_TENSOR` 的单点照样是好数据，只是没有
-virial；缺力则必丢，`force.npy` 在 DeePMD 里不是可选项。
+Frames are dropped for three reasons, and they are **always counted**: SCF not converged / a truncated
+block (including a force count that does not match the atom count) / a mismatched composition.  A single
+point without stress is **not** a dropped frame — a run without `STRESS_TENSOR` is still good data, it merely has no virial; a missing force is always fatal, since `force.npy` is not optional in DeePMD.
 
-产物：
+Output:
 
 ```
 <outdir>/<name>.db/
-  type.raw          逐原子的类型索引，0 基
-  type_map.raw      元素符号，按 (Z, 符号) 排序
+  type.raw          the type index per atom, 0-based
+  type_map.raw      element symbols, ordered by (Z, symbol)
   set.000/coord.npy (nframes, natoms*3)  Å
-          box.npy   (nframes, 9)         Å，行优先
+          box.npy   (nframes, 9)         Å, row-major
           energy.npy(nframes, 1)         eV
           force.npy (nframes, natoms*3)  eV/Å
           virial.npy(nframes, 9)         eV = stress × V
 ```
 
-磁盘上一律**二维 float64**。dpdata 默认 float32，这里不跟 —— 这是流水线的头，
-下游读它，精度在这里丢了就回不来。
+Everything on disk is **two-dimensional float64**.  dpdata defaults to float32 and ferro does not follow —
+this is the head of the pipeline and everything downstream reads it, so precision lost here cannot be recovered.
 
-### `filter` — 按质量筛帧
-
-| Flag | Default | Description |
-|---|---|---|
-| `-i <DIR>...` | | system 目录，或含它们的上层目录（递归找 `type.raw`） |
-| `-o <DIR>` | | 输出根目录，按相对 `-i` 的路径重建；**省略即只读** |
-| `-f, --f-max <EV_PER_A>` | 20.0 | 逐帧最大力**矢量模长**超过则删；0 关闭 |
-| `-s, --s-max <GPA>` | 10.0 | 逐帧 9 个应力分量绝对值的最大值超过则删；0 关闭 |
-| `--oo-min [<DMIN>]` | 关闭 / 裸给 2.0 | 逐帧最小 O–O 距离低于则删 |
-| `--al6 [<RCUT>]` | 关闭 / 裸给自动 | 只保留含 6 配位 Al 的帧；裸给时截断取 Al–O RDF 第一壳层外沿 |
-| `--start <N>` | 0 | 区间起点（**存活帧**的序号，0 基闭区间） |
-| `--end <N>` | 末帧 | 区间终点（0 基，**含**） |
-| `--stride <N>` | 1 | 每 N 个存活帧取一个 |
-| `-N, --number <N>` | | 等间隔取这么多帧，含两端；与 `--stride` 互斥 |
-| `--shuffle` | 关闭 | 写出前打乱，**在所有判据与抽帧之后** |
-| `--seed <N>` | 666 | `--shuffle` 的种子；不带 `--shuffle` 给它会报错 |
-| `--set-size <N>` | 400 | 每个输出 set 的帧数；0 表示不切 |
-| `--overwrite` | | 允许写入已存在的非空目录 |
-
-漏斗（逐步收窄）：
-
-```
-全部帧 → |F|max → |σ|max → min d(O-O) → Al6 → [区间/抽帧] → shuffle
-```
-
-**区间与抽帧作用于存活帧的序号**，不是原始帧号 —— 在丢掉未知多少帧之后，这是
-唯一还讲得通的语义。报告里给的始终是原始帧号。
-
-阈值 0 关闭该判据：显式的零表达「不判」，小正数表达不了。
-
-报告三张表：`[funnel]` 逐步剩余、`[criteria]` 每条判据判坏多少及**独占**多少、
-`[overlap]` 两两重叠。**独占数才是判据有没有用的证据** —— 漏斗每步只在上一步的
-存活帧上报数，一个只会重复抓别人已抓帧的判据在那里看着也很能干。
-
-另有四张诊断表：min d(O–O) 分布、每帧 Al6 个数、Al 配位分布、**rcut 敏感性
-扫描**。最后一张最要紧 —— 一个体系上它可能从 0.9% 陡升到 41.4%，另一个体系上
-却是一条 100% 的平线。四张恒定计算：实测 1110 帧 / 302 原子的挂钟时间与不算时
-相同，而只在只读模式算就等于永远落不了盘。
-
-打印与落盘分开：
-
-| | 屏幕 | 落盘 |
-|---|---|---|
-| 无 `-o`（只读） | 七张全打 | **一个字不写** |
-| 有 `-o` | 只打三张统计表 | 七张全写 |
-
-七个 csv **平铺**在 `-o` 根下（`filter_funnel.csv`、`filter_rcut_scan.csv` …），
-经与其余产物同一个 writer，自带 `#` 头与 `[inputs]` 清单。多 system 堆叠成一份，
-行标签是 `system` 列里**相对 `-i` 的路径** —— 嵌套结构下 `a/md` 与 `b/md` 的
-叶子名相同，堆起来就分不出是谁。
-
-平铺而不是塞进 `report/` 子目录是有意的：`expand_dirs` 只收目录，平铺的 csv
-会被后续 `merge -i clean/*` 自动滤掉，而 `report/` 反倒会被收进去当 system 候选。
-
-### `merge` — 按成分合并
+### `filter` — select frames by quality
 
 | Flag | Default | Description |
 |---|---|---|
-| `-i <DIR>...` | | 待合并的 system 目录，支持 glob |
-| `-o <DIR>` | | 输出根目录，一个成分一个子目录 |
+| `-i <DIR>...` | | system directories, or a directory containing them (`type.raw` is searched for recursively) |
+| `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i`; **omitting it means read-only** |
+| `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
+| `-s, --s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
+| `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this |
+| `--al6 [<RCUT>]` | off / automatic when bare | keep only frames containing a 6-coordinate Al; given bare, the cutoff is the outer edge of the first Al–O RDF shell |
+| `--start <N>` | 0 | start of the range (the index among the **surviving frames**, 0-based and inclusive) |
+| `--end <N>` | last frame | end of the range (0-based, **inclusive**) |
+| `--stride <N>` | 1 | take one out of every N surviving frames |
+| `-N, --number <N>` | | take this many frames at even intervals, both ends included; mutually exclusive with `--stride` |
+| `--shuffle` | off | shuffle before writing, **after every criterion and after the frame sampling** |
+| `--seed <N>` | 666 | the seed for `--shuffle`; giving it without `--shuffle` errors out |
+| `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
+| `--overwrite` | | allow writing into an existing non-empty directory |
+
+The funnel (narrowing step by step):
+
+```
+all frames → |F|max → |σ|max → min d(O-O) → Al6 → [range / sampling] → shuffle
+```
+
+**The range and the sampling act on the index among the surviving frames**, not on the original frame
+number — after an unknown number of frames has been dropped, that is the only semantics that still makes sense.  The report always gives the original frame numbers.
+
+A threshold of 0 disables that criterion: an explicit zero states "do not judge", which no small positive number can express.
+
+The report has three tables: `[funnel]` for what survives each step, `[criteria]` for how many frames each
+criterion rejects and how many it rejects **exclusively**, and `[overlap]` for the pairwise overlap.  **The
+exclusive count is the evidence that a criterion is worth having** — each funnel step only counts against the survivors of the previous one, so a criterion that merely re-catches what others already caught still looks busy there.
+
+There are four diagnostic tables as well: the distribution of min d(O–O), the number of Al6 per frame, the
+Al coordination distribution, and an **rcut sensitivity scan**.  The last one matters most — on one system
+it can climb steeply from 0.9% to 41.4%, while on another it is a flat 100% line.  All four are computed
+unconditionally: measured on 1110 frames of 302 atoms the wall-clock time is the same as without them, and computing them only in read-only mode would mean they never reach disk.
+
+Printing and writing are separate:
+
+| | Screen | Written to disk |
+|---|---|---|
+| without `-o` (read-only) | all seven printed | **nothing at all** |
+| with `-o` | only the three statistics tables | all seven written |
+
+The seven csv files sit **flat** in the `-o` root (`filter_funnel.csv`, `filter_rcut_scan.csv`, …), go
+through the same writer as every other output, and carry their own `#` header and `[inputs]` list.  Several
+systems are stacked into one file, with the row label being the **path relative to `-i`** in the `system`
+column — in a nested layout `a/md` and `b/md` have the same leaf name and could not be told apart once stacked.
+
+Keeping them flat rather than in a `report/` subdirectory is deliberate: `expand_dirs` only picks up
+directories, so a later `merge -i clean/*` filters the flat csv files out by itself, whereas a `report/` would be picked up as a system candidate.
+
+### `merge` — combine by composition
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <DIR>...` | | the system directories to combine; globs are supported |
+| `-o <DIR>` | | output root directory, one subdirectory per composition |
 | `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
-| `--seed <N>` | 666 | `shuffle` 的种子；`by-source` 不用 |
-| `--set-size <N>` | 400 | 每个输出 set 的帧数；0 表示不切 |
-| `--suffix <EXT>` | 见右 | 强制输出目录后缀。默认：组内共享同一后缀就继承，全都没有则用 `.train`；**混着不同部分则报错**，不会把测试数据标成训练集 |
-| `--overwrite` | | 允许写入已存在的非空目录 |
+| `--seed <N>` | 666 | the seed for `shuffle`; unused by `by-source` |
+| `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
+| `--suffix <EXT>` | see right | force the output directory suffix.  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
+| `--overwrite` | | allow writing into an existing non-empty directory |
 
-**分组不看目录名** —— `init.011` 说明不了里面装的是什么。按逐原子的元素序列
-分组，成分相同才合并。输出目录名 `<原子数>_<化学式>`（`112_Al32O64Zn16`），
-下标是实际计数不约分。
+**Grouping does not look at directory names** — `init.011` says nothing about what is inside.  Grouping is
+by the per-atom element sequence, and only identical compositions are combined.  The output directory is
+named `<atom count>_<formula>` (`112_Al32O64Zn16`), where the subscripts are the actual counts, not reduced.
 
-组内各 system 的原子排列可以不同：合并时统一到规范序 `(Z, 符号)`，**逐原子
-数组（coord、force）跟同一置换走**，与原子编号无关的量（box、energy、virial）
-原样搬。DP 对原子编号置换不变，改的是记法不是物理。
+The systems in a group may order their atoms differently: on merging they are brought to the canonical
+order `(Z, symbol)`, with **the per-atom arrays (coord, force) following the same permutation**, while
+quantities independent of atom numbering (box, energy, virial) are carried over unchanged.  DP is invariant under a permutation of atom numbering; this changes the notation, not the physics.
 
-| 模式 | 行为 |
+| Mode | Behaviour |
 |---|---|
-| `shuffle` | 同成分全部拼接 → 按 seed 打乱 → 按 `--set-size` 切 |
-| `by-source` | 不混不打乱；**每个 system 内部**独立切，set 不横跨 system，对应关系写 `sets_source.txt` |
+| `shuffle` | concatenate everything of the same composition → shuffle by seed → split by `--set-size` |
+| `by-source` | no mixing and no shuffling; each system is split **within itself**, no set spans two systems, and the correspondence is written to `sets_source.txt` |
 
-两种模式的余数都均分：500 帧按 400 切给 250+250，不是 400+100。
+Both modes spread the remainder evenly: 500 frames split by 400 gives 250+250, not 400+100.
 
-`filter --shuffle` 与 `merge --mode shuffle` 是**二选一不是先后**：要让 set
-混合多个来源就在 merge 打乱，数据集直接喂训练器就在 filter 打乱。
+`filter --shuffle` and `merge --mode shuffle` are **one or the other, not a sequence**: shuffle in merge to
+get sets that mix several sources, shuffle in filter when the dataset goes straight to the trainer.
 
 ---
 
 ## `ferro doc`
 
-本手册的全部页面经 `include_str!` 编译进二进制（24 页，208 KB），所以
-`cargo install` 出去的 ferro 也带着它。
+Every page of this manual is compiled into the binary via `include_str!` (24 pages, 208 KB), so a ferro
+installed with `cargo install` carries it too.
 
 ```bash
-ferro doc                          # 列出全部 topic
-ferro doc dataset filter           # 读一页
-ferro doc net > net.md             # 重定向时不分页，是干净文件
+ferro doc                          # list every topic
+ferro doc dataset filter           # read one page
+ferro doc net > net.md             # redirected output is not paged and is a clean file
 ```
 
-**topic 跟子命令树同名**（`dataset filter`、`traj gr`、`net`），所以每个帮助页
-末尾那行 `Full documentation:` 就是下一句要敲的命令，而不是一条要去找的路径。
-不对应单个命令的页用扁平名（`data-model`、`installation`、`python`、
-`cli-reference`）。`gr`、`filter`、`network` 这类简写有别名。
+**Topics carry the same names as the subcommand tree** (`dataset filter`, `traj gr`, `net`), so the
+`Full documentation:` line at the end of every help page is the next command to type rather than a path to
+go looking for.  Pages that do not correspond to a single command use flat names (`data-model`,
+`installation`, `python`, `cli-reference`).  Short forms such as `gr`, `filter` and `network` have aliases.
 
-`convert` / `info` / `bader` 没有专页 —— 它们是**本页的小节**，`ferro doc` 按
-小节寻址，取该 `##` 标题到下一个同级标题，于是给出几十行而不是整本。
+`convert` / `info` / `bader` have no page of their own — they are **sections of this page**, and `ferro doc`
+addresses sections, taking that `##` heading up to the next one of the same level, so it prints a few dozen lines rather than the whole book.
 
-markdown **原样输出，不渲染**（零依赖）。stdout 是终端时经 `$PAGER`
-（默认 `less -R`），重定向或管道时直接打印 —— `git` 与 `man` 的行为。
-pager 缺失或起不来就回落到打印，不报错。
+The markdown is **printed as-is, not rendered** (no dependencies).  When stdout is a terminal it goes
+through `$PAGER` (`less -R` by default); when redirected or piped it is printed directly — the behaviour
+of `git` and `man`.  A missing pager, or one that will not start, falls back to printing rather than failing.
 
 ---
 
-## 输出格式约定
+## Output format conventions
 
-除 `ferro map`（cube）与 `ferro bader`（ACF/BCF/AVF）外，所有产物都是**一份 csv**，
-数据上方有一个 `#` 注释块，放共享参数与 `[inputs]` 清单（逐输入的帧数、原子数、
-体积、状态）。
+Apart from `ferro map` (cube) and `ferro bader` (ACF/BCF/AVF), every output is **one csv** with a `#`
+comment block above the data holding the shared parameters and the `[inputs]` list (frame count, atom
+count, volume and status per input).
 
-那个块是给人看的——`pandas.read_csv(comment="#")` 会丢掉它，所以**脚本必须解析的
-东西一律是列**，不会藏在注释里。
+That block is for people to read — `pandas.read_csv(comment="#")` drops it, so **anything a script has to
+parse is always a column** and is never hidden in a comment.
 
-数值格式统一 `{:.6e}`，**NaN 渲染为空字段**（列并集下某输入缺的列就是空，不是 0）。
+Numbers are formatted uniformly as `{:.6e}`, and **NaN renders as an empty field** (under a column union, a column an input lacks is empty, not 0).
