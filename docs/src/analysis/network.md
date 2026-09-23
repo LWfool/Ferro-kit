@@ -1,284 +1,284 @@
 # Glass Network Analysis (`ferro net`)
 
-`ferro net` 对 MD 轨迹逐帧建立玻璃网络拓扑，把每个原子归入一个**结构化的类型**，
-再在全轨迹上累加成分布。产物是六张长表，外加可选的标注轨迹。
+`ferro net` builds the glass network topology frame by frame over an MD trajectory, assigns every
+atom a **structured type**, and accumulates the distributions over the whole trajectory.  The output is six long tables plus an optional labelled trajectory.
 
-| 量 | 表 | 含义 |
+| Quantity | Table | Meaning |
 |---|---|---|
-| **结构组成** | `composition` | 一物种一行：`P-Q2` `Al_4` `O_b` `Zn_4`，各占其元素的比例 |
-| Qn 分布 | `qn` | Qn 形成子的**同核**连接数 $n$（P–O–P），文献 $Q^n_m$ 的 $n$ |
-| 异核桥分解 | `qn_partner` | 上表再按伙伴元素拆一维，即 $Q^n(m\mathrm{Al})$ |
-| 配体分类 | `ligand_type` | `O_f` / `O_n` / `O_b` / `O_t`，伙伴元素以数据列给出 |
-| 配位数 | `coordination` | 形成子与修饰子的总配位数分布 |
-| 桥联统计 | `linkage` | 每座桥的配体元素与两端位点状态 |
+| **Structural composition** | `composition` | one species per row: `P-Q2` `Al_4` `O_b` `Zn_4`, each as a fraction of its own element |
+| Qn distribution | `qn` | the **homonuclear** connection count $n$ of a Qn network former (P–O–P), the $n$ of the literature's $Q^n_m$ |
+| Heteronuclear bridge decomposition | `qn_partner` | the table above split one dimension further by partner element, i.e. $Q^n(m\mathrm{Al})$ |
+| Ligand classification | `ligand_type` | `O_f` / `O_n` / `O_b` / `O_t`, with the partner elements given as data columns |
+| Coordination number | `coordination` | the total coordination-number distribution of network formers and modifiers |
+| Linkage statistics | `linkage` | the ligand element of every bridge and the site state at both of its ends |
 
-`composition` 是**其余表的摘要**，不是新的测量：想一眼看完这块玻璃的结构组成就读它，
-要伙伴分解、要两端状态才去翻源表。
+`composition` is a **summary of the other tables**, not a new measurement: read it to take in the structural
+composition of the glass at a glance, and go to the source tables when the partner decomposition or the state at both ends is needed.
 
-> **Qn 只报给 Qn 元素。** Qn 是四面体形成子的记号，默认只有 `B` / `P` / `Si`
-> 出现在 `qn` 与 `qn_partner` 两张表里；**Al 之类的形成子由配位数刻画**
-> （文献写作 Al[4] / Al[5] / Al[6]），它们仍然参与桥氧判定、`ligand_type` 与
-> `linkage`，退出的只是这两张表的「行」。用 `--qn` 可以整体替换这个名单。
+> **Qn is reported only for Qn elements.** Qn is the notation for tetrahedral network formers, so by
+> default only `B` / `P` / `Si` appear in the `qn` and `qn_partner` tables; **network formers such as Al
+> are characterised by coordination number** (written Al[4] / Al[5] / Al[6] in the literature).  They still
+> take part in the bridging-oxygen decision, in `ligand_type` and in `linkage` — what they leave is only the *rows* of those two tables.  `--qn` replaces this list as a whole.
 
-> **命令形状。** `ferro net qn` 与 `ferro net type` 已合并为叶子命令
-> `ferro net`；导出退化为开关 `--export-traj`。旧标签（`P0` / `Of` / `On_P` /
-> `Ob_P_P` / `X` / `Zn_f`）已全部替换，不留读取兼容层。
+> **Command shape.** `ferro net qn` and `ferro net type` have been merged into the leaf command
+> `ferro net`; the export is now just the `--export-traj` switch.  The old labels (`P0` / `Of` / `On_P` /
+> `Ob_P_P` / `X` / `Zn_f`) have all been replaced, with no read-compatibility layer.
 
 ---
 
-## 理论背景
+## Theory
 
-### 键连关系的判定
+### Deciding which atoms are bonded
 
-以截断半径（cutoff）作为成键判据：两原子间距小于截断值时视为成键。距离计算使用最小
-镜像约定（minimum-image convention），支持斜方和三斜晶胞：
+A cutoff radius is the bonding criterion: two atoms are bonded when the distance between them is below
+the cutoff.  Distances use the minimum-image convention, which supports orthorhombic and triclinic cells:
 
 $$d_{ij} = \bigl|\mathbf{r}_{ij} - \mathbf{M} \cdot \text{round}\!\left(\mathbf{M}^{-1}\mathbf{r}_{ij}\right)\bigr|$$
 
-分析要求每帧均存在晶胞（PBC）。缺晶胞的帧被跳过；一帧不剩时该输入报错并跳过。
+The analysis requires a cell (PBC) on every frame.  Frames without one are skipped; when no frame is left, that input errors out and is skipped.
 
-### 三种角色
+### The three roles
 
-参数把元素分成三类，这个划分是后面一切的前提：
+The parameters split the elements into three classes, and everything below rests on that split:
 
-| 角色 | 来源 | 参与 |
+| Role | Where it comes from | Takes part in |
 |---|---|---|
-| **形成子** (former) | `--<F>-<L>=<Å>` 的左侧 | 桥接数、配位数、配体分类、桥联统计 |
-| **配体** (ligand) | `--<F>-<L>=<Å>` 的右侧 | 配体分类 |
-| **修饰子** (modifier) | `--modifier` 点名，截断同样用 `--<M>-<L>=<Å>` | **只**参与配位数 |
+| **network former** | the left-hand side of `--<F>-<L>=<Å>` | number of bridges, coordination number, ligand classification, linkage statistics |
+| **ligand** | the right-hand side of `--<F>-<L>=<Å>` | ligand classification |
+| **modifier** | declared with `--modifier`; its cutoffs also use `--<M>-<L>=<Å>` | coordination number **only** |
 
-修饰子被排除在配体分类之外，是这个参数存在的全部理由：一个 Zn 挨着某个非桥氧，
-不能因此把那个氧算成桥氧。点名了修饰子却不给它截断会直接报错——静默通过会让它被
-当成形成子，整套氧分类随之错位。
+Keeping modifiers out of the ligand classification is the entire reason this parameter exists: a Zn sitting
+next to a non-bridging oxygen must not turn that oxygen into a bridging one.  Declaring a modifier without
+giving it a cutoff errors out at once — letting it pass silently would make it count as a network former, and the whole oxygen classification would shift with it.
 
-### 配体分类
+### Ligand classification
 
-对每个配体原子 $k$，统计其形成子邻居数 $n_k$：
+For every ligand atom $k$, count its network-former neighbours $n_k$:
 
-| $n_k$ | 标签 | 含义 |
+| $n_k$ | Label | Meaning |
 |---|---|---|
-| 0 | `O_f` | Free，游离配体 |
-| 1 | `O_n` | Non-bridging，非桥配体 |
-| 2 | `O_b` | Bridging，桥联配体 |
-| ≥3 | `O_t` | Tricluster，三配位配体（含 Al 玻璃中的常见结构） |
+| 0 | `O_f` | Free — bonded to no network former |
+| 1 | `O_n` | Non-bridging ligand |
+| 2 | `O_b` | Bridging ligand |
+| ≥3 | `O_t` | Tricluster — a three-coordinate ligand, common in Al-bearing glasses |
 
-**标签里不带伙伴元素。** `P–O–P` 与 `P–O–Al` 都标 `O_b`，两者的区分走 `oxy` 表的
-`former_a` / `former_b` **数据列**。标签保持朴素、统计保持完整，两件事解耦：标签是
-给结构文件用的，伙伴分解是给分析用的。
+**The label carries no partner element.** Both `P–O–P` and `P–O–Al` are labelled `O_b`; the two are told
+apart by the `former_a` / `former_b` **data columns** of the `oxy` table.  The label stays plain and the
+statistics stay complete, which decouples the two: the label is for structure files, the partner decomposition is for analysis.
 
-### 两个必须分清的量：桥接数与配位数
+### Two quantities that must be kept apart: number of bridges and coordination number
 
-对每个形成子原子 $i$：
+For every network-former atom $i$:
 
 $$n_i^\text{bridge} = \bigl|\{k \in \text{neighbors}(i) : n_k \ge 2\}\bigr|,
 \qquad
 \mathrm{CN}_i = \bigl|\text{neighbors}(i)\bigr|$$
 
-**桥接数只数桥联配体，配位数数截断内的全部配体**，含非桥配体。三配位配体计入桥接数
-（它确实把该形成子连进了网络），代价是
-$\sum(\text{桥接数}) \neq 2 \times |\text{O\_b}|$——一个 `O_t` 被三边各数一次。
+**The number of bridges counts bridging ligands only; the coordination number counts every ligand inside
+the cutoff**, non-bridging ones included.  A three-coordinate ligand does count towards the number of
+bridges (it does connect that former into the network), at the price of $\sum(\text{bridges}) \neq 2 \times |\text{O\_b}|$ — one `O_t` is counted once by each of its three sides.
 
-> **两者相等是体系的性质，不是定义。** 一个不带非桥配体的形成子会让
-> $n^\text{bridge} = \mathrm{CN}$ 处处成立。参考轨迹里的 Al 正是如此（`ligand_type`
-> 表中没有任何 `O_n, Al` 行），于是两张分布表逐档相同。换一个 Al 带非桥氧的体系，
-> 两者立刻分叉。凡是读到「Al 的配位数」，认准 `coordination` 表。
+> **Their being equal is a property of the system, not a definition.** A network former with no
+> non-bridging ligand makes $n^\text{bridge} = \mathrm{CN}$ hold everywhere.  That is exactly the case for
+> Al in the reference trajectory (the `ligand_type` table has no `O_n, Al` row at all), so the two
+> distribution tables agree bin by bin.  Switch to a system where Al carries non-bridging oxygens and the two part ways at once.  Whenever you read "the coordination number of Al", take it from `coordination`.
 
-### Qn 只给 Qn 形成子
+### Qn is only for Qn network formers
 
-$Q^n$ 是四面体形成子的记号：在配位数基本固定的位点上，一个数字就说尽了它的连接
-状况。Al 不满足这个前提——它的配位数本身就是要报的量。因此：
+$Q^n$ is the notation for tetrahedral network formers: on a site whose coordination number is essentially
+fixed, one number says everything about how it is connected.  Al does not meet that premise — its coordination number is itself one of the quantities to be reported.  Hence:
 
-| | 出现在 `qn` / `qn_partner` | 标签数字 | 由什么刻画 |
+| | Appears in `qn` / `qn_partner` | Number in the label | Characterised by |
 |---|---|---|---|
-| Qn 形成子（默认 B, P, Si） | 是 | $n$（同核连接数） | Qn 分布 |
-| 其他形成子（Al, …） | **否** | **配位数** | `coordination` 表 |
-| 修饰子（Zn, …） | 否 | 无后缀 | `coordination` 表 |
+| Qn network former (B, P, Si by default) | yes | $n$ (homonuclear connection count) | the Qn distribution |
+| other network formers (Al, …) | **no** | **coordination number** | the `coordination` table |
+| modifiers (Zn, …) | no | no suffix | the `coordination` table |
 
-名单是**默认值**，`--qn Si,Al` 会整体替换它（不是叠加）——某个元素算不算 Qn 形成子
-是体系的性质：铝硅酸盐里人们确实会报 Al 的 $Q^n(m\mathrm{Si})$。
+The list is a **default**: `--qn Si,Al` replaces it as a whole rather than adding to it — whether an element
+counts as a Qn network former is a property of the system: in aluminosilicates people do report $Q^n(m\mathrm{Si})$ for Al.
 
-### $n$ 只数同核桥 —— 与文献一致的口径
+### $n$ counts homonuclear bridges only — the statement used in the literature
 
-这是**最容易读错的一列**，请先读完本节再用 `qn`。
+This is **the column most easily misread**; please finish this section before using `qn`.
 
-文献的扩展记号 $Q^n_m$（铝磷酸盐写 $Q^n(m\mathrm{Al})$，硼磷酸盐写 $Q^n(m\mathrm{B})$，
-多异核时写 $P^n_{m\mathrm{Al},x\mathrm{B}}$）里：
+In the extended notation $Q^n_m$ of the literature (written $Q^n(m\mathrm{Al})$ for aluminophosphates,
+$Q^n(m\mathrm{B})$ for borophosphates, and $P^n_{m\mathrm{Al},x\mathrm{B}}$ with several heteronuclear partners):
 
-| 符号 | 数什么 |
+| Symbol | What it counts |
 |---|---|
-| $n$ | **同核**桥连接：P–O–P |
-| $m_X$ | **异核**桥连接：P–O–Al、P–O–B … |
-| 总桥连接数 | $n + \sum_X m_X$ ——**不是** $n$ |
+| $n$ | **homonuclear** bridging connections: P–O–P |
+| $m_X$ | **heteronuclear** bridging connections: P–O–Al, P–O–B … |
+| total bridging connections | $n + \sum_X m_X$ — **not** $n$ |
 
-> arXiv 2510.13545 原文：*"'n' denotes the total number of bridging oxygen
+> Verbatim from arXiv 2510.13545: *"'n' denotes the total number of bridging oxygen
 > connections involving P–O–P and P–O–Si bonds, and 'm' and 'x' specify the number
 > of aluminum and boron connections with phosphate."*
 >
-> 铝磷酸盐文献专门指出「$n$ 是总桥氧数」是这个领域的一个**已知误解**，成因是
-> $n$ 与 $m$ 来自两个不同的 NMR 序列（同核 J/双量子 vs 异核 REAPDOR/TRAPDOR/HETCOR），
-> 天然是两个独立计数。$Q^0(3\mathrm{B})$、$Q^1(2\mathrm{Al})$ 这类 $m>n$ 的物种
-> 是真实存在且常见的（前者在高硼组分里占 29%），在「$m$ 是 $n$ 的子集」读法下无法解释。
+> The aluminophosphate literature points out explicitly that reading "$n$ is the total number of bridging
+> oxygens" is a **known misconception** in this field.  It arises because $n$ and $m$ come from two
+> different NMR experiments (homonuclear J / double-quantum vs heteronuclear REAPDOR / TRAPDOR /
+> HETCOR) and are two independent counts by nature.  Species with $m>n$ such as $Q^0(3\mathrm{B})$ and $Q^1(2\mathrm{Al})$ are real and common (the former is 29% at high boron content), and cannot be explained under the reading that "$m$ is a subset of $n$".
 
-`ferro net` 从 2026-08 起按此口径输出。对参考轨迹 `43Z43P15A` 的影响：
+`ferro net` has followed this statement since 2026-08.  Its effect on the reference trajectory `43Z43P15A`:
 
-| | 旧口径（总桥） | 文献口径 |
+| | Old statement (total bridges) | Literature statement |
 |---|---|---|
-| `mean_qn` | 2.40 | **0.95**（另有 $m_\mathrm{Al}$=1.45） |
-| `P-Q3` 占比 | 40.4% | **0.27%** |
+| `mean_qn` | 2.40 | **0.95** (with $m_\mathrm{Al}$=1.45 alongside) |
+| `P-Q3` fraction | 40.4% | **0.27%** |
 
-差 130 倍。旧口径下读者会把「`P-Q3` 占 40%」理解成一个高度交联的磷酸盐网络，
-而这个玻璃的 P 平均只有 0.95 个 P–O–P 桥，是以二聚体和短链为主的结构。
+A factor of 130.  Under the old statement a reader would take "`P-Q3` is 40%" to mean a highly
+cross-linked phosphate network, while the P in this glass carries on average only 0.95 P–O–P bridges — a structure dominated by dimers and short chains.
 
-**总桥氧数仍然可读**：`[inputs]` 块里 `mean_n_bo` 与 `mean_qn` 并列给出。
+**The total bridging-oxygen count is still available**: the `[inputs]` block gives `mean_n_bo` next to `mean_qn`.
 
-- `qn=1, m_Al=2` → $Q^1(2\mathrm{Al})$，共 3 座桥
-- `qn` 就是 `qn_partner` 对 `m_` 各列的**边际**（count 与 fraction 精确闭合）
+- `qn=1, m_Al=2` → $Q^1(2\mathrm{Al})$, three bridges in total
+- `qn` is the **marginal** of `qn_partner` over the `m_` columns (count and fraction close exactly)
 
-**伙伴分解不编码进 `label`。** 多形成子体系下标签会长成 `P-Q1(2Al,1B)`，而 `qn`
-表正是给人一眼扫分布用的；`m_<X>` 列本来就是拿来筛选和画图的。文献自己在
-$P^n_{m\mathrm{Al},x\mathrm{B}}$ 里也是靠下标位而非括号串。
+**The partner decomposition is not encoded into `label`.** With several network formers the label would
+grow into `P-Q1(2Al,1B)`, whereas the `qn` table exists precisely to be scanned at a glance; the `m_<X>`
+columns are what filtering and plotting are for.  The literature itself uses subscript positions in $P^n_{m\mathrm{Al},x\mathrm{B}}$ rather than a string of parentheses.
 
-**形成子自身元素没有 `m_` 列**：新口径下 `m_P` 恒等于 `qn`，是重复列。它由 `qn`
-唯一决定、不是独立分组维度，故去掉它不影响上面那条闭合关系。
+**There is no `m_` column for the former's own element**: under the new statement `m_P` is identically
+equal to `qn`, a duplicate column.  It is fully determined by `qn` and is not an independent grouping dimension, so dropping it leaves the closure above intact.
 
-注意 Al 在这里是**伙伴而非主语**：它没有自己的行，但 `m_Al` 列照常存在。
+Note that Al is a **partner here, not a subject**: it has no row of its own, but the `m_Al` column is there as usual.
 
-两者是**两张表而不是一张加 `groupby`**：简单 Qn 分布是主产物，必须打开文件就能读到，
-不能要求先做聚合。这与 `average` 独立成表是同一条判据——粒度不同就该分表。
-`sd` 也必须各自累加而不是相加：相关项之和的方差不等于方差之和。实测参考轨迹
-P 的 `qn=1` 一行，正确 `sd` 为 **0**（P–O–P 骨架逐帧不变），而把 `qn_partner`
-对应四行的 `sd` 相加得 **7.598e-3**——相加会把一个「完全没有抖动」的量伪造成
-有明显涨落。分量各自在动而总和不动，正是相关项抵消的典型表现。
+The two are **two tables rather than one plus a `groupby`**: the plain Qn distribution is the primary output
+and must be readable the moment the file is opened, without an aggregation first.  This is the same
+criterion that made `average` a table of its own — a different granularity deserves a separate table.  `sd`
+likewise has to be accumulated separately rather than summed: the variance of a sum of correlated terms is
+not the sum of the variances.  Measured on the reference trajectory, the `qn=1` row of P has a correct `sd`
+of **0** (the P–O–P backbone does not change from frame to frame), while summing the `sd` of the four corresponding `qn_partner` rows gives **7.598e-3** — summing would forge a visible fluctuation for a quantity that does not move at all.  The components moving while their sum stays put is exactly what cancellation between correlated terms looks like.
 
-**三簇配体按连接数计入。** 一个连着三个形成子的配体，把本位点连上了**两个**伙伴，
-故贡献 2 而不是 1——文献数的是 *connections*，不是桥氧个数。于是
-$n + \sum_X m_X$ 可能**超过**桥氧个数（`mean_n_bo`），超出的部分正是三簇桥。
-这也是 $Q^n_m$ 能作为无歧义标签的前提：按桥氧记会让 $\sum m$ 亏空。
+**A tricluster ligand is counted by connections.** A ligand bonded to three network formers connects the
+site in question to **two** partners, so it contributes 2 rather than 1 — the literature counts *connections*,
+not bridging oxygens.  As a result $n + \sum_X m_X$ can **exceed** the bridging-oxygen count (`mean_n_bo`),
+and the excess is exactly the tricluster bridges.  This is also what lets $Q^n_m$ work as an unambiguous label: counting by bridging oxygens would leave $\sum m$ short.
 
-这个分解**无法从 `linkage` 表反推**：两座 P–O–Al 桥可能来自一个 $m_\mathrm{Al}=2$ 的 P，
-也可能来自两个 $m_\mathrm{Al}=1$ 的 P。`linkage` 数的是桥，`qn` 数的是原子。
+This decomposition **cannot be recovered from the `linkage` table**: two P–O–Al bridges may come from one
+P with $m_\mathrm{Al}=2$, or from two P with $m_\mathrm{Al}=1$.  `linkage` counts bridges, `qn` counts atoms.
 
-### 桥联统计
+### Linkage statistics
 
-每个连接 ≥2 个形成子的配体，记下一条
+Every ligand bonded to ≥2 network formers records one entry:
 
-$$(\underbrace{\text{元素},\; n_\text{bridge},\; \text{CN}}_{\text{A 端}}),\;
-  (\underbrace{\text{元素},\; n_\text{bridge},\; \text{CN}}_{\text{B 端}}),\;
-  \text{配体元素},\; n_\text{formers}$$
+$$(\underbrace{\text{element},\; n_\text{bridge},\; \text{CN}}_{\text{A end}}),\;
+  (\underbrace{\text{element},\; n_\text{bridge},\; \text{CN}}_{\text{B end}}),\;
+  \text{ligand element},\; n_\text{formers}$$
 
-两端**都**带三个字段。这一点与常见实现不同：那些实现按元素只存一个数（P 存 Qn、
-Al 存 CN），于是「4 配位 Al 的桥接数是多少」问不出来。
+**Both** ends carry all three fields.  This differs from common implementations, which store a single
+number per element (Qn for P, CN for Al) and therefore cannot answer "how many bridges does a four-coordinate Al have".
 
-- **`linkage` 展示列**：`Al_4-O-P_2` 这样的人可读形式，数字按各自约定（Qn 形成子取
-  Qn，其余取配位数），与导出轨迹的标签同一套词汇。**筛选请用数值列**，不要正则拆
-  这一列。
-- **`ligand` 列**：桥中间那个原子的元素。多配体体系里 `Al-O-P` 与 `Al-F-P` 是两种桥，
-  永不共用一行——合并计数会报出一个实验无法对应的数。
-- **规范半边**：桥联无方向，两端按 `(元素, 同核连接数, CN)` 排序后小的在前，每对只存一次。
-  故**行和不等于该位点的总参与度**，要算参与度得把 `_a` 与 `_b` 两列都数一遍。
-- **`n_formers` 列**：普通桥氧为 2；三配位配体展开成 $C(3,2)=3$ 行并标 3。
-  它们不被丢弃，因为「三配位氧连的是谁」在含 Al 体系里正是要研究的东西。
-- **`qn_a/b` 是同核连接数**，对每个形成子都有定义——非 Qn 形成子也有（Al 的
-  `qn_a` 就是 Al–O–Al 数）。它与 `linkage` 展示列里那个数字**同源**：`P_2` 的 2
-  读得到 `qn_a`，`Al_4` 的 4 读得到 `cn_a`，标签与数值列不会互相矛盾。
+- **The `linkage` display column**: a human-readable form such as `Al_4-O-P_2`, where the number follows
+  each one's own convention (Qn for Qn network formers, coordination number for the rest), in the same
+  vocabulary as the labels of the exported trajectory.  **Filter on the numeric columns**; do not take this one apart with a regex.
+- **The `ligand` column**: the element of the atom in the middle of the bridge.  With several ligand species
+  `Al-O-P` and `Al-F-P` are two different bridges and never share a row — merging their counts would report a number no experiment can correspond to.
+- **Canonical half**: a linkage has no direction, so the two ends are sorted by `(element, homonuclear connection count, CN)` with the smaller first, and each pair is stored once.
+  A **row sum is therefore not that site's total participation**; to get participation, count both the `_a` and the `_b` columns.
+- **The `n_formers` column**: 2 for an ordinary bridging oxygen; a three-coordinate ligand expands into $C(3,2)=3$ rows, each marked 3.
+  They are not discarded, because "what a three-coordinate oxygen connects to" is exactly what one wants to study in Al-bearing systems.
+- **`qn_a/b` are homonuclear connection counts**, defined for every network former — non-Qn ones included
+  (the `qn_a` of Al is its Al–O–Al count).  They have the **same origin** as the number in the `linkage`
+  display column: the 2 of `P_2` is read from `qn_a`, the 4 of `Al_4` from `cn_a`, so the label and the numeric columns can never contradict each other.
 
-### 统计口径：`fraction` 与 `sd`
+### Statistical statement: `fraction` and `sd`
 
-- `count`：全轨迹计数之和（整数，精确）
-- `fraction`：**逐帧比例的平均**。某帧没有该 bin 时按 0 计入，不是缺失值
-- `sd`：同一序列的**样本标准差**（ddof = 1），单帧时为空
+- `count`: the sum of the counts over the whole trajectory (integer, exact)
+- `fraction`: the **mean of the per-frame fractions**.  A frame without that bin counts as 0, not as a missing value
+- `sd`: the **sample standard deviation** of the same series (ddof = 1), empty for a single frame
 
-> **`sd` 不是标准误。** MD 相邻帧强相关，它既不按 $1/\sqrt{N}$ 收缩，也不估计物理
-> 涨落。把它读作「这个数在快照之间摆动多大」。真要误差棒应做分块平均（block
-> averaging），本分析不提供。
+> **`sd` is not a standard error.** Neighbouring MD frames are strongly correlated, so it neither shrinks as
+> $1/\sqrt{N}$ nor estimates the physical fluctuation.  Read it as "how much this number swings between
+> snapshots".  Real error bars call for block averaging, which this analysis does not provide.
 
-实现用 Welford 递推而非 $\Sigma f$ / $\Sigma f^2$：后者对恒定序列会给出 ~2e-10 的
-抵消噪声，而 `sd` 列里的假抖动会被读者当成物理。
+The implementation uses Welford's recurrence rather than $\Sigma f$ / $\Sigma f^2$: the latter produces
+~2e-10 of cancellation noise on a constant series, and a spurious wobble in the `sd` column would be read as physics.
 
 ---
 
-## 快速入门
+## Quick start
 
 ```bash
-# P₂O₅ 玻璃，P-O 截断 2.4 Å
+# P2O5 glass, P-O cutoff 2.4 Å
 ferro net -i traj.lammpstrj --P-O=2.4
 
-# 铝磷酸盐 + Zn 修饰子
+# aluminophosphate + Zn modifier
 ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 
-# 批处理：一次跑多条轨迹，结果堆成一份带 file 列的 csv
+# batch: several trajectories in one run, stacked into one csv with a file column
 ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
 
-# 只统计尾部 500 帧，8 线程
+# last 500 frames only, 8 threads
 ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --ncore 8
 
-# 同时导出标注轨迹
+# also export the labelled trajectory
 ferro net -i traj.lammpstrj --P-O=2.4 --export-traj
 ferro net -i traj.lammpstrj --P-O=2.4 --export-traj extxyz
 ```
 
 ---
 
-## 命令行参数
+## Command-line parameters
 
-### 必需
+### Required
 
-至少一个 `--<Former>-<Ligand>=<cutoff>` 形式的配对参数（元素首字母大写）：
+At least one pair parameter of the form `--<Former>-<Ligand>=<cutoff>` (element symbols capitalised):
 
 ```
---P-O=2.4        P（形成子）与 O（配体）的截断半径 2.4 Å
---Si-O=1.8       Si-O 截断 1.8 Å
---Al-O=2.4       Al-O 截断 2.4 Å
---Al-F=2.1       同一形成子可有多种配体
+--P-O=2.4        cutoff 2.4 Å between P (network former) and O (ligand)
+--Si-O=1.8       Si-O cutoff 1.8 Å
+--Al-O=2.4       Al-O cutoff 2.4 Å
+--Al-F=2.1       one network former may have several ligand species
 ```
 
-元素对写在**参数名**里，clap 建模不了，所以 `main` 在解析前先把它们从 argv 剥离。
+The element pair lives in the **parameter name**, which clap cannot model, so `main` strips them out of argv before parsing.
 
-### 可选
+### Optional
 
-| 参数 | 默认值 | 说明 |
+| Parameter | Default | Notes |
 |---|---|---|
-| `-i <FILE>...` | — | 输入轨迹，多值并自展开 glob（引号括起来）。缺省时打印帮助 |
-| `-o <DIR>` | 当前目录 | 六张表与 `--export-traj` 的轨迹都写进这里。目录不存在时先询问，`--mkdir` 免问 |
-| `-s <SUFFIX>` | — | 批次标记：`network_<表>_<后缀>.csv` |
-| `--mkdir` | 关 | 不询问直接创建 `-o` 的目录（非交互环境必须给） |
-| `--last-n N` | 全部帧 | 仅使用尾部 N 帧 |
-| `--ncore N` | 全部核心 | 并行线程数 |
-| `--metal-units` | 关 | LAMMPS metal 单位。统计不读速度/力，**只对 `--export-traj extxyz` 有影响** |
-| `--modifier E,E` | — | 只计配位数的元素，逗号分隔。须同时给出各自的截断 |
-| `--qn E,E` | `B,P,Si` | 报 Qn 的形成子，逗号分隔。**替换**默认名单而非叠加 |
-| `--export-traj [FMT]` | — | 另写标注轨迹，`lammpstrj`（默认）或 `extxyz` |
+| `-i <FILE>...` | — | input trajectories; takes several values and expands globs itself (quote them).  Prints the help when omitted |
+| `-o <DIR>` | current directory | the six tables and the `--export-traj` trajectory all go here.  Asks first when the directory does not exist; `--mkdir` skips the question |
+| `-s <SUFFIX>` | — | batch marker: `network_<table>_<suffix>.csv` |
+| `--mkdir` | off | create the `-o` directory without asking (required in non-interactive environments) |
+| `--last-n N` | all frames | use only the last N frames |
+| `--ncore N` | all cores | number of parallel threads |
+| `--metal-units` | off | LAMMPS metal units.  The statistics read neither velocities nor forces, so this **only affects `--export-traj extxyz`** |
+| `--modifier E,E` | — | comma-separated elements that count towards coordination number only.  Their cutoffs must be given as well |
+| `--qn E,E` | `B,P,Si` | comma-separated network formers to report Qn for.  **Replaces** the default list rather than adding to it |
+| `--export-traj [FMT]` | — | also write a labelled trajectory, `lammpstrj` (default) or `extxyz` |
 
 ---
 
-## 输出
+## Output
 
-六张 CSV，各带 `file` 列。每个文件的 `#` 注释块里是共享参数、`[inputs]` 清单，
-**以及这张表自己的逐列说明**（`pandas.read_csv(comment="#")` 会自动丢掉整块）。
-所以下表只需记住哪个文件装什么，列的含义打开文件即可。
+Six CSVs, each with a `file` column.  The `#` comment block of every file holds the shared parameters, the
+`[inputs]` list **and that table's own column-by-column description** (`pandas.read_csv(comment="#")` drops
+the whole block automatically).  The table below therefore only says which file holds what; the meaning of the columns is in the file itself.
 
-| 文件 | 一行一个 | 列 |
+| File | One row per | Columns |
 |---|---|---|
-| `network_composition.csv` | 物种 | `label, element, count, fraction, sd` |
-| `network_qn.csv` | (形成子, Qn) | `label, former, qn, count, fraction, sd` |
-| `network_qn_partner.csv` | (形成子, Qn, 伙伴分解) | `label, former, qn, m_<X>…, count, fraction, sd` |
-| `network_ligand_type.csv` | (配体类型, 伙伴对) | `label, type, former_a, former_b, count, fraction, sd` |
-| `network_coordination.csv` | (元素, 配位数) | `element, cn, count, fraction, sd` |
-| `network_linkage.csv` | (配体, 两端状态) | `linkage, ligand, elem_a, qn_a, cn_a, elem_b, qn_b, cn_b, n_formers, count, fraction, sd` |
+| `network_composition.csv` | species | `label, element, count, fraction, sd` |
+| `network_qn.csv` | (network former, Qn) | `label, former, qn, count, fraction, sd` |
+| `network_qn_partner.csv` | (network former, Qn, partner decomposition) | `label, former, qn, m_<X>…, count, fraction, sd` |
+| `network_ligand_type.csv` | (ligand type, partner pair) | `label, type, former_a, former_b, count, fraction, sd` |
+| `network_coordination.csv` | (element, coordination number) | `element, cn, count, fraction, sd` |
+| `network_linkage.csv` | (ligand, state at both ends) | `linkage, ligand, elem_a, qn_a, cn_a, elem_b, qn_b, cn_b, n_formers, count, fraction, sd` |
 
-`label` 列是给人读的锚点，`former` / `qn` / `cn` 等数值列是给筛选和画图用的——两者
-并存而非二选一，否则「筛出 Qn ≥ 3 的」就得去切字符串。
+The `label` column is the human-readable anchor; the numeric columns `former` / `qn` / `cn` are what
+filtering and plotting use — both are kept rather than one or the other, otherwise "select Qn ≥ 3" would mean slicing strings.
 
-分布表的值列语义各不相同（Qn / 类型标签 / 配位数），并成一张会让 `groupby` 无意义，
-故各自成表。`qn` 与 `qn_partner`、以及 `average`，都是**粒度不同故分表**。
+The value columns of the distribution tables mean different things (Qn / type label / coordination number),
+so merging them would make `groupby` meaningless and each gets its own table.  `qn` vs `qn_partner`, and `average`, are all cases of **a different granularity deserving a separate table**.
 
-**没有 Qn 形成子时，前两个文件整个不出**，屏幕上打印原因。只有表头的 CSV 读起来像
-「测了，结果是零」，而实情是压根没测。
+**When there is no Qn network former the first two files are not written at all**, and the reason is printed
+to the screen.  A CSV with nothing but a header reads as "measured, and the result was zero", while in fact nothing was measured.
 
-批处理时元素集不同的输入取**列并集，缺的留空（NaN），不补零、不插值**——没有 Al
-的体系其 `m_Al` 列为空，而不是 0。
+In batch mode, inputs with different element sets take the **union of the columns; what is missing stays
+empty (NaN), never padded with zeros, never interpolated** — a system without Al has an empty `m_Al` column, not 0.
 
-### 示例：`network_composition.csv`
+### Example: `network_composition.csv`
 
 ```csv
 file,label,element,count,fraction,sd
@@ -299,25 +299,25 @@ file,label,element,count,fraction,sd
 43Z43P15A,O_t,O,2,3.044140e-4,4.168360e-4
 ```
 
-> P 那四行的 `sd` 为 0 不是缺陷：这 5 帧里 P–O–P 骨架的拓扑没有变化。涨落全在
-> P–O–Al 与配位数一侧（看 `Al_*` 与 `Zn_*` 的 `sd`）。旧口径把刚性骨架与涨落混在
-> 一个数里，所以从前这几行的 `sd` 非零。
+> The `sd` of 0 on the four P rows is not a defect: the topology of the P–O–P backbone does not change
+> across these 5 frames.  All the fluctuation sits on the P–O–Al and coordination-number side (look at the
+> `sd` of `Al_*` and `Zn_*`).  The old statement mixed the rigid backbone and the fluctuation into one number, which is why these rows used to have a non-zero `sd`.
 
-**分母恒为该元素的原子数**：Q2 占全部 P、`Al_4` 占全部 Al、`O_b` 占全部 O。所以
-**每个元素的 `fraction` 求和为 1** —— 这是一条打开文件就能核对的恒等式。
+**The denominator is always the atom count of that element**: Q2 out of all P, `Al_4` out of all Al, `O_b`
+out of all O.  So **the `fraction` of each element sums to 1** — an identity that can be checked the moment the file is opened.
 
-每个元素只出现**一种刻画**：Qn 形成子出 Qn，其余形成子与修饰子出配位数，配体出类型。
-P 在这里没有配位数行（它在 `network_coordination.csv` 里）。
+Each element appears under **one characterisation only**: Qn for Qn network formers, coordination number
+for the other formers and the modifiers, type for ligands.  P has no coordination row here (that is in `network_coordination.csv`).
 
-`O_b` 那行是从 `ligand_type` 的三行（Al-Al / Al-P / P-P）聚合来的，`sd` **逐帧重新
-累加**而非把三行相加——相关项之和的方差不等于方差之和。
+The `O_b` row is aggregated from three rows of `ligand_type` (Al-Al / Al-P / P-P), and its `sd` is
+**re-accumulated frame by frame** rather than summed over the three — the variance of a sum of correlated terms is not the sum of the variances.
 
-原来的 `network_average.csv` 已删除。它的两个均值仍在每个文件的 `[inputs]` 块里
-（`mean_qn P=0.95  mean_n_bo Al=4.12 P=2.40  mean_cn Al=4.12 P=4.00 Zn=4.10`），
-也可从本表精确复算：$\sum_n n \cdot f_n = 0.946$。注意 `mean_qn`（同核连接）
-与 `mean_n_bo`（桥氧个数）是两个量，并列给出正是为了让口径一目了然。
+The former `network_average.csv` has been removed.  Its two means are still in the `[inputs]` block of every file
+(`mean_qn P=0.95  mean_n_bo Al=4.12 P=2.40  mean_cn Al=4.12 P=4.00 Zn=4.10`)，
+and can also be recomputed exactly from this table: $\sum_n n \cdot f_n = 0.946$.  Note that `mean_qn`
+(homonuclear connections) and `mean_n_bo` (bridging-oxygen count) are two different quantities; they are given side by side precisely to make the statement obvious.
 
-### 示例：`network_qn.csv`
+### Example: `network_qn.csv`
 
 ```csv
 file,label,former,qn,count,fraction,sd
@@ -327,9 +327,9 @@ file,label,former,qn,count,fraction,sd
 43Z43P15A,P-Q3,P,3,5,2.688172e-3,0.000000e0
 ```
 
-Al 不在其中——同一次运行里它出现在 `network_coordination.csv` 的 `cn` 4/5/6 三行。
+Al is not among them — in the same run it appears in `network_coordination.csv` on the `cn` 4/5/6 rows.
 
-### 示例：`network_ligand_type.csv`
+### Example: `network_ligand_type.csv`
 
 ```csv
 file,label,type,former_a,former_b,count,fraction,sd
@@ -340,20 +340,20 @@ file,label,type,former_a,former_b,count,fraction,sd
 43Z43P15A,O_t,O_t,,,2,3.044140e-4,4.168360e-4
 ```
 
-`label` 把整行读成一句 `<former_a>-<type>-<former_b>`；缺位**不补占位符**，
-所以自由氧就是 `O_f`、非桥氧是 `P-O_n`、三簇氧是 `O_t`。`former_a` / `former_b`
-仍是独立列，Al-O-Al 的查询照旧是
-`query("former_a=='Al' and former_b=='Al'")`，不必去切字符串。
+`label` reads the whole row as one phrase `<former_a>-<type>-<former_b>`; missing positions get **no
+placeholder**, so a free oxygen is just `O_f`, a non-bridging one is `P-O_n` and a tricluster is `O_t`.
+`former_a` / `former_b` remain separate columns, so querying Al-O-Al is still
+`query("former_a=='Al' and former_b=='Al'")` without slicing strings.
 
-`O_t` 的伙伴列留空——它不是一对，其配对关系由 `linkage` 表的 `n_formers=3` 行给出。
-注意这里**没有 `Al-O_n` 行**：这个体系的 Al 不带非桥氧，正是它的桥接数与配位数
-处处相等的原因。
+The partner columns of `O_t` are left empty — it is not a pair, and its pairings are given by the
+`n_formers=3` rows of the `linkage` table.  Note there is **no `Al-O_n` row** here: the Al in this system
+carries no non-bridging oxygen, which is exactly why its number of bridges and its coordination number agree everywhere.
 
-> **`fraction` 的分母是该配体元素的原子数**，不是全体配体原子。这是文献 BO fraction
-> 的口径；「桥氧占 O+F 的比例」不对应任何常用量。单配体体系两者相同，
-> `--Al-O` + `--Al-F` 的体系才有区别。
+> **The denominator of `fraction` is the atom count of that ligand element**, not of all ligand atoms.  This
+> is the statement behind the BO fraction in the literature; "bridging oxygens as a fraction of O+F"
+> corresponds to no commonly used quantity.  The two coincide with a single ligand species, and differ only in systems like `--Al-O` + `--Al-F`.
 
-### 示例：`network_linkage.csv`
+### Example: `network_linkage.csv`
 
 ```csv
 file,linkage,ligand,elem_a,qn_a,cn_a,elem_b,qn_b,cn_b,n_formers,count,...
@@ -362,146 +362,146 @@ file,linkage,ligand,elem_a,qn_a,cn_a,elem_b,qn_b,cn_b,n_formers,count,...
 43Z43P15A,Al_4-O-P_2,O,Al,0,4,P,2,4,2,213,...
 ```
 
-`Al_4` 里的 4 是**配位数**（读 `cn_a`），`P_1` 里的 1 是 **$n$，即该 P 的 P–O–P 数**
-（读 `qn_b`）——这是文献自己的约定（Al[4] 对 $Q^n$），逐文件的 `#` 头会写明。
-`Al_4-O-P_0` 这类行很常见：那个 P 通过这座桥连着 Al，但它自己没有 P–O–P，
-所以是 $Q^0$。Al 端的 `qn_a=0` 则表示没有 Al–O–Al。
+The 4 in `Al_4` is the **coordination number** (read `cn_a`), the 1 in `P_1` is **$n$, the P–O–P count of
+that P** (read `qn_b`) — this is the literature's own convention (Al[4] against $Q^n$), and the `#` header
+of each file says so.  Rows like `Al_4-O-P_0` are common: that P is connected to an Al through this bridge,
+but has no P–O–P of its own and is therefore $Q^0$.  A `qn_a=0` on the Al end means there is no Al–O–Al.
 
-这里用的是**原子词汇**（`P_3` 而不是 `P-Q3`）：桥联描述的是两个原子之间的连接，
-而 Qn 命名的是一个含多个原子的结构单元。与导出轨迹的标签一致。
+The **atom vocabulary** is used here (`P_3`, not `P-Q3`): a linkage describes the connection between two
+atoms, while Qn names a structural unit containing several atoms.  This matches the labels of the exported trajectory.
 
-### 用 pandas 分析 `linkage`
+### Analysing `linkage` with pandas
 
 ```python
 import pandas as pd
 d = pd.read_csv("network_linkage.csv", comment="#")
 
-# 按元素对汇总
+# aggregate by element pair
 d.groupby(["elem_a", "elem_b"])["count"].sum()
 
-# Al-O-Al 发生在哪种配位的 Al 之间 —— 与 NMR 的 Al[4]/Al[5]/Al[6] 直接对照
+# which Al coordinations Al-O-Al occurs between — directly comparable to Al[4]/Al[5]/Al[6] in NMR
 al = d.query("elem_a == 'Al' and elem_b == 'Al' and n_formers == 2")
 al.pivot_table(index="cn_a", columns="cn_b", values="count", aggfunc="sum")
 
-# P-O-P 的 Qn–Qn 连接矩阵
+# Qn-Qn connection matrix of P-O-P
 d.query("elem_a == 'P' and elem_b == 'P'").pivot_table(
     index="qn_a", columns="qn_b", values="count", aggfunc="sum")
 
-# 某种配位的 Al 更爱连哪种 Qn 的 P —— 直接对照 27Al 的 Al[4]/[5]/[6] × 31P 的 Qn
+# which Qn of P an Al of a given coordination prefers — compare with 27Al Al[4]/[5]/[6] x 31P Qn
 d.query("elem_a == 'Al' and elem_b == 'P'").pivot_table(
     index="cn_a", columns="qn_b", values="count", aggfunc="sum")
 
-# 只看真桥，排除三配位配体
+# true bridges only, excluding three-coordinate ligands
 d.query("n_formers == 2")
 
-# 多配体体系：O 桥与 F 桥分开看
+# several ligand species: keep O bridges and F bridges apart
 d.groupby("ligand")["count"].sum()
 ```
 
-> **交叉核对。** `linkage` 里 `Al-O-Al` 的 `n_formers=2` 计数应等于
-> `ligand_type` 表 `O_b, Al, Al` 那一行；差额来自三配位氧的贡献。
-> $\sum(m_\mathrm{Al} \times \text{count})$（取自 `qn_partner`）应等于 `linkage`
-> 里 `Al-O-P` 的真桥计数。两条都不对时，先查截断是不是给漏了。
+> **Cross-checks.** The `n_formers=2` count of `Al-O-Al` in `linkage` should equal the `O_b, Al, Al` row of
+> the `ligand_type` table; the difference comes from three-coordinate oxygens.
+> $\sum(m_\mathrm{Al} \times \text{count})$ (from `qn_partner`) should equal the true-bridge count of
+> `Al-O-P` in `linkage`.  When neither holds, check first whether a cutoff was left out.
 
 ---
 
-## 标注轨迹（`--export-traj`）
+## Labelled trajectory (`--export-traj`)
 
-导出每个输入一个文件：`<输入 stem>_types[_<后缀>].<ext>`。文件名必须掺输入 stem，
-否则批处理时第二个输入会覆盖第一个（与 `ferro map` 的 cube 同理）。
+One file per input: `<input stem>_types[_<suffix>].<ext>`.  The input stem has to be part of the name,
+otherwise in batch mode the second input would overwrite the first (the same reason as for the cubes of `ferro map`).
 
-### 标签
+### Labels
 
-| 角色 | 标签 | 数字是 |
+| Role | Label | The number is |
 |---|---|---|
-| Qn 形成子 | `P_0` `P_1` … `Si_4` | **n**（同元素连接数，P–O–P；异核连接不计入） |
-| 其他形成子 | `Al_4` `Al_5` `Al_6` | **配位数** |
-| 自由配体 | `O_f` | — |
-| 非桥配体 | `O_n` | — |
-| 桥联配体 | `O_b` | — |
-| 三配位配体 | `O_t` | — |
-| 修饰子 | `Zn` | 无后缀 |
+| Qn network former | `P_0` `P_1` … `Si_4` | **n** (same-element connection count, P–O–P; heteronuclear connections excluded) |
+| other network formers | `Al_4` `Al_5` `Al_6` | **coordination number** |
+| free ligand | `O_f` | — |
+| non-bridging ligand | `O_n` | — |
+| bridging ligand | `O_b` | — |
+| three-coordinate ligand | `O_t` | — |
+| modifier | `Zn` | no suffix |
 
-运行 `ferro net` 时这张表会按本次参数填好元素打印一次，因为哪个元素报 Qn、哪个报
-配位数取决于 `--qn` 和给了哪些截断。
+`ferro net` prints this table once per run with the actual elements filled in, because which element
+reports Qn and which reports coordination number depends on `--qn` and on which cutoffs were given.
 
-### 两套词汇：单元与原子
+### Two vocabularies: unit and atom
 
-| 词汇 | 形如 | 用在 | 为什么 |
+| Vocabulary | Looks like | Used in | Why |
 |---|---|---|---|
-| **单元** | `P-Q2`、`Al_4` | `composition` / `qn` / `qn_partner` | 这三张表数的是「有多少个 Q2 单元」，Qn 本就是结构单元的记号 |
-| **原子** | `P_2`、`Al_4` | `linkage`、导出轨迹 | 桥联描述的是**原子之间**的连接，而一个 Qn 单元含多个原子 |
+| **unit** | `P-Q2`, `Al_4` | `composition` / `qn` / `qn_partner` | these three tables count "how many Q2 units there are", and Qn is by origin the notation for a structural unit |
+| **atom** | `P_2`, `Al_4` | `linkage`, the exported trajectory | a linkage describes a connection **between atoms**, while one Qn unit contains several atoms |
 
-非 Qn 形成子两套词汇恰好相同（都是 `Al_4`），因为 Al 没有单元记号可用。
+For non-Qn network formers the two vocabularies happen to coincide (both `Al_4`), because Al has no unit notation available.
 
-> **下游选型认原子词汇。** 导出轨迹里那个 P 叫 `P_2`，不叫 `P-Q2`——轨迹标签必须能
-> 被 dump reader 按首个下划线拆回 element，而 `Q2` 里的 `Q` 不是元素。所以是
-> `traj gr -x P_2`，不是 `-x P-Q2`。
+> **Downstream type selection uses the atom vocabulary.** In the exported trajectory that P is called
+> `P_2`, not `P-Q2` — a trajectory label has to be splittable back into an element by the dump reader at
+> the first underscore, and the `Q` of `Q2` is not an element.  So it is `traj gr -x P_2`, not `-x P-Q2`.
 
-带元素前缀（`P-Q2` 而非 `Q2`）是因为双 Qn 形成子体系（硼磷酸盐 B+P、铝硅酸盐
-Si+Al）里 `Q0`…`Q4` 会各出现两遍，而**跨元素重名没有任何相邻列能解**。
+The element prefix (`P-Q2` rather than `Q2`) is there because in systems with two Qn network formers
+(B+P in borophosphates, Si+Al in aluminosilicates) `Q0`…`Q4` would each appear twice, and **no neighbouring column can resolve a name collision across elements**.
 
-全部合 `<元素>_<后缀>` 约定，按**首个下划线**拆分。修饰子不带角色后缀：旧方案
-按非桥配体数 0/1/2/≥3 分档，而修饰子的实际配位数在 3–6，实测参考轨迹 97% 落进
-兜底桶，没有分辨力。
+All of them follow the `<element>_<suffix>` convention and are split at the **first underscore**.  Modifiers
+carry no role suffix: the old scheme binned them by non-bridging-ligand count 0/1/2/≥3, while the actual
+coordination number of a modifier is 3–6, and measured on the reference trajectory 97% fell into the fallback bin — no resolving power at all.
 
-> **同样长相的数字，含义按元素而变。** 这是文献自己的读法（$Q^2$ 与 Al[4] 没人会
-> 混），代价是在 Al 不带非桥氧的体系里两种口径给出同一个数字，错了也看不出来——所以
-> 约定在分类时就写进类型里，而不是渲染时查表，`--qn` 换了名单，标签跟着换。
+> **The same-looking number means different things per element.** This is the literature's own reading
+> ($Q^2$ and Al[4] are never confused), at the price that in a system where Al carries no non-bridging
+> oxygen the two statements give the same number and a mistake would be invisible — which is why the convention is written into the type at classification time rather than looked up at rendering time: change the list with `--qn` and the labels change with it.
 
-### 两种格式的差别
+### How the two formats differ
 
-| | `lammpstrj`（默认） | `extxyz` |
+| | `lammpstrj` (default) | `extxyz` |
 |---|---|---|
-| 标签存放 | 折进 `element` 列 | 独立的 `label:S:1` 列 |
-| `species` / `element` | 是标签（`P_2`） | 是纯元素（`P`） |
-| 读回 | reader 按首个下划线拆成 element + label | 直接分列读取，无需猜测 |
-| 下游兼容 | 不新增列，已有工具照常解析 | 新增一列 |
+| where the label lives | folded into the `element` column | its own `label:S:1` column |
+| `species` / `element` | the label (`P_2`) | the bare element (`P`) |
+| reading back | the reader splits it at the first underscore into element + label | read straight from separate columns, no guessing |
+| downstream compatibility | no new column, existing tools parse it as before | one new column |
 
-dump 折叠是因为它只有一列名字放得下第二个名字；extxyz 的列是自描述的，不需要将就。
-**只有 `ferro net --export-traj` 会折叠**——`ferro convert` 无论标签如何都写干净的
-元素符号。折叠还带守卫：标签不形如 `<元素>_…` 时不折并计数告警（CIF 的 `O1`、CP2K
-的 `Fe1` 折进去后读回来就是不存在的元素 `O1`）。
+The dump folds because it has only one name column to put a second name in; the columns of extxyz are
+self-describing and need no such compromise.  **Only `ferro net --export-traj` folds** — `ferro convert`
+writes clean element symbols whatever the labels are.  The fold also has a guard: a label not of the form
+`<element>_…` is not folded, and those occurrences are counted and warned about (a CIF `O1` or a CP2K `Fe1` folded in and read back would be a non-existent element `O1`).
 
-### 下游选型
+### Downstream type selection
 
 ```bash
-# 按元素选 —— 任意帧数都可以
+# select by element — works with any number of frames
 ferro traj gr -i run_types.lammpstrj -a P -b O
 
-# 按标签选 —— 需要单帧
+# select by label — requires a single frame
 ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1
 
-# 五配位 Al 周围的桥氧 —— Al-O-Al 定位研究的入口
+# bridging oxygens around five-coordinate Al — the entry point for locating Al-O-Al
 ferro traj gr -i run_types.lammpstrj -x Al_5 -y O_b --last-n 1
 ```
 
-> **按标签选型只在单帧成立。** `g(r)` 要求逐类型的粒子数守恒，而标签是动态的——
-> 一个 P 在轨迹推进中会改变自己的 Qn（实测参考轨迹 `P_3` 逐帧为
-> 149 / 152 / 150 / 150 / 150）。对多帧标注轨迹按标签选型会被
-> 「per-type atom counts change」错误拒绝，这是守卫而非缺陷。多帧请按元素选。
+> **Selecting by label only holds for a single frame.** `g(r)` requires the per-type particle count to be
+> conserved, but labels are dynamic — a P changes its own Qn as the trajectory advances (measured on the
+> reference trajectory, `P_3` is 149 / 152 / 150 / 150 / 150 frame by frame).  Selecting by label on a
+> multi-frame labelled trajectory is rejected with a "per-type atom counts change" error; that is a guard, not a defect.  Select by element for multiple frames.
 
-标注轨迹与统计表是互相独立的产物，可以互相验证：
+The labelled trajectory and the statistics tables are independent outputs and can verify each other:
 
-- `traj gr -x P_3 -y O_b --last-n 1` 的第一壳层 CN 应**恰为 3**——分类层说「这个 P
-  有 3 个桥氧」，独立的 CN 积分路径应当数回 3。
-- `traj gr -x Al_5 -y O_b --last-n 1` 实测参考轨迹得 4.933 而非 5.000：差的 0.067
-  是一个三配位氧，它标 `O_t` 而不是 `O_b`。对得上，说明标签的数字确实是配位数。
+- the first-shell CN of `traj gr -x P_3 -y O_b --last-n 1` should be **exactly 3** — the classification layer
+  says "this P has 3 bridging oxygens", and the independent CN integration path should count 3 back.
+- `traj gr -x Al_5 -y O_b --last-n 1` measures 4.933 rather than 5.000 on the reference trajectory: the
+  missing 0.067 is one three-coordinate oxygen, labelled `O_t` and not `O_b`.  It adds up, which confirms that the number in the label really is the coordination number.
 
 ---
 
-## 典型参数参考
+## Typical parameters for reference
 
-| 体系 | 形成子 | 修饰子 | 参考截断 |
+| System | Network former | Modifier | Reference cutoff |
 |---|---|---|---|
-| $P_2O_5$ 玻璃 | P | — | P-O: 2.3–2.4 Å |
-| $SiO_2$ 玻璃 | Si | — | Si-O: 1.8 Å |
+| $P_2O_5$ glass | P | — | P-O: 2.3–2.4 Å |
+| $SiO_2$ glass | Si | — | Si-O: 1.8 Å |
 | $Al_2O_3$ | Al | — | Al-O: 2.1–2.4 Å |
-| $GeO_2$ 玻璃 | Ge | — | Ge-O: 2.0 Å |
-| ZnO–$P_2O_5$ 玻璃 | P | Zn | P-O: 2.4 Å，Zn-O: 2.6 Å |
-| ZnO–$Al_2O_3$–$P_2O_5$ | P, Al | Zn | P-O: 2.4，Al-O: 2.4，Zn-O: 2.6 Å |
+| $GeO_2$ glass | Ge | — | Ge-O: 2.0 Å |
+| ZnO–$P_2O_5$ glass | P | Zn | P-O: 2.4 Å, Zn-O: 2.6 Å |
+| ZnO–$Al_2O_3$–$P_2O_5$ | P, Al | Zn | P-O: 2.4, Al-O: 2.4, Zn-O: 2.6 Å |
 
-截断值应参照 g(r) 第一峰谷位置确定：
+Cutoffs should be chosen from the position of the first minimum in g(r):
 
 ```bash
 ferro traj gr -i traj.lammpstrj -a P -b O --r-max 5 --plot
