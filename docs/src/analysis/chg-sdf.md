@@ -8,7 +8,7 @@
 4. Accumulates rotated sub-grids; divides by the cluster count to obtain the averaged density.
 5. Writes one Gaussian cube file per signature family.
 
-The result reveals the orientationally averaged electron-density distribution around a specific local structural motif (e.g. Q2 PO₄ unit in a phosphate glass).
+The result reveals the orientationally averaged electron-density distribution around a specific local structural motif (e.g. Q2 $PO_4$ unit in a phosphate glass).
 
 ---
 

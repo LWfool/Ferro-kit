@@ -1,4 +1,4 @@
-# Rotational Autocorrelation Function C₂(t)
+# Rotational Autocorrelation Function $C_2(t)$
 
 ## Theory
 
@@ -16,7 +16,7 @@ $$\mathbf{u}_c(t) = \sum_{n \in \text{neighbours}(c,\, r_\text{cut})} (\mathbf{r
 
 This generalises to arbitrary A-centre-B structures (e.g. water: O as centre, H as neighbour; phosphate tetrahedra: P as centre, O as neighbour).
 
-### P₂ Calculation
+### $P_2$ Calculation
 
 For each centre atom $j$ and time origin $p$:
 

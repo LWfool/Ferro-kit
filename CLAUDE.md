@@ -47,9 +47,11 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 - **手册（`docs/src/`）→ 英文**；`///` / `//!` doc 注释 → **英文**；
   `//` 内部注释与测试断言消息 → **中文** —— 它们承载判据，母语更准，
   读者是开发者不是用户
-- 手册的公式与化学式**一律 LaTeX `$...$`**，不直接写 Unicode 上下标字符
-  （写 `$P_2O_5$`，不写 `P₂O₅`）。**例外**：`SUMMARY.md` 的目录标题 ——
-  mdBook 的侧边栏不过 MathJax，那里只能留 Unicode 或退回纯文本
+- 手册的公式与化学式**一律 LaTeX `$...$`**，不直接写 Unicode 上下标
+  （写 `$P_2O_5$`，不写 `P₂O₅`）。**三处不动**：① 单位符号（`Å³`、`Å⁻¹`、
+  `g/cm³`、`cm²/s`）—— 它们是符号不是公式，进 LaTeX 只会让表格更难读，
+  手册原本就是「公式 LaTeX、单位 Unicode」；② 代码块与行内代码；
+  ③ `SUMMARY.md` 的目录标题（mdBook 侧边栏不过 MathJax，会字面显示）
 - 库 crate 用 `ferro_core::error::ChemError` / `Result<T>`；CLI 用 `anyhow::Result`
 - 顶层类型恒为 `Trajectory`，单帧文件也是（`frames: vec![frame_0]`）
 - **`Molecule` 类型不存在** —— `Frame` 覆盖分子与周期体系，由 `pbc: [bool; 3]` 区分

@@ -116,7 +116,7 @@ Returned keys:
 - `"<A>-<B>_gr"` — partial g(r); symmetric, `A-B` equals `B-A`
 - `"<A>-<B>_cn"` — directed cumulative CN(A→B)
 
-`gr_all` gives n² ordered pairs for n types.  There is **no total**: an unweighted
+`gr_all` gives $n^2$ ordered pairs for n types.  There is **no total**: an unweighted
 total is the degenerate `f_i ≡ 1` case, corresponds to no experimental probe, and
 was removed in 0.1.11.
 

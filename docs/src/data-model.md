@@ -103,7 +103,7 @@ pub struct Cell {
 | `angles() -> [f64; 3]` | α, β, γ in degrees |
 | `volume() -> f64` | Cell volume [Å³] |
 | `fractional_to_cartesian(f)` | f·M |
-| `cartesian_to_fractional(c)` | c·M⁻¹ |
+| `cartesian_to_fractional(c)` | c·M^{-1} |
 | `wrap_position(c)` | Fold Cartesian position into [0, L) |
 | `minimum_image(v)` | Apply minimum-image convention to vector v |
 
