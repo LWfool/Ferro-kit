@@ -125,7 +125,7 @@ g = ferro.gr_pair(t, "P", "O", r_max=8.0, dr=0.05)
 import matplotlib.pyplot as plt
 plt.plot(g["r"], g["P-O_gr"])
 
-# 按位点标签分组（标注轨迹）
+# group by site label (labelled trajectory)
 g = ferro.gr_pair(t, "P_3", "O_b", by="label", r_max=5.0)
 ```
 

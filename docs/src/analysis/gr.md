@@ -78,22 +78,22 @@ centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than t
 
 ## Output
 
-`gr_<配对>[_<suffix>].csv`（未点名配对时为 `gr_all…`），**长表**：
+`gr_<pair>[_<suffix>].csv` (`gr_all…` when no pair is named), **long table**:
 
-| 列 | 含义 |
+| Column | Meaning |
 |---|---|
-| `file` | 输入文件 stem |
-| `r` | 半径 [Å] |
-| `center` / `neighbor` | 该行属于哪一个有序对 |
+| `file` | Input file stem |
+| `r` | Radius [Å] |
+| `center` / `neighbor` | Which ordered pair the row belongs to |
 | `gr` | $g(r)$ |
 | `cn` | $CN(r)$ |
 
-类型进**数据列**而不是列名：元素集不同的轨迹可直接堆叠而不需要对列，不给 `-a/-b`
-是加行而不是加列。`gr` 对称（`A-B` 与 `B-A` 逐点相同），`cn` 有向
-（`CN(A→B) = Σ hist/(N_A·steps)`）——这个区别写进了表结构而不是文档注脚。
+Types go into **data columns** rather than column names: trajectories with different element sets stack
+directly without aligning columns, and omitting `-a/-b` adds rows rather than columns.  `gr` is symmetric
+(`A-B` and `B-A` are identical point by point), `cn` is directed (`CN(A→B) = Σ hist/(N_A·steps)`) — that distinction is written into the table structure, not into a footnote.
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
 $g(r)$ is **symmetric** — `A-B` and `B-A` are pointwise identical.  $CN(r)$ is **directed** —
