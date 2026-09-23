@@ -144,12 +144,12 @@
 
 ## B · 写作词（无唯一译法，必须先定）
 
-### 口径 ×11 → **convention**  · 最重要。「口径改为文献 Qn」「两者口径不同」
+### 口径 ×11 → **statement**  · 用户定。「旧口径（总桥）vs 文献口径」= 同一个量的两种说法
 
 - `analysis/network.md:124` | | 旧口径（总桥） | 文献口径 |
 - `analysis/network.md:303` > P–O–Al 与配位数一侧（看 `Al_*` 与 `Zn_*` 的 `sd`）。旧口径把刚性骨架与涨落混在
 
-### 约定 ×8 → **convention**  · 与「口径」撞车,需区分
+### 约定 ×8 → **regulation**  · 用户定。与「口径」(statement) 分开：约定是规矩，口径是说法
 
 - `data-model.md:176` | CIF / CP2K inp / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
 - `analysis/network.md:172` - **`linkage` 展示列**：`Al_4-O-P_2` 这样的人可读形式，数字按各自约定（Qn 形成子取
@@ -224,9 +224,15 @@
 - `cli-reference.md:45` | `--mkdir` | 不询问直接创建 `-o` 的目录。**非交互环境（脚本、CI）下必须给**，否则报错退出 |
 - `cli-reference.md:886` | `--seed <N>` | 666 | `--shuffle` 的种子；不带 `--shuffle` 给它会报错 |
 
-### 点名 ×7 → **name explicitly**
+### 点名 ×6 → **declare**（`--modifier` 处）/ **name**（其余）  · 用户定。
+「`--modifier` 点名」= 用 `--modifier` 声明修饰子元素 → declare；
+「点名版本」「未点名配对」→ name
 
 - `analysis/network.md:48` | **修饰子** (modifier) | `--modifier` 点名，截断同样用 `--<M>-<L>=<Å>` | **只**参与配位数 |
+- `data-model.md:176` | CIF / CP2K inp / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
+
+### 位点名 ×1 → **site name**  · 用户指出：n-gram 把它切成了「点名」，是断词错误
+
 - `data-model.md:176` | CIF / CP2K inp / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
 
 ### 补零 ×5 → **pad with zeros**
@@ -284,11 +290,18 @@
 - `cli-reference.md:771` | `--type <WHAT>` | `deepmd`（DeePMD system）\| `inspect`（只出诊断，不出数据集）[deepmd] |
 - `cli-reference.md:108` partial 是能加回 total 的诊断分解（$\sum w_{ij}S_{ij} = \mathrm{total}$），只留一对
 
-### 规范序 ×1 → **canonical order**
+### 规范序 ×1 → **canonical order**  · 用户释义：规范化之后的序列/排序。
+实现是按 `(Z, 元素符号)` 排（`merge.rs`），dpdata 用字母序 —— 两边都靠 `type_map.raw` 自描述
 
 - `cli-reference.md:941` 组内各 system 的原子排列可以不同：合并时统一到规范序 `(Z, 符号)`，**逐原子
 
-### 规范半边 ×3 → **canonical half**
+### 规范半边 ×3 → **canonical half**  · ⚠ 待用户裁决，见下方证据
+
+定义句在 `analysis/network.md:177`：「桥联无方向，两端按 `(元素, 同核连接数, CN)`
+排序后小的在前，**每对只存一次**」—— 指**元素对只输出一半**（P-O 出，O-P 不出），
+与 `_sq`/`_xrd`/`_neutron` 三种加权是同一句话里的两件事。
+`sq.md:105` 的下半句写着理由：「$S(q)$ 没有有向的对应物」（g(r) 有 CN(r) 那个有向量，
+S(q) 没有，所以不必写满 n² 个有序对）
 
 - `analysis/sq.md:105` （`<pair>_sq` / `_xrd` / `_neutron`，只出规范半边——$S(q)$ 没有有向的对应物）。
 - `cli-reference.md:425` （`_sq` / `_xrd` / `_neutron`，只出规范半边）。主产物是两条 total（一行一个 $q$），
