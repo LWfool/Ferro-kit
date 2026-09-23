@@ -494,12 +494,12 @@ ferro traj gr -i run_types.lammpstrj -x Al_5 -y O_b --last-n 1
 
 | 体系 | 形成子 | 修饰子 | 参考截断 |
 |---|---|---|---|
-| P₂O₅ 玻璃 | P | — | P-O: 2.3–2.4 Å |
-| SiO₂ 玻璃 | Si | — | Si-O: 1.8 Å |
-| Al₂O₃ | Al | — | Al-O: 2.1–2.4 Å |
-| GeO₂ 玻璃 | Ge | — | Ge-O: 2.0 Å |
-| ZnO–P₂O₅ 玻璃 | P | Zn | P-O: 2.4 Å，Zn-O: 2.6 Å |
-| ZnO–Al₂O₃–P₂O₅ | P, Al | Zn | P-O: 2.4，Al-O: 2.4，Zn-O: 2.6 Å |
+| $P_2O_5$ 玻璃 | P | — | P-O: 2.3–2.4 Å |
+| $SiO_2$ 玻璃 | Si | — | Si-O: 1.8 Å |
+| $Al_2O_3$ | Al | — | Al-O: 2.1–2.4 Å |
+| $GeO_2$ 玻璃 | Ge | — | Ge-O: 2.0 Å |
+| ZnO–$P_2O_5$ 玻璃 | P | Zn | P-O: 2.4 Å，Zn-O: 2.6 Å |
+| ZnO–$Al_2O_3$–$P_2O_5$ | P, Al | Zn | P-O: 2.4，Al-O: 2.4，Zn-O: 2.6 Å |
 
 截断值应参照 g(r) 第一峰谷位置确定：
 

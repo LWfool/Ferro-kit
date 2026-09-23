@@ -1,0 +1,12 @@
+<!-- MathJax 2.7 默认的行内定界符是 \( \)，不含 $。手册统一用 $...$
+     （CLAUDE.md「编码约定」），故在此放开。processEscapes 让 \$ 仍是字面美元号。 -->
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath:  [['$','$'],  ['\\(','\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']],
+    processEscapes: true,
+    ignoreClass: "language-|hljs"
+  }
+});
+</script>

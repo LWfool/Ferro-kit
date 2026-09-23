@@ -221,7 +221,7 @@ and independent — both, either, or neither.
 
 ### `--al6` — keep frames containing a 6-coordinated Al
 
-"Keep frames containing at least one Al⁶" and "drop frames containing none" are
+"Keep frames containing at least one $Al^6$" and "drop frames containing none" are
 the same rule; ferro expresses it as the latter so all four criteria share one
 sense and the cross-tabulation stays a single table.
 

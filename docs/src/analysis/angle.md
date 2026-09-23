@@ -41,7 +41,7 @@ to both — the only assignment that gives a reproducible result.
 
 For each triplet, the key `"ElemA-ElemCenter-ElemC"` is assigned with $Z(\text{ElemA}) \leq Z(\text{ElemC})$.  When both end atoms have the same Z, lexicographic order on the label string is used.  This ensures each angle type appears exactly once.
 
-**No double-counting**: the enumeration requires $\text{idx}(A) < \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events. Each *geometric* angle is therefore counted once — a PO₄ tetrahedron contributes 6 O–P–O angles, not 12.
+**No double-counting**: the enumeration requires $\text{idx}(A) < \text{idx}(C)$ to avoid counting (A,B,C) and (C,B,A) as separate events. Each *geometric* angle is therefore counted once — a $PO_4$ tetrahedron contributes 6 O–P–O angles, not 12.
 
 ### Histogram Range
 
@@ -143,7 +143,7 @@ write_angle(&result, "output.angle").unwrap();
 
 ### Linked-Cell List
 
-Brute-force neighbour search is O(N²) per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.
+Brute-force neighbour search is $O(N^2)$ per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.
 
 For each central atom B, only the 27 cells within ±1 cell in each direction are searched. The cell size is chosen so that a sphere of radius $r_\text{cut,max}$ fits within the search volume:
 
