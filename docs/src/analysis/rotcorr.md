@@ -61,10 +61,10 @@ pub struct RotCorrParams {
 
 ## Output
 
-`rotcorr_<中心>-<近邻>[_<suffix>].csv`（两者必填，走不到 `all`）：`file, time, c2, integral`（时间 fs）。
+`rotcorr_<center>-<neighbor>[_<suffix>].csv` (both are required, so `all` is never reached): `file, time, c2, integral` (time in fs).
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
 ## Usage

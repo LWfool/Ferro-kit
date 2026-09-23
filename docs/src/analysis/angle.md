@@ -107,13 +107,13 @@ pub struct AngleParams {
 
 ## Output
 
-`angle_<三元组>[_<suffix>].csv`（未点名三元组时为 `angle_all…`），**长表**：`file, angle, end_a, center, end_c, count, p`。
+`angle_<triplet>[_<suffix>].csv` (`angle_all…` when no triplet is named), **long table**: `file, angle, end_a, center, end_c, count, p`.
 
-三元组进**数据列**，故元素集不同的轨迹可直接堆叠。同时保留整数 `count` 与归一化 `p`
-两列：整数直方图是与 `dump2analysis` 逐 bin 对拍的依据，只留 `p` 就对不了。
+The triplet goes into **data columns**, so trajectories with different element sets stack directly.  Both the
+integer `count` and the normalised `p` are kept: the integer histogram is what the bin-by-bin cross-check against `dump2analysis` rests on, and `p` alone cannot serve it.
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
 ## Usage

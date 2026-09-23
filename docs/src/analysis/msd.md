@@ -58,14 +58,14 @@ pub struct MsdParams {
 
 ## Output
 
-`msd_<元素>[_<suffix>].csv`（元素排序去重，无 `--elements` 时为 `msd_all…`）：`file, time, msd, msd_a, msd_b, msd_c`
-（时间 fs，位移平方 Å²）。
+`msd_<element>[_<suffix>].csv` (elements sorted and deduplicated; `msd_all…` without `--elements`): `file, time, msd, msd_a, msd_b, msd_c`
+(time in fs, squared displacement in Å²).
 
-给了 `--fit-range FMIN,FMAX` 时，自扩散系数 $D = \text{slope}/6$ 与 $R^2$ 打印到
-stdout 并写进 `#` 头块（同时给出 Å²/fs、cm²/s、m²/s 三种单位）。
+When `--fit-range FMIN,FMAX` is given, the self-diffusion coefficient $D = \text{slope}/6$ and $R^2$ are printed to
+stdout and written into the `#` header block (in Å²/fs, cm²/s and m²/s).
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
 ## Usage

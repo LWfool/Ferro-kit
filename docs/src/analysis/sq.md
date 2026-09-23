@@ -101,27 +101,27 @@ in `scripts/trajcheck.py`.
 
 ## Output
 
-`sq[_<suffix>].csv`（**无 label 段**——这个命令没有类型选择），**宽表**：`file, q, total_xrd, total_neutron`，其后每个配对三列
-（`<pair>_sq` / `_xrd` / `_neutron`，只出规范半边——$S(q)$ 没有有向的对应物）。
+`sq[_<suffix>].csv` (**no label segment** — this command has no type selection), **wide table**: `file, q, total_xrd, total_neutron`, then three columns per pair
+(`<pair>_sq` / `_xrd` / `_neutron`, canonical half only — $S(q)$ has no directed counterpart).
 
-主产物是两条 total（一行一个 $q$），加权 partial $w_{ij}(q)\,S_{ij}(q)$ 是能逐点求和
-还原 total 的诊断分解。元素集不同的输入取列并集，**缺口留空（NaN），不插值不补零**。
+The primary output is the two totals (one $q$ per row); the weighted partials $w_{ij}(q)\,S_{ij}(q)$ are a
+diagnostic decomposition that sums point by point back to the total.  Inputs with different element sets take the union of columns; **gaps stay empty (NaN), never interpolated, never padded with zeros**.
 
-`sq` 不再另写一份 `gr`；需要 $g(r)$ 就单独跑 `ferro traj gr`。
+`sq` no longer writes a `gr` alongside; run `ferro traj gr` separately when $g(r)$ is needed.
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给目录，
-`-s` 给文件名后缀。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes a directory,
+`-s` the file-name suffix.
 
-### 没有类型选择
+### No type selection
 
-`-a/-b` 与 `-x/-y` 已移除，**每个配对恒定全写**。理由是主产物就是那两条 total，而
-partial 的全部价值在于 $\sum_{i\le j} w_{ij}(q)S_{ij}(q) = \mathrm{total}$ 这条闭合——
-只留一对恰好把它藏起来。要看某一对，在 pandas 里选列即可，文件本来就不大。
+`-a/-b` and `-x/-y` have been removed; **every pair is always written in full**.  The reason is that the
+primary output is those two totals, and the whole value of the partials lies in the closure $\sum_{i\le j} w_{ij}(q)S_{ij}(q) = \mathrm{total}$ —
+keeping only one pair hides exactly that.  To look at one pair, select the columns in pandas; the file is small anyway.
 
-按 label 分辨的 partial 随之消失：`-x/-y` 曾是进入 `GroupBy::Label` 的唯一入口，而一个
-位点标签对应的原子数往往不足以让它的 partial 显出信号。**库层的 `GroupBy::Label` 不动**
-（`GrParams` 的字段还在，钉住 $O(1/N)$ 自排除项的两个测试照常跑），只是 CLI 不再暴露。
+Partials resolved by label are gone with them: `-x/-y` was the only entry into `GroupBy::Label`, and the atom
+count behind a single site label is usually too small for its partial to show any signal.  **`GroupBy::Label` in the library is untouched**
+(the `GrParams` field is still there, and the two tests pinning the $O(1/N)$ self-exclusion term still run) — it is only no longer exposed on the CLI.
 
 The `.sq` file header records both the g(r) parameters (used as input) and the S(q) parameters.  
 Column ordering matches the `.gr` file. Additional columns `total_xrd` and/or `total_neutron` are appended when weighting is requested.

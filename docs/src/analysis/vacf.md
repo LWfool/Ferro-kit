@@ -53,11 +53,11 @@ pub struct VacfParams {
 
 ## Output
 
-`vacf_<元素>[_<suffix>].csv`（元素排序去重，无 `--elements` 时为 `vacf_all…`）：`file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
-（时间 fs，`diffusion` 为 Green-Kubo running integral）。
+`vacf_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vacf_all…` without `--elements`): `file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
+(time in fs; `diffusion` is the Green-Kubo running integral).
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
 ### Unit Note

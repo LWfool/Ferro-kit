@@ -54,13 +54,13 @@ pub struct VanHoveParams {
 
 ## Output
 
-`vanhove_<元素>[_<suffix>].csv`（元素排序去重，无 `--elements` 时为 `vanhove_all…`）：`file, r, gs`（归一化为 $\sum g_s = 1$）。
+`vanhove_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vanhove_all…` without `--elements`): `file, r, gs` (normalised so that $\sum g_s = 1$).
 
-滞后时间 $\tau$ 只在 `#` 头块里记录（帧数与 fs 各一份）。一次只算一个 $\tau$；
-将来支持多 $\tau$ 时会加 `tau` 列——那是加行而不是改列结构。
+The lag time $\tau$ is recorded only in the `#` header block (once in frames, once in fs).  One $\tau$ per run;
+when several $\tau$ are supported later a `tau` column will be added — that adds rows rather than changing the column structure.
 
-所有产物是**一份** csv，多输入时堆叠成一张表并加 `file` 列；`#` 注释块里是共享参数与
-`[inputs]` 清单（`pandas.read_csv(comment="#")` 会丢掉）。`-o` 给的是**输出目录**，批次后缀走 `-s`。
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
+(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
 ## Usage

@@ -1,9 +1,9 @@
 # Jump Distance Distribution
 
-> **仅库函数，没有 CLI 入口。** `ferro_analysis::md::cube_jump` 实现完整（含 10 个
-> 单元测试）并已导出，但 0.2.0 把八个 `fe-*` 合并成单个 `ferro` 时，`fe-cube -m jump`
-> 这一分支没有接回 `ferro map` 的子命令表。下面的 Rust API 可用；命令行用法要等
-> `map jump` 补上。
+> **Library function only, no CLI entry.** `ferro_analysis::md::cube_jump` is fully implemented
+> (10 unit tests) and exported, but when 0.2.0 merged the eight `fe-*` binaries into a single
+> `ferro`, the `fe-cube -m jump` branch was never wired back into the `ferro map` subcommand
+> table.  The Rust API below works; command-line usage has to wait for `map jump`.
 
 ## Theory
 
@@ -70,7 +70,7 @@ A Gaussian cube file with raw jump-event counts per voxel.  Typical post-process
 
 ## Usage
 
-命令行入口尚未接回（见页首说明）。当 `ferro map jump` 补上后，用法预计为：
+The command-line entry is not wired back yet (see the note at the top of this page).  Once `ferro map jump` lands, the usage is expected to be:
 
 ```bash
 # Jump origins for Li, lag = 1 frame, threshold = 1.0 Å
@@ -80,7 +80,7 @@ ferro map jump -i traj.lammpstrj --elements Li --tau 1 --threshold 1.0 -o run1
 ferro map jump -i traj.lammpstrj --elements Li --record-at midpoint -o run1
 ```
 
-目前只能走 Rust API：
+For now only the Rust API is available:
 
 ```rust
 use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
