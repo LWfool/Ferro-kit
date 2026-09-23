@@ -66,26 +66,26 @@ What fills them:
 `pbc = [false,false,false]` → molecular system.  
 `pbc = [true,true,false]` → surface / slab.
 
-### 应力的符号
+### Sign of the stress
 
-`stress` 一律**正 = 压缩**（CP2K / VASP / QE 打印的那个符号），行优先存储。
-维里由它直接得到、**不变号**：`virial = stress × V`（eV），这正是 DeePMD、
-QUIP 与 GPUMD 所说的 `virial`。
+`stress` is always **positive = compression** (the sign CP2K / VASP / QE print), stored row-major.
+The virial follows from it directly and **without a sign flip**: `virial = stress × V` (eV),
+which is exactly what DeePMD, QUIP and GPUMD call `virial`.
 
-**ASE 相反**（正 = 拉伸）。所以读写 ASE 系的格式时 ferro 会在边界上变号：
+**ASE is the opposite** (positive = tension), so ferro flips the sign at the boundary when reading or writing ASE-family formats:
 
-| 格式与键 | 文件里是什么 | ferro 怎么处理 |
+| Format and key | What is in the file | What ferro does |
 |---|---|---|
-| extxyz 的 `stress=` | eV/Å³，正 = 拉伸 | 读写两侧**变号** |
-| extxyz 的 `virial=` | eV，正 = 压缩 | 除以 `\|det(box)\|`，**不变号**；没有 `Lattice` 就报错 |
-| DeePMD 的 `virial.npy` | eV，正 = 压缩 | `stress × V`，不变号 |
-| VASP 的 `in kB` 行 | kBar，正 = 压缩，Voigt 顺序 `XX YY ZZ XY YZ ZX` | 换算单位，**不变号** |
+| extxyz `stress=` | eV/Å³, positive = tension | **sign flipped** on both read and write |
+| extxyz `virial=` | eV, positive = compression | divided by `\|det(box)\|`, **no sign flip**; errors out when there is no `Lattice` |
+| DeePMD `virial.npy` | eV, positive = compression | `stress × V`, no sign flip |
+| VASP `in kB` line | kBar, positive = compression, Voigt order `XX YY ZZ XY YZ ZX` | unit conversion only, **no sign flip** |
 
-extxyz 若同时给了 `stress=` 与 `virial=`，两者必须自洽（`virial ≈ stress × V`），
-否则报错 —— 不会替你挑一个。另外该张量必须**对称**（extxyz 规格如此要求），
-**6 分量的 Voigt 写法不收**：它的分量顺序在各家程序间并不统一（规格与 ASE 是
-`xx yy zz yz xz xy`，VASP 的 `in kB` 与 GPUMD 的 `stress_*.out` 是
-`xx yy zz xy yz zx`），而文件里没有任何字段说明是谁写的。请改写成 9 个数。  
+When an extxyz frame carries both `stress=` and `virial=`, the two must agree (`virial ≈ stress × V`),
+otherwise ferro errors out — it will not pick one for you.  The tensor must also be **symmetric**
+(the extxyz specification requires it), and the **6-component Voigt form is rejected**: its component
+order is not consistent across programs (the specification and ASE use `xx yy zz yz xz xy`, VASP's
+`in kB` and GPUMD's `stress_*.out` use `xx yy zz xy yz zx`), and nothing in the file says which one wrote it.  Rewrite it as 9 numbers.
 `pbc = [true,true,true]` → bulk crystal or glass.
 
 ## Cell
@@ -138,50 +138,50 @@ NPT trajectories (variable box per frame) are handled naturally: each `Frame` ca
 
 ## Element vs. Label
 
-`Atom::element` 是**化学元素**；`Atom::label` 是可选的**位点类型**。两者分开存放，
-所以一个原子既能按元素选也能按位点选，而不必二选一：
+`Atom::element` is the **chemical element**; `Atom::label` is an optional **site type**.  They are stored
+separately, so an atom can be selected by element or by site without having to choose one or the other:
 
 ```rust
 Atom { element: "P".into(), label: Some("P_3".into()), .. }
 ```
 
-分析命令的两组选择参数互斥：`-a/-b/-c` 按 `element`，`-x/-y/-z` 按 `label`。
+The two groups of selection flags on the analysis commands are mutually exclusive: `-a/-b/-c` select by `element`, `-x/-y/-z` by `label`.
 
-### 标签约定
+### Label convention
 
-位点标签一律形如 `<元素>_<后缀>`，按**首个下划线**拆分。后缀里再有下划线不影响
-（`Fe_site_A` 的元素仍是 `Fe`）—— 这条对任何来源的标签都成立，不限于 `ferro net`
-写的那几种。
+A site label always has the form `<element>_<suffix>` and is split at the **first underscore**.  Further
+underscores in the suffix do not matter (`Fe_site_A` still has element `Fe`) — this holds for labels from
+any source, not only the ones `ferro net` writes.
 
-| 标签 | 含义 |
+| Label | Meaning |
 |---|---|
-| `P_0` … `P_4` | Qn 形成子，数字 = **同元素**连接数 n（P–O–P），见 `network.md` |
-| `Al_4` `Al_5` `Al_6` | 非 Qn 形成子，数字 = **配位数** |
-| `O_f` | 自由配体（不连任何形成子） |
-| `O_n` | 非桥配体（连 1 个） |
-| `O_b` | 桥联配体（连 2 个） |
-| `O_t` | 三配位配体（连 ≥3 个，tricluster） |
-| `Zn`、`Na`… | 修饰子，裸元素符号，无角色后缀 |
+| `P_0` … `P_4` | Qn network former; the number is the count of **same-element** connections n (P–O–P), see `network.md` |
+| `Al_4` `Al_5` `Al_6` | non-Qn network former; the number is the **coordination number** |
+| `O_f` | free ligand (bonded to no network former) |
+| `O_n` | non-bridging ligand (bonded to one) |
+| `O_b` | bridging ligand (bonded to two) |
+| `O_t` | three-coordinate ligand (bonded to ≥3, tricluster) |
+| `Zn`, `Na`… | modifier; bare element symbol, no role suffix |
 
-> 0.2.1 之前的旧格式（`P0` / `Of` / `On_P` / `Ob_P_P` / `X` / `Zn_f`）已全部替换，
-> **不留读取兼容层**：重跑一次 `ferro net --export-traj` 即为新格式，而加格式猜测
-> 反而可能把真元素误判成旧标签。
+> The pre-0.2.1 formats (`P0` / `Of` / `On_P` / `Ob_P_P` / `X` / `Zn_f`) have all been replaced,
+> **with no read-compatibility layer**: rerunning `ferro net --export-traj` once produces the new
+> format, whereas guessing the format could misread a real element as an old label.
 
-### 谁会填 `label`
+### What fills `label`
 
-| 来源 | 说明 |
+| Source | Notes |
 |---|---|
-| LAMMPS dump reader | `element` 列写成 `P_3` 时拆成 `element="P"` + `label="P_3"`，读完打印一次映射表 |
-| extxyz reader | 独立的 `label:S:1` 列 |
-| CIF / CP2K inp / QE reader | 各自的位点名（`O1`、`Fe1`）——注意这些**不合** `<元素>_<后缀>` 约定 |
-| CP2K 单点 out reader | `&KIND` 的名字（`ATOMIC KIND INFORMATION` 块），**仅在它与元素不同时**才填。同元素多 kind 是常见做法（`Fe1`/`Fe2` 给两组磁矩初猜），也见过 kind 名干脆是另一个元素符号的取代体系——所以 `element` 恒取坐标表里的真元素，kind 名只进 `label` |
-| `ferro net --export-traj` | 分类结果写进 `label`，`element` 保持元素 |
+| LAMMPS dump reader | an `element` column written as `P_3` is split into `element="P"` + `label="P_3"`; the mapping is printed once after reading |
+| extxyz reader | its own `label:S:1` column |
+| CIF / CP2K inp / QE reader | their own site names (`O1`, `Fe1`) — note these do **not** follow the `<element>_<suffix>` convention |
+| CP2K single-point out reader | the `&KIND` name (from the `ATOMIC KIND INFORMATION` block), filled **only when it differs from the element**.  Several kinds per element is common practice (`Fe1`/`Fe2` carrying two magnetic-moment guesses), and substituted systems have been seen where the kind name is simply another element symbol — so `element` always takes the real element from the coordinate table, and the kind name goes into `label` only |
+| `ferro net --export-traj` | the classification goes into `label`, `element` stays the element |
 
-### 谁会写出 `label`
+### What writes `label` out
 
-**writer 从不自作主张把 `label` 折进元素列。** `ferro convert` 无论标签如何都写干净的
-元素符号。只有 `ferro net --export-traj` 折叠，且只对 LAMMPS dump——那个格式只有一列
-名字放得下第二个名字；extxyz 走独立的 `label:S:1` 列，两个方向都无损。
+**No writer folds `label` into the element column on its own.**  `ferro convert` writes clean element
+symbols whatever the labels are.  Only `ferro net --export-traj` folds, and only for LAMMPS dump — that
+format has just one name column to put a second name in; extxyz uses its own `label:S:1` column, lossless in both directions.
 
-折叠带守卫：标签不形如 `<元素>_…` 时不折并计数告警。CIF 的 `O1` 折进去后再读回来，
-就是一个不存在的元素 `O1`。
+The fold has a guard: a label not of the form `<element>_…` is not folded, and those occurrences are
+counted and warned about.  A CIF `O1` folded in and read back would be a non-existent element `O1`.
