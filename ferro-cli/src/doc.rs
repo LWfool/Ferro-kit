@@ -378,7 +378,7 @@ mod tests {
     /// Everything but whitespace, escape codes and the characters that are
     /// markup on one side and decoration on the other.
     fn content(s: &str) -> String {
-        const MARKUP: &str = "#*`>|-=\\[]()•│─═";
+        const MARKUP: &str = "#*`>|-=+\\[]()•│─═┌┬┐├┼┤└┴┘";
         let mut out = String::new();
         let mut chars = s.chars();
         while let Some(c) = chars.next() {
@@ -398,24 +398,38 @@ mod tests {
 
     #[test]
     fn rendering_loses_no_content() {
-        // 渲染只许换排版,不许丢字、改字、换顺序。围栏行本身是标记,渲染后不出现
+        // 渲染只许换排版,不许丢字、改字。围栏行与表格对齐行本身是标记,渲染后不出现。
+        // 宽度给足时表格不折行,顺序也必须一致;窄终端下单元格折行,屏幕逐行读会把
+        // 相邻列的片段交错,那时只能比字符多重集
         use render::{render, Style};
+        let sorted = |s: String| {
+            let mut v: Vec<char> = s.chars().collect();
+            v.sort_unstable();
+            v
+        };
         for style in [Style { ansi: true, unicode: true }, Style { ansi: false, unicode: false }] {
             for p in PAGES {
                 let src = body(p);
-                let without_fences: String = src
+                let without_markup: String = src
                     .lines()
                     .filter(|l| !l.trim_start().starts_with("```"))
+                    .filter(|l| !(l.starts_with('|') && l.chars().all(|c| "|-: ".contains(c))))
                     .collect::<Vec<_>>()
                     .join("\n");
-                let want = content(&without_fences);
-                let got = content(&render(&src, 80, style));
+                let want = content(&without_markup);
+
+                let got = content(&render(&src, 10_000, style));
                 if want != got {
                     let at = want.chars().zip(got.chars()).take_while(|(a, b)| a == b).count();
                     let near: String = want.chars().skip(at.saturating_sub(40)).take(80).collect();
                     let near_got: String = got.chars().skip(at.saturating_sub(40)).take(80).collect();
                     panic!("`{}` ({style:?}) 在第 {at} 个字符处分岔\n原文:{near}\n渲染:{near_got}", p.topic);
                 }
+                assert!(
+                    sorted(want.clone()) == sorted(content(&render(&src, 80, style))),
+                    "`{}` ({style:?}) 在 80 列下丢了或多了字符",
+                    p.topic
+                );
             }
         }
     }
