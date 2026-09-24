@@ -75,7 +75,8 @@ pub fn render(md: &str, width: usize, style: Style) -> String {
             Block::Quote(lines) => render_quote(lines, text_width, style),
             Block::List(items) => render_list(items, text_width, style),
             Block::Rule => rule(if style.unicode { '─' } else { '-' }, text_width),
-            Block::Table(lines) | Block::Raw(lines) => lines.join("\n"),
+            Block::Table(lines) => render_table(lines, width.max(20), style),
+            Block::Raw(lines) => lines.join("\n"),
         })
         .collect();
     let mut out = blocks.join("\n\n");
@@ -476,14 +477,16 @@ fn visible_len(spans: &[Span], style: Style) -> usize {
 /// Greedy word wrap of inline spans to `width` visible columns.
 ///
 /// A word is everything between two whitespaces, across span boundaries —
-/// ``` `x`, ``` keeps its comma. Code and math are never broken; a span longer
-/// than the line overflows rather than being cut.
+/// ``` `x`, ``` keeps its comma. Code and math stay whole when they fit on a
+/// line; one longer than the line breaks at its own spaces, and a single word
+/// longer than the line overflows rather than being cut.
 fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
     let mut words: Vec<Vec<Span>> = Vec::new();
     // 上一个词是否还能继续往后粘(中间没遇到空白)
     let mut open = false;
     for s in spans {
-        if s.look.code || s.look.math {
+        let opaque = s.look.code || s.look.math;
+        if opaque && shown(s, style).chars().count() <= width {
             if !open {
                 words.push(Vec::new());
             }
@@ -491,6 +494,15 @@ fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
             open = true;
             continue;
         }
+        // 比整行还长的代码要在内部空格处断开。朴素样式下定界符先并进文本,
+        // 否则每个碎片各带一对反引号,读起来像一串独立的代码
+        let owned;
+        let s = if opaque && (s.look.math || !style.ansi) {
+            owned = Span { text: shown(s, style), look: Look { code: false, math: false, ..s.look } };
+            &owned
+        } else {
+            s
+        };
         let mut buf = String::new();
         for c in s.text.chars() {
             if c.is_whitespace() {
@@ -613,6 +625,159 @@ fn render_list(items: &[Item], width: usize, style: Style) -> String {
     out.join("\n")
 }
 
+/// How a column's cells sit inside it, from the `|:-:|` row.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Align {
+    Left,
+    Center,
+    Right,
+}
+
+/// Splits one table row at the `|` that are not escaped as `\|`.
+fn cells(row: &str) -> Vec<&str> {
+    let row = row.trim();
+    let row = row.strip_prefix('|').unwrap_or(row);
+    let row = row.strip_suffix('|').filter(|r| !r.ends_with('\\')).unwrap_or(row);
+    let mut out = Vec::new();
+    let mut start = 0;
+    let bytes = row.as_bytes();
+    for (k, &b) in bytes.iter().enumerate() {
+        if b == b'|' && (k == 0 || bytes[k - 1] != b'\\') {
+            out.push(row[start..k].trim());
+            start = k + 1;
+        }
+    }
+    out.push(row[start..].trim());
+    out
+}
+
+fn align_row(row: &str) -> Option<Vec<Align>> {
+    let cs = cells(row);
+    cs.iter()
+        .all(|c| !c.is_empty() && c.chars().all(|ch| matches!(ch, '-' | ':')) && c.contains('-'))
+        .then(|| {
+            cs.iter()
+                .map(|c| match (c.starts_with(':'), c.ends_with(':')) {
+                    (true, true) => Align::Center,
+                    (false, true) => Align::Right,
+                    _ => Align::Left,
+                })
+                .collect()
+        })
+}
+
+/// Columns a painted string takes on screen: escape codes take none.
+fn screen_len(s: &str) -> usize {
+    let mut n = 0;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            chars.by_ref().find(|&d| d == 'm');
+        } else {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// A table drawn with full borders, cells word-wrapped to fit `width`.
+///
+/// Columns start at their natural width; while the table is too wide the
+/// widest column gives up a column at a time, never below its longest word.
+/// A table that still does not fit overflows — cutting a flag name in two
+/// would be worse than a scroll.
+fn render_table(lines: &[&str], width: usize, style: Style) -> String {
+    // 第二行是对齐行才算表格;不是的话(手册里没有这种写法)原样输出而不是猜
+    let Some(aligns) = lines.get(1).and_then(|r| align_row(r)) else {
+        return lines.join("\n");
+    };
+    let bold = Look { bold: true, ..Look::default() };
+    let rows: Vec<Vec<Vec<Span>>> = lines
+        .iter()
+        .enumerate()
+        .filter(|(k, _)| *k != 1)
+        .map(|(k, row)| {
+            cells(row)
+                .iter()
+                .map(|c| {
+                    let spans = inline(c);
+                    if k > 0 {
+                        return spans;
+                    }
+                    spans.into_iter().map(|s| Span { look: s.look.or(bold), ..s }).collect()
+                })
+                .collect()
+        })
+        .collect();
+    let ncols = rows.iter().map(Vec::len).max().unwrap_or(0).max(aligns.len());
+
+    let longest_word = |spans: &[Span]| {
+        wrap(spans, 1, style).iter().map(|l| screen_len(l)).max().unwrap_or(0)
+    };
+    let mut natural = vec![1; ncols];
+    let mut floor = vec![1; ncols];
+    for row in &rows {
+        for (j, cell) in row.iter().enumerate() {
+            natural[j] = natural[j].max(visible_len(cell, style));
+            floor[j] = floor[j].max(longest_word(cell));
+        }
+    }
+    let avail = width.saturating_sub(3 * ncols + 1);
+    let mut widths = natural.clone();
+    while widths.iter().sum::<usize>() > avail {
+        // 最宽且还能让的那一列让出一格
+        let Some(j) = (0..ncols).filter(|&j| widths[j] > floor[j]).max_by_key(|&j| widths[j]) else {
+            break;
+        };
+        widths[j] -= 1;
+    }
+
+    let (h, v, corners) = if style.unicode {
+        ('─', '│', [['┌', '┬', '┐'], ['├', '┼', '┤'], ['└', '┴', '┘']])
+    } else {
+        ('-', '|', [['+'; 3]; 3])
+    };
+    let border = |[l, m, r]: [char; 3]| {
+        let mut s = String::from(l);
+        for (j, w) in widths.iter().enumerate() {
+            s.extend(std::iter::repeat_n(h, w + 2));
+            s.push(if j + 1 == ncols { r } else { m });
+        }
+        s
+    };
+
+    let wrapped: Vec<Vec<Vec<String>>> = rows
+        .iter()
+        .map(|row| (0..ncols).map(|j| row.get(j).map_or(vec![], |c| wrap(c, widths[j], style))).collect())
+        .collect();
+    // 有单元格折了行,行与行之间就要画线,否则分不清哪几行属于同一条记录
+    let ruled = wrapped.iter().any(|row| row.iter().any(|c| c.len() > 1));
+
+    let mut out = vec![border(corners[0])];
+    for (k, row) in wrapped.iter().enumerate() {
+        if k == 1 || (k > 1 && ruled) {
+            out.push(border(corners[1]));
+        }
+        let height = row.iter().map(Vec::len).max().unwrap_or(1).max(1);
+        for i in 0..height {
+            let mut line = String::from(v);
+            for (j, cell) in row.iter().enumerate() {
+                let text = cell.get(i).map_or("", String::as_str);
+                let gap = widths[j].saturating_sub(screen_len(text));
+                let (l, r) = match aligns.get(j).copied().unwrap_or(Align::Left) {
+                    Align::Left => (0, gap),
+                    Align::Right => (gap, 0),
+                    Align::Center => (gap / 2, gap - gap / 2),
+                };
+                write!(line, " {}{text}{} {v}", " ".repeat(l), " ".repeat(r)).unwrap();
+            }
+            out.push(line);
+        }
+    }
+    out.push(border(corners[2]));
+    out.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -694,9 +859,20 @@ mod tests {
     }
 
     #[test]
-    fn wrap_never_breaks_code() {
+    fn code_that_fits_stays_whole() {
+        let lines = wrap(&inline("x `a b` y"), 5, PLAIN);
+        assert_eq!(lines, ["x", "`a b`", "y"]);
+    }
+
+    #[test]
+    fn code_longer_than_the_line_breaks_at_its_spaces() {
+        // 朴素样式:反引号只在首尾各一个
         let lines = wrap(&inline("x `a very long code span` y"), 10, PLAIN);
-        assert_eq!(lines, ["x", "`a very long code span`", "y"]);
+        assert_eq!(lines, ["x `a very", "long code", "span` y"]);
+        // 着色样式:每个碎片都仍是代码
+        let rich = wrap(&inline("`aaaa bbbb cccc`"), 9, RICH);
+        assert_eq!(rich.len(), 2);
+        assert!(rich.iter().all(|l| l.starts_with("\x1b[36m")), "{rich:?}");
     }
 
     #[test]
@@ -744,8 +920,59 @@ mod tests {
     }
 
     #[test]
+    fn table_cells_split_at_unescaped_bars_only() {
+        assert_eq!(cells(r"| a \| b | `c` |"), [r"a \| b", "`c`"]);
+        assert_eq!(cells("|  | x |"), ["", "x"]);
+    }
+
+    #[test]
+    fn table_is_boxed_and_aligned() {
+        let out = render("| k | v |\n|---|:-:|\n| `a` | 1 |\n| bb | 22 |\n", 80, PLAIN);
+        let want = "\
++-----+----+
+| k   | v  |
++-----+----+
+| `a` | 1  |
+| bb  | 22 |
++-----+----+
+";
+        assert_eq!(out, want);
+    }
+
+    #[test]
+    fn escaped_bar_renders_as_a_bar() {
+        let out = render("| x |\n|---|\n| ENERGY\\| Total |\n", 80, PLAIN);
+        assert!(out.contains("| ENERGY| Total |"), "{out}");
+    }
+
+    #[test]
+    fn a_narrow_terminal_wraps_the_widest_column() {
+        let md = "| flag | meaning |\n|---|---|\n| `-o` | one two three four five six |\n| `-s` | x |\n";
+        let out = render(md, 24, PLAIN);
+        for l in out.lines() {
+            assert!(l.len() <= 24, "超出终端宽度: {l:?}\n{out}");
+        }
+        // 折了行就要有行间分隔线
+        assert_eq!(out.lines().filter(|l| l.starts_with('+')).count(), 4, "{out}");
+    }
+
+    #[test]
+    fn a_word_longer_than_the_room_overflows_instead_of_being_cut() {
+        let out = render("| a |\n|---|\n| `--a-very-long-flag` |\n", 10, PLAIN);
+        assert!(out.contains("`--a-very-long-flag`"), "{out}");
+    }
+
+    #[test]
+    fn rich_table_aligns_on_screen_columns_not_bytes() {
+        // 粗体表头的转义码与 Å 的多字节都不该挤歪边框
+        let out = render("| Å | b |\n|---|---|\n| xx | y |\n", 80, RICH);
+        let widths: Vec<usize> = out.lines().map(screen_len).collect();
+        assert!(widths.windows(2).all(|w| w[0] == w[1]), "{out}");
+    }
+
+    #[test]
     fn plain_style_is_pure_ascii() {
-        let out = render("# T\n\n- **a** `b`\n\n> q\n\n---\n", 80, PLAIN);
+        let out = render("# T\n\n- **a** `b`\n\n> q\n\n| a |\n|---|\n| b |\n\n---\n", 80, PLAIN);
         assert!(out.is_ascii(), "Windows 路径不能出现非 ASCII 字符:\n{out}");
         assert!(!out.contains('\x1b'));
     }
