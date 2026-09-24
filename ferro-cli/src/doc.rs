@@ -400,14 +400,16 @@ mod tests {
     fn rendering_loses_no_content() {
         // 渲染只许换排版,不许丢字、改字。围栏行与表格对齐行本身是标记,渲染后不出现。
         // 宽度给足时表格不折行,顺序也必须一致;窄终端下单元格折行,屏幕逐行读会把
-        // 相邻列的片段交错,那时只能比字符多重集
+        // 相邻列的片段交错,那时只能比字符多重集。
+        // 两种样式都不开 unicode:那条路上行内公式被改写成 Unicode,字符本来就该变,
+        // 它的正确性由 render 里 latex 的测试钉住;框线与项目符号在这里本就被滤掉
         use render::{render, Style};
         let sorted = |s: String| {
             let mut v: Vec<char> = s.chars().collect();
             v.sort_unstable();
             v
         };
-        for style in [Style { ansi: true, unicode: true }, Style { ansi: false, unicode: false }] {
+        for style in [Style { ansi: true, unicode: false }, Style { ansi: false, unicode: false }] {
             for p in PAGES {
                 let src = body(p);
                 let without_markup: String = src
