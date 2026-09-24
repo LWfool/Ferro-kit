@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：622 个（全部通过，clippy 零警告）
+## 测试总数：649 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
@@ -12,7 +12,7 @@
 | ferro-structure | 72 |
 | ferro-analysis | 199 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 89 + bin 2 + 集成 8） | 99 |
+| ferro-cli（lib 116 + bin 2 + 集成 8） | 126 |
 
 版本号 **0.3.3**（workspace 统一；ferro-python 已同步）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -365,6 +365,14 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   **支持按小节寻址**（`Page.section`）：`convert` / `info` / `bader` 没有手册
   专页，是 `cli-reference.md` 的小节，取该 `##` 到下一个同级标题 —— 99 行而
   不是整本 863 行
+- **`doc/render.rs`**（2026-09-24）：`ferro doc` 的终端渲染器，**只在 stdout 是
+  tty 时**介入，重定向输出仍是源文件原样（24 个整页主题逐字节核对过）。全自写，
+  净新增 0 crate（`libc` 只在 `cfg(unix)` 下声明，且早已经 plotters 在树里）。
+  `split_blocks` 按行首切块、认不出的走 `Block::Raw`；`inline` 是一次扫描的
+  tokenizer；表格带完整边框、单元格按词折行；行内 `$...$` 按四条语法规则转
+  Unicode，块级 `$$` 原样。宽度取 ioctl → `COLUMNS` → 80，正文上限 100 列。
+  **Windows 与 `NO_COLOR`**：前者纯 ASCII（无转义码、`+--+` 边框、公式留 TeX），
+  后者只关颜色。`rendering_loses_no_content` 对每页两种样式校验不丢字
 - **帮助页与 clap 的防漂测试**（`main.rs` 的 `mod help_sync`）：正向断言每个
   长选项都在其富文本页出现（写短名也算），反向断言页里的每个 `--xxx` 在某个
   命令上真实存在（允许交叉引用，跳过「there is no --x」这类否定陈述）。
