@@ -23,6 +23,11 @@ anyhow.workspace = true
 rayon.workspace  = true
 glob.workspace   = true
 
+# 终端宽度的 ioctl(TIOCGWINSZ)。libc 已经经 plotters → font-kit 在编译图里,净新增 0;
+# 版本只写 0.2 —— 它是 C 声明,不决定 glibc 下限。Windows 用不到它(宽度退回 COLUMNS / 80)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # 只有测试要叫出 Vector3 来构造 Atom；nalgebra 已在 ferro-core 的编译图里
 [dev-dependencies]
 nalgebra.workspace = true

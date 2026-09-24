@@ -9,9 +9,13 @@
 //! the pointer a help page prints is the next command to type rather than a path
 //! to go looking for. Pages that describe no single command keep a flat name.
 //!
-//! The markdown is printed as written. These sources are meant to be read by
-//! people — headings are `##`, code is fenced — so rendering them buys little,
-//! and every renderer worth having is a dependency.
+//! Redirected output is the markdown as written, so `ferro doc net > net.md`
+//! is the source file. On a terminal it goes through [`render`] first: the
+//! tables are what breaks when read raw (`|---|---|` source never lines up),
+//! and a renderer written here costs no dependency where every library one
+//! costs dozens.
+
+mod render;
 
 use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};
@@ -299,6 +303,8 @@ fn page_out(text: &str) {
         print!("{text}");
         return;
     }
+    let rendered = render::render(text, render::terminal_width(), render::Style::for_terminal());
+    let text = rendered.as_str();
     let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string());
     let mut parts = pager.split_whitespace();
     let Some(program) = parts.next() else {
@@ -366,6 +372,51 @@ mod tests {
     fn no_page_is_empty() {
         for p in PAGES {
             assert!(p.text.len() > 200, "{} looks truncated", p.source);
+        }
+    }
+
+    /// Everything but whitespace, escape codes and the characters that are
+    /// markup on one side and decoration on the other.
+    fn content(s: &str) -> String {
+        const MARKUP: &str = "#*`>|-=\\[]()•│─═";
+        let mut out = String::new();
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                // 跳过整段 SGR:ESC [ ... m
+                for d in chars.by_ref() {
+                    if d == 'm' {
+                        break;
+                    }
+                }
+            } else if !c.is_whitespace() && !MARKUP.contains(c) {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn rendering_loses_no_content() {
+        // 渲染只许换排版,不许丢字、改字、换顺序。围栏行本身是标记,渲染后不出现
+        use render::{render, Style};
+        for style in [Style { ansi: true, unicode: true }, Style { ansi: false, unicode: false }] {
+            for p in PAGES {
+                let src = body(p);
+                let without_fences: String = src
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("```"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let want = content(&without_fences);
+                let got = content(&render(&src, 80, style));
+                if want != got {
+                    let at = want.chars().zip(got.chars()).take_while(|(a, b)| a == b).count();
+                    let near: String = want.chars().skip(at.saturating_sub(40)).take(80).collect();
+                    let near_got: String = got.chars().skip(at.saturating_sub(40)).take(80).collect();
+                    panic!("`{}` ({style:?}) 在第 {at} 个字符处分岔\n原文:{near}\n渲染:{near_got}", p.topic);
+                }
+            }
         }
     }
 }
