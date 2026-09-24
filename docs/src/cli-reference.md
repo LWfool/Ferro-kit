@@ -973,9 +973,19 @@ go looking for.  Pages that do not correspond to a single command use flat names
 `convert` / `info` / `bader` have no page of their own — they are **sections of this page**, and `ferro doc`
 addresses sections, taking that `##` heading up to the next one of the same level, so it prints a few dozen lines rather than the whole book.
 
-The markdown is **printed as-is, not rendered** (no dependencies).  When stdout is a terminal it goes
-through `$PAGER` (`less -R` by default); when redirected or piped it is printed directly — the behaviour
-of `git` and `man`.  A missing pager, or one that will not start, falls back to printing rather than failing.
+**Redirected or piped, the markdown is printed exactly as written** — `ferro doc net > net.md` is the
+source file, byte for byte.  **On a terminal it is rendered first** and then goes through `$PAGER`
+(`less -R` by default), the behaviour of `git` and `man`.  A missing pager, or one that will not start,
+falls back to printing rather than failing.
+
+Rendering reflows prose to the terminal width (at most 100 columns), draws tables with borders and wraps
+their cells to fit, and turns inline formulas such as `$\alpha_1$` into `α₁`.  A sub- or superscript
+that has no Unicode form stays as written (`τ_c`, `r_{min}`), and so do display formulas (`$$...$$`) and
+any command the renderer does not know.  The width comes from the terminal, then `$COLUMNS`, then 80.
+
+On Windows, and wherever `NO_COLOR` is set, the output is plainer: Windows gets ASCII only (no colour,
+`+--+` table borders, formulas left as TeX), because an older console may show neither escape codes nor
+box-drawing characters; `NO_COLOR` turns off colour only.
 
 ---
 

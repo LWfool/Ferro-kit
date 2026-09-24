@@ -97,7 +97,8 @@ disagree; a 6-component Voigt vector is refused.
 
 ### New, nothing to migrate
 
-`ferro doc <topic>` (the manual, compiled into the binary) · VASP `OUTCAR` and
+`ferro doc <topic>` (the manual, compiled into the binary; rendered with tables and
+formulas on a terminal, the plain source when redirected) · VASP `OUTCAR` and
 `vasprun.xml` reading · CP2K single-point reading · `dataset collect --type
 inspect` (diagnostics, no dataset) · `--type nep|extxyz` and `--ratio 8:1:1`
 on `filter` and `merge` · `--qn` on `net`.

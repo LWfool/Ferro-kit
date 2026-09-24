@@ -845,3 +845,14 @@ collect`）。那是给用户看的证据，重复一份只会两处分岔。
 对拍时唯一的操作陷阱：`atom_names` 的**顺序**两边不同（dpdata 按首次出现，
 ferro 按 `(Z, 符号)`，见 `writers/deepmd.rs`），所以比对逐原子的量之前必须先
 配对，不能直接按下标比。
+
+## `ferro doc` 渲染器编码陷阱（2026-09-24）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 列宽计算 | 着色后的字符串含 SGR 转义码，`chars().count()` 会把它们算进宽度，表格边框被挤歪 | 折行按 `shown()`（未着色文本）计宽，已着色的行用 `screen_len` 跳过 `ESC[...m`。测试 `rich_table_aligns_on_screen_columns_not_bytes` |
+| 朴素样式 | 任何一处无条件输出 `•` `│` `─` 或希腊字母，Windows 老控制台上就是乱码 | 所有非 ASCII 字符都经 `style.unicode` 分支；`plain_style_is_pure_ascii` 断言整段输出 `is_ascii()` |
+| 内容保全测试 | 屏幕逐行读折行的表格，相邻列片段交错，逐字符比顺序必然失败 | 宽度给足时比顺序，窄宽度比多重集；unicode 样式不进这条测试（公式本就该变），由 `latex` 的用例钉住 |
+| 在 macOS 上量行宽 | BSD `awk` 的 `length` 按**字节**计，一个框线字符算 3，报出几百条「超宽行」 | 用 Python 按字符数量 |
+| 用 `script` 伪造 tty | 在非交互 shell 里 `script` 抱怨 `tcgetattr`；看起来像失败，其实输出照常 | 加 `</dev/null` 并检查输出行数，别只看「超宽 0」—— 空输出也是 0 |
+
