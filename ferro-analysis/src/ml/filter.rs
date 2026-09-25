@@ -179,14 +179,23 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
             "a geometric criterion was given but some frames carry no cell".into(),
         ));
     }
-    // 最小镜像只在关心的距离小于最小面间距的一半时严格成立
-    if let Some(f) = traj.frames.first() {
-        if let (true, Some(cell)) = (geometric, f.cell.as_ref()) {
-            let bound = cell.minimum_image_cutoff()?;
-            let want = params.oo_min.max(params.al6_rcut.unwrap_or(0.0));
+    // 最小镜像只在关心的距离小于最小面间距的一半时严格成立。
+    // 逐帧查而不是只看第 0 帧：NPT 下盒子会缩，后面某帧越界时结果静默错
+    if geometric {
+        let want = params.oo_min.max(params.al6_rcut.unwrap_or(0.0));
+        let mut tightest: Option<(usize, f64)> = None;
+        for (i, f) in traj.frames.iter().enumerate() {
+            if let Some(cell) = f.cell.as_ref() {
+                let bound = cell.minimum_image_cutoff()?;
+                if tightest.is_none_or(|(_, b)| bound < b) {
+                    tightest = Some((i, bound));
+                }
+            }
+        }
+        if let Some((i, bound)) = tightest {
             if want > bound {
                 return Err(ChemError::ValidationError(format!(
-                    "cutoff {want:.3} A exceeds the minimum-image bound {bound:.3} A of the cell"
+                    "cutoff {want:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
                 )));
             }
         }
@@ -501,6 +510,18 @@ mod tests {
         let p = FilterParams { oo_min: 7.0, ..Default::default() };
         let err = filter_frames(&t, &p).unwrap_err().to_string();
         assert!(err.contains("minimum-image"), "{err}");
+    }
+
+    /// NPT: the box shrinks mid-trajectory; the bound must come from the
+    /// tightest frame, not frame 0.
+    #[test]
+    fn the_bound_is_checked_on_every_frame_not_just_the_first() {
+        let mut t = oo_traj(&[2.5, 2.5, 2.5]);
+        // 第 0 帧 12 Å（上界 6），第 2 帧缩到 8 Å（上界 4）
+        t.frames[2].cell = Some(Cell::from_matrix(Matrix3::identity() * 8.0));
+        let p = FilterParams { oo_min: 5.0, ..Default::default() };
+        let err = filter_frames(&t, &p).unwrap_err().to_string();
+        assert!(err.contains("frame 2"), "应点名最紧的那一帧：{err}");
     }
 
     #[test]
