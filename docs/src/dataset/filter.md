@@ -289,8 +289,8 @@ very little.
 ## Not implemented yet
 
 - **Multi-layer periodic images.** Cutoffs are checked against the
-  minimum-image bound and rejected beyond it, rather than scanning further image
-  shells. Not a limitation for cells much larger than the cutoff.
+  minimum-image bound of the tightest frame (NPT boxes shrink) and rejected
+  beyond it, rather than scanning further image shells. Not a limitation for cells much larger than the cutoff.
 - **Extra keys.** `atom_ener.npy` and friends have no home in `Frame`; they are
   **reported** on read and would be lost on write. The reader names them rather
   than dropping them quietly.

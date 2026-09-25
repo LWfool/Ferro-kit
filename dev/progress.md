@@ -3,14 +3,14 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：649 个（全部通过，clippy 零警告）
+## 测试总数：650 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 95 |
 | ferro-io | 134（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 72 |
-| ferro-analysis | 199 |
+| ferro-analysis | 200 |
 | ferro-workflow | 23 |
 | ferro-cli（lib 116 + bin 2 + 集成 8） | 126 |
 
@@ -492,7 +492,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   NPT。逐帧读胞的代码有测试钉住「第 2 帧的胞来自第 2 帧」，但没有真实变胞数据
 - **不支持 ML_FF 的 OUTCAR**（`free energy ML TOTEN` / `ML FORCE`）：无样例可验，
   且 dpdata 对两者用的行偏移不同（14 vs 4），说明差别不止 token 名
-- `dataset` 三步（collect / filter / merge）已齐；几何判据只覆盖最小镜像范围，
+- `dataset` 三步（collect / filter / merge）已齐；几何判据只覆盖最小镜像范围（上界逐帧取最紧的一帧），
   未做多层镜像扫描（小胞体系需要时再补）
 - **规范序取 (Z, 符号)**（`collect` 自 2026-09-22 起也排，不只 `merge`），
   dpdata 取字母序；两者都靠 `type_map.raw` 自描述，但同一份数据经 ferro 与经
