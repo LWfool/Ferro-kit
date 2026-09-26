@@ -389,23 +389,34 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
 
     let tables = batch::stack(&results, |r: &MsdResult| Ok(r.to_tables()))?;
 
-    // D 与 R² 逐文件不同,是这个模式里最该横向比的两个数
-    let mut summary = Summary::new(&["origins", "d_ang2_per_fs", "r2"]);
+    // 拟合的一切（窗口换算成的 t、斜率、截距、D、误差、R²）都逐文件不同，
+    // 只能进 [inputs]；头部共享区只放比例这类全批一致的参数
+    let fit_cols = ["t_lo", "t_hi", "points", "slope", "intercept", "d_ang2_per_fs", "d_err", "r2"];
+    let mut cols = vec!["origins"];
+    if params.fit_range.is_some() {
+        cols.extend(fit_cols);
+    }
+    let mut summary = Summary::new(&cols);
     for (path, r) in &results {
-        let (d, r2) = match &r.fit {
-            Some(f) => (f.d_ang2_per_fs, f.r2),
-            None => (f64::NAN, f64::NAN),
-        };
-        summary.ok(batch::label_of(path), r.time.len(), r.n_atoms, &[r.n_origins as f64, d, r2]);
+        let mut vals = vec![r.n_origins as f64];
+        if let Some(f) = &r.fit {
+            vals.extend([
+                f.t_lo, f.t_hi, f.n_points as f64, f.slope, f.intercept,
+                f.d_ang2_per_fs, f.d_err, f.r2,
+            ]);
+        }
+        summary.ok(batch::label_of(path), r.time.len(), r.n_atoms, &vals);
+        summary.note("species", r.elements.join(" "));
     }
     summary.failed(&failures);
 
     for (path, r) in &results {
         if let Some(f) = &r.fit {
             println!(
-                "{}: D = {:.6e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
+                "{}: D = {:.6e} ± {:.1e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
                 batch::label_of(path),
                 f.d_ang2_per_fs,
+                f.d_err,
                 f.d_ang2_per_fs * 0.1,
                 f.d_ang2_per_fs * 1e-5,
                 f.r2

@@ -88,6 +88,10 @@ pub struct MsdFit {
     pub intercept: f64,
     /// Self-diffusion coefficient `slope / 6` \[Å²/fs\]
     pub d_ang2_per_fs: f64,
+    /// Uncertainty of `d_ang2_per_fs` \[Å²/fs\]: `|D(first half) − D(second half)|` of
+    /// the fit window, as `gmx msd` reports it. `NaN` when a half holds fewer than
+    /// 2 points. Only meaningful if the MSD is linear over the whole window.
+    pub d_err: f64,
     /// Coefficient of determination of the linear fit
     pub r2: f64,
     /// Number of points used in the fit
@@ -346,9 +350,10 @@ fn calc_msd_nonperiodic(
 /// of the lag-time axis. `frac = (fmin, fmax)` with `0 <= fmin < fmax <= 1`
 /// mapped to indices `i_lo = round(fmin·(n-1))`, `i_hi = round(fmax·(n-1))`.
 ///
-/// Returns slope/intercept, `D = slope / 6` (Einstein, 3-D isotropic) and the
-/// fit `R²`. Errors on invalid range, length mismatch, or a window with
-/// fewer than 2 points / zero x-variance.
+/// Returns slope/intercept, `D = slope / 6` (Einstein, 3-D isotropic), the
+/// fit `R²` and `d_err` from refitting each half of the window. Errors on
+/// invalid range, length mismatch, or a window with fewer than 2 points /
+/// zero x-variance.
 pub fn fit_diffusion(
     time: &[f64],
     msd: &[f64],
@@ -382,21 +387,23 @@ pub fn fit_diffusion(
 
     let xs = &time[i_lo..=i_hi];
     let ys = &msd[i_lo..=i_hi];
-    let m = xs.len() as f64;
-    let sx: f64 = xs.iter().sum();
-    let sy: f64 = ys.iter().sum();
-    let sxx: f64 = xs.iter().map(|x| x * x).sum();
-    let sxy: f64 = xs.iter().zip(ys).map(|(x, y)| x * y).sum();
-    let denom = m * sxx - sx * sx;
-    if denom.abs() < f64::EPSILON {
-        return Err(ChemError::ValidationError(
-            "degenerate fit window (zero x-variance)".into(),
-        ));
-    }
-    let slope = (m * sxy - sx * sy) / denom;
-    let intercept = (sy - slope * sx) / m;
+    let (slope, intercept) = ols(xs, ys).ok_or_else(|| {
+        ChemError::ValidationError("degenerate fit window (zero x-variance)".into())
+    })?;
 
-    let mean_y = sy / m;
+    // gmx msd 的误差：窗口两半各拟合一次，D 之差。两半共用中点，
+    // 每半至少 2 点，否则给 NaN 而不是报错 —— D 本身仍然有效
+    let mid = (i_lo + i_hi) / 2;
+    let half_d = |a: usize, b: usize| {
+        (b > a).then(|| ols(&time[a..=b], &msd[a..=b])).flatten().map(|(k, _)| k / 6.0)
+    };
+    let d_err = match (half_d(i_lo, mid), half_d(mid, i_hi)) {
+        (Some(d1), Some(d2)) => (d1 - d2).abs(),
+        _ => f64::NAN,
+    };
+
+    let m = xs.len() as f64;
+    let mean_y = ys.iter().sum::<f64>() / m;
     let ss_tot: f64 = ys.iter().map(|y| (y - mean_y).powi(2)).sum();
     let ss_res: f64 = xs
         .iter()
@@ -417,9 +424,25 @@ pub fn fit_diffusion(
         slope,
         intercept,
         d_ang2_per_fs: slope / 6.0,
+        d_err,
         r2,
         n_points: xs.len(),
     })
+}
+
+/// Ordinary least squares `y = slope·x + intercept`. `None` when x has no variance.
+fn ols(xs: &[f64], ys: &[f64]) -> Option<(f64, f64)> {
+    let m = xs.len() as f64;
+    let sx: f64 = xs.iter().sum();
+    let sy: f64 = ys.iter().sum();
+    let sxx: f64 = xs.iter().map(|x| x * x).sum();
+    let sxy: f64 = xs.iter().zip(ys).map(|(x, y)| x * y).sum();
+    let denom = m * sxx - sx * sx;
+    if denom.abs() < f64::EPSILON {
+        return None;
+    }
+    let slope = (m * sxy - sx * sy) / denom;
+    Some((slope, (sy - slope * sx) / m))
 }
 
 /// Build an `MsdResult` from the parallel-reduction accumulation array,
@@ -472,29 +495,28 @@ impl MsdResult {
     }
 
     /// Parameter block for the comment header above the data.
+    ///
+    /// Only what the whole batch shares. Atom count, time origins, the fit's time
+    /// window and everything fitted differ per input and go to the `[inputs]` list.
     pub fn meta_lines(&self) -> Vec<String> {
-        let mut v = vec![
-            format!("tau     = {} frames", self.time.len()),
-            format!("shift   = {} frames", self.params.shift),
-            format!("dt      = {} fs", self.params.dt),
-            format!("atoms   = {}", self.n_atoms),
-            format!("origins = {}", self.n_origins),
-            format!("elements: {}", self.elements.join(" ")),
-        ];
-        if let Some(f) = &self.fit {
-            v.push(format!(
-                "fit range  = [{:.2}, {:.2}]  ->  t in [{:.1}, {:.1}] fs",
-                f.frac_lo, f.frac_hi, f.t_lo, f.t_hi
-            ));
-            v.push(format!("points     = {}", f.n_points));
-            v.push(format!("slope      = {:.6e} Ang^2/fs", f.slope));
-            v.push(format!("D (total)  = {:.6e} Ang^2/fs", f.d_ang2_per_fs));
-            v.push(format!(
-                "           = {:.6e} cm^2/s = {:.6e} m^2/s",
-                f.d_ang2_per_fs * 0.1,
-                f.d_ang2_per_fs * 1e-5
-            ));
-            v.push(format!("R^2        = {:.6}", f.r2));
+        let p = &self.params;
+        let mut v = Vec::new();
+        if let Some(tau) = p.tau {
+            v.push(format!("tau      = {tau} frames"));
+        }
+        v.push(format!("shift    = {} frames", p.shift));
+        v.push(format!("dt       = {} fs", p.dt));
+        v.push(match &p.elements {
+            Some(els) => format!("elements = {}", els.join(" ")),
+            None => "elements = all".to_string(),
+        });
+        match p.fit_range {
+            Some((lo, hi)) => {
+                v.push(format!("fit      = [{lo:.2}, {hi:.2}] of each input's lag-time axis"));
+                v.push("D        = slope / 6 [Ang^2/fs]; x0.1 -> cm^2/s".to_string());
+                v.push("d_err    = |D(first half) - D(second half)| of the window (gmx msd)".to_string());
+            }
+            None => v.push("fit      = off".to_string()),
         }
         v
     }
@@ -691,6 +713,38 @@ mod tests {
     }
 
     #[test]
+    fn test_d_err_zero_on_exact_line() {
+        let time: Vec<f64> = (0..101).map(|i| i as f64).collect();
+        let msd: Vec<f64> = time.iter().map(|&t| 6.0 * 2e-3 * t + 0.4).collect();
+        let fit = fit_diffusion(&time, &msd, (0.1, 0.9)).unwrap();
+        assert!(fit.d_err.abs() < 1e-12, "直线上两半的 D 应相同，d_err = {}", fit.d_err);
+    }
+
+    #[test]
+    fn test_d_err_is_half_window_difference() {
+        // 折线：t<=50 斜率 6，t>=50 斜率 12（在 t=50 连续）。窗口 [0,100] 的中点正好是
+        // 拐点，两半各自是精确直线：D1 = 1、D2 = 2，d_err 必须恰为 1
+        let time: Vec<f64> = (0..101).map(|i| i as f64).collect();
+        let msd: Vec<f64> = time
+            .iter()
+            .map(|&t| if t <= 50.0 { 6.0 * t } else { 300.0 + 12.0 * (t - 50.0) })
+            .collect();
+        let fit = fit_diffusion(&time, &msd, (0.0, 1.0)).unwrap();
+        assert!((fit.d_err - 1.0).abs() < 1e-9, "d_err 应为 |1 - 2| = 1，实为 {}", fit.d_err);
+    }
+
+    #[test]
+    fn test_d_err_nan_when_half_too_short() {
+        // 窗口只有 2 点：D 可算，但中点等于一端，半窗只剩 1 点
+        let time = vec![0.0, 1.0, 2.0, 3.0];
+        let msd = vec![0.0, 6.0, 12.0, 18.0];
+        let fit = fit_diffusion(&time, &msd, (0.0, 0.34)).unwrap();
+        assert_eq!(fit.n_points, 2);
+        assert!((fit.d_ang2_per_fs - 1.0).abs() < 1e-12);
+        assert!(fit.d_err.is_nan(), "半窗不足 2 点时 d_err 应为 NaN");
+    }
+
+    #[test]
     fn test_fit_range_invalid() {
         let time: Vec<f64> = (0..10).map(|i| i as f64).collect();
         let msd = time.clone();
@@ -719,19 +773,20 @@ mod tests {
     }
 
     #[test]
-    fn test_meta_lines_carry_fit_results() {
+    fn test_meta_lines_hold_only_batch_shared_values() {
         let traj = make_traj_linear(10.0, 0.2, 6);
         let result = calc_msd(&traj, &MsdParams {
             fit_range: Some((0.0, 1.0)),
             ..MsdParams::default()
         }).unwrap();
         let meta = result.meta_lines().join("\n");
-        assert!(meta.contains("D (total)"), "missing D line:\n{meta}");
-        assert!(meta.contains("cm^2/s"), "missing cm^2/s conversion");
-        assert!(meta.contains("R^2"), "missing R^2 line");
+        assert!(meta.contains("fit      = [0.00, 1.00]"), "缺拟合窗口比例:\n{meta}");
+        // 拟合出的数与原子数逐文件不同，写进共享区就会让第一个文件冒充全批
+        let d = format!("{:.6e}", result.fit.as_ref().unwrap().d_ang2_per_fs);
+        assert!(!meta.contains(&d), "D 的数值不该出现在共享区:\n{meta}");
+        assert!(!meta.contains("atoms"), "原子数不该出现在共享区:\n{meta}");
 
-        // 没给 fit_range 时不应凭空出现拟合块
         let plain = calc_msd(&traj, &MsdParams::default()).unwrap();
-        assert!(!plain.meta_lines().join("\n").contains("D (total)"));
+        assert!(plain.meta_lines().join("\n").contains("fit      = off"));
     }
 }
