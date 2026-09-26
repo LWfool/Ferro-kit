@@ -284,6 +284,29 @@ XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素�
 CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
 文件里），故这条与应力无关，是纯粹的标签映射问题。
 
+### scripts/plot_msd.py（2026-09-26 提出）
+
+`--plot` 移除后 MSD 是四个 traj 主命令里唯一没有出图脚本的。沿用 `ferroplot.py`
+样式层；`msd_all.csv` 的列是 `file, time, msd, msd_a, msd_b, msd_c`，拟合出的
+$D$、$R^2$ 在 `[inputs]` 清单里（`d_ang2_per_fs`、`r2`），不在数据列。手册
+`docs/src/plotting.md` 目前给的是一行 seaborn 兜底，脚本落地后改表。
+
+### `ferro map sdf` 导出旋转后结构：压缩 npz（2026-09-26 提出）
+
+用 `ndarray-npy` 的 `NpzWriter::new_compressed`（默认 feature `compressed_npz`，
+依赖全为纯 Rust，Linux/Windows 无系统库要求）——**所以 ndarray-npy 不关默认
+feature**。选型依据：
+
+| 格式 | Python 端 | Rust 端代价 | 结论 |
+|---|---|---|---|
+| npz（deflate） | `np.load`，只需 numpy | 已在树里，新增 0 | 采用 |
+| npy + zstd | 另装 `zstandard` 并自拼 header | zstd 是 C 绑定 | 否 |
+| HDF5 | `h5py` | 链 libhdf5，跨平台最难 | 否 |
+
+体积主要由精度决定而非算法：f64 坐标尾数近随机，deflate 只压 10–30%；**存 f32
+直接减半**（坐标误差 ~1e-5 Å，dpdata 默认也是 float32）。建议默认 f32 + 开关留
+f64。数组命名与形状在实现时定。
+
 ### 搁置项
 
 - **`vanhove` 加 `tau` 列**：现在一次只算一个 τ、写在 `#` 头里。加列后将来支持多 τ 是
@@ -381,6 +404,26 @@ MACE/NequIP 兼容格式仍未开始。
 
 ## 已完成（归档）
 
+### 依赖精简：serde 与 `--plot` 移除（2026-09-26 落地）
+
+逐个依赖量了「用了多少 / 带进多少传递依赖」后做了两件事：
+
+- **serde 全删**：四个 derive 全仓无格式后端调用；三处 nalgebra `serde-serialize`
+  一并摘，`Cargo.lock` 里 serde 系归零。连带删 `ferro-workflow` 的 serde、
+  `ferro-analysis` 的 thiserror（声明未用）
+- **`--plot` 与 plotters 移除**：`ttf` 在 Linux 要系统 fontconfig/freetype（集群常
+  缺，macOS 走 CoreText 所以一直没暴露）；无 PDF backend，矢量化要再加约 40 个
+  crate；出图早已由 `scripts/plot_*.py` 承担。`batch::write_all` 的返回路径只有绘图
+  在用，改为 `Result<()>`。手册新增 `plotting.md` 说明出图途径与理由
+
+运行时依赖（去重）macOS 138 → 97，Linux 目标 → 99。gr/sq/msd/angle 在两条 tests
+轨迹上的 csv 与终端输出改前改后逐字节一致。
+
+**评估后保留的**：nalgebra / clap / rayon / quick-xml / glob / anyhow / libc（重写
+不划算或零传递依赖）；ndarray + ndarray-npy（手写 npy 的边角情况留维护风险，且
+npz 将来要用，见上方待办）；rand（手写会改变同 seed 的洗牌顺序）。
+
+
 ### `ferro doc` 的终端渲染器（2026-08-26 提出，2026-09-23 定案，2026-09-24 落地）
 
 三个提交按原计划：骨架 `fdf3446` → 表格 `92193eb` → 行内 LaTeX `8e5d80b`。
@@ -397,7 +440,7 @@ MACE/NequIP 兼容格式仍未开始。
   同样是问号
 - **CentOS 7 要能跑**。`libc` crate 只是 C 声明，版本号不决定 glibc 下限，
   `ioctl` 是 glibc 自古就有的符号；实际下限由 Rust 工具链定（目前 2.17 = CentOS 7）。
-  又因 Cargo 按 semver 统一，写老版本号也会被锁到 plotters 已用的 0.2.189，故声明
+  又因 Cargo 按 semver 统一，写老版本号也会被锁到 rand → getrandom 已用的 0.2.189，故声明
   写最宽的 `"0.2"`
 
 **被实测推翻或修正的**：
@@ -848,7 +891,8 @@ compound 一旦不在库中，`compounds::find` 返回 `None` 就报错了，**�
 - **`to_tables()` 定为固有方法不是 trait**，留待第二个消费者出现
 - **不拆「纯搬家」提交**，`Table` 迁移 + 批处理 + 长表一次走完
 - **`--plot` 冻结为自检用途**，不追 matplotlib。任何「加对数轴/误差棒」的需求一律
-  指向 Python（长表 + `sns.lineplot(hue="file")` 一行）
+  指向 Python（长表 + `sns.lineplot(hue="file")` 一行）。**2026-09-26 进一步整体移除**，
+  见归档「依赖精简」
 
 实施中比原计划多出的：`angle` 多一列 `count`（整数直方图是与 dump2analysis 逐 bin
 对拍的依据，只留归一化的 `p` 会废掉这条验证路径）。

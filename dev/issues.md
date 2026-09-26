@@ -7,8 +7,6 @@
 | `cell.rs` | 浮点误差约 1e-15 | 断言用 `< 1e-10`，不能用 `assert_eq!` |
 | `cube_density.rs` | 原子坐标放格点边界会导致归属歧义 | 测试中用格点中心 `(n + 0.5) / N * L` |
 | `cell.rs` | `wrap_position` 负数行为 | 用 `rem_euclid(1.0)`，不要用 `x - x.floor()` |
-| `ferro-cli` | plotters `ttf` feature | `default-features = false` 会禁掉字体支持，必须保留 |
-| `ferro-cli` | plotters 借用 | `BitMapBackend::new(&path, ...)` 借用 `path`，绘图块用 `{}` 先析构再使用 `path` |
 | 全局 | clippy snake_case | 变量名不能用单大写字母（如 `L`），改为 `box_len` 等 |
 
 | `cube_density/radius/jump/sdf.rs` | ndarray `Array3` 仍在内部使用（分析阶段） | 在 `CubeData` 构造点用 `.into_iter().collect()` 转为 `Vec<f64>`；不要对外暴露 Array3 |
@@ -273,12 +271,11 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | `Table` 的缺失值 | 列并集下某输入缺某列，补 0 会被当成「测到了 0」 | `Column::Num` 存 `f64::NAN`，`cell()` 渲染为**空字段**，pandas 读回 `NaN`。空 ≠ 零，这条是列并集能被接受的全部理由 |
 | `Summary` 的数值 | 用 `Column::Num` 会让「5 帧」写成 `5.000000e0` | `[inputs]` 是给人看的注释块，值**预格式化成文本**（`fmt_compact`：整数保持整数，其余四位有效数字，非有限值写 `-`） |
 | `meta_lines()` | 把逐文件才有意义的量（组成、clamp 后的 r_max）写进共享参数块，多文件下第一个文件的组成会被当成全局事实 | 共享参数留 `meta_lines()`，逐文件的走 `Summary::note()` 进 `[inputs]` 清单 |
-| 按输入数量分派单/批两条路 | 产物形态会取决于 glob 当天匹配到几个文件；平时 5 个走批处理、某天只剩 1 个就悄悄换形态 | **单一代码路径**，N=1 是 N 的特例。两条路还意味着两套命名、两套绘图、两套错误处理 |
+| 按输入数量分派单/批两条路 | 产物形态会取决于 glob 当天匹配到几个文件；平时 5 个走批处理、某天只剩 1 个就悄悄换形态 | **单一代码路径**，N=1 是 N 的特例。两条路还意味着两套命名、两套错误处理 |
 | `expand_inputs` 零匹配 | 静默跑零个文件是最难查的失败，尤其在脚本里 | 零匹配**报错**并回显模式 |
 | 批内失败 | 只打印不改退出码，shell 里 `ferro traj gr ... && next` 会把失败当成功 | 跳过 + `[inputs]` 留原因 + **退出码 1**；参数级错误仍在读第一个文件前快速失败 |
 | `glob` crate | 不支持 `{a,b}` 花括号 | 让 shell 展开（展开后的字面路径原样通过）；文档写明 |
 | 多输入下的 `.cube` | 文件名不带 stem 时第二个输入直接覆盖第一个 | `ferro map` 的文件名必须掺输入 stem（`density_<stem>.cube`） |
-| plotters 子图 | `root.split_evenly((rows, cols))` 后每格要各自 `ChartBuilder`，且没有 figure 级图例 | 颜色按文件分配保证跨格一致，图例只画第一格 |
 
 ## 外部脚本调用 ferro 的陷阱（2026-08-11，`scripts/ferrocmp.py`）
 
@@ -303,7 +300,6 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 用户串进文件名 | 直接拼 | 先校验 `[A-Za-z0-9_+-]`，**在读第一个文件之前**报错。选中的串会成为路径的一段，`-a 'P/2'` 不校验就写到别处去了 |
 | 非法字符的处理 | 替换成下划线 | 报错。替换会让 `-a P/2` 与 `-a P_2` 静默写进同一个文件 —— 与补零冒充「测到了 0」同一类错误 |
 | `--outdir` 的创建时机 | 写第一个文件时才建 | `Output::prepare()` 在读第一个输入**之前**调用，与「参数级错误快速失败」一致。否则跑完一小时分析才发现路径打不开 |
-| PNG 的目录与 label | 在绘图侧再接一遍 `--outdir` | `png_path` 收数据文件的**完整路径**（`&Path` 而非 `&str`），目录与 label 自动跟随。绘图侧不该知道命名规则 |
 | `rotcorr` 的「无选择」分支 | 以为 `--center`/`--neighbor` 可省 | 两者都是必填（`Option` 只为「不带 `-i` 时打帮助」，随后 `bail`）。它恒有 label，`rotcorr_all.csv` 走不到，别为它写代码 |
 | `write_all` 的参数个数 | 继续加位置参数 | 加到第 8 个时收进 `Output { dir, label, suffix }`。三个字段总是一起走，分开传只会让调用点一串 `None, Some(x), None` |
 | `ferro-io` 的 writer 路径 | 以为都收 `&Path` | 九个 writer 全收 `&str`，`batch` 内部是 `PathBuf`，只能在边界转（`Output::join_str`）。统一成 `&Path` 是待办，见 `dev/plan.md` |
@@ -328,34 +324,6 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 图例位置 | `ax.legend(bbox_to_anchor=(0.5,-0.28))` | 挂到 `fig.legend` 上。成分名是旋转的长标签，挂在 ax 上会被它们顶穿 |
 | 多组并排时的标题 | 默认 pad | 组标签（CMD/MLMD）竖排在柱顶会顶到标题，`n_grp > 1` 时给 `title_pad` |
 | g(r) 的 CN 右轴 | 用默认自动范围 | r 到 8 Å 时 CN 已到 110，把一壳层平台压成一条线。这正是 `CFG["cn_ylim"]` / `xlim` 存在的理由，出图时按体系设 |
-
-## 高 DPI 绘图陷阱（2026-08-10）
-
-`--plot` 仍出 PNG，但分辨率由 96 dpi 提到 **500 dpi**（一格 2708×2083 px）。
-版式在 96 dpi 像素下编写，统一经 `px()` 缩放，故改 `DPI` 只整体放缩、不重排。
-
-| 位置 | 陷阱 | 正确做法 |
-|---|---|---|
-| 只放大画布 | 画布放大了但字号/线宽/边距留在原值，图会变成「巨大画布上一堆蚂蚁字」——比不放大更难看 | **每个长度都要过 `px()`**：`caption`、`margin`、`x/y_label_area_size`、`stroke_width`、legend 色条 |
-| `configure_mesh` 字号 | 刻度与轴标题字号有**独立默认值**，不跟随 `caption`；漏掉就小到看不清 | 显式 `.axis_desc_style(("sans-serif", px(14)))` + `.label_style(("sans-serif", px(12)))` |
-| plotters legend 区宽 | `legend_area_size` 默认 30px 是**固定值**，不随画布缩放；`px(18)` 的色条会伸出去压在标签文字上 | 显式 `.legend_area_size(px(30))`，与色条同比缩放 |
-| 内存与体积 | 2×2 的 msd 图是 5416×4166 px，RGB 缓冲约 68 MB，PNG 约 675 KB | 目前可接受；再往上调 `DPI` 前先算 `w×h×3` |
-| 验证「分辨率真的生效了」 | 像素数写错时，扩展名、格式、肉眼缩略图全都看不出来 | 测试 `test_render_writes_png_at_full_resolution` 直接从 PNG 的 IHDR 读宽高（偏移 16/20，大端）断言等于 `px(520)`/`px(400)` |
-
-### 为什么没有采用矢量输出（2026-08-10 定案）
-
-曾实装矢量 PDF（plotters `SVGBackend` → `svg2pdf::to_pdf`，提交 `a4c3c11`）并验证可用：
-真矢量、字体内嵌、放大无损。**因依赖成本回退**——`svg2pdf` 会拉进
-usvg / resvg / fontdb / tiny-skia 等约 40 个 crate，与计算无关，不值得为一个自检图付。
-
-若将来重新考虑，已知结论存档：
-
-- plotters **没有** PDF backend（只有 bitmap 与 svg），换矢量不是改扩展名的事
-- `svg2pdf` 只需 `default-features = false, features = ["text"]`（绘图 SVG 无位图无滤镜）
-- `usvg` 解析不到 `font-family` 时**静默丢弃全部文字**、不报错，产物仍是合法 PDF 却没有
-  任何标注——必须显式检查 `opt.fontdb.is_empty()`（读是字段，写才是 `fontdb_mut()`）
-- 矢量下 `DPI` 不再是画质而是尺度：`svg2pdf` 按 `page = px × 72/DPI` 定页面大小
-- 500 dpi 位图约可清晰放大到 5×，够读峰形；需要超出这个范围的，正途是走 Python 出图
 
 ## 分析产物为什么不进 ferro-io（2026-08-09 定案）
 

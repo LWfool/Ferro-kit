@@ -101,6 +101,8 @@ $g(r)$ is **symmetric** — `A-B` and `B-A` are pointwise identical.  $CN(r)$ is
 
 Header lines record all parameters, atom counts, average volume, and number density.
 
+Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
+
 ## Usage
 
 ```bash

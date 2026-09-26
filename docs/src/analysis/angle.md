@@ -116,6 +116,8 @@ All output is **one** csv; multiple inputs are stacked into a single table with 
 (`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 
+Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
+
 ## Usage
 
 ```bash

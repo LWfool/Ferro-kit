@@ -95,6 +95,17 @@ the negative of what `0.3.1` wrote. `virial=` is unchanged (eV, positive =
 compression). A file carrying both is cross-checked and rejected if they
 disagree; a 6-component Voigt vector is refused.
 
+### `--plot` is gone
+
+`traj gr`, `sq`, `msd` and `angle` no longer take `--plot`; passing it is now an
+`unexpected argument` error. Drop the flag and plot the csv with the scripts in
+`scripts/` or your own Python — see [Plotting](plotting.md). The csv products are
+unchanged byte for byte.
+
+| before | now |
+|---|---|
+| `ferro traj msd -i t.dump --dt 1.0 --plot` | `ferro traj msd -i t.dump --dt 1.0` |
+
 ### New, nothing to migrate
 
 `ferro doc <topic>` (the manual, compiled into the binary; rendered with tables and

@@ -367,7 +367,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   不是整本 863 行
 - **`doc/render.rs`**（2026-09-24）：`ferro doc` 的终端渲染器，**只在 stdout 是
   tty 时**介入，重定向输出仍是源文件原样（24 个整页主题逐字节核对过）。全自写，
-  净新增 0 crate（`libc` 只在 `cfg(unix)` 下声明，且早已经 plotters 在树里）。
+  净新增 0 crate（`libc` 只在 `cfg(unix)` 下声明，且早已经 rand → getrandom 在树里）。
   `split_blocks` 按行首切块、认不出的走 `Block::Raw`；`inline` 是一次扫描的
   tokenizer；表格带完整边框、单元格按词折行；行内 `$...$` 按四条语法规则转
   Unicode，块级 `$$` 原样。宽度取 ioctl → `COLUMNS` → 80，正文上限 100 列。
@@ -404,9 +404,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   POSCAR / LAMMPS data / QE 只写第一帧且**不警告**。有测试钉住表与 `match`
   分支一致（表里写 `-` 的格式必须真的拒绝写入），否则两处手写的事实会漂
 - `net` 的 `--P-O=2.3` 由 `main` 在 clap 解析前从 argv 剥离
-- **`plot.rs` 面板模型**：`Panel`/`Series` + 通用 `render`，一格一个量、一条曲线一个
-  文件，颜色按文件跨格一致，图例只画第一格。**500 dpi**，版式按 96 dpi 编写并统一过
-  `px()` 缩放。矢量 PDF 方案已验证可用但**因依赖成本回退**（见 `issues.md`）
+- **无绘图**：`--plot` 与 `plot.rs` 已于 2026-09-26 移除（理由见 `plan.md` 归档
+  「依赖精简」与手册 `plotting.md`），出图走 `scripts/plot_*.py`
 - **不留兼容层**：输出格式同期变更，留着 `fe-traj` 会让旧脚本「跑成功」却吐出自己
   解析不了的 csv —— 静默坏数据比命令消失难查
 
@@ -432,7 +431,6 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 `issues.md` |
 | `quick-xml` | 0.38 | ferro-io | vasprun.xml；净新增 1 个 crate，零传递依赖 |
 | `clap` | 4.5 | ferro-cli | derive |
-| `plotters` | 0.3 | ferro-cli | `default-features = false` + 必须保留 `ttf`；backend 为 `bitmap` |
 | `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；**运行时未验证** |
 
 `cargo update` 在主 workspace 与 ferro-python 均已无可更新项。
