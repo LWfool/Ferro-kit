@@ -2,7 +2,7 @@
 //!
 //! Grouped separately from `ferro traj` because the product is different: **one 3-D
 //! `.cube` grid file per input**, not a table. That makes this the single exception to
-//! the batch output rules — no stacked CSV, no `[inputs]` block, no plot — and the file
+//! the batch output rules — no stacked CSV, no `[inputs]` block — and the file
 //! name must carry the input stem or a second input would overwrite the first.
 //!
 //! The traversal and failure handling are still the shared ones; error handling should
