@@ -294,8 +294,7 @@ pub fn meta_block(title: &str, params: &[String], summary: &Table) -> Vec<String
     v
 }
 
-/// Writes each stacked table, all sharing one comment block. Returns the first path
-/// (the one a plot is named after).
+/// Writes each stacked table, all sharing one comment block.
 ///
 /// The shared block is **prepended to**, not substituted for, whatever the analysis
 /// already put in `Table::meta`. A per-table description is the only place a column's
@@ -309,9 +308,8 @@ pub fn write_all(
     summary: &Table,
     tables: Vec<(String, Table)>,
     out: &Output,
-) -> Result<PathBuf> {
+) -> Result<()> {
     let meta = meta_block(title, params, summary);
-    let mut first = PathBuf::new();
     for (name, mut table) in tables {
         if table.meta.is_empty() {
             table.meta = meta.clone();
@@ -325,11 +323,8 @@ pub fn write_all(
         // ferro-io 的 writer 路径统一是 &str(九个 writer 都如此),故在此转换一次
         write_table(&table, &path, TableFormat::Csv)?;
         println!("{:<12} -> {}", name.to_uppercase(), path.display());
-        if first.as_os_str().is_empty() {
-            first = path;
-        }
     }
-    Ok(first)
+    Ok(())
 }
 
 /// One row per input: statistics for the ones that worked, the reason for the ones

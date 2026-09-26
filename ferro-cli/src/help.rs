@@ -267,7 +267,7 @@ Usage:
   ferro <GROUP>                    list that group's commands
   ferro <GROUP> <COMMAND>          show that command's parameters
 
-Trajectory analysis      one stacked csv per run, `file` as a column; --plot for a look
+Trajectory analysis      one stacked csv per run, `file` as a column
   traj gr        Radial distribution g(r) + coordination number CN(r)
   traj sq        Structure factor S(q)
   traj msd       Mean square displacement + self-diffusion D
@@ -276,7 +276,7 @@ Trajectory analysis      one stacked csv per run, `file` as a column; --plot for
   traj rotcorr   Rotational correlation C2(t)
   traj vanhove   Van Hove self-correlation Gs(r,tau)
 
-Spatial maps             one .cube grid file per input — no summary table, no plot
+Spatial maps             one .cube grid file per input — no summary table
   map density | velocity | force | radius | sdf | chg-sdf
 
 Topology & charges
@@ -374,7 +374,7 @@ Common options:
 Output:
   One 3-D grid file per input, not a stacked table — nothing here stacks. The
   name carries the input stem (density_<stem>.cube) so inputs cannot overwrite
-  one another. No summary table, no plot."#
+  one another. No summary table."#
     );
 }
 
@@ -402,7 +402,6 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
-  --plot                  PNG next to the data file (needs a pair)
 
 Output:
   gr_<pair>[_<suffix>].csv, long format: file pair r g_r cn_r
@@ -438,7 +437,6 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> sq_<suffix>.csv
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
-  --plot                  PNG next to the data file (weighted totals only)
 
 Output:
   sq[_<suffix>].csv, WIDE format, one row per (file, q):
@@ -470,7 +468,6 @@ Parameters:
                          (Einstein, 3-D) and R²
   --last-n    INT        Use only the last N frames
   --ncore     INT        Parallel threads
-  --plot                 Generate PNG and open in viewer
   -o DIR                 Output directory; --mkdir creates it unasked
   -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
@@ -482,7 +479,7 @@ Output:
 Examples:
   ferro traj msd -i traj.xyz --dt 2.0
   ferro traj msd -i traj.dump --elements Li --dt 1.0 --last-n 2000
-  ferro traj msd -i traj.dump --dt 1.0 --fit-range 0.3,0.8 --plot
+  ferro traj msd -i traj.dump --dt 1.0 --fit-range 0.3,0.8
 
 Full documentation:  ferro doc traj msd"#
     );
@@ -514,7 +511,6 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
-  --plot                  PNG next to the data file
 
 Output:
   angle_<triplet>[_<suffix>].csv, long format: file triplet theta count p

@@ -21,7 +21,6 @@ use crate::args::common::{CommonArgs, SelectArgs};
 use crate::args::traj::SqWeightingCli;
 use crate::batch::{self, Summary};
 use crate::help;
-use crate::plot::{open_plot, plot_angle, plot_gr, plot_msd, plot_sq};
 use ferro_core::Trajectory;
 use std::path::PathBuf;
 
@@ -75,9 +74,6 @@ pub struct GrCmd {
     pub select: SelectArgs,
     #[command(flatten)]
     pub knobs: GrKnobs,
-    /// Write a PNG next to the data file (needs a pair)
-    #[arg(long)]
-    pub plot: bool,
 }
 
 #[derive(Args, Debug)]
@@ -106,9 +102,6 @@ pub struct SqCmd {
     /// Scattering weighting scheme
     #[arg(long, value_enum, default_value = "both")]
     pub weighting: SqWeightingCli,
-    /// Write a PNG next to the data file
-    #[arg(long)]
-    pub plot: bool,
 }
 
 #[derive(Args, Debug)]
@@ -128,9 +121,6 @@ pub struct MsdCmd {
     /// Linear-fit window as trajectory fractions FMIN,FMAX (e.g. 0.3,0.8) -> D
     #[arg(long, value_delimiter = ',')]
     pub fit_range: Option<Vec<f64>>,
-    /// Write a PNG next to the data file
-    #[arg(long)]
-    pub plot: bool,
 }
 
 #[derive(Args, Debug)]
@@ -155,9 +145,6 @@ pub struct AngleCmd {
     /// Histogram bin width [°]
     #[arg(long, default_value = "0.1")]
     pub d_angle: f64,
-    /// Write a PNG next to the data file (needs a triplet)
-    #[arg(long)]
-    pub plot: bool,
 }
 
 /// Time-axis options shared by the three correlation functions.
@@ -224,7 +211,7 @@ pub struct VanhoveCmd {
 /// Runs one trajectory analysis. Returns the number of inputs that failed.
 ///
 /// Every arm follows the same four steps — build params (validating before any file is
-/// read), map over the inputs, stack the per-input tables, write and plot.
+/// read), map over the inputs, stack the per-input tables, write.
 pub fn run(cmd: &TrajCmd) -> Result<usize> {
     match cmd {
         TrajCmd::Gr(c)      => run_gr(c),
@@ -274,8 +261,8 @@ type Driven<T> = (Vec<(PathBuf, T)>, Vec<batch::Failure>, batch::Output);
 /// empty result set.
 ///
 /// It stops there on purpose.  The second half — the `Summary` columns, the product name
-/// and title, and the plot — differs in every one of the seven, and threading those
-/// through as five more closures would cost more to read than the eight lines it saves.
+/// and title — differs in every one of the seven, and threading those through as more
+/// closures would cost more to read than the eight lines it saves.
 /// `cmd/map.rs::drive` draws the line at the same place.
 ///
 /// The output directory is built **before the first file is read**, because the label
@@ -326,7 +313,7 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
     }
     summary.failed(&failures);
 
-    let data_path = batch::write_all(
+    batch::write_all(
         "gr",
         "Radial Distribution Function g(r) and Coordination Number CN(r)",
         &results[0].1.meta_lines(),
@@ -334,23 +321,6 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
         tables,
         &out,
     )?;
-
-    if c.plot {
-        match pair_ref {
-            Some((a, b)) => {
-                let refs: Vec<(String, &GrResult)> =
-                    results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
-                let png = plot_gr(&refs, &data_path, a, b)?;
-                println!("Plot    -> {png}");
-                if results.len() == 1 {
-                    open_plot(&png);
-                }
-            }
-            None => println!(
-                "Note  : --plot needs a pair; add -a CENTRE -b NEIGHBOUR (or -x/-y) to plot one"
-            ),
-        }
-    }
     Ok(failures.len())
 }
 
@@ -386,7 +356,7 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
     }
     summary.failed(&failures);
 
-    let data_path = batch::write_all(
+    batch::write_all(
         "sq",
         "Structure Factor S(q) [computed from g(r) via Fourier sine transform]",
         &results[0].1 .1.meta_lines(&results[0].1 .0),
@@ -394,16 +364,6 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         tables,
         &out,
     )?;
-
-    if c.plot {
-        let refs: Vec<(String, &SqResult)> =
-            results.iter().map(|(p, (_, sq))| (batch::label_of(p), sq)).collect();
-        let png = plot_sq(&refs, &data_path)?;
-        println!("Plot    -> {png}");
-        if results.len() == 1 {
-            open_plot(&png);
-        }
-    }
     Ok(failures.len())
 }
 
@@ -453,7 +413,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         }
     }
 
-    let data_path = batch::write_all(
+    batch::write_all(
         "msd",
         "Mean Squared Displacement (MSD)",
         &results[0].1.meta_lines(),
@@ -461,16 +421,6 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         tables,
         &out,
     )?;
-
-    if c.plot {
-        let refs: Vec<(String, &MsdResult)> =
-            results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
-        let png = plot_msd(&refs, &data_path)?;
-        println!("Plot    -> {png}");
-        if results.len() == 1 {
-            open_plot(&png);
-        }
-    }
     Ok(failures.len())
 }
 
@@ -534,7 +484,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
     }
     summary.failed(&failures);
 
-    let data_path = batch::write_all(
+    batch::write_all(
         "angle",
         "Bond Angle Distribution A-B-C  (B = center)",
         &results[0].1.meta_lines(),
@@ -542,25 +492,6 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         tables,
         &out,
     )?;
-
-    if c.plot {
-        match &triplet_keys {
-            Some((key1, key2)) => {
-                let refs: Vec<(String, &AngleResult)> =
-                    results.iter().map(|(p, r)| (batch::label_of(p), r)).collect();
-                // 端原子可能被规范排序反转,两个 key 都试
-                let key = if refs.iter().any(|(_, r)| r.hist.contains_key(key1)) { key1 } else { key2 };
-                let png = plot_angle(&refs, &data_path, key)?;
-                println!("Plot    -> {png}");
-                if results.len() == 1 {
-                    open_plot(&png);
-                }
-            }
-            None => println!(
-                "Note  : --plot needs a triplet; add -a END_A -b CENTRE -c END_C (or -x/-y/-z)"
-            ),
-        }
-    }
     Ok(failures.len())
 }
 
