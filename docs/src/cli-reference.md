@@ -5,7 +5,7 @@ implements them.  Since 0.2.0 the eight original `fe-*` binaries have all been r
 compatibility layer — the output formats changed at the same time, and keeping `fe-traj` would let an old script "succeed" while emitting a csv it cannot parse itself.  Silently bad data is harder to track down than a command that is gone.
 
 ```
-ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → stacked csv + optional PNG
+ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → stacked csv
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                      → six stacked csv
                                                                  + optional labelled trajectory
@@ -378,7 +378,7 @@ the shared inference chain → `nspin` / `tot_magnetization`.
 
 ## `ferro traj`
 
-Seven trajectory analyses sharing one export pipeline: a single long or wide csv plus an optional PNG.
+Seven trajectory analyses sharing one export pipeline: a single long or wide csv.
 
 ```bash
 ferro traj <command> -i traj.lammpstrj [flags] -o <suffix>
@@ -436,7 +436,9 @@ ferro traj msd -i traj.lammpstrj --dt 2.0 --shift 10 --elements Li --fit-range 0
 | `--elements` | (all) | comma-separated element filter |
 | `--fit-range` | (none) | `FMIN,FMAX` linear-fit window (as a fraction of the trajectory) → the self-diffusion coefficient D |
 
-Giving `--fit-range` computes and prints $D = \text{slope}/6$ and $R^2$.
+Giving `--fit-range` computes $D = \text{slope}/6$, its error `d_err` and $R^2$, prints them, and adds
+`t_lo, t_hi, points, slope, intercept, d_ang2_per_fs, d_err, r2` to each input's row in the `[inputs]` list.
+Plot with `scripts/plot_msd.py`, which draws the fitted line from those columns.
 
 ### `angle` — bond angle distribution
 

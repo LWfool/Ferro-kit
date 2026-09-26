@@ -284,12 +284,37 @@ XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素�
 CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
 文件里），故这条与应力无关，是纯粹的标签映射问题。
 
-### scripts/plot_msd.py（2026-09-26 提出）
+### `traj msd` 从 CLI 调用时只有 1 个时间原点（2026-09-27 发现，高）
 
-`--plot` 移除后 MSD 是四个 traj 主命令里唯一没有出图脚本的。沿用 `ferroplot.py`
-样式层；`msd_all.csv` 的列是 `file, time, msd, msd_a, msd_b, msd_c`，拟合出的
-$D$、$R^2$ 在 `[inputs]` 清单里（`d_ang2_per_fs`、`r2`），不在数据列。手册
-`docs/src/plotting.md` 目前给的是一行 seaborn 兜底，脚本落地后改表。
+CLI 不暴露 `--tau`，`MsdParams::tau = None` → `tau = n_steps`，而原点取
+`take_while(p + tau <= n_steps)` —— 只剩 `p = 0`。于是 **CLI 的 MSD 从来没做过时间
+原点平均**，`[inputs]` 里 `origins` 恒为 1，`--shift` 形同虚设。每个 lag 只有一次位移
+样本，长 lag 端噪声极大（examples 两条玻璃轨迹的 d_err 与 D 同量级，部分源于此）。
+
+通行做法是**每个 lag 用全部可用原点**（`n_steps - lag` 个，按 shift 抽稀），即
+MDAnalysis / gmx msd 的做法，FFT 可加速到 $O(N\log N)$。改动会改变全部 MSD 数值，
+需要决定：固定窗口 `tau` 是否保留、默认窗口取多少、要不要 FFT。`vacf` / `vanhove` /
+`rotcorr` 是否同样只有 1 个原点待查。
+
+### 共享头部冒充全批：angle / vacf / vanhove / rotcorr（2026-09-27 扫描）
+
+与 msd 同类（`fa2727c` 已修 msd）：`meta_lines()` 里用了逐文件的量，多文件时第一个
+文件的值摆在共享区。
+
+| 分析 | 写进共享区的逐文件量 |
+|---|---|
+| `angle` | `elements` 列表、`[statistics]` 段（每个三元组的 mean/std/count） |
+| `vacf` | `elements`、`n_atoms`、`n_origins`、`time.len()` |
+| `vanhove` | `elements`、`n_atoms`、`n_origins`、`tau_frames`、`time` |
+| `rotcorr` | `n_molecules`、`n_origins`、`time.len()` |
+
+修法同 msd：共享区只留参数，其余走 `Summary` 列或 `note()`。`angle` 的统计是逐文件
+逐三元组的二维量，放 `[inputs]` 会很宽，可能要单独一张表。
+
+### D 的统计误差：GLS / 贝叶斯（2026-09-27 提出，低）
+
+`d_err` 是 gmx msd 的半窗差，本质是线性度检查。严格误差需要 MSD 协方差，见 kinisi
+（PMC11736684）。先解决上面「只有 1 个原点」，否则协方差无从谈起。
 
 ### `ferro map sdf` 导出旋转后结构：压缩 npz（2026-09-26 提出）
 
@@ -403,6 +428,18 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### scripts/plot_msd.py + MSD 头部修正（2026-09-27 落地）
+
+- **头部修正**：`meta_lines` 只留 shift/dt/elements/拟合比例；原子数、origins 与全部
+  拟合结果进 `[inputs]`，新增 `t_lo t_hi points slope intercept d_err`
+- **`d_err`**：gmx msd 的半窗差（两半共用中点，半窗 < 2 点给 NaN）。查过的做法：
+  gmx msd（10–90% 窗、半窗差）、MDAnalysis（linregress + 双对数斜率 1 诊断）、
+  pymatgen（带截距最小二乘）、kinisi（OLS 低估误差，主张 GLS/贝叶斯）
+- **脚本**：拟合线由 `[inputs]` 的 slope/intercept 画，不重做拟合；图例挂在子图下方
+  （带误差的标签比面板宽）；`--loglog` 的参考线锚在拟合窗口起点、不越过数据末端
+- 顺带修了手册：Å²/fs → cm²/s 写成了 $10^{-16}$（应为 0.1）；Rust 示例调用的
+  `write_msd` 早已不存在；上一批漏改的 3 处「optional PNG」
 
 ### 依赖精简：serde 与 `--plot` 移除（2026-09-26 落地）
 

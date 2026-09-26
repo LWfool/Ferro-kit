@@ -349,3 +349,7 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 需要系统 fontconfig/freetype 的那一个）与从未调用过的 serde derive。运行时依赖
 138 → 97。取舍与保留清单见 `plan.md` 归档「依赖精简」，用户侧说明见手册
 `plotting.md` 与 `changelog.md`。
+
+2026-09-27 追加（仍在同一个 0.3.3）：**`traj msd` 的头部只留共享参数**，逐文件的
+原子数、origins、拟合结果移到 `[inputs]`，新增 `slope`/`intercept`/`d_err` 等列；
+数据列不变。配套 `scripts/plot_msd.py`。

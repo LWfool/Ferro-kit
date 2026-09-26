@@ -106,13 +106,21 @@ unchanged byte for byte.
 |---|---|
 | `ferro traj msd -i t.dump --dt 1.0 --plot` | `ferro traj msd -i t.dump --dt 1.0` |
 
+### MSD fit results moved to `[inputs]`
+
+With several inputs the `msd` header used to show the **first** file's atom count, origins, slope, $D$
+and $R^2$ as if they held for the whole batch. The header now keeps only shared parameters; per-input
+values are columns of the `[inputs]` list, which also gains `t_lo`, `t_hi`, `points`, `slope`,
+`intercept` and the new error `d_err`. Data columns are unchanged. Scripts that grepped `D (total)`
+from the header must read the `d_ang2_per_fs` column of `[inputs]` instead.
+
 ### New, nothing to migrate
 
 `ferro doc <topic>` (the manual, compiled into the binary; rendered with tables and
 formulas on a terminal, the plain source when redirected) · VASP `OUTCAR` and
 `vasprun.xml` reading · CP2K single-point reading · `dataset collect --type
 inspect` (diagnostics, no dataset) · `--type nep|extxyz` and `--ratio 8:1:1`
-on `filter` and `merge` · `--qn` on `net`.
+on `filter` and `merge` · `--qn` on `net` · `scripts/plot_msd.py`.
 
 ### Help pages are shorter
 
