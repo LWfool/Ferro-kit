@@ -25,8 +25,6 @@ ndarray = "0.17"
 ndarray-npy = "0.10"
 # 并行计算库
 rayon = "1.8"
-# 序列化/反序列化
-serde = { version = "1.0", features = ["derive"] }
 # 错误处理
 thiserror = "2.0"
 anyhow = "1.0"
