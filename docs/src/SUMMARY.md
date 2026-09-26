@@ -42,5 +42,6 @@
 
 # Reference
 
+- [Plotting](plotting.md)
 - [CLI Reference](cli-reference.md)
 - [Changelog](changelog.md)

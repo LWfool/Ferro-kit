@@ -195,6 +195,12 @@ const PAGES: &[Page] = &[
         section: Some("## `ferro bader`"),
     },
     Page {
+        topic: "plotting",
+        source: "plotting.md",
+        text: include_str!("../../docs/src/plotting.md"),
+        section: None,
+    },
+    Page {
         topic: "cli-reference",
         source: "cli-reference.md",
         text: include_str!("../../docs/src/cli-reference.md"),

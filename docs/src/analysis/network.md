@@ -504,5 +504,5 @@ The labelled trajectory and the statistics tables are independent outputs and ca
 Cutoffs should be chosen from the position of the first minimum in g(r):
 
 ```bash
-ferro traj gr -i traj.lammpstrj -a P -b O --r-max 5 --plot
+ferro traj gr -i traj.lammpstrj -a P -b O --r-max 5
 ```

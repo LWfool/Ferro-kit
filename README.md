@@ -75,7 +75,7 @@ ferro doc   <topic>                                            → 手册（编�
 ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O --r-max 8.0 -o scan
 
 # X-ray and neutron weighted structure factor
-ferro traj sq -i traj.lammpstrj --weighting both --plot
+ferro traj sq -i traj.lammpstrj --weighting both
 
 # self-diffusion from the MSD
 ferro traj msd -i traj.lammpstrj --dt 2.0 --elements Li
@@ -114,8 +114,8 @@ says what was analysed, so `traj gr -a P -b O` writes `gr_P-O.csv` and an unfilt
 writes `gr_all.csv`. Missing values under a column union are written as empty fields
 (`NaN` on read-back) — never as zero.
 
-`--plot` writes a 500 dpi PNG for a quick look. It is deliberately frozen at
-self-inspection quality; publication figures go through the Python scripts below.
+ferro writes csv only and draws no figures; plots go through the Python scripts
+below (see `docs/src/plotting.md`).
 
 ## What it computes
 

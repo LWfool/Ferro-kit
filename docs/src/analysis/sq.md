@@ -126,6 +126,8 @@ count behind a single site label is usually too small for its partial to show an
 The `.sq` file header records both the g(r) parameters (used as input) and the S(q) parameters.  
 Column ordering matches the `.gr` file. Additional columns `total_xrd` and/or `total_neutron` are appended when weighting is requested.
 
+Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
+
 ## Usage
 
 ```rust

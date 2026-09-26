@@ -397,7 +397,6 @@ ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -o run1
 | `--r-min` | 0.001 | minimum radius [Å] |
 | `--r-max` | 10.005 | maximum radius [Å]; clamped to half the smallest **interplanar spacing** (not the shortest edge length) |
 | `--dr` | 0.002 | bin width [Å] |
-| `--plot` | off | also write a PNG (two panels: g(r) \| CN(r)); requires a pair to be given |
 
 **Long table**: `file, r, center, neighbor, gr, cn`.  The types go into data columns, so trajectories with
 different element sets stack directly; omitting `-a/-b` adds rows rather than columns.  `gr` is symmetric
@@ -417,7 +416,6 @@ ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -o run1
 | `--q-max` | 25.0 | maximum $q$ [Å⁻¹] |
 | `--dq` | 0.02 | $q$ bin width [Å⁻¹] |
 | `--weighting` | `both` | `none`, `xrd`, `neutron`, `both` |
-| `--plot` | off | also write a PNG (two panels: XRD \| Neutron) |
 
 The `--r-min` / `--r-max` / `--dr` of `gr` apply here too — they set the range of the $g(r)$ being transformed.
 
@@ -437,9 +435,8 @@ ferro traj msd -i traj.lammpstrj --dt 2.0 --shift 10 --elements Li --fit-range 0
 | `--shift` | 1 | spacing between time origins [frames] |
 | `--elements` | (all) | comma-separated element filter |
 | `--fit-range` | (none) | `FMIN,FMAX` linear-fit window (as a fraction of the trajectory) → the self-diffusion coefficient D |
-| `--plot` | off | also write a PNG (2×2: total \| a \| b \| c) |
 
-Giving `--fit-range` computes and prints $D = \text{slope}/6$ and $R^2$ (independently of `--plot`).
+Giving `--fit-range` computes and prints $D = \text{slope}/6$ and $R^2$.
 
 ### `angle` — bond angle distribution
 
@@ -454,7 +451,6 @@ ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 
 | `--angle-min` | 0.0 | lower bound of the histogram [°] |
 | `--angle-max` | 180.0 | upper bound of the histogram [°] (inclusive) |
 | `--d-angle` | 0.1 | bin width [°] |
-| `--plot` | off | also write a PNG, with mean ± std in the legend |
 
 Without a triplet the two cutoffs fall back to the canonical (Z, symbol) order; when both ends are the
 same type they both take `min(--r-cut-ab, --r-cut-bc)`.  Angles outside the range are **discarded**, not merely hidden.
@@ -516,19 +512,13 @@ Columns: `file, r, gs`
 
 ### Plotting
 
-`--plot` produces one PNG of panels, **one quantity per panel and one curve per input file**; the colours
-are consistent across panels by file, and only the first panel carries the legend.  500 dpi, 2708×2083 px per panel.
-
-`--plot` is **frozen at the level of a self-check** and will not chase matplotlib: the data is a long-table
-csv, and one line of seaborn already gives a proper figure (`sns.lineplot(data=df, x="r", y="gr", hue="file")`);
-log axes, error bars and themes belong in Python.
+ferro writes csv only; figures are made in Python. See [Plotting](plotting.md).
 
 ---
 
 ## `ferro map`
 
-3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table and
-no plot, so the file name always carries the input stem (`density_<stem>.cube`).
+3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table, so the file name always carries the input stem (`density_<stem>.cube`).
 
 ```bash
 ferro map <command> -i traj.lammpstrj [flags] -o <suffix>

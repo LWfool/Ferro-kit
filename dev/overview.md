@@ -341,3 +341,11 @@ vasprun.xml」那条守卫的比较对象（`--format` 一给，`stats.format` �
 精确但会**强制 a 轴沿 x**，且 ≤7.1 连 `|a|` 都只有 3 位、根本无处可重建。实测
 体积相对误差 1.16e-4，20 GPa 下 virial 绝对偏差 3.8e-3 eV，低于 virial 训练
 RMSE 一到两个数量级——**按矢量行读，不复杂化**。
+
+## 2026-09-26 的一批（版本号**仍是 0.3.3**，未发版）
+
+依赖精简。破坏性的只有一条：**`traj gr/sq/msd/angle` 的 `--plot` 移除**，传入即
+clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotters（Linux 构建
+需要系统 fontconfig/freetype 的那一个）与从未调用过的 serde derive。运行时依赖
+138 → 97。取舍与保留清单见 `plan.md` 归档「依赖精简」，用户侧说明见手册
+`plotting.md` 与 `changelog.md`。

@@ -171,12 +171,11 @@
 
 ### 堆叠 ×15 → **stack**
 
-- `cli-reference.md:530` 3-D 空间分布图（Gaussian cube 格式）。**逐输入一个 `.cube`**，没有可堆叠的表也没有图，
+- `cli-reference.md:530` 3-D 空间分布图（Gaussian cube 格式）。**逐输入一个 `.cube`**，没有可堆叠的表，
 - `cli-reference.md:918` 经与其余产物同一个 writer，自带 `#` 头与 `[inputs]` 清单。多 system 堆叠成一份，
 
 ### 长表 ×7 → **long table**
 
-- `cli-reference.md:522` `--plot` **冻结在自查质量**，不会去追 matplotlib：数据是长表 csv，一行 seaborn 就是
 - `cli-reference.md:402` **长表**：`file, r, center, neighbor, gr, cn`。类型进数据列，故元素集不同的轨迹可直接
 
 ### 清单 ×12 → **list**
@@ -243,7 +242,7 @@
 ### 逐输入 ×5 → **per-input**
 
 - `cli-reference.md:64` 产物是逐输入的命令（`ferro map` 的 cube、`ferro net --export-traj` 的轨迹）例外：
-- `cli-reference.md:530` 3-D 空间分布图（Gaussian cube 格式）。**逐输入一个 `.cube`**，没有可堆叠的表也没有图，
+- `cli-reference.md:530` 3-D 空间分布图（Gaussian cube 格式）。**逐输入一个 `.cube`**，没有可堆叠的表，
 
 ### 逐原子 ×5 → **per-atom**
 
