@@ -178,16 +178,16 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 | 被绕过的算法 | `ferro-analysis/src/dft/bader_grid.rs:375 max_neargrid` —— 见下一条 | 20 |
 | 取代方案只落实了一半 | `ferro-core/src/network_type.rs:233 display_rank` 生产零调用（`class_rank` 有 3 处）。`progress.md` 说两者一起取代了三个 `*_label_order`，实际只落实了一半 | 8 |
 | 基础访问器 | `Frame::geometric_center` / `atom_mut` / `wrap_all` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames` / `time_at`、`Atom::distance_to`、`Table::n_cols`、`compounds::with_density`、`ClusterResult::ids`、`ml/diagnostics.rs:177,182`、`filter::is_clean`、`qn_elements::has_qn`、`charge_grid::lat_dist_i` | ~50 |
-| 未使用依赖 | `ferro-workflow/Cargo.toml:8` 的 `serde`（实测删掉后 `cargo check -p ferro-workflow` 通过） | — |
+| ~~未使用依赖~~ | ~~`ferro-workflow` 的 `serde`~~ —— 2026-09-26 随 serde 整体移除 | — |
 
 **方法上要记住的一条**：`cargo clippy` 零警告不说明没有死代码 —— 库 crate 里
 `pub` 项不触发 `dead_code` lint，上面全部躲过了它。查零调用要按名字逐个 grep
 全仓，不能靠编译器。
 
-另一个待拍板的：`Atom`/`Frame`/`Cell`/`Trajectory` 上的 `derive(Serialize,
-Deserialize)` 全仓从未序列化过。**但有半条是无条件该做的**：`ferro-io` 与
-`ferro-analysis` 的 `nalgebra` 开了 `serde-serialize` feature 而这两个 crate
-本身零 serde 用法，即使保留 derive 也该摘掉这两个 feature。
+~~`Atom`/`Frame`/`Cell`/`Trajectory` 上的 `derive(Serialize, Deserialize)`~~ ——
+**2026-09-26 已删**：全仓没有任何格式后端（serde_json / bincode 都没有），derive
+从未被调用。连带摘掉三处 nalgebra 的 `serde-serialize`，`Cargo.lock` 里 serde 系
+归零。将来要做检查点或 Python pickle 时，四个 derive + 两行 Cargo.toml 即可加回。
 
 ### bader weight 的真空电荷取错（2026-09-20 发现，处置未定）
 

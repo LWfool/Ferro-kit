@@ -1,7 +1,6 @@
 //! Single-frame structure (analogous to ASE's `Atoms` object).
 
 use nalgebra::{Matrix3, Vector3};
-use serde::{Deserialize, Serialize};
 
 use crate::atom::Atom;
 use crate::cell::Cell;
@@ -14,7 +13,7 @@ use crate::cell::Cell;
 ///
 /// NPT 模拟轨迹中每帧盒子不同，由 [`crate::trajectory::Trajectory`] 中各帧
 /// 各自持有自己的 `cell` 自然处理，无需特殊设计。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     /// 原子列表；原子的唯一标识是其在此 Vec 中的下标
     pub atoms: Vec<Atom>,

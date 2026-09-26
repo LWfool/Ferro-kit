@@ -5,8 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ferro-core = { path = "../ferro-core" }
-nalgebra = { workspace = true, features = ["serde-serialize"] }
+nalgebra.workspace = true
 ndarray.workspace = true
 rayon.workspace = true
 rand.workspace = true
-thiserror.workspace = true

@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 ferro-core = { path = "../ferro-core" }
-serde.workspace = true
 anyhow.workspace = true
 
 [dev-dependencies]

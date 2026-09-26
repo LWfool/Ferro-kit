@@ -1,7 +1,6 @@
 //! Lattice (periodic simulation box).
 
 use nalgebra::{Matrix3, Vector3};
-use serde::{Deserialize, Serialize};
 use crate::error::{ChemError, Result};
 
 /// 周期性晶格，用行向量存储三个晶格矢量 a、b、c。
@@ -14,7 +13,7 @@ use crate::error::{ChemError, Result};
 ///
 /// Cartesian ↔ 分数坐标转换关系：
 /// `cart = matrix.transpose() * frac`
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Cell {
     pub matrix: Matrix3<f64>,
 }

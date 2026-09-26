@@ -1,6 +1,5 @@
 //! Trajectory data structure.
 
-use serde::{Deserialize, Serialize};
 
 use crate::frame::Frame;
 
@@ -45,7 +44,7 @@ pub fn spread_range(n: usize, start: usize, end: Option<usize>, count: usize) ->
 }
 
 /// 轨迹元数据。
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct TrajectoryMetadata {
     /// 帧间时间步长（fs）；`None` 表示静态结构或未知
     pub timestep: Option<f64>,
@@ -57,7 +56,7 @@ pub struct TrajectoryMetadata {
 ///
 /// 单帧结构文件也以 `Trajectory { frames: vec![frame] }` 形式存储，
 /// 保证所有模块的 API 签名统一，无需区分单帧/多帧。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Trajectory {
     pub frames: Vec<Frame>,
     pub metadata: TrajectoryMetadata,

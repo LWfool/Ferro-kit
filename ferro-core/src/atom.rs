@@ -1,13 +1,12 @@
 //! Atom data structure.
 
 use nalgebra::Vector3;
-use serde::{Deserialize, Serialize};
 
 /// 单个原子实例。
 ///
 /// 原子在帧中的唯一标识是其在 `Frame::atoms` 中的下标，不单独存储 index 字段。
 /// `mass` 为 `None` 时，调用 [`Atom::effective_mass`] 将自动从元素表中查找标准值。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Atom {
     /// 元素符号，如 "Fe"、"O"
     pub element: String,
