@@ -6,7 +6,7 @@ Python.
 
 ## Publication scripts
 
-`scripts/` ships four matplotlib scripts built on a shared style layer
+`scripts/` ships five matplotlib scripts built on a shared style layer
 (`ferroplot.py`: SciencePlots `science` + `vibrant`, LaTeX text, PDF output). They need
 `matplotlib`, `pandas`, `scienceplots` and a working LaTeX installation.
 
@@ -15,23 +15,22 @@ Python.
 | `plot_gr.py` | `gr_<pair>.csv` | one panel per csv; g(r) solid on the left axis, CN(r) dashed on the right |
 | `plot_sq.py` | `sq.csv` | the X-ray and neutron totals, one row per csv |
 | `plot_angle.py` | `angle_<triplet>.csv` | one panel per csv, one curve per input |
+| `plot_msd.py` | `msd_<elements>.csv` | one panel per csv; fitted line over the fit window, $D \pm d_{err}$ in the legend; `--components` adds a/b/c, `--loglog` adds a slope-1 guide |
 | `plot_net.py` | `network_*.csv` | 100 % stacked bars over composition |
 
 ```bash
 python scripts/plot_gr.py gr_P-O.csv gr_Al-O.csv --outdir figs
 python scripts/plot_sq.py sq.csv --outdir figs
 python scripts/plot_angle.py angle_O-P-O.csv --outdir figs
+python scripts/plot_msd.py msd_all.csv --loglog --outdir figs
 python scripts/plot_net.py qn network_qn.csv --outdir figs
 ```
 
 Colours follow the `file` column, so one input keeps one colour across every panel
 and figure.
 
-There is no script for MSD yet. The long table already works with one line of seaborn:
-
-```python
-sns.lineplot(data=pd.read_csv("msd_all.csv", comment="#"), x="time", y="msd", hue="file")
-```
+`plot_msd.py` does not fit anything: the slope, intercept, $D$ and its error come from the
+`[inputs]` list ferro writes, so there is one implementation of the fit.
 
 ## Why ferro does not plot
 

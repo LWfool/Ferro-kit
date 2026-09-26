@@ -53,6 +53,7 @@ pub struct MsdParams {
     pub shift: usize,                 // origin spacing [frames]; default: 1
     pub dt: f64,                      // time step [fs]; default: 1.0
     pub elements: Option<Vec<String>>,// None = all atoms
+    pub fit_range: Option<(f64, f64)>,// linear-fit window as fractions; None = no fit
 }
 ```
 
@@ -61,8 +62,11 @@ pub struct MsdParams {
 `msd_<element>[_<suffix>].csv` (elements sorted and deduplicated; `msd_all…` without `--elements`): `file, time, msd, msd_a, msd_b, msd_c`
 (time in fs, squared displacement in Å²).
 
-When `--fit-range FMIN,FMAX` is given, the self-diffusion coefficient $D = \text{slope}/6$ and $R^2$ are printed to
-stdout and written into the `#` header block (in Å²/fs, cm²/s and m²/s).
+The `#` header holds only what the whole batch shares: `shift`, `dt`, the element selection and the fit
+window as fractions.  Everything that differs per input is a column of the `[inputs]` list: `frames`,
+`atoms`, `origins`, `species`, and — when `--fit-range FMIN,FMAX` is given — `t_lo`, `t_hi` (the window in fs),
+`points`, `slope` (Å²/fs), `intercept` (Å²), `d_ang2_per_fs`, `d_err` and `r2`.  $D$ is also printed to stdout
+in Å²/fs, cm²/s and m²/s.
 
 All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
 (`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
@@ -77,12 +81,14 @@ ferro traj msd -i traj.dump --dt 2.0 --shift 10 -o run1
 ```
 
 ```rust
-use ferro_analysis::md::{MsdParams, calc_msd, write_msd};
+use ferro_analysis::md::{MsdParams, calc_msd};
 
 let params = MsdParams { tau: Some(1000), shift: 10, dt: 2.0,
-    elements: Some(vec!["Li".into()]) };
+    elements: Some(vec!["Li".into()]), fit_range: Some((0.3, 0.8)) };
 let result = calc_msd(&traj, &params).unwrap();
-write_msd(&result, "output.msd").unwrap();
+if let Some(fit) = &result.fit {
+    println!("D = {:.3e} ± {:.1e} Å²/fs", fit.d_ang2_per_fs, fit.d_err);
+}
 ```
 
 ## Extracting the Diffusion Coefficient
@@ -91,7 +97,25 @@ Fit the linear region (avoiding the ballistic regime at short $t$ and the noise-
 
 $$D = \frac{1}{6} \cdot \frac{d\,\text{MSD}}{d\,t}$$
 
-To convert from Å²/fs to cm²/s: multiply by $10^{-16}$.
+The fit is ordinary least squares $\text{MSD} = \text{slope}\cdot t + \text{intercept}$ over the points
+$i \in [\operatorname{round}(f_\min (n-1)),\ \operatorname{round}(f_\max (n-1))]$, the same model as `gmx msd`.
+To convert from Å²/fs to cm²/s multiply by $0.1$ (1 Å² = $10^{-16}$ cm², 1 fs = $10^{-15}$ s).
+
+Check the window on a log-log plot (`scripts/plot_msd.py --loglog`): in the diffusive regime the MSD has
+slope 1, and the window should sit inside that stretch — past the ballistic start and before the poorly
+averaged tail.
+
+### Uncertainty
+
+`d_err` follows `gmx msd`: the window is split at its midpoint (shared by both halves), each half is fitted
+separately, and $d_{err} = |D_1 - D_2|$.  It is empty when a half holds fewer than 2 points.
+
+It is a **linearity check more than a confidence interval**.  A large `d_err` relative to $D$ means the MSD
+bends inside the window — the window is not in the diffusive regime, or the tail is noise.  It is not a
+statistical error bar: MSD points at different lags are strongly correlated, so least-squares errors
+of any kind understate the true uncertainty.  For a rigorous one use generalized least squares or
+Bayesian regression with the MSD covariance (the `kinisi` package), or the spread of $D$ over independent
+runs.
 
 ## Implementation Notes
 
