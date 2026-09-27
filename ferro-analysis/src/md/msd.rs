@@ -1,28 +1,30 @@
-//! Mean squared displacement (MSD) calculation and output.
+//! Mean squared displacement (MSD) and self-diffusion fit.
 //!
-//! Workflow: `calc_msd` → `write_msd`.
-//! Algorithm follows code1/msd.c (`EstimateMSD`):
-//!   1. Convert each frame's Cartesian coordinates to fractional coordinates.
-//!   2. Unwrap: detect fractional-coordinate jumps (|Δ| > 0.5) and correct cross-boundary displacements.
-//!   3. Time-shift averaging: step = shift, window = tau.
-//!   4. NPT support: total MSD uses the average of the origin- and endpoint-frame cell matrices.
+//! 1. Periodic trajectories are unwrapped with the TOR scheme (von Bülow et al.
+//!    2020; Bullerjahn et al. 2023): each step adds the minimum-image displacement
+//!    in the **later** frame's box, so NPT box fluctuations do not inflate the MSD.
+//!    Non-periodic trajectories are used as they are.
+//! 2. MSD at every lag `m` averages over **all** `N − m` time origins, computed per
+//!    atom and Cartesian axis in `O(N log N)` with the FFT algorithm of
+//!    Calandrini et al. (2011): `MSD(m) = S1(m) − 2·S2(m)`.
 //!
-//! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
+//! Parallelism: per atom (each atom's three series are independent).
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
+use nalgebra::Vector3;
+
+use super::correlate::AutocorrPlan;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
 /// Parameters for MSD calculation.
 #[derive(Debug, Clone)]
 pub struct MsdParams {
-    /// Lag window size in frames (`None` = use all frames)
-    pub tau: Option<usize>,
-    /// Time shift between origins in frames (default: 1)
-    pub shift: usize,
+    /// Longest lag in frames, `1 ..= n_frames − 1` (`None` = `n_frames / 2`)
+    pub max_lag: Option<usize>,
     /// Time step per frame \[fs\] (default: 1.0)
     pub dt: f64,
     /// Elements to include (`None` = all atoms)
@@ -34,7 +36,7 @@ pub struct MsdParams {
 
 impl Default for MsdParams {
     fn default() -> Self {
-        MsdParams { tau: None, shift: 1, dt: 1.0, elements: None, fit_range: None }
+        MsdParams { max_lag: None, dt: 1.0, elements: None, fit_range: None }
     }
 }
 
@@ -42,25 +44,26 @@ impl Default for MsdParams {
 
 /// Result of an MSD calculation.
 ///
-/// For periodic trajectories the directional columns `msd_a/b/c` represent
-/// displacement along the three crystal axes.  For non-periodic trajectories
-/// they correspond to the Cartesian x/y/z axes.
+/// `msd_x/y/z` are Cartesian components and add up to `msd` for any cell shape.
 #[derive(Debug, Clone)]
 pub struct MsdResult {
-    /// Time axis \[fs\]; `time[i] = i * dt`
+    /// Lag-time axis \[fs\]; `time[m] = m · dt`, `m = 0 ..= max_lag`
     pub time: Vec<f64>,
     /// Total MSD \[Å²\]
     pub msd: Vec<f64>,
-    /// Directional MSD along the a-axis (or x) \[Å²\]
-    pub msd_a: Vec<f64>,
-    /// Directional MSD along the b-axis (or y) \[Å²\]
-    pub msd_b: Vec<f64>,
-    /// Directional MSD along the c-axis (or z) \[Å²\]
-    pub msd_c: Vec<f64>,
+    /// Cartesian x component \[Å²\]
+    pub msd_x: Vec<f64>,
+    /// Cartesian y component \[Å²\]
+    pub msd_y: Vec<f64>,
+    /// Cartesian z component \[Å²\]
+    pub msd_z: Vec<f64>,
+    /// Frames in the trajectory
+    pub n_frames: usize,
     /// Number of atoms included in the calculation
     pub n_atoms: usize,
-    /// Number of time origins averaged
-    pub n_origins: usize,
+    /// Time origins at the longest lag, `n_frames − max_lag` — the fewest of any
+    /// lag (lag `m` averages `n_frames − m`)
+    pub min_origins: usize,
     pub params: MsdParams,
     /// Elements included (sorted alphabetically)
     pub elements: Vec<String>,
@@ -100,64 +103,107 @@ pub struct MsdFit {
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
-/// Unwrap fractional coordinates in-place to remove periodic-boundary jumps.
-///
-/// Checks the fractional-coordinate difference between adjacent frames:
-/// |Δ| > 0.5 indicates a boundary crossing; corrected by subtracting round(Δ).
-pub(super) fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
-    let n_steps = frac.len();
-    if n_steps < 2 { return; }
-    let n_atoms = frac[0].len();
+/// Unwrapped Cartesian series, `[atom][axis][frame]`.
+type Series = Vec<[Vec<f64>; 3]>;
 
-    // 转置为 atom-major：各原子时间序列互相独立，可并行处理
-    let mut by_atom: Vec<Vec<[f64; 3]>> = (0..n_atoms)
-        .map(|j| frac.iter().map(|step| step[j]).collect())
-        .collect();
+/// TOR unwrapping (Bullerjahn et al. 2023, eq 2), in 3-D:
+/// `u[i+1] = u[i] + mic_{i+1}(w[i+1] − w[i])`, `u[0] = w[0]`, where `mic_{i+1}`
+/// is the minimum image in frame `i+1`'s cell, taken in fractional coordinates as
+/// `f − ⌊f + 1/2⌋`. A step is far below half a cell, so this is exact for any
+/// cell shape.
+fn unwrap_tor(traj: &Trajectory, atom_indices: &[usize]) -> ferro_core::Result<Series> {
+    // 每帧的 (Mᵀ, (Mᵀ)⁻¹)：行优先 matrix 的行是晶格矢量，cart = Mᵀ·frac
+    let boxes = traj.frames.iter().map(|f| {
+        let m = f.cell.as_ref()
+            .ok_or_else(|| ChemError::ValidationError(
+                "all frames must have a periodic cell for MSD".into()))?
+            .matrix.transpose();
+        let inv = m.try_inverse()
+            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
+        Ok((m, inv))
+    }).collect::<ferro_core::Result<Vec<_>>>()?;
 
-    by_atom.par_iter_mut().for_each(|coords| {
-        for i in 1..n_steps {
-            let (prev, curr_and_later) = coords.split_at_mut(i);
-            for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
-                *c -= (*c - *p).round();
+    Ok(atom_indices.par_iter().map(|&i| {
+        let n = traj.n_frames();
+        let mut s = [Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n)];
+        let mut w_prev = traj.frames[0].atoms[i].position;
+        let mut u = w_prev;
+        for (k, frame) in traj.frames.iter().enumerate() {
+            if k > 0 {
+                let w = frame.atoms[i].position;
+                let (m, inv) = &boxes[k];
+                let f = inv * (w - w_prev);
+                // ⌊x + 1/2⌋ 而非 round()：与论文式 2 逐字一致（两者只在恰好 ±0.5 处不同）
+                let f_mic = f.map(|c| c - (c + 0.5).floor());
+                u += m * f_mic;
+                w_prev = w;
+            }
+            for (axis, v) in s.iter_mut().zip([u.x, u.y, u.z]) {
+                axis.push(v);
             }
         }
-    });
+        s
+    }).collect())
+}
 
-    // 转置回 step-major
-    for (i, step) in frac.iter_mut().enumerate() {
-        for j in 0..n_atoms {
-            step[j] = by_atom[j][i];
-        }
-    }
+/// MSD summed over atoms, per axis: `out[axis][m]`, `m = 0 ..= max_lag`, each lag
+/// averaged over its `N − m` origins.
+///
+/// Calandrini et al. (2011): `MSD(m) = S1(m) − 2·S2(m)` with
+/// `S2(m) = Σ_t x[t]·x[t+m] / (N − m)` (FFT) and `S1` from the recursion
+/// `Q(m) = Q(m−1) − x[m−1]² − x[N−m]²`, `Q(0) = 2Σx²`, `S1(m) = Q(m) / (N − m)`.
+fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
+    let n = series[0][0].len();
+    let plan = AutocorrPlan::new(n);
+    let zero = || [vec![0.0; max_lag + 1], vec![0.0; max_lag + 1], vec![0.0; max_lag + 1]];
+    series.par_iter()
+        .map_init(|| (plan.worker(), vec![0.0; n], vec![0.0; max_lag + 1]), |(ac, x, s2), atom| {
+            let mut out = zero();
+            for (axis, raw) in atom.iter().enumerate() {
+                // MSD 与平移无关；减去均值让 S1 与 2·S2 的量级接近原子的活动范围，
+                // 否则两个 ~|r|² 的大数相减会吃掉有效位
+                let mean = raw.iter().sum::<f64>() / n as f64;
+                for (xi, &r) in x.iter_mut().zip(raw) {
+                    *xi = r - mean;
+                }
+                ac.sums(x, s2);
+                let mut q = 2.0 * x.iter().map(|v| v * v).sum::<f64>();
+                for m in 0..=max_lag {
+                    if m > 0 {
+                        q -= x[m - 1] * x[m - 1] + x[n - m] * x[n - m];
+                    }
+                    let origins = (n - m) as f64;
+                    out[axis][m] = (q - 2.0 * s2[m]) / origins;
+                }
+            }
+            out
+        })
+        .reduce(zero, |mut a, b| {
+            for (aa, bb) in a.iter_mut().zip(&b) {
+                for (x, y) in aa.iter_mut().zip(bb) {
+                    *x += y;
+                }
+            }
+            a
+        })
 }
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
 
-/// Compute mean squared displacement with time-shift averaging.
-///
-/// The algorithm matches code1/msd.c `EstimateMSD`:
-/// 1. Convert atom Cartesian coordinates to fractional (periodic case only).
-/// 2. Unwrap fractional coordinates across periodic boundaries.
-/// 3. Average over all time origins spaced `params.shift` frames apart,
-///    computed in parallel (one task per origin).
+/// Computes the MSD, averaging each lag over all time origins.
 ///
 /// Returns `Err` if:
 /// - The trajectory has fewer than 2 frames
+/// - `max_lag` is outside `1 ..= n_frames − 1`
 /// - No atoms match the element filter
-/// - `tau` exceeds the trajectory length
-/// - Any frame is missing a cell (periodic path only)
-///
-/// # NPT handling
-/// Total MSD uses the average of the origin- and endpoint-frame cell matrices
-/// to convert fractional displacements to Cartesian. Directional MSD uses the
-/// endpoint cell parameter (same simplified approximation as code1/msd.c).
+/// - A periodic trajectory has a frame without a cell, or a singular cell
+/// - `fit_range` is invalid or selects fewer than 2 points
 pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
-    let n_steps = traj.n_frames();
-    if n_steps < 2 {
+    let n_frames = traj.n_frames();
+    if n_frames < 2 {
         return Err(ChemError::ValidationError("trajectory requires at least 2 frames".into()));
     }
-
-    // Fail fast on an obviously bad fit-range before the heavy parallel loop.
+    // 在重计算之前先挡掉明显错误的拟合窗口
     if let Some((fmin, fmax)) = params.fit_range {
         if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
             return Err(ChemError::ValidationError(format!(
@@ -165,10 +211,16 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
             )));
         }
     }
+    let max_lag = params.max_lag.unwrap_or(n_frames / 2);
+    if max_lag == 0 || max_lag >= n_frames {
+        return Err(ChemError::ValidationError(format!(
+            "max-lag must be within 1..={} for {n_frames} frames, got {max_lag}",
+            n_frames - 1
+        )));
+    }
 
-    // 确定参与计算的原子下标（按第一帧筛选元素）
-    let ref_frame = traj.first()
-        .ok_or_else(|| ChemError::ValidationError("empty trajectory".into()))?;
+    // 按第一帧筛选元素
+    let ref_frame = &traj.frames[0];
     let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
         .filter(|(_, a)| match &params.elements {
             Some(elems) => elems.contains(&a.element),
@@ -180,170 +232,39 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
         return Err(ChemError::ValidationError("no atoms match the element filter".into()));
     }
     let n_atoms = atom_indices.len();
+    let elements: Vec<String> = atom_indices.iter()
+        .map(|&i| ref_frame.atoms[i].element.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
 
-    let tau = params.tau.unwrap_or(n_steps).min(n_steps).max(1);
-    let shift = params.shift.max(1);
-
-    // 收集元素列表（用于输出文件头）
-    let elements: Vec<String> = {
-        let mut set = BTreeSet::new();
-        for &i in &atom_indices { set.insert(ref_frame.atoms[i].element.clone()); }
-        set.into_iter().collect()
+    let series: Series = if ref_frame.cell.is_some() {
+        unwrap_tor(traj, &atom_indices)?
+    } else {
+        atom_indices.iter().map(|&i| {
+            let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.atoms[i].position).collect();
+            [p.iter().map(|v| v.x).collect(), p.iter().map(|v| v.y).collect(),
+             p.iter().map(|v| v.z).collect()]
+        }).collect()
     };
 
-    if ref_frame.cell.is_some() {
-        calc_msd_periodic(traj, &atom_indices, n_atoms, tau, shift, params, elements)
-    } else {
-        calc_msd_nonperiodic(traj, &atom_indices, n_atoms, tau, shift, params, elements)
-    }
-}
+    let [sx, sy, sz] = msd_sums(&series, max_lag);
+    let inv = 1.0 / n_atoms as f64;
+    let msd_x: Vec<f64> = sx.iter().map(|v| v * inv).collect();
+    let msd_y: Vec<f64> = sy.iter().map(|v| v * inv).collect();
+    let msd_z: Vec<f64> = sz.iter().map(|v| v * inv).collect();
+    let msd: Vec<f64> = (0..=max_lag).map(|m| msd_x[m] + msd_y[m] + msd_z[m]).collect();
+    let time: Vec<f64> = (0..=max_lag).map(|m| m as f64 * params.dt).collect();
 
-/// MSD for periodic boundary conditions (fractional-coordinate unwrapping path, parallelised per time origin).
-fn calc_msd_periodic(
-    traj: &Trajectory,
-    atom_indices: &[usize],
-    n_atoms: usize,
-    tau: usize,
-    shift: usize,
-    params: &MsdParams,
-    elements: Vec<String>,
-) -> ferro_core::Result<MsdResult> {
-    let n_steps = traj.n_frames();
-
-    // 先校验所有帧都有 cell
-    if traj.frames.iter().any(|f| f.cell.is_none()) {
-        return Err(ChemError::ValidationError("all frames must have a periodic cell for MSD".into()));
-    }
-
-    // 构建 frac[step][atom_local] = [fa, fb, fc]（串行，顺序依赖无法并行）
-    let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
-        let cell = frame.cell.as_ref().unwrap();
-        atom_indices.iter().map(|&i| {
-            let f = cell.cartesian_to_fractional(frame.atoms[i].position)
-                .expect("cell is non-singular");
-            [f.x, f.y, f.z]
-        }).collect()
-    }).collect();
-
-    // Unwrap 分数坐标（顺序依赖，串行）
-    unwrap_frac(&mut frac);
-
-    // 枚举所有 origin 的起始帧
-    let p_values: Vec<usize> = (0..)
-        .map(|k: usize| k * shift)
-        .take_while(|&p| p + tau <= n_steps)
-        .collect();
-    let n_origins = p_values.len();
-    if n_origins == 0 {
-        return Err(ChemError::ValidationError("tau exceeds trajectory length".into()));
-    }
-
-    // 并行计算各 origin 的局部累积，每个 origin 产生 Vec<[f64;4]>(tau)
-    let accum: Vec<[f64; 4]> = p_values.par_iter()
-        .map(|&p| {
-            let cell_orig = traj.frames[p].cell.as_ref().unwrap();
-            let mut local = vec![[0.0f64; 4]; tau];
-            for i in 0..tau {
-                let cell_end = traj.frames[p + i].cell.as_ref().unwrap();
-                // NPT：取两端盒子矩阵的平均（同 code1 的做法）
-                let avg_mat = (cell_end.matrix + cell_orig.matrix) * 0.5;
-                let [a_len, b_len, c_len] = cell_end.lengths();
-                let mut sum = [0.0f64; 4];
-                for (f_end, f_orig) in frac[p + i].iter().zip(frac[p].iter()) {
-                    let dx = f_end[0] - f_orig[0];
-                    let dy = f_end[1] - f_orig[1];
-                    let dz = f_end[2] - f_orig[2];
-                    // 分数位移 → Cartesian（avg_mat 行向量 = a,b,c）
-                    let cx = dx*avg_mat[(0,0)] + dy*avg_mat[(1,0)] + dz*avg_mat[(2,0)];
-                    let cy = dx*avg_mat[(0,1)] + dy*avg_mat[(1,1)] + dz*avg_mat[(2,1)];
-                    let cz = dx*avg_mat[(0,2)] + dy*avg_mat[(1,2)] + dz*avg_mat[(2,2)];
-                    sum[0] += cx*cx + cy*cy + cz*cz;
-                    // 各轴分量：分数位移 × endpoint 轴长（简化近似，同 code1）
-                    sum[1] += dx*dx * a_len*a_len;
-                    sum[2] += dy*dy * b_len*b_len;
-                    sum[3] += dz*dz * c_len*c_len;
-                }
-                local[i] = [
-                    sum[0] / n_atoms as f64,
-                    sum[1] / n_atoms as f64,
-                    sum[2] / n_atoms as f64,
-                    sum[3] / n_atoms as f64,
-                ];
-            }
-            local
-        })
-        .reduce(
-            || vec![[0.0f64; 4]; tau],
-            |mut a, b| {
-                for i in 0..tau { for k in 0..4 { a[i][k] += b[i][k]; } }
-                a
-            },
-        );
-
-    build_result(accum, tau, n_origins, n_atoms, elements, params)
-}
-
-/// MSD for non-periodic (molecular) systems (Cartesian coordinates directly, parallelised per time origin).
-fn calc_msd_nonperiodic(
-    traj: &Trajectory,
-    atom_indices: &[usize],
-    n_atoms: usize,
-    tau: usize,
-    shift: usize,
-    params: &MsdParams,
-    elements: Vec<String>,
-) -> ferro_core::Result<MsdResult> {
-    let n_steps = traj.n_frames();
-
-    // 收集各帧 Cartesian 坐标（非周期不需要 unwrap）
-    let cart: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
-        atom_indices.iter().map(|&i| {
-            let p = &frame.atoms[i].position;
-            [p.x, p.y, p.z]
-        }).collect()
-    }).collect();
-
-    let p_values: Vec<usize> = (0..)
-        .map(|k: usize| k * shift)
-        .take_while(|&p| p + tau <= n_steps)
-        .collect();
-    let n_origins = p_values.len();
-    if n_origins == 0 {
-        return Err(ChemError::ValidationError("tau exceeds trajectory length".into()));
-    }
-
-    let accum: Vec<[f64; 4]> = p_values.par_iter()
-        .map(|&p| {
-            let mut local = vec![[0.0f64; 4]; tau];
-            for i in 0..tau {
-                let mut sum = [0.0f64; 4];
-                for (c_end, c_orig) in cart[p + i].iter().zip(cart[p].iter()) {
-                    let dx = c_end[0] - c_orig[0];
-                    let dy = c_end[1] - c_orig[1];
-                    let dz = c_end[2] - c_orig[2];
-                    sum[0] += dx*dx + dy*dy + dz*dz;
-                    sum[1] += dx*dx;
-                    sum[2] += dy*dy;
-                    sum[3] += dz*dz;
-                }
-                local[i] = [
-                    sum[0] / n_atoms as f64,
-                    sum[1] / n_atoms as f64,
-                    sum[2] / n_atoms as f64,
-                    sum[3] / n_atoms as f64,
-                ];
-            }
-            local
-        })
-        .reduce(
-            || vec![[0.0f64; 4]; tau],
-            |mut a, b| {
-                for i in 0..tau { for k in 0..4 { a[i][k] += b[i][k]; } }
-                a
-            },
-        );
-
-    build_result(accum, tau, n_origins, n_atoms, elements, params)
+    let fit = match params.fit_range {
+        Some(fr) => Some(fit_diffusion(&time, &msd, fr)?),
+        None => None,
+    };
+    Ok(MsdResult {
+        time, msd, msd_x, msd_y, msd_z,
+        n_frames, n_atoms, min_origins: n_frames - max_lag,
+        params: params.clone(), elements, fit,
+    })
 }
 
 /// Ordinary least-squares fit of total MSD vs time over a fractional window
@@ -445,52 +366,21 @@ fn ols(xs: &[f64], ys: &[f64]) -> Option<(f64, f64)> {
     Some((slope, (sy - slope * sx) / m))
 }
 
-/// Build an `MsdResult` from the parallel-reduction accumulation array,
-/// computing the diffusion fit when `params.fit_range` is set.
-fn build_result(
-    accum: Vec<[f64; 4]>,
-    tau: usize,
-    n_origins: usize,
-    n_atoms: usize,
-    elements: Vec<String>,
-    params: &MsdParams,
-) -> ferro_core::Result<MsdResult> {
-    let inv = 1.0 / n_origins as f64;
-    let time:  Vec<f64> = (0..tau).map(|i| i as f64 * params.dt).collect();
-    let msd:   Vec<f64> = (0..tau).map(|i| accum[i][0] * inv).collect();
-    let msd_a: Vec<f64> = (0..tau).map(|i| accum[i][1] * inv).collect();
-    let msd_b: Vec<f64> = (0..tau).map(|i| accum[i][2] * inv).collect();
-    let msd_c: Vec<f64> = (0..tau).map(|i| accum[i][3] * inv).collect();
-    let fit = match params.fit_range {
-        Some(fr) => Some(fit_diffusion(&time, &msd, fr)?),
-        None => None,
-    };
-    Ok(MsdResult {
-        time, msd, msd_a, msd_b, msd_c,
-        n_atoms, n_origins, params: params.clone(), elements, fit,
-    })
-}
-
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
-/// Write MSD data to a tab-separated text file (`.msd`).
-///
-/// Columns: `time[fs]`, `msd[Ang^2]`, `msd_a[Ang^2]`, `msd_b[Ang^2]`, `msd_c[Ang^2]`
-///
-/// For periodic trajectories a/b/c are the crystal-axis directions.
 impl MsdResult {
     /// Projects the result into the table the writers consume.
     ///
-    /// Mean squared displacement: `time, msd, msd_a, msd_b, msd_c`.
+    /// Mean squared displacement: `time, msd, msd_x, msd_y, msd_z`.
     /// The `file` column is added by the caller when stacking several inputs
     /// (see `ferro_core::Table::concat_union`).
     pub fn to_tables(&self) -> Vec<(String, Table)> {
         let mut t = Table::new();
         t.push_num("time", self.time.clone())
             .push_num("msd", self.msd.clone())
-            .push_num("msd_a", self.msd_a.clone())
-            .push_num("msd_b", self.msd_b.clone())
-            .push_num("msd_c", self.msd_c.clone());
+            .push_num("msd_x", self.msd_x.clone())
+            .push_num("msd_y", self.msd_y.clone())
+            .push_num("msd_z", self.msd_z.clone());
         vec![("msd".to_string(), t)]
     }
 
@@ -501,10 +391,13 @@ impl MsdResult {
     pub fn meta_lines(&self) -> Vec<String> {
         let p = &self.params;
         let mut v = Vec::new();
-        if let Some(tau) = p.tau {
-            v.push(format!("tau      = {tau} frames"));
-        }
-        v.push(format!("shift    = {} frames", p.shift));
+        v.push(match p.max_lag {
+            Some(m) => format!("max lag  = {m} frames"),
+            None => "max lag  = half of each input's frames (see [inputs])".to_string(),
+        });
+        v.push("origins  = all: lag m averages frames - m origins (FFT, Calandrini 2011)".to_string());
+        v.push("unwrap   = TOR for periodic inputs: minimum image in the later frame's cell (Bullerjahn 2023)".to_string());
+        v.push("axes     = Cartesian x/y/z; msd = msd_x + msd_y + msd_z".to_string());
         v.push(format!("dt       = {} fs", p.dt));
         v.push(match &p.elements {
             Some(els) => format!("elements = {}", els.join(" ")),
@@ -571,66 +464,180 @@ mod tests {
         }
     }
 
+    /// 暴力参考：对给定的逐帧位置（已解包裹），每个 lag 对全部原点直接求平均
+    fn brute_msd(pos: &[Vec<Vector3<f64>>], max_lag: usize) -> Vec<[f64; 3]> {
+        let n = pos.len();
+        let na = pos[0].len() as f64;
+        (0..=max_lag).map(|m| {
+            let mut acc = [0.0; 3];
+            for t in 0..n - m {
+                for (a, b) in pos[t + m].iter().zip(&pos[t]) {
+                    let d = a - b;
+                    acc[0] += d.x * d.x;
+                    acc[1] += d.y * d.y;
+                    acc[2] += d.z * d.z;
+                }
+            }
+            acc.map(|v| v / ((n - m) as f64 * na))
+        }).collect()
+    }
+
+    /// 独立实现的 TOR：逐步加后一帧盒子下的最小镜像位移（走 Cell::minimum_image）
+    fn tor_reference(traj: &Trajectory) -> Vec<Vec<Vector3<f64>>> {
+        let mut u: Vec<Vector3<f64>> = traj.frames[0].atoms.iter().map(|a| a.position).collect();
+        let mut out = vec![u.clone()];
+        for k in 1..traj.n_frames() {
+            let cell = traj.frames[k].cell.as_ref().unwrap();
+            for (j, uj) in u.iter_mut().enumerate() {
+                let d = traj.frames[k].atoms[j].position - traj.frames[k - 1].atoms[j].position;
+                *uj += cell.minimum_image(d).unwrap();
+            }
+            out.push(u.clone());
+        }
+        out
+    }
+
+    /// 伪随机但可复现的数（不引 rand：测试只需要「不规则」）
+    fn jitter(k: usize) -> f64 {
+        ((k as f64 * 12.9898).sin() * 43758.5453).fract() - 0.5
+    }
+
+    /// NPT 三斜轨迹：盒子逐帧伸缩，原子做随机游走并被包裹回盒内
+    fn make_traj_npt_triclinic(n: usize, n_atoms: usize) -> Trajectory {
+        let mut traj = Trajectory::new();
+        let mut cart: Vec<Vector3<f64>> = (0..n_atoms)
+            .map(|j| Vector3::new(jitter(j) * 8.0 + 4.0, jitter(j + 99) * 8.0 + 4.0, jitter(j + 7) * 8.0 + 4.0))
+            .collect();
+        for i in 0..n {
+            let s = 1.0 + 0.03 * jitter(1000 + i);
+            let cell = Cell::from_lengths_angles(8.0 * s, 8.5 * s, 9.0 * s, 80.0, 95.0, 105.0).unwrap();
+            let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+            for (j, c) in cart.iter_mut().enumerate() {
+                *c += Vector3::new(jitter(5 * i + j), jitter(7 * i + 3 * j + 1), jitter(11 * i + j + 2)) * 1.2;
+                frame.add_atom(Atom::new("Fe", cell.wrap_position(*c).unwrap()));
+            }
+            traj.add_frame(frame);
+        }
+        traj
+    }
+
+    #[test]
+    fn test_fft_matches_brute_force_npt_triclinic() {
+        // 盒子伸缩 + 三斜 + 跨边界：FFT 全原点平均必须与暴力求和逐点一致
+        let traj = make_traj_npt_triclinic(40, 5);
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(39), ..MsdParams::default() }).unwrap();
+        let reference = brute_msd(&tor_reference(&traj), 39);
+        for (m, want) in reference.iter().enumerate() {
+            for (axis, got) in [&r.msd_x, &r.msd_y, &r.msd_z].iter().enumerate() {
+                assert!((got[m] - want[axis]).abs() < 1e-9,
+                    "lag {m} 轴 {axis}: fft {} vs brute {}", got[m], want[axis]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_fft_matches_brute_force_nonperiodic() {
+        let mut traj = Trajectory::new();
+        for i in 0..25 {
+            let mut f = Frame::new();
+            for j in 0..3 {
+                let k = i * 3 + j;
+                f.add_atom(Atom::new("O", Vector3::new(jitter(k) * 5.0 + i as f64 * 0.1, jitter(k + 50), jitter(k + 90) * 2.0)));
+            }
+            traj.add_frame(f);
+        }
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(20), ..MsdParams::default() }).unwrap();
+        let pos: Vec<Vec<Vector3<f64>>> = traj.frames.iter()
+            .map(|f| f.atoms.iter().map(|a| a.position).collect()).collect();
+        for (m, want) in brute_msd(&pos, 20).iter().enumerate() {
+            let total: f64 = want.iter().sum();
+            assert!((r.msd[m] - total).abs() < 1e-9, "lag {m}: {} vs {total}", r.msd[m]);
+        }
+    }
+
+    #[test]
+    fn test_components_sum_to_total() {
+        let traj = make_traj_npt_triclinic(20, 4);
+        let r = calc_msd(&traj, &MsdParams::default()).unwrap();
+        for m in 0..r.msd.len() {
+            let s = r.msd_x[m] + r.msd_y[m] + r.msd_z[m];
+            assert!((r.msd[m] - s).abs() < 1e-12, "lag {m}: 三斜盒子下分量之和也必须等于总量");
+        }
+    }
+
+    #[test]
+    fn test_tor_crosses_skewed_axis() {
+        // 固定三斜盒子里匀速直线运动、每步都可能跨斜边界：解包裹后 MSD = (|v|·m)²
+        let cell = Cell::from_lengths_angles(6.0, 6.0, 6.0, 70.0, 75.0, 60.0).unwrap();
+        let v = Vector3::new(0.9, -0.7, 1.1);
+        let mut traj = Trajectory::new();
+        for i in 0..12 {
+            let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+            let p = Vector3::new(5.5, 0.2, 5.8) + v * i as f64;
+            f.add_atom(Atom::new("Li", cell.wrap_position(p).unwrap()));
+            traj.add_frame(f);
+        }
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(11), ..MsdParams::default() }).unwrap();
+        for (m, &got) in r.msd.iter().enumerate() {
+            let want = (v.norm() * m as f64).powi(2);
+            assert!((got - want).abs() < 1e-9, "lag {m}: {got} vs {want}");
+        }
+    }
+
+    #[test]
+    fn test_tor_does_not_follow_lattice_scaling() {
+        // 原子先跨一次边界（x: 9.5 → 10.5，包裹后 0.5），之后分数坐标不动而盒子 10→11→10。
+        // 格点视图（分数坐标解包裹 × 当帧盒长）：1.05 × 11 = 11.55，盒子一胀就凭空多走
+        // 1.05 Å，且随镜像编号放大；TOR 只加最小镜像位移：+0.05、−0.05。
+        let frames = [(10.0, 0.95), (10.0, 0.05), (11.0, 0.05), (10.0, 0.05)];
+        let mut traj = Trajectory::new();
+        for (len, fx) in frames {
+            let cell = Cell::from_lengths_angles(len, len, len, 90.0, 90.0, 90.0).unwrap();
+            let mut fr = Frame::with_cell(cell.clone(), [true; 3]);
+            fr.add_atom(Atom::new("Na", cell.fractional_to_cartesian(Vector3::new(fx, 0.5, 0.5))));
+            traj.add_frame(fr);
+        }
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(1), ..MsdParams::default() }).unwrap();
+        // lag 1 的三个原点，x 位移 TOR: 1.0, 0.05, -0.05
+        let tor = (1.0 + 0.05_f64.powi(2) * 2.0) / 3.0;
+        let lattice = (1.0 + 1.05_f64.powi(2) * 2.0) / 3.0;
+        assert!((r.msd_x[1] - tor).abs() < 1e-9,
+            "msd_x lag 1 应为 TOR 的 {tor}，实为 {}（格点视图会得 {lattice}）", r.msd_x[1]);
+    }
+
     #[test]
     fn test_msd_linear_motion() {
-        // 单原子以 v=0.3 Å/step 沿 x 匀速运动，MSD[lag] = (v * lag)²
-        let a = 20.0;
+        // 单原子沿 x 匀速 v：每个原点的位移都是 v·m，全原点平均仍为 (v·m)²
         let v = 0.3;
-        let n = 6;
-        let traj = make_traj_linear(a, v, n);
-        let result = calc_msd(&traj, &MsdParams {
-            tau: Some(n), shift: 1, dt: 1.0, elements: None, fit_range: None,
-        }).unwrap();
-
-        for (lag, &msd_val) in result.msd.iter().enumerate() {
-            let expected = (v * lag as f64).powi(2);
-            assert!(
-                (msd_val - expected).abs() < 1e-8,
-                "lag {}: expected {:.6e}, got {:.6e}", lag, expected, msd_val,
-            );
-        }
-        // a 方向应等于 total（运动沿 x=a 轴）
-        for (lag, &msd_a) in result.msd_a.iter().enumerate() {
-            let expected = (v * lag as f64).powi(2);
-            assert!((msd_a - expected).abs() < 1e-8, "msd_a lag {}: {}", lag, msd_a);
+        let traj = make_traj_linear(20.0, v, 6);
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(5), ..MsdParams::default() }).unwrap();
+        for (m, (&tot, &x)) in r.msd.iter().zip(&r.msd_x).enumerate() {
+            let want = (v * m as f64).powi(2);
+            assert!((tot - want).abs() < 1e-9, "lag {m}: {tot}");
+            assert!((x - want).abs() < 1e-9, "msd_x lag {m}: {x}");
         }
     }
 
     #[test]
     fn test_msd_unwrap_across_boundary() {
-        // 原子从接近边界处出发，以 0.5 Å/step 运动，会跨越周期边界
-        // unwrap 后 MSD 应等于 (v * lag)²
-        let a = 5.0;
-        let v = 0.5;
-        let x0 = 4.8_f64;
-        let n = 5;
+        let (a, v, n) = (5.0, 0.5, 5);
         let cell = Cell::from_lengths_angles(a, a, a, 90.0, 90.0, 90.0).unwrap();
         let mut traj = Trajectory::new();
         for i in 0..n {
-            let x_raw = x0 + i as f64 * v;
-            let x_wrapped = x_raw - (x_raw / a).floor() * a;
+            let x_raw = 4.8 + i as f64 * v;
             let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
-            frame.add_atom(Atom::new("Fe", Vector3::new(x_wrapped, 0.0, 0.0)));
+            frame.add_atom(Atom::new("Fe", Vector3::new(x_raw - (x_raw / a).floor() * a, 0.0, 0.0)));
             traj.add_frame(frame);
         }
-        let result = calc_msd(&traj, &MsdParams {
-            tau: Some(n), shift: 1, dt: 1.0, elements: None, fit_range: None,
-        }).unwrap();
-
-        for (lag, &msd_val) in result.msd.iter().enumerate() {
-            let expected = (v * lag as f64).powi(2);
-            assert!(
-                (msd_val - expected).abs() < 1e-8,
-                "unwrap lag {}: expected {:.6e}, got {:.6e}", lag, expected, msd_val,
-            );
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(4), ..MsdParams::default() }).unwrap();
+        for (m, &got) in r.msd.iter().enumerate() {
+            assert!((got - (v * m as f64).powi(2)).abs() < 1e-9, "lag {m}: {got}");
         }
     }
 
     #[test]
     fn test_msd_element_filter() {
-        // 轨迹含 Fe 和 Li，只计算 Li 的 MSD
-        let a = 10.0;
-        let v_li = 0.4;
+        let (a, v_li) = (10.0, 0.4);
         let cell = Cell::from_lengths_angles(a, a, a, 90.0, 90.0, 90.0).unwrap();
         let mut traj = Trajectory::new();
         for i in 0..5 {
@@ -639,34 +646,35 @@ mod tests {
             frame.add_atom(Atom::new("Li", Vector3::new(i as f64 * v_li, 0.0, 0.0)));
             traj.add_frame(frame);
         }
-
-        let result = calc_msd(&traj, &MsdParams {
-            tau: Some(5), shift: 1, dt: 1.0,
-            elements: Some(vec!["Li".to_string()]), fit_range: None,
+        let r = calc_msd(&traj, &MsdParams {
+            max_lag: Some(4), elements: Some(vec!["Li".to_string()]), ..MsdParams::default()
         }).unwrap();
-
-        assert_eq!(result.n_atoms, 1);
-        assert!(result.elements.contains(&"Li".to_string()));
-        assert!(!result.elements.contains(&"Fe".to_string()));
-
-        for (lag, &msd_val) in result.msd.iter().enumerate() {
-            let expected = (v_li * lag as f64).powi(2);
-            assert!((msd_val - expected).abs() < 1e-8, "Li MSD lag {}: {}", lag, msd_val);
+        assert_eq!(r.n_atoms, 1);
+        assert_eq!(r.elements, vec!["Li".to_string()]);
+        for (m, &got) in r.msd.iter().enumerate() {
+            assert!((got - (v_li * m as f64).powi(2)).abs() < 1e-9, "Li lag {m}: {got}");
         }
     }
 
     #[test]
-    fn test_msd_time_shift_averaging() {
-        // shift=1, tau=3, 10 帧 → origins: p=0..7 → 8 origins
-        let traj = make_traj_static(10);
-        let result = calc_msd(&traj, &MsdParams {
-            tau: Some(3), shift: 1, dt: 2.0, elements: None, fit_range: None,
-        }).unwrap();
-        assert_eq!(result.n_origins, 8);
-        assert_eq!(result.time.len(), 3);
-        assert!((result.time[0] - 0.0).abs() < 1e-10);
-        assert!((result.time[1] - 2.0).abs() < 1e-10);
-        assert!((result.time[2] - 4.0).abs() < 1e-10);
+    fn test_default_max_lag_is_half_and_origins() {
+        // 11 帧 → 默认 max_lag = 5，时间轴 0..=5，最长 lag 的原点数 11 − 5 = 6
+        let traj = make_traj_static(11);
+        let r = calc_msd(&traj, &MsdParams { dt: 2.0, ..MsdParams::default() }).unwrap();
+        assert_eq!(r.time.len(), 6);
+        assert!((r.time[5] - 10.0).abs() < 1e-12);
+        assert_eq!(r.min_origins, 6);
+        assert_eq!(r.n_frames, 11);
+    }
+
+    #[test]
+    fn test_max_lag_out_of_range() {
+        let traj = make_traj_static(6);
+        for bad in [0, 6, 99] {
+            assert!(calc_msd(&traj, &MsdParams { max_lag: Some(bad), ..MsdParams::default() }).is_err(),
+                "max_lag = {bad} 应被拒绝");
+        }
+        assert!(calc_msd(&traj, &MsdParams { max_lag: Some(5), ..MsdParams::default() }).is_ok());
     }
 
     #[test]
@@ -675,7 +683,7 @@ mod tests {
         let result = calc_msd(&traj, &MsdParams::default()).unwrap();
         let (name, t) = result.to_tables().remove(0);
         assert_eq!(name, "msd");
-        assert_eq!(t.names(), vec!["time", "msd", "msd_a", "msd_b", "msd_c"]);
+        assert_eq!(t.names(), vec!["time", "msd", "msd_x", "msd_y", "msd_z"]);
         assert_eq!(t.n_rows(), result.time.len());
         assert!(t.validate().is_ok());
     }

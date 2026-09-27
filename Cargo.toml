@@ -25,6 +25,8 @@ ndarray = "0.17"
 ndarray-npy = "0.10"
 # 并行计算库
 rayon = "1.8"
+# FFT：时间相关函数（msd）的 O(N log N) 全原点平均
+rustfft = "6.4"
 # 错误处理
 thiserror = "2.0"
 anyhow = "1.0"

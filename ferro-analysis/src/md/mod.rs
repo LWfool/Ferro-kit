@@ -3,7 +3,7 @@
 //! Current implementations:
 //!   - [`gr`]       — radial distribution function g(r) and coordination number CN(r)
 //!   - [`sq`]       — structure factor S(q) via Fourier transform of g(r)
-//!   - [`msd`]      — mean squared displacement (time-shift averaging, NPT-safe)
+//!   - [`msd`]      — mean squared displacement (all origins via FFT, TOR unwrapping)
 //!   - [`angle`]    — bond angle distribution
 //!   - [`vanhove`]  — van Hove self-correlation function Gs(r, τ)
 //!
@@ -19,6 +19,7 @@ pub mod cube_jump;
 pub mod cube_radius;
 pub mod cube_sdf;
 pub mod scattering_data;
+pub mod correlate;
 
 pub(crate) mod util;
 

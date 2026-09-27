@@ -90,28 +90,27 @@ fn run_gr(
     calc_gr(&traj.inner, &params).map_err(pyerr)
 }
 
-/// 均方位移 MSD(t)（时间原点平均，NPT 安全）。
+/// 均方位移 MSD(t)：每个 lag 对全部时间原点平均（FFT），周期体系按 TOR 解包裹。
 ///
-/// 返回字典：`"time"` \[fs\]、`"msd"`（总）、`"msd_a"/"msd_b"/"msd_c"`
-/// （周期体系沿晶轴，非周期体系沿 x/y/z）。
+/// 返回字典：`"time"` \[fs\]、`"msd"`（总）、`"msd_x"/"msd_y"/"msd_z"`（笛卡尔分量，
+/// 三者之和等于总量）。`max_lag` 默认取帧数的一半。
 #[pyfunction]
-#[pyo3(signature = (traj, dt=1.0, shift=1, tau=None, elements=None))]
+#[pyo3(signature = (traj, dt=1.0, max_lag=None, elements=None))]
 fn msd(
     traj: &PyTrajectory,
     dt: f64,
-    shift: usize,
-    tau: Option<usize>,
+    max_lag: Option<usize>,
     elements: Option<Vec<String>>,
 ) -> PyResult<HashMap<String, Vec<f64>>> {
-    let params = MsdParams { tau, shift, dt, elements, fit_range: None };
+    let params = MsdParams { max_lag, dt, elements, fit_range: None };
     let res = calc_msd(&traj.inner, &params).map_err(pyerr)?;
 
     let mut out: HashMap<String, Vec<f64>> = HashMap::new();
     out.insert("time".to_string(), res.time);
     out.insert("msd".to_string(), res.msd);
-    out.insert("msd_a".to_string(), res.msd_a);
-    out.insert("msd_b".to_string(), res.msd_b);
-    out.insert("msd_c".to_string(), res.msd_c);
+    out.insert("msd_x".to_string(), res.msd_x);
+    out.insert("msd_y".to_string(), res.msd_y);
+    out.insert("msd_z".to_string(), res.msd_z);
     Ok(out)
 }
 

@@ -456,16 +456,17 @@ pub fn print_msd() {
     println!(
         r#"ferro traj msd — Mean Square Displacement
 
-  MSD(t) = <|r(t₀+t) − r(t₀)|²> averaged over time origins, with the total and
-  the per-axis (a/b/c) components.
+  MSD(t) = <|r(t₀+t) − r(t₀)|²> over ALL time origins (FFT), with the total
+  and the Cartesian x/y/z components. Periodic inputs are unwrapped with the
+  TOR scheme (NPT-safe).
 
 Parameters:
   --dt        FLOAT      Timestep between frames [fs]   default: 1.0
-  --shift     INT        Time-origin stride             default: 1
+  --max-lag   INT        Longest lag [frames], 1..N-1   default: N/2
   --elements  Fe,O,...   Track only these elements      default: all
-  --fit-range FMIN,FMAX  Linear-fit window as fractions of the MSD
-                         curve; reports self-diffusion D = slope/6
-                         (Einstein, 3-D) and R²
+  --fit-range FMIN,FMAX  Linear-fit window as fractions of the lag axis
+                         (0..max-lag); reports D = slope/6, its error
+                         d_err and R²
   --last-n    INT        Use only the last N frames
   --ncore     INT        Parallel threads
   -o DIR                 Output directory; --mkdir creates it unasked
