@@ -105,6 +105,12 @@ const PAGES: &[Page] = &[
         section: None,
     },
     Page {
+        topic: "traj bondlife",
+        source: "analysis/bondlife.md",
+        text: include_str!("../../docs/src/analysis/bondlife.md"),
+        section: None,
+    },
+    Page {
         topic: "map density",
         source: "analysis/cube-density.md",
         text: include_str!("../../docs/src/analysis/cube-density.md"),

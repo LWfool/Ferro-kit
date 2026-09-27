@@ -5,7 +5,7 @@ implements them.  Since 0.2.0 the eight original `fe-*` binaries have all been r
 compatibility layer — the output formats changed at the same time, and keeping `fe-traj` would let an old script "succeed" while emitting a csv it cannot parse itself.  Silently bad data is harder to track down than a command that is gone.
 
 ```
-ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → stacked csv
+ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife   → stacked csv
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                      → six stacked csv
                                                                  + optional labelled trajectory
@@ -79,6 +79,7 @@ label comes before the suffix, so `ls gr_P-O_*` lists the results for one pair a
 | `traj angle` | `-a/-b/-c` or `-x/-y/-z` | `angle_O-P-O.csv`, `angle_all.csv` with no selection |
 | `traj msd` / `vacf` / `vanhove` | `--elements`, **sorted and deduplicated** | `msd_O-P.csv`, `msd_all.csv` with no selection |
 | `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv` (both are required, so `all` is never reached) |
+| `traj bondlife` | `--center`-`--neighbor` | `bondlife_Si-O.csv` and `bondlife_events_Si-O.csv` |
 | `traj sq` | none (see below) | `sq.csv` |
 | `ferro net`, `ferro map` | none | `network_qn.csv`, `density.cube` |
 
@@ -504,6 +505,28 @@ Every lag averages all (molecule, origin) pairs valid at both ends (FFT); `integ
 Details in [Rotational correlation](analysis/rotcorr.md).
 
 Columns: `file, time, c2, integral` (`c1` with `--legendre 1`)
+
+### `bondlife` — bond lifetimes and bond events
+
+Intermittent $C_I(t)$ and continuous $S_C(t)$ bond correlation functions over all time origins, and
+bonds formed / broken per frame.  Details in [Bond lifetimes](analysis/bondlife.md).
+
+```bash
+ferro traj bondlife -i glass_water.lammpstrj --center Si --neighbor O --r-bond 2.2 --dt 1000 -o run1
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--center` | (required) | centre element |
+| `--neighbor` | (required) | neighbour element, may equal `--center` |
+| `--r-bond` | (required) | a free pair bonds at $r \le$ this [Å] |
+| `--r-break` | `--r-bond` | a bond survives while $r \le$ this [Å] |
+| `--intermittency` | 0 | fill breaks of at most this many frames ($S_C$, events) |
+| `--dt` | 1.0 | time between stored frames [fs] |
+| `--max-lag` | N/2 | longest lag [frames] |
+
+Columns: `bondlife_<C>-<N>.csv` → `file, time, c_int, s_cont`; `bondlife_events_<C>-<N>.csv` →
+`file, time, n_bonds, formed, broken`
 
 ### `vanhove` — Van Hove self-correlation
 
