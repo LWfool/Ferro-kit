@@ -426,15 +426,19 @@ partials are a diagnostic decomposition that sums back to the total.
 ### `msd` — mean squared displacement
 
 ```bash
-ferro traj msd -i traj.lammpstrj --dt 2.0 --shift 10 --elements Li --fit-range 0.3,0.8 -o run1
+ferro traj msd -i traj.lammpstrj --dt 2.0 --elements Li --fit-range 0.3,0.8 -o run1
 ```
+
+Every lag is averaged over all time origins (FFT); periodic inputs are unwrapped with the TOR scheme;
+columns `file, time, msd, msd_x, msd_y, msd_z` (Cartesian).  The conventions are spelled out in
+[MSD](analysis/msd.md).
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dt` | 1.0 | time step [fs] |
-| `--shift` | 1 | spacing between time origins [frames] |
+| `--dt` | 1.0 | time between stored frames [fs] |
+| `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
 | `--elements` | (all) | comma-separated element filter |
-| `--fit-range` | (none) | `FMIN,FMAX` linear-fit window (as a fraction of the trajectory) → the self-diffusion coefficient D |
+| `--fit-range` | (none) | `FMIN,FMAX` linear-fit window as fractions of the lag axis (`0..max-lag`) → the self-diffusion coefficient D |
 
 Giving `--fit-range` computes $D = \text{slope}/6$, its error `d_err` and $R^2$, prints them, and adds
 `t_lo, t_hi, points, slope, intercept, d_ang2_per_fs, d_err, r2` to each input's row in the `[inputs]` list.

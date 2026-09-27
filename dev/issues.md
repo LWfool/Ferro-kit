@@ -5,6 +5,8 @@
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | `cell.rs` | 浮点误差约 1e-15 | 断言用 `< 1e-10`，不能用 `assert_eq!` |
+| `msd.rs` FFT | `S1 − 2·S2` 是两个 ~\|r\|² 的大数相减，解包裹坐标离原点越远越吃有效位 | 每条序列先减均值（MSD 平移不变） |
+| TOR 单测 | 原子从未跨边界时 TOR 与格点视图结果**相同**，这种测试什么也证明不了 | 先跨一次边界、再让盒子伸缩（`test_tor_does_not_follow_lattice_scaling`） |
 | `cube_density.rs` | 原子坐标放格点边界会导致归属歧义 | 测试中用格点中心 `(n + 0.5) / N * L` |
 | `cell.rs` | `wrap_position` 负数行为 | 用 `rem_euclid(1.0)`，不要用 `x - x.floor()` |
 | 全局 | clippy snake_case | 变量名不能用单大写字母（如 `L`），改为 `box_len` 等 |
