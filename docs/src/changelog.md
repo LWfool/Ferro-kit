@@ -157,7 +157,7 @@ from the header must read the `d_ang2_per_fs` column of `[inputs]` instead.
 formulas on a terminal, the plain source when redirected) · VASP `OUTCAR` and
 `vasprun.xml` reading · CP2K single-point reading · `dataset collect --type
 inspect` (diagnostics, no dataset) · `--type nep|extxyz` and `--ratio 8:1:1`
-on `filter` and `merge` · `--qn` on `net` · `scripts/plot_msd.py`.
+on `filter` and `merge` · `--qn` on `net` · `scripts/plot_msd.py` · `traj bondlife` (bond lifetimes and bond formation / breaking events).
 
 ### Help pages are shorter
 

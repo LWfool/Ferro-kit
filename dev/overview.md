@@ -361,3 +361,6 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 同日第三次追加（仍在 0.3.3）：**`traj vacf` / `rotcorr` 数值全变** —— 全原点 FFT、
 梯形积分（旧的左矩形法使 D 偏大 C(0)dt/6）、rotcorr 只平均两端有效的配对；
 `--shift` 删、`--tau` → `--max-lag`。vanhove 仍待改。
+
+同日第四次追加（仍在 0.3.3）：新增 `traj bondlife`（间歇/连续键相关函数 + 逐帧成键
+断键事件），`rotcorr` 新增 `--vector bond` 与 `--legendre 1|2`。均为新功能，无迁移。
