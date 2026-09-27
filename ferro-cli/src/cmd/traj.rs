@@ -13,12 +13,12 @@ use anyhow::{anyhow, Result};
 use clap::{Args, Subcommand};
 use ferro_analysis::{
     calc_angle, calc_gr, calc_msd, calc_rotcorr, calc_sq_from_gr, calc_vacf, calc_vanhove,
-    AngleParams, AngleResult, GroupBy, GrParams, GrResult, MsdParams, MsdResult, RotCorrParams,
+    AngleParams, AngleResult, GroupBy, GrParams, GrResult, Legendre, MsdParams, MsdResult, RotCorrParams,
     RotCorrResult, SqParams, SqResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
 
 use crate::args::common::{CommonArgs, SelectArgs};
-use crate::args::traj::SqWeightingCli;
+use crate::args::traj::{RotVectorCli, SqWeightingCli};
 use crate::batch::{self, Summary};
 use crate::help;
 use ferro_core::Trajectory;
@@ -198,6 +198,12 @@ pub struct RotcorrCmd {
     /// Bond search cutoff [Å]
     #[arg(long, default_value = "1.2")]
     pub r_cut: f64,
+    /// Orientation vector: sum of the centre's bonds, or each bond fixed in frame 0
+    #[arg(long, value_enum, default_value_t = RotVectorCli::Sum)]
+    pub vector: RotVectorCli,
+    /// Legendre order of the correlation: 1 or 2
+    #[arg(long, default_value = "2", value_parser = clap::value_parser!(u8).range(1..=2))]
+    pub legendre: u8,
 }
 
 #[derive(Args, Debug)]
@@ -564,16 +570,19 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         r_cut: c.r_cut,
         dt: c.time.dt,
         max_lag: c.time.max_lag,
+        vector: c.vector.into(),
+        legendre: if c.legendre == 1 { Legendre::P1 } else { Legendre::P2 },
     };
     let (results, failures, out) =
         drive(&c.common, Some(label), |traj| Ok(calc_rotcorr(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
     // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 r_cut 抓不稳邻居
-    let mut summary = Summary::new(&["max_lag", "min_origins", "valid_fraction"]);
+    // atoms = 中心原子数；units = 参与相关的单元（sum 模式同中心数，bond 模式为键数）
+    let mut summary = Summary::new(&["units", "max_lag", "min_origins", "valid_fraction"]);
     for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.n_frames, r.n_molecules, &[
-            (r.time.len() - 1) as f64, r.min_origins as f64, r.valid_fraction,
+        summary.ok(batch::label_of(path), r.n_frames, r.n_centers, &[
+            r.n_units as f64, (r.time.len() - 1) as f64, r.min_origins as f64, r.valid_fraction,
         ]);
     }
     summary.failed(&failures);

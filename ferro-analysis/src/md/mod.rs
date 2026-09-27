@@ -29,7 +29,7 @@ pub use msd::{MsdParams, MsdResult, calc_msd};
 pub use angle::{AngleParams, AngleResult, AngleStats, calc_angle};
 pub use vanhove::{VanHoveParams, VanHoveResult, calc_vanhove};
 pub use vacf::{VacfParams, VacfResult, calc_vacf};
-pub use rotcorr::{RotCorrParams, RotCorrResult, calc_rotcorr};
+pub use rotcorr::{Legendre, RotCorrParams, RotCorrResult, RotVector, calc_rotcorr};
 pub use cube_density::{CubeMode, CubeDensityParams, CubeDensityResult, calc_cube_density};
 pub use cube_jump::{JumpPosition, CubeJumpParams, CubeJumpResult, calc_cube_jump};
 pub use cube_radius::{CubeRadiusParams, CubeRadiusResult, calc_cube_radius};

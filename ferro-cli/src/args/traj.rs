@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use ferro_analysis::SqWeighting;
+use ferro_analysis::{RotVector, SqWeighting};
 
 #[derive(ValueEnum, Clone, Debug)]
 pub enum TrajMode {
@@ -26,6 +26,23 @@ impl From<SqWeightingCli> for SqWeighting {
             SqWeightingCli::Xrd     => SqWeighting::Xrd,
             SqWeightingCli::Neutron => SqWeighting::Neutron,
             SqWeightingCli::Both    => SqWeighting::Both,
+        }
+    }
+}
+
+/// CLI-side orientation-vector choice for `traj rotcorr`; converts into `RotVector`.
+#[derive(ValueEnum, Clone, Copy, Debug, Default)]
+pub enum RotVectorCli {
+    #[default]
+    Sum,
+    Bond,
+}
+
+impl From<RotVectorCli> for RotVector {
+    fn from(v: RotVectorCli) -> Self {
+        match v {
+            RotVectorCli::Sum  => RotVector::Sum,
+            RotVectorCli::Bond => RotVector::Bond,
         }
     }
 }

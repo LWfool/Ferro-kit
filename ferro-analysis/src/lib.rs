@@ -20,7 +20,7 @@ pub use md::{
     AngleParams, AngleResult, AngleStats, calc_angle,
     VanHoveParams, VanHoveResult, calc_vanhove,
     VacfParams, VacfResult, calc_vacf,
-    RotCorrParams, RotCorrResult, calc_rotcorr,
+    Legendre, RotCorrParams, RotCorrResult, RotVector, calc_rotcorr,
     CubeMode, CubeDensityParams, CubeDensityResult, calc_cube_density,
     CubeRadiusParams, CubeRadiusResult, calc_cube_radius,
     ClusterSdfParams, ClusterFamily, RmsdStats, ClusterSdfResult, calc_cluster_sdf,

@@ -2,16 +2,23 @@
 //!
 //!   C₂(m) = ⟨P₂(û(t)·û(t+m))⟩,  P₂(x) = (3x² − 1)/2
 //!
-//! Orientation vector: u_c(t) = Σ_{n ∈ neighbors(c, r_cut)} minimum_image(r_n − r_c) —
-//! the bond vectors from each center atom to every neighbor-element atom within
-//! `r_cut`, found afresh in every frame. A center with no neighbor in a frame has
-//! no orientation there (an *invalid* frame).
+//! Two orientation vectors ([`RotVector`]):
+//! - `Sum`: u_c(t) = Σ_{n ∈ neighbors(c, r_cut, t)} minimum_image(r_n − r_c) — the bonds
+//!   from each center to every neighbor-element atom within `r_cut`, found afresh in
+//!   every frame. A center with no neighbor in a frame has no orientation there (an
+//!   *invalid* frame).
+//! - `Bond`: every center–neighbor pair within `r_cut` **in the first frame** is one
+//!   unit, followed by atom identity for the whole run whatever its length later —
+//!   `gmx rotacf -d`. Every frame is valid.
+//!
+//! Order ([`Legendre`]): `C₁ = ⟨û(t)·û(t+m)⟩` or `C₂ = ⟨P₂(û(t)·û(t+m))⟩`.
 //!
 //! Every lag averages over all valid (molecule, origin) pairs — pairs whose vectors
 //! are valid at both ends. With `q_ij = û_i û_j` (zero on invalid frames) and the
 //! validity indicator χ, `(û(t)·û(t+m))² = Σ_ij q_ij(t) q_ij(t+m)`, so
 //!
 //!   C₂(m) = [ (3/2) Σ_ij w_ij AC[q_ij](m) − (1/2) AC[χ](m) ] / AC[χ](m)
+//!   C₁(m) = Σ_i AC[û_i](m) / AC[χ](m)
 //!
 //! with `w = 1` on the diagonal, 2 off it, and AC the all-origin autocorrelation
 //! sum (FFT, [`super::correlate`]). With every frame valid this is exactly the
@@ -27,6 +34,26 @@ use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
+/// Which vector stands for a unit's orientation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RotVector {
+    /// Sum of the center's bonds within `r_cut`, neighbors found per frame
+    #[default]
+    Sum,
+    /// One center–neighbor bond per unit, pairs fixed in the first frame (`gmx rotacf -d`)
+    Bond,
+}
+
+/// Order of the Legendre polynomial in `C_ℓ(t) = ⟨P_ℓ(û(0)·û(t))⟩`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Legendre {
+    /// `P₁(x) = x`
+    P1,
+    /// `P₂(x) = (3x² − 1)/2`
+    #[default]
+    P2,
+}
+
 /// Parameters for rotational autocorrelation function calculation.
 #[derive(Debug, Clone)]
 pub struct RotCorrParams {
@@ -40,6 +67,10 @@ pub struct RotCorrParams {
     pub max_lag: Option<usize>,
     /// Time step per frame \[fs\] (default: 1.0)
     pub dt: f64,
+    /// Orientation vector (default: `Sum`)
+    pub vector: RotVector,
+    /// Legendre order (default: `P2`)
+    pub legendre: Legendre,
 }
 
 impl Default for RotCorrParams {
@@ -50,6 +81,8 @@ impl Default for RotCorrParams {
             r_cut: 1.2,
             max_lag: None,
             dt: 1.0,
+            vector: RotVector::Sum,
+            legendre: Legendre::P2,
         }
     }
 }
@@ -58,22 +91,25 @@ impl Default for RotCorrParams {
 
 /// Result of a rotational autocorrelation function calculation.
 ///
-/// `rotcorr[m] = C₂(m·dt) ∈ [−0.5, 1]`, `NaN` at a lag with no valid pair.
+/// `rotcorr[m] = C_ℓ(m·dt)` — in `[−0.5, 1]` for P₂, `[−1, 1]` for P₁ — and `NaN`
+/// at a lag with no valid pair.
 #[derive(Debug, Clone)]
 pub struct RotCorrResult {
     /// Lag-time axis \[fs\]; `time[m] = m · dt`, `m = 0 ..= max_lag`
     pub time: Vec<f64>,
-    /// P₂ rotational correlation function C₂(t)
+    /// Rotational correlation function C_ℓ(t)
     pub rotcorr: Vec<f64>,
     /// Running trapezoidal integral ∫₀ᵗ C₂ dτ \[fs\]
     pub integral: Vec<f64>,
     /// Frames in the trajectory
     pub n_frames: usize,
-    /// Number of center atoms (molecules)
-    pub n_molecules: usize,
+    /// Center atoms of the center element
+    pub n_centers: usize,
+    /// Units correlated: center atoms (`Sum`) or bonds (`Bond`)
+    pub n_units: usize,
     /// Time origins at the longest lag, `n_frames − max_lag`
     pub min_origins: usize,
-    /// Fraction of (molecule, frame) with a valid orientation vector
+    /// Fraction of (unit, frame) with a valid orientation vector (1 for `Bond`)
     pub valid_fraction: f64,
     pub params: RotCorrParams,
 }
@@ -103,45 +139,73 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     let has_cell = ref_frame.cell.is_some();
     let r_cut2 = params.r_cut * params.r_cut;
 
-    // Precompute orientation vector orient[step][mol_local] = [ux, uy, uz] for every center atom in each frame.
-    // Orientation vector = sum of all center→neighbor bond vectors within r_cut (minimum-image corrected).
-    let orient: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
-        center_indices.iter().map(|&ci| {
-            let mut ux = 0.0_f64;
-            let mut uy = 0.0_f64;
-            let mut uz = 0.0_f64;
-            let c_pos = frame.atoms[ci].position;
-            for (ni, na) in frame.atoms.iter().enumerate() {
-                if ni == ci || na.element != params.neighbor { continue; }
-                let diff = if has_cell {
-                    if let Some(cell) = &frame.cell {
-                        cell.minimum_image(na.position - c_pos)
-                            .expect("cell is non-singular")
-                    } else {
-                        na.position - c_pos
-                    }
-                } else {
-                    na.position - c_pos
-                };
-                let d2 = diff.norm_squared();
-                if d2 < r_cut2 {
-                    ux += diff.x;
-                    uy += diff.y;
-                    uz += diff.z;
-                }
-            }
-            [ux, uy, uz]
-        }).collect()
-    }).collect();
+    // 当帧的键矢量：周期体系取最小镜像
+    let bond = |frame: &ferro_core::Frame, from: usize, to: usize| {
+        let d = frame.atoms[to].position - frame.atoms[from].position;
+        match (&frame.cell, has_cell) {
+            (Some(cell), true) => cell.minimum_image(d).expect("cell is non-singular"),
+            _ => d,
+        }
+    };
+    let is_neighbor = |i: usize, ci: usize| -> bool {
+        i != ci && ref_frame.atoms[i].element == params.neighbor
+    };
 
-    let n_mol = center_indices.len();
+    // orient[帧][单元] = 取向向量（未归一化；零向量 = 该帧无效）
+    let orient: Vec<Vec<[f64; 3]>> = match params.vector {
+        RotVector::Sum => traj.frames.iter().map(|frame| {
+            center_indices.iter().map(|&ci| {
+                let mut u = [0.0_f64; 3];
+                let mut len_sum = 0.0;
+                for ni in (0..frame.atoms.len()).filter(|&ni| is_neighbor(ni, ci)) {
+                    let d = bond(frame, ci, ni);
+                    if d.norm_squared() < r_cut2 {
+                        u[0] += d.x;
+                        u[1] += d.y;
+                        u[2] += d.z;
+                        len_sum += d.norm();
+                    }
+                }
+                // 对称单元的键相互抵消时，合向量只剩 ~1e-16 的舍入残差，方向是噪声。
+                // 相对键长之和判抵消（绝对阈值 1e-30 挡不住它），按无效帧处理
+                let n = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
+                if n < 1e-6 * len_sum { [0.0; 3] } else { u }
+            }).collect()
+        }).collect(),
+        RotVector::Bond => {
+            // 第一帧定键，之后按原子身份一直跟踪（gmx rotacf -d）：不再看距离
+            let pairs: Vec<(usize, usize)> = center_indices.iter()
+                .flat_map(|&ci| (0..ref_frame.atoms.len())
+                    .filter(move |&ni| is_neighbor(ni, ci))
+                    .map(move |ni| (ci, ni)))
+                .filter(|&(ci, ni)| bond(ref_frame, ci, ni).norm_squared() < r_cut2)
+                .collect();
+            if pairs.is_empty() {
+                return Err(ChemError::ValidationError(format!(
+                    "no {}-{} bond within r_cut = {} Ang in the first frame",
+                    params.center, params.neighbor, params.r_cut)));
+            }
+            traj.frames.par_iter().map(|frame| {
+                pairs.iter().map(|&(ci, ni)| {
+                    let d = bond(frame, ci, ni);
+                    [d.x, d.y, d.z]
+                }).collect()
+            }).collect()
+        }
+    };
+
+    let n_units = orient[0].len();
 
     // 逐分子：单位向量的 6 个分量 q_ij（无效帧为 0）与有效性指示 χ，各做全原点自相关
     let plan = AutocorrPlan::new(n_frames);
     let zero = || (vec![0.0; max_lag + 1], vec![0.0; max_lag + 1]);
-    const PAIRS: [(usize, usize, f64); 6] =
-        [(0, 0, 1.0), (1, 1, 1.0), (2, 2, 1.0), (0, 1, 2.0), (1, 2, 2.0), (2, 0, 2.0)];
-    let (sq, cnt) = (0..n_mol).into_par_iter()
+    // 分量 (i, j, 权重)：P₂ 取 û_iû_j（非对角 ×2），P₁ 取 û_i（j = None）
+    let comps: &[(usize, Option<usize>, f64)] = match params.legendre {
+        Legendre::P2 => &[(0, Some(0), 1.0), (1, Some(1), 1.0), (2, Some(2), 1.0),
+                          (0, Some(1), 2.0), (1, Some(2), 2.0), (2, Some(0), 2.0)],
+        Legendre::P1 => &[(0, None, 1.0), (1, None, 1.0), (2, None, 1.0)],
+    };
+    let (sq, cnt) = (0..n_units).into_par_iter()
         .map_init(|| (plan.worker(), vec![0.0; n_frames], vec![0.0; max_lag + 1]), |(ac, x, s), k| {
             let unit: Vec<Option<[f64; 3]>> = orient.iter().map(|step| {
                 let [a, b, c] = step[k];
@@ -150,9 +214,9 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 (n2 >= 1e-30).then(|| { let n = n2.sqrt(); [a / n, b / n, c / n] })
             }).collect();
             let (mut sq, mut cnt) = zero();
-            for &(i, j, w) in &PAIRS {
+            for &(i, j, w) in comps {
                 for (xt, u) in x.iter_mut().zip(&unit) {
-                    *xt = u.map_or(0.0, |u| u[i] * u[j]);
+                    *xt = u.map_or(0.0, |u| u[i] * j.map_or(1.0, |j| u[j]));
                 }
                 ac.sums(x, s);
                 for (o, v) in sq.iter_mut().zip(s.iter()) {
@@ -177,14 +241,20 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         .sum::<usize>();
     if n_valid == 0 {
         return Err(ChemError::ValidationError(format!(
-            "no {} atom has a {} neighbor within r_cut = {} Ang in any frame",
+            "no {} atom has an orientation in any frame: either no {} neighbor within \
+             r_cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
+             use --vector bond)",
             params.center, params.neighbor, params.r_cut)));
     }
 
     // 有效配对数是 0/1 序列的自相关，FFT 下带舍入：四舍五入回整数；为 0 的 lag 给 NaN
     let rotcorr: Vec<f64> = sq.iter().zip(&cnt).map(|(&q, &k)| {
         let k = k.round();
-        if k < 1.0 { f64::NAN } else { (1.5 * q - 0.5 * k) / k }
+        match (k < 1.0, params.legendre) {
+            (true, _) => f64::NAN,
+            (false, Legendre::P2) => (1.5 * q - 0.5 * k) / k,
+            (false, Legendre::P1) => q / k,
+        }
     }).collect();
     let time: Vec<f64> = (0..=max_lag).map(|m| m as f64 * params.dt).collect();
     let integral = cumulative_trapezoid(&rotcorr, params.dt);
@@ -192,9 +262,10 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     Ok(RotCorrResult {
         time, rotcorr, integral,
         n_frames,
-        n_molecules: n_mol,
+        n_centers: center_indices.len(),
+        n_units,
         min_origins: n_frames - max_lag,
-        valid_fraction: n_valid as f64 / (n_mol * n_frames) as f64,
+        valid_fraction: n_valid as f64 / (n_units * n_frames) as f64,
         params: params.clone(),
     })
 }
@@ -204,13 +275,14 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
 impl RotCorrResult {
     /// Projects the result into the table the writers consume.
     ///
-    /// Rotational correlation C2(t): `time, c2, integral`.
+    /// Rotational correlation: `time, c2, integral` (`c1` in place of `c2` for P₁).
     /// The `file` column is added by the caller when stacking several inputs
     /// (see `ferro_core::Table::concat_union`).
     pub fn to_tables(&self) -> Vec<(String, Table)> {
         let mut t = Table::new();
         t.push_num("time", self.time.clone())
-            .push_num("c2", self.rotcorr.clone())
+            .push_num(match self.params.legendre { Legendre::P1 => "c1", Legendre::P2 => "c2" },
+                self.rotcorr.clone())
             .push_num("integral", self.integral.clone());
         vec![("rotcorr".to_string(), t)]
     }
@@ -225,7 +297,14 @@ impl RotCorrResult {
             format!("center   = {}", p.center),
             format!("neighbor = {}", p.neighbor),
             format!("r_cut    = {} Ang", p.r_cut),
-            "vector   = sum of center->neighbor bonds within r_cut, found per frame".to_string(),
+            match p.vector {
+                RotVector::Sum => "vector   = sum: sum of center->neighbor bonds within r_cut, found per frame",
+                RotVector::Bond => "vector   = bond: each center-neighbor pair within r_cut in frame 0, followed by atom identity (gmx rotacf -d)",
+            }.to_string(),
+            match p.legendre {
+                Legendre::P1 => "order    = P1: c = <u(t).u(t+m)>",
+                Legendre::P2 => "order    = P2: c = <(3 (u(t).u(t+m))^2 - 1) / 2>",
+            }.to_string(),
             match p.max_lag {
                 Some(m) => format!("max lag  = {m} frames"),
                 None => "max lag  = half of each input's frames (see [inputs])".to_string(),
@@ -414,6 +493,96 @@ mod tests {
         assert_eq!(res.time.len(), 6);
         assert_eq!(res.min_origins, 6);
         assert_eq!(res.n_frames, 11);
+    }
+
+    /// 正四面体 PO₄（P 在原点），每帧绕 z 轴转 `w` 弧度
+    fn rotating_tetrahedron(n: usize, w: f64) -> Trajectory {
+        let cell = Cell::from_lengths_angles(30.0, 30.0, 30.0, 90.0, 90.0, 90.0).unwrap();
+        let s = 1.55 / 3f64.sqrt();
+        let base = [[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]];
+        let c = Vector3::new(15.0, 15.0, 15.0);
+        let mut traj = Trajectory::new();
+        for t in 0..n {
+            let (sn, cs) = (w * t as f64).sin_cos();
+            let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+            f.add_atom(Atom::new("P", c));
+            for b in base {
+                let (x, y) = (b[0] * s, b[1] * s);
+                f.add_atom(Atom::new("O", c + Vector3::new(cs * x - sn * y, sn * x + cs * y, b[2] * s)));
+            }
+            traj.add_frame(f);
+        }
+        traj
+    }
+
+    #[test]
+    fn test_sum_cancels_on_tetrahedron_bond_does_not() {
+        let traj = rotating_tetrahedron(12, 0.3);
+        let sum = RotCorrParams { center: "P".into(), neighbor: "O".into(), r_cut: 1.8, ..Default::default() };
+        let err = calc_rotcorr(&traj, &sum).unwrap_err().to_string();
+        assert!(err.contains("cancel") && err.contains("--vector bond"), "应提示键向量抵消：{err}");
+
+        // 绕 z 转 θ：与 z 轴夹角 β 的键，cos = cos²β + sin²β·cosθ；正四面体四个键 cos²β 都是 1/3
+        let bond = RotCorrParams { vector: RotVector::Bond, max_lag: Some(11), ..sum };
+        let r = calc_rotcorr(&traj, &bond).unwrap();
+        assert_eq!(r.n_units, 4);
+        assert_eq!(r.n_centers, 1);
+        for (m, &got) in r.rotcorr.iter().enumerate() {
+            let x = 1.0 / 3.0 + 2.0 / 3.0 * (0.3 * m as f64).cos();
+            let want = 0.5 * (3.0 * x * x - 1.0);
+            assert!((got - want).abs() < 1e-10, "lag {m}: {got} vs {want}");
+        }
+    }
+
+    #[test]
+    fn test_p1_bond_matches_brute_force() {
+        // 3 个 O 各带一个 H：bond 与 sum 的单元相同；P1 = ⟨û(t)·û(t+m)⟩ 暴力平均
+        let traj = tumbling(24, |_, _| false);
+        let r = calc_rotcorr(&traj, &RotCorrParams {
+            vector: RotVector::Bond, legendre: Legendre::P1, max_lag: Some(23), ..Default::default()
+        }).unwrap();
+        let unit = |t: usize, k: usize| {
+            let f = &traj.frames[t];
+            f.cell.as_ref().unwrap()
+                .minimum_image(f.atoms[2 * k + 1].position - f.atoms[2 * k].position).unwrap().normalize()
+        };
+        for m in 0..=23 {
+            let mut acc = 0.0;
+            for t in 0..24 - m { for k in 0..3 { acc += unit(t, k).dot(&unit(t + m, k)); } }
+            let want = acc / (3 * (24 - m)) as f64;
+            assert!((r.rotcorr[m] - want).abs() < 1e-10, "lag {m}: {} vs {want}", r.rotcorr[m]);
+        }
+        assert_eq!(r.to_tables()[0].1.names(), vec!["time", "c1", "integral"]);
+    }
+
+    #[test]
+    fn test_p1_antiparallel_is_minus_one() {
+        let traj = make_perpendicular_orientations();
+        let r = calc_rotcorr(&traj, &RotCorrParams {
+            r_cut: 1.5, legendre: Legendre::P1, max_lag: Some(1), ..Default::default()
+        }).unwrap();
+        assert!(r.rotcorr[1].abs() < 1e-10, "垂直时 P1 = 0，实为 {}", r.rotcorr[1]);
+    }
+
+    #[test]
+    fn test_bond_is_followed_beyond_r_cut() {
+        // 第 0 帧键长 0.96 定键；之后 H 退到 4 Å：sum 模式判为无效，bond 模式照 GROMACS 继续跟踪
+        let traj = tumbling(6, |t, _| t >= 2);
+        let r = calc_rotcorr(&traj, &RotCorrParams {
+            vector: RotVector::Bond, max_lag: Some(5), ..Default::default()
+        }).unwrap();
+        assert!((r.valid_fraction - 1.0).abs() < 1e-12);
+        assert!(r.rotcorr.iter().all(|c| c.is_finite()), "bond 模式每个 lag 都有值：{:?}", r.rotcorr);
+        let sum = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), ..Default::default() }).unwrap();
+        assert!(sum.valid_fraction < 1.0);
+    }
+
+    #[test]
+    fn test_bond_needs_a_bond_in_the_first_frame() {
+        let traj = tumbling(4, |t, _| t == 0);
+        let err = calc_rotcorr(&traj, &RotCorrParams { vector: RotVector::Bond, ..Default::default() })
+            .unwrap_err().to_string();
+        assert!(err.contains("first frame"), "{err}");
     }
 
     #[test]
