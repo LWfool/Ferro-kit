@@ -5,6 +5,43 @@
 
 ## 优先级高
 
+### 全仓规则合规扫描的遗留违规（2026-09-27 扫描）
+
+对照 `CLAUDE.md` 逐条扫的结果。**已查无违规**：分层依赖、`clippy` 零警告、
+`as_slice()`、`Molecule`、`label()` 反解析、列并集补 NaN、手册页三处登记、
+`ferro-python` 版本同步。以下按严重程度排，每条独立可做：
+
+1. **`ferro-io` 与 `ferro-workflow` 整个 crate 用 `anyhow`**，违反「库 crate 用
+   `ChemError`」。io 的 readers/writers 约 30 个文件、workflow 的 `job_builder.rs`
+   `cp2k.rs` `qe.rs`；两者 `Cargo.toml` 都依赖 `anyhow`。上方「评估后保留的」只说
+   保留依赖，没说库层可用。**待定**：A 迁到 `ChemError`（量大，牵动 CLI 与 python
+   的调用点）；B 在 `CLAUDE.md` 写明例外及理由
+2. **`ferro map` 的产物名随输入数变**：`cmd/map.rs` 的 `stem_for` 与
+   `let multi = inputs.len() > 1` —— 单输入 `density.cube`，多输入
+   `density_<stem>.cube`。正是归档里「`-i` 恒为 `Vec`，单一代码路径」点名的
+   「两套命名」。修法待定（恒带 stem / 只看 `-s`），属破坏性改动，要同步手册与
+   changelog
+3. **帮助页偏离五段模板**：
+   - `ferro net`（`cmd/net.rs` 的 `HELP_EXTRA`）≈50 行，Output 11 行（上限 4），
+     Output 后挂着 Qn 口径说明（应进 `docs/src/analysis/network.md`），Examples 5 条
+   - `job -s qe|cp2k|gaussian` 参数按 Task / Charge / MD 分组而非 `Parameters:`，
+     Examples 各 4 条，cp2k 49 行
+   - `info` 缺 `Output:`；`map velocity` / `map force` 仅 1 条 Example；
+     `convert` 多一段 `Supported formats`，`convert` / `bader` Examples 4 条
+   - 仅超 30 行目标（参数表不砍，属提示）：gr sq angle rotcorr、`map sdf`、
+     `dataset filter` / `merge`（31~42 行）
+4. **中文 `///` / `//!` 约 550 行**（应为英文）。集中在 `network/mod.rs` 85、
+   `core/spin.rs` 34、`core/frame.rs` 27、`core/cluster.rs` 27、`core/cell.rs` 21、
+   `core/data/elements.rs` 19、`md/cube_sdf.rs` 16、`ferro-python/src/types.rs` 15，
+   其余约 60 个文件各 1~13 行。按 crate 分批翻
+5. **手册化学式用 Unicode 下标**：`docs/src/analysis/rotcorr.md` 第 36/73/206 行、
+   `docs/src/changelog.md` 第 126 行的 `PO₄` `SiO₄` `AlO₄`，改 `$PO_4$` 形式
+6. **`ferro-analysis/src/trajectory_analysis.rs`**（提示）：自称「旧接口，保持编译
+   兼容」，经 `lib.rs` `pub use *` 全量导出，仓内零调用。删或留待定，可并入中优先级
+   的「零调用清单」一起判
+
+未做：全局规则「何时该有一个独立函数」（R1~R6）的逐函数审计。
+
 ### DeePMD mixed type 数据的读写（2026-08-26 提出）
 
 现在 `readers/deepmd.rs` / `writers/deepmd.rs` 只做**标准 system**：`type.raw` 一份
