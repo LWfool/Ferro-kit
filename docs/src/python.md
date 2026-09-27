@@ -129,12 +129,14 @@ plt.plot(g["r"], g["P-O_gr"])
 g = ferro.gr_pair(t, "P_3", "O_b", by="label", r_max=5.0)
 ```
 
-### `msd(traj, dt=1.0, shift=1, tau=None, elements=None)`
+### `msd(traj, dt=1.0, max_lag=None, elements=None)`
 
-Mean squared displacement (time-origin averaged, NPT-safe).
+Mean squared displacement: every lag averaged over all time origins (FFT), periodic systems unwrapped
+with the TOR scheme.  `max_lag` in frames, default half the trajectory.  Details in
+[MSD](analysis/msd.md).
 
-Returned keys: `"time"` [fs], `"msd"` (total), `"msd_a"`, `"msd_b"`, `"msd_c"`
-(crystal axes for periodic systems, x/y/z otherwise).
+Returned keys: `"time"` [fs], `"msd"` (total), `"msd_x"`, `"msd_y"`, `"msd_z"` (Cartesian components,
+which add up to the total).
 
 ```python
 d = ferro.msd(t, dt=2.0, elements=["Li"])

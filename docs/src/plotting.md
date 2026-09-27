@@ -15,7 +15,7 @@ Python.
 | `plot_gr.py` | `gr_<pair>.csv` | one panel per csv; g(r) solid on the left axis, CN(r) dashed on the right |
 | `plot_sq.py` | `sq.csv` | the X-ray and neutron totals, one row per csv |
 | `plot_angle.py` | `angle_<triplet>.csv` | one panel per csv, one curve per input |
-| `plot_msd.py` | `msd_<elements>.csv` | one panel per csv; fitted line over the fit window, $D \pm d_{err}$ in the legend; `--components` adds a/b/c, `--loglog` adds a slope-1 guide |
+| `plot_msd.py` | `msd_<elements>.csv` | one panel per csv; fitted line over the fit window, $D \pm d_{err}$ in the legend; `--components` adds x/y/z, `--loglog` adds a slope-1 guide |
 | `plot_net.py` | `network_*.csv` | 100 % stacked bars over composition |
 
 ```bash

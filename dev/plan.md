@@ -284,17 +284,29 @@ XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素�
 CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
 文件里），故这条与应力无关，是纯粹的标签映射问题。
 
-### `traj msd` 从 CLI 调用时只有 1 个时间原点（2026-09-27 发现，高）
+### vacf / rotcorr：只有 1 个时间原点 + 改 FFT（2026-09-27 发现，高）
 
-CLI 不暴露 `--tau`，`MsdParams::tau = None` → `tau = n_steps`，而原点取
-`take_while(p + tau <= n_steps)` —— 只剩 `p = 0`。于是 **CLI 的 MSD 从来没做过时间
-原点平均**，`[inputs]` 里 `origins` 恒为 1，`--shift` 形同虚设。每个 lag 只有一次位移
-样本，长 lag 端噪声极大（examples 两条玻璃轨迹的 d_err 与 D 同量级，部分源于此）。
+与 msd 修复前同病：`TimeKnobs::tau = None` → 代码取 `n_steps`（帮助页却写「默认半条
+轨迹」），原点 `take_while(p + tau <= n_steps)` 只剩 `p = 0`。照 msd 的做法改：
 
-通行做法是**每个 lag 用全部可用原点**（`n_steps - lag` 个，按 shift 抽稀），即
-MDAnalysis / gmx msd 的做法，FFT 可加速到 $O(N\log N)$。改动会改变全部 MSD 数值，
-需要决定：固定窗口 `tau` 是否保留、默认窗口取多少、要不要 FFT。`vacf` / `vanhove` /
-`rotcorr` 是否同样只有 1 个原点待查。
+- **vacf**：$\langle \mathbf{v}(0)\cdot\mathbf{v}(t)\rangle$ 逐原子逐轴走 `correlate::Autocorr`，
+  除以 `N − m`；默认 max lag = N/2，删 `--shift`。Green-Kubo 积分不变
+- **rotcorr**：$C_2 = \langle P_2(\mathbf{u}(0)\cdot\mathbf{u}(t))\rangle$，
+  $(\mathbf{u}_0\cdot\mathbf{u}_t)^2 = \sum_{ij} u_iu_j(0)\,u_iu_j(t)$ —— 6 个独立分量
+  $u_iu_j$ 各做自相关再加权求和（非对角 ×2）
+- 两者都要暴力全原点参考测试 + 独立 numpy 对拍，同 msd
+
+### vanhove：默认 1 个原点 + 仍用格点视图解包裹（2026-09-27 发现）
+
+固定 lag 的位移直方图，FFT 无用。但 `tau` 默认 `n_steps − 1` → 只有 1 个原点；解包裹
+仍是 `unwrap_frac`（分数坐标解包裹 × 当帧盒子，即格点视图，NPT 下有 msd 手册里写的
+问题）。改默认 tau（N/2？）并换 TOR —— `msd.rs::unwrap_tor` 届时有第二个用户，
+可下沉共享。
+
+### VDOS：振动态密度（2026-09-27 提出，中）
+
+VACF 的傅里叶变换，业内常用（如 LAMMPS/MDAnalysis 生态的 power spectrum）。等 vacf
+改 FFT 后顺手做：窗函数（Hann？）、归一化、频率单位（THz / cm⁻¹）需先查规范。
 
 ### 共享头部冒充全批：angle / vacf / vanhove / rotcorr（2026-09-27 扫描）
 
@@ -428,6 +440,21 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### MSD 全原点 FFT + TOR 解包裹 + 笛卡尔分量（2026-09-27 落地）
+
+- **起因**：CLI 无 `--tau` → 窗口 = 整条轨迹 → 只有 1 个原点，`--shift` 无效
+- **算法**：Calandrini 2011（MDAnalysis `fft=True` 同源），`MSD = S1 − 2·S2`；序列先
+  减均值防相消。公共部分 `md/correlate.rs`（rustfft，+4 crate）
+- **解包裹**：TOR（Bullerjahn 2023 式 2，**后一帧**盒子、`⌊x+½⌋`），读论文原文核对过；
+  替换 code1 的平均盒矩阵（格点视图，且无法套进 FFT）。NVT 下两者恒等
+- **分量**：`msd_x/y/z`（笛卡尔，三斜下之和也等于总量），废 `msd_a/b/c`
+- **参数**：删 `--shift`，加 `--max-lag`（默认 N/2，与 vacf/rotcorr 帮助页原本的说法一致）；
+  `--fit-range` 的比例改为相对 lag 轴
+- **验证**：单测 FFT vs 暴力 < 1e-9（NPT 三斜、非周期）；examples 两条轨迹 vs 独立
+  numpy（ASE 读入 + TOR + 暴力平均）在 csv 7 位有效数字内一致。NPT 例子 R² 0.31 → 0.97
+- 用户**尚未实际使用 msd**，手册 `analysis/msd.md` 按用户要求把 max-lag / TOR /
+  分量三处写到可以独立排查的程度（含可复现的 numpy 参考代码与排障表）
 
 ### scripts/plot_msd.py + MSD 头部修正（2026-09-27 落地）
 

@@ -426,6 +426,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 | `nalgebra` | 0.35 | workspace | 0.34→0.35 零代码改动；g(r)/CN 输出逐字节一致 |
 | `ndarray` | 0.17 | workspace | |
 | `rayon` | 1.8 | workspace | |
+| `rustfft` | 6.4 | workspace | msd 的 FFT 自相关（`md/correlate.rs`）；+4 crate，纯 Rust |
 | `thiserror` | 2.0 | workspace | |
 | `anyhow` | 1.0 | workspace | |
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 `issues.md` |

@@ -353,3 +353,7 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 2026-09-27 追加（仍在同一个 0.3.3）：**`traj msd` 的头部只留共享参数**，逐文件的
 原子数、origins、拟合结果移到 `[inputs]`，新增 `slope`/`intercept`/`d_err` 等列；
 数据列不变。配套 `scripts/plot_msd.py`。
+
+同日再追加（仍在 0.3.3）：**`traj msd` 数值全变** —— 全原点 FFT 平均、TOR 解包裹、
+`msd_x/y/z` 取代 `msd_a/b/c`、`--shift` → `--max-lag`。此前 CLI 的 MSD 只有 1 个时间
+原点。vacf / rotcorr / vanhove 同病待修（`plan.md`）。

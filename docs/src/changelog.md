@@ -106,6 +106,22 @@ unchanged byte for byte.
 |---|---|
 | `ferro traj msd -i t.dump --dt 1.0 --plot` | `ferro traj msd -i t.dump --dt 1.0` |
 
+### `traj msd` averages every origin; `--shift` → `--max-lag`; `msd_x/y/z`
+
+MSD numbers change for every input.  Earlier versions averaged a **single** time origin (the CLI had
+no `--tau`, so the window was the whole trajectory) and unwrapped NPT boxes in the lattice view.  Now
+every lag averages all origins (FFT) and periodic inputs are unwrapped with the TOR scheme; see
+[MSD](analysis/msd.md) for every detail.
+
+| before | now |
+|---|---|
+| `--shift N` | removed — every frame is an origin |
+| lag axis = the whole trajectory | `--max-lag`, default half the trajectory |
+| `--fit-range` fractions of the whole trajectory | fractions of the lag axis — the same numbers cover half the time span by default |
+| columns `msd_a, msd_b, msd_c` (crystal axes, did not sum to the total in a triclinic box) | `msd_x, msd_y, msd_z` (Cartesian, sum to the total) |
+| `[inputs]` `origins` | `max_lag`, `min_origins`; `frames` is now the real frame count |
+| Python `ferro.msd(t, shift=, tau=)` | `ferro.msd(t, max_lag=)` |
+
 ### MSD fit results moved to `[inputs]`
 
 With several inputs the `msd` header used to show the **first** file's atom count, origins, slope, $D$
