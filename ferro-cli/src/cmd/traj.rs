@@ -12,8 +12,8 @@
 use anyhow::{anyhow, Result};
 use clap::{Args, Subcommand};
 use ferro_analysis::{
-    calc_angle, calc_gr, calc_msd, calc_rotcorr, calc_sq_from_gr, calc_vacf, calc_vanhove,
-    AngleParams, AngleResult, GroupBy, GrParams, GrResult, Legendre, MsdParams, MsdResult, RotCorrParams,
+    calc_angle, calc_bondlife, calc_gr, calc_msd, calc_rotcorr, calc_sq_from_gr, calc_vacf, calc_vanhove,
+    AngleParams, AngleResult, BondLifeParams, BondLifeResult, GroupBy, GrParams, GrResult, Legendre, MsdParams, MsdResult, RotCorrParams,
     RotCorrResult, SqParams, SqResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
 
@@ -40,6 +40,8 @@ pub enum TrajCmd {
     Rotcorr(RotcorrCmd),
     /// Van Hove self-correlation Gs(r, τ)
     Vanhove(VanhoveCmd),
+    /// Bond lifetimes (intermittent / continuous) and bond formation / breaking events
+    Bondlife(BondlifeCmd),
 }
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
@@ -207,6 +209,29 @@ pub struct RotcorrCmd {
 }
 
 #[derive(Args, Debug)]
+pub struct BondlifeCmd {
+    #[command(flatten)]
+    pub common: CommonArgs,
+    #[command(flatten)]
+    pub time: LagKnobs,
+    /// Central atom element
+    #[arg(long)]
+    pub center: Option<String>,
+    /// Neighbour atom element (may equal --center)
+    #[arg(long)]
+    pub neighbor: Option<String>,
+    /// A free pair bonds at r <= r-bond [Å] (first g(r) minimum)
+    #[arg(long)]
+    pub r_bond: Option<f64>,
+    /// A bonded pair stays bonded while r <= r-break [Å] (default: --r-bond)
+    #[arg(long)]
+    pub r_break: Option<f64>,
+    /// Breaks of at most this many frames are filled (continuous function and events)
+    #[arg(long, default_value = "0")]
+    pub intermittency: usize,
+}
+
+#[derive(Args, Debug)]
 pub struct VanhoveCmd {
     #[command(flatten)]
     pub common: CommonArgs,
@@ -238,6 +263,7 @@ pub fn run(cmd: &TrajCmd) -> Result<usize> {
         TrajCmd::Vacf(c)    => run_vacf(c),
         TrajCmd::Rotcorr(c) => run_rotcorr(c),
         TrajCmd::Vanhove(c) => run_vanhove(c),
+        TrajCmd::Bondlife(c) => run_bondlife(c),
     }
 }
 
@@ -251,6 +277,7 @@ pub fn wants_help(cmd: &TrajCmd) -> bool {
         TrajCmd::Vacf(c)    => &c.common,
         TrajCmd::Rotcorr(c) => &c.common,
         TrajCmd::Vanhove(c) => &c.common,
+        TrajCmd::Bondlife(c) => &c.common,
     };
     common.input.is_empty()
 }
@@ -264,6 +291,7 @@ pub fn print_help(cmd: &TrajCmd) {
         TrajCmd::Vacf(_)    => help::print_vacf(),
         TrajCmd::Rotcorr(_) => help::print_rotcorr(),
         TrajCmd::Vanhove(_) => help::print_vanhove(),
+        TrajCmd::Bondlife(_) => help::print_bondlife(),
     }
 }
 
@@ -590,6 +618,55 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
     batch::write_all(
         "rotcorr",
         "Rotational Autocorrelation Function C(t) = <P2(cos theta)>",
+        &results[0].1.meta_lines(),
+        &summary.into_table(),
+        tables,
+        &out,
+    )?;
+    Ok(failures.len())
+}
+
+fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
+    let center = c.center.clone()
+        .ok_or_else(|| anyhow!("--center is required for bondlife (run without -i to see help)"))?;
+    let neighbor = c.neighbor.clone()
+        .ok_or_else(|| anyhow!("--neighbor is required for bondlife (run without -i to see help)"))?;
+    let r_bond = c.r_bond
+        .ok_or_else(|| anyhow!("--r-bond is required: take the first minimum of the {center}-{neighbor} g(r)"))?;
+    // 阈值错误在读第一个文件前挡掉
+    if let Some(rb) = c.r_break {
+        if rb < r_bond {
+            return Err(anyhow!("--r-break ({rb}) must be >= --r-bond ({r_bond})"));
+        }
+    }
+    let label = batch::file_label(&[&center, &neighbor])?;
+    let params = BondLifeParams {
+        center, neighbor, r_bond,
+        r_break: c.r_break,
+        intermittency: c.intermittency,
+        max_lag: c.time.max_lag,
+        dt: c.time.dt,
+    };
+    let (results, failures, out) =
+        drive(&c.common, Some(label), |traj| Ok(calc_bondlife(traj, &params)?))?;
+
+    let tables = batch::stack(&results, |r: &BondLifeResult| Ok(r.to_tables()))?;
+    let mut summary = Summary::new(&[
+        "candidates", "mean_bonds", "max_lag", "min_origins",
+        "tau_int_integral", "tau_int_1e", "tau_cont_integral", "tau_cont_1e",
+    ]);
+    for (path, r) in &results {
+        let (ii, i1, ci, c1) = r.taus();
+        summary.ok(batch::label_of(path), r.n_frames, r.n_centers, &[
+            r.n_candidates as f64, r.mean_bonds(), (r.time.len() - 1) as f64, r.min_origins as f64,
+            ii, i1, ci, c1,
+        ]);
+    }
+    summary.failed(&failures);
+
+    batch::write_all(
+        "bondlife",
+        "Bond lifetimes: intermittent C_I(t), continuous S_C(t); per-frame bond events",
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
