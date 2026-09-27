@@ -235,8 +235,8 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
                 let a = t;
                 while t < n_frames && hf[t] { t += 1; }
                 let len = t - a;
-                for m in 0..len.min(max_lag + 1) {
-                    out[2][m] += (len - m) as f64;
+                for (m, v) in out[2].iter_mut().take(len.min(max_lag + 1)).enumerate() {
+                    *v += (len - m) as f64;
                 }
             }
             out
@@ -301,6 +301,14 @@ impl BondLifeResult {
             .push_num("formed", self.formed.clone())
             .push_num("broken", self.broken.clone());
         vec![("bondlife".to_string(), c), ("events".to_string(), e)]
+    }
+
+    /// `(tau_int_integral, tau_int_1e, tau_cont_integral, tau_cont_1e)` \[fs\] —
+    /// see [`lifetimes`].
+    pub fn taus(&self) -> (f64, f64, f64, f64) {
+        let (ii, i1) = lifetimes(&self.c_int, self.params.dt);
+        let (ci, c1) = lifetimes(&self.s_cont, self.params.dt);
+        (ii, i1, ci, c1)
     }
 
     /// Mean number of bonds per frame.

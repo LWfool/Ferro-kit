@@ -275,6 +275,7 @@ Trajectory analysis      one stacked csv per run, `file` as a column
   traj vacf      Velocity autocorrelation + Green-Kubo diffusion
   traj rotcorr   Rotational correlation C2(t)
   traj vanhove   Van Hove self-correlation Gs(r,tau)
+  traj bondlife  Bond lifetimes + bond formation / breaking per frame
 
 Spatial maps             one .cube grid file per input — no summary table
   map density | velocity | force | radius | sdf | chg-sdf
@@ -595,6 +596,41 @@ Examples:
   ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond
 
 Full documentation:  ferro doc traj rotcorr"#
+    );
+}
+
+pub fn print_bondlife() {
+    println!(
+        r#"ferro traj bondlife — Bond Lifetimes and Bond Events
+
+  How long centre–neighbour bonds live, over ALL time origins: intermittent
+  C_I(t) (a bond may break and re-form) and continuous S_C(t) (unbroken
+  throughout), plus bonds formed and broken in every frame.
+
+Parameters:
+  --center        ELEM    Central atom element (required)        e.g. Si
+  --neighbor      ELEM    Neighbour element (required; may equal --center)
+  --r-bond        FLOAT   A free pair bonds at r <= r-bond [Å] (required)
+  --r-break       FLOAT   A bond survives while r <= r-break [Å]  default: --r-bond
+  --intermittency INT     Fill breaks of <= INT frames (S_C, events) default: 0
+  --dt            FLOAT   Timestep between frames [fs]           default: 1.0
+  --max-lag       INT     Longest lag [frames], 1..N-1           default: N/2
+  --last-n        INT     Use only the last N frames
+  --ncore         INT     Parallel threads                       default: all cores
+  -o DIR                  Output directory; --mkdir creates it unasked
+  -s SUFFIX               Batch tag -> bondlife_<centre>-<neighbour>_<suffix>.csv
+  --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+
+Output:
+  bondlife_<C>-<N>.csv          time, c_int, s_cont
+  bondlife_events_<C>-<N>.csv   time, n_bonds, formed, broken (every frame)
+  [inputs] lists both lifetimes: trapezoidal integral and 1/e crossing
+
+Examples:
+  ferro traj bondlife -i glass_water.dump --center Si --neighbor O --r-bond 2.2
+  ferro traj bondlife -i run.dump --center O --neighbor H --r-bond 1.25 --r-break 1.4 --intermittency 2
+
+Full documentation:  ferro doc traj bondlife"#
     );
 }
 

@@ -182,6 +182,7 @@ mod help_sync {
         (&["traj", "vacf"], "print_vacf"),
         (&["traj", "rotcorr"], "print_rotcorr"),
         (&["traj", "vanhove"], "print_vanhove"),
+        (&["traj", "bondlife"], "print_bondlife"),
         (&["map", "density"], "print_cube_density"),
         (&["map", "velocity"], "print_cube_velocity"),
         (&["map", "force"], "print_cube_force"),
