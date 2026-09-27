@@ -21,6 +21,7 @@ pub use md::{
     VanHoveParams, VanHoveResult, calc_vanhove,
     VacfParams, VacfResult, calc_vacf,
     Legendre, RotCorrParams, RotCorrResult, RotVector, calc_rotcorr,
+    BondLifeParams, BondLifeResult, calc_bondlife,
     CubeMode, CubeDensityParams, CubeDensityResult, calc_cube_density,
     CubeRadiusParams, CubeRadiusResult, calc_cube_radius,
     ClusterSdfParams, ClusterFamily, RmsdStats, ClusterSdfResult, calc_cluster_sdf,
