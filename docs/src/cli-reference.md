@@ -495,13 +495,15 @@ ferro traj rotcorr -i water.lammpstrj --center O --neighbor H --r-cut 1.2 --dt 2
 | `--center` | (required) | element of the centre atom |
 | `--neighbor` | (required) | element of the neighbour atom |
 | `--r-cut` | 1.2 | cutoff for the bond search [Å] |
+| `--vector` | `sum` | `sum` = the centre's bonds summed, per frame; `bond` = each bond of frame 0 followed by atom identity (`gmx rotacf -d`) — use for tetrahedra |
+| `--legendre` | 2 | order of $P_\ell$: 1 or 2 |
 | `--dt` | 1.0 | time between stored frames [fs] |
 | `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
 
 Every lag averages all (molecule, origin) pairs valid at both ends (FFT); `integral` is trapezoidal.
 Details in [Rotational correlation](analysis/rotcorr.md).
 
-Columns: `file, time, c2, integral`
+Columns: `file, time, c2, integral` (`c1` with `--legendre 1`)
 
 ### `vanhove` — Van Hove self-correlation
 
