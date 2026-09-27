@@ -4,7 +4,7 @@
 //! zero-pad to at least `2N` so the circular correlation of the FFT equals the
 //! linear one, transform, take `|X|²`, transform back.
 //!
-//! Only `msd` uses it so far; `vacf` and `rotcorr` are to follow (see `dev/plan.md`).
+//! Used by `msd`, `vacf` and `rotcorr`.
 
 use std::sync::Arc;
 
@@ -82,9 +82,53 @@ impl Autocorr {
     }
 }
 
+/// The longest lag to output: `max_lag`, or `n_frames / 2` when `None` (the
+/// default of GROMACS `-acflen`). Must lie in `1 ..= n_frames − 1`.
+pub fn resolve_max_lag(n_frames: usize, max_lag: Option<usize>) -> ferro_core::Result<usize> {
+    if n_frames < 2 {
+        return Err(ferro_core::error::ChemError::ValidationError(
+            "trajectory requires at least 2 frames".into()));
+    }
+    let m = max_lag.unwrap_or(n_frames / 2);
+    if m == 0 || m >= n_frames {
+        return Err(ferro_core::error::ChemError::ValidationError(format!(
+            "max-lag must be within 1..={} for {n_frames} frames, got {m}", n_frames - 1)));
+    }
+    Ok(m)
+}
+
+/// Running trapezoidal integral: `out[0] = 0`,
+/// `out[m] = out[m−1] + dt·(y[m−1] + y[m])/2`.
+///
+/// The rule GROMACS (`print_and_integrate`) and MDAnalysis transport-analysis
+/// (`scipy.integrate.trapezoid`) use for correlation integrals. The running form
+/// shows where the integral levels off.
+pub fn cumulative_trapezoid(y: &[f64], dt: f64) -> Vec<f64> {
+    let mut out = Vec::with_capacity(y.len());
+    let mut acc = 0.0;
+    for (m, &v) in y.iter().enumerate() {
+        if m > 0 {
+            acc += 0.5 * dt * (y[m - 1] + v);
+        }
+        out.push(acc);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_cumulative_trapezoid_exact_on_lines() {
+        // 梯形法对直线精确：∫₀ᵗ (2 + 3τ) dτ = 2t + 1.5t²
+        let dt = 0.5;
+        let y: Vec<f64> = (0..9).map(|m| 2.0 + 3.0 * m as f64 * dt).collect();
+        for (m, v) in cumulative_trapezoid(&y, dt).iter().enumerate() {
+            let t = m as f64 * dt;
+            assert!((v - (2.0 * t + 1.5 * t * t)).abs() < 1e-12, "m={m}: {v}");
+        }
+    }
 
     #[test]
     fn test_sums_match_direct_correlation() {

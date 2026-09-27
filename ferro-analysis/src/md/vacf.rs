@@ -1,35 +1,33 @@
-//! Velocity autocorrelation function (VACF) calculation and output.
+//! Velocity autocorrelation function (VACF) and Green–Kubo self-diffusion.
 //!
-//! Cv(t) = <v(0)·v(t)> = (1/N) Σⱼ [vx_j(0)vx_j(t) + vy_j(0)vy_j(t) + vz_j(0)vz_j(t)]
+//! `Cv(m) = (1/N_atoms) Σⱼ (1/(N−m)) Σₜ vⱼ(t)·vⱼ(t+m)` — every lag averaged over all
+//! `N − m` time origins, computed per atom and Cartesian axis with the FFT
+//! autocorrelation in [`super::correlate`] (as `gmx velacc` and MDAnalysis
+//! transport-analysis do).
 //!
-//! Workflow: `calc_vacf` → `write_vacf`.
-//! Algorithm follows code1/velcorr.c (`EstimateVelocityCorr`):
-//!   1. Read velocity vectors from all frames (no coordinate unwrapping needed — velocities have no PBC issues).
-//!   2. For each time origin p (spaced by shift), compute velocity dot products for all lags i ∈ [0, tau).
-//!   3. Average over all origins.
-//!   4. Running integral D(t) = Σᵢ Cv(i)·dt / 3 → converges to self-diffusion coefficient D as t → ∞.
+//! `diffusion(t) = (1/3)∫₀ᵗ Cv(τ)dτ` by the running trapezoidal rule; it levels off
+//! at the self-diffusion coefficient D.
 //!
-//! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
+//! Velocities are used as stored in `frame.velocities`, in the internal unit Å/fs
+//! (the LAMMPS reader converts metal-unit Å/ps with `--metal-units`). `Cv` is then in
+//! Å²/fs² and `diffusion` in Å²/fs.
 //!
-//! **Unit note**: velocities use the raw values stored in `frame.velocities`.
-//! The IO layer has not yet converted LAMMPS metal-unit velocities (Å/ps) to the internal standard (Å/fs).
-//! For metal-unit trajectories, Cv is in (Å/ps)² and D is in Å²/ps;
-//! multiply by 1e-6 (Cv) or 1e-3 (D) to obtain standard units.
-//! This will be resolved when IO unit normalisation is implemented.
+//! Parallelism: per atom.
 
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
+use ferro_core::error::ChemError;
+
+use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
 /// Parameters for velocity autocorrelation function calculation.
 #[derive(Debug, Clone)]
 pub struct VacfParams {
-    /// Correlation window size in frames (`None` = all frames)
-    pub tau: Option<usize>,
-    /// Time shift between origins in frames (default: 1)
-    pub shift: usize,
+    /// Longest lag in frames, `1 ..= n_frames − 1` (`None` = `n_frames / 2`)
+    pub max_lag: Option<usize>,
     /// Time step per frame \[fs\] (default: 1.0)
     pub dt: f64,
     /// Elements to include (`None` = all atoms)
@@ -38,7 +36,7 @@ pub struct VacfParams {
 
 impl Default for VacfParams {
     fn default() -> Self {
-        VacfParams { tau: None, shift: 1, dt: 1.0, elements: None }
+        VacfParams { max_lag: None, dt: 1.0, elements: None }
     }
 }
 
@@ -46,27 +44,30 @@ impl Default for VacfParams {
 
 /// Result of a velocity autocorrelation function calculation.
 ///
-/// `vacf[i]` = `vacf_x[i] + vacf_y[i] + vacf_z[i]` = Cv(i·dt) in velocity² units.
-/// `diffusion[i]` is the running integral `Σₖ₌₀ⁱ vacf[k]·dt / 3`, which converges
-/// to the self-diffusion coefficient D as i → ∞.
+/// `vacf[m] = vacf_x[m] + vacf_y[m] + vacf_z[m]`.
 #[derive(Debug, Clone)]
 pub struct VacfResult {
-    /// Time axis \[fs\]; `time[i] = i * dt`
+    /// Lag-time axis \[fs\]; `time[m] = m · dt`, `m = 0 ..= max_lag`
     pub time: Vec<f64>,
-    /// Total VACF Cv(t) = Cv_x + Cv_y + Cv_z \[vel²\]
+    /// Total VACF Cv(t) \[Å²/fs²\]
     pub vacf: Vec<f64>,
-    /// x-component of VACF \[vel²\]
+    /// `vacf / vacf[0]` (NaN when `vacf[0] = 0`) — the normalised form `gmx velacc`
+    /// writes by default
+    pub vacf_norm: Vec<f64>,
+    /// x-component of VACF \[Å²/fs²\]
     pub vacf_x: Vec<f64>,
-    /// y-component of VACF \[vel²\]
+    /// y-component of VACF \[Å²/fs²\]
     pub vacf_y: Vec<f64>,
-    /// z-component of VACF \[vel²\]
+    /// z-component of VACF \[Å²/fs²\]
     pub vacf_z: Vec<f64>,
-    /// Running integral ∫₀ᵗ Cv(τ)dτ / 3 \[vel²·fs\]
+    /// Running Green–Kubo integral `(1/3)∫₀ᵗ Cv dτ` (trapezoidal) \[Å²/fs\]
     pub diffusion: Vec<f64>,
+    /// Frames in the trajectory
+    pub n_frames: usize,
     /// Number of atoms included
     pub n_atoms: usize,
-    /// Number of time origins averaged
-    pub n_origins: usize,
+    /// Time origins at the longest lag, `n_frames − max_lag`
+    pub min_origins: usize,
     pub params: VacfParams,
     /// Element types included, sorted alphabetically
     pub elements: Vec<String>,
@@ -74,25 +75,22 @@ pub struct VacfResult {
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
 
-/// Compute the velocity autocorrelation function with time-shift averaging.
+/// Computes the VACF, averaging each lag over all time origins.
 ///
-/// The algorithm matches code1/velcorr.c `EstimateVelocityCorr`.
-/// Unlike position-based analyses, no coordinate unwrapping is needed.
-///
-/// Returns `None` if:
-/// - The trajectory has fewer than 2 frames
-/// - Any frame is missing `velocities`
-/// - No atoms match the element filter
-/// - `tau` exceeds the trajectory length
-pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> Option<VacfResult> {
-    let n_steps = traj.n_frames();
-    if n_steps < 2 { return None; }
-
-    // 校验所有帧都有速度数据
-    if traj.frames.iter().any(|f| f.velocities.is_none()) { return None; }
+/// Returns `Err` if the trajectory has fewer than 2 frames, `max_lag` is outside
+/// `1 ..= n_frames − 1`, any frame lacks velocities, or no atom matches the
+/// element filter.
+pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<VacfResult> {
+    let n_frames = traj.n_frames();
+    let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
+    if let Some(k) = traj.frames.iter().position(|f| f.velocities.is_none()) {
+        return Err(ChemError::ValidationError(format!(
+            "frame {k} has no velocities; VACF needs velocities in every frame"
+        )));
+    }
 
     // 按第一帧筛选原子下标
-    let ref_frame = traj.first()?;
+    let ref_frame = &traj.frames[0];
     let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
         .filter(|(_, a)| match &params.elements {
             Some(elems) => elems.contains(&a.element),
@@ -100,108 +98,73 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> Option<VacfResult> {
         })
         .map(|(i, _)| i)
         .collect();
-    if atom_indices.is_empty() { return None; }
-    let n_atoms = atom_indices.len();
-
-    let tau = params.tau.unwrap_or(n_steps).min(n_steps).max(1);
-    let shift = params.shift.max(1);
-
-    // 收集元素列表（用于输出文件头）
-    let elements: Vec<String> = {
-        let mut set = BTreeSet::new();
-        for &i in &atom_indices { set.insert(ref_frame.atoms[i].element.clone()); }
-        set.into_iter().collect()
-    };
-
-    // 构建速度数组 vel[step][atom_local] = [vx, vy, vz]
-    let vel: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
-        let vels = frame.velocities.as_ref().unwrap();
-        atom_indices.iter().map(|&i| {
-            let v = &vels[i];
-            [v.x, v.y, v.z]
-        }).collect()
-    }).collect();
-
-    // 枚举所有 origin：p + tau <= n_steps（内层循环访问 vel[p+i]，i ∈ [0,tau)）
-    let p_values: Vec<usize> = (0..)
-        .map(|k: usize| k * shift)
-        .take_while(|&p| p + tau <= n_steps)
-        .collect();
-    let n_origins = p_values.len();
-    if n_origins == 0 { return None; }
-
-    // 并行计算各 origin 的局部累积 [tau][3]（x/y/z 三分量）
-    let accum: Vec<[f64; 3]> = p_values.par_iter()
-        .map(|&p| {
-            let mut local = vec![[0.0f64; 3]; tau];
-            for i in 0..tau {
-                let mut sum = [0.0f64; 3];
-                for (v0, vi) in vel[p].iter().zip(vel[p + i].iter()) {
-                    sum[0] += v0[0] * vi[0];
-                    sum[1] += v0[1] * vi[1];
-                    sum[2] += v0[2] * vi[2];
-                }
-                local[i] = [
-                    sum[0] / n_atoms as f64,
-                    sum[1] / n_atoms as f64,
-                    sum[2] / n_atoms as f64,
-                ];
-            }
-            local
-        })
-        .reduce(
-            || vec![[0.0f64; 3]; tau],
-            |mut a, b| {
-                for i in 0..tau {
-                    a[i][0] += b[i][0];
-                    a[i][1] += b[i][1];
-                    a[i][2] += b[i][2];
-                }
-                a
-            },
-        );
-
-    // 归一化：除以 n_origins
-    let inv = 1.0 / n_origins as f64;
-    let time:   Vec<f64> = (0..tau).map(|i| i as f64 * params.dt).collect();
-    let vacf_x: Vec<f64> = (0..tau).map(|i| accum[i][0] * inv).collect();
-    let vacf_y: Vec<f64> = (0..tau).map(|i| accum[i][1] * inv).collect();
-    let vacf_z: Vec<f64> = (0..tau).map(|i| accum[i][2] * inv).collect();
-    let vacf:   Vec<f64> = (0..tau).map(|i| vacf_x[i] + vacf_y[i] + vacf_z[i]).collect();
-
-    // Running integral D(t) = Σᵢ Cv(i)·dt / 3 (rectangular approximation matching code1)
-    let mut diffusion = vec![0.0f64; tau];
-    let mut running = 0.0;
-    for i in 0..tau {
-        running += vacf[i] * params.dt / 3.0;
-        diffusion[i] = running;
+    if atom_indices.is_empty() {
+        return Err(ChemError::ValidationError("no atoms match the element filter".into()));
     }
+    let n_atoms = atom_indices.len();
+    let elements: Vec<String> = atom_indices.iter()
+        .map(|&i| ref_frame.atoms[i].element.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
 
-    Some(VacfResult {
-        time, vacf, vacf_x, vacf_y, vacf_z, diffusion,
-        n_atoms, n_origins, params: params.clone(), elements,
+    // 逐原子逐轴：Σₜ v(t)v(t+m) 的全原点和，再在原子间累加
+    let plan = AutocorrPlan::new(n_frames);
+    let zero = || [vec![0.0; max_lag + 1], vec![0.0; max_lag + 1], vec![0.0; max_lag + 1]];
+    let sums = atom_indices.par_iter()
+        .map_init(|| (plan.worker(), vec![0.0; n_frames], vec![0.0; max_lag + 1]), |(ac, x, s), &i| {
+            let mut out = zero();
+            for (axis, o) in out.iter_mut().enumerate() {
+                for (xk, f) in x.iter_mut().zip(&traj.frames) {
+                    *xk = f.velocities.as_ref().unwrap()[i][axis];
+                }
+                ac.sums(x, s);
+                o.copy_from_slice(s);
+            }
+            out
+        })
+        .reduce(zero, |mut a, b| {
+            for (aa, bb) in a.iter_mut().zip(&b) {
+                for (x, y) in aa.iter_mut().zip(bb) {
+                    *x += y;
+                }
+            }
+            a
+        });
+
+    // 第 m 个 lag 有 N−m 个原点
+    let per_lag = |v: &[f64]| -> Vec<f64> {
+        v.iter().enumerate().map(|(m, s)| s / ((n_frames - m) as f64 * n_atoms as f64)).collect()
+    };
+    let [vacf_x, vacf_y, vacf_z] = [per_lag(&sums[0]), per_lag(&sums[1]), per_lag(&sums[2])];
+    let vacf: Vec<f64> = (0..=max_lag).map(|m| vacf_x[m] + vacf_y[m] + vacf_z[m]).collect();
+    // C(0) = 0 只在全体静止时出现，归一化无意义 —— 给 NaN（空字段），不给 0
+    let vacf_norm: Vec<f64> = vacf.iter()
+        .map(|v| if vacf[0] != 0.0 { v / vacf[0] } else { f64::NAN })
+        .collect();
+    let diffusion: Vec<f64> = cumulative_trapezoid(&vacf, params.dt).iter().map(|v| v / 3.0).collect();
+    let time: Vec<f64> = (0..=max_lag).map(|m| m as f64 * params.dt).collect();
+
+    Ok(VacfResult {
+        time, vacf, vacf_norm, vacf_x, vacf_y, vacf_z, diffusion,
+        n_frames, n_atoms, min_origins: n_frames - max_lag,
+        params: params.clone(), elements,
     })
 }
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
-/// Write VACF data to a tab-separated text file (`.vacf`).
-///
-/// Columns: `time[fs]`, `vacf[v^2]`, `vacf_x`, `vacf_y`, `vacf_z`, `diffusion[v^2*fs]`
-///
-/// The velocity unit depends on the source trajectory.  For trajectories read
-/// from LAMMPS metal-unit dump files, velocities are in Å/ps (not yet converted
-/// to the internal standard Å/fs); this will be fixed when IO unit normalisation
 impl VacfResult {
     /// Projects the result into the table the writers consume.
     ///
-    /// Velocity autocorrelation: `time, vacf, vacf_x, vacf_y, vacf_z, diffusion`.
+    /// `time, vacf, vacf_norm, vacf_x, vacf_y, vacf_z, diffusion`.
     /// The `file` column is added by the caller when stacking several inputs
     /// (see `ferro_core::Table::concat_union`).
     pub fn to_tables(&self) -> Vec<(String, Table)> {
         let mut t = Table::new();
         t.push_num("time", self.time.clone())
             .push_num("vacf", self.vacf.clone())
+            .push_num("vacf_norm", self.vacf_norm.clone())
             .push_num("vacf_x", self.vacf_x.clone())
             .push_num("vacf_y", self.vacf_y.clone())
             .push_num("vacf_z", self.vacf_z.clone())
@@ -210,15 +173,25 @@ impl VacfResult {
     }
 
     /// Parameter block for the comment header above the data.
+    ///
+    /// Only what the whole batch shares; frames, atoms, the lag range and origins
+    /// differ per input and go to the `[inputs]` list.
     pub fn meta_lines(&self) -> Vec<String> {
+        let p = &self.params;
         vec![
-            format!("tau     = {} frames", self.time.len()),
-            format!("shift   = {} frames", self.params.shift),
-            format!("dt      = {} fs", self.params.dt),
-            format!("atoms   = {}", self.n_atoms),
-            format!("origins = {}", self.n_origins),
-            format!("elements: {}", self.elements.join(" ")),
-            "NOTE: velocity unit matches source file (see IO unit normalisation TODO)".to_string(),
+            match p.max_lag {
+                Some(m) => format!("max lag   = {m} frames"),
+                None => "max lag   = half of each input's frames (see [inputs])".to_string(),
+            },
+            "origins   = all: lag m averages frames - m origins (FFT)".to_string(),
+            format!("dt        = {} fs", p.dt),
+            match &p.elements {
+                Some(els) => format!("elements  = {}", els.join(" ")),
+                None => "elements  = all".to_string(),
+            },
+            "units     = velocities Ang/fs; vacf Ang^2/fs^2; diffusion Ang^2/fs (x0.1 -> cm^2/s)".to_string(),
+            "vacf_norm = vacf / vacf(0)".to_string(),
+            "diffusion = (1/3) * running trapezoidal integral of vacf (Green-Kubo)".to_string(),
         ]
     }
 }
@@ -229,163 +202,119 @@ mod tests {
     use ferro_core::{Atom, Frame, Trajectory};
     use nalgebra::Vector3;
 
-    /// 构建速度恒定的轨迹：每帧每个原子速度相同
-    fn make_const_vel_traj(vx: f64, vy: f64, vz: f64, n: usize) -> Trajectory {
-        let mut traj = Trajectory::new();
-        for _ in 0..n {
-            let mut frame = Frame::new();
-            frame.add_atom(Atom::new("Li", Vector3::zeros()));
-            frame.add_atom(Atom::new("Li", Vector3::zeros()));
-            frame.velocities = Some(vec![
-                Vector3::new(vx, vy, vz),
-                Vector3::new(vx, vy, vz),
-            ]);
-            traj.add_frame(frame);
-        }
-        traj
+    /// 伪随机但可复现（不引 rand：测试只需要「不规则」）
+    fn jitter(k: usize) -> f64 {
+        ((k as f64 * 12.9898).sin() * 43758.5453).fract() - 0.5
     }
 
-    /// 构建零速度轨迹
-    fn make_zero_vel_traj(n: usize) -> Trajectory {
-        make_const_vel_traj(0.0, 0.0, 0.0, n)
-    }
-
-    /// 构建含 Fe 和 Li 的混合速度轨迹
-    fn make_mixed_elem_traj(n: usize) -> Trajectory {
+    /// 每帧每个原子给定速度的轨迹
+    fn traj_from(vel: impl Fn(usize, usize) -> Vector3<f64>, elems: &[&str], n: usize) -> Trajectory {
         let mut traj = Trajectory::new();
-        for i in 0..n {
+        for t in 0..n {
             let mut frame = Frame::new();
-            frame.add_atom(Atom::new("Fe", Vector3::zeros()));
-            frame.add_atom(Atom::new("Li", Vector3::zeros()));
-            let t = i as f64;
-            frame.velocities = Some(vec![
-                Vector3::new(1.0, 0.0, 0.0),         // Fe 速度恒定
-                Vector3::new(t.cos(), t.sin(), 0.0),  // Li 速度随时间变化
-            ]);
+            for e in elems {
+                frame.add_atom(Atom::new(*e, Vector3::zeros()));
+            }
+            frame.velocities = Some((0..elems.len()).map(|j| vel(t, j)).collect());
             traj.add_frame(frame);
         }
         traj
     }
 
     #[test]
-    fn test_vacf_constant_velocity() {
-        // 恒定速度 → Cv(t) = v² 对所有 t 均相等（VACF 平坦）
-        let vx = 2.0_f64;
-        let vy = 1.0_f64;
-        let vz = 0.5_f64;
-        let n = 10;
-        let traj = make_const_vel_traj(vx, vy, vz, n);
-        let params = VacfParams { tau: Some(5), ..Default::default() };
-        let res = calc_vacf(&traj, &params).unwrap();
-
-        let cv0 = vx*vx + vy*vy + vz*vz; // = v²，每个原子相同
-        for (i, &v) in res.vacf.iter().enumerate() {
-            assert!((v - cv0).abs() < 1e-10,
-                "lag {}: expected Cv={:.4}, got {:.4}", i, cv0, v);
+    fn test_fft_matches_brute_force() {
+        // 不规则速度，每个 lag 对全部原点暴力求平均，逐轴比
+        let (n, na) = (33, 4);
+        let traj = traj_from(|t, j| Vector3::new(jitter(3 * t + j), jitter(5 * t + 7 * j + 1), jitter(t * 11 + j + 3)),
+            &["O"; 4], n);
+        let r = calc_vacf(&traj, &VacfParams { max_lag: Some(n - 1), ..Default::default() }).unwrap();
+        let v = |t: usize, j: usize| traj.frames[t].velocities.as_ref().unwrap()[j];
+        for m in 0..n {
+            let mut want = [0.0; 3];
+            for t in 0..n - m {
+                for j in 0..na {
+                    let (a, b) = (v(t, j), v(t + m, j));
+                    want[0] += a.x * b.x;
+                    want[1] += a.y * b.y;
+                    want[2] += a.z * b.z;
+                }
+            }
+            let want = want.map(|w| w / ((n - m) * na) as f64);
+            for (axis, got) in [&r.vacf_x, &r.vacf_y, &r.vacf_z].iter().enumerate() {
+                assert!((got[m] - want[axis]).abs() < 1e-12, "lag {m} 轴 {axis}: {} vs {}", got[m], want[axis]);
+            }
         }
     }
 
     #[test]
-    fn test_vacf_zero_velocity() {
-        // 零速度 → Cv(t) = 0 for all t
-        let traj = make_zero_vel_traj(8);
-        let res = calc_vacf(&traj, &VacfParams::default()).unwrap();
-        for &v in &res.vacf {
-            assert!(v.abs() < 1e-10, "zero-vel VACF should be 0, got {}", v);
-        }
-        for &d in &res.diffusion {
-            assert!(d.abs() < 1e-10, "zero-vel diffusion should be 0, got {}", d);
+    fn test_constant_velocity_is_flat_and_norm_is_one() {
+        let traj = traj_from(|_, _| Vector3::new(2.0, 1.0, 0.5), &["Li", "Li"], 10);
+        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        for (m, (&v, &nv)) in r.vacf.iter().zip(&r.vacf_norm).enumerate() {
+            assert!((v - 5.25).abs() < 1e-10, "lag {m}: {v}");
+            assert!((nv - 1.0).abs() < 1e-12, "lag {m}: vacf_norm {nv}");
         }
     }
 
     #[test]
-    fn test_vacf_cv0_equals_mean_square_velocity() {
-        // Cv(0) = (1/N) Σⱼ |vⱼ|² = 均方速度
-        let vx = 3.0_f64;
-        let vy = 4.0_f64;
-        let vz = 0.0_f64;
-        let traj = make_const_vel_traj(vx, vy, vz, 5);
-        let res = calc_vacf(&traj, &VacfParams { tau: Some(3), ..Default::default() }).unwrap();
-        let expected_cv0 = vx*vx + vy*vy + vz*vz; // = 25
-        assert!((res.vacf[0] - expected_cv0).abs() < 1e-10,
-            "Cv(0) = {:.4}, expected {:.4}", res.vacf[0], expected_cv0);
+    fn test_zero_velocity_gives_nan_norm_not_zero() {
+        // C(0)=0 时归一化没有定义：给 NaN（空字段），不能冒充「测到了 0」
+        let traj = traj_from(|_, _| Vector3::zeros(), &["Li"], 6);
+        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        assert!(r.vacf.iter().all(|v| v.abs() < 1e-15));
+        assert!(r.vacf_norm.iter().all(|v| v.is_nan()));
+        assert!(r.diffusion.iter().all(|v| v.abs() < 1e-15));
     }
 
     #[test]
-    fn test_vacf_directional_components() {
-        // vx=2, vy=0, vz=0 → vacf_x = 4, vacf_y = vacf_z = 0, total = 4
-        let traj = make_const_vel_traj(2.0, 0.0, 0.0, 6);
-        let res = calc_vacf(&traj, &VacfParams { tau: Some(3), ..Default::default() }).unwrap();
-        for i in 0..3 {
-            assert!((res.vacf_x[i] - 4.0).abs() < 1e-10, "vacf_x[{}] = {}", i, res.vacf_x[i]);
-            assert!(res.vacf_y[i].abs() < 1e-10,          "vacf_y[{}] = {}", i, res.vacf_y[i]);
-            assert!(res.vacf_z[i].abs() < 1e-10,          "vacf_z[{}] = {}", i, res.vacf_z[i]);
-            assert!((res.vacf[i] - 4.0).abs() < 1e-10,   "vacf[{}] = {}", i, res.vacf[i]);
+    fn test_diffusion_is_trapezoidal() {
+        // 恒定速度 → C 恒为 c，梯形积分 = c·t，diffusion = c·t/3；
+        // 左矩形法会多出 c·dt/3，这里 m=0 必须恰为 0
+        let traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 8);
+        let dt = 2.0;
+        let r = calc_vacf(&traj, &VacfParams { dt, ..Default::default() }).unwrap();
+        for (m, &d) in r.diffusion.iter().enumerate() {
+            let want = m as f64 * dt / 3.0;
+            assert!((d - want).abs() < 1e-12, "lag {m}: {d} vs {want}");
         }
     }
 
     #[test]
-    fn test_vacf_element_filter() {
-        // 只计算 Fe：Fe 速度恒定 (1,0,0) → Cv(t) = 1.0 for all t
-        let traj = make_mixed_elem_traj(10);
-        let res = calc_vacf(&traj, &VacfParams {
-            tau: Some(5), shift: 1, dt: 1.0,
-            elements: Some(vec!["Fe".to_string()]),
-        }).unwrap();
-        assert_eq!(res.n_atoms, 1);
-        assert!(res.elements.contains(&"Fe".to_string()));
-        assert!(!res.elements.contains(&"Li".to_string()));
-        for &v in &res.vacf {
-            assert!((v - 1.0).abs() < 1e-10, "Fe VACF should be 1.0, got {}", v);
-        }
+    fn test_element_filter() {
+        let traj = traj_from(|t, j| if j == 0 { Vector3::new(1.0, 0.0, 0.0) }
+                                    else { Vector3::new((t as f64).cos(), (t as f64).sin(), 0.0) },
+            &["Fe", "Li"], 10);
+        let r = calc_vacf(&traj, &VacfParams { elements: Some(vec!["Fe".into()]), ..Default::default() }).unwrap();
+        assert_eq!(r.n_atoms, 1);
+        assert_eq!(r.elements, vec!["Fe".to_string()]);
+        assert!(r.vacf.iter().all(|v| (v - 1.0).abs() < 1e-10));
     }
 
     #[test]
-    fn test_vacf_n_origins() {
-        // n=10, tau=3, shift=1 → p + 3 <= 10 → p ∈ {0..7} → 8 origins
-        let traj = make_zero_vel_traj(10);
-        let res = calc_vacf(&traj, &VacfParams { tau: Some(3), shift: 1, ..Default::default() }).unwrap();
-        assert_eq!(res.n_origins, 8);
+    fn test_default_max_lag_and_origins() {
+        let traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 11);
+        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        assert_eq!(r.time.len(), 6);
+        assert_eq!(r.min_origins, 6);
+        assert_eq!(r.n_frames, 11);
     }
 
     #[test]
-    fn test_vacf_diffusion_accumulates() {
-        // 恒定速度 v²=1，dt=2.0 → D(t) = Σᵢ v²·dt/3 = i·(1·2/3)
-        let traj = make_const_vel_traj(1.0, 0.0, 0.0, 8);
-        let res = calc_vacf(&traj, &VacfParams { tau: Some(4), dt: 2.0, ..Default::default() }).unwrap();
-        for (i, &d) in res.diffusion.iter().enumerate() {
-            let expected = (i as f64 + 1.0) * 1.0 * 2.0 / 3.0;
-            assert!((d - expected).abs() < 1e-10,
-                "diffusion[{}] = {:.6}, expected {:.6}", i, d, expected);
-        }
-    }
-
-    #[test]
-    fn test_vacf_missing_velocities_returns_none() {
-        // frame 缺少 velocities → 应返回 None
-        let mut traj = Trajectory::new();
-        let mut f1 = Frame::new();
-        f1.add_atom(Atom::new("Li", Vector3::zeros()));
-        f1.velocities = Some(vec![Vector3::new(1.0, 0.0, 0.0)]);
-        let mut f2 = Frame::new();
-        f2.add_atom(Atom::new("Li", Vector3::zeros()));
-        // f2.velocities 故意留 None
-        traj.add_frame(f1);
-        traj.add_frame(f2);
-
-        let res = calc_vacf(&traj, &VacfParams::default());
-        assert!(res.is_none(), "should return None when velocities missing");
+    fn test_missing_velocities_names_the_frame() {
+        let mut traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 4);
+        traj.frames[2].velocities = None;
+        let err = calc_vacf(&traj, &VacfParams::default()).unwrap_err().to_string();
+        assert!(err.contains("frame 2"), "错误信息应指出是哪一帧：{err}");
     }
 
     #[test]
     fn test_to_tables_columns() {
-        let traj = make_const_vel_traj(1.0, 0.0, 0.0, 8);
-        let res = calc_vacf(&traj, &VacfParams::default()).unwrap();
-        let (name, t) = res.to_tables().remove(0);
+        let traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 6);
+        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        let (name, t) = r.to_tables().remove(0);
         assert_eq!(name, "vacf");
-        assert_eq!(t.names(), vec!["time", "vacf", "vacf_x", "vacf_y", "vacf_z", "diffusion"]);
-        assert_eq!(t.n_rows(), res.time.len());
-        assert!(t.validate().is_ok());
-        assert!(res.meta_lines().join("\n").contains("origins"));
+        assert_eq!(t.names(), vec!["time", "vacf", "vacf_norm", "vacf_x", "vacf_y", "vacf_z", "diffusion"]);
+        assert_eq!(t.n_rows(), r.time.len());
+        assert!(!r.meta_lines().join("\n").contains("atoms"), "原子数是逐文件的量，不进共享区");
     }
 }

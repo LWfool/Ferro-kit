@@ -533,15 +533,15 @@ pub fn print_vacf() {
     println!(
         r#"ferro traj vacf — Velocity Autocorrelation Function
 
-  C_v(t) = <v(t₀)·v(t₀+t)> / <v²(t₀)> averaged over origins, plus its running
-  integral (Green-Kubo D). Needs velocities in the input file.
+  C_v(t) = <v(t₀)·v(t₀+t)> over ALL time origins (FFT), its normalised form
+  C_v(t)/C_v(0), and the running Green-Kubo integral D(t) = ⅓∫C_v (trapezoidal).
+  Needs velocities in the input file.
 
 Parameters:
   --dt       FLOAT      Timestep [fs]                 default: 1.0
-  --shift    INT        Time-origin stride             default: 1
+  --max-lag  INT        Longest lag [frames], 1..N-1  default: N/2
   --elements Fe,O,...   Include only these elements    default: all
   --last-n   INT        Use only the last N frames
-  --tau      INT        Lag time in frames             default: half the run
   --ncore    INT        Parallel threads               default: all cores
   -o DIR                Output directory; --mkdir creates it unasked
   -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
@@ -563,17 +563,17 @@ pub fn print_rotcorr() {
     println!(
         r#"ferro traj rotcorr — Rotational Correlation Function
 
-  C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors. --center and
-  --neighbor are required: they define the bond direction.
+  C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors, over ALL time
+  origins (FFT); frames where a centre has no neighbour are left out. --center
+  and --neighbor are required: they define the bond direction.
 
 Parameters:
   --center    ELEM    Central atom element (required)   e.g. O
   --neighbor  ELEM    Neighbor atom element (required)  e.g. H
   --r-cut     FLOAT   Bond search cutoff [Å]            default: 1.2
   --dt        FLOAT   Timestep [fs]                     default: 1.0
-  --shift     INT     Time-origin stride                default: 1
+  --max-lag   INT     Longest lag [frames], 1..N-1      default: N/2
   --last-n    INT     Use only the last N frames
-  --tau       INT     Lag time in frames                default: half the run
   --ncore     INT     Parallel threads                  default: all cores
   -o DIR              Output directory; --mkdir creates it unasked
   -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv

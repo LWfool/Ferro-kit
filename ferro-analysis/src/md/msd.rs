@@ -16,7 +16,7 @@ use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 use nalgebra::Vector3;
 
-use super::correlate::AutocorrPlan;
+use super::correlate::{resolve_max_lag, AutocorrPlan};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -200,9 +200,7 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
 /// - `fit_range` is invalid or selects fewer than 2 points
 pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
     let n_frames = traj.n_frames();
-    if n_frames < 2 {
-        return Err(ChemError::ValidationError("trajectory requires at least 2 frames".into()));
-    }
+    let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     // 在重计算之前先挡掉明显错误的拟合窗口
     if let Some((fmin, fmax)) = params.fit_range {
         if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
@@ -211,14 +209,6 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
             )));
         }
     }
-    let max_lag = params.max_lag.unwrap_or(n_frames / 2);
-    if max_lag == 0 || max_lag >= n_frames {
-        return Err(ChemError::ValidationError(format!(
-            "max-lag must be within 1..={} for {n_frames} frames, got {max_lag}",
-            n_frames - 1
-        )));
-    }
-
     // 按第一帧筛选元素
     let ref_frame = &traj.frames[0];
     let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()

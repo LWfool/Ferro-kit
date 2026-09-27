@@ -147,7 +147,18 @@ pub struct AngleCmd {
     pub d_angle: f64,
 }
 
-/// Time-axis options shared by the three correlation functions.
+/// Time-axis options of the correlation functions: every lag uses all time origins.
+#[derive(Args, Debug)]
+pub struct LagKnobs {
+    /// Timestep between frames [fs]
+    #[arg(long, default_value = "1.0")]
+    pub dt: f64,
+    /// Longest lag in frames (default: half the trajectory); every lag uses all time origins
+    #[arg(long)]
+    pub max_lag: Option<usize>,
+}
+
+/// Time-axis options of `vanhove`: one fixed lag, origins every `shift` frames.
 #[derive(Args, Debug)]
 pub struct TimeKnobs {
     /// Timestep between frames [fs]
@@ -166,7 +177,7 @@ pub struct VacfCmd {
     #[command(flatten)]
     pub common: CommonArgs,
     #[command(flatten)]
-    pub time: TimeKnobs,
+    pub time: LagKnobs,
     /// Element filter, e.g. Fe,O
     #[arg(long, value_delimiter = ',')]
     pub elements: Option<Vec<String>>,
@@ -177,7 +188,7 @@ pub struct RotcorrCmd {
     #[command(flatten)]
     pub common: CommonArgs,
     #[command(flatten)]
-    pub time: TimeKnobs,
+    pub time: LagKnobs,
     /// Central atom element
     #[arg(long)]
     pub center: Option<String>,
@@ -509,20 +520,21 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
 fn run_vacf(c: &VacfCmd) -> Result<usize> {
     let params = VacfParams {
         dt: c.time.dt,
-        shift: c.time.shift,
-        tau: c.time.tau,
+        max_lag: c.time.max_lag,
         elements: c.elements.clone(),
     };
     let label = batch::set_label(c.elements.as_ref())?;
-    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
-        calc_vacf(traj, &params)
-            .ok_or_else(|| anyhow!("VACF calc failed (missing velocities or empty trajectory?)"))
-    })?;
+    let (results, failures, out) =
+        drive(&c.common, Some(label), |traj| Ok(calc_vacf(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &VacfResult| Ok(r.to_tables()))?;
-    let mut summary = Summary::new(&["origins"]);
+    // Green-Kubo 积分的末值逐文件不同，放进清单方便横向比（D 要看 diffusion 列走平处）
+    let mut summary = Summary::new(&["max_lag", "min_origins", "diffusion_end"]);
     for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.time.len(), r.n_atoms, &[r.n_origins as f64]);
+        summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[
+            (r.time.len() - 1) as f64, r.min_origins as f64, *r.diffusion.last().unwrap(),
+        ]);
+        summary.note("species", r.elements.join(" "));
     }
     summary.failed(&failures);
 
@@ -551,18 +563,18 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         neighbor,
         r_cut: c.r_cut,
         dt: c.time.dt,
-        shift: c.time.shift,
-        tau: c.time.tau,
+        max_lag: c.time.max_lag,
     };
-    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
-        calc_rotcorr(traj, &params)
-            .ok_or_else(|| anyhow!("RotCorr calc failed (no matching atom pairs found?)"))
-    })?;
+    let (results, failures, out) =
+        drive(&c.common, Some(label), |traj| Ok(calc_rotcorr(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
-    let mut summary = Summary::new(&["origins"]);
+    // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 r_cut 抓不稳邻居
+    let mut summary = Summary::new(&["max_lag", "min_origins", "valid_fraction"]);
     for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.time.len(), r.n_molecules, &[r.n_origins as f64]);
+        summary.ok(batch::label_of(path), r.n_frames, r.n_molecules, &[
+            (r.time.len() - 1) as f64, r.min_origins as f64, r.valid_fraction,
+        ]);
     }
     summary.failed(&failures);
 
