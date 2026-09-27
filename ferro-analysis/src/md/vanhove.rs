@@ -5,7 +5,7 @@
 //!
 //! Workflow: `calc_vanhove` → `write_vanhove`.
 //! Algorithm follows code1/vanhove.c (`EstimateVanHove`):
-//!   1. Fractional coordinate conversion + unwrapping (identical to msd.rs).
+//!   1. Fractional coordinate conversion + lattice-view unwrapping (`unwrap_frac`).
 //!   2. Convert back to absolute Cartesian coordinates.
 //!   3. For each time origin p, compute |r(p+τ) − r(p)| and accumulate into a histogram.
 //!   4. Normalise: gs[i] /= n_origins × n_atoms.
@@ -15,7 +15,6 @@
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
-use super::msd::unwrap_frac;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +71,42 @@ pub struct VanHoveResult {
     pub params: VanHoveParams,
     /// Element types included, sorted by atomic number
     pub elements: Vec<String>,
+}
+
+// ─── 内部辅助 ─────────────────────────────────────────────────────────────────
+
+/// Unwrap fractional coordinates in-place to remove periodic-boundary jumps.
+///
+/// Checks the fractional-coordinate difference between adjacent frames:
+/// |Δ| > 0.5 indicates a boundary crossing; corrected by subtracting round(Δ).
+///
+/// This is the lattice-view unwrap. `msd` moved to the TOR scheme, which is the
+/// correct one under NPT; switching this path is on `dev/plan.md`.
+fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
+    let n_steps = frac.len();
+    if n_steps < 2 { return; }
+    let n_atoms = frac[0].len();
+
+    // 转置为 atom-major：各原子时间序列互相独立，可并行处理
+    let mut by_atom: Vec<Vec<[f64; 3]>> = (0..n_atoms)
+        .map(|j| frac.iter().map(|step| step[j]).collect())
+        .collect();
+
+    by_atom.par_iter_mut().for_each(|coords| {
+        for i in 1..n_steps {
+            let (prev, curr_and_later) = coords.split_at_mut(i);
+            for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
+                *c -= (*c - *p).round();
+            }
+        }
+    });
+
+    // 转置回 step-major
+    for (i, step) in frac.iter_mut().enumerate() {
+        for j in 0..n_atoms {
+            step[j] = by_atom[j][i];
+        }
+    }
 }
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────

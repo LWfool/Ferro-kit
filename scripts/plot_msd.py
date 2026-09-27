@@ -14,7 +14,7 @@ r"""把 `ferro traj msd` 的产物画成发表级的 MSD(t) 图。
 
 用法：
     python plot_msd.py msd_all.csv --outdir figs
-    python plot_msd.py msd_all.csv msd_Zn.csv --components --outdir figs
+    python plot_msd.py msd_all.csv msd_Zn.csv --components --outdir figs   # x/y/z 分量
     python plot_msd.py msd_all.csv --loglog --outdir figs -o msd_loglog
 """
 
@@ -45,7 +45,7 @@ CFG = {
     "fit_lw": 1.2,
     "fit_dash": (4, 2),
     "comp_lw": 0.7,
-    "comp_styles": {"msd_a": ":", "msd_b": "-.", "msd_c": (0, (1, 3))},
+    "comp_styles": {"msd_x": ":", "msd_y": "-.", "msd_z": (0, (1, 3))},
     "ref_color": "0.5",
 
     "ylabel": r"MSD (\AA$^2$)",
@@ -224,7 +224,7 @@ def main():
     ap.add_argument("inputs", nargs="+", help="ferro traj msd 的 csv（可用 glob）")
     ap.add_argument("-o", "--output", default="msd", help="产物文件名 stem")
     ap.add_argument("--components", action="store_true",
-                    help="叠画 a/b/c 三个方向分量（看各向异性）")
+                    help="叠画笛卡尔 x/y/z 分量（看各向异性；三者之和等于总量）")
     ap.add_argument("--loglog", action="store_true",
                     help="双对数坐标 + 斜率 1 参考线（检查拟合窗口是否在扩散区）")
     fp.add_outdir_arg(ap)

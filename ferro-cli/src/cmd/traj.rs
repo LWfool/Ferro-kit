@@ -112,9 +112,9 @@ pub struct MsdCmd {
     /// Timestep between frames [fs]
     #[arg(long, default_value = "1.0")]
     pub dt: f64,
-    /// Time-origin stride
-    #[arg(long, default_value = "1")]
-    pub shift: usize,
+    /// Longest lag in frames (default: half the trajectory); every lag uses all time origins
+    #[arg(long)]
+    pub max_lag: Option<usize>,
     /// Track only these elements, e.g. Fe,O
     #[arg(long, value_delimiter = ',')]
     pub elements: Option<Vec<String>>,
@@ -378,10 +378,9 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
     };
     let params = MsdParams {
         dt: c.dt,
-        shift: c.shift,
+        max_lag: c.max_lag,
         elements: c.elements.clone(),
         fit_range,
-        ..MsdParams::default()
     };
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
@@ -392,20 +391,21 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
     // 拟合的一切（窗口换算成的 t、斜率、截距、D、误差、R²）都逐文件不同，
     // 只能进 [inputs]；头部共享区只放比例这类全批一致的参数
     let fit_cols = ["t_lo", "t_hi", "points", "slope", "intercept", "d_ang2_per_fs", "d_err", "r2"];
-    let mut cols = vec!["origins"];
+    // max_lag 默认随帧数取半，逐文件不同；min_origins 是最长 lag 的原点数
+    let mut cols = vec!["max_lag", "min_origins"];
     if params.fit_range.is_some() {
         cols.extend(fit_cols);
     }
     let mut summary = Summary::new(&cols);
     for (path, r) in &results {
-        let mut vals = vec![r.n_origins as f64];
+        let mut vals = vec![(r.time.len() - 1) as f64, r.min_origins as f64];
         if let Some(f) = &r.fit {
             vals.extend([
                 f.t_lo, f.t_hi, f.n_points as f64, f.slope, f.intercept,
                 f.d_ang2_per_fs, f.d_err, f.r2,
             ]);
         }
-        summary.ok(batch::label_of(path), r.time.len(), r.n_atoms, &vals);
+        summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &vals);
         summary.note("species", r.elements.join(" "));
     }
     summary.failed(&failures);
