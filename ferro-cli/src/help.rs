@@ -571,6 +571,12 @@ Parameters:
   --center    ELEM    Central atom element (required)   e.g. O
   --neighbor  ELEM    Neighbor atom element (required)  e.g. H
   --r-cut     FLOAT   Bond search cutoff [Å]            default: 1.2
+  --vector    MODE    sum  = sum of the centre's bonds, found per frame
+                      bond = each bond within --r-cut in frame 0, followed
+                             by atom identity (gmx rotacf -d); use it for
+                             tetrahedra, whose summed bonds cancel
+                                                        default: sum
+  --legendre  1|2     P_l order of the correlation      default: 2
   --dt        FLOAT   Timestep [fs]                     default: 1.0
   --max-lag   INT     Longest lag [frames], 1..N-1      default: N/2
   --last-n    INT     Use only the last N frames
@@ -586,6 +592,7 @@ Output:
 Examples:
   ferro traj rotcorr -i traj.xyz --center O --neighbor H
   ferro traj rotcorr -i traj.dump --center O --neighbor H --dt 2.0
+  ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond
 
 Full documentation:  ferro doc traj rotcorr"#
     );
