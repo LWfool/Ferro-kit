@@ -471,21 +471,23 @@ See [Bond Angle Distribution](analysis/angle.md) for details.
 ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --metal-units -o run1
 ```
 
+Every lag averages all time origins (FFT); `diffusion` is the trapezoidal Green–Kubo running integral.
+Details in [VACF](analysis/vacf.md).
+
 | Flag | Default | Description |
 |---|---|---|
-| `--dt` | 1.0 | time step [fs] |
-| `--shift` | 1 | spacing between time origins [frames] |
-| `--tau` | (all) | lag window [frames] |
+| `--dt` | 1.0 | time between stored frames [fs] |
+| `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
 | `--elements` | (all) | element filter |
 
-Columns: `file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
+Columns: `file, time, vacf, vacf_norm, vacf_x, vacf_y, vacf_z, diffusion`
 
 ### `rotcorr` — rotational correlation
 
 $C_2(t)$ of a molecular orientation vector.
 
 ```bash
-ferro traj rotcorr -i traj.lammpstrj --center P --neighbor O --r-cut 2.4 --dt 2.0 -o run1
+ferro traj rotcorr -i water.lammpstrj --center O --neighbor H --r-cut 1.2 --dt 2.0 -o run1
 ```
 
 | Flag | Default | Description |
@@ -493,9 +495,11 @@ ferro traj rotcorr -i traj.lammpstrj --center P --neighbor O --r-cut 2.4 --dt 2.
 | `--center` | (required) | element of the centre atom |
 | `--neighbor` | (required) | element of the neighbour atom |
 | `--r-cut` | 1.2 | cutoff for the bond search [Å] |
-| `--dt` | 1.0 | time step [fs] |
-| `--shift` | 1 | spacing between time origins [frames] |
-| `--tau` | (all) | lag window [frames] |
+| `--dt` | 1.0 | time between stored frames [fs] |
+| `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
+
+Every lag averages all (molecule, origin) pairs valid at both ends (FFT); `integral` is trapezoidal.
+Details in [Rotational correlation](analysis/rotcorr.md).
 
 Columns: `file, time, c2, integral`
 

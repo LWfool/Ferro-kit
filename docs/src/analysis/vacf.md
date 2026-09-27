@@ -2,88 +2,174 @@
 
 ## Theory
 
-The velocity autocorrelation function (VACF) $C_v(t)$ measures how quickly atomic velocities decorrelate over time.  Its Fourier transform gives the vibrational density of states (VDOS), which encodes information about lattice dynamics and diffusion mechanisms.
+The velocity autocorrelation function (VACF) $C_v(t)$ measures how quickly atomic velocities decorrelate
+over time.  Its time integral gives the self-diffusion coefficient (Green–Kubo), and its Fourier
+transform gives the vibrational density of states (VDOS).
 
 ### Definition
 
-$$C_v(t) = \langle \mathbf{v}(t_0) \cdot \mathbf{v}(t_0 + t) \rangle = \frac{1}{N} \sum_j \langle \mathbf{v}_j(t_0) \cdot \mathbf{v}_j(t_0 + t) \rangle_{t_0}$$
+$$C_v(t) = \langle \mathbf{v}(t_0) \cdot \mathbf{v}(t_0 + t) \rangle = \frac{1}{N_\text{atoms}} \sum_j \langle \mathbf{v}_j(t_0) \cdot \mathbf{v}_j(t_0 + t) \rangle_{t_0}$$
 
 Expanding into Cartesian components:
 
-$$C_v(t) = \frac{1}{N} \sum_j \left[ v_{x,j}(0) v_{x,j}(t) + v_{y,j}(0) v_{y,j}(t) + v_{z,j}(0) v_{z,j}(t) \right]$$
+$$C_v(t) = C_x(t) + C_y(t) + C_z(t), \qquad C_x(t) = \frac{1}{N_\text{atoms}} \sum_j \langle v_{x,j}(t_0)\, v_{x,j}(t_0+t) \rangle_{t_0}$$
 
-At $t = 0$: $C_v(0) = \langle v^2 \rangle = 3 k_B T / m$ (equipartition theorem).
+At $t = 0$: $C_v(0) = \langle v^2 \rangle = 3 k_B T / m$ (equipartition), so $C_v(0)$ is a quick check on
+the temperature and the velocity unit.
 
-### Self-Diffusion Coefficient
+Velocities have no periodic jumps, so **no unwrapping** is involved.
 
-The Green-Kubo relation connects the VACF to the self-diffusion coefficient $D$:
+## Time origins and the lag axis
+
+This follows the same conventions as [MSD](msd.md#time-origins-and-the-lag-axis); the essentials:
+
+- **Every lag uses every origin.**  With $N$ frames, lag $m$ averages the $N-m$ pairs of frames $m$ apart:
+
+$$C_v(m) = \frac{1}{N_\text{atoms}} \sum_j \frac{1}{N-m} \sum_{t=0}^{N-1-m} \mathbf{v}_j(t)\cdot\mathbf{v}_j(t+m)$$
+
+- **Longest lag** `--max-lag`, default $\lfloor N/2 \rfloor$ — the default of `gmx velacc -acflen`.  The
+  output has $m_\max + 1$ rows; the longest lag rests on $N - m_\max$ origins (`min_origins` in
+  `[inputs]`).  Allowed values are $1 \ldots N-1$; a value outside fails that input only.
+- **FFT.**  The sum over origins is an autocorrelation, computed per atom and axis by zero-padding to a
+  power of two $\geq 2N$, transforming, taking $|V|^2$ and transforming back — $O(N \log N)$, and exactly
+  equal to the direct sum (tests compare the two to $10^{-12}$).  This is what `gmx velacc` and
+  MDAnalysis transport-analysis (`fft=True`) do.
+
+## Normalised VACF
+
+`vacf_norm` $= C_v(t) / C_v(0)$ — the form `gmx velacc` writes by default (`-normalize`).  It starts at 1
+and makes runs at different temperatures or of different elements comparable in shape.  When
+$C_v(0) = 0$ (every selected atom at rest) it is left empty rather than written as 0.
+
+## Self-diffusion: Green–Kubo
 
 $$D = \frac{1}{3} \int_0^\infty C_v(t) \, dt$$
 
-In practice, the running integral is computed as:
+`diffusion` is the **running** integral $D(t) = \tfrac13 \int_0^t C_v\,d\tau$, evaluated with the
+trapezoidal rule:
 
-$$D(t) = \frac{1}{3} \sum_{i=0}^{n} C_v(i \cdot \Delta t) \cdot \Delta t$$
+$$I(0) = 0, \qquad I(m) = I(m-1) + \frac{dt}{2}\big(C_v(m-1) + C_v(m)\big), \qquad D(m) = \frac{I(m)}{3}$$
 
-which converges to $D$ as $t \to \infty$ (rectangular approximation, same as code1).
+This is the rule GROMACS uses for correlation integrals (`print_and_integrate`, "Use trapezoidal rule")
+and MDAnalysis transport-analysis uses for `self_diffusivity_gk` (`scipy.integrate.trapezoid`).
 
-### Vibrational Density of States
+**Reading $D$ off the column.**  $D(t)$ rises, may overshoot, and levels off once $C_v$ has decayed; $D$
+is the plateau.  At long $t$ the integral accumulates noise from the poorly averaged tail and wanders —
+take the plateau, not the last value.  `diffusion_end` in `[inputs]` is the last value only for a quick
+comparison across inputs.
 
-The VDOS $g(\nu)$ is obtained via Fourier transform of the VACF:
+Units: $D$ in Å²/fs; multiply by 0.1 for cm²/s.
 
-$$g(\nu) \propto \int_0^\infty C_v(t) \cos(2\pi \nu t) \, dt$$
+## Units
 
-Peaks in $g(\nu)$ correspond to characteristic vibrational modes.
+Velocities are used in the internal unit **Å/fs**:
 
-### Time-Shift Averaging
+- LAMMPS dumps: `real` units are already Å/fs; `metal` units (Å/ps) are converted when read with
+  `--metal-units`.  Without that flag a metal-unit dump is read as if it were Å/fs, and $C_v$ comes out
+  $10^6$ times too large — check $C_v(0)$ against $3k_BT/m$.
+- Extended XYZ: the `velocities` column is taken as it is, assumed Å/fs.
 
-$$C_v(\tau) = \frac{1}{N_\text{origins}} \sum_p \frac{1}{N_\text{atoms}} \sum_j \mathbf{v}_j(p) \cdot \mathbf{v}_j(p + \tau)$$
-
-Unlike position-based analyses, **no coordinate unwrapping is needed** — velocities do not have periodic boundary jumps.
+Then $C_v$ is in Å²/fs² and `diffusion` in Å²/fs.
 
 ## Parameters
 
 ```rust
 pub struct VacfParams {
-    pub tau: Option<usize>,            // window [frames]; None = all frames
-    pub shift: usize,                  // origin spacing [frames]; default: 1
-    pub dt: f64,                       // time step [fs]; default: 1.0
+    pub max_lag: Option<usize>,        // longest lag [frames], 1..=N-1; None = N/2
+    pub dt: f64,                       // time between stored frames [fs]; default: 1.0
     pub elements: Option<Vec<String>>, // None = all atoms
 }
 ```
 
+| CLI flag | Default | Meaning |
+|---|---|---|
+| `--dt` | 1.0 | time between stored frames [fs] |
+| `--max-lag` | $N/2$ | longest lag in frames |
+| `--elements` | all | atoms averaged, chosen by element in the first frame |
+| `--last-n` | all | keep only the last N frames before anything else |
+| `--metal-units` | off | LAMMPS dump in metal units (velocities Å/ps → Å/fs) |
+
 ## Output
 
-`vacf_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vacf_all…` without `--elements`): `file, time, vacf, vacf_x, vacf_y, vacf_z, diffusion`
-(time in fs; `diffusion` is the Green-Kubo running integral).
+`vacf_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vacf_all…` without `--elements`):
+`file, time, vacf, vacf_norm, vacf_x, vacf_y, vacf_z, diffusion` (time in fs).
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
-(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
+The `#` header holds only what the whole batch shares (max lag when given, origin convention, `dt`,
+element selection, units, integration rule).  Per input, `[inputs]` lists:
 
+| Column | Meaning |
+|---|---|
+| `frames` | $N$, after `--last-n` |
+| `atoms` | atoms averaged |
+| `max_lag` | $m_\max$ of this input |
+| `min_origins` | $N - m_\max$ |
+| `diffusion_end` | $D$ at the longest lag (Å²/fs) — not the plateau |
+| `species` | elements among those atoms |
 
-### Unit Note
-
-Velocities are stored in whatever unit the source trajectory uses.  LAMMPS metal-unit dump files store velocities in Å/ps.  To convert to internal standard units (Å/fs), multiply by $10^{-3}$.  As a consequence:
-- $C_v$ in metal units: (Å/ps)² → multiply by $10^{-6}$ to get (Å/fs)²
-- $D$ in metal units: Å²/ps → multiply by $10^{-3}$ to get Å²/fs → multiply by $10^{-16}$ to get cm²/s
-
-This conversion will be applied automatically in a future IO unit normalisation update.
+All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#`
+comment block holds the shared parameters and the `[inputs]` list (`pandas.read_csv(comment="#")` drops
+it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 ## Usage
 
 ```bash
 ferro traj vacf -i traj.dump --dt 2.0 --elements Li -o run1
+ferro traj vacf -i traj.lammpstrj --dt 5.0 --metal-units --max-lag 400
 ```
 
 ```rust
-use ferro_analysis::md::{VacfParams, calc_vacf, write_vacf};
+use ferro_analysis::md::{VacfParams, calc_vacf};
 
-let params = VacfParams { tau: Some(500), dt: 2.0, shift: 1,
-    elements: Some(vec!["Li".into()]) };
-let result = calc_vacf(&traj, &params).unwrap();
-write_vacf(&result, "output.vacf").unwrap();
+let params = VacfParams { max_lag: Some(500), dt: 2.0, elements: Some(vec!["Li".into()]) };
+let result = calc_vacf(&traj, &params)?;
 ```
+
+## Verification
+
+| Check | Where | Agreement |
+|---|---|---|
+| FFT vs direct all-origin sum, irregular velocities, per axis | unit test `test_fft_matches_brute_force` | $10^{-12}$ |
+| trapezoidal integral (constant $C_v$ gives $c\,t/3$, 0 at $t=0$) | `test_diffusion_is_trapezoidal` | $10^{-12}$ |
+| $C_v(0)=0$ leaves `vacf_norm` empty | `test_zero_velocity_gives_nan_norm_not_zero` | — |
+| synthetic AR(1) velocities, 30 atoms × 200 frames, vs an independent numpy implementation | by hand, 2026-09-27 | within the csv's 7 significant digits, all columns |
+
+The numpy reference, for velocities `v` of shape (frames, atoms, 3) in Å/fs:
+
+```python
+import numpy as np
+N, dt = len(v), 2.0
+vacf = np.array([(v[m:] * v[:N - m]).sum(axis=2).mean() for m in range(N // 2 + 1)])
+D = np.concatenate([[0], np.cumsum(0.5 * dt * (vacf[1:] + vacf[:-1]))]) / 3
+```
+
+## Troubleshooting
+
+| Symptom | First thing to check |
+|---|---|
+| $C_v(0)$ far from $3k_BT/m$ | velocity unit: metal-unit dump read without `--metal-units` (factor $10^6$) |
+| `frame k has no velocities` | the dump lacks `vx vy vz`, or only some frames carry them |
+| $D$ differs from ferro 0.3.2 or earlier | expected — see below |
+| `diffusion` never levels off | trajectory too short for $C_v$ to decay, or `--max-lag` too small |
+| `diffusion` drifts at long $t$ | tail noise; read the plateau, shorten `--max-lag` |
+
+## Differences from earlier versions
+
+Up to 0.3.2 (following `code1/velcorr.c`):
+
+- **One origin.**  `--tau` defaulted to the whole trajectory (the help page said half), so only frame 0
+  was an origin; `--shift` had no effect.  Now every lag averages all origins; `--shift` is gone and
+  `--tau` became `--max-lag`.
+- **Rectangular integral.**  $D(t) = \tfrac13\sum_{i\le n} C_v(i)\,dt$ counted the first point in full,
+  so $D$ was too large by $C_v(0)\,dt/6$ at every $t$.  Now trapezoidal.
+- New column `vacf_norm`.
+
+## Not yet: VDOS
+
+$$g(\nu) \propto \int_0^\infty C_v(t) \cos(2\pi \nu t) \, dt$$
+
+ferro does not compute the vibrational density of states yet (`dev/plan.md`).
 
 ## Implementation Notes
 
-- Requires `frame.velocities` to be populated (returns `None` if any frame lacks velocities).
-- Parallelism: per-origin `par_iter`.
+- Parallelism: per atom; the FFT is planned once per trajectory length and shared, each thread owns its
+  buffers (`ferro-analysis/src/md/correlate.rs`, crate `rustfft`).

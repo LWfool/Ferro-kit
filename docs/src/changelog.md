@@ -106,6 +106,20 @@ unchanged byte for byte.
 |---|---|
 | `ferro traj msd -i t.dump --dt 1.0 --plot` | `ferro traj msd -i t.dump --dt 1.0` |
 
+### `traj vacf` / `rotcorr` average every origin; trapezoidal integrals
+
+Same cause as `msd` below: `--tau` defaulted to the whole trajectory, so only one time origin was used.
+
+| before | now |
+|---|---|
+| `--shift N`, `--tau N` | `--shift` removed; `--max-lag N` (default half the trajectory) |
+| `diffusion` / `integral`: rectangular sum, too large by $C(0)\,dt/6$ (vacf) and $dt/2$ (rotcorr) | trapezoidal, as GROMACS and MDAnalysis |
+| rotcorr: frames without a neighbour still counted in the denominator | only pairs valid at both ends are averaged; lags without any are empty |
+| — | new column `vacf_norm` = $C_v/C_v(0)$ |
+| `[inputs]` `origins` | `max_lag`, `min_origins`; vacf adds `diffusion_end`, `species`; rotcorr adds `valid_fraction` |
+
+`vanhove` keeps `--tau` and `--shift` for now.
+
 ### `traj msd` averages every origin; `--shift` → `--max-lag`; `msd_x/y/z`
 
 MSD numbers change for every input.  Earlier versions averaged a **single** time origin (the CLI had

@@ -284,18 +284,6 @@ XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素�
 CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
 文件里），故这条与应力无关，是纯粹的标签映射问题。
 
-### vacf / rotcorr：只有 1 个时间原点 + 改 FFT（2026-09-27 发现，高）
-
-与 msd 修复前同病：`TimeKnobs::tau = None` → 代码取 `n_steps`（帮助页却写「默认半条
-轨迹」），原点 `take_while(p + tau <= n_steps)` 只剩 `p = 0`。照 msd 的做法改：
-
-- **vacf**：$\langle \mathbf{v}(0)\cdot\mathbf{v}(t)\rangle$ 逐原子逐轴走 `correlate::Autocorr`，
-  除以 `N − m`；默认 max lag = N/2，删 `--shift`。Green-Kubo 积分不变
-- **rotcorr**：$C_2 = \langle P_2(\mathbf{u}(0)\cdot\mathbf{u}(t))\rangle$，
-  $(\mathbf{u}_0\cdot\mathbf{u}_t)^2 = \sum_{ij} u_iu_j(0)\,u_iu_j(t)$ —— 6 个独立分量
-  $u_iu_j$ 各做自相关再加权求和（非对角 ×2）
-- 两者都要暴力全原点参考测试 + 独立 numpy 对拍，同 msd
-
 ### vanhove：默认 1 个原点 + 仍用格点视图解包裹（2026-09-27 发现）
 
 固定 lag 的位移直方图，FFT 无用。但 `tau` 默认 `n_steps − 1` → 只有 1 个原点；解包裹
@@ -303,12 +291,19 @@ CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/
 问题）。改默认 tau（N/2？）并换 TOR —— `msd.rs::unwrap_tor` 届时有第二个用户，
 可下沉共享。
 
+### extxyz 把 `momenta` 当速度读（2026-09-27 发现）
+
+`readers/extxyz.rs` 找不到 `velocities` 列时退到 `momenta`，但直接当速度存，没有除以
+质量（ASE 的 `momenta` 是 m·v，且时间单位是 ASE 自己的）。ASE 写 extxyz 时带的正是
+`momenta`，所以 ASE 产出的轨迹进 `traj vacf` 会得到错误量纲。修法：除以
+`effective_mass()` 并换算 ASE 时间单位，或拒绝 `momenta` 并报错。
+
 ### VDOS：振动态密度（2026-09-27 提出，中）
 
 VACF 的傅里叶变换，业内常用（如 LAMMPS/MDAnalysis 生态的 power spectrum）。等 vacf
 改 FFT 后顺手做：窗函数（Hann？）、归一化、频率单位（THz / cm⁻¹）需先查规范。
 
-### 共享头部冒充全批：angle / vacf / vanhove / rotcorr（2026-09-27 扫描）
+### 共享头部冒充全批：angle / vanhove（2026-09-27 扫描；vacf、rotcorr 已修）
 
 与 msd 同类（`fa2727c` 已修 msd）：`meta_lines()` 里用了逐文件的量，多文件时第一个
 文件的值摆在共享区。
@@ -316,9 +311,7 @@ VACF 的傅里叶变换，业内常用（如 LAMMPS/MDAnalysis 生态的 power s
 | 分析 | 写进共享区的逐文件量 |
 |---|---|
 | `angle` | `elements` 列表、`[statistics]` 段（每个三元组的 mean/std/count） |
-| `vacf` | `elements`、`n_atoms`、`n_origins`、`time.len()` |
 | `vanhove` | `elements`、`n_atoms`、`n_origins`、`tau_frames`、`time` |
-| `rotcorr` | `n_molecules`、`n_origins`、`time.len()` |
 
 修法同 msd：共享区只留参数，其余走 `Summary` 列或 `note()`。`angle` 的统计是逐文件
 逐三元组的二维量，放 `[inputs]` 会很宽，可能要单独一张表。
@@ -440,6 +433,21 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### vacf / rotcorr 全原点 FFT + 梯形积分（2026-09-27 落地）
+
+- 同 msd：`--tau` 默认整条轨迹 → 1 个原点。改 FFT，`--max-lag` 默认 N/2（= gmx `-acflen`）
+- **积分**：左矩形 → 梯形（GROMACS `print_and_integrate` 源码注释「Use trapezoidal
+  rule」；MDAnalysis transport-analysis `scipy.integrate.trapezoid`）。D 旧值偏大 C(0)dt/6
+- **rotcorr**：6 分量 FFT 与 gmx `autocorr.cpp` 的 P2 求和逐项一致（对角 1.5、非对角 3、
+  −0.5(N−m)）；ferro 另有「无邻居帧」，加 0/1 指示 χ 的自相关当分母 —— 只平均两端都
+  有效的配对（MDAnalysis waterdynamics 取交集同义，但它先分子后原点两层平均，不能 FFT）
+- vacf 加 `vacf_norm`（gmx velacc 默认归一化）
+- 手册写明 rotcorr「键向量求和」对 PO₄ 这类对称中心几乎抵消，量到的是畸变而非转动
+- 验证：单测 vs 暴力（rotcorr 含无效帧）；vacf 合成 AR(1) extxyz、rotcorr examples P–O
+  两种 r_cut（全有效 / 0.5% 无效）vs 独立 numpy，csv 精度内一致
+- 事故记录：一次 Python 就地改写把 `traj.rs` 截成 0 字节（`open(p,'w').write(open(p).read())`
+  先截断后读），从 git 恢复后重做。该文件当时无未提交改动，未丢工作
 
 ### MSD 全原点 FFT + TOR 解包裹 + 笛卡尔分量（2026-09-27 落地）
 
