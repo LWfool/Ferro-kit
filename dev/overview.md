@@ -357,3 +357,7 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 同日再追加（仍在 0.3.3）：**`traj msd` 数值全变** —— 全原点 FFT 平均、TOR 解包裹、
 `msd_x/y/z` 取代 `msd_a/b/c`、`--shift` → `--max-lag`。此前 CLI 的 MSD 只有 1 个时间
 原点。vacf / rotcorr / vanhove 同病待修（`plan.md`）。
+
+同日第三次追加（仍在 0.3.3）：**`traj vacf` / `rotcorr` 数值全变** —— 全原点 FFT、
+梯形积分（旧的左矩形法使 D 偏大 C(0)dt/6）、rotcorr 只平均两端有效的配对；
+`--shift` 删、`--tau` → `--max-lag`。vanhove 仍待改。
