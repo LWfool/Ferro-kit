@@ -39,21 +39,20 @@ fn print_job_qe() {
   ibrav = 0; cell taken from the structure (CELL_PARAMETERS angstrom).
   Pseudopotentials are referenced as <Element>.UPF in --pseudo-dir.
 
-Task and electronic structure:
-  --qe-task STR       scf | nscf | bands | relax | vc-relax | md | vc-md  [scf]
+Parameters:
+ Task and electronic structure
+  --qe-task STR      scf | nscf | bands | relax | vc-relax | md | vc-md  [scf]
   --qe-functional STR pbe pbesol revpbe blyp scan r2scan pbe0 hse06       [pbe]
   --ecutwfc F         Plane-wave cutoff [Ry]                               [50]
   --smearing STR      none | gaussian | mp | mv | fd                      [none]
                       (mp / mv are the ones to use for metals)
   --kpoints K1 K2 K3  Monkhorst-Pack mesh (omit for Gamma)
   --pseudo-dir PATH   Pseudopotential directory                      [./pseudo]
-
-Charge / spin (shared by all three targets):
+ Charge / spin (shared by all three targets)
   --charge INT        Override total charge
   --multiplicity INT  Override 2S+1 (-> nspin=2, tot_magnetization)
   --auto-spin         Guess it from the structure; ON by default for qe
-
-MD (--qe-task md|vc-md):
+ MD (--qe-task md|vc-md)
   --md-steps INT      Number of MD steps                               [10000]
   --temperature F     Target temperature [K]                          [298.15]
 
@@ -63,8 +62,7 @@ Output:
 Examples:
   ferro job -s qe -i crystal.cif
   ferro job -s qe -i metal.cif --smearing mp --kpoints 8 8 8
-  ferro job -s qe -i slab.xyz --qe-task relax --qe-functional scan
-  ferro job -s qe -i Fe2O3.cif --auto-spin --kpoints 4 4 4 -o pw.in
+  ferro job -s qe -i slab.xyz --qe-task relax --qe-functional scan -o relax.in
 
 Full documentation:  ferro doc job"#
     );
@@ -78,8 +76,7 @@ Parameters:
   -m, --method  STR   DFT functional           default: B3LYP
   -b, --basis   STR   Basis set                default: 6-31G*
   -o PATH             Output file              default: job.gjf
-
-Charge / spin (shared):
+ Charge / spin (shared by all three targets)
   --charge INT        Override total system charge
   --multiplicity INT  Override spin multiplicity 2S+1 (highest priority)
   --auto-spin         Guess multiplicity from the structure: magmom sum, then
@@ -91,7 +88,6 @@ Output:
 Examples:
   ferro job -s gaussian -i mol.xyz
   ferro job -s gaussian -i mol.xyz -m PBE0 -b def2-TZVP -o sp.gjf
-  ferro job -s gaussian -i FeCl3.xyz --auto-spin      # high-spin multiplicity
   ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
 
 Full documentation:  ferro doc job"#
@@ -102,7 +98,8 @@ fn print_job_cp2k() {
     println!(
         r#"ferro job -s cp2k — CP2K input file (GPW/DFT, periodic systems)
 
-Task and electronic structure:
+Parameters:
+ Task and electronic structure
   --task STR          energy | force | geo-opt | cell-opt | md | freq  [energy]
   --functional STR    pbe blyp revpbe pbesol          (GGA)             [pbe]
                       pbe0 b3lyp hse06                (hybrid, auto &HF block)
@@ -117,19 +114,16 @@ Task and electronic structure:
   --smear             Fermi-Dirac smearing (300 K)
   --pbc STR           xyz | z | none                              (auto from cell)
   --kpoints K1 K2 K3  Monkhorst-Pack mesh
-
-Charge / spin (shared by all three targets):
+ Charge / spin (shared by all three targets)
   --charge INT        Override total system charge
   --multiplicity INT  Override 2S+1 (highest priority; disables auto-spin)
   --auto-spin         Guess it from the structure (see `ferro doc spin`)
-
-What CP2K prints:
+ What CP2K prints
   --atom-charge STR   none | mulliken | hirshfeld | hirshfeld-i         [none]
   --cube STR          none | density | elf | hartree                    [none]
   --molden            Export a Molden wavefunction file
   --project STR       CP2K project name                                [ferro]
-
-MD (--task md):
+ MD (--task md)
   --md-steps INT      Number of MD steps                               [10000]
   --md-timestep F     Timestep [fs]                                       [1.0]
   --temperature F     Temperature [K]                                  [298.15]
@@ -146,7 +140,6 @@ Examples:
   ferro job -s cp2k -i glass.xyz
   ferro job -s cp2k -i glass.xyz --task geo-opt --dispersion d3bj -o opt.inp
   ferro job -s cp2k -i glass.xyz --task md --temperature 1500 --md-steps 50000
-  ferro job -s cp2k -i crystal.cif --functional pbe0 --scf ot --cp2k-basis pob-tzvp
 
 Full documentation:  ferro doc job"#
     );
@@ -159,9 +152,6 @@ pub fn print_convert() {
 
   Reads one file, writes another. Both formats come from the file NAMES;
   there is no --from / --to flag.
-
-Supported formats:
-{}
 
 Parameters:
   -i, --input  FILE       Input file  (format from its name)
@@ -176,6 +166,8 @@ Parameters:
       --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces
                           eV/Å); default is real units
   -h, --help              Short parameter table (this page adds the formats)
+ Formats -i / -o accept, recognised by file name:
+{}
 
 Output:
   One file when the target format holds a trajectory (Frames column above),
@@ -206,10 +198,10 @@ Parameters:
                           eV/Å); default is real units
   -h, --help              Short parameter table
 
-Output — stdout, the FIRST and the LAST frame only:
-  atoms + composition, cell a b c / alpha beta gamma, volume, density (g/cm³),
-  per-axis PBC flags, and whether energy / forces / velocities are present.
-  No cell means no density line rather than a placeholder.
+Output:
+  stdout only, for the FIRST and the LAST frame: atoms + composition, cell
+  a b c / alpha beta gamma, volume, density (g/cm³), per-axis PBC flags, and
+  whether energy / forces / velocities are present
 
 Examples:
   ferro info -i input.xyz
@@ -219,7 +211,7 @@ Full documentation:  ferro doc info"#
     );
 }
 
-/// `ferro bader` with no `-i`: methods, outputs, and the file-name collision.
+/// `ferro bader` with no `-i`: methods and outputs.
 pub fn print_bader() {
     println!(
         r#"ferro bader — Bader charge partitioning from a DFT charge density
@@ -242,13 +234,10 @@ Parameters:
   -h, --help              Short parameter table
 
 Output:
-  <stem>_ACF.dat  <stem>_BCF.dat  <stem>_AVF.dat, in Henkelman's layout because
-  external tools parse them. They land NEXT TO THE INPUT rather than in the
-  current directory: VASP calls every charge density CHGCAR, so two runs would
-  otherwise overwrite one another. -o collects them elsewhere, -s tags them.
+  <stem>_ACF.dat  <stem>_BCF.dat  <stem>_AVF.dat (Henkelman's layout), written
+  NEXT TO THE INPUT, not in the current directory; -o collects them elsewhere
 
 Examples:
-  ferro bader -i CHGCAR
   ferro bader -i CHGCAR --method weight
   ferro bader -i CHGCAR --method neargrid --refine 3 --vacval 1e-4
   ferro bader -i run1/CHGCAR -o reports -s weight --mkdir
@@ -718,6 +707,7 @@ Output:
 
 Examples:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80
+  ferro map velocity -i 'runs/*/prod.dump' --elements Li --last-n 500 -o vel
 
 Full documentation:  ferro doc map velocity"#
     );
@@ -745,6 +735,7 @@ Output:
 
 Examples:
   ferro map force -i traj.dump --elements O
+  ferro map force -i traj.extxyz --nx 80 --ny 80 --nz 80 -s force_O -o maps
 
 Full documentation:  ferro doc map force"#
     );
