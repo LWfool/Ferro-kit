@@ -57,14 +57,16 @@ def triplet_of(df):
     return str(row["end_a"]), str(row["center"]), str(row["end_c"])
 
 
-def build_panel(df, ax, colors):
+def build_panel(path, df, ax, ctx):
     a, b, c = triplet_of(df)
-    for name in fp.files_in(df):
+    for name in ctx.shown(df):
         sub = df[df["file"] == name].sort_values("angle")
         y = sub["p"]
         if CFG["smooth"] > 1:
             y = y.rolling(CFG["smooth"], center=True, min_periods=1).mean()
-        ax.plot(sub["angle"], y, color=colors[name], lw=CFG["lw"], label=name)
+        ax.plot(sub["angle"], y, color=ctx.colors[name], lw=CFG["lw"],
+                label=ctx.label(name))
+        ctx.record_curve(path.stem, name, "p", sub["angle"], y)
 
     ax.set_xlabel(CFG["xlabel"])
     ax.set_ylabel(CFG["ylabel"])
@@ -73,7 +75,7 @@ def build_panel(df, ax, colors):
     ax.set_ylim(*CFG["ylim"])
 
 
-def build_figure(frames):
+def build_figure(frames, ctx):
     n = len(frames)
     ncols = CFG["ncols"] or n
     nrows = -(-n // ncols)
@@ -84,12 +86,9 @@ def build_figure(frames):
     )
     fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
 
-    names = list(dict.fromkeys(sum((fp.files_in(df) for _, df in frames), [])))
-    colors = fp.color_map(names)
-
     flat = axes.ravel()
-    for ax, (_, df) in zip(flat, frames):
-        build_panel(df, ax, colors)
+    for ax, (path, df) in zip(flat, frames):
+        build_panel(path, df, ax, ctx)
     for ax in flat[n:]:
         ax.set_visible(False)
 
@@ -109,8 +108,9 @@ def main():
     frames = [(p, fp.read(p)) for p in expand(args.inputs)]
     print(f"Inputs: {len(frames)} file(s)")
 
-    fig = build_figure(frames)
-    fp.save(fig, args.output, args.outdir)
+    ctx = fp.context(frames, args.outdir)
+    fig = build_figure(frames, ctx)
+    fp.save(fig, args.output, args.outdir, ctx)
 
 
 if __name__ == "__main__":
