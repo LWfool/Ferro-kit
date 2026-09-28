@@ -9,35 +9,21 @@ r"""把 `ferro net` 的产物画成发表级的网络拓扑图。
 
 堆积柱相对折线的好处是它把「和为 1」画成了图形约束：读者一眼看到此消彼长，不必在
 脑子里再加一次。代价是**小分量看不出趋势**——占 2 % 的条带薄得只剩一条线。真要追
-小分量的变化，把那一列单独拉出来画折线。
+小分量的变化，把那一列单独拉出来画折线（或用导出的 `<stem>_data.csv` 重绘）。
 
-## `--partner`（仅 qn）
-
-展开成 `network_qn_partner.csv` 的两级结构：色相仍是 Qn，同色系内按 m_<X> 分明度，
-每个 Qn 组外加一圈框线标出粗结构边界。这样第一眼仍落在 Qn 的色块上，伙伴分解只是
-补充。段标签即文献记号 $Q^n(m\mathrm{X})$——`Q1(2Al)` = 1 个 P–O–P + 2 个 P–O–Al。
-
-**口径（2026-08-20 起）**：`qn` 只数**同核**连接（P–O–P），`m_<X>` 是**异核**连接
-（P–O–Al…），总连接数 = `qn + Σm`。形成子自身那一列已从 csv 里去掉（它恒等于 `qn`），
-所以剩下的每一列都携带 `qn` 没有的信息：
-
-- **退化不再发生**。旧口径下单形成子体系 `m_P ≡ qn`，展开只画出一条假的两级结构，
-  这是 `--partner` 当初被设成开关而非默认的唯一理由；那个理由现在没有了。
-  是否改回默认属出图形式问题，另行决定。
-- **无异核形成子的体系没有 m_<X> 列**（如 Zn–P–O），此时 `--partner` 自动退化为普通
-  Qn 图并打印说明——不是错误，那个体系确实没有伙伴维可展开。
-- **三簇配体按连接数计入**：它把本位点连上两个伙伴，故贡献 2。于是 `qn + Σm` 可能
-  **超过**该位点的桥氧个数（差额即三簇桥），两者在 `ferro net` 里分别是
-  `mean_qn`/`m_` 与 `mean_n_bo`。
+**口径**：`qn` 只数**同核**连接（P–O–P），即文献 $Q^n_m$ 的 $n$。异核分解
+（`network_qn_partner.csv` 的 `m_<X>` 列）不画：色相套明度的两级堆积柱在实物上
+难以读懂，2026-09-28 按用户决定删去 `--partner`。那张表仍由 `ferro net` 照常产出，
+要看 $Q^n(m\mathrm{Al})$ 在 pandas 里筛。
 
 ## 多 csv
 
 `-o` 的 suffix 落在文件名里，所以 `network_qn_CMD.csv` 与 `network_qn_MLMD.csv` 天然
-区分。给多个 csv 就是**同一成分刻度下并排多根柱**，组标签取自 suffix。
+区分。给多个 csv 就是**同一成分刻度下并排多根柱**，组标签取自 suffix（也可在
+`labels.csv` 里改名或隐藏）。
 
 用法：
     python plot_net.py qn network_qn.csv --outdir figs
-    python plot_net.py qn network_qn_partner.csv --partner --outdir figs
     python plot_net.py cn network_coordination.csv --element Al,Zn --outdir figs
     python plot_net.py qn network_qn_CMD.csv network_qn_MLMD.csv --outdir figs
 """
@@ -63,8 +49,6 @@ CFG = {
     "bar_gap": 0.08,        # 并排多组时组间空隙（占 bar_width 的比例）
     "edge_lw": 0.4,         # 每个条带的描边
     "edge_color": "white",
-    "group_lw": 0.7,        # --partner 下 Qn 组的框线
-    "group_color": "black",
 
     "xlabel": "",           # 成分名已在刻度上，默认不重复
     "ylabel": r"Fraction (\%)",
@@ -78,10 +62,6 @@ CFG = {
     # 挂在 ax 上会被它们顶穿。y 要留够旋转标签的高度
     "legend_bbox": (0.5, -0.16),
     "legend_ncol": 6,
-    # --partner 下明度维的说明。图例只画 Qn 色相（第一眼要落在粗结构上），
-    # 但同色系的深浅档携带 m_<X>，不说明读者无从得知它编码什么
-    "partner_note": r"Shading within each hue: {m} high (dark) $\to$ low (light)",
-    "note_bbox": (0.5, -0.30),
 
     "ylim": (0, 100),
 }
@@ -89,45 +69,11 @@ CFG = {
 
 # ── 数据整形 ─────────────────────────────────────────────────────────────────
 
-def series_qn(df, former, partner):
-    """返回 [(段标签, 所属 Qn, 该段的行)]，按堆叠自下而上排序。
-
-    **一个段是一个物种，不是一行**。`partner` 模式下同一个 `(qn, m_<X>…)` 组合在不同
-    成分里各有一行，它们必须归入同一段——否则明度档会按行号分配，同一个 m 组合在两个
-    成分里拿到不同深浅，颜色就不再编码 m 而是编码"第几行"。
-
-    段序：`partner=False` 按 qn 升序；`True` 时先 qn 升序，组内按第一个 m_ 列**降序**，
-    于是同色系里最深的一档 m 最高。
-
-    `m_<X>` 列在新口径下全是**异核**伙伴（形成子自身那一列已从 csv 去掉），故没有
-    m_ 列就是真的没有异核伙伴，此时退化为普通 Qn 分布是正确行为而非降级。
-    """
+def series_qn(df, former):
+    """返回 [(段标签, 类别值, 该段的行)]，按 qn 升序（堆叠自下而上）。"""
     sub = df[df["former"] == former]
-    m_cols = [c for c in sub.columns if c.startswith("m_")]
-
-    if not partner or not m_cols:
-        return [(f"Q{int(q)}", int(q), sub[sub["qn"] == q])
-                for q in sorted(sub["qn"].unique())]
-
-    # 列并集下某个成分缺整列 m_<X>（那个体系根本没有 X），空字段读回来是 NaN。
-    # 这里的 NaN 确实等于 0：没有 X 就没有连向 X 的桥。不填的话 `== key` 匹配不上，
-    # 整根柱子会静默消失——一般不该把 NaN 当 0，这是有明确语义的例外。
-    sub = sub.copy()
-    sub[m_cols] = sub[m_cols].fillna(0)
-
-    combos = sub[["qn", *m_cols]].drop_duplicates()
-    combos = combos.sort_values(["qn", m_cols[0]], ascending=[True, False])
-
-    segs = []
-    for _, key in combos.iterrows():
-        mask = sub["qn"] == key["qn"]
-        for c in m_cols:
-            mask &= sub[c] == key[c]
-        # 数字在前：文献写 Q^1(2Al) 而不是 Q^1(Al2)
-        tag = ",".join(f"{int(key[c])}{c[2:]}" for c in m_cols if key[c] > 0)
-        label = f"Q{int(key['qn'])}" + (f"({tag})" if tag else "")
-        segs.append((label, int(key["qn"]), sub[mask]))
-    return segs
+    return [(f"Q{int(q)}", int(q), sub[sub["qn"] == q])
+            for q in sorted(sub["qn"].unique())]
 
 
 def series_cn(df, element):
@@ -154,56 +100,43 @@ def nontrivial_elements(df):
 
 # ── 绘图 ─────────────────────────────────────────────────────────────────────
 
-def build_panel(ax, groups, files, title, partner, palette, handles, seen):
-    """groups: [(组标签, segs)]，segs 来自 series_*。
+def build_panel(ax, groups, title, colors, handles, seen, ctx):
+    """groups: [(组名, segs)]，segs 来自 series_*。
 
     一个 x 刻度 = 一个成分；刻度上每个组一根柱；柱内自下而上堆叠各段。
 
-    `palette` 是**跨全图**的 {类别值: [明度档]}，`handles`/`seen` 也跨全图累加：
+    `colors` 是**跨全图**的 {类别值: 颜色}，`handles`/`seen` 也跨全图累加：
     颜色的含义必须在每一格里相同，否则一份共享图例就是在撒谎。
     """
+    files = ctx.names
     n_grp = len(groups)
     total_w = CFG["bar_width"]
     w = total_w / n_grp * (1 - CFG["bar_gap"])
     offsets = [(-total_w / 2 + total_w / n_grp * (i + 0.5)) for i in range(n_grp)]
-    cycle = {q: shades[0] for q, shades in palette.items()}
-    shade_of = palette
 
     for gi, (gname, segs) in enumerate(groups):
         xs = [i + offsets[gi] for i in range(len(files))]
         bottom = [0.0] * len(files)
-        used = {}
-        # 每个 Qn 组的上下沿，供框线用
-        span = {}
-        for label, q, rows in segs:
-            k = used.get(q, 0)
-            used[q] = k + 1
-            color = shade_of[q][k]
+        for label, key, rows in segs:
             vals = [float(rows[rows["file"] == f]["fraction"].sum()) * 100 for f in files]
-            ax.bar(xs, vals, width=w, bottom=bottom, color=color,
+            ax.bar(xs, vals, width=w, bottom=bottom, color=colors[key],
                    edgecolor=CFG["edge_color"], linewidth=CFG["edge_lw"], zorder=2)
-            lo = list(bottom)
             bottom = [b + v for b, v in zip(bottom, vals)]
-            for i in range(len(files)):
-                s = span.setdefault((q, i), [lo[i], bottom[i]])
-                s[1] = bottom[i]
-            key = q if partner else label
+            for f, v in zip(files, vals):
+                if (rows["file"] == f).any():
+                    ctx.record(panel=title, group=gname, file=f, category=label,
+                               percent=round(v, 6), count=int(rows[rows["file"] == f]["count"].sum()))
             if key not in seen:
                 seen.add(key)
-                handles.append(Patch(facecolor=cycle[q], label=f"Q{q}" if partner else label))
-
-        if partner:
-            # Qn 的粗结构边界：一圈框线，把同一 Qn 的若干明度档圈起来
-            for (q, i), (lo, hi) in span.items():
-                ax.bar(xs[i], hi - lo, width=w, bottom=lo, facecolor="none",
-                       edgecolor=CFG["group_color"], linewidth=CFG["group_lw"], zorder=3)
+                handles.append((key, Patch(facecolor=colors[key], label=label)))
 
         if n_grp > 1:
-            ax.text(offsets[gi], 101, gname, ha="center", va="bottom",
+            ax.text(offsets[gi], 101, ctx.label(gname), ha="center", va="bottom",
                     fontsize=plt.rcParams["font.size"] - 1, rotation=90)
 
     ax.set_xticks(range(len(files)))
-    ax.set_xticklabels(files, rotation=CFG["xtick_rotation"], ha="right")
+    ax.set_xticklabels([ctx.label(f) for f in files],
+                       rotation=CFG["xtick_rotation"], ha="right")
     ax.set_xlabel(CFG["xlabel"])
     ax.set_ylabel(CFG["ylabel"])
     ax.set_ylim(*CFG["ylim"])
@@ -211,27 +144,8 @@ def build_panel(ax, groups, files, title, partner, palette, handles, seen):
     ax.tick_params(top=False)          # 分类轴上的镜像刻度没有意义
 
 
-def build_palette(all_groups):
-    """跨全图的 {类别值: [明度档]}。
-
-    明度档数取**所有格、所有组**里该类别的最大段数：不同成分下伙伴分解的行数不同
-    （某个成分一个 `Q2(m_Al=2)` 都没有），只按第一组数会在别的组上索引越界。
-    """
-    keys = sorted({q for groups in all_groups for _, segs in groups for _, q, _ in segs})
-    cycle = fp.color_map(keys)
-    per = {
-        q: max((sum(1 for _, qq, _ in segs if qq == q)
-                for groups in all_groups for _, segs in groups), default=1) or 1
-        for q in keys
-    }
-    return {q: fp.shades(cycle[q], per[q]) for q in keys}
-
-
-def build_figure(panels, groups_of, files, partner, note=None):
-    """panels: [(title, key)]，groups_of(key) -> [(组标签, segs)]。
-
-    `note` 是图例下方的一行小字，用于解释图例本身表达不了的维度（明度档）。
-    """
+def build_figure(panels, groups_of, ctx):
+    """panels: [(title, key)]，groups_of(key) -> [(组名, segs)]。"""
     n = len(panels)
     ncols = CFG["ncols"] or n
     nrows = -(-n // ncols)
@@ -243,59 +157,37 @@ def build_figure(panels, groups_of, files, partner, note=None):
     fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
 
     per_panel = [groups_of(key) for _, key in panels]
-    palette = build_palette(per_panel)
+    keys = sorted({k for groups in per_panel for _, segs in groups for _, k, _ in segs})
+    colors = fp.color_map(keys)
 
     flat = axes.ravel()
     handles, seen = [], set()
     for ax, (title, _), groups in zip(flat, panels, per_panel):
-        build_panel(ax, groups, files, title, partner, palette, handles, seen)
+        build_panel(ax, groups, title, colors, handles, seen, ctx)
     for ax in flat[n:]:
         ax.set_visible(False)
     # 图例按类别值排序，与堆叠自下而上的次序一致
-    handles.sort(key=lambda h: h.get_label())
+    handles = [h for _, h in sorted(handles, key=lambda kh: kh[0])]
 
     fig.legend(handles=handles, loc=CFG["legend_loc"],
                bbox_to_anchor=CFG["legend_bbox"], ncol=CFG["legend_ncol"],
                bbox_transform=fig.transFigure)
-    if note:
-        fig.text(*CFG["note_bbox"], note, ha="center", va="top",
-                 fontsize=plt.rcParams["font.size"] - 1,
-                 transform=fig.transFigure)
     return fig
 
 
 # ── 入口 ─────────────────────────────────────────────────────────────────────
 
-def run_qn(frames, args):
-    partner = args.partner
+def run_qn(frames, ctx, args):
     formers = list(dict.fromkeys(f for _, df in frames for f in df["former"]))
-    files = list(dict.fromkeys(f for _, df in frames for f in fp.files_in(df)))
-
-    # 无 m_<X> 列有两种可能：给的是 network_qn.csv，或者这个体系根本没有异核形成子
-    # （Zn-P-O 的 qn_partner 与 qn 列结构完全相同）。两者无法从列上区分，而后者是
-    # 正常情形，所以退化而不是报错 —— series_qn 已有对应分支
-    if partner and not any(c.startswith("m_") for _, df in frames for c in df.columns):
-        print("Note  : 没有 m_<X> 列，按普通 Qn 分布绘制。"
-              "该体系没有异核形成子，或给的是 network_qn.csv")
-        partner = False
 
     def groups_of(former):
-        return [(fp.suffix_of(p), series_qn(df, former, partner)) for p, df in frames]
-
-    note = None
-    if partner:
-        m_elems = sorted({c[2:] for _, df in frames for c in df.columns
-                          if c.startswith("m_")})
-        m_tex = ", ".join(rf"$m_{{\mathrm{{{e}}}}}$" for e in m_elems)
-        note = CFG["partner_note"].format(m=m_tex)
+        return [(fp.suffix_of(p), series_qn(df, former)) for p, df in frames]
 
     return build_figure([(CFG["title_qn"].format(former=f), f) for f in formers],
-                        groups_of, files, partner, note)
+                        groups_of, ctx)
 
 
-def run_cn(frames, args):
-    files = list(dict.fromkeys(f for _, df in frames for f in fp.files_in(df)))
-
+def run_cn(frames, ctx, args):
     if args.element:
         elements = [e.strip() for e in args.element.split(",") if e.strip()]
     else:
@@ -314,16 +206,16 @@ def run_cn(frames, args):
         return [(fp.suffix_of(p), series_cn(df, element)) for p, df in frames]
 
     return build_figure([(CFG["title_cn"].format(element=e), e) for e in elements],
-                        groups_of, files, False)
+                        groups_of, ctx)
+
+
+RUN = {"qn": run_qn, "cn": run_cn}
 
 
 def main():
     ap = argparse.ArgumentParser(description="ferro net 发表级绘图")
-    ap.add_argument("kind", choices=["qn", "cn"], help="qn = Qn 分布；cn = 配位数分布")
+    ap.add_argument("kind", choices=list(RUN), help="qn = Qn 分布；cn = 配位数分布")
     ap.add_argument("inputs", nargs="+", help="ferro net 的 csv（可用 glob）")
-    ap.add_argument("--partner", action="store_true",
-                    help="[qn] 展开 m_<X> 异核伙伴分解，即文献的 Q^n(mX)"
-                         "（需 network_qn_partner.csv）")
     ap.add_argument("--element", default=None,
                     help="[cn] 只画这些元素，逗号分隔（默认：分布不平凡的全部）")
     ap.add_argument("-o", "--output", default=None, help="产物文件名 stem")
@@ -334,9 +226,16 @@ def main():
     frames = [(p, fp.read(p)) for p in expand(args.inputs)]
     print(f"Inputs: {len(frames)} file(s)")
 
-    fig = run_qn(frames, args) if args.kind == "qn" else run_cn(frames, args)
-    stem = args.output or (f"net_{args.kind}" + ("_partner" if args.partner else ""))
-    fp.save(fig, stem, args.outdir)
+    # 组名只在多 csv 并排时显示，单 csv 时它退回整个 stem，登记进去只会弄脏 labels.csv
+    groups = [fp.suffix_of(p) for p, _ in frames] if len(frames) > 1 else []
+    ctx = fp.context(frames, args.outdir, groups=groups)
+    # labels.csv 里 show=0 的组整份不画
+    frames = [(p, df) for p, df in frames if not groups or ctx.group_shown(fp.suffix_of(p))]
+    if not frames:
+        raise SystemExit(f"{ctx.path} 把本次全部组都设成了 show=0，没有可画的")
+
+    fig = RUN[args.kind](frames, ctx, args)
+    fp.save(fig, args.output or f"net_{args.kind}", args.outdir, ctx)
 
 
 if __name__ == "__main__":
