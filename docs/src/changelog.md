@@ -106,6 +106,16 @@ unchanged byte for byte.
 |---|---|
 | `ferro traj msd -i t.dump --dt 1.0 --plot` | `ferro traj msd -i t.dump --dt 1.0` |
 
+### `scripts/plot_net.py --partner` is gone
+
+The two-level stacked bars (Qn hue, $m_X$ shading) were hard to read and have been
+removed; `plot_net.py qn` now draws the plain Qn distribution only. `ferro net`
+still writes `network_qn_partner.csv`, so filter $Q^n(m\mathrm{Al})$ in pandas.
+
+| before | now |
+|---|---|
+| `python plot_net.py qn network_qn_partner.csv --partner` | `python plot_net.py qn network_qn.csv` |
+
 ### `traj vacf` / `rotcorr` average every origin; trapezoidal integrals
 
 Same cause as `msd` below: `--tau` defaulted to the whole trajectory, so only one time origin was used.
@@ -157,7 +167,7 @@ from the header must read the `d_ang2_per_fs` column of `[inputs]` instead.
 formulas on a terminal, the plain source when redirected) · VASP `OUTCAR` and
 `vasprun.xml` reading · CP2K single-point reading · `dataset collect --type
 inspect` (diagnostics, no dataset) · `--type nep|extxyz` and `--ratio 8:1:1`
-on `filter` and `merge` · `--qn` on `net` · `scripts/plot_msd.py` · `traj bondlife` (bond lifetimes and bond formation / breaking events).
+on `filter` and `merge` · `--qn` on `net` · `scripts/plot_msd.py` · `traj bondlife` (bond lifetimes and bond formation / breaking events) · `plot_net.py bridge` and `linkmap` · `labels.csv` display names and the `<stem>_data.csv` export in every plotting script.
 
 ### Help pages are shorter
 
