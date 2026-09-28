@@ -20,8 +20,26 @@ Paul Tol 的 7 色色盲安全序列。两条实测结论：
 
 颜色**恒定按 `file` 列分配**（一条轨迹一个颜色），跨子图、跨图一致。这是全部四个
 脚本共同的语义：`file` 是成分/体系，是读者要追踪的那一维。
+
+## 显示名：`labels.csv`
+
+产物目录里一份**全部脚本共用**的 `labels.csv`（列 `key,label,show`）。成分名在
+论文里全文统一，不该在 g(r) 图与 Qn 图里各改一遍。
+
+- 第一次运行自动生成，`label` 取原名、`show` 取 1
+- **行序即显示顺序**（x 轴、图例、颜色分配）；`show=0` 的不画
+- 之后每次运行：已有行一字不动；本次新出现的 key 追加到末尾并打 `Note:`（打错的
+  key 会以新行的形式出现在这条提示里，这是替代「报错」的那道保护）；文件里有而本次
+  数据里没有的 key 静默忽略 —— 那是别的批次的成分，不是错误
+- key 既可以是成分名（`file` 列），也可以是多 csv 并排时的组名（文件名后缀）
+
+## 数据导出：`<stem>_data.csv`
+
+每次出图都在 pdf 旁写一份长表，内容就是图上画的那些数（平滑、筛选之后的），
+供按论文风格重绘。原始 `file` 与映射后的 `label` 两列都在，行序即绘制顺序。
 """
 
+import csv
 from pathlib import Path
 
 import matplotlib as mpl
@@ -110,10 +128,96 @@ def shades(base, n, lo=0.35):
     return [tuple(c + (1.0 - c) * (1.0 - lo) * i / (n - 1) for c in rgb) for i in range(n)]
 
 
-# ── 导出 ─────────────────────────────────────────────────────────────────────
+# ── 显示名与导出 ─────────────────────────────────────────────────────────────
 
-def save(fig, stem, outdir=None):
-    """同时写 pdf（产物）与 png（看效果）。
+LABELS_FILE = "labels.csv"
+
+
+class Context:
+    """一张图的共享状态：显示名、可见成分及其顺序、颜色、待导出的行。
+
+    `files` 是本次全部输入里出现过的成分（出现顺序），`groups` 是多 csv 并排时的
+    组名。两者都登记进 `labels.csv`，但只有 `files` 参与颜色分配。
+    """
+
+    def __init__(self, files, outdir=None, groups=()):
+        self.path = (Path(outdir) if outdir else Path.cwd()) / LABELS_FILE
+        table = load_labels(self.path, [*files, *groups])
+        self._label = {k: lab for k, lab, _ in table}
+        shown = {k for k, _, show in table if show}
+        present = set(files)
+        self.names = [k for k, _, _ in table if k in present and k in shown]
+        if not self.names:
+            raise SystemExit(f"{self.path} 把本次全部成分都设成了 show=0，没有可画的")
+        self._groups_shown = {g for g in groups if g in shown}
+        self.colors = color_map(self.names)
+        self.rows = []
+
+    def shown(self, df):
+        """df 里出现、且 `show=1` 的成分，按 `labels.csv` 的行序。"""
+        present = set(df["file"])
+        return [n for n in self.names if n in present]
+
+    def group_shown(self, group):
+        return group in self._groups_shown
+
+    def label(self, key):
+        return self._label.get(key, key)
+
+    def record(self, **row):
+        """登记一行导出数据。`label` 列由 `file` 列自动补上，紧跟在它后面。"""
+        out = {}
+        for k, v in row.items():
+            out[k] = v
+            if k == "file":
+                out["label"] = self.label(v)
+        self.rows.append(out)
+
+    def record_curve(self, panel, file, quantity, x, y):
+        """登记一条曲线：一点一行，列 `panel, file, label, quantity, x, y`。"""
+        lab = self.label(file)
+        self.rows += [{"panel": panel, "file": file, "label": lab, "quantity": quantity,
+                       "x": float(a), "y": float(b)} for a, b in zip(x, y)]
+
+
+def context(frames, outdir=None, groups=()):
+    """frames: [(path, df)]。成分取全部产物里出现过的 `file`，保持出现顺序。"""
+    files = list(dict.fromkeys(f for _, df in frames for f in files_in(df)))
+    return Context(files, outdir, groups)
+
+
+def load_labels(path, keys):
+    """读 `labels.csv`，把本次新出现的 key 追加进去，返回 [(key, label, show)]。
+
+    只在有新 key 时写盘；已有行原样写回（顺序、改过的 label、show 都不动）。
+    """
+    table = []
+    if path.exists():
+        with open(path, newline="", encoding="utf-8") as fh:
+            for rec in csv.DictReader(fh):
+                show = str(rec.get("show", "1")).strip()
+                if show not in ("0", "1"):
+                    raise SystemExit(f"{path}: key '{rec['key']}' 的 show 只能是 0 或 1，给的是 '{show}'")
+                table.append((rec["key"], rec["label"], show == "1"))
+    known = {k for k, _, _ in table}
+    new = [k for k in dict.fromkeys(keys) if k not in known]
+    if new:
+        first = not path.exists()
+        table += [(k, k, True) for k in new]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["key", "label", "show"])
+            w.writerows((k, lab, int(show)) for k, lab, show in table)
+        if first:
+            print(f"Note  : 已生成 {path}，改 label / show / 行序后重跑即生效")
+        else:
+            print(f"Note  : {path} 追加了 {len(new)} 个新 key：{', '.join(new)}")
+    return table
+
+
+def save(fig, stem, outdir=None, ctx=None):
+    """同时写 pdf（产物）与 png（看效果），有登记的数据时再写 `<stem>_data.csv`。
 
     `bbox_inches="tight"` 由 `science` 样式设好，这里不重复指定，否则显式给的
     figsize 会被裁掉边距后失真。
@@ -125,6 +229,10 @@ def save(fig, stem, outdir=None):
     fig.savefig(png, dpi=PNG_DPI)
     print(f"  -> {pdf}")
     print(f"  -> {png}")
+    if ctx is not None and ctx.rows:
+        data = out / f"{stem}_data.csv"
+        pd.DataFrame(ctx.rows).to_csv(data, index=False)
+        print(f"  -> {data}")
     return pdf
 
 

@@ -116,31 +116,35 @@ def d_label(fit):
     return f"$D = {body}\\times10^{{{exp}}}$ cm$^2$/s"
 
 
-def build_panel(path, df, ax, colors, args):
+def build_panel(path, df, ax, ctx, args):
     shared, inputs = read_header(path)
     scale = TIME_SCALE[CFG["time_unit"]]
     first_fit = None
 
-    for name in fp.files_in(df):
+    for name in ctx.shown(df):
         sub = df[df["file"] == name].sort_values("time")
         if args.loglog:
             # t=0 处 MSD=0，双对数下是 -inf
             sub = sub[sub["time"] > 0]
-        c = colors[name]
+        c = ctx.colors[name]
         fit = fit_of(inputs, name)
-        label = name if fit is None else f"{name}, {d_label(fit)}"
+        label = ctx.label(name) if fit is None else f"{ctx.label(name)}, {d_label(fit)}"
         ax.plot(sub["time"] * scale, sub["msd"], color=c, lw=CFG["lw"], label=label)
+        ctx.record_curve(path.stem, name, "msd", sub["time"] * scale, sub["msd"])
 
         if args.components:
             for col, ls in CFG["comp_styles"].items():
                 ax.plot(sub["time"] * scale, sub[col], color=c,
                         lw=CFG["comp_lw"], ls=ls, alpha=0.8)
+                ctx.record_curve(path.stem, name, col, sub["time"] * scale, sub[col])
 
         if fit is not None:
             t = np.linspace(fit["t_lo"], fit["t_hi"], 50)
             # 压在含噪曲线上面，否则同色虚线会被淹掉
             ax.plot(t * scale, fit["slope"] * t + fit["intercept"], color=c,
                     lw=CFG["fit_lw"], dashes=CFG["fit_dash"], zorder=3)
+            ctx.record_curve(path.stem, name, "fit", t * scale,
+                             fit["slope"] * t + fit["intercept"])
             if first_fit is None:
                 first_fit = (fit, sub)
 
@@ -193,7 +197,7 @@ def add_slope_one(ax, first_fit, df, scale):
                 color=CFG["ref_color"], ha="right", va="bottom")
 
 
-def build_figure(frames, args):
+def build_figure(frames, ctx, args):
     """frames: [(path, df)]，返回 fig。"""
     n = len(frames)
     ncols = CFG["ncols"] or n
@@ -205,13 +209,9 @@ def build_figure(frames, args):
     )
     fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
 
-    # 颜色按全部产物里出现过的 file 统一分配，保证跨子图一致
-    names = list(dict.fromkeys(sum((fp.files_in(df) for _, df in frames), [])))
-    colors = fp.color_map(names)
-
     flat = axes.ravel()
     for ax, (path, df) in zip(flat, frames):
-        build_panel(path, df, ax, colors, args)
+        build_panel(path, df, ax, ctx, args)
     for ax in flat[n:]:
         ax.set_visible(False)
     return fig
@@ -235,8 +235,9 @@ def main():
     frames = [(p, fp.read(p)) for p in paths]
     print(f"Inputs: {len(frames)} file(s)")
 
-    fig = build_figure(frames, args)
-    fp.save(fig, args.output, args.outdir)
+    ctx = fp.context(frames, args.outdir)
+    fig = build_figure(frames, ctx, args)
+    fp.save(fig, args.output, args.outdir, ctx)
 
 
 if __name__ == "__main__":

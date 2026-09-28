@@ -46,7 +46,7 @@ CFG = {
 
 # ── 绘图 ─────────────────────────────────────────────────────────────────────
 
-def build_row(df, axes, colors, path):
+def build_row(df, axes, ctx, path):
     """在一行的两个格子上画一份产物。"""
     for ax, (col, ylabel) in zip(axes, CFG["panels"]):
         if col not in df.columns:
@@ -56,16 +56,18 @@ def build_row(df, axes, colors, path):
             )
         if CFG["hline"] is not None:
             ax.axhline(CFG["hline"], **CFG["hline_kw"])
-        for name in fp.files_in(df):
+        for name in ctx.shown(df):
             sub = df[df["file"] == name].sort_values("q")
-            ax.plot(sub["q"], sub[col], color=colors[name], lw=CFG["lw"], label=name)
+            ax.plot(sub["q"], sub[col], color=ctx.colors[name], lw=CFG["lw"],
+                    label=ctx.label(name))
+            ctx.record_curve(path.stem, name, col, sub["q"], sub[col])
         ax.set_xlabel(CFG["xlabel"])
         ax.set_ylabel(ylabel)
         ax.set_xlim(*CFG["xlim"])
         ax.set_ylim(*CFG["ylim"])
 
 
-def build_figure(frames):
+def build_figure(frames, ctx):
     nrows = len(frames)
     ncols = len(CFG["panels"])
     fig, axes = plt.subplots(
@@ -75,11 +77,8 @@ def build_figure(frames):
     )
     fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
 
-    names = list(dict.fromkeys(sum((fp.files_in(df) for _, df in frames), [])))
-    colors = fp.color_map(names)
-
     for row, (path, df) in zip(axes, frames):
-        build_row(df, row, colors, path)
+        build_row(df, row, ctx, path)
 
     handles, labels = axes[0][0].get_legend_handles_labels()
     axes[0][0].legend(handles, labels, loc=CFG["legend_loc"], ncol=CFG["legend_ncol"])
@@ -97,8 +96,9 @@ def main():
     frames = [(p, fp.read(p)) for p in expand(args.inputs)]
     print(f"Inputs: {len(frames)} file(s)")
 
-    fig = build_figure(frames)
-    fp.save(fig, args.output, args.outdir)
+    ctx = fp.context(frames, args.outdir)
+    fig = build_figure(frames, ctx)
+    fp.save(fig, args.output, args.outdir, ctx)
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def pair_of(df):
     return str(row["center"]), str(row["neighbor"])
 
 
-def build_panel(df, ax, colors):
+def build_panel(path, df, ax, ctx):
     """在 ax 上画一份产物：左轴 g(r) 实线，右轴 CN(r) 虚线。"""
     center, neighbor = pair_of(df)
 
@@ -72,12 +72,14 @@ def build_panel(df, ax, colors):
     ax_cn = ax.twinx()
     ax_cn.tick_params(right=True)
 
-    for name in fp.files_in(df):
+    for name in ctx.shown(df):
         sub = df[df["file"] == name].sort_values("r")
-        c = colors[name]
-        ax.plot(sub["r"], sub["gr"], color=c, lw=CFG["gr_lw"], label=name)
+        c = ctx.colors[name]
+        ax.plot(sub["r"], sub["gr"], color=c, lw=CFG["gr_lw"], label=ctx.label(name))
         ax_cn.plot(sub["r"], sub["cn"], color=c, lw=CFG["cn_lw"],
                    dashes=CFG["cn_dash"])
+        ctx.record_curve(path.stem, name, "gr", sub["r"], sub["gr"])
+        ctx.record_curve(path.stem, name, "cn", sub["r"], sub["cn"])
 
     ax.set_xlabel(CFG["xlabel"])
     ax.set_ylabel(CFG["ylabel_gr"])
@@ -89,7 +91,7 @@ def build_panel(df, ax, colors):
     return ax_cn
 
 
-def build_figure(frames):
+def build_figure(frames, ctx):
     """frames: [(path, df)]，返回 fig。"""
     n = len(frames)
     ncols = CFG["ncols"] or n
@@ -101,13 +103,9 @@ def build_figure(frames):
     )
     fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
 
-    # 颜色按全部产物里出现过的 file 统一分配，保证跨子图一致
-    names = list(dict.fromkeys(sum((fp.files_in(df) for _, df in frames), [])))
-    colors = fp.color_map(names)
-
     flat = axes.ravel()
-    for ax, (_, df) in zip(flat, frames):
-        build_panel(df, ax, colors)
+    for ax, (path, df) in zip(flat, frames):
+        build_panel(path, df, ax, ctx)
     for ax in flat[n:]:
         ax.set_visible(False)
 
@@ -142,8 +140,9 @@ def main():
     frames = [(p, fp.read(p)) for p in paths]
     print(f"Inputs: {len(frames)} file(s)")
 
-    fig = build_figure(frames)
-    fp.save(fig, args.output, args.outdir)
+    ctx = fp.context(frames, args.outdir)
+    fig = build_figure(frames, ctx)
+    fp.save(fig, args.output, args.outdir, ctx)
 
 
 if __name__ == "__main__":
