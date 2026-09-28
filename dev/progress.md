@@ -72,9 +72,16 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前先确认这一处。
 
 出图侧样式 `['science','vibrant']` + LaTeX + 四边框；每个脚本顶部一个 `CFG` 配置块。
-`plot_net.py` 的 x 轴是**成分**（`file` 列），100 % 堆积柱；`--partner` 展开成
-色相 = Qn、同色系明度 = m_<X> 的嵌套条带。多 csv（`-o` 的 suffix 区分 CMD / MLMD）
-画成同一刻度下并排多根柱。
+`plot_net.py` 四种 kind：`qn` / `cn` / `bridge`（配体四类 + 形成子间 X-O-X 占比，
+100 % 堆积柱，x 轴为成分）与 `linkmap`（行 = 成分、列 = 形成子对、格 = 两端状态
+的热图，每张自归一）。后两者读 `network_linkage.csv`，三簇配体按 C(k,2) 对照计，
+比例由 count 求和后相除。多 csv（suffix 区分 CMD / MLMD）画成同一刻度下并排多根柱。
+`--partner` 已于 2026-09-28 删除（`qn_partner` 表仍由 `ferro net` 产出）。
+
+**2026-09-28 起全部 `plot_*.py` 共享两件事**（实现在 `ferroplot.Context`）：
+产物目录里一份共用的 `labels.csv`（`key,label,show`，首跑生成，行序即显示顺序，
+新 key 追加、旧行不动），以及每张图旁的 `<stem>_data.csv` 长表（图上画的那些数，
+供按论文风格重绘）。默认 labels 下 gr/sq/angle/msd/qn/cn 六张图与改动前逐字节相同。
 
 ---
 
