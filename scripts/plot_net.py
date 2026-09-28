@@ -8,6 +8,8 @@ r"""把 `ferro net` 的产物画成发表级的网络拓扑图。
     cn     network_coordination.csv 一个元素一张图，条带 = 配位数
     bridge network_linkage.csv      每种配体两张图：配体四类（O_f/O_n/O_b/O_t）与
                                     形成子间连接（Al-O-Al / Al-O-P / P-O-P…）
+    linkmap network_linkage.csv     热图，行 = 成分，列 = 形成子对（2 个形成子 3 列，
+                                    3 个 6 列），格 = 两端状态（Al4/5/6 × Q0…Q3）
 
 堆积柱相对折线的好处是它把「和为 1」画成了图形约束：读者一眼看到此消彼长，不必在
 脑子里再加一次。代价是**小分量看不出趋势**——占 2 % 的条带薄得只剩一条线。真要追
@@ -29,6 +31,19 @@ r"""把 `ferro net` 的产物画成发表级的网络拓扑图。
   合并行之后逐帧比例的均值已无从恢复，`sd` 也不能相加，故不画误差棒
 - 全部输入都只有一种形成子时，连接那张恒为 100 %，跳过
 
+## linkmap 的口径
+
+- 轴上的数：**Qn 形成子取 $n$（同核连接数，P 的 P–O–P 个数），其余取配位数**——与
+  `ferro net` 标签的数字同源。哪些是 Qn 形成子读 `[inputs]` 的 `mean_qn` 列，不猜
+  `--qn` 名单。注意 Al–P 图里的 Q0 是「连着 Al、但没有 P–O–P 的 P」
+- 行放 `elem_a`、列放 `elem_b`（linkage 的规范序，Al–P 即 Al 在行）。同种元素的
+  图只画上三角：桥没有方向，每条只存一份，镜像会让非对角的连接视觉上翻倍
+- 每张图**自己归一到 100 %**（格里写一位小数），色标按列共用，便于跨成分比较
+- 轴取值**逐图、逐端**取全部成分的并集，各成分网格对齐；不按元素跨图共用——
+  P–O–P 图里 Q0 不可能出现（参与 P–O–P 的 P 至少 n=1），共用会多出一整排空格。浅灰格 = 任何成分都没出现过；写 0 的格 =
+  别的成分出现过、这个成分没有；整张灰 = 该成分没有这种连接
+- 三簇配体照计（同 bridge）；只有一种形成子时不画
+
 ## 多 csv
 
 `-o` 的 suffix 落在文件名里，所以 `network_qn_CMD.csv` 与 `network_qn_MLMD.csv` 天然
@@ -40,11 +55,14 @@ r"""把 `ferro net` 的产物画成发表级的网络拓扑图。
     python plot_net.py cn network_coordination.csv --element Al,Zn --outdir figs
     python plot_net.py qn network_qn_CMD.csv network_qn_MLMD.csv --outdir figs
     python plot_net.py bridge network_linkage.csv --outdir figs
+    python plot_net.py linkmap network_linkage.csv --outdir figs
 """
 
 import argparse
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Patch
 
 import ferroplot as fp
@@ -83,6 +101,20 @@ CFG = {
     "title_bridge": r"$X$--{ligand}--$X$ linkages",
 
     "ylim": (0, 100),
+
+    # linkmap
+    "map_cell": 0.36,       # 一个格子的边长（英寸）
+    "map_pad_w": 0.55,      # 每张图在格子之外的宽/高（刻度与轴名）
+    "map_pad_h": 0.45,
+    "map_wspace": 0.5,      # 占平均子图宽的比例
+    "map_hspace": 0.3,
+    "map_cmap": "Blues",
+    "map_fontsize": 5.5,
+    "map_text_dark": 0.6,   # 超过该列上限的这个比例就用白字
+    "map_never": "0.88",    # 任何成分都没出现过的格子
+    "map_absent": "0.93",   # 该成分没有这种连接：整张图
+    "map_title": "{a}--{lig}--{b}",
+    "map_cbar_label": r"Fraction (\%)",
 }
 
 
@@ -336,12 +368,170 @@ def run_bridge(frames, ctx, args):
     return build_figure(panels, groups_of, ctx, panel_legend=True, palette_keys=palette_keys)
 
 
-RUN = {"qn": run_qn, "cn": run_cn, "bridge": run_bridge}
+def qn_formers(frames):
+    """`[inputs]` 的 `mean_qn` 列里出现过的元素 = Qn 形成子（形如 `P=0.95 Si=1.2`）。"""
+    out = set()
+    for p, _ in frames:
+        _, inputs = fp.read_header(p)
+        if "mean_qn" in inputs.columns:
+            for cell in inputs["mean_qn"].dropna():
+                out |= {tok.split("=")[0] for tok in str(cell).split() if "=" in tok}
+    return out
+
+
+def link_states(df, qn_set):
+    """给每行补上两端在热图轴上的数：Qn 形成子取 qn，其余取 cn。"""
+    df = df.copy()
+    for end in ("a", "b"):
+        use_qn = df[f"elem_{end}"].isin(qn_set)
+        df[f"v_{end}"] = np.where(use_qn, df[f"qn_{end}"], df[f"cn_{end}"]).astype(int)
+    same = df["elem_a"] == df["elem_b"]
+    # 同种元素的图只画上三角：规范序按 (元素, qn, cn) 排，而轴上可能用的是 cn，
+    # 于是 v_a > v_b 的行存在（Al 的 qn 小但 cn 大），要折到上三角
+    lo = np.minimum(df["v_a"], df["v_b"])
+    hi = np.maximum(df["v_a"], df["v_b"])
+    df.loc[same, "v_a"] = lo[same]
+    df.loc[same, "v_b"] = hi[same]
+    return df
+
+
+def tick(elem, v, qn_set):
+    return f"Q{v}" if elem in qn_set else f"{elem}{v}"
+
+
+def run_linkmap(frames, ctx, args):
+    qn_set = qn_formers(frames)
+    frames = [(p, link_states(df, qn_set)) for p, df in frames]
+    formers = {e for _, df in frames for col in ("elem_a", "elem_b") for e in df[col]}
+    if len(formers) <= 1:
+        print(f"Note  : 全部输入只有一种形成子（{', '.join(sorted(formers))}），不画 linkmap")
+        return None
+
+    # 列 = 形成子对，按 (配体, elem_a, elem_b)；轴取值 = 全部成分的并集
+    pairs = sorted({(l, a, b) for _, df in frames
+                    for l, a, b in zip(df["ligand"], df["elem_a"], df["elem_b"])})
+    # axis[(pair, end)]：该图该端在全部成分里出现过的取值
+    axis = {}
+    for _, df in frames:
+        for pair, sel in df.groupby(["ligand", "elem_a", "elem_b"]):
+            for end in ("a", "b"):
+                axis.setdefault((pair, end), set()).update(int(v) for v in sel[f"v_{end}"])
+    axis = {k: sorted(vs) for k, vs in axis.items()}
+    if any(a == b for _, a, b in pairs):
+        # 同种元素的图两端用同一根轴，上三角才有意义
+        for pair in pairs:
+            if pair[1] == pair[2]:
+                both = sorted(set(axis[(pair, "a")]) | set(axis[(pair, "b")]))
+                axis[(pair, "a")] = axis[(pair, "b")] = both
+
+    # 行 = (组, 成分)；多组时行名带组名
+    rows = [(p, fp.suffix_of(p), f) for p, df in frames for f in ctx.shown(df)]
+    multi = len(frames) > 1
+
+    # 逐 (行, 列) 的计数矩阵
+    mats = {}
+    for p, df in frames:
+        for f in ctx.shown(df):
+            sub = df[df["file"] == f]
+            for pair in pairs:
+                lig, a, b = pair
+                ya, xb = axis[(pair, "a")], axis[(pair, "b")]
+                m = np.zeros((len(ya), len(xb)))
+                sel = sub[(sub["ligand"] == lig) & (sub["elem_a"] == a) & (sub["elem_b"] == b)]
+                for va, vb, c in zip(sel["v_a"], sel["v_b"], sel["count"]):
+                    m[ya.index(va), xb.index(vb)] += c
+                mats[(p, f, pair)] = m
+
+    nr, nc = len(rows), len(pairs)
+    # 宽度比例只按格子数：aspect=equal 下各图的格子才一样大
+    cols_x = [len(axis[(pair, "b")]) for pair in pairs]
+    rows_y = max(len(axis[(pair, "a")]) for pair in pairs)
+    fig_w = sum(cols_x) * CFG["map_cell"] + nc * CFG["map_pad_w"] + 0.4
+    fig_h = nr * (rows_y * CFG["map_cell"] + CFG["map_pad_h"]) + 0.7
+    fig, axes = plt.subplots(nr, nc, figsize=(fig_w, fig_h), squeeze=False,
+                             gridspec_kw={"width_ratios": cols_x})
+    fig.subplots_adjust(wspace=CFG["map_wspace"], hspace=CFG["map_hspace"])
+    cmap = mpl.colormaps[CFG["map_cmap"]]
+
+    for j, pair in enumerate(pairs):
+        lig, a, b = pair
+        pcts = {}
+        for p, g, f in rows:
+            m = mats[(p, f, pair)]
+            tot = m.sum()
+            pcts[(p, f)] = m / tot * 100 if tot else None
+        # 任何成分都没出现过的格子 → 浅灰
+        seen = sum((mats[(p, f, pair)] > 0) for p, _, f in rows) > 0
+        vmax = max((v.max() for v in pcts.values() if v is not None), default=1.0) or 1.0
+        norm = mpl.colors.Normalize(0, vmax)
+        same = a == b
+
+        for i, (p, g, f) in enumerate(rows):
+            ax = axes[i][j]
+            pct, cnt = pcts[(p, f)], mats[(p, f, pair)]
+            ny, nx = cnt.shape
+            rgba = np.ones((ny, nx, 4))
+            for y in range(ny):
+                for x in range(nx):
+                    if same and y > x:
+                        continue                      # 下三角留白
+                    if pct is None:
+                        rgba[y, x] = mpl.colors.to_rgba(CFG["map_absent"])
+                    elif not seen[y, x]:
+                        rgba[y, x] = mpl.colors.to_rgba(CFG["map_never"])
+                    else:
+                        v = pct[y, x]
+                        rgba[y, x] = cmap(norm(v))
+                        # 非零但一位小数显示为 0.0 的，写 <0.1，别和真正的 0 混
+                        txt = "0" if v == 0 else (f"{v:.1f}" if v >= 0.05 else "<0.1")
+                        ax.text(x, y, txt, ha="center", va="center",
+                                fontsize=CFG["map_fontsize"],
+                                color="white" if v > CFG["map_text_dark"] * vmax else "black")
+                        ctx.record(panel=f"{a}-{lig}-{b}", group=g, file=f,
+                                   row=tick(a, axis[(pair, "a")][y], qn_set),
+                                   col=tick(b, axis[(pair, "b")][x], qn_set),
+                                   percent=round(float(v), 6), count=int(cnt[y, x]))
+            ax.imshow(rgba, aspect="equal")
+            if pct is None:
+                ax.text((nx - 1) / 2, (ny - 1) / 2, "absent", ha="center", va="center",
+                        fontsize=CFG["map_fontsize"] + 1, color="0.4")
+            ax.set_xticks(range(nx))
+            ax.set_xticklabels([tick(b, v, qn_set) for v in axis[(pair, "b")]])
+            ax.set_yticks(range(ny))
+            ax.set_yticklabels([tick(a, v, qn_set) for v in axis[(pair, "a")]])
+            ax.tick_params(which="both", length=0, top=False, right=False)
+            ax.minorticks_off()
+            ax.tick_params(labelsize=CFG["map_fontsize"] + 0.5)
+            if i == 0:
+                ax.set_title(CFG["map_title"].format(a=a, lig=lig, b=b))
+
+        cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), ax=axes[-1][j],
+                          orientation="horizontal", location="bottom", shrink=0.9, pad=0.12,
+                          aspect=15)
+        cb.set_label(CFG["map_cbar_label"], fontsize=CFG["map_fontsize"] + 0.5)
+        cb.ax.tick_params(labelsize=CFG["map_fontsize"], top=False)
+        cb.ax.minorticks_off()
+    # colorbar 从最后一行借位时会重设 anchor，全部画完再统一顶端对齐
+    for ax in axes.ravel():
+        ax.set_anchor("N")
+    # 行名按**整行的格位**居中，不挂在首列的 ylabel 上：首列可能是只有两排的小图，
+    # 行名比它长就会顶出画布
+    left = mpl.transforms.offset_copy(fig.transFigure, fig=fig, x=-30, units="points")
+    for i, (p, g, f) in enumerate(rows):
+        slot = axes[i][0].get_subplotspec().get_position(fig)
+        name = ctx.label(f) if not multi else f"{ctx.label(g)}: {ctx.label(f)}"
+        fig.text(slot.x0, slot.y1 - (rows_y * CFG["map_cell"]) / fig_h / 2, name,
+                 transform=left, rotation=90, ha="center", va="center")
+    return fig
+
+
+RUN = {"qn": run_qn, "cn": run_cn, "bridge": run_bridge, "linkmap": run_linkmap}
 
 
 def main():
     ap = argparse.ArgumentParser(description="ferro net 发表级绘图")
-    ap.add_argument("kind", choices=list(RUN), help="qn = Qn 分布；cn = 配位数分布；bridge = 配体四类 + 形成子间连接")
+    ap.add_argument("kind", choices=list(RUN), help="qn = Qn 分布；cn = 配位数分布；bridge = 配体四类 + 形成子间连接；"
+                         "linkmap = 连接两端状态热图")
     ap.add_argument("inputs", nargs="+", help="ferro net 的 csv（可用 glob）")
     ap.add_argument("--element", default=None,
                     help="[cn] 只画这些元素，逗号分隔（默认：分布不平凡的全部）")
@@ -362,6 +552,8 @@ def main():
         raise SystemExit(f"{ctx.path} 把本次全部组都设成了 show=0，没有可画的")
 
     fig = RUN[args.kind](frames, ctx, args)
+    if fig is None:
+        return
     fp.save(fig, args.output or f"net_{args.kind}", args.outdir, ctx)
 
 
