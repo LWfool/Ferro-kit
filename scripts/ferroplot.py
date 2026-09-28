@@ -44,6 +44,7 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import scienceplots  # noqa: F401  —— import 即注册样式，不直接调用
 
@@ -80,6 +81,37 @@ def read(path):
     return df
 
 
+def read_header(path):
+    """读 `#` 块：共享参数（`key = value`）与 `[inputs]` 清单。
+
+    `[inputs]` 是给人看的定宽表，`composition`/`species` 与失败原因里都有空格，
+    所以不能按空白切，要按表头各列的起始列号切。`-` 是「没有值」→ NaN。
+    """
+    lines = [l[2:].rstrip("\n") for l in open(path) if l.startswith("# ")]
+    shared = {}
+    inputs = None
+    for i, line in enumerate(lines):
+        if line == "[inputs]":
+            head = lines[i + 1]
+            starts = [j for j, ch in enumerate(head)
+                      if ch != " " and (j == 0 or head[j - 1] == " ")]
+            names = head.split()
+            rows = []
+            for row in lines[i + 2:]:
+                if row.startswith("---"):
+                    break
+                bounds = starts[1:] + [None]
+                rows.append([row[a:b].strip() for a, b in zip(starts, bounds)])
+            inputs = pd.DataFrame(rows, columns=names).replace("-", np.nan)
+            break
+        if "=" in line:
+            key, _, val = line.partition("=")
+            shared[key.strip()] = val.strip()
+    if inputs is None:
+        raise SystemExit(f"{path} 没有 [inputs] 清单——不是 ferro 的分析产物？")
+    return shared, inputs.set_index("file")
+
+
 def files_in(df):
     """`file` 列的取值，**保持出现顺序**。
 
@@ -113,19 +145,6 @@ def color_map(names):
     """
     cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     return {n: cycle[i % len(cycle)] for i, n in enumerate(names)}
-
-
-def shades(base, n, lo=0.35):
-    """由一个基色派生 n 级明度，用于嵌套堆积柱的内层。
-
-    深→浅。外层色相仍然携带主结构（Qn），内层只做深浅，所以第一眼落在色相边界上
-    而不是深浅上——这正是「补充而不抢焦点」的做法。
-    """
-    rgb = mpl.colors.to_rgb(base)
-    if n <= 1:
-        return [rgb]
-    # 朝白色插值，最浅一级仍保留 lo 的原色，避免淡到看不见
-    return [tuple(c + (1.0 - c) * (1.0 - lo) * i / (n - 1) for c in rgb) for i in range(n)]
 
 
 # ── 显示名与导出 ─────────────────────────────────────────────────────────────

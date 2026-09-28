@@ -25,7 +25,6 @@ from pathlib import Path
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 import ferroplot as fp
 from plot_gr import expand
@@ -63,37 +62,6 @@ TIME_SCALE = {"fs": 1.0, "ps": 1e-3}
 
 # ── 读取 ─────────────────────────────────────────────────────────────────────
 
-def read_header(path):
-    """读 `#` 块：共享参数（`key = value`）与 `[inputs]` 清单。
-
-    `[inputs]` 是给人看的定宽表，`composition`/`species` 与失败原因里都有空格，
-    所以不能按空白切，要按表头各列的起始列号切。`-` 是「没有值」→ NaN。
-    """
-    lines = [l[2:].rstrip("\n") for l in open(path) if l.startswith("# ")]
-    shared = {}
-    inputs = None
-    for i, line in enumerate(lines):
-        if line == "[inputs]":
-            head = lines[i + 1]
-            starts = [j for j, ch in enumerate(head)
-                      if ch != " " and (j == 0 or head[j - 1] == " ")]
-            names = head.split()
-            rows = []
-            for row in lines[i + 2:]:
-                if row.startswith("---"):
-                    break
-                bounds = starts[1:] + [None]
-                rows.append([row[a:b].strip() for a, b in zip(starts, bounds)])
-            inputs = pd.DataFrame(rows, columns=names).replace("-", np.nan)
-            break
-        if "=" in line:
-            key, _, val = line.partition("=")
-            shared[key.strip()] = val.strip()
-    if inputs is None:
-        raise SystemExit(f"{path} 没有 [inputs] 清单——不是 ferro traj msd 的产物？")
-    return shared, inputs.set_index("file")
-
-
 def fit_of(inputs, name):
     """一条轨迹的拟合参数；没给 `--fit-range` 或该行失败时返回 None。"""
     if "slope" not in inputs.columns or name not in inputs.index:
@@ -117,7 +85,7 @@ def d_label(fit):
 
 
 def build_panel(path, df, ax, ctx, args):
-    shared, inputs = read_header(path)
+    shared, inputs = fp.read_header(path)
     scale = TIME_SCALE[CFG["time_unit"]]
     first_fit = None
 
