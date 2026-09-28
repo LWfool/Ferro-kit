@@ -396,7 +396,10 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `dataset filter` 41、顶层 49）大头是参数表与命令列表本身 —— **不为凑行数砍**。
   顺带修掉的不一致：`job -s cp2k` 有两个 `Output:`（一个其实是参数分组）、
   `msd`/`vacf`/`rotcorr`/`vanhove` 的 `File name —` 段、net 的大写小节名、
-  `job -s gaussian` 页里两处中文说明
+  `job -s gaussian` 页里两处中文说明。
+  **2026-09-28 补齐漏网的六页**（09-27 合规扫描发现，见 `plan.md`）：net 实为
+  ≈50 行（Output 11 行）→ 38 行；job 三页的分组降为 `Parameters:` 下的缩进
+  小标题；`convert` 的格式矩阵并进 `Parameters:`（它是 `-i`/`-o` 的值域）
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
