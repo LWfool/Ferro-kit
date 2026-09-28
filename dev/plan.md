@@ -18,21 +18,17 @@
    `density_<stem>.cube`。正是归档里「`-i` 恒为 `Vec`，单一代码路径」点名的
    「两套命名」。修法待定（恒带 stem / 只看 `-s`），属破坏性改动，要同步手册与
    changelog
-3. **帮助页偏离五段模板**：
-   - `ferro net`（`cmd/net.rs` 的 `HELP_EXTRA`）≈50 行，Output 11 行（上限 4），
-     Output 后挂着 Qn 口径说明（应进 `docs/src/analysis/network.md`），Examples 5 条
-   - `job -s qe|cp2k|gaussian` 参数按 Task / Charge / MD 分组而非 `Parameters:`，
-     Examples 各 4 条，cp2k 49 行
-   - `info` 缺 `Output:`；`map velocity` / `map force` 仅 1 条 Example；
-     `convert` 多一段 `Supported formats`，`convert` / `bader` Examples 4 条
-   - 仅超 30 行目标（参数表不砍，属提示）：gr sq angle rotcorr、`map sdf`、
-     `dataset filter` / `merge`（31~42 行）
-4. **中文 `///` / `//!` 约 550 行**（应为英文）。集中在 `network/mod.rs` 85、
-   `core/spin.rs` 34、`core/frame.rs` 27、`core/cluster.rs` 27、`core/cell.rs` 21、
-   `core/data/elements.rs` 19、`md/cube_sdf.rs` 16、`ferro-python/src/types.rs` 15，
-   其余约 60 个文件各 1~13 行。按 crate 分批翻
-5. **手册化学式用 Unicode 下标**：`docs/src/analysis/rotcorr.md` 第 36/73/206 行、
-   `docs/src/changelog.md` 第 126 行的 `PO₄` `SiO₄` `AlO₄`，改 `$PO_4$` 形式
+3. ~~帮助页偏离五段模板~~ —— **2026-09-28 已修**（`d4fc999`）。net 的 Output
+   11 → 3 行、Qn 口径说明删去（`network.md` 已有）；job 三页的分组降为
+   `Parameters:` 下的缩进小标题；`convert` 的格式矩阵是 `-i`/`-o` 的值域，
+   并入 `Parameters:` 而不单列一段（用户认可）；info 补 `Output:`；bader 的
+   「为什么写在输入旁」移交手册。仍超 30 行的（`job -s cp2k` 46、`convert` 55、
+   gr sq angle rotcorr、`map sdf`、`dataset filter`/`merge`）全是参数表，按规则不砍
+4. ~~中文 `///` / `//!` 约 550 行~~ —— **2026-09-28 用户裁定允许中文 doc 注释**，
+   `CLAUDE.md` 规则已同步改写，不再算违规，别再重扫
+5. ~~手册化学式用 Unicode 下标~~ —— **2026-09-28 已修**（`9145e7a`）：rotcorr.md
+   三处、changelog.md 一处，外加 changelog 的裸文本 `Q^n_m`。`docs/src` 剩下的
+   唯一一处 `α₁` 在行内代码里，按规定不动
 6. **`ferro-analysis/src/trajectory_analysis.rs`**（提示）：自称「旧接口，保持编译
    兼容」，经 `lib.rs` `pub use *` 全量导出，仓内零调用。删或留待定，可并入中优先级
    的「零调用清单」一起判
