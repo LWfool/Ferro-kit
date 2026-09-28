@@ -372,9 +372,8 @@ ferro net — Glass network topology
 
 Parameters:
   --<Former>-<Ligand>=<cutoff>
-                        Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1. The element
-                        pair lives in the FLAG NAME, so these are stripped from
-                        argv before clap parses. At least one is required
+                        Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1. At least
+                        one is required
   -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
   -o, --output DIR      Write every product here, tables and --export-traj alike;
                         --mkdir creates it without asking
@@ -393,25 +392,15 @@ Parameters:
                         input: <input stem>_types[_<suffix>].<ext>
                         FMT is lammpstrj (default) or extxyz
 
-Output — six stacked csv, each with a `file` column and its own `#` header
-(`pandas.read_csv(comment='#')` drops it):
-  network_composition.csv   every species at a glance
-  network_qn.csv            Qn speciation
-  network_qn_partner.csv    the same, split by partner element
-  network_ligand_type.csv   free / non-bridging / bridging / tricluster
-  network_coordination.csv  coordination numbers, formers + modifiers
-  network_linkage.csv       bridge connectivity: both ends and the ligand
-
-  n counts HOMOPOLAR bridges only (the literature's Q^n_m); total bridges =
-  n + sum(m). The Qn tables are dropped, with a reason, when no former is a
-  Qn element.
+Output:
+  network_<table>[_<suffix>].csv, six stacked tables with a `file` column:
+  composition qn qn_partner ligand_type coordination linkage
+  (the two qn tables only when some former is a Qn element)
 
 Examples:
   ferro net -i traj.lammpstrj --P-O=2.4
   ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
-  ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
-  ferro net -i traj.lammpstrj --P-O=2.4 --last-n 50 --export-traj
-  ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
+  ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan --export-traj
 
 Full documentation:  ferro doc net";
 
