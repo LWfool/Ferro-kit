@@ -11,11 +11,8 @@
 `as_slice()`、`Molecule`、`label()` 反解析、列并集补 NaN、手册页三处登记、
 `ferro-python` 版本同步。以下按严重程度排，每条独立可做：
 
-1. **`ferro-io` 与 `ferro-workflow` 整个 crate 用 `anyhow`**，违反「库 crate 用
-   `ChemError`」。io 的 readers/writers 约 30 个文件、workflow 的 `job_builder.rs`
-   `cp2k.rs` `qe.rs`；两者 `Cargo.toml` 都依赖 `anyhow`。上方「评估后保留的」只说
-   保留依赖，没说库层可用。**待定**：A 迁到 `ChemError`（量大，牵动 CLI 与 python
-   的调用点）；B 在 `CLAUDE.md` 写明例外及理由
+1. ~~`ferro-io` 与 `ferro-workflow` 用 `anyhow`~~ —— 2026-09-28 降为中优先级，
+   见「优先级中」的「库 crate 的错误类型」
 2. **`ferro map` 的产物名随输入数变**：`cmd/map.rs` 的 `stem_for` 与
    `let multi = inputs.len() > 1` —— 单输入 `density.cube`，多输入
    `density_<stem>.cube`。正是归档里「`-i` 恒为 `Vec`，单一代码路径」点名的
@@ -132,6 +129,26 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 ---
 
 ## 优先级中
+
+### 库 crate 的错误类型：`ferro-io` / `ferro-workflow` 用 `anyhow`（2026-09-27 扫描，2026-09-28 由高降中）
+
+违反 `CLAUDE.md`「库 crate 用 `ChemError`」。2026-09-28 摸底后的处置：
+
+- **`ferro-io` 继续用 `anyhow`（用户已同意）**。30 个文件约 173 处（`context` /
+  `with_context` 103、`bail!` / `ensure!` 67），另靠 `?` 自动吞 `ParseFloatError`、
+  quick-xml、npy 的错误；15 处测试断言错误文本。理由：
+  - 调用方只有 CLI（`{e:#}` 打整条链）与 ferro-python（只取 Display），全仓零
+    downcast，**没有人按变体分支** —— 类型化错误的价值在这里是零
+  - `ChemError` 的变体装的全是 `String`，迁过去仍是一段话，只多一个
+    `Parse error: ` 前缀；反而丢掉 `.context()` 的「文件 → 帧 → 原因」链，那是读
+    AIMD 输出时最需要的诊断
+  - 该改的时机：出现真要按类别分支的调用方（ferro-python 映射 `FileNotFoundError`、
+    `collect` 区分「格式认不出」与「文件损坏」）。届时设计**真正带类型**的错误，
+    不是套现在的 `ChemError`
+- **`ferro-workflow` 搁置**：三个文件只有 `use anyhow::Result`，唯一错误源是
+  `writeln!` 写进 `String` 的 `fmt::Error`（实际不会发生），迁不迁行为都不变。
+  若要迁：`ChemError` 加 `From<std::fmt::Error>`、删依赖，`cmd/job.rs` 不用改
+- **未做**：`CLAUDE.md` 那条规则仍是「一律 `ChemError`」，尚未写明 io 例外
 
 ### 零调用清单（2026-09-12 实测快照，判断待定）
 
