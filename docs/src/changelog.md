@@ -133,7 +133,7 @@ Same cause as `msd` below: `--tau` defaulted to the whole trajectory, so only on
 ### `traj rotcorr --vector bond`, `--legendre 1|2`
 
 New, nothing to migrate: `--vector bond` follows each centre–neighbour bond of the first frame
-(`gmx rotacf -d`) — the way to see tetrahedra (PO₄, SiO₄) rotate, whose summed bonds cancel.
+(`gmx rotacf -d`) — the way to see tetrahedra ($PO_4$, $SiO_4$) rotate, whose summed bonds cancel.
 `--legendre 1` gives $C_1$ (column `c1`).  In the default `sum` mode, bonds that cancel exactly are now
 treated as no orientation instead of a vector made of rounding noise.
 
@@ -205,7 +205,7 @@ coordinated), not its bridge count.
 
 ### `ferro net`: `n` counts homopolar bridges only
 
-The Qn convention follows the literature's Q^n_m: **`n` counts P–O–P bridges
+The Qn convention follows the literature's $Q^n_m$: **`n` counts P–O–P bridges
 only**, heteropolar ones go to the `m_<X>` columns of `qn_partner`, and the
 total is `n + sum(m)`. **Every number in the `qn` table changed** — one
 reference run moved from 40.4 % `P-Q3` to 0.27 %, and `mean_qn` from 2.40 to
