@@ -146,6 +146,42 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
   若要迁：`ChemError` 加 `From<std::fmt::Error>`、删依赖，`cmd/job.rs` 不用改
 - **未做**：`CLAUDE.md` 那条规则仍是「一律 `ChemError`」，尚未写明 io 例外
 
+### `ferro job` 的自旋多重度：对照 CP2K 源码后的四处待定（2026-09-30）
+
+**CP2K 自己不推断多重度**（`examples/cp2k-2026.2`）。`qs_environment.F:2013` 在
+`MULTIPLICITY` 未给（=0）时只按价电子数奇偶取 1 / 2；`:2032` 奇数电子不开 UKS
+直接 abort（有 smear 时例外）；`:2090` 按 $N_\alpha = (N+M-1)/2$、
+$N_\beta = (N-M+1)/2$ 切分，$N+M-1$ 为奇数报「try a different multiplicity」。
+旁路只有 `RELAX_MULTIPLICITY`（按 Aufbau 原理占据，需 `ADDED_MOS`）、`SMEAR` 下的
+`FIXED_MAGNETIC_MOMENT`、`&KIND/&BS`（只改局域初猜，不改总 M）。
+
+**已核对一致的**（不必再查）：
+
+- 奇偶口径：ferro 用 $\sum Z - q$，CP2K 用 $\sum q_\text{val} - q$。`cp2k_basis_db.rs`
+  全部赝势的芯电子数 $Z - q_\text{val}$ 无一为奇数，两边奇偶恒同
+- `guess_spin` 经 `reconcile_parity` 出的 M 恒满足 $N+M-1$ 为偶数；`mult > 1` 即写
+  `UKS`，故自动路径碰不到 CP2K 的两条 abort
+
+**待定的四条**（2026-09-30 grilling 提出，用户尚未裁决）：
+
+1. **CP2K / QE 默认开 auto-spin**（`job.rs:292`，手册 `cli-reference.md:301`），与
+   CP2K 自己「只按奇偶给 1 或 2」相反。选项：保留 / 改保守默认（破坏性）/ 保留但 M > 2
+   时醒目提示
+2. **显式 `--multiplicity` 不校验奇偶**（`job.rs:254`）：矛盾值照写，CP2K 启动时才报错。
+   倾向于写文件前报错，放三个 builder 共用处（Gaussian / QE 同样要求这个奇偶条件）
+3. **`--smear` 下 M 只是初值**：`FIXED_MAGNETIC_MOMENT` 默认 −100，
+   `qs_mo_occupation.F:288` 走 `set_mo_occupation_3`，α/β 共用一个费米能级，总磁矩在
+   SCF 里自由变化。ferro 的 `&SMEAR` 不写该关键字，手册 `spin.md:76` 的
+   `--auto-spin --smear` 示例因此名不副实。选项：只改手册 / 自动锁 M−1 / 加开关
+4. **多磁性中心按铁磁叠加**：`ion_unpaired` 逐离子取高自旋后直接求和，是**铁磁上限**，
+   现有 warning 只说了「单离子高自旋」没说离子间排布
+
+**实测线索**：用户曾用网页版 Claude（约 Opus 4.6/4.7）生成过 MnS 夹杂 MnO 的 CP2K
+输入，多重度 500 多，看着异常但 CP2K 跑得很顺、SCF 收敛特别顺利，细节已不可考。
+与第 4 条吻合：Mn²⁺ 是 d⁵，逐个取 5 个未成对电子，约 100 个 Mn 就是 M ≈ 501。铁磁态
+全部自旋平行、不存在阻挫，SCF 好收敛是可以预期的；但 MnO、MnS 实际都是**反铁磁**，
+收敛顺利不等于找到了基态。定第 4 条时可拿这个体系对照铁磁与反铁磁（`&BS` 初猜）的能量。
+
 ### 零调用清单（2026-09-12 实测快照，判断待定）
 
 这不是待删清单。**多数功能还没有进入实际使用、没有调试过**，因此没法区分
