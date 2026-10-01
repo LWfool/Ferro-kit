@@ -74,18 +74,20 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
         writeln!(w, "{header}")?;
 
         let lammps_cell = lammps_cell_matrix(lx, ly, lz, xy, xz, yz);
+        // 原胞 → LAMMPS 规范胞（下三角）的线性变换，即 ASE `Prism.rot_mat` 那个旋转。
+        // 坐标、速度、力**必须用同一个变换**：只转坐标的话，非下三角胞下 v、f 还在
+        // 原坐标系里，与坐标对不上（ASE 的 lammpsdata / lammpsrun 三者同转）
+        let to_lammps = |v: nalgebra::Vector3<f64>| -> Result<nalgebra::Vector3<f64>> {
+            Ok(match &frame.cell {
+                Some(orig) => lammps_cell.fractional_to_cartesian(orig.cartesian_to_fractional(v)?),
+                None => v,
+            })
+        };
 
         for (i, atom) in frame.atoms.iter().enumerate() {
             let tp = elem_types.iter().position(|e| *e == atom.element).unwrap_or(0) + 1;
 
-            // Transform to LAMMPS frame
-            let pos = match &frame.cell {
-                Some(orig) => {
-                    let frac = orig.cartesian_to_fractional(atom.position)?;
-                    lammps_cell.fractional_to_cartesian(frac)
-                }
-                None => atom.position,
-            };
+            let pos = to_lammps(atom.position)?;
 
             let mut line = format!("{} {tp} {} {:.10} {:.10} {:.10}",
                 i + 1, atom.element, pos.x, pos.y, pos.z);
@@ -95,6 +97,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
                     .and_then(|vv| vv.get(i))
                     .copied()
                     .unwrap_or_default();
+                let v = to_lammps(v)?;
                 // real: Å/fs (no-op), metal: Å/fs → Å/ps (×1000)
                 let vscale = match units {
                     LammpsUnits::Real  => 1.0,
@@ -107,6 +110,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
                     .and_then(|ff| ff.get(i))
                     .copied()
                     .unwrap_or_default();
+                let f = to_lammps(f)?;
                 // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
                 let fscale = match units {
                     LammpsUnits::Real  => EV_TO_KCAL,
@@ -220,6 +224,54 @@ mod tests {
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");
+    }
+
+    /// 坐标转进 LAMMPS 规范胞时，速度与力必须跟着同一个变换走。
+    ///
+    /// 期望值取自**独立实现**：ASE 3.29.0 的 `Prism(cell).vector_to_lammps`
+    /// （`ase/calculators/lammps/coordinatetransform.py`），断言写出的文本而非读回，
+    /// 理由同下一个测试。`rotated` 是 a 沿 y 的纯旋转胞；`general` 三条边都不沿轴
+    #[test]
+    fn test_non_lower_triangular_cell_rotates_velocity_and_force() {
+        type V = [f64; 3];
+        // (名字, 晶胞行, 坐标, 速度 Å/fs, 力 eV/Å, ASE 给出的 r, v, f)
+        type Case = (&'static str, [V; 3], V, V, V, [V; 3]);
+        let cases: [Case; 2] = [
+            ("rotated",
+             [[0.0, 4.0, 0.0], [-4.0, 0.0, 0.0], [0.0, 0.0, 4.0]],
+             [1.0, 2.0, 3.0], [0.5, 0.0, 0.0], [1.0, 0.0, 0.0],
+             [[2.0, -1.0, 3.0], [0.0, -0.5, 0.0], [0.0, -1.0, 0.0]]),
+            ("general",
+             [[3.1, 0.4, -0.2], [0.7, 4.2, 0.5], [-0.3, 0.9, 5.3]],
+             [1.2, -0.4, 2.5], [0.3, -0.7, 0.2], [-1.1, 0.6, 0.9],
+             [[0.976982810926, -0.184550872348, 2.619436115402],
+              [0.194758011328, -0.695518253611, 0.313566063083],
+              [-1.069572685164, 0.845496016435, 0.721907720796]]),
+        ];
+        for (name, rows, r, v, f, want) in cases {
+            let m = nalgebra::Matrix3::from_fn(|i, j| rows[i][j]);
+            let mut frame = Frame::with_cell(Cell::from_matrix(m), [true; 3]);
+            frame.add_atom(Atom::new("Si", Vector3::from(r)));
+            frame.velocities = Some(vec![Vector3::from(v)]);
+            frame.forces = Some(vec![Vector3::from(f)]);
+            let path = std::env::temp_dir().join(format!("rot_{name}.dump"));
+            // metal：力不换算，速度 Å/fs → Å/ps 乘 1000
+            write_lammps_dump(&Trajectory::from_frame(frame), &path, LammpsUnits::Metal).unwrap();
+
+            let text = std::fs::read_to_string(&path).unwrap();
+            let cols: Vec<f64> = text.lines().last().unwrap()
+                .split_whitespace().skip(3).map(|s| s.parse().unwrap()).collect();
+            let got = [
+                [cols[0], cols[1], cols[2]],
+                [cols[3] / 1000.0, cols[4] / 1000.0, cols[5] / 1000.0],
+                [cols[6], cols[7], cols[8]],
+            ];
+            for (q, (g, w)) in ["坐标", "速度", "力"].iter().zip(got.iter().zip(want.iter())) {
+                for k in 0..3 {
+                    assert!((g[k] - w[k]).abs() < 1e-8, "{name} 的{q}第 {k} 分量：ferro {}，ASE {}", g[k], w[k]);
+                }
+            }
+        }
     }
 
     /// 三斜时写出的六个数是 `*_bound`，不是 xlo/xhi。
