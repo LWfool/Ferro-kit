@@ -16,11 +16,11 @@ pub fn read_qe_input(path: &Path) -> Result<Trajectory> {
 fn parse_qe(content: &str) -> Result<Trajectory> {
     let lines: Vec<&str> = content.lines().collect();
 
-    // Strip Fortran comments (lines starting with !)
+    // Strip comments (`!` and `#`, as pw.x does)
     let stripped: Vec<&str> = lines.iter()
         .map(|l| {
             let t = l.trim();
-            if let Some(p) = t.find('!') { &t[..p] } else { t }
+            if let Some(p) = t.find(['!', '#']) { &t[..p] } else { t }
         })
         .collect();
 
@@ -62,75 +62,98 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         }
     }
 
-    // ── CELL_PARAMETERS card ──────────────────────────────────────────────────
-    let (cell_start, cell_unit) = match find_card_with_unit(&stripped, "CELL_PARAMETERS") {
-        Some(r) => r,
-        None => bail!("CELL_PARAMETERS card not found"),
+    // ── 晶格参数 alat ─────────────────────────────────────────────────────────
+    // 口径照 pw.x 源码（Modules/cell_base.f90 cell_base_init）：celldm(1) [Bohr] 优先，
+    // 其次 A [Å]；两者为 0 视同未给
+    let lat = |key: &str| -> Result<Option<f64>> {
+        match sys.get(key) {
+            None => Ok(None),
+            Some(v) => {
+                let x = ffloat(v).with_context(|| format!("invalid {key} = {v}"))?;
+                Ok((x != 0.0).then_some(x))
+            }
+        }
     };
-    let cell_scale = match cell_unit.as_str() {
-        "bohr" => BOHR,
-        _ => 1.0, // angstrom (default)
+    let alat: Option<f64> = match lat("celldm(1)")? {
+        Some(c) => Some(c * BOHR),
+        None => lat("a")?,
     };
 
-    let mut cell_vecs: [[f64; 3]; 3] = [[0.0; 3]; 3];
-    let mut count = 0;
-    for l in stripped[cell_start+1..].iter() {
-        if count >= 3 { break; }
+    // ── CELL_PARAMETERS card ──────────────────────────────────────────────────
+    let cell_start = find_card(&stripped, "CELL_PARAMETERS").context("CELL_PARAMETERS card not found")?;
+    let cell_opt = card_option(stripped[cell_start], "CELL_PARAMETERS");
+    let cell_scale = match cell_opt.as_str() {
+        "angstrom" | "bohr" if alat.is_some() => bail!(
+            "CELL_PARAMETERS {cell_opt} together with celldm(1) or A in &SYSTEM: the lattice \
+             parameter is given twice (pw.x rejects this too)"
+        ),
+        "angstrom" => 1.0,
+        "bohr" => BOHR,
+        "alat" => alat.context("CELL_PARAMETERS alat needs celldm(1) or A in &SYSTEM")?,
+        // pw.x 的旧默认：有 celldm(1)/A 按 alat，否则按 bohr（ASE 同）
+        "" => alat.unwrap_or(BOHR),
+        other => bail!("unknown CELL_PARAMETERS option {other:?} (expected alat, bohr or angstrom)"),
+    };
+
+    let mut cell_vecs: Vec<Vector3<f64>> = Vec::with_capacity(3);
+    for l in stripped[cell_start + 1..].iter() {
+        if cell_vecs.len() == 3 { break; }
         let l = l.trim();
-        if l.is_empty() || is_card_or_namelist(l) { break; }
-        let parts: Vec<f64> = l.split_whitespace()
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        if parts.len() >= 3 {
-            cell_vecs[count] = [parts[0]*cell_scale, parts[1]*cell_scale, parts[2]*cell_scale];
-            count += 1;
-        }
+        if l.is_empty() { continue; }
+        if is_card_or_namelist(l) { break; }
+        let v = fortran_vec3(l).with_context(|| format!("invalid CELL_PARAMETERS line {l:?}"))?;
+        cell_vecs.push(v * cell_scale);
     }
-    anyhow::ensure!(count == 3, "CELL_PARAMETERS must have 3 vectors");
-    let cell = Cell::from_matrix(Matrix3::new(
-        cell_vecs[0][0], cell_vecs[0][1], cell_vecs[0][2],
-        cell_vecs[1][0], cell_vecs[1][1], cell_vecs[1][2],
-        cell_vecs[2][0], cell_vecs[2][1], cell_vecs[2][2],
-    ));
+    anyhow::ensure!(cell_vecs.len() == 3, "CELL_PARAMETERS must have 3 vectors");
+    let cell = Cell::from_matrix(Matrix3::from_rows(&[
+        cell_vecs[0].transpose(), cell_vecs[1].transpose(), cell_vecs[2].transpose(),
+    ]));
 
     // ── ATOMIC_POSITIONS card ─────────────────────────────────────────────────
-    let (pos_start, pos_unit) = match find_card_with_unit(&stripped, "ATOMIC_POSITIONS") {
-        Some(r) => r,
-        None => bail!("ATOMIC_POSITIONS card not found"),
+    let pos_start = find_card(&stripped, "ATOMIC_POSITIONS").context("ATOMIC_POSITIONS card not found")?;
+    let pos_opt = card_option(stripped[pos_start], "ATOMIC_POSITIONS");
+    // 坐标的 alat 在没有 celldm(1)/A 时取 |a1|（pw.x 同上处；ASE 不支持这一情形）
+    let pos_alat = alat.unwrap_or_else(|| cell.matrix.row(0).norm());
+    let to_cart = |v: Vector3<f64>| -> Vector3<f64> {
+        match pos_opt.as_str() {
+            "angstrom" => v,
+            "bohr" => v * BOHR,
+            "crystal" => cell.fractional_to_cartesian(v),
+            _ => v * pos_alat, // alat 或未写（pw.x 的默认）
+        }
     };
-
-    anyhow::ensure!(
-        !matches!(pos_unit.as_str(), "alat"),
-        "ATOMIC_POSITIONS alat units are not supported; use angstrom, bohr, or crystal"
-    );
+    match pos_opt.as_str() {
+        "angstrom" | "bohr" | "crystal" | "alat" | "" => {}
+        "crystal_sg" => bail!("ATOMIC_POSITIONS crystal_sg (Wyckoff positions) is not supported"),
+        other => bail!(
+            "unknown ATOMIC_POSITIONS option {other:?} (expected alat, bohr, angstrom or crystal)"
+        ),
+    }
 
     let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
 
     for l in stripped[pos_start+1..].iter() {
         let l = l.trim();
-        if l.is_empty() || is_card_or_namelist(l) { break; }
+        if l.is_empty() { continue; }
+        if is_card_or_namelist(l) { break; }
         let parts: Vec<&str> = l.split_whitespace().collect();
-        if parts.len() < 4 { continue; }
-
         let label = parts[0].to_string();
+        let v = fortran_vec3(&parts[1..].join(" "))
+            .with_context(|| format!("invalid ATOMIC_POSITIONS line {l:?}"))?;
         let (elem, tidx) = species.get(&label)
             .cloned()
             .unwrap_or_else(|| (extract_element(&label), 0));
 
-        let x: f64 = parts[1].parse().unwrap_or(0.0);
-        let y: f64 = parts[2].parse().unwrap_or(0.0);
-        let z: f64 = parts[3].parse().unwrap_or(0.0);
-
-        let position = match pos_unit.as_str() {
-            "bohr" => Vector3::new(x * BOHR, y * BOHR, z * BOHR),
-            "crystal" => cell.fractional_to_cartesian(Vector3::new(x, y, z)),
-            _ => Vector3::new(x, y, z), // angstrom
-        };
-
-        let mut atom = Atom::new(elem, position);
+        let mut atom = Atom::new(elem, to_cart(v));
         atom.label = Some(label);
         if tidx > 0 { atom.magmom = type_magmom.get(&tidx).copied(); }
         frame.add_atom(atom);
+    }
+    if let Some(nat) = sys.get("nat").and_then(|s| s.parse::<usize>().ok()) {
+        anyhow::ensure!(
+            frame.n_atoms() == nat,
+            "ATOMIC_POSITIONS has {} atoms but nat = {nat}", frame.n_atoms()
+        );
     }
 
     Ok(Trajectory::from_frame(frame))
@@ -171,14 +194,26 @@ fn find_card(lines: &[&str], card: &str) -> Option<usize> {
     })
 }
 
-fn find_card_with_unit(lines: &[&str], card: &str) -> Option<(usize, String)> {
-    find_card(lines, card).map(|pos| {
-        let l = lines[pos].to_lowercase();
-        let unit = l.find('{')
-            .and_then(|s| l.find('}').map(|e| l[s+1..e].trim().to_string()))
-            .unwrap_or_else(|| "angstrom".to_string());
-        (pos, unit)
-    })
+/// 卡片行上的选项：去掉卡片名后忽略 `{}()`、空白与大小写。`{bohr}`、`(bohr)`、
+/// `bohr` 是同一个选项（pw.x 与 ASE 都按关键字匹配，不要求括号）；未写返回空串
+fn card_option(line: &str, card: &str) -> String {
+    line.trim()[card.len()..]
+        .chars()
+        .filter(|c| !matches!(c, '{' | '}' | '(' | ')') && !c.is_whitespace())
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// Fortran 实数：指数字母可写 d/D（`0.25d0`、`1.026D+01`），QE 输入里常见
+fn ffloat(s: &str) -> Option<f64> {
+    s.replace(['d', 'D'], "e").parse().ok()
+}
+
+/// 行首三个 Fortran 实数；不足三个或解析失败即 `Err`，不补零
+fn fortran_vec3(line: &str) -> Result<Vector3<f64>> {
+    let v: Vec<f64> = line.split_whitespace().take(3).map_while(ffloat).collect();
+    anyhow::ensure!(v.len() == 3, "expected 3 numbers");
+    Ok(Vector3::new(v[0], v[1], v[2]))
 }
 
 fn is_card_or_namelist(l: &str) -> bool {
@@ -261,6 +296,68 @@ CELL_PARAMETERS {angstrom}
         assert_eq!(f.n_atoms(), 3);
         assert_eq!(f.atom(0).element, "O");
         assert_eq!(f.atom(1).element, "H");
+    }
+
+    /// Si 原胞输入：`sys` 追加进 &SYSTEM，`cell`/`pos` 是两张卡的表头行
+    fn si(sys: &str, cell_hdr: &str, cell: &str, pos_hdr: &str, pos: &str) -> String {
+        format!("&SYSTEM\n ibrav=0, nat=2, ntyp=1{sys}\n/\nATOMIC_SPECIES\nSi 28.086 Si.upf\n\
+                 {cell_hdr}\n{cell}\n{pos_hdr}\n{pos}\n")
+    }
+    const FCC_BOHR: &str = "0.0 5.13 5.13\n5.13 0.0 5.13\n5.13 5.13 0.0";
+    const FCC_ANG: &str = "0.0 2.715 2.715\n2.715 0.0 2.715\n2.715 2.715 0.0";
+    const FCC_UNIT: &str = "0.0 0.5 0.5\n0.5 0.0 0.5\n0.5 0.5 0.0";
+    const P: &str = "Si 0.00 0.00 0.00\nSi 0.25 0.25 0.25";
+
+    #[test]
+    fn test_card_options_and_units_match_pw_x() {
+        // 期望值：除注明者外取自 ASE 3.29.0 read_espresso_in 读同一份输入
+        // （ASE 的 Bohr 是 CODATA 2014，与本仓差 ~1e-9 相对，容差 1e-6 Å）
+        let (b, c) = (2.714679078854, 1.357339539427); // 5.13 Bohr、0.25×10.26 Bohr
+        let cases: [(&str, String, f64, f64); 6] = [
+            ("bohr + crystal（不带括号）",
+             si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal", P), b, c),
+            ("angstrom + (crystal)",
+             si("", "CELL_PARAMETERS angstrom", FCC_ANG, "ATOMIC_POSITIONS (crystal)", P), 2.715, 1.3575),
+            ("两张卡都不写选项：有 celldm(1) 即 alat",
+             si(", celldm(1)=10.26", "CELL_PARAMETERS", FCC_UNIT, "ATOMIC_POSITIONS", P), b, c),
+            // 手算：ASE 查 'A' 而它的 namelist 键已转小写，A 在 ASE 里从不生效
+            ("A + {alat} / alat",
+             si(", A=5.43", "CELL_PARAMETERS {alat}", FCC_UNIT, "ATOMIC_POSITIONS alat", P), 2.715, 1.3575),
+            // 与第三条数值等价；ASE 的 namelist 解析读不了 1.026D+01
+            ("Fortran d 指数",
+             si(", celldm(1)=1.026D+01", "CELL_PARAMETERS alat", &FCC_UNIT.replace("0.5", "0.5d0"),
+                "ATOMIC_POSITIONS crystal", "Si 0.0d0 0.0d0 0.0d0\nSi 0.25d0 0.25D0 2.5d-1"), b, c),
+            // 手算：无 celldm/A 时坐标的 alat = |a1|（pw.x cell_base_init；ASE 不支持）
+            ("angstrom 胞 + alat 坐标",
+             si("", "CELL_PARAMETERS angstrom", FCC_ANG, "ATOMIC_POSITIONS alat", P), 2.715, 0.959897455461),
+        ];
+        for (what, text, a12, p2) in cases {
+            let traj = parse_qe(&text).unwrap_or_else(|e| panic!("{what}：{e:#}"));
+            let f = traj.first().unwrap();
+            let m = f.cell.as_ref().unwrap().matrix;
+            assert!((m[(0, 1)] - a12).abs() < 1e-6 && m[(0, 0)].abs() < 1e-12, "{what}：a1 = {:?}", m.row(0));
+            let x = f.atom(1).position;
+            assert!((x - Vector3::repeat(p2)).norm() < 1e-6, "{what}：第 2 个 Si 在 {x:?}，应为 {p2}");
+        }
+    }
+
+    #[test]
+    fn test_card_options_that_must_fail() {
+        let cases = [
+            ("celldm 与 bohr 同时给", si(", celldm(1)=10.26", "CELL_PARAMETERS bohr", FCC_BOHR,
+                                       "ATOMIC_POSITIONS crystal", P), "given twice"),
+            ("crystal_sg", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal_sg", P), "crystal_sg"),
+            ("未知选项", si("", "CELL_PARAMETERS {bohrr}", FCC_BOHR, "ATOMIC_POSITIONS crystal", P), "unknown"),
+            ("alat 胞缺 celldm", si("", "CELL_PARAMETERS alat", FCC_UNIT, "ATOMIC_POSITIONS crystal", P), "celldm"),
+            ("坐标解析失败", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal",
+                               "Si 0 0 0\nSi 0.25 x 0.25"), "ATOMIC_POSITIONS line"),
+            ("原子数与 nat 不符", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal",
+                                   "Si 0 0 0"), "nat = 2"),
+        ];
+        for (what, text, needle) in cases {
+            let err = parse_qe(&text).expect_err(what);
+            assert!(format!("{err:#}").contains(needle), "{what}：报错应含 {needle:?}，实际 {err:#}");
+        }
     }
 
     #[test]
