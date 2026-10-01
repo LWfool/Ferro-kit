@@ -851,4 +851,5 @@ writer 时会再踩**的判据：
 | 周期网格的搜索窗 | `rem_euclid` 折叠后直接累加 | 窗口 `2s+1` 超过网格点数时多个偏移折到同一格，重复计数。与 `box_builder` CellList 缺去重同一个洞 —— 第三次出现，下次写周期网格遍历先想这一条 |
 | `StdRng` | 当作可复现的 RNG | rand 文档明写不可移植、将来版本可换算法。要「同 seed 可归档复现」就直接用具体算法的 crate（`chacha20`）并固定版本 |
 | POSCAR 的速度块 | 跳过空行后把剩余行当速度 | 坐标之后**恒有一行模式行**（空行也算一行）：空行或 C/K 开头 = Cartesian Å/fs，其余 = Direct（需 POTIM，报错）；首字符 L 是 NPT CONTCAR 的晶格速度块（再跳 8 行）。滤掉空行会把 `Cartesian` 那一行当成第一条速度。ASE 的 `write_vasp(sort=True)` 也有「坐标重排、速度原序」的 bug —— 照抄参考实现前先看它有没有同病 |
+| ASE 当参考实现 | 以为它覆盖全部合法输入 | ASE 3.29.0 的 `read_espresso_in` 读不了 `A=`（namelist 键已转小写、却按 `'A'` 查）与 `1.026D+01` 这类 namelist 值，也不支持「无 celldm 时坐标 alat 取 \|a1\|」。对拍时 ASE 报错的情形回 pw.x 源码（`Modules/cell_base.f90`）手算，并在测试注释里写明来源 |
 | 「解析失败」 | `parse().unwrap_or(0.0)` | 与列并集补零同一类：把「读不出来」伪装成「测到了 0」。报错并点名行号 |
