@@ -200,6 +200,7 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
 /// - `fit_range` is invalid or selects fewer than 2 points
 pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
     let n_frames = traj.n_frames();
+    traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     // 在重计算之前先挡掉明显错误的拟合窗口
     if let Some((fmin, fmax)) = params.fit_range {
@@ -421,6 +422,15 @@ mod tests {
             traj.add_frame(frame);
         }
         traj
+    }
+
+    #[test]
+    fn test_msd_rejects_frames_with_different_atoms() {
+        // 末帧少原子（截断轨迹）此前在按第 0 帧原子下标取坐标时越界 panic
+        let mut traj = make_traj_static(5);
+        traj.frames[4].atoms.truncate(10);
+        let err = calc_msd(&traj, &MsdParams::default()).expect_err("原子数不一致应报错而不是 panic");
+        assert!(err.to_string().contains("frame 4 has 10 atoms"), "{err}");
     }
 
     /// 构建静态轨迹：n 帧全相同（3×3×3 Fe sc）

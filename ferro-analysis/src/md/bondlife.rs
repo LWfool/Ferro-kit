@@ -145,6 +145,7 @@ pub fn lifetimes(c: &[f64], dt: f64) -> (f64, f64) {
 /// is absent, or no pair comes within `r_bond` in any frame.
 pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::Result<BondLifeResult> {
     let n_frames = traj.n_frames();
+    traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     let r_bond = params.r_bond;
     let r_break = params.r_break.unwrap_or(r_bond);

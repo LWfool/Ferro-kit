@@ -118,6 +118,7 @@ pub fn calc_cube_jump(
 ) -> Option<CubeJumpResult> {
     let n_frames = traj.frames.len();
     if n_frames < params.tau + 1 { return None; }
+    traj.check_same_atoms().ok()?;
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
