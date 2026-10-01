@@ -1,6 +1,7 @@
 //! Trajectory data structure.
 
 
+use crate::error::{ChemError, Result};
 use crate::frame::Frame;
 
 /// Indices `select` would pick out of a sequence of `n` items.
@@ -110,6 +111,38 @@ impl Trajectory {
         self.frames.push(frame);
     }
 
+    /// Check that every frame has the same atoms as frame 0: same count, same element
+    /// at every index.
+    ///
+    /// Time-correlation analyses (MSD, VACF, rotcorr, bond lifetimes, van Hove, jump
+    /// maps) follow atom `i` across frames by its index, so a frame with a different
+    /// atom list makes them index out of bounds or silently pair different atoms.
+    /// Per-frame statistics (g(r), angles, networks, density maps) do not need this:
+    /// a varying atom count is legitimate for them (GCMC, reactive MD).
+    pub fn check_same_atoms(&self) -> Result<()> {
+        let Some(first) = self.frames.first() else { return Ok(()) };
+        for (k, frame) in self.frames.iter().enumerate().skip(1) {
+            if frame.n_atoms() != first.n_atoms() {
+                return Err(ChemError::ValidationError(format!(
+                    "frame {k} has {} atoms but frame 0 has {}; this analysis follows atoms \
+                     by index and needs the same atoms in every frame",
+                    frame.n_atoms(), first.n_atoms()
+                )));
+            }
+            // 只比元素不比 label：net 导出的标注轨迹里 label 逐帧在变，原子身份不变
+            if let Some(j) = (0..first.n_atoms())
+                .find(|&j| frame.atoms[j].element != first.atoms[j].element)
+            {
+                return Err(ChemError::ValidationError(format!(
+                    "atom {j} is {} in frame {k} but {} in frame 0; this analysis follows \
+                     atoms by index and needs the same atoms in every frame",
+                    frame.atoms[j].element, first.atoms[j].element
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Return a new trajectory containing only the last `n` frames.
     ///
     /// If `n` ≥ the trajectory length, all frames are returned (no panic).
@@ -214,6 +247,27 @@ mod tests {
             traj.add_frame(make_frame(i as f64));
         }
         traj
+    }
+
+    #[test]
+    fn test_check_same_atoms() {
+        // 原子数相同、只有 label 变：net 标注轨迹的常态，应放行
+        let mut traj = numbered_traj(3);
+        traj.frames[2].atoms[0].label = Some("Fe_x".into());
+        assert!(traj.check_same_atoms().is_ok(), "只有 label 不同应放行");
+        assert!(Trajectory::new().check_same_atoms().is_ok(), "空轨迹应放行");
+
+        // 末帧少原子：截断 dump 的样子
+        let mut short = numbered_traj(3);
+        short.frames[2].atoms.clear();
+        let msg = short.check_same_atoms().unwrap_err().to_string();
+        assert!(msg.contains("frame 2 has 0 atoms but frame 0 has 1"), "应点名帧与原子数：{msg}");
+
+        // 原子数相同但元素换了位置
+        let mut swapped = numbered_traj(3);
+        swapped.frames[1].atoms[0].element = "O".into();
+        let msg = swapped.check_same_atoms().unwrap_err().to_string();
+        assert!(msg.contains("atom 0 is O in frame 1 but Fe in frame 0"), "应点名原子与元素：{msg}");
     }
 
     fn picked(traj: &Trajectory) -> Vec<usize> {

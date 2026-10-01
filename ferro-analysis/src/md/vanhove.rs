@@ -129,6 +129,7 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHoveResult> {
     let n_steps = traj.n_frames();
     if n_steps < 2 { return None; }
+    traj.check_same_atoms().ok()?;
 
     // 按第一帧筛选参与计算的原子下标
     let ref_frame = traj.first()?;

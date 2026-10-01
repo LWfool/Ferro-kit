@@ -687,6 +687,8 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     };
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) = drive(&c.common, Some(label), |traj| {
+        // calc_vanhove 返回 Option，原子不一致时只给 None；先查一遍好让报错说清原因
+        traj.check_same_atoms()?;
         calc_vanhove(traj, &params)
             .ok_or_else(|| anyhow!("VanHove calc failed (trajectory too short?)"))
     })?;

@@ -123,6 +123,7 @@ pub struct RotCorrResult {
 /// neighbor within `r_cut` in any frame.
 pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Result<RotCorrResult> {
     let n_frames = traj.n_frames();
+    traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
 
     // 确定参与计算的 center 原子下标（按第一帧筛选）
