@@ -855,4 +855,6 @@ writer 时会再踩**的判据：
 | 格式的「可选提示」 | 按 `Atoms # full` 注释或列数推 LAMMPS data 的 style | 注释在 LAMMPS 里可选，列数有歧义（charge 与 molecular 同为 6 列；8 列的 atomic+image flag 按 full 读会把 image flag 当坐标）。用户裁定（2026-10-02）：style 必须显式给出，注释即使存在也不看；对不上的列数报错 |
 | 截断 vs 写错 | reader 把一帧读不成一律当「末帧被截断」丢掉 | 截断只会切在**文件最后一行**；别处的缺列、坏字段、缺坐标列是文件写错了，截断解释不了，恒报错。单帧文件尤其要分清：按截断处理会读出 0 帧且不报错（M2 修时实测踩到） |
 | 缩放坐标 | `xs` 直接 `s·L` | LAMMPS 定义 `xs = (x - lo)/L`，还原要加真实 lo（三斜时由 `*_bound` 反推）。ASE 3.29 漏了 lo，与它自己的 `x` 列不自洽，此处不以 ASE 为准 |
+| 参数取值检查 | `if v <= 0.0 { 报错 }`，或只在计算里、读完文件才查 | 写成「合法则放行，否则报错」：NaN 与任何数比较为假，落到报错分支（反着写会放过 `--dr nan`；clippy 也不让写 `!(v > 0.0)`）。步长、截断还要 `is_finite`，`inf` 的步长得 0 个 bin。判据放 `XxxParams::validate`，CLI 在建 `-o`、读第一个文件前调，`calc_*` 入口再调一次给 Python |
+| 返回 `Option` 的计算 | 失败原因揉成一个 `None`，调用者去猜 | angle、vanhove 以前的报错「empty trajectory?」「trajectory too short?」都是猜错的。返回 `Result`，每种失败各自报 |
 | 「解析失败」 | `parse().unwrap_or(0.0)` | 与列并集补零同一类：把「读不出来」伪装成「测到了 0」。报错并点名行号 |
