@@ -188,7 +188,7 @@ impl Split {
         let (n_valid, n_test) = (take(self.valid), take(self.test));
         if n_valid + n_test >= n {
             bail!(
-                "{}: {n} frame(s) cannot give {n_valid} validation + {n_test} test \\
+                "{}: {n} frame(s) cannot give {n_valid} validation + {n_test} test \
                  and still leave a training set",
                 who.display()
             );
@@ -1865,7 +1865,10 @@ mod tests {
     #[test]
     fn a_split_that_leaves_no_training_frames_is_an_error() {
         let e = split_of("0.001:1:1").parts(4, Path::new("sysA")).unwrap_err();
-        assert!(format!("{e:#}").contains("sysA"), "{e:#}");
+        let msg = format!("{e:#}");
+        assert!(msg.contains("sysA"), "{msg}");
+        // 续行符写成 `\\` 时消息里会多一个字面反斜杠和一段缩进
+        assert!(!msg.contains('\\') && !msg.contains("  "), "续行没有接好：{msg:?}");
     }
 
     #[test]
