@@ -32,24 +32,26 @@ pub fn is_extxyz(path: &Path) -> Result<bool> {
 }
 
 fn parse_extxyz(content: &str) -> Result<Trajectory> {
-    let mut lines = content.lines().peekable();
+    // 带上行号（从 1 起），解析失败时点名是文件哪一行
+    let mut lines = content.lines().enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
 
     loop {
         // Skip blank lines between frames
-        while lines.peek().map(|l| l.trim().is_empty()).unwrap_or(false) {
+        while lines.peek().map(|(_, l)| l.trim().is_empty()).unwrap_or(false) {
             lines.next();
         }
         let count_line = match lines.next() {
             None => break,
-            Some(l) => l.trim(),
+            Some((_, l)) => l.trim(),
         };
         if count_line.is_empty() { break; }
 
         let n: usize = count_line.parse()
             .with_context(|| format!("expected atom count, got {count_line:?}"))?;
 
-        let comment = lines.next().context("missing comment line")?;
+        let (comment_no, comment) = lines.next().context("missing comment line")?;
+        let frame_no = traj.n_frames();
         let kv = parse_comment(comment);
 
         // Cell and pbc
@@ -63,10 +65,18 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
         };
 
         // Scalar properties in comment
-        let energy: Option<f64> = kv.get("energy").and_then(|s| s.parse().ok());
+        // 写了这个键却解析不出，是坏文件，不是「没有能量」
+        let scalar = |key: &str| -> Result<Option<f64>> {
+            kv.get(key)
+                .map(|v| v.parse::<f64>().with_context(|| {
+                    format!("frame {frame_no} (line {comment_no}): invalid {key} {v:?}")
+                }))
+                .transpose()
+        };
+        let energy = scalar("energy")?;
         // 非标准键，但 MD 产出的 extxyz 常带着它。读侧收下是纯收益（别人的文件里
         // 有就别丢）；写侧不写 —— 见 writers/extxyz.rs
-        let temperature: Option<f64> = kv.get("temperature").and_then(|s| s.parse().ok());
+        let temperature = scalar("temperature")?;
         let stress = read_stress(&kv, cell.as_ref())
             .with_context(|| format!("frame {}", traj.n_frames()))?;
 
@@ -100,35 +110,41 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
         let mut all_vels: Vec<Vector3<f64>> = Vec::new();
 
         for i in 0..n {
-            let line = lines.next()
+            let (line_no, line) = lines.next()
                 .with_context(|| format!("missing atom line {i}"))?;
             let cols: Vec<&str> = line.split_whitespace().collect();
             if cols.len() < ncols {
                 bail!("atom line {i}: expected {ncols} columns, got {}", cols.len());
             }
+            // 解析失败一律报错：补 0 会冒充「测到了 0」，转成 None 会冒充「没有这一列」
+            let num = |name: &str, c: usize| -> Result<f64> {
+                cols[c].parse().with_context(|| {
+                    format!("frame {frame_no}, line {line_no}: invalid {name} value {:?}", cols[c])
+                })
+            };
+            let vec3 = |name: &str, c: usize| -> Result<Vector3<f64>> {
+                Ok(Vector3::new(num(name, c)?, num(name, c + 1)?, num(name, c + 2)?))
+            };
 
             let element = find("species")
                 .map(|c| cols[c].to_string())
                 .unwrap_or_else(|| "X".to_string());
 
             let pos = if let Some(c) = find("pos") {
-                let x: f64 = cols[c].parse().context("invalid pos.x")?;
-                let y: f64 = cols[c+1].parse().context("invalid pos.y")?;
-                let z: f64 = cols[c+2].parse().context("invalid pos.z")?;
-                Vector3::new(x, y, z)
+                vec3("pos", c)?
             } else {
                 Vector3::zeros()
             };
 
             let mut atom = Atom::new(element, pos);
             if let Some(c) = find("charges") {
-                atom.charge = cols[c].parse().ok();
+                atom.charge = Some(num("charges", c)?);
             }
             if let Some(c) = find("masses") {
-                atom.mass = cols[c].parse().ok();
+                atom.mass = Some(num("masses", c)?);
             }
             if let Some(c) = find("magmoms") {
-                atom.magmom = cols[c].parse().ok();
+                atom.magmom = Some(num("magmoms", c)?);
             }
             // 位点标签走自己的一列,species 保持纯元素 —— 不像 LAMMPS dump
             // 那样需要按下划线拆分,故这里不做任何猜测
@@ -138,16 +154,10 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
             frame.add_atom(atom);
 
             if let Some(c) = find("forces").or_else(|| find("force")) {
-                let fx: f64 = cols[c].parse().unwrap_or(0.0);
-                let fy: f64 = cols[c+1].parse().unwrap_or(0.0);
-                let fz: f64 = cols[c+2].parse().unwrap_or(0.0);
-                all_forces.push(Vector3::new(fx, fy, fz));
+                all_forces.push(vec3("forces", c)?);
             }
             if let Some(c) = find("velocities").or_else(|| find("momenta")) {
-                let vx: f64 = cols[c].parse().unwrap_or(0.0);
-                let vy: f64 = cols[c+1].parse().unwrap_or(0.0);
-                let vz: f64 = cols[c+2].parse().unwrap_or(0.0);
-                all_vels.push(Vector3::new(vx, vy, vz));
+                all_vels.push(vec3("velocities", c)?);
             }
         }
 
@@ -524,6 +534,39 @@ Si 0.0 0.0 0.0
         let forces = f.forces.as_ref().expect("force column not read");
         assert!((forces[0].x - 0.1).abs() < 1e-12);
         assert!((forces[1].z + 0.3).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_bad_numeric_field_is_an_error_naming_frame_and_line() {
+        // 以前：力/速度补 0，电荷/质量/磁矩与能量/温度静默变 None
+        let props = "Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3:\
+                     charges:R:1:masses:R:1:magmoms:R:1";
+        let good = format!(
+            "1\nenergy=-1.0 temperature=300 {props}\nO 0 0 0 0.1 0.2 0.3 1 2 3 -0.8 16.0 0.5\n"
+        );
+        let traj = parse_extxyz(&format!("{good}{good}")).unwrap();
+        let f = &traj.frames[1];
+        assert_eq!(f.atoms[0].charge, Some(-0.8));
+        assert_eq!(f.velocities.as_ref().unwrap()[0].z, 3.0);
+        // 坏值放在第 2 帧（注释第 5 行、原子第 6 行），断言消息点名帧号、行号和字段
+        let cases = [
+            ("0.2", "1.0d0", "forces"),
+            (" 2 ", " 2x ", "velocities"),
+            ("-0.8", "-0.8d0", "charges"),
+            ("16.0", "nan?", "masses"),
+            ("0.5\n", "0.5.\n", "magmoms"),
+            ("O 0 0 0", "O 0 zero 0", "pos"),
+            ("energy=-1.0", "energy=-1.0d0", "energy"),
+            ("temperature=300", "temperature=hot", "temperature"),
+        ];
+        for (from, to, field) in cases {
+            let bad = good.replacen(from, to, 1);
+            let e = parse_extxyz(&format!("{good}{bad}")).unwrap_err();
+            let msg = format!("{e:#}");
+            let line = if matches!(field, "energy" | "temperature") { "line 5" } else { "line 6" };
+            assert!(msg.contains("frame 1") && msg.contains(line) && msg.contains(field),
+                "{field}：{msg}");
+        }
     }
 
 }

@@ -46,6 +46,10 @@ M1 期间另见、未修（待定口径）：
   但 CLI 只能猜原因（`missing cell, velocities, or forces?`）。改 `Result` 是同一个做法
 - **`Atoms` 段写在 `Masses` 之前**时 Masses 不会被读，元素退化为 `X<type>`
   （`lammps_data.rs` 按 Masses → Atoms 的顺序单遍扫描）。LAMMPS 不规定段序
+- **extxyz 的 `momenta` 列被当成速度**（L6 时见到）：`readers/extxyz.rs` 找不到
+  `velocities` 就读 `momenta` 存进 `velocities`。ASE 的 momenta 是 $m\,v$（amu·Å/fs 量纲
+  按 ASE 内部单位），直接当速度会让 vacf 等差一个质量因子和单位换算。要么按质量除回来，
+  要么不认这一列
 
 **轻**
 
@@ -56,7 +60,7 @@ M1 期间另见、未修（待定口径）：
 | L3 | `ml/merge.rs:129` | `StdRng` 不可移植：rand 0.10.2 源码 `rngs/std.rs` 明写「any future library version may replace the algorithm」，与「seed 默认 666、可归档复现」冲突 | 改用 `chacha20::ChaCha12Rng`（当前 StdRng 的实现，已在树里）固定版本，同 seed 结果不变 |
 | ~~L4~~ **已修**（续行改为单个 `\`，测试断言消息无反斜杠与连续空格）| `cmd/dataset.rs:191` | 普通字符串里写 `\\` + 换行，错误消息里多一个字面反斜杠和一段缩进 | 同 `issues.md`「用 Python heredoc 改 Rust 源码时」那一族 |
 | ~~L5~~ **已修**（判断移到 `FilterParams::enabled()`，`filter_frames` 与 `FilterResult::enabled()` 都调它）| `ml/filter.rs:270` | `filter_frames` 内联了一份与 `FilterResult::enabled()`（`:306`）相同的 match | match 是穷尽的，加变体会编译报错，**漏改不会静默**；风险是两处条件改得不一致。按 R6「同文件已有函数直接复用」 |
-| L6 | ~~`cp2k.rs:104-106`~~（随 S5 修）、~~`qe.rs:120-122`~~（随 S4 修）、`extxyz.rs:121-129`（力、速度）、`readers/cube.rs:105`（体数据） | `parse().unwrap_or(0.0)`：解析失败冒充「测到了 0」。QE 的 Fortran 写法 `0.25d0` 即中 | 读码确认；改为报错并点名行号 |
+| ~~L6~~ **已修**（extxyz 的力、速度、坐标与 `charges`/`masses`/`magmoms`、注释行的 `energy`/`temperature` 解析失败一律报错，点名帧号、行号、字段 —— 后两组按用户同意顺带修；cube 体数据坏值报错并点名行号）| ~~`cp2k.rs:104-106`~~（随 S5 修）、~~`qe.rs:120-122`~~（随 S4 修）、`extxyz.rs:121-129`（力、速度）、`readers/cube.rs:105`（体数据） | `parse().unwrap_or(0.0)`：解析失败冒充「测到了 0」。QE 的 Fortran 写法 `0.25d0` 即中 | 读码确认；改为报错并点名行号 |
 | ~~L7~~ **已修**（`a2c013a`，删分支）| `readers/cp2k.rs:124-137` | 把 `&COORD` 第 5–7 列当速度（注释写「restart 里」）。CP2K 的 `&COORD` 第 5 列是分子名，速度在独立的 `&VELOCITY` 段（bohr/au_time，不是 bohr/fs），reader 不读该段 | 读码确认；实际几乎不触发（第 5 列是字符串则解析失败跳过），触发则单位错且速度数组长度可能与原子数不一致。删分支，或正式读 `&VELOCITY` |
 
 **测试缺口**（与上表对应）：dump writer 无「非下三角胞 + 力/速度」；POSCAR 无「元素交错 +
