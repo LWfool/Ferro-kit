@@ -17,6 +17,7 @@
 //!
 //! Parallelism: per frame for distances, per candidate for the correlations.
 
+use crate::check;
 use rayon::prelude::*;
 use nalgebra::Matrix3;
 use ferro_core::{Table, Trajectory};
@@ -44,6 +45,24 @@ pub struct BondLifeParams {
     pub max_lag: Option<usize>,
     /// Time between stored frames \[fs\]
     pub dt: f64,
+}
+
+impl BondLifeParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("r-bond", self.r_bond)?;
+        if let Some(r_break) = self.r_break {
+            // 写成「合法则放行」，NaN 落到报错分支（同 check.rs）
+            let ok = r_break >= self.r_bond;
+            if !ok {
+                return Err(ChemError::ValidationError(format!(
+                    "r-break ({r_break}) must be >= r-bond ({})", self.r_bond)));
+            }
+        }
+        check::positive("dt", self.dt)?;
+        check::at_least_one_if_given("max-lag", self.max_lag)
+    }
 }
 
 impl Default for BondLifeParams {
@@ -144,15 +163,13 @@ pub fn lifetimes(c: &[f64], dt: f64) -> (f64, f64) {
 /// `1 ..= n_frames − 1`, the thresholds are not `0 < r_bond ≤ r_break`, an element
 /// is absent, or no pair comes within `r_bond` in any frame.
 pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::Result<BondLifeResult> {
+    params.validate()?;
     let n_frames = traj.n_frames();
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     let r_bond = params.r_bond;
+    // 0 < r_bond <= r_break 已由 validate 查过
     let r_break = params.r_break.unwrap_or(r_bond);
-    if !(r_bond > 0.0 && r_break >= r_bond) {
-        return Err(ChemError::ValidationError(format!(
-            "need 0 < r_bond <= r_break, got r_bond = {r_bond}, r_break = {r_break}")));
-    }
 
     let ref_frame = &traj.frames[0];
     let of = |el: &str| -> Vec<usize> {

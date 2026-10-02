@@ -12,8 +12,10 @@
 //!
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
+use crate::check;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
+use ferro_core::error::ChemError;
 use ferro_core::{Table, Trajectory};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
@@ -35,6 +37,19 @@ pub struct VanHoveParams {
     pub dr: f64,
     /// Elements to include (`None` = all atoms)
     pub elements: Option<Vec<String>>,
+}
+
+impl VanHoveParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("dt", self.dt)?;
+        check::at_least_one_if_given("tau", self.tau)?;
+        check::at_least_one("shift", self.shift)?;
+        check::non_negative("r-min", self.r_min)?;
+        check::positive("dr", self.dr)?;
+        check::ordered("r-min", self.r_min, "r-max", self.r_max)
+    }
 }
 
 impl Default for VanHoveParams {
@@ -121,18 +136,23 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 ///    `|r(p+τ) − r(p)|` for every selected atom and accumulate into a histogram.
 /// 5. Normalise: `gs[i] = count[i] / (n_origins × n_atoms)`.
 ///
-/// Returns `None` if:
-/// - The trajectory has fewer than 2 frames
-/// - No atoms match the element filter
-/// - `τ` exceeds `n_frames − 1`
-/// - Any frame is missing a cell (periodic path only)
-pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHoveResult> {
+/// Returns `Err`, each with its own message, if:
+/// - a parameter is out of range ([`VanHoveParams::validate`])
+/// - the trajectory has fewer than 2 frames, or its frames hold different atoms
+/// - no atoms match the element filter
+/// - a later frame is missing the cell frame 0 has (periodic path only)
+///
+/// `τ` beyond `n_frames − 1` is clamped, not an error.
+pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Result<VanHoveResult> {
+    params.validate()?;
     let n_steps = traj.n_frames();
-    if n_steps < 2 { return None; }
-    traj.check_same_atoms().ok()?;
+    if n_steps < 2 {
+        return Err(ChemError::ValidationError(format!("trajectory requires at least 2 frames, got {n_steps}")));
+    }
+    traj.check_same_atoms()?;
 
     // 按第一帧筛选参与计算的原子下标
-    let ref_frame = traj.first()?;
+    let ref_frame = &traj.frames[0];
     let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
         .filter(|(_, a)| match &params.elements {
             Some(elems) => elems.contains(&a.element),
@@ -140,7 +160,9 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
         })
         .map(|(i, _)| i)
         .collect();
-    if atom_indices.is_empty() { return None; }
+    if atom_indices.is_empty() {
+        return Err(ChemError::ValidationError("no atoms match the element filter".into()));
+    }
     let n_atoms = atom_indices.len();
 
     // tau 不超过 n_steps-1；None 时使用全轨迹长度
@@ -155,7 +177,10 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
     };
 
     let n_bins = ((params.r_max - params.r_min) / params.dr).ceil() as usize;
-    if n_bins == 0 { return None; }
+    if n_bins == 0 {
+        // validate 已要求 dr 有限且 > 0、r_max > r_min，这里只是防御
+        return Err(ChemError::ValidationError(format!("dr = {} leaves no bin", params.dr)));
+    }
 
     // origin 起始帧：访问 cart[p] 和 cart[p+tau]，均需 < n_steps
     let p_values: Vec<usize> = (0..)
@@ -163,12 +188,17 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
         .take_while(|&p| p + tau < n_steps)
         .collect();
     let n_origins = p_values.len();
-    if n_origins == 0 { return None; }
+    if n_origins == 0 {
+        // tau 已截到 n_steps-1、shift >= 1，p = 0 恒可用；留着防将来改动
+        return Err(ChemError::ValidationError(format!("no time origin fits tau = {tau} in {n_steps} frames")));
+    }
 
     // 构建绝对 Cartesian 坐标数组（周期系统经过 unwrap）
     let cart: Vec<Vec<[f64; 3]>> = if ref_frame.cell.is_some() {
         // 周期系统：分数坐标 unwrap 后转回绝对坐标
-        if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
+        if traj.frames.iter().any(|f| f.cell.is_none()) {
+            return Err(ChemError::ValidationError("frame 0 has a cell but a later frame does not".into()));
+        }
 
         let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
             let cell = frame.cell.as_ref().unwrap();
@@ -228,7 +258,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> Option<VanHove
         .collect();
     let gs: Vec<f64> = hist.iter().map(|&c| c as f64 * norm).collect();
 
-    Some(VanHoveResult {
+    Ok(VanHoveResult {
         r, gs,
         tau_frames: tau,
         time: tau as f64 * params.dt,

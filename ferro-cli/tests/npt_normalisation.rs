@@ -40,7 +40,7 @@ fn literal_per_frame(traj: &Trajectory) -> (BTreeMap<String, Vec<f64>>, BTreeMap
     for frame in &traj.frames {
         let single = Trajectory::from_frame(frame.clone());
         let g = calc_gr(&single, &gp).unwrap();
-        let s = calc_sq_from_gr(&g, &sp);
+        let s = calc_sq_from_gr(&g, &sp).unwrap();
         for (k, v) in &g.gr {
             let e = gr_acc.entry(k.clone()).or_insert_with(|| vec![0.0; v.len()]);
             for (a, b) in e.iter_mut().zip(v.iter()) { *a += b; }
@@ -100,7 +100,7 @@ fn folded_matches_literal_per_frame_on_real_npt_trajectory() {
     // 与字面逐帧实现对拍，确认两者是同一个数而非近似。
     let traj = read_lammps_dump(Path::new(NPT), LammpsUnits::Real).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
-    let s = calc_sq_from_gr(&g, &sq_params());
+    let s = calc_sq_from_gr(&g, &sq_params()).unwrap();
     let (gr_lit, sq_lit) = literal_per_frame(&traj);
 
     for (k, v) in &g.gr {
@@ -119,7 +119,7 @@ fn npt_differs_from_average_volume_shortcut() {
     // 在 NPT 上确实改变了结果 —— 否则前一个测试可能只是在比较两条相同的死路径。
     let traj = read_lammps_dump(Path::new(NPT), LammpsUnits::Real).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
-    let s = calc_sq_from_gr(&g, &sq_params());
+    let s = calc_sq_from_gr(&g, &sq_params()).unwrap();
 
     let pi4 = 4.0 * std::f64::consts::PI;
     let n_total = g.element_counts.values().sum::<usize>() as f64;

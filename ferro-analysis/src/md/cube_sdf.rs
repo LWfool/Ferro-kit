@@ -28,6 +28,7 @@
 //!   `--padding 3.0`      — grid boundary margin \[Å\]
 //!   `--rmsd-warn 0.5`    — RMSD warning threshold \[Å\]
 
+use crate::check;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ferro_core::{
@@ -61,6 +62,19 @@ pub struct ClusterSdfParams {
     pub padding: f64,
     /// RMSD threshold above which a warning is printed \[Å\]
     pub rmsd_warn_threshold: f64,
+}
+
+impl ClusterSdfParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("cutoff-fl", self.former_ligand_cutoff)?;
+        check::positive("cutoff-ml", self.modifier_cutoff)?;
+        check::positive("grid-res", self.grid_res)?;
+        check::non_negative("sigma", self.sigma)?;
+        check::non_negative("padding", self.padding)?;
+        check::non_negative("rmsd-warn", self.rmsd_warn_threshold)
+    }
 }
 
 impl Default for ClusterSdfParams {
@@ -214,6 +228,8 @@ pub fn calc_cluster_sdf(
     traj: &Trajectory,
     params: &ClusterSdfParams,
 ) -> Option<ClusterSdfResult> {
+    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
+    params.validate().ok()?;
     if traj.frames.is_empty() { return None; }
 
     let mut accumulators: HashMap<String, FamilyAccumulator> = HashMap::new();

@@ -10,6 +10,7 @@
 //!
 //! Parallelism: per atom (each atom's three series are independent).
 
+use crate::check;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
@@ -32,6 +33,24 @@ pub struct MsdParams {
     /// Linear-fit window as fractions of the MSD lag-time axis
     /// (`(fmin, fmax)`, `0 <= fmin < fmax <= 1`). `None` = no fit.
     pub fit_range: Option<(f64, f64)>,
+}
+
+impl MsdParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("dt", self.dt)?;
+        check::at_least_one_if_given("max-lag", self.max_lag)?;
+        if let Some((fmin, fmax)) = self.fit_range {
+            // 与 fit_diffusion 内的同一判据，提前到重计算（及 CLI 读文件）之前
+            let ok = (0.0..=1.0).contains(&fmin) && (0.0..=1.0).contains(&fmax) && fmin < fmax;
+            if !ok {
+                return Err(ChemError::ValidationError(format!(
+                    "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]")));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for MsdParams {
@@ -199,17 +218,10 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
 /// - A periodic trajectory has a frame without a cell, or a singular cell
 /// - `fit_range` is invalid or selects fewer than 2 points
 pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
+    params.validate()?;
     let n_frames = traj.n_frames();
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
-    // 在重计算之前先挡掉明显错误的拟合窗口
-    if let Some((fmin, fmax)) = params.fit_range {
-        if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
-            return Err(ChemError::ValidationError(format!(
-                "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]"
-            )));
-        }
-    }
     // 按第一帧筛选元素
     let ref_frame = &traj.frames[0];
     let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()

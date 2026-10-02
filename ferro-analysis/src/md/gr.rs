@@ -12,6 +12,7 @@
 //!   - `cn` — directed: `"A-B"` is the average number of B around each A, so
 //!     `"A-B"` and `"B-A"` generally differ
 
+use crate::check;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 use rayon::prelude::*;
@@ -100,6 +101,17 @@ pub struct GrParams {
     pub dr: f64,
     /// Whether partials are resolved over elements or site labels (default: `Element`)
     pub group_by: GroupBy,
+}
+
+impl GrParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::non_negative("r-min", self.r_min)?;
+        check::positive("dr", self.dr)?;
+        check::ordered("r-min", self.r_min, "r-max", self.r_max)?;
+        check::holds_a_bin("r range", self.r_min, self.r_max, "dr", self.dr)
+    }
 }
 
 impl Default for GrParams {
@@ -201,6 +213,7 @@ impl Acc {
 /// Requires periodic cells in every frame; uses the minimum-image convention.
 /// Returns `Err` when the trajectory is empty, bin count is zero, or any frame has no cell.
 pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrResult> {
+    params.validate()?;
     if traj.frames.is_empty() {
         return Err(ChemError::ValidationError("trajectory is empty".into()));
     }

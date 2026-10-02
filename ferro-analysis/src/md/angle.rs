@@ -19,6 +19,8 @@
 //! Parallelism: per-frame `par_iter().fold().reduce()`, same pattern as gr.rs.
 //! Algorithm reference: code1/angle.c (`EstimateAngle`).
 
+use crate::check;
+use ferro_core::error::ChemError;
 use nalgebra::{Matrix3, Vector3};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
@@ -182,6 +184,21 @@ pub struct AngleParams {
     pub ends: Option<(String, String)>,
 }
 
+impl AngleParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("r-cut-ab", self.r_cut_ab)?;
+        check::positive("r-cut-bc", self.r_cut_bc)?;
+        check::positive("d-angle", self.d_angle)?;
+        check::non_negative("angle-min", self.angle_min)?;
+        check::ordered("angle-min", self.angle_min, "angle-max", self.angle_max)?;
+        // 写成「合法则放行」，NaN 落到报错分支（同 check.rs）
+        if self.angle_max <= 180.0 { return Ok(()); }
+        Err(ChemError::ValidationError(format!("angle-max must be <= 180, got {}", self.angle_max)))
+    }
+}
+
 impl Default for AngleParams {
     fn default() -> Self {
         AngleParams {
@@ -234,10 +251,11 @@ pub struct AngleResult {
 /// All possible center elements B and endpoint pairs (A, C) are considered
 /// automatically; no manual selection is needed.
 ///
-/// Returns `None` if:
-/// - The trajectory is empty
-/// - Any frame is missing a cell
-/// - No valid angle triplets are found
+/// Returns `Err`, each with its own message, if:
+/// - a parameter is out of range ([`AngleParams::validate`])
+/// - the trajectory is empty
+/// - any frame is missing a cell
+/// - no valid angle triplets are found
 ///
 /// # Canonical key and counting convention
 /// For a given B center, its neighbors are enumerated as unordered pairs
@@ -256,20 +274,24 @@ pub struct AngleResult {
 /// order otherwise. When both ends are the same type, which one is "A" would depend on
 /// the neighbour enumeration order, so `min(r_cut_ab, r_cut_bc)` is applied to both —
 /// the only assignment that gives a reproducible result.
-pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult> {
-    if traj.frames.is_empty() { return None; }
+pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result<AngleResult> {
+    params.validate()?;
+    if traj.frames.is_empty() {
+        return Err(ChemError::ValidationError("trajectory is empty".into()));
+    }
 
     // 校验所有帧都有 cell
-    if traj.frames.iter().any(|f| f.cell.is_none()) { return None; }
+    if traj.frames.iter().any(|f| f.cell.is_none()) {
+        return Err(ChemError::ValidationError("all frames must have a periodic cell".into()));
+    }
 
-    if params.angle_max <= params.angle_min || params.d_angle <= 0.0 { return None; }
+    // 窗口与步长已由 validate 保证 angle_min < angle_max、d_angle > 0，ceil 至少为 1
     let n_bins = ((params.angle_max - params.angle_min) / params.d_angle).ceil() as usize;
-    if n_bins == 0 { return None; }
     let n_frames = traj.frames.len();
 
     // 类型列表（元素或位点标签），按 (Z, 字符串) 排序：字符串二级比较使同 Z 的
     // 多个标签（O_f / O_b_P_P）顺序可复现，而非随 HashSet 迭代序漂移。
-    let first_frame = traj.frames.first()?;
+    let first_frame = &traj.frames[0];
     let by = params.group_by;
     let elements = sorted_types(first_frame, by);
 
@@ -362,7 +384,11 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
             a
         });
 
-    if total_hist.is_empty() { return None; }
+    if total_hist.is_empty() {
+        return Err(ChemError::ValidationError(format!(
+            "no triplet within the cutoffs (r-cut-ab {}, r-cut-bc {}) and the window [{}, {}] in any frame",
+            params.r_cut_ab, params.r_cut_bc, params.angle_min, params.angle_max)));
+    }
 
     // 角度轴（bin 中心）
     let angle: Vec<f64> = (0..n_bins)
@@ -382,7 +408,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> Option<AngleResult
         stats.insert(key.clone(), AngleStats { mean, std: var.sqrt(), count: total_count });
     }
 
-    Some(AngleResult { angle, hist: total_hist, stats, n_frames, params: params.clone(), elements })
+    Ok(AngleResult { angle, hist: total_hist, stats, n_frames, params: params.clone(), elements })
 }
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
@@ -568,8 +594,8 @@ mod tests {
         let params = AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params);
 
-        // 只有 1 个 O 在截断内，无法形成三元组 → 结果为 None 或 O-Si-O 计数为 0
-        let total: u64 = res.as_ref()
+        // 只有 1 个 O 在截断内，无法形成三元组 → 结果为 Err 或 O-Si-O 计数为 0
+        let total: u64 = res.as_ref().ok()
             .and_then(|r| r.hist.get("O-Si-O"))
             .map(|h| h.iter().sum())
             .unwrap_or(0);
@@ -723,11 +749,11 @@ mod tests {
         let flipped = AngleParams {
             ends: Some(("P".to_string(), "Zn".to_string())), ..base.clone()
         };
-        assert!(calc_angle(&traj, &flipped).is_none(),
+        assert!(calc_angle(&traj, &flipped).is_err(),
             "调换 -a/-c 应当改变 cutoff 归属");
 
         // 未点名三元组时退回规范 (Z, 符号) 顺序：lo=P 拿 2.5，hi=Zn 拿 2.2 → 落选
-        assert!(calc_angle(&traj, &base).is_none(),
+        assert!(calc_angle(&traj, &base).is_err(),
             "ends=None 时应沿用规范顺序");
     }
 
@@ -741,7 +767,7 @@ mod tests {
             ends: Some(("O".to_string(), "O".to_string())), ..Default::default()
         };
         // 两个 O 都在 1.6 Å，min(2.0, 1.5) = 1.5 → 全部落选
-        assert!(calc_angle(&traj, &p).is_none());
+        assert!(calc_angle(&traj, &p).is_err());
     }
 
     // ── Q3: 直方图上下界可调 ─────────────────────────────────────────────────
@@ -766,7 +792,7 @@ mod tests {
             angle_min: 100.0, angle_max: 180.0, d_angle: 1.0,
             r_cut_ab: 2.0, r_cut_bc: 2.0, ..Default::default()
         };
-        assert!(calc_angle(&traj, &outside).is_none());
+        assert!(calc_angle(&traj, &outside).is_err());
     }
 
     #[test]
@@ -787,7 +813,7 @@ mod tests {
             AngleParams { angle_min: 100.0, angle_max: 50.0, ..Default::default() },
             AngleParams { d_angle: 0.0, ..Default::default() },
         ] {
-            assert!(calc_angle(&traj, &p).is_none());
+            assert!(calc_angle(&traj, &p).is_err());
         }
     }
 }
