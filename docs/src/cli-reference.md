@@ -224,6 +224,16 @@ names of different trajectories collide; that needs the input stem in the file n
 **The element column always carries clean element symbols**, whatever `Atom::label` holds.  Only
 `ferro net --export-traj` folds the label into the element column of a LAMMPS dump.
 
+**Reading a LAMMPS dump, columns are taken by the names on the `ITEM: ATOMS` line**, in any order.
+Coordinates come from the first complete set of `x y z`, `xs ys zs`, `xu yu zu`, `xsu ysu zsu` (ASE's
+priority); a dump with none of them is an error rather than atoms at the origin.  Scaled columns are
+converted by LAMMPS's own definition $x = x_{lo} + s \cdot L$, so an atom reads the same whichever kind
+was dumped (ASE leaves out $x_{lo}$ for scaled columns and so disagrees with its own `x` reading when the
+box does not start at 0).  Also read: `id` (atom order), `type`, `element`, `mass`, `q`, `vx vy vz`,
+`fx fy fz`; every other column (`mol`, `ix iy iz`, `c_*`, `f_*`, `v_*`, …) is ignored.  A value that
+does not parse is an error naming the atom line and column, except on the very last line of the file,
+where it is a truncated final frame and is dropped with a warning.
+
 | Flag | Default | Description |
 |---|---|---|
 | `-i <file>` | (required) | input file (a single one); omit it to print the format table |

@@ -42,7 +42,8 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
         let start = i;
         match parse_frame(&lines, &mut i, units, &mut site_map, &mut unknown_prefixes) {
             Ok(frame) => traj.add_frame(frame),
-            Err(why) => {
+            Err(FrameError::Invalid(why)) => bail!("frame {} (line {}): {why}", traj.n_frames(), start + 1),
+            Err(FrameError::Incomplete(why)) => {
                 let k = traj.n_frames();
                 // 不完整的帧后面还有帧 = 文件中间坏了，报错；只有末帧不完整才是
                 // MD 被中断的常态（dump 写到一半），丢掉它，前面的帧照常可用
@@ -63,17 +64,32 @@ fn parse_lammps_dump(content: &str, units: LammpsUnits) -> Result<Trajectory> {
     Ok(traj)
 }
 
+/// 一帧读不成的两种原因，调用者对它们的处置不同。
+enum FrameError {
+    /// 写到一半被截断：末帧是 MD 中断的常态（丢帧 + 告警），中间帧才报错
+    Incomplete(String),
+    /// 文件本身写得不对（缺坐标列、字段不是数）：截断解释不了，恒报错
+    Invalid(String),
+}
+
+impl From<String> for FrameError {
+    fn from(s: String) -> Self { FrameError::Incomplete(s) }
+}
+
+impl From<&str> for FrameError {
+    fn from(s: &str) -> Self { FrameError::Incomplete(s.to_string()) }
+}
+
 /// Parse the frame whose `ITEM: TIMESTEP` line is at `*i`, advancing `*i` past it.
 ///
-/// `Err` means only "this frame is incomplete" and carries the reason; whether that is
-/// fatal is the caller's call (it depends on whether more frames follow).
+/// Whether an `Err` is fatal is the caller's call: see [`FrameError`].
 fn parse_frame(
     lines: &[&str],
     i: &mut usize,
     units: LammpsUnits,
     site_map: &mut BTreeMap<String, String>,
     unknown_prefixes: &mut BTreeSet<String>,
-) -> std::result::Result<Frame, String> {
+) -> std::result::Result<Frame, FrameError> {
     // 找本帧的下一个段头；先撞上下一帧的 TIMESTEP 或到文件尾，都说明本帧缺这一段
     let seek = |from: usize, tag: &str| -> std::result::Result<usize, String> {
         for (k, l) in lines.iter().enumerate().skip(from) {
@@ -102,7 +118,7 @@ fn parse_frame(
             .map(|l| l.split_whitespace().map_while(|s| s.parse().ok()).collect())
             .unwrap_or_default();
         if vals.len() < 2 {
-            return Err(format!("BOX BOUNDS line {} of 3 is missing or cut short", dim + 1));
+            return Err(format!("BOX BOUNDS line {} of 3 is missing or cut short", dim + 1).into());
         }
         lo[dim] = vals[0];
         hi[dim] = vals[1];
@@ -152,6 +168,22 @@ fn parse_frame(
 
     let get_col = |name: &str| col.get(name).copied();
 
+    // 坐标列按 x > xs > xu > xsu 取第一组完整的（同 ASE 的优先级）；四组都不全就
+    // 没有坐标可读，报错而不是让坐标静默为 0
+    let (xyz, scaled) = [("x", "y", "z", false), ("xs", "ys", "zs", true),
+                         ("xu", "yu", "zu", false), ("xsu", "ysu", "zsu", true)]
+        .into_iter()
+        .find_map(|(a, b, c, s)| Some(([get_col(a)?, get_col(b)?, get_col(c)?], s)))
+        .ok_or_else(|| FrameError::Invalid(
+            "ITEM: ATOMS has no complete coordinate columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu)".into()))?;
+    // 缩放坐标按 LAMMPS 的定义 x = lo + s·L 还原，lo 是盒子真实原点而非 *_bound；
+    // 这样同一原子写成 x 或 xs 读出同一个值（ASE 3.29 的 xs 不加 lo，与它自己的 x 列不自洽）
+    let origin = Vector3::new(
+        lo[0] - 0.0_f64.min(xy).min(xz).min(xy + xz),
+        lo[1] - 0.0_f64.min(yz),
+        lo[2],
+    );
+
     let mut atoms_raw: Vec<AtomRaw> = Vec::new();
 
     for k in 0..n {
@@ -160,22 +192,27 @@ fn parse_frame(
             .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("ITEM:"))
             .ok_or_else(|| format!("only {k} of {n} atom lines"))?;
         let parts: Vec<&str> = line.split_whitespace().collect();
+        // 截断只会切在文件最后一行（常切在数字中间）；别处的列数不足或坏字段是文件写错了
+        let at_eof = ah + 1 + k == lines.len() - 1;
+        let fail = |msg: String| if at_eof { FrameError::Incomplete(msg) } else { FrameError::Invalid(msg) };
         if parts.len() < col_names.len() {
-            return Err(format!(
+            return Err(fail(format!(
                 "atom line {} of {n} has {} of {} columns",
                 k + 1, parts.len(), col_names.len()
-            ));
+            )));
         }
+        // 读不出来就报错并点名，不把「解析失败」伪装成「测到了 0」
+        let bad = |c: usize| fail(format!("atom line {} of {n}: {} = '{}' is not a number",
+                                          k + 1, col_names[c], parts[c]));
+        let num = |c: usize| parts[c].parse::<f64>().map_err(|_| bad(c));
+        let int = |c: usize| parts[c].parse::<usize>().map_err(|_| bad(c));
+        let vec3 = |[cx, cy, cz]: [usize; 3]| -> std::result::Result<Vector3<f64>, FrameError> {
+            Ok(Vector3::new(num(cx)?, num(cy)?, num(cz)?))
+        };
+        let triple = |a, b, c| Some([get_col(a)?, get_col(b)?, get_col(c)?]);
 
-        let atom_id: usize = get_col("id")
-            .and_then(|c| parts.get(c))
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-
-        let tp: usize = get_col("type")
-            .and_then(|c| parts.get(c))
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
+        let atom_id = get_col("id").map(int).transpose()?.unwrap_or(0);
+        let tp = get_col("type").map(int).transpose()?.unwrap_or(1);
 
         // element 列可能写的是位点类型标签（`O_b_P_P`、`Zn_f`），按第一个下划线
         // 拆成 element + label；无下划线的普通符号原样通过。
@@ -195,67 +232,31 @@ fn parse_frame(
         };
         site_map.entry(raw).or_insert_with(|| element.clone());
 
-        // Position — try x/y/z first, then xs/ys/zs (scaled), then xu/yu/zu (unwrapped)
-        let pos = if let (Some(cx), Some(cy), Some(cz)) =
-            (get_col("x"), get_col("y"), get_col("z"))
-        {
-            let x: f64 = parts.get(cx).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let y: f64 = parts.get(cy).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let z: f64 = parts.get(cz).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            Vector3::new(x, y, z)
-        } else if let (Some(cx), Some(cy), Some(cz)) =
-            (get_col("xs"), get_col("ys"), get_col("zs"))
-        {
-            // Scaled [0,1) → Cartesian via cell
-            let sx: f64 = parts.get(cx).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let sy: f64 = parts.get(cy).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let sz: f64 = parts.get(cz).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            cell.fractional_to_cartesian(Vector3::new(sx, sy, sz))
-        } else if let (Some(cx), Some(cy), Some(cz)) =
-            (get_col("xu"), get_col("yu"), get_col("zu"))
-        {
-            let x: f64 = parts.get(cx).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let y: f64 = parts.get(cy).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let z: f64 = parts.get(cz).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            Vector3::new(x, y, z)
+        let pos = if scaled {
+            origin + cell.fractional_to_cartesian(vec3(xyz)?)
         } else {
-            Vector3::zeros()
+            vec3(xyz)?
         };
 
         let mut atom = Atom::new(element, pos);
         atom.label = label;
-        // Charge
-        if let Some(c) = get_col("q") {
-            atom.charge = parts.get(c).and_then(|s| s.parse().ok());
-        }
+        atom.charge = get_col("q").map(num).transpose()?;
+        // LAMMPS 的 mass 在 real 与 metal 下都是 g/mol，即 amu
+        atom.mass = get_col("mass").map(num).transpose()?;
 
         // Velocity: real Å/fs (internal), metal Å/ps → ×1e-3
-        let vel = if let (Some(vx), Some(vy), Some(vz)) =
-            (get_col("vx"), get_col("vy"), get_col("vz"))
-        {
-            let x: f64 = parts.get(vx).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let y: f64 = parts.get(vy).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let z: f64 = parts.get(vz).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let vscale = match units {
-                LammpsUnits::Real  => 1.0,
-                LammpsUnits::Metal => 1e-3,
-            };
-            Some(Vector3::new(x, y, z) * vscale)
-        } else { None };
+        let vscale = match units {
+            LammpsUnits::Real  => 1.0,
+            LammpsUnits::Metal => 1e-3,
+        };
+        let vel = triple("vx", "vy", "vz").map(vec3).transpose()?.map(|v| v * vscale);
 
         // Force: real kcal/(mol·Å) → eV/Å, metal eV/Å already
         let fscale = match units {
             LammpsUnits::Real  => KCAL_TO_EV,
             LammpsUnits::Metal => 1.0,
         };
-        let force = if let (Some(fx), Some(fy), Some(fz)) =
-            (get_col("fx"), get_col("fy"), get_col("fz"))
-        {
-            let x: f64 = parts.get(fx).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let y: f64 = parts.get(fy).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            let z: f64 = parts.get(fz).and_then(|s| s.parse().ok()).unwrap_or(0.0);
-            Some(Vector3::new(x * fscale, y * fscale, z * fscale))
-        } else { None };
+        let force = triple("fx", "fy", "fz").map(vec3).transpose()?.map(|f| f * fscale);
 
         atoms_raw.push((atom_id, atom, vel, force));
     }
@@ -512,5 +513,66 @@ ITEM: ATOMS id type element x y z
                 assert!((m[(i, j)] - w).abs() < 1e-10, "cell[{i}][{j}]: got {}, want {w}", m[(i, j)]);
             }
         }
+    }
+
+    /// 三斜、原点不在 0 的盒子：真实 lo = (1, 2, -1)，a = (10,0,0)、b = (2,8,0)、
+    /// c = (-1,1.5,6)；BOX BOUNDS 写的是 *_bound（xlo_b = 1 + min(0,2,-1,1) = 0）
+    fn tri_dump(cols: &str, rows: [&str; 2]) -> String {
+        format!("ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\n\
+                 ITEM: BOX BOUNDS xy xz yz pp pp pp\n0 13 2\n2 11.5 -1\n-1 5 1.5\n\
+                 ITEM: ATOMS id type element {cols}\n1 1 O {}\n2 1 O {}\n", rows[0], rows[1])
+    }
+
+    #[test]
+    fn test_four_coordinate_kinds_give_the_same_positions() {
+        // 期望值 = lo + s·cell（numpy 算），即 LAMMPS 对 xs 的定义 xs = (x - lo)/L 的逆
+        let want = [[2.1, 4.05, 0.8], [10.25, 7.125, 3.5]];
+        let cart = ["2.1 4.05 0.8", "10.25 7.125 3.5"];
+        let frac = ["0.1 0.2 0.3", "0.9 0.5 0.75"];
+        for (cols, rows) in [("x y z", cart), ("xs ys zs", frac), ("xu yu zu", cart), ("xsu ysu zsu", frac)] {
+            let traj = parse_lammps_dump(&tri_dump(cols, rows), LammpsUnits::Real).unwrap();
+            let f = traj.first().unwrap();
+            for (k, w) in want.iter().enumerate() {
+                let p = f.atom(k).position;
+                for d in 0..3 {
+                    assert!((p[d] - w[d]).abs() < 1e-9, "{cols} 原子 {k}：{p:?}，应为 {w:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_missing_coordinates_or_bad_fields_are_errors() {
+        let err = |text: String| format!("{:#}", parse_lammps_dump(&text, LammpsUnits::Real).unwrap_err());
+        // 没有坐标列、坐标列不全：以前坐标静默为 0
+        assert!(err(tri_dump("q", ["0.1", "0.2"])).contains("no complete coordinate columns"));
+        assert!(err(tri_dump("x y", ["1 2", "3 4"])).contains("no complete coordinate columns"));
+        // 字段读不出来：以前当 0
+        assert!(err(tri_dump("x y z", ["2.1 4.05 nan?", "1 2 3"])).contains("z = 'nan?'"));
+        assert!(err(tri_dump("x y z vx vy vz", ["1 2 3 0.1 x 0.3", "1 2 3 0 0 0"])).contains("vy = 'x'"));
+        assert!(err(tri_dump("x y z q", ["1 2 3 -", "1 2 3 0"])).contains("q = '-'"));
+    }
+
+    #[test]
+    fn test_mass_column_is_kept() {
+        let traj = parse_lammps_dump(&tri_dump("x y z mass", ["1 2 3 2.014", "1 2 3 15.999"]), LammpsUnits::Real).unwrap();
+        let f = traj.first().unwrap();
+        assert_eq!(f.atom(0).mass, Some(2.014));
+        assert_eq!(f.atom(1).mass, Some(15.999));
+        // 没有 mass 列就是 None，不补零
+        let plain = parse_lammps_dump(&tri_dump("x y z", ["1 2 3", "1 2 3"]), LammpsUnits::Real).unwrap();
+        assert_eq!(plain.first().unwrap().atom(0).mass, None);
+    }
+
+    #[test]
+    fn test_bad_field_is_truncation_only_on_the_last_line_of_the_file() {
+        // 截断切在最后一行的数字中间（`1.4e`）：末帧丢弃，前面的帧照常
+        let cut = DUMP_ORTHO.replace("2 1 Fe 1.445 1.435 1.435\n", "2 1 Fe 1.445 1.435 1.4e");
+        let traj = parse_lammps_dump(&cut, LammpsUnits::Real).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        // 同样的坏字段不在最后一行：截断解释不了，即使在末帧也报错
+        let bad = DUMP_ORTHO.replace("1 1 Fe 0.01  0.0   0.0", "1 1 Fe 0.01  0.0   0.0e");
+        let msg = format!("{:#}", parse_lammps_dump(&bad, LammpsUnits::Real).unwrap_err());
+        assert!(msg.contains("frame 1") && msg.contains("z = '0.0e'"), "{msg}");
     }
 }
