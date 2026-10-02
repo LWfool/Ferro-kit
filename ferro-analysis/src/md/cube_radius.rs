@@ -93,6 +93,18 @@ fn search_range(
     (sx, sy, sz)
 }
 
+/// 一个轴上要遍历的 voxel 下标：以 `c` 为中心、半宽 `s`，周期折回 `[0, n)`。
+///
+/// 窗口 `2s+1` 不小于 `n` 时直接取全部 `0..n`：否则 `rem_euclid` 会把几个偏移折到
+/// 同一 voxel，同一原子在那里被计多次（审查 M4）。窗口小于 `n` 时折回的下标互不相同，
+/// 与原来的遍历逐位一致。与 `angle.rs` CellList 的去重是同一个洞。
+fn window(c: i64, s: i64, n: usize) -> Vec<usize> {
+    if 2 * s + 1 >= n as i64 {
+        return (0..n).collect();
+    }
+    (c - s..=c + s).map(|i| i.rem_euclid(n as i64) as usize).collect()
+}
+
 /// 处理单帧，返回该帧的计数贡献。
 ///
 /// 返回 `None` 表示帧没有周期性 cell（跳过该帧）。
@@ -126,15 +138,11 @@ fn process_frame(
         let cy = (fy * ny as f64).floor() as i64;
         let cz = (fz * nz as f64).floor() as i64;
 
-        // 只遍历 bounding-box 内的 voxel
-        for dix in -sx..=sx {
-            for diy in -sy..=sy {
-                for diz in -sz..=sz {
-                    // 周期性折叠 voxel 索引
-                    let ix = ((cx + dix).rem_euclid(nx as i64)) as usize;
-                    let iy = ((cy + diy).rem_euclid(ny as i64)) as usize;
-                    let iz = ((cz + diz).rem_euclid(nz as i64)) as usize;
-
+        // 只遍历 bounding-box 内的 voxel，每个 voxel 至多一次
+        let (wx, wy, wz) = (window(cx, sx, nx), window(cy, sy, ny), window(cz, sz, nz));
+        for &ix in &wx {
+            for &iy in &wy {
+                for &iz in &wz {
                     // voxel 中心的分数坐标
                     let vx = (ix as f64 + 0.5) / nx as f64;
                     let vy = (iy as f64 + 0.5) / ny as f64;
@@ -338,5 +346,80 @@ mod tests {
         let params = CubeRadiusParams { nx: 4, ny: 5, nz: 6, radius: 0.7, elements: None };
         let res = calc_cube_radius(&traj, &params).unwrap();
         assert_eq!(res.cube.shape(), (4, 5, 6));
+    }
+
+    /// 对照：照 `code1/cube_radius.c` 遍历**全部** voxel，最小像取分数坐标 rint，
+    /// 距离 < radius 记 1。没有搜索窗，也就没有折叠
+    fn brute_force(traj: &Trajectory, n: [usize; 3], radius: f64) -> Vec<f64> {
+        let mut rho = vec![0.0; n[0] * n[1] * n[2]];
+        for frame in &traj.frames {
+            let cell = frame.cell.as_ref().unwrap();
+            for atom in &frame.atoms {
+                let f = cell.cartesian_to_fractional(atom.position).unwrap();
+                for ix in 0..n[0] {
+                    for iy in 0..n[1] {
+                        for iz in 0..n[2] {
+                            let v = Vector3::new(
+                                (ix as f64 + 0.5) / n[0] as f64,
+                                (iy as f64 + 0.5) / n[1] as f64,
+                                (iz as f64 + 0.5) / n[2] as f64,
+                            );
+                            let d = (f - v).map(|x| x - x.round());
+                            if (cell.matrix.transpose() * d).norm() < radius {
+                                rho[(ix * n[1] + iy) * n[2] + iz] += 1.0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        rho
+    }
+
+    #[test]
+    fn test_matches_brute_force_when_the_window_exceeds_the_grid() {
+        let cubic = make_traj(vec![(1.3, 7.9, 4.4)], vec!["Li"]);
+        // 三斜、两帧、多原子，坐标有越出胞的
+        let tri = {
+            let cell = Cell::from_lengths_angles(9.0, 11.0, 8.0, 80.0, 105.0, 70.0).unwrap();
+            let mut traj = Trajectory::new();
+            for shift in [0.0, 0.37] {
+                let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+                for p in [(0.2, 0.1, 0.3), (5.5 + shift, 9.8, -1.2), (12.1, -3.0, 7.7 - shift)] {
+                    f.add_atom(Atom::new("Li", Vector3::new(p.0, p.1, p.2)));
+                }
+                traj.frames.push(f);
+            }
+            traj
+        };
+        // (轨迹, 网格, radius)：4³ 与 40³ 配 4.9 是登记的复现；radius 超半个胞长；
+        // 窗口小于网格的普通情形也要一致；非立方网格各轴分别超或不超
+        for (name, traj, n, r) in [
+            ("4³ r4.9", &cubic, [4, 4, 4], 4.9),
+            ("40³ r4.9", &cubic, [40, 40, 40], 4.9),
+            ("12³ r7", &cubic, [12, 12, 12], 7.0),
+            ("20³ r1.2", &cubic, [20, 20, 20], 1.2),
+            ("tri 6×30×5 r3", &tri, [6, 30, 5], 3.0),
+            ("tri 16³ r6", &tri, [16, 16, 16], 6.0),
+        ] {
+            let params = CubeRadiusParams { nx: n[0], ny: n[1], nz: n[2], radius: r, ..Default::default() };
+            let got = calc_cube_radius(traj, &params).unwrap().cube.data;
+            let want = brute_force(traj, n, r);
+            let bad = got.iter().zip(&want).filter(|(g, w)| g != w).count();
+            assert_eq!(bad, 0, "{name}：{bad} 个 voxel 与全遍历不同（max {} vs {}）",
+                got.iter().cloned().fold(0.0, f64::max), want.iter().cloned().fold(0.0, f64::max));
+        }
+    }
+
+    #[test]
+    fn test_single_atom_counts_each_voxel_at_most_once() {
+        // 登记的复现：10 Å 立方胞、单原子单帧、radius 4.9，以前 4³ 网格 max = 8
+        let traj = make_traj(vec![(5.0, 5.0, 5.0)], vec!["Li"]);
+        for n in [4, 40] {
+            let params = CubeRadiusParams { nx: n, ny: n, nz: n, radius: 4.9, ..Default::default() };
+            let data = calc_cube_radius(&traj, &params).unwrap().cube.data;
+            let max = data.iter().cloned().fold(0.0, f64::max);
+            assert_eq!(max, 1.0, "{n}³：单原子单帧任一 voxel 至多计 1 次");
+        }
     }
 }
