@@ -1,10 +1,10 @@
 use anyhow::{bail, Result};
 use clap::Args;
+use crate::args::common::ReadArgs;
 use crate::io_dispatch::read_trajectory;
 use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::Frame;
-use ferro_io::LammpsUnits;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -14,9 +14,8 @@ pub struct InfoCmd {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
-    #[arg(long)]
-    pub metal_units: bool,
+    #[command(flatten)]
+    pub read: ReadArgs,
 }
 
 /// True when `ferro info` was typed with no input: print the help page rather
@@ -31,8 +30,7 @@ pub fn run(args: &InfoCmd) -> Result<()> {
         bail!("info needs an input file: -i <FILE>");
     };
 
-    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let traj = read_trajectory(input, units)?;
+    let traj = read_trajectory(input, &args.read)?;
     let n = traj.frames.len();
 
     println!("File:   {}", input.display());
@@ -175,9 +173,9 @@ mod tests {
 
     #[test]
     fn test_wants_help_only_without_input() {
-        let bare = InfoCmd { input: None, metal_units: false };
+        let bare = InfoCmd { input: None, read: ReadArgs::default() };
         assert!(wants_help(&bare));
-        let with_input = InfoCmd { input: Some(PathBuf::from("a.xyz")), metal_units: false };
+        let with_input = InfoCmd { input: Some(PathBuf::from("a.xyz")), read: ReadArgs::default() };
         assert!(!wants_help(&with_input));
     }
 }

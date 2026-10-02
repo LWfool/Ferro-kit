@@ -81,11 +81,12 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         bail!("Every cutoff names a modifier element; at least one former is required");
     }
 
+    // 参数（含 --atom-style）在建目录、读第一个文件之前查完
+    let inputs = cmd.common.inputs()?;
     // net 没有类型选择,故无 label 段;-o 的目录在读第一个文件之前建好
     let out = cmd.common.out(None);
     out.prepare()?;
 
-    let inputs = batch::expand_inputs(&cmd.common.input)?;
     cmd.common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
     print_label_scheme(&params);
@@ -379,6 +380,7 @@ Parameters:
   -s, --suffix SUFFIX   Output name suffix: network_<table>_<suffix>.csv
       --last-n N        Use only the last N frames (skip equilibration)
       --ncore N         Parallel threads                            [all cores]
+      --atom-style S    LAMMPS data input: atomic | charge | full (required)
       --metal-units     LAMMPS metal units; only affects --export-traj extxyz
       --modifier E,E    Elements counted for coordination only: no bridging
                         count, no part in ligand classification. Give each a

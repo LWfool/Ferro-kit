@@ -17,6 +17,7 @@ Common options:
   -o, --output PATH   Output file, or a directory written with a trailing / to
                       hold the default name (job.gjf / job.inp / pw.in)
       --mkdir         Create -o's directory without asking
+      --atom-style S  LAMMPS data input: atomic | charge | full (required)
       --metal-units   LAMMPS metal units for dump files
 
 Full documentation:  ferro doc job"#
@@ -163,6 +164,7 @@ Parameters:
       --stride N          Take every Nth frame within [start, end]      [1]
       --number N          Take this many frames, spread evenly, both ends kept
       --mkdir             Create -o's directory without asking
+      --atom-style S      LAMMPS data input: atomic | charge | full (required)
       --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces
                           eV/Å); default is real units
   -h, --help              Short parameter table (this page adds the formats)
@@ -194,6 +196,7 @@ pub fn print_info() {
 
 Parameters:
   -i, --input  FILE       Input file (format from its name)
+      --atom-style S      LAMMPS data input: atomic | charge | full (required)
       --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces
                           eV/Å); default is real units
   -h, --help              Short parameter table
@@ -327,6 +330,7 @@ Common options:
   -s, --suffix SUFFIX   Batch tag -> <command>[_<table>][_<label>]_<suffix>.csv
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
+      --atom-style S    LAMMPS data input: atomic | charge | full (required)
       --metal-units     LAMMPS metal units (velocities in A/ps)
 
 Selecting types (gr / angle only):
@@ -359,6 +363,7 @@ Common options:
   -s, --suffix STEM     Output file stem (default depends on the command)
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
+      --atom-style S    LAMMPS data input: atomic | charge | full (required)
       --metal-units     LAMMPS metal units (velocities in A/ps)
 
 Output:
@@ -391,6 +396,7 @@ Parameters:
   --ncore  INT            Parallel threads                    [all cores]
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
+  --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -426,6 +432,7 @@ Parameters:
   --ncore      INT        Parallel threads (used in the g(r) step)
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> sq_<suffix>.csv
+  --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -461,6 +468,7 @@ Parameters:
   --ncore     INT        Parallel threads
   -o DIR                 Output directory; --mkdir creates it unasked
   -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
+  --atom-style S        LAMMPS data input: atomic | charge | full (required)
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -501,6 +509,7 @@ Parameters:
   --ncore     INT         Parallel threads                       [all cores]
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
+  --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -535,6 +544,7 @@ Parameters:
   --ncore    INT        Parallel threads               default: all cores
   -o DIR                Output directory; --mkdir creates it unasked
   -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
+  --atom-style S        LAMMPS data input: atomic | charge | full (required)
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -573,6 +583,7 @@ Parameters:
   --ncore     INT     Parallel threads                  default: all cores
   -o DIR              Output directory; --mkdir creates it unasked
   -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
+  --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -608,6 +619,7 @@ Parameters:
   --ncore         INT     Parallel threads                       default: all cores
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> bondlife_<centre>-<neighbour>_<suffix>.csv
+  --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -640,6 +652,7 @@ Parameters:
   --ncore    INT        Parallel threads                default: all cores
   -o DIR                Output directory; --mkdir creates it unasked
   -s SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
+  --atom-style S        LAMMPS data input: atomic | charge | full (required)
   --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -672,6 +685,7 @@ Parameters:
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: density.cube
+  --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -700,6 +714,7 @@ Parameters:
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: velocity.cube
+  --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -728,6 +743,7 @@ Parameters:
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: force.cube
+  --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -759,6 +775,7 @@ Parameters:
   --ncore   INT       Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: radius.cube
+  --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:
@@ -795,6 +812,7 @@ Parameters:
   --ncore      INT    Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output stem (no extension)              default: sdf
+  --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
 
 Output:

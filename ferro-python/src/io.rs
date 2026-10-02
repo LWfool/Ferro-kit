@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use ferro_io::{
-    is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data,
+    is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
     read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
     write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_qe_input, write_xyz,
     LammpsUnits,
@@ -38,10 +38,11 @@ fn detect(path: &str) -> String {
 /// 支持：xyz, extxyz, pdb, cif, POSCAR/CONTCAR, in/qe (Quantum ESPRESSO),
 /// inp/restart (CP2K), lammpstrj/dump/lammps (LAMMPS dump),
 /// data/lmp (LAMMPS data)。LAMMPS dump 默认 real 单位，`metal_units=True`
-/// 切换为 metal 单位。
+/// 切换为 metal 单位。LAMMPS data 必须给 `atom_style`（"atomic" / "charge" /
+/// "full"），不按注释或列数猜。
 #[pyfunction]
-#[pyo3(signature = (path, metal_units = false))]
-fn read(path: &str, metal_units: bool) -> PyResult<PyTrajectory> {
+#[pyo3(signature = (path, metal_units = false, atom_style = None))]
+fn read(path: &str, metal_units: bool, atom_style: Option<&str>) -> PyResult<PyTrajectory> {
     let units = if metal_units {
         LammpsUnits::Metal
     } else {
@@ -61,7 +62,12 @@ fn read(path: &str, metal_units: bool) -> PyResult<PyTrajectory> {
         "inp" => read_cp2k_inp(p).map_err(pyerr)?,
         "restart" => read_cp2k_restart(p).map_err(pyerr)?,
         "lammpstrj" | "dump" | "lammps" => read_lammps_dump(p, units).map_err(pyerr)?,
-        "data" | "lmp" => read_lammps_data(p).map_err(pyerr)?,
+        "data" | "lmp" => {
+            let style = atom_style.ok_or_else(|| pyerr(format!(
+                "{path} is a LAMMPS data file: pass atom_style='atomic', 'charge' or 'full'"
+            )))?;
+            read_lammps_data(p, style.parse::<AtomStyle>().map_err(pyerr)?).map_err(pyerr)?
+        }
         other => {
             return Err(pyerr(format!(
                 "unsupported input format '{other}' for path '{path}'"

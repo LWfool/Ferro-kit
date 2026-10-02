@@ -18,7 +18,7 @@ pub use readers::{
     read_lammps_data, read_lammps_dump,
     read_cp2k_inp, read_cp2k_restart,
     read_qe_input,
-    LammpsUnits,
+    AtomStyle, LammpsUnits,
 };
 pub use writers::{
     write_deepmd_npy, write_deepmd_npy_bounds, write_deepmd_npy_sets,

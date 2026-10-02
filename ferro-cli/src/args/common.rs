@@ -3,13 +3,39 @@
 //! the fields.
 
 use anyhow::{anyhow, Result};
+use clap::builder::TypedValueParser;
 use clap::Args;
 use ferro_analysis::GroupBy;
 use ferro_core::Trajectory;
-use ferro_io::LammpsUnits;
+use ferro_io::{AtomStyle, LammpsUnits};
 use std::path::{Path, PathBuf};
 
-use crate::io_dispatch::read_trajectory_tail;
+use crate::batch;
+use crate::io_dispatch::{check_atom_style, read_trajectory_tail};
+
+/// Reading choices a file name cannot carry. Shared by every command that reads
+/// a structure or trajectory through `io_dispatch::read_trajectory`.
+#[derive(Args, Clone, Debug, Default)]
+pub struct ReadArgs {
+    /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
+    #[arg(long)]
+    pub metal_units: bool,
+
+    /// LAMMPS data atom style; required to read .data/.lmp/.lammps (never guessed)
+    #[arg(
+        long,
+        value_name = "STYLE",
+        value_parser = clap::builder::PossibleValuesParser::new(["atomic", "charge", "full"])
+            .map(|s| s.parse::<AtomStyle>().expect("取值已由 PossibleValuesParser 限定")),
+    )]
+    pub atom_style: Option<AtomStyle>,
+}
+
+impl ReadArgs {
+    pub fn units(&self) -> LammpsUnits {
+        if self.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real }
+    }
+}
 
 /// Input/output and run-wide options carried by every analysis subcommand.
 #[derive(Args, Clone, Debug)]
@@ -38,14 +64,19 @@ pub struct CommonArgs {
     #[arg(long)]
     pub ncore: Option<usize>,
 
-    /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
-    #[arg(long)]
-    pub metal_units: bool,
+    #[command(flatten)]
+    pub read: ReadArgs,
 }
 
 impl CommonArgs {
-    pub fn units(&self) -> LammpsUnits {
-        if self.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real }
+    /// Expands `-i` and checks, before any file is read, that the inputs can be
+    /// read with the options given (a LAMMPS data file needs `--atom-style`).
+    pub fn inputs(&self) -> Result<Vec<PathBuf>> {
+        let inputs = batch::expand_inputs(&self.input)?;
+        for p in &inputs {
+            check_atom_style(p, self.read.atom_style)?;
+        }
+        Ok(inputs)
     }
 
     /// Applies `--ncore` to the global rayon pool. Call once, before any analysis.
@@ -57,7 +88,7 @@ impl CommonArgs {
 
     /// Reads one trajectory and applies `--last-n`.
     pub fn load(&self, path: &Path) -> Result<Trajectory> {
-        read_trajectory_tail(path, self.units(), self.last_n)
+        read_trajectory_tail(path, &self.read, self.last_n)
     }
 
     pub fn suffix(&self) -> Option<&str> {

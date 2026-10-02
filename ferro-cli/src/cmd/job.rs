@@ -1,9 +1,9 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Args;
 use crate::help::{print_fe_job_overview, print_job_help};
+use crate::args::common::ReadArgs;
 use crate::io_dispatch::read_trajectory;
 use ferro_core::{guess_spin, SpinMethod};
-use ferro_io::LammpsUnits;
 use ferro_workflow::{
     GaussianJobBuilder,
     Cp2kJobBuilder, Cp2kTask, Cp2kFunctional, Cp2kBasis, Cp2kDispersion,
@@ -38,9 +38,8 @@ pub struct JobCmd {
     #[arg(long)]
     pub mkdir: bool,
 
-    /// Use LAMMPS metal units for dump files
-    #[arg(long)]
-    pub metal_units: bool,
+    #[command(flatten)]
+    pub read: ReadArgs,
 
     // ── Charge / spin (shared) ───────────────────────────────────────────────
     /// Override total system charge
@@ -235,8 +234,7 @@ pub fn run(args: &JobCmd) -> Result<()> {
     }
 
     let input = args.input.as_ref().unwrap();
-    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let traj = read_trajectory(input, units)?;
+    let traj = read_trajectory(input, &args.read)?;
     // 多帧输入静默取第 0 帧是最难查的一种错：拿到的是弛豫前那个构型，
     // 而生成的输入文件本身看不出任何异常
     if let Some(w) = multi_frame_warning(input, traj.n_frames()) {

@@ -317,9 +317,10 @@ fn drive<T>(
     label: Option<String>,
     calc: impl Fn(&Trajectory) -> Result<T>,
 ) -> Result<Driven<T>> {
+    // 参数（含 --atom-style）在建目录、读第一个文件之前查完
+    let inputs = common.inputs()?;
     let out = common.out(label);
     out.prepare()?;
-    let inputs = batch::expand_inputs(&common.input)?;
     common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
 
