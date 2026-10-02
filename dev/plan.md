@@ -55,7 +55,7 @@ M1 期间另见、未修（待定口径）：
 | L2 | angle（`CellList` 每轴 `.max(1)`）、`network_type.rs:352,393,452`、`bondlife`、`rotcorr` | 只有 gr 与 dataset filter 检查最小镜像上界；其余截断超过 MIC 上界时只取单一镜像，静默漏邻居 | 逻辑确认；只在小胞 + 大截断时触发 |
 | L3 | `ml/merge.rs:129` | `StdRng` 不可移植：rand 0.10.2 源码 `rngs/std.rs` 明写「any future library version may replace the algorithm」，与「seed 默认 666、可归档复现」冲突 | 改用 `chacha20::ChaCha12Rng`（当前 StdRng 的实现，已在树里）固定版本，同 seed 结果不变 |
 | ~~L4~~ **已修**（续行改为单个 `\`，测试断言消息无反斜杠与连续空格）| `cmd/dataset.rs:191` | 普通字符串里写 `\\` + 换行，错误消息里多一个字面反斜杠和一段缩进 | 同 `issues.md`「用 Python heredoc 改 Rust 源码时」那一族 |
-| L5 | `ml/filter.rs:270` | `filter_frames` 内联了一份与 `FilterResult::enabled()`（`:306`）相同的 match | match 是穷尽的，加变体会编译报错，**漏改不会静默**；风险是两处条件改得不一致。按 R6「同文件已有函数直接复用」 |
+| ~~L5~~ **已修**（判断移到 `FilterParams::enabled()`，`filter_frames` 与 `FilterResult::enabled()` 都调它）| `ml/filter.rs:270` | `filter_frames` 内联了一份与 `FilterResult::enabled()`（`:306`）相同的 match | match 是穷尽的，加变体会编译报错，**漏改不会静默**；风险是两处条件改得不一致。按 R6「同文件已有函数直接复用」 |
 | L6 | ~~`cp2k.rs:104-106`~~（随 S5 修）、~~`qe.rs:120-122`~~（随 S4 修）、`extxyz.rs:121-129`（力、速度）、`readers/cube.rs:105`（体数据） | `parse().unwrap_or(0.0)`：解析失败冒充「测到了 0」。QE 的 Fortran 写法 `0.25d0` 即中 | 读码确认；改为报错并点名行号 |
 | ~~L7~~ **已修**（`a2c013a`，删分支）| `readers/cp2k.rs:124-137` | 把 `&COORD` 第 5–7 列当速度（注释写「restart 里」）。CP2K 的 `&COORD` 第 5 列是分子名，速度在独立的 `&VELOCITY` 段（bohr/au_time，不是 bohr/fs），reader 不读该段 | 读码确认；实际几乎不触发（第 5 列是字符串则解析失败跳过），触发则单位错且速度数组长度可能与原子数不一致。删分支，或正式读 `&VELOCITY` |
 

@@ -116,6 +116,21 @@ impl Default for FilterParams {
     }
 }
 
+impl FilterParams {
+    /// The criteria these parameters switch on, in funnel order.
+    pub fn enabled(&self) -> Vec<Criterion> {
+        Criterion::ALL
+            .into_iter()
+            .filter(|c| match c {
+                Criterion::Force => self.f_max > 0.0,
+                Criterion::Stress => self.s_max > 0.0,
+                Criterion::OoMin => self.oo_min > 0.0,
+                Criterion::Al6 => self.al6_rcut.is_some(),
+            })
+            .collect()
+    }
+}
+
 /// What every criterion said about one frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameVerdict {
@@ -266,16 +281,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
     let mut funnel = vec![("input".to_string(), n)];
 
     let mut survivors: Vec<usize> = (0..n).collect();
-    for c in Criterion::ALL {
-        let enabled = match c {
-            Criterion::Force => params.f_max > 0.0,
-            Criterion::Stress => params.s_max > 0.0,
-            Criterion::OoMin => params.oo_min > 0.0,
-            Criterion::Al6 => params.al6_rcut.is_some(),
-        };
-        if !enabled {
-            continue;
-        }
+    for c in params.enabled() {
         survivors.retain(|&i| !verdicts[i].flagged_by(c));
         funnel.push((c.name().to_string(), survivors.len()));
     }
@@ -304,16 +310,7 @@ impl FilterResult {
     /// Reporting the disabled ones too would fill the tables with rows of zeros
     /// and bury the counts that mean something.
     pub fn enabled(&self) -> Vec<Criterion> {
-        let p = &self.params;
-        Criterion::ALL
-            .into_iter()
-            .filter(|c| match c {
-                Criterion::Force => p.f_max > 0.0,
-                Criterion::Stress => p.s_max > 0.0,
-                Criterion::OoMin => p.oo_min > 0.0,
-                Criterion::Al6 => p.al6_rcut.is_some(),
-            })
-            .collect()
+        self.params.enabled()
     }
 
     /// Frames each criterion flagged, and how many of those no other criterion flagged.
