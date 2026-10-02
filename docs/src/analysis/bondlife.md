@@ -10,6 +10,7 @@ so this is not a hydrogen-bond analysis.
 A **candidate** is a (centre, neighbour) pair — centre of element `--center`, neighbour of element
 `--neighbor` — that comes within `--r-bond` in **at least one frame**.  Distances use the minimum image
 in each frame's own cell.  With `--center` equal to `--neighbor` (e.g. O–O), each pair is counted once.
+The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a `--r-break` (or `--r-bond` when `--r-break` is absent) beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
 
 Pairs that never come within `--r-bond` never bond and do not matter to any quantity below; leaving them
 out only saves work.

@@ -43,6 +43,8 @@ neighbour-element atom within $r_\text{cut}$ (minimum image in periodic cells):
 
 $$\mathbf{u}_c(t) = \sum_{n \in \text{neighbours}(c,\, r_\text{cut},\, t)} (\mathbf{r}_n - \mathbf{r}_c)_\text{min-image}, \qquad \hat{\mathbf{u}}_c = \mathbf{u}_c / |\mathbf{u}_c|$$
 
+The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a `--r-cut` beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
+
 - The neighbour set is **found afresh in every frame**, so an exchange of neighbours (a proton hop, a
   bond breaking) changes the vector.
 - A centre with **no neighbour** within $r_\text{cut}$ in a frame has no orientation there: that

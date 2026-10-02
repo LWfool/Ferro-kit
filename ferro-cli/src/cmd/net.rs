@@ -93,9 +93,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
 
     let (results, failures) = batch::map_inputs(&inputs, |inp| {
         let traj = cmd.common.load(&inp.path)?;
-        let result = calc_network(&traj, &params).ok_or_else(|| {
-            anyhow!("no usable frame (every frame is missing a cell; PBC required)")
-        })?;
+        let result = calc_network(&traj, &params)?;
         if let Some(fmt) = cmd.export_traj {
             export_labelled(&traj, &params, &inp.label, &out, fmt)?;
         }

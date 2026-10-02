@@ -5,6 +5,7 @@
 //! 与 `correlate::resolve_max_lag` 的 `max-lag` 一致。
 
 use ferro_core::error::ChemError;
+use ferro_core::Trajectory;
 
 type Check = ferro_core::Result<()>;
 
@@ -44,6 +45,30 @@ pub(crate) fn at_least_one_if_given(name: &str, n: Option<usize>) -> Check {
 pub(crate) fn holds_a_bin(range: &str, lo: f64, hi: f64, step: &str, w: f64) -> Check {
     if (hi - lo) / w >= 1.0 { return Ok(()); }
     fail(format!("{range} [{lo}, {hi}] is narrower than one {step} = {w} bin"))
+}
+
+/// 截断不超过最小镜像上界（最小面间距的一半）。超过时只看得到最近的一个镜像，
+/// 更远镜像里的邻居被静默漏掉。逐帧查而不是只看第 0 帧：NPT 下盒子会缩，后面某帧
+/// 越界时结果同样静默错。报最紧的那一帧，用户由此知道能用的上限。
+/// 没有 cell 的帧不参与（非周期，没有镜像）。
+///
+/// gr 不走这里：它把 `r_max` 截到上界，是写进手册的有意行为
+pub(crate) fn within_minimum_image(traj: &Trajectory, name: &str, cutoff: f64) -> Check {
+    let mut tightest: Option<(usize, f64)> = None;
+    for (i, f) in traj.frames.iter().enumerate() {
+        if let Some(cell) = f.cell.as_ref() {
+            let bound = cell.minimum_image_cutoff()?;
+            if tightest.is_none_or(|(_, b)| bound < b) {
+                tightest = Some((i, bound));
+            }
+        }
+    }
+    match tightest {
+        Some((i, bound)) if cutoff > bound => fail(format!(
+            "{name} {cutoff:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
+        )),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -107,5 +132,48 @@ mod tests {
               sigma: -1.0, padding: -1.0, rmsd_warn_threshold: nan);
         case!(ChgSdfParams, former_ligand_cutoff: 0.0, modifier_cutoff: -1.0, padding: nan,
               rmsd_warn_threshold: -0.5);
+    }
+
+    /// 四个按截断找邻居的分析都要拦下超过最小镜像上界的截断，并点名最紧的帧。
+    /// 盒子 10 Å → 8 Å（上界 5 → 4 Å），模拟 NPT 后段收缩：只查第 0 帧会放过 4.5 Å
+    #[test]
+    fn test_cutoffs_past_the_minimum_image_bound_are_rejected() {
+        use crate::md::*;
+        use ferro_core::{Atom, Cell, CutoffTable, Frame, TypeParams};
+        use nalgebra::Vector3;
+        let frame = |l: f64| {
+            let cell = Cell::from_lengths_angles(l, l, l, 90.0, 90.0, 90.0).unwrap();
+            let mut f = Frame::with_cell(cell, [true; 3]);
+            for (el, x) in [("Si", 0.0), ("O", 1.6), ("H", 2.5), ("O", 3.2)] {
+                f.add_atom(Atom::new(el, Vector3::new(x, 0.0, 0.0)));
+            }
+            f
+        };
+        let mut traj = Trajectory::new();
+        traj.add_frame(frame(10.0));
+        traj.add_frame(frame(8.0));
+
+        let net = |r: f64| {
+            let mut c = CutoffTable::new();
+            c.insert(("Si".into(), "O".into()), r);
+            crate::calc_network(&traj, &TypeParams::new(c, CutoffTable::new())).map(|_| ())
+        };
+        let run = |r: f64| -> Vec<(&str, ferro_core::Result<()>)> {
+            vec![
+                ("angle", calc_angle(&traj, &AngleParams { r_cut_bc: r, ..Default::default() }).map(|_| ())),
+                ("bondlife", calc_bondlife(&traj, &BondLifeParams {
+                    r_bond: 1.0, r_break: Some(r), ..Default::default() }).map(|_| ())),
+                ("rotcorr", calc_rotcorr(&traj, &RotCorrParams { r_cut: r, ..Default::default() }).map(|_| ())),
+                ("network", net(r)),
+            ]
+        };
+        for (who, res) in run(4.5) {
+            let msg = res.err().map(|e| e.to_string()).unwrap_or_default();
+            assert!(msg.contains("minimum-image") && msg.contains("frame 1"), "{who} 应拦下 4.5 Å：{msg:?}");
+        }
+        for (who, res) in run(3.9) {
+            let msg = res.err().map(|e| e.to_string()).unwrap_or_default();
+            assert!(!msg.contains("minimum-image"), "{who} 不应拦下 3.9 Å：{msg}");
+        }
     }
 }

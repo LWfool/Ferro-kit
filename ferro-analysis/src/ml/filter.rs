@@ -35,6 +35,7 @@ use rayon::prelude::*;
 
 use super::geometry::{count_with_coordination, min_pair_distance};
 use super::merge::shuffle_order;
+use crate::check;
 
 /// A quality criterion; the bit position is its slot in [`FrameVerdict::flags`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,26 +195,10 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
             "a geometric criterion was given but some frames carry no cell".into(),
         ));
     }
-    // 最小镜像只在关心的距离小于最小面间距的一半时严格成立。
-    // 逐帧查而不是只看第 0 帧：NPT 下盒子会缩，后面某帧越界时结果静默错
+    // 最小镜像只在关心的距离小于最小面间距的一半时严格成立
     if geometric {
         let want = params.oo_min.max(params.al6_rcut.unwrap_or(0.0));
-        let mut tightest: Option<(usize, f64)> = None;
-        for (i, f) in traj.frames.iter().enumerate() {
-            if let Some(cell) = f.cell.as_ref() {
-                let bound = cell.minimum_image_cutoff()?;
-                if tightest.is_none_or(|(_, b)| bound < b) {
-                    tightest = Some((i, bound));
-                }
-            }
-        }
-        if let Some((i, bound)) = tightest {
-            if want > bound {
-                return Err(ChemError::ValidationError(format!(
-                    "cutoff {want:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
-                )));
-            }
-        }
+        check::within_minimum_image(traj, "cutoff", want)?;
     }
 
     // Al6 走 network 的分类器，故只需给出 Al-O 一个截断；
