@@ -120,6 +120,24 @@ mod tests {
     }
 
     #[test]
+    fn test_roundtrip_with_nonzero_origin_keeps_atoms_in_place() {
+        // 原点非零时 reader 若减原点、writer 照写绝对坐标，每往返一次原子平移 −O
+        let mut original = make_test_cube();
+        original.origin = Vector3::new(-3.0, 1.5, 2.0);
+        original.frame.atoms[0].position = Vector3::new(-2.5, 2.0, 2.5);
+        let path = std::env::temp_dir().join("roundtrip_origin.cube");
+        write_cube(&original, &path).unwrap();
+        let once = read_cube(&path).unwrap();
+        write_cube(&once, &path).unwrap();
+        let twice = read_cube(&path).unwrap();
+        for loaded in [&once, &twice] {
+            let dp = (loaded.frame.atom(0).position - original.frame.atom(0).position).norm();
+            assert!(dp < 1e-4, "原子漂移 {dp:.2e} Å");
+            assert!((loaded.origin - original.origin).norm() < 1e-4, "原点变了：{:?}", loaded.origin);
+        }
+    }
+
+    #[test]
     fn test_write_produces_valid_header() {
         let cube = make_test_cube();
         let path = std::env::temp_dir().join("header_check.cube");
