@@ -31,6 +31,9 @@ rustfft = "6.4"
 thiserror = "2.0"
 anyhow = "1.0"
 rand = "0.10"
+# 打乱用的随机源。rand 的 StdRng 不承诺跨版本同算法，归档的 seed 要能复现，
+# 所以直接用它当前的实现 ChaCha12Rng（ChaCha 是密码算法，输出由规范钉死）
+chacha20 = { version = "0.10.1", default-features = false, features = ["rng"] }
 # 文件名模式展开（批处理输入索引）
 glob = "0.3"
 

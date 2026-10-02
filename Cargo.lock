@@ -256,6 +256,7 @@ dependencies = [
 name = "ferro-analysis"
 version = "0.3.3"
 dependencies = [
+ "chacha20",
  "ferro-core",
  "nalgebra",
  "ndarray",
