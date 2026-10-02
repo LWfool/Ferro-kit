@@ -83,16 +83,12 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     ];
     let mut frame = Frame::with_cell(cell, pbc);
 
-    // 原子位置：绝对 Bohr → Å，减去原点使坐标相对于格点原点
-    let origin_ang = origin_bohr * BOHR_TO_ANG;
+    // 原子位置：绝对 Bohr → Å，保持绝对坐标（与 writer、CubeData 的约定一致）；
+    // 只有 Bader 那条路径需要相对网格原点，在 parse_cube_as_chg 里自己减
     for idx in 0..n_atoms {
         let fs = parse_floats(next(&format!("atom line {idx}"))?, 5)?;
         let z = fs[0] as u8;
-        let pos = Vector3::new(
-            fs[2] * BOHR_TO_ANG - origin_ang.x,
-            fs[3] * BOHR_TO_ANG - origin_ang.y,
-            fs[4] * BOHR_TO_ANG - origin_ang.z,
-        );
+        let pos = Vector3::new(fs[2], fs[3], fs[4]) * BOHR_TO_ANG;
         let symbol = by_number(z)
             .map(|e| e.symbol.to_string())
             .unwrap_or_else(|| format!("X{z}"));
@@ -203,8 +199,15 @@ fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
         }
     }
 
+    // ChargeGrid 的网格从 0 起，原子要换到相对网格原点的坐标
+    let origin_ang = pc.origin_bohr * BOHR_TO_ANG;
+    let mut frame = pc.frame;
+    for atom in &mut frame.atoms {
+        atom.position -= origin_ang;
+    }
+
     let chg = ChargeGrid::new(rho, pc.shape, &cell);
-    Ok((pc.frame, chg))
+    Ok((frame, chg))
 }
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
@@ -372,6 +375,15 @@ comment
         let p = frame.atom(0).position;
         assert!((p.x - 1.0).abs() < 1e-4, "p.x = {:.4}", p.x);
         assert!((p.y).abs() < 1e-4, "p.y = {:.4}", p.y);
+    }
+
+    #[test]
+    fn test_cube_data_keeps_absolute_positions() {
+        // CubeData 带着 origin，原子坐标应是文件里的绝对坐标，不减原点
+        let cd = parse_cube(CUBE_OFFSET).unwrap();
+        let p = cd.frame.atom(0).position;
+        assert!((p.x - 2.889726 * BOHR_TO_ANG).abs() < 1e-6, "p.x = {:.6}", p.x);
+        assert!((cd.origin.x - BOHR_TO_ANG).abs() < 1e-6, "origin.x = {:.6}", cd.origin.x);
     }
 
     #[test]
