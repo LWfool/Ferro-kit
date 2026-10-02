@@ -14,6 +14,7 @@
 //!
 //! Parallelism: per atom.
 
+use crate::check;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
@@ -32,6 +33,15 @@ pub struct VacfParams {
     pub dt: f64,
     /// Elements to include (`None` = all atoms)
     pub elements: Option<Vec<String>>,
+}
+
+impl VacfParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("dt", self.dt)?;
+        check::at_least_one_if_given("max-lag", self.max_lag)
+    }
 }
 
 impl Default for VacfParams {
@@ -81,6 +91,7 @@ pub struct VacfResult {
 /// `1 ..= n_frames − 1`, any frame lacks velocities, or no atom matches the
 /// element filter.
 pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<VacfResult> {
+    params.validate()?;
     let n_frames = traj.n_frames();
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;

@@ -16,6 +16,7 @@
 //!
 //! Parallelism: per-frame `par_iter`; each frame independently produces (count, value_sum) arrays, then reduced.
 
+use crate::check;
 use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
@@ -53,6 +54,16 @@ pub struct CubeDensityParams {
     pub elements: Option<Vec<String>>,
     /// Quantity to accumulate on the grid
     pub mode: CubeMode,
+}
+
+impl CubeDensityParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::at_least_one("nx", self.nx)?;
+        check::at_least_one("ny", self.ny)?;
+        check::at_least_one("nz", self.nz)
+    }
 }
 
 impl Default for CubeDensityParams {
@@ -144,6 +155,8 @@ pub fn calc_cube_density(
     traj: &Trajectory,
     params: &CubeDensityParams,
 ) -> Option<CubeDensityResult> {
+    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
+    params.validate().ok()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;

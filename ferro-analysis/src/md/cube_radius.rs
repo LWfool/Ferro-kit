@@ -14,6 +14,7 @@
 //! - rayon 帧级并行
 //! - 对每个原子计算 bounding-box，只遍历可能在 radius 内的 voxel
 
+use crate::check;
 use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
@@ -35,6 +36,17 @@ pub struct CubeRadiusParams {
     pub radius: f64,
     /// Elements to include (`None` = all atoms; CLI: `--elements Li,Na`)
     pub elements: Option<Vec<String>>,
+}
+
+impl CubeRadiusParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::at_least_one("nx", self.nx)?;
+        check::at_least_one("ny", self.ny)?;
+        check::at_least_one("nz", self.nz)?;
+        check::positive("radius", self.radius)
+    }
 }
 
 impl Default for CubeRadiusParams {
@@ -156,6 +168,8 @@ pub fn calc_cube_radius(
     traj: &Trajectory,
     params: &CubeRadiusParams,
 ) -> Option<CubeRadiusResult> {
+    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
+    params.validate().ok()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;

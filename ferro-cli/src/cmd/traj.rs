@@ -334,6 +334,8 @@ fn drive<T>(
 fn run_gr(c: &GrCmd) -> Result<usize> {
     let (group_by, pair) = c.select.resolve_pair()?;
     let params = c.knobs.params(group_by);
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     let label = match &pair {
         Some((a, b)) => batch::file_label(&[a, b])?,
         None => batch::file_label::<&str>(&[])?,
@@ -379,9 +381,12 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         dq: c.dq,
         weighting: c.weighting.clone().into(),
     };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    gr_params.validate()?;
+    sq_params.validate()?;
     let (results, failures, out) = drive(&c.common, None, |traj| {
         let gr = calc_gr(traj, &gr_params)?;
-        let sq = calc_sq_from_gr(&gr, &sq_params);
+        let sq = calc_sq_from_gr(&gr, &sq_params)?;
         Ok((gr, sq))
     })?;
 
@@ -427,6 +432,8 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         elements: c.elements.clone(),
         fit_range,
     };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
         drive(&c.common, Some(label), |traj| Ok(calc_msd(traj, &params)?))?;
@@ -498,6 +505,8 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         group_by,
         ends,
     };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     let label = match slots.iter().all(|s| s.is_some()) {
         true => batch::file_label(&[
             slots[0].as_ref().unwrap(),
@@ -517,8 +526,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
     });
 
     let (results, failures, out) = drive(&c.common, Some(label), |traj| {
-        let mut result = calc_angle(traj, &params)
-            .ok_or_else(|| anyhow!("Angle calc failed (empty trajectory?)"))?;
+        let mut result = calc_angle(traj, &params)?;
         // 指定三元组时过滤输出（端原子已规范排序，两种顺序均检查）
         if let Some((key1, key2)) = &triplet_keys {
             result.hist.retain(|k, _| k == key1 || k == key2);
@@ -557,6 +565,8 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
         max_lag: c.time.max_lag,
         elements: c.elements.clone(),
     };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
         drive(&c.common, Some(label), |traj| Ok(calc_vacf(traj, &params)?))?;
@@ -601,6 +611,8 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         vector: c.vector.into(),
         legendre: if c.legendre == 1 { Legendre::P1 } else { Legendre::P2 },
     };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     let (results, failures, out) =
         drive(&c.common, Some(label), |traj| Ok(calc_rotcorr(traj, &params)?))?;
 
@@ -633,12 +645,6 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
         .ok_or_else(|| anyhow!("--neighbor is required for bondlife (run without -i to see help)"))?;
     let r_bond = c.r_bond
         .ok_or_else(|| anyhow!("--r-bond is required: take the first minimum of the {center}-{neighbor} g(r)"))?;
-    // 阈值错误在读第一个文件前挡掉
-    if let Some(rb) = c.r_break {
-        if rb < r_bond {
-            return Err(anyhow!("--r-break ({rb}) must be >= --r-bond ({r_bond})"));
-        }
-    }
     let label = batch::file_label(&[&center, &neighbor])?;
     let params = BondLifeParams {
         center, neighbor, r_bond,
@@ -647,6 +653,8 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
         max_lag: c.time.max_lag,
         dt: c.time.dt,
     };
+    // 取值范围（含 r-break >= r-bond）在建目录、读第一个文件之前查完
+    params.validate()?;
     let (results, failures, out) =
         drive(&c.common, Some(label), |traj| Ok(calc_bondlife(traj, &params)?))?;
 
@@ -685,12 +693,11 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
         elements: c.elements.clone(),
         ..VanHoveParams::default()
     };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) = drive(&c.common, Some(label), |traj| {
-        // calc_vanhove 返回 Option，原子不一致时只给 None；先查一遍好让报错说清原因
-        traj.check_same_atoms()?;
-        calc_vanhove(traj, &params)
-            .ok_or_else(|| anyhow!("VanHove calc failed (trajectory too short?)"))
+        Ok(calc_vanhove(traj, &params)?)
     })?;
 
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
@@ -715,4 +722,50 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
         &out,
     )?;
     Ok(failures.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Wrap {
+        #[command(subcommand)]
+        cmd: TrajCmd,
+    }
+
+    /// 坏参数必须在读文件、建目录之前报错（审查 M3）。输入文件不存在：若先读文件，
+    /// 报的会是「找不到输入」而不是参数错误；`-o` 目录不存在且给了 --mkdir：若先建
+    /// 目录，测试结束时它就在
+    #[test]
+    fn test_bad_values_fail_before_any_file_or_directory() {
+        let out = std::env::temp_dir().join("ferro_m3_traj_must_not_exist");
+        let _ = std::fs::remove_dir_all(&out);
+        for (args, want) in [
+            ("gr --dr 0", "dr must be"),
+            ("gr --dr nan", "dr must be"),
+            ("gr --r-min 5 --r-max 3", "r-min (5) must be < r-max (3)"),
+            ("gr --r-min=-1", "r-min must be >= 0"),
+            ("sq --dq 0", "dq must be"),
+            ("sq --q-min 5 --q-max 1", "q-min (5) must be < q-max (1)"),
+            ("msd --dt 0", "dt must be"),
+            ("msd --max-lag 0", "max-lag must be >= 1"),
+            ("angle -a O -b P -c O --d-angle 0", "d-angle must be"),
+            ("angle -a O -b P -c O --angle-max 200", "angle-max must be <= 180"),
+            ("vacf --dt=-1", "dt must be"),
+            ("rotcorr --center P --neighbor O --r-cut 0", "r-cut must be"),
+            ("bondlife --center P --neighbor O --r-bond 2 --r-break 1", "r-break (1) must be >= r-bond (2)"),
+            ("vanhove --dr 0", "dr must be"),
+            ("vanhove --shift 0", "shift must be >= 1"),
+        ] {
+            let mut argv = vec!["traj"];
+            argv.extend(args.split_whitespace());
+            argv.extend(["-i", "no_such_input.lammpstrj", "-o", out.to_str().unwrap(), "--mkdir"]);
+            let w = Wrap::try_parse_from(&argv).unwrap_or_else(|e| panic!("{args}: {e}"));
+            let err = format!("{:#}", run(&w.cmd).expect_err(args));
+            assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
+            assert!(!out.exists(), "{args}：参数错误时不该建 -o 目录");
+        }
+    }
 }

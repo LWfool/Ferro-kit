@@ -26,6 +26,7 @@
 //!
 //! Parallelism: per molecule.
 
+use crate::check;
 use rayon::prelude::*;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
@@ -71,6 +72,16 @@ pub struct RotCorrParams {
     pub vector: RotVector,
     /// Legendre order (default: `P2`)
     pub legendre: Legendre,
+}
+
+impl RotCorrParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("r-cut", self.r_cut)?;
+        check::positive("dt", self.dt)?;
+        check::at_least_one_if_given("max-lag", self.max_lag)
+    }
 }
 
 impl Default for RotCorrParams {
@@ -122,6 +133,7 @@ pub struct RotCorrResult {
 /// `1 ..= n_frames − 1`, no atom is of the center element, or no center has a
 /// neighbor within `r_cut` in any frame.
 pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Result<RotCorrResult> {
+    params.validate()?;
     let n_frames = traj.n_frames();
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;

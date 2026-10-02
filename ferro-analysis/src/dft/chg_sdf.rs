@@ -11,6 +11,7 @@
 //!
 //! See `dev/bader.md` and `cube_sdf.rs` for background.
 
+use crate::check;
 use std::collections::HashMap;
 
 use ferro_core::{Atom, ChargeGrid, CubeData, Frame};
@@ -41,6 +42,17 @@ pub struct ChgSdfParams {
     pub padding: f64,
     /// RMSD threshold above which a warning is printed \[Å\]
     pub rmsd_warn_threshold: f64,
+}
+
+impl ChgSdfParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::positive("cutoff-fl", self.former_ligand_cutoff)?;
+        check::positive("cutoff-ml", self.modifier_cutoff)?;
+        check::non_negative("chg-padding", self.padding)?;
+        check::non_negative("rmsd-warn", self.rmsd_warn_threshold)
+    }
 }
 
 impl Default for ChgSdfParams {
@@ -144,6 +156,8 @@ pub fn calc_chg_sdf(
     pairs: &[(Frame, ChargeGrid)],
     params: &ChgSdfParams,
 ) -> Option<ChgSdfResult> {
+    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
+    params.validate().ok()?;
     if pairs.is_empty() { return None; }
 
     // 从第一个 ChargeGrid 确定输出格分辨率

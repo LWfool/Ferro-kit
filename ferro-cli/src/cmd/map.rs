@@ -228,14 +228,16 @@ fn drive(
 }
 
 fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
+    let params = CubeDensityParams {
+        nx: c.grid.nx,
+        ny: c.grid.ny,
+        nz: c.grid.nz,
+        elements: c.grid.elements.clone(),
+        mode: mode.clone().into(),
+    };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     drive(&c.common, |traj, stem, out| {
-        let params = CubeDensityParams {
-            nx: c.grid.nx,
-            ny: c.grid.ny,
-            nz: c.grid.nz,
-            elements: c.grid.elements.clone(),
-            mode: mode.clone().into(),
-        };
         let result = calc_cube_density(traj, &params)
             .ok_or_else(|| anyhow!("Cube calc failed (missing cell, velocities, or forces?)"))?;
 
@@ -252,14 +254,16 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
 }
 
 fn run_radius(c: &RadiusCmd) -> Result<usize> {
+    let params = CubeRadiusParams {
+        nx: c.grid.nx,
+        ny: c.grid.ny,
+        nz: c.grid.nz,
+        radius: c.radius,
+        elements: c.grid.elements.clone(),
+    };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     drive(&c.common, |traj, stem, out| {
-        let params = CubeRadiusParams {
-            nx: c.grid.nx,
-            ny: c.grid.ny,
-            nz: c.grid.nz,
-            radius: c.radius,
-            elements: c.grid.elements.clone(),
-        };
         let result = calc_cube_radius(traj, &params)
             .ok_or_else(|| anyhow!("Cube radius calc failed (missing cell?)"))?;
 
@@ -275,19 +279,21 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
 }
 
 fn run_sdf(c: &SdfCmd) -> Result<usize> {
+    let params = ClusterSdfParams {
+        former: c.cluster.former.clone(),
+        ligand: c.cluster.ligand.clone(),
+        target_qn: c.cluster.qn,
+        former_ligand_cutoff: c.cluster.cutoff_fl,
+        modifier: c.cluster.modifier.clone(),
+        modifier_cutoff: c.cluster.cutoff_ml,
+        grid_res: c.grid_res,
+        sigma: c.sigma,
+        padding: c.padding,
+        rmsd_warn_threshold: c.cluster.rmsd_warn,
+    };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
     drive(&c.common, |traj, stem, out| {
-        let params = ClusterSdfParams {
-            former: c.cluster.former.clone(),
-            ligand: c.cluster.ligand.clone(),
-            target_qn: c.cluster.qn,
-            former_ligand_cutoff: c.cluster.cutoff_fl,
-            modifier: c.cluster.modifier.clone(),
-            modifier_cutoff: c.cluster.cutoff_ml,
-            grid_res: c.grid_res,
-            sigma: c.sigma,
-            padding: c.padding,
-            rmsd_warn_threshold: c.cluster.rmsd_warn,
-        };
         let result = calc_cluster_sdf(traj, &params)
             .ok_or_else(|| anyhow!("No Q{} clusters found in trajectory", c.cluster.qn))?;
 
@@ -334,6 +340,19 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
 /// weighted cross-file average needs a new intermediate product format and is tracked
 /// separately in `dev/plan.md`.
 fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
+    let params = ChgSdfParams {
+        former: c.cluster.former.clone(),
+        ligand: c.cluster.ligand.clone(),
+        target_qn: c.cluster.qn,
+        former_ligand_cutoff: c.cluster.cutoff_fl,
+        modifier: c.cluster.modifier.clone(),
+        modifier_cutoff: c.cluster.cutoff_ml,
+        padding: c.chg_padding,
+        rmsd_warn_threshold: c.cluster.rmsd_warn,
+    };
+    // 取值范围在建目录、读第一个文件之前查完（审查 M3）
+    params.validate()?;
+
     // 这个命令不走 CommonArgs(它吃 --cubes 而不是 -i),所以 Output 自己拼
     let out = batch::Output {
         dir: c.output.clone(),
@@ -354,16 +373,6 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
         pairs.push((frame, chg));
     }
 
-    let params = ChgSdfParams {
-        former: c.cluster.former.clone(),
-        ligand: c.cluster.ligand.clone(),
-        target_qn: c.cluster.qn,
-        former_ligand_cutoff: c.cluster.cutoff_fl,
-        modifier: c.cluster.modifier.clone(),
-        modifier_cutoff: c.cluster.cutoff_ml,
-        padding: c.chg_padding,
-        rmsd_warn_threshold: c.cluster.rmsd_warn,
-    };
     let result = calc_chg_sdf(&pairs, &params)
         .ok_or_else(|| anyhow!("未找到 Q{} 团簇，请检查参数", c.cluster.qn))?;
 
@@ -396,4 +405,40 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
         c.cluster.qn, result.n_frames, result.n_clusters_total,
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Wrap {
+        #[command(subcommand)]
+        cmd: MapCmd,
+    }
+
+    /// 坏参数必须在读文件、建目录之前报错（审查 M3）。输入文件不存在：若先读文件，
+    /// 报的会是「找不到输入」而不是参数错误；`-o` 目录不存在且给了 --mkdir：若先建
+    /// 目录，测试结束时它就在
+    #[test]
+    fn test_bad_values_fail_before_any_file_or_directory() {
+        let out = std::env::temp_dir().join("ferro_m3_map_must_not_exist");
+        let _ = std::fs::remove_dir_all(&out);
+        for (args, want) in [
+            ("density --nx 0", "nx must be >= 1"),
+            ("velocity --nz 0", "nz must be >= 1"),
+            ("radius --radius 0", "radius must be"),
+            ("sdf --grid-res 0", "grid-res must be"),
+            ("sdf --sigma=-1", "sigma must be >= 0"),
+        ] {
+            let mut argv = vec!["map"];
+            argv.extend(args.split_whitespace());
+            argv.extend(["-i", "no_such_input.lammpstrj", "-o", out.to_str().unwrap(), "--mkdir"]);
+            let w = Wrap::try_parse_from(&argv).unwrap_or_else(|e| panic!("{args}: {e}"));
+            let err = format!("{:#}", run(&w.cmd).expect_err(args));
+            assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
+            assert!(!out.exists(), "{args}：参数错误时不该建 -o 目录");
+        }
+    }
 }

@@ -60,6 +60,9 @@ ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -s scan
 Each input is analysed independently and the results are stacked into **one** csv with a `file` column.
 Inputs with different element sets take the union of the columns; **what is missing stays empty (NaN),
 never padded with zeros, never interpolated**.  A failing input is skipped, leaves its reason in the `[inputs]` block of the output, and makes the **exit code 1** (otherwise an `&&` chain in the shell would take a failure inside the batch for success).
+A parameter out of range (`--dr 0`, `--r-min 5 --r-max 3`, `--nx 0`, a step or cutoff of `nan` or `inf`,
+`--angle-max 200`, …) is not a per-input failure: it stops the run **before the first file is read and
+before `-o` is created**, naming the parameter and its allowed range.
 Brace expansion `{a,b}` is not supported; leave that to the shell.
 
 Commands whose output is per-input (the cubes of `ferro map`, the trajectory of `ferro net --export-traj`)

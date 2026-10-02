@@ -6,6 +6,7 @@
 //! Formula (Faber-Ziman, from code2/dump2sq.c CalcSq):
 //!   S_ij(q) = 1 + (4πρ/q) Σ_r r[g_ij(r)−1] sin(qr) Δr
 
+use crate::check;
 use super::gr::{sorted_keys, GrResult};
 use ferro_core::error::ChemError;
 use ferro_core::Table;
@@ -41,6 +42,16 @@ pub struct SqParams {
     pub dq: f64,
     /// Scattering factor weighting for weighted total S(q) (default: None)
     pub weighting: SqWeighting,
+}
+
+impl SqParams {
+    /// Value ranges that do not depend on the trajectory; the CLI calls this
+    /// before reading the first file, and the `calc_*` entry calls it again.
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::non_negative("q-min", self.q_min)?;
+        check::positive("dq", self.dq)?;
+        check::ordered("q-min", self.q_min, "q-max", self.q_max)
+    }
 }
 
 impl Default for SqParams {
@@ -114,7 +125,8 @@ fn elem_z_local(symbol: &str) -> usize {
 /// the label-level partials reconstructs `N_A²`. Pure relabelling (one label per element)
 /// is exact; subdividing a site into several labels leaves a finite-size difference that
 /// vanishes as the system grows.
-pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> SqResult {
+pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<SqResult> {
+    params.validate()?;
     let n_q = ((params.q_max - params.q_min) / params.dq).floor() as usize + 1;
     let q_vals: Vec<f64> = (0..n_q)
         .map(|i| params.q_min + i as f64 * params.dq)
@@ -201,7 +213,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> SqResult {
         }
     }
 
-    SqResult {
+    Ok(SqResult {
         q: q_vals,
         sq: sq_map,
         sq_xrd,
@@ -210,7 +222,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> SqResult {
         total_neutron,
         params: params.clone(),
         rho,
-    }
+    })
 }
 
 /// Multiply each partial by its weight and accumulate the total, so that
@@ -395,7 +407,7 @@ mod tests {
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 0.5, q_max: 10.0, dq: 0.1, ..Default::default()
-        });
+        }).unwrap();
         let expected = ((10.0_f64 - 0.5) / 0.1).floor() as usize + 1;
         assert_eq!(sq_res.q.len(), expected);
     }
@@ -407,7 +419,7 @@ mod tests {
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.1, r_max: 5.9, dr: 0.01, ..Default::default()
         }).unwrap();
-        let sq_res = calc_sq_from_gr(&gr_res, &SqParams::default());
+        let sq_res = calc_sq_from_gr(&gr_res, &SqParams::default()).unwrap();
 
         // g(r) 有 n² = 4 个有序对，S(q) 只有 n(n+1)/2 = 3 个
         assert_eq!(gr_res.gr.len(), 4);
@@ -427,7 +439,7 @@ mod tests {
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 30.0, dq: 0.1, ..Default::default()
-        });
+        }).unwrap();
         let vals = &sq_res.sq["Fe-Fe"];
         let n = vals.len();
         let tail_mean: f64 = vals[n / 2..].iter().sum::<f64>() / (n / 2) as f64;
@@ -447,7 +459,7 @@ mod tests {
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5,
             weighting: SqWeighting::Xrd,
-        });
+        }).unwrap();
         let xrd = sq_res.total_xrd.as_ref().expect("total_xrd should be present");
         // 单元素体系权重恒为 1，加权总应等于该唯一 partial
         let part = &sq_res.sq["Fe-Fe"];
@@ -465,7 +477,7 @@ mod tests {
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5,
             weighting: SqWeighting::Neutron,
-        });
+        }).unwrap();
         let neu = sq_res.total_neutron.as_ref().expect("total_neutron should be present");
         let part = &sq_res.sq["Fe-Fe"];
         let max_diff = neu.iter().zip(part.iter()).map(|(a,b)| (a-b).abs()).fold(0.0_f64, f64::max);
@@ -566,7 +578,7 @@ mod tests {
         }).unwrap();
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 0.5, q_max: 20.0, dq: 0.25, weighting: SqWeighting::Both,
-        });
+        }).unwrap();
 
         let tx = sq.total_xrd.as_ref().unwrap();
         let tn = sq.total_neutron.as_ref().unwrap();
@@ -619,7 +631,7 @@ mod tests {
             let gr = calc_gr(&traj, &GrParams {
                 r_min: 0.1, r_max: 5.9, dr: 0.01, group_by: by,
             }).unwrap();
-            let sq = calc_sq_from_gr(&gr, &sq_params);
+            let sq = calc_sq_from_gr(&gr, &sq_params).unwrap();
             (sq.total_xrd.unwrap(), sq.total_neutron.unwrap())
         };
         let (ex, en) = run(GroupBy::Element);
@@ -658,12 +670,12 @@ mod tests {
         let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
         let sp = SqParams { q_min: 0.5, q_max: 12.0, dq: 0.1, ..Default::default() };
 
-        let folded = calc_sq_from_gr(&calc_gr(&traj, &gp).unwrap(), &sp);
+        let folded = calc_sq_from_gr(&calc_gr(&traj, &gp).unwrap(), &sp).unwrap();
 
         let mut literal: BTreeMap<String, Vec<f64>> = BTreeMap::new();
         for frame in &traj.frames {
             let single = Trajectory::from_frame(frame.clone());
-            let s = calc_sq_from_gr(&calc_gr(&single, &gp).unwrap(), &sp);
+            let s = calc_sq_from_gr(&calc_gr(&single, &gp).unwrap(), &sp).unwrap();
             for (k, v) in &s.sq {
                 let e = literal.entry(k.clone()).or_insert_with(|| vec![0.0; v.len()]);
                 for (a, b) in e.iter_mut().zip(v.iter()) { *a += b; }
@@ -688,7 +700,7 @@ mod tests {
         let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
         let sp = SqParams { q_min: 0.5, q_max: 12.0, dq: 0.1, ..Default::default() };
         let gr = calc_gr(&traj, &gp).unwrap();
-        let folded = calc_sq_from_gr(&gr, &sp);
+        let folded = calc_sq_from_gr(&gr, &sp).unwrap();
 
         let pi4 = 4.0 * std::f64::consts::PI;
         let rho_old = gr.element_counts.values().sum::<usize>() as f64 / gr.avg_volume;
@@ -744,7 +756,7 @@ mod tests {
         }).unwrap();
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
-        });
+        }).unwrap();
 
         // 没有配对过滤:q + 2 条 total + 3 对 × 3 列 = 12 列,恒定如此。
         // 只留一对会藏起 Σ w_ij·S_ij == total 的闭合,而那是 partial 存在的唯一理由
@@ -767,7 +779,7 @@ mod tests {
         }).unwrap();
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
-        });
+        }).unwrap();
         let (_, t) = sq.to_tables(&gr_res).unwrap().remove(0);
 
         let col = |name: &str| match t.column(name).unwrap() {
@@ -795,7 +807,7 @@ mod tests {
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, ..Default::default()
-        });
+        }).unwrap();
         let meta = sq_res.meta_lines(&gr_res).join("\n");
         assert!(meta.contains("[g(r) parameters]") && meta.contains("[S(q) parameters]"));
         assert!(meta.contains("q_max") && meta.contains("dr"));

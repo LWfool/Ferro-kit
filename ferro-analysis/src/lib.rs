@@ -1,5 +1,6 @@
 //! ferro-analysis — 后处理分析模块
 
+mod check;
 pub mod geometry;
 pub mod trajectory_analysis;
 pub mod md;
