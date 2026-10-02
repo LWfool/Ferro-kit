@@ -848,13 +848,4 @@ writer 时会再踩**的判据：
 | 输入格式的关键字写法 | 只认测试里写过的那一种（`{bohr}`、`.TRUE.`） | 查格式自己的解析规则：QE 卡片选项可写 `bohr`、`{bohr}`、`(bohr)`，大小写不敏感；CP2K 逻辑值单写关键字即真，`T` `TRUE` `.TRUE.` `YES` `ON` 均真。认不出的写法**报错**，绝不回落到一个默认单位 —— 回落 Å 的结果是键长 0.43 Å 的结构，全程零告警 |
 | 扩展名分派 | `.xyz` 就是纯 XYZ | ASE、GPUMD、CP2K 与 ferro 自己的 `--type nep` 都把 extxyz 写成 `.xyz`。按扩展名分派只能定「哪一族」，族内要看内容（第 2 行有无 `Lattice=` / `Properties=`） |
 | 多输入的产物名 | 只用 stem | `runs/*/prod.lammpstrj` 是常见布局。`collect` 早已按 `<父目录>_<stem>` + 仍撞报错处理（见上方 2026-08-25 那节），其余命令没有跟上；撞名必须在读第一个文件前判，事后覆盖是静默的 |
-| 周期网格的搜索窗 | `rem_euclid` 折叠后直接累加 | 窗口 `2s+1` 超过网格点数时多个偏移折到同一格，重复计数。与 `box_builder` CellList 缺去重同一个洞 —— 第三次出现，下次写周期网格遍历先想这一条 |
-| `StdRng` | 当作可复现的 RNG | rand 文档明写不可移植、将来版本可换算法。要「同 seed 可归档复现」就直接用具体算法的 crate（`chacha20`）并固定版本 |
-| POSCAR 的速度块 | 跳过空行后把剩余行当速度 | 坐标之后**恒有一行模式行**（空行也算一行）：空行或 C/K 开头 = Cartesian Å/fs，其余 = Direct（需 POTIM，报错）；首字符 L 是 NPT CONTCAR 的晶格速度块（再跳 8 行）。滤掉空行会把 `Cartesian` 那一行当成第一条速度。ASE 的 `write_vasp(sort=True)` 也有「坐标重排、速度原序」的 bug —— 照抄参考实现前先看它有没有同病 |
-| ASE 当参考实现 | 以为它覆盖全部合法输入 | ASE 3.29.0 的 `read_espresso_in` 读不了 `A=`（namelist 键已转小写、却按 `'A'` 查）与 `1.026D+01` 这类 namelist 值，也不支持「无 celldm 时坐标 alat 取 \|a1\|」。对拍时 ASE 报错的情形回 pw.x 源码（`Modules/cell_base.f90`）手算，并在测试注释里写明来源 |
-| 格式的「可选提示」 | 按 `Atoms # full` 注释或列数推 LAMMPS data 的 style | 注释在 LAMMPS 里可选，列数有歧义（charge 与 molecular 同为 6 列；8 列的 atomic+image flag 按 full 读会把 image flag 当坐标）。用户裁定（2026-10-02）：style 必须显式给出，注释即使存在也不看；对不上的列数报错 |
-| 截断 vs 写错 | reader 把一帧读不成一律当「末帧被截断」丢掉 | 截断只会切在**文件最后一行**；别处的缺列、坏字段、缺坐标列是文件写错了，截断解释不了，恒报错。单帧文件尤其要分清：按截断处理会读出 0 帧且不报错（M2 修时实测踩到） |
-| 缩放坐标 | `xs` 直接 `s·L` | LAMMPS 定义 `xs = (x - lo)/L`，还原要加真实 lo（三斜时由 `*_bound` 反推）。ASE 3.29 漏了 lo，与它自己的 `x` 列不自洽，此处不以 ASE 为准 |
-| 参数取值检查 | `if v <= 0.0 { 报错 }`，或只在计算里、读完文件才查 | 写成「合法则放行，否则报错」：NaN 与任何数比较为假，落到报错分支（反着写会放过 `--dr nan`；clippy 也不让写 `!(v > 0.0)`）。步长、截断还要 `is_finite`，`inf` 的步长得 0 个 bin。判据放 `XxxParams::validate`，CLI 在建 `-o`、读第一个文件前调，`calc_*` 入口再调一次给 Python |
-| 返回 `Option` 的计算 | 失败原因揉成一个 `None`，调用者去猜 | angle、vanhove 以前的报错「empty trajectory?」「trajectory too short?」都是猜错的。返回 `Result`，每种失败各自报 |
-| 「解析失败」 | `parse().unwrap_or(0.0)` | 与列并集补零同一类：把「读不出来」伪装成「测到了 0」。报错并点名行号 |
+| 周期网格的搜索窗 | `rem_euclid` 折叠后直接累加 | 窗口 `2s+1` 超过网格点数时多个偏移折到同一格，重复计数。与 `box_builder` CellList 缺去重同一个洞 —— 第三次出现，下次写周期网格遍历先想这一条。修法（M4）：每轴先算下标列表，窗口 ≥ 网格点数时取全部 `0..n`，否则折回（此时互不相同）—— 比 `seen` 去重便宜，且窗口小于网格时与原遍历逐位一致。现存的两处（`angle.rs` CellList、`cube_radius.rs`）都已处理 |
