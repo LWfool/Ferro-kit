@@ -97,9 +97,17 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 
     // 读取剩余所有密度值
     let nrho = shape[0] * shape[1] * shape[2];
-    let raw: Vec<f64> = lines
-        .flat_map(|l| l.split_whitespace().map(|s| s.parse::<f64>().unwrap_or(0.0)))
-        .collect();
+    // 坏值报错而不是补 0：补 0 会冒充「这里密度为 0」。体数据从第 7 + n_atoms 行起
+    let first = 7 + n_atoms;
+    let mut raw: Vec<f64> = Vec::with_capacity(nrho);
+    for (k, l) in lines.enumerate() {
+        for tok in l.split_whitespace() {
+            let v = tok.parse::<f64>().with_context(|| {
+                format!("line {}: invalid volumetric value {tok:?}", first + k)
+            })?;
+            raw.push(v);
+        }
+    }
     if raw.len() < nrho {
         bail!("volumetric data too short: got {}, expected {}", raw.len(), nrho);
     }
@@ -384,6 +392,16 @@ comment
         let p = cd.frame.atom(0).position;
         assert!((p.x - 2.889726 * BOHR_TO_ANG).abs() < 1e-6, "p.x = {:.6}", p.x);
         assert!((cd.origin.x - BOHR_TO_ANG).abs() < 1e-6, "origin.x = {:.6}", cd.origin.x);
+    }
+
+    #[test]
+    fn test_bad_volumetric_value_is_an_error_naming_its_line() {
+        // Fortran 的 d 指数不是合法浮点，以前被静默读成 0
+        let bad = CUBE_H2.replace(" 5.0e+00", " 5.0d+00");
+        let e = parse_cube(&bad).unwrap_err();
+        let msg = format!("{e:#}");
+        assert!(msg.contains("line 13") && msg.contains("5.0d+00"), "{msg}");
+        assert!(parse_cube_as_chg(&bad).is_err());
     }
 
     #[test]
