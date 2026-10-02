@@ -50,6 +50,16 @@ This ensures correct spatial mapping for both orthogonal and triclinic simulatio
 
 The cube file header includes a time-averaged atomic structure (mean position over all frames), which serves as a reference geometry for visualisation.
 
+The grid always starts at the origin and spans the cell, $[0, L)$ along each axis, and every atom is binned by
+its position folded back into the cell.  The reference structure is folded the same way: an atom whose mean
+position lies outside the cell along a periodic axis is moved back by whole lattice vectors, so that the atoms
+and the grid line up in a viewer.  A LAMMPS box with `xlo` $\neq 0$ is the usual case: its atoms sit in
+$[x_{lo}, x_{lo} + L)$, and without the fold the part beyond $L$ would be drawn outside the grid.
+
+**This fold is specific to the cube outputs** (`map density`, `map velocity`, `map force`, `map radius`).
+Everywhere else ferro keeps the coordinates exactly as read, neither shifted nor folded, because folding
+during reading would perturb time-correlation analyses of NPT trajectories (see the MSD page).
+
 ## Parameters
 
 ```rust

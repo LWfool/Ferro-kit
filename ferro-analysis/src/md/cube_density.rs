@@ -88,6 +88,24 @@ pub struct CubeDensityResult {
     pub params: CubeDensityParams,
 }
 
+// ─── cube 参考结构（特例）─────────────────────────────────────────────────────
+
+/// cube 文件里的参考结构：时间平均帧，再把周期方向上越出晶胞的原子折回 `[0, 1)`。
+///
+/// **特例：只有 cube 产物这样做，与 Ferro 其余各处不同**（审查 M5，用户裁定
+/// 2026-10-02）。别处一律保留 reader 读到的原始坐标、不平移也不折回 —— 读入时折回
+/// 会给 NPT 的 MSD 带来扰动（TOR 展开下额外折回留下 ΔL 量级残差），按帧减 lo 更会
+/// 引入虚假整体漂移，见 `dev/issues.md`。cube 不一样：网格恒铺在 `[0, L)`（原点 0），
+/// 体素归属也按折回后的分数坐标算，参考结构若不折回，LAMMPS 盒子 `lo ≠ 0` 时会有原子
+/// 画在网格外（`tests/70Z30P00A_NVT_5` 曾有 659 个）。密度数值不受影响。
+///
+/// `cube_density`、`cube_radius`、`cube_jump` 三处共用。
+pub(super) fn cube_reference_frame(traj: &Trajectory) -> Frame {
+    let mut frame = build_avg_frame(traj);
+    frame.wrap_all();
+    frame
+}
+
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
 
 /// Convert fractional coordinate to voxel indices, wrapping periodically.
@@ -209,7 +227,8 @@ pub fn calc_cube_density(
     );
 
     let cube = CubeData {
-        frame: build_avg_frame(traj),
+        // 特例：参考结构折回盒内，见 cube_reference_frame
+        frame: cube_reference_frame(traj),
         data: data.into_iter().collect(),
         shape: [nx, ny, nz],
         origin: Vector3::zeros(),
@@ -370,5 +389,22 @@ mod tests {
         assert!((s[(0, 0)] - 5.0).abs() < 1e-10); // a/2 along x
         assert!((s[(1, 1)] - 5.0).abs() < 1e-10); // b/2 along y
         assert!((s[(2, 2)] - 5.0).abs() < 1e-10); // c/2 along z
+    }
+
+    #[test]
+    fn test_reference_frame_is_wrapped_but_the_density_is_not_changed() {
+        // 模拟 LAMMPS 盒子 lo = 1.8：原子绝对坐标在 [1.8, 11.8)，有的 x > 10
+        let outside = make_traj(vec![(10.5, 3.0, 3.0), (5.0, 11.2, 4.0), (2.0, 2.0, 2.0)], vec!["O", "O", "H"]);
+        let folded = make_traj(vec![(0.5, 3.0, 3.0), (5.0, 1.2, 4.0), (2.0, 2.0, 2.0)], vec!["O", "O", "H"]);
+        let params = CubeDensityParams { nx: 5, ny: 5, nz: 5, ..Default::default() };
+        let a = calc_cube_density(&outside, &params).unwrap();
+        let b = calc_cube_density(&folded, &params).unwrap();
+        // 体素归属本来就按折回后的分数坐标：密度逐位相同
+        assert_eq!(a.cube.data, b.cube.data);
+        // 参考结构折回网格 [0, 10)，盒内原子不动
+        for (x, y) in a.cube.frame.atoms.iter().zip(&b.cube.frame.atoms) {
+            assert!((x.position - y.position).norm() < 1e-12, "{:?} vs {:?}", x.position, y.position);
+        }
+        assert_eq!(a.cube.frame.atoms[2].position, Vector3::new(2.0, 2.0, 2.0));
     }
 }
