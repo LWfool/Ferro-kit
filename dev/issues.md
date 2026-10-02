@@ -857,4 +857,5 @@ writer 时会再踩**的判据：
 | 缩放坐标 | `xs` 直接 `s·L` | LAMMPS 定义 `xs = (x - lo)/L`，还原要加真实 lo（三斜时由 `*_bound` 反推）。ASE 3.29 漏了 lo，与它自己的 `x` 列不自洽，此处不以 ASE 为准 |
 | 参数取值检查 | `if v <= 0.0 { 报错 }`，或只在计算里、读完文件才查 | 写成「合法则放行，否则报错」：NaN 与任何数比较为假，落到报错分支（反着写会放过 `--dr nan`；clippy 也不让写 `!(v > 0.0)`）。步长、截断还要 `is_finite`，`inf` 的步长得 0 个 bin。判据放 `XxxParams::validate`，CLI 在建 `-o`、读第一个文件前调，`calc_*` 入口再调一次给 Python |
 | 返回 `Option` 的计算 | 失败原因揉成一个 `None`，调用者去猜 | angle、vanhove 以前的报错「empty trajectory?」「trajectory too short?」都是猜错的。返回 `Result`，每种失败各自报 |
+| 坐标「规范化」（平移原点、折回盒内） | 以为周期性配对了，平移与折回不影响任何分析 | 单帧分析（gr、angle、net）确实不受影响；**NPT 的时间相关分析会**。LAMMPS 绕盒心缩放，`xlo(t) = c - L(t)/2` 每帧在变：按帧减 lo 等于每帧整体平移 ΔL/2，5 帧 NPT 测试轨迹 lag-1 MSD +57%；只折回到 [0,L) 也有 0.03–0.2%（TOR 下额外折回留 ΔL 残差）。NVT 两者都不变。MDAnalysis 的 dump reader 正是按帧减 lo（2.4.0 起），其 `NoJump` 是 Bullerjahn 2023 判为病态的格点（LAT）方案。用户裁定（2026-10-02）：Ferro 一律保留读到的原始坐标，只有 cube 的参考结构折回（`cube_density::cube_reference_frame`，标为特例）。`Frame::wrap_all` 已改为按轴尊重 pbc、只动越界原子，供这类特例用 |
 | 「解析失败」 | `parse().unwrap_or(0.0)` | 与列并集补零同一类：把「读不出来」伪装成「测到了 0」。报错并点名行号 |
