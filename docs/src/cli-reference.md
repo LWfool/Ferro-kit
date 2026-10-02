@@ -64,6 +64,10 @@ Brace expansion `{a,b}` is not supported; leave that to the shell.
 Commands whose output is per-input (the cubes of `ferro map`, the trajectory of `ferro net --export-traj`)
 are the exception: the input stem has to be part of the file name, otherwise the second input would overwrite the first.  `-o` applies to these two as well.
 
+The `file` column and those file names use the input's **stem**.  When two inputs share a stem
+(`runs/700K/prod.lammpstrj`, `runs/900K/prod.lammpstrj`), the second and later become `prod_2`, `prod_3`, … in
+input order, and ferro prints a `Note` naming each renamed file.
+
 ### Output naming
 
 ```

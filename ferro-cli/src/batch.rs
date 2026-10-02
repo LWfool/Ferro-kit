@@ -8,7 +8,7 @@
 //! special mode. Dispatching on the number of inputs would make the shape of the
 //! output depend on how many files a glob happened to match that day.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
@@ -16,20 +16,62 @@ use ferro_core::Table;
 use ferro_io::write_table;
 use ferro_io::writers::TableFormat;
 
+/// One input and the label it carries into the `file` column, `[inputs]` and the
+/// file names of per-input products. Labels are unique within a batch, see
+/// [`unique_labels`].
+pub struct Input {
+    pub path: PathBuf,
+    pub label: String,
+}
+
 /// One input that could not be analysed. Collected rather than fatal.
 pub struct Failure {
     pub path: PathBuf,
+    pub label: String,
     pub reason: String,
 }
 
-/// The label used for an input in the `file` column and in messages.
-///
-/// The file stem, not the full path: `runs/700K/prod.lammpstrj` → `prod`. Legends and
-/// `groupby("file")` both want something short.
-pub fn label_of(path: &Path) -> String {
+/// The label one input would get on its own: the file stem, not the full path
+/// (`runs/700K/prod.lammpstrj` → `prod`). Legends and `groupby("file")` both want
+/// something short. Within a batch use [`unique_labels`], which renames repeats.
+fn label_of(path: &Path) -> String {
     path.file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+/// Labels for a whole batch: the file stem, made unique.
+///
+/// Inputs in different directories often share a name (`runs/700K/prod.lammpstrj`,
+/// `runs/900K/prod.lammpstrj`); with the bare stem the second `map` cube overwrites
+/// the first and the stacked csv's `file` column cannot tell them apart. The second
+/// and later holders of a stem become `<stem>_2`, `<stem>_3`, … in input order, and
+/// each rename is printed. Not `<parent>_<stem>`: that makes product names long
+/// (user decision 2026-10-02).
+pub fn unique_labels(inputs: &[PathBuf]) -> Vec<String> {
+    let stems: Vec<String> = inputs.iter().map(|p| label_of(p)).collect();
+    // 改名不能撞上别的输入原本就叫的名字（prod、prod、prod_2 三个输入）
+    let mut used: HashSet<String> = stems.iter().cloned().collect();
+    let mut count: HashMap<&str, usize> = HashMap::new();
+    let mut out = Vec::with_capacity(stems.len());
+    for (path, stem) in inputs.iter().zip(&stems) {
+        let n = count.entry(stem).or_insert(0);
+        *n += 1;
+        if *n == 1 {
+            out.push(stem.clone());
+            continue;
+        }
+        let mut k = *n;
+        let label = loop {
+            let cand = format!("{stem}_{k}");
+            if used.insert(cand.clone()) { break cand; }
+            k += 1;
+        };
+        println!("Note  : {} shares the name '{stem}' with an earlier input, labelled '{label}'",
+                 path.display());
+        out.push(label);
+    }
+    out
 }
 
 /// Expands glob patterns and literal paths into an ordered, deduplicated file list.
@@ -109,19 +151,22 @@ fn expand_with(
 /// are small enough to all stay resident; trajectories are dropped as we go.
 pub fn map_inputs<T>(
     inputs: &[PathBuf],
-    f: impl Fn(&Path) -> Result<T>,
-) -> (Vec<(PathBuf, T)>, Vec<Failure>) {
+    f: impl Fn(&Input) -> Result<T>,
+) -> (Vec<(Input, T)>, Vec<Failure>) {
     let mut ok = Vec::new();
     let mut failed = Vec::new();
 
-    for (i, path) in inputs.iter().enumerate() {
+    // 标签在读第一个文件之前一次定好，撞名的改名提示也在这里打
+    let labels = unique_labels(inputs);
+    for (i, (path, label)) in inputs.iter().zip(labels).enumerate() {
         println!("[{}/{}] {}", i + 1, inputs.len(), path.display());
-        match f(path) {
-            Ok(v) => ok.push((path.clone(), v)),
+        let input = Input { path: path.clone(), label };
+        match f(&input) {
+            Ok(v) => ok.push((input, v)),
             Err(e) => {
                 // 跳过而非中止:跑一晚上的批量不该因为第 7 个文件丢掉前 6 个的结果
                 println!("        skipped: {e:#}");
-                failed.push(Failure { path: path.clone(), reason: format!("{e:#}") });
+                failed.push(Failure { path: input.path, label: input.label, reason: format!("{e:#}") });
             }
         }
     }
@@ -133,14 +178,14 @@ pub fn map_inputs<T>(
 /// Inputs contributing different columns (different element sets) are unioned, with
 /// the gaps left empty — see [`ferro_core::Table::concat_union`].
 pub fn stack<T>(
-    results: &[(PathBuf, T)],
+    results: &[(Input, T)],
     to_tables: impl Fn(&T) -> Result<Vec<(String, Table)>>,
 ) -> Result<Vec<(String, Table)>> {
     let mut order: Vec<String> = Vec::new();
     let mut groups: Vec<Vec<(String, Table)>> = Vec::new();
 
-    for (path, res) in results {
-        let label = label_of(path);
+    for (input, res) in results {
+        let label = &input.label;
         for (name, table) in to_tables(res)? {
             match order.iter().position(|n| *n == name) {
                 Some(i) => groups[i].push((label.clone(), table)),
@@ -407,7 +452,7 @@ impl Summary {
 
     pub fn failed(&mut self, failures: &[Failure]) {
         for f in failures {
-            self.file.push(label_of(&f.path));
+            self.file.push(f.label.clone());
             self.status.push(f.reason.clone());
             for slot in self.extra.iter_mut() {
                 slot.1.push("-".to_string());
@@ -480,23 +525,34 @@ mod tests {
     }
 
     #[test]
+    fn test_unique_labels_rename_repeats_with_a_counter() {
+        let p = |v: &[&str]| v.iter().map(PathBuf::from).collect::<Vec<_>>();
+        // 不撞名时就是 stem，与此前逐字节相同
+        assert_eq!(unique_labels(&p(&["a/x.dump", "b/y.dump"])), ["x", "y"]);
+        // 不同目录下的同名文件：第二个起按出现顺序加 _2、_3
+        assert_eq!(unique_labels(&p(&["700K/prod.dump", "900K/prod.dump", "1100K/prod.dump"])),
+                   ["prod", "prod_2", "prod_3"]);
+        // 改名不能撞上别的输入原本的名字
+        assert_eq!(unique_labels(&p(&["a/prod.dump", "prod_2.dump", "b/prod.dump"])),
+                   ["prod", "prod_2", "prod_3"]);
+    }
+
+    #[test]
     fn test_map_inputs_skips_failures_and_keeps_the_rest() {
         let inputs = vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")];
-        let (ok, failed) = map_inputs(&inputs, |p| {
-            if p == Path::new("b") { bail!("boom") } else { Ok(p.to_string_lossy().into_owned()) }
+        let (ok, failed) = map_inputs(&inputs, |inp| {
+            if inp.path == Path::new("b") { bail!("boom") } else { Ok(inp.label.clone()) }
         });
         assert_eq!(ok.len(), 2);
         assert_eq!(failed.len(), 1);
-        assert_eq!(label_of(&failed[0].path), "b");
+        assert_eq!(failed[0].label, "b");
         assert!(failed[0].reason.contains("boom"));
     }
 
     #[test]
     fn test_stack_groups_by_table_name() {
-        let results = vec![
-            (PathBuf::from("a.dump"), 1.0f64),
-            (PathBuf::from("b.dump"), 2.0f64),
-        ];
+        let input = |p: &str, l: &str| Input { path: PathBuf::from(p), label: l.into() };
+        let results = vec![(input("a.dump", "a"), 1.0f64), (input("b.dump", "b"), 2.0f64)];
         let stacked = stack(&results, |v| {
             let mut t = Table::new();
             t.push_num("x", vec![*v]);
