@@ -19,7 +19,7 @@ use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use rayon::prelude::*;
-use super::util::build_avg_frame;
+use super::cube_density::cube_reference_frame;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -220,7 +220,8 @@ pub fn calc_cube_radius(
     );
 
     let cube = CubeData {
-        frame: build_avg_frame(traj),
+        // 特例：参考结构折回盒内，见 cube_density::cube_reference_frame
+        frame: cube_reference_frame(traj),
         data: data.into_iter().collect(),
         shape: [nx, ny, nz],
         origin: Vector3::zeros(),

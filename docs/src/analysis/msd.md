@@ -124,6 +124,23 @@ view sees it jump by a whole box-length change each way.
 **Under NVT the two are identical**: with a constant box, the minimum image of each step is exactly the
 fractional unwrap.  Only NPT (or any varying box) results depend on the choice.
 
+### The coordinates are used as read
+
+ferro neither shifts nor folds the coordinates it reads (the cube outputs fold their reference structure,
+and that fold stays inside the cube).  For TOR this matters under NPT:
+
+- **Moving the box origin to 0 frame by frame is wrong.**  LAMMPS rescales an NPT box about its centre, so
+  `xlo` changes every frame, $x_{lo}(t) = c - L(t)/2$.  Subtracting it moves every atom by the same
+  $\Delta L/2$ per step, a displacement that never happened, which adds up to $(L(t) - L(0))/2$.  It is
+  bounded, so $D$ from a long fit survives, but the short-lag MSD is biased; on the 5-frame NPT test
+  trajectory the lag-1 MSD rose by 57 %.  MDAnalysis's LAMMPS reader does subtract `xlo` per frame
+  (since 2.4.0), and its `NoJump` transformation is the lattice-view scheme above, so its NPT MSD is not
+  comparable with ferro's.
+- **Folding during reading also perturbs it, slightly.**  Folding into $[0, L)$ instead of the box LAMMPS
+  wrapped into adds boundary crossings, and under a varying box each one leaves a residual of order
+  $\Delta L$; on the same trajectory the MSD moved by 0.03-0.2 %.  Under NVT neither operation changes the
+  MSD.
+
 ### Conditions and limits
 
 - **The dump interval must be short enough** that no atom moves half a box length (in any cell direction)
