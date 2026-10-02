@@ -16,7 +16,6 @@ use ferro_core::{Trajectory, TypeParams};
 use ferro_io::{write_extxyz, write_lammps_dump};
 use ferro_structure::{apply_type_labels, classify_trajectory, fold_labels};
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use crate::args::common::CommonArgs;
 use crate::batch::{self, Summary};
@@ -91,13 +90,13 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     println!("Inputs: {} file(s)", inputs.len());
     print_label_scheme(&params);
 
-    let (results, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = cmd.common.load(p)?;
+    let (results, failures) = batch::map_inputs(&inputs, |inp| {
+        let traj = cmd.common.load(&inp.path)?;
         let result = calc_network(&traj, &params).ok_or_else(|| {
             anyhow!("no usable frame (every frame is missing a cell; PBC required)")
         })?;
         if let Some(fmt) = cmd.export_traj {
-            export_labelled(&traj, &params, p, &out, fmt)?;
+            export_labelled(&traj, &params, &inp.label, &out, fmt)?;
         }
         Ok(result)
     });
@@ -110,8 +109,8 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     warn_edge_sharing(&results);
 
     let mut summary = Summary::new(&[]);
-    for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[]);
+    for (input, r) in &results {
+        summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &[]);
         summary.note("mean_qn", fmt_means(&r.mean_qn, &r.qn_dist));
         // mean_n_bo 与 mean_qn 并列：前者是桥氧个数(旧口径的那个数)，后者只数
         // 同元素连接。两者在无三簇氧的纯磷酸盐里相等，混合体系里分叉，摆在
@@ -189,14 +188,14 @@ fn note_missing_qn_tables(params: &TypeParams) {
 /// sharing is genuinely rare in phosphates, so the likelier cause is a cutoff
 /// that reaches into the second shell — say so rather than leaving the user to
 /// wonder why one neighbour produced two bridges.
-fn warn_edge_sharing(results: &[(std::path::PathBuf, NetworkResult)]) {
-    for (path, r) in results {
+fn warn_edge_sharing(results: &[(batch::Input, NetworkResult)]) {
+    for (input, r) in results {
         if r.n_edge_sharing == 0 { continue; }
         eprintln!(
             "warning: {}: {} former pair(s) share 2+ ligands (edge-sharing).\n\
              \x20        Qn assumes corner sharing, so one neighbour here yields two bridges.\n\
              \x20        Edge sharing is very rare in phosphates — check the cutoffs first.",
-            batch::label_of(path), r.n_edge_sharing);
+            input.label.clone(), r.n_edge_sharing);
     }
 }
 
@@ -226,7 +225,7 @@ fn fmt_means<T>(
 fn export_labelled(
     traj: &Trajectory,
     params: &TypeParams,
-    input: &Path,
+    label: &str,
     out: &batch::Output,
     fmt: ExportFormat,
 ) -> Result<()> {
@@ -256,7 +255,7 @@ fn export_labelled(
         .collect();
     let out_traj = Trajectory { frames, metadata: traj.metadata.clone() };
 
-    let stem = batch::label_of(input);
+    let stem = label;
     let ext = fmt.ext();
     let name = match out.suffix.as_deref().filter(|s| !s.is_empty()) {
         Some(s) => format!("{stem}_types_{s}.{ext}"),

@@ -22,7 +22,6 @@ use crate::args::traj::{RotVectorCli, SqWeightingCli};
 use crate::batch::{self, Summary};
 use crate::help;
 use ferro_core::Trajectory;
-use std::path::PathBuf;
 
 #[derive(Subcommand, Debug)]
 pub enum TrajCmd {
@@ -299,7 +298,7 @@ pub fn print_help(cmd: &TrajCmd) {
 
 /// What [`drive`] hands back: one result per input that parsed, the inputs that did not,
 /// and the prepared output location.
-type Driven<T> = (Vec<(PathBuf, T)>, Vec<batch::Failure>, batch::Output);
+type Driven<T> = (Vec<(batch::Input, T)>, Vec<batch::Failure>, batch::Output);
 
 /// The half of the pipeline all seven analyses share: prepare the output directory,
 /// expand the inputs, start the thread pool, run one analysis per file, and refuse an
@@ -324,7 +323,7 @@ fn drive<T>(
     common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
 
-    let (results, failures) = batch::map_inputs(&inputs, |p| calc(&common.load(p)?));
+    let (results, failures) = batch::map_inputs(&inputs, |inp| calc(&common.load(&inp.path)?));
     if results.is_empty() {
         return Err(anyhow!("every input failed; nothing to write"));
     }
@@ -346,10 +345,10 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
 
     // r_max 逐文件 clamp 到各自盒子的最小面间距,值可能不同,所以进清单
     let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
-    for (path, r) in &results {
+    for (input, r) in &results {
         let atoms: usize = r.element_counts.values().sum();
         summary.ok(
-            batch::label_of(path),
+            input.label.clone(),
             r.n_frames,
             atoms,
             &[r.avg_volume, r.volume_std, r.params.r_max],
@@ -389,10 +388,10 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| Ok(sq.to_tables(gr)?))?;
 
     let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
-    for (path, (gr, _)) in &results {
+    for (input, (gr, _)) in &results {
         let atoms: usize = gr.element_counts.values().sum();
         summary.ok(
-            batch::label_of(path),
+            input.label.clone(),
             gr.n_frames,
             atoms,
             &[gr.avg_volume, gr.volume_std, gr.params.r_max],
@@ -442,7 +441,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         cols.extend(fit_cols);
     }
     let mut summary = Summary::new(&cols);
-    for (path, r) in &results {
+    for (input, r) in &results {
         let mut vals = vec![(r.time.len() - 1) as f64, r.min_origins as f64];
         if let Some(f) = &r.fit {
             vals.extend([
@@ -450,16 +449,16 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
                 f.d_ang2_per_fs, f.d_err, f.r2,
             ]);
         }
-        summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &vals);
+        summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &vals);
         summary.note("species", r.elements.join(" "));
     }
     summary.failed(&failures);
 
-    for (path, r) in &results {
+    for (input, r) in &results {
         if let Some(f) = &r.fit {
             println!(
                 "{}: D = {:.6e} ± {:.1e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
-                batch::label_of(path),
+                input.label.clone(),
                 f.d_ang2_per_fs,
                 f.d_err,
                 f.d_ang2_per_fs * 0.1,
@@ -535,8 +534,8 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
     let tables = batch::stack(&results, |r: &AngleResult| Ok(r.to_tables()))?;
 
     let mut summary = Summary::new(&["triplets"]);
-    for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.n_frames, r.elements.len(), &[r.hist.len() as f64]);
+    for (input, r) in &results {
+        summary.ok(input.label.clone(), r.n_frames, r.elements.len(), &[r.hist.len() as f64]);
     }
     summary.failed(&failures);
 
@@ -564,8 +563,8 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
     let tables = batch::stack(&results, |r: &VacfResult| Ok(r.to_tables()))?;
     // Green-Kubo 积分的末值逐文件不同，放进清单方便横向比（D 要看 diffusion 列走平处）
     let mut summary = Summary::new(&["max_lag", "min_origins", "diffusion_end"]);
-    for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.n_frames, r.n_atoms, &[
+    for (input, r) in &results {
+        summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &[
             (r.time.len() - 1) as f64, r.min_origins as f64, *r.diffusion.last().unwrap(),
         ]);
         summary.note("species", r.elements.join(" "));
@@ -608,8 +607,8 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
     // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 r_cut 抓不稳邻居
     // atoms = 中心原子数；units = 参与相关的单元（sum 模式同中心数，bond 模式为键数）
     let mut summary = Summary::new(&["units", "max_lag", "min_origins", "valid_fraction"]);
-    for (path, r) in &results {
-        summary.ok(batch::label_of(path), r.n_frames, r.n_centers, &[
+    for (input, r) in &results {
+        summary.ok(input.label.clone(), r.n_frames, r.n_centers, &[
             r.n_units as f64, (r.time.len() - 1) as f64, r.min_origins as f64, r.valid_fraction,
         ]);
     }
@@ -655,9 +654,9 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
         "candidates", "mean_bonds", "max_lag", "min_origins",
         "tau_int_integral", "tau_int_1e", "tau_cont_integral", "tau_cont_1e",
     ]);
-    for (path, r) in &results {
+    for (input, r) in &results {
         let (ii, i1, ci, c1) = r.taus();
-        summary.ok(batch::label_of(path), r.n_frames, r.n_centers, &[
+        summary.ok(input.label.clone(), r.n_frames, r.n_centers, &[
             r.n_candidates as f64, r.mean_bonds(), (r.time.len() - 1) as f64, r.min_origins as f64,
             ii, i1, ci, c1,
         ]);
@@ -696,9 +695,9 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
     // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼
     let mut summary = Summary::new(&["tau_frames", "time_fs", "origins"]);
-    for (path, r) in &results {
+    for (input, r) in &results {
         summary.ok(
-            batch::label_of(path),
+            input.label.clone(),
             r.r.len(),
             r.n_atoms,
             &[r.tau_frames as f64, r.time, r.n_origins as f64],

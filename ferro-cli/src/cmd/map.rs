@@ -16,7 +16,7 @@ use ferro_analysis::{
 };
 use ferro_core::Trajectory;
 use ferro_io::{read_cube_as_chg, write_cube};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::args::common::CommonArgs;
 use crate::args::cube::CubeCliMode;
@@ -177,14 +177,15 @@ pub fn run(cmd: &MapCmd) -> Result<usize> {
     }
 }
 
-/// Output stem: `<-o 或模式名>[_<输入 stem>]`.
+/// Output stem: `<-s 后缀>[_<输入标签>]`.
 ///
-/// 单输入时保持简洁名字；多输入时必须掺入 stem，否则第二个文件会盖掉第一个。
-fn stem_for(output: Option<&str>, path: &Path, multi: bool) -> String {
+/// 单输入时保持简洁名字；多输入时必须掺入标签，否则第二个文件会盖掉第一个。标签由
+/// `batch::unique_labels` 保证批内唯一（同名输入改 `_2`）
+fn stem_for(output: Option<&str>, label: &str, multi: bool) -> String {
     let base = output.unwrap_or("");
     let base = if base.is_empty() { String::new() } else { format!("{base}_") };
     if multi {
-        format!("{base}{}", batch::label_of(path))
+        format!("{base}{label}")
     } else {
         base.trim_end_matches('_').to_string()
     }
@@ -217,9 +218,9 @@ fn drive(
     println!("Inputs: {} file(s)", inputs.len());
 
     let multi = inputs.len() > 1;
-    let (_ok, failures) = batch::map_inputs(&inputs, |p| {
-        let traj = common.load(p)?;
-        let stem = stem_for(common.suffix(), p, multi);
+    let (_ok, failures) = batch::map_inputs(&inputs, |inp| {
+        let traj = common.load(&inp.path)?;
+        let stem = stem_for(common.suffix(), &inp.label, multi);
         body(&traj, &stem, &out)
     });
     Ok(failures.len())
