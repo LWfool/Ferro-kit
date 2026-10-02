@@ -126,7 +126,8 @@ pub fn group_name(traj: &Trajectory) -> String {
 /// A deterministic shuffle of `0..n`.
 pub fn shuffle_order(n: usize, seed: u64) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..n).collect();
-    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    // 不用 StdRng：rand 声明它的算法可能随版本更换，同 seed 的划分就复现不了
+    let mut rng = chacha20::ChaCha12Rng::seed_from_u64(seed);
     idx.shuffle(&mut rng);
     idx
 }
@@ -235,5 +236,16 @@ mod tests {
         let mut s = a.clone();
         s.sort();
         assert_eq!(s, (0..50).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn shuffle_order_is_pinned_across_dependency_upgrades() {
+        // 期望值取自换 ChaCha12Rng 之前的 StdRng（rand 0.10.2），换后应逐位相同。
+        // 依赖升级改了随机源或洗牌算法时这里会红：同 seed 的历史划分将无法复现，
+        // 那是需要用户决定的破坏性改动，不能让它静默发生
+        assert_eq!(shuffle_order(20, 666),
+            [6, 16, 15, 18, 13, 0, 14, 19, 9, 17, 7, 8, 5, 4, 2, 12, 3, 10, 11, 1]);
+        assert_eq!(shuffle_order(20, 42),
+            [17, 16, 13, 2, 1, 5, 15, 14, 19, 0, 18, 6, 8, 3, 7, 10, 11, 12, 9, 4]);
     }
 }

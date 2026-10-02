@@ -10,3 +10,4 @@ ndarray.workspace = true
 rayon.workspace = true
 rustfft.workspace = true
 rand.workspace = true
+chacha20.workspace = true
