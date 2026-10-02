@@ -27,6 +27,8 @@
 
 pub use ferro_core::{AtomType, CutoffTable, TypeParams};
 
+use crate::check;
+use ferro_core::error::ChemError;
 use ferro_core::{classify_frame_detailed, Frame, Table, Trajectory};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
@@ -654,14 +656,23 @@ struct FrameData {
 
 /// 对整条轨迹执行网络统计分析。要求每帧有 Cell（PBC）。
 ///
-/// 返回 `None` 如果轨迹为空、没有形成子截断、或所有帧都缺少 Cell。
-pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> Option<NetworkResult> {
-    if traj.frames.is_empty() || params.cutoffs.is_empty() { return None; }
+/// 轨迹为空、没有形成子截断、所有帧都缺 Cell、或截断超过最小镜像上界时报错。
+pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Result<NetworkResult> {
+    let invalid = |msg: &str| Err(ChemError::ValidationError(msg.into()));
+    if traj.frames.is_empty() { return invalid("trajectory is empty"); }
+    if params.cutoffs.is_empty() { return invalid("no former-ligand cutoff given"); }
 
     let usable: Vec<(&Frame, &ferro_core::Cell)> = traj.frames.iter()
         .filter_map(|frame| frame.cell.as_ref().map(|cell| (frame, cell)))
         .collect();
-    if usable.is_empty() { return None; }
+    if usable.is_empty() {
+        return invalid("no usable frame (every frame is missing a cell; PBC required)");
+    }
+    // 配位判定取最小镜像：最大的那个截断超过上界时更远镜像里的配体被漏掉
+    let ((a, b), rcut) = params.cutoffs.iter().chain(&params.modifier_cutoffs)
+        .max_by(|x, y| x.1.total_cmp(y.1))
+        .expect("cutoffs 非空");
+    check::within_minimum_image(traj, &format!("{a}-{b} cutoff"), *rcut)?;
 
     let n_frames = usable.len();
     let n_atoms = usable[0].0.atoms.len();
@@ -672,7 +683,7 @@ pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> Option<NetworkRes
         .fold(Accumulator::default, |mut acc, fd| { acc.push(&fd); acc })
         .reduce(Accumulator::default, |mut a, b| { a.merge(b); a });
 
-    Some(acc.finalize(n_frames, n_atoms, params.clone()))
+    Ok(acc.finalize(n_frames, n_atoms, params.clone()))
 }
 
 // ─── 单帧计算 ─────────────────────────────────────────────────────────────────

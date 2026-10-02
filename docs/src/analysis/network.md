@@ -35,6 +35,8 @@ the cutoff.  Distances use the minimum-image convention, which supports orthorho
 
 $$d_{ij} = \bigl|\mathbf{r}_{ij} - \mathbf{M} \cdot \text{round}\!\left(\mathbf{M}^{-1}\mathbf{r}_{ij}\right)\bigr|$$
 
+The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a cutoff (the largest one given) beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
+
 The analysis requires a cell (PBC) on every frame.  Frames without one are skipped; when no frame is left, that input errors out and is skipped.
 
 ### The three roles

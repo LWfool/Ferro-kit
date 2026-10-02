@@ -170,6 +170,9 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     let r_bond = params.r_bond;
     // 0 < r_bond <= r_break 已由 validate 查过
     let r_break = params.r_break.unwrap_or(r_bond);
+    // 距离取最小镜像：r_break 超过上界时更远镜像里的键被漏掉
+    let r_break_name = if params.r_break.is_some() { "r-break" } else { "r-bond" };
+    check::within_minimum_image(traj, r_break_name, r_break)?;
 
     let ref_frame = &traj.frames[0];
     let of = |el: &str| -> Vec<usize> {

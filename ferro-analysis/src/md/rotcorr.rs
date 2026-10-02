@@ -137,6 +137,8 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     let n_frames = traj.n_frames();
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
+    // 键矢量取最小镜像：r_cut 超过上界时更远镜像里的近邻被漏掉
+    check::within_minimum_image(traj, "r-cut", params.r_cut)?;
 
     // 确定参与计算的 center 原子下标（按第一帧筛选）
     let ref_frame = &traj.frames[0];

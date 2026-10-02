@@ -11,6 +11,7 @@ For a triplet (A, B, C) with B as centre:
 $$\theta = \arccos\!\left(\frac{\overrightarrow{BA} \cdot \overrightarrow{BC}}{|\overrightarrow{BA}||\overrightarrow{BC}|}\right)$$
 
 The vectors $\overrightarrow{BA}$ and $\overrightarrow{BC}$ use the minimum-image convention for periodic cells.
+The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a cutoff (the larger of `--r-cut-ab` and `--r-cut-bc`) beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
 
 ### Selection Criteria
 

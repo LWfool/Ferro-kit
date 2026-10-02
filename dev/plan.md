@@ -41,11 +41,14 @@ M1 期间另见、未修（待定口径）：
 - **dump 的 `typelabel` 与 `ix iy iz` 未接**（M2 时按 LAMMPS 手册逐列过了一遍）：`typelabel`
   要先定它与 `element` 谁优先；`ix iy iz` 对 msd 无影响（msd 自己按最小像展开）。其余列
   （`mol`、`mu*`、`c_*`/`f_*`/`v_*` 等）Ferro 数据模型无对应字段，忽略是对的
-- **cube_*、`calc_network`、`calc_chg_sdf`、`calc_cluster_sdf` 仍返回 `Option`**（M3 未动）：
+- **cube_*、`calc_chg_sdf`、`calc_cluster_sdf` 仍返回 `Option`**（M3 未动；`calc_network` 已随 L2 改 `Result`）：
   参数已在读文件前查过，剩下的 `None` 都是轨迹层面的（缺 cell、缺速度、没有团簇），
   但 CLI 只能猜原因（`missing cell, velocities, or forces?`）。改 `Result` 是同一个做法
 - **`Atoms` 段写在 `Masses` 之前**时 Masses 不会被读，元素退化为 `X<type>`
   （`lammps_data.rs` 按 Masses → Atoms 的顺序单遍扫描）。LAMMPS 不规定段序
+- **`ferro-structure::find_clusters` 未查最小镜像上界**（L2 时见到）：它在 structure 层、
+  返回 `Option`、以 `Frame` 为单位，`check::within_minimum_image` 在 analysis 层够不着。
+  目前只有库 API 与测试调用，无 CLI 入口
 - **extxyz 的 `momenta` 列被当成速度**（L6 时见到）：`readers/extxyz.rs` 找不到
   `velocities` 就读 `momenta` 存进 `velocities`。ASE 的 momenta 是 $m\,v$（amu·Å/fs 量纲
   按 ASE 内部单位），直接当速度会让 vacf 等差一个质量因子和单位换算。要么按质量除回来，
@@ -56,7 +59,7 @@ M1 期间另见、未修（待定口径）：
 | # | 位置 | 问题 | 备注 |
 |---|---|---|---|
 | ~~L1~~ **已修**（`read_cube` 保持绝对坐标；减原点只留在 Bader 用的 `read_cube_as_chg`；加非零原点两次往返测试）| `readers/cube.rs:87-95` vs `writers/cube.rs:44-50` | reader 把原子坐标减去 origin，writer 当绝对坐标写（origin 照写）→ 非零原点的 cube 每往返一次原子平移 −O | 读码确认。CLI/Python 均不调 `read_cube`，只影响库 API；现有往返测试是零原点 |
-| L2 | angle（`CellList` 每轴 `.max(1)`）、`network_type.rs:352,393,452`、`bondlife`、`rotcorr` | 只有 gr 与 dataset filter 检查最小镜像上界；其余截断超过 MIC 上界时只取单一镜像，静默漏邻居 | 逻辑确认；只在小胞 + 大截断时触发 |
+| ~~L2~~ **已修**（`check::within_minimum_image` 逐帧取最紧上界，超出报错并点名帧；angle / bondlife / rotcorr / network 入口调用，filter 原有的同一段改为调它。`calc_network` 顺带改返回 `Result`。gr 照旧截断 `r_max`）| angle（`CellList` 每轴 `.max(1)`）、`network_type.rs:352,393,452`、`bondlife`、`rotcorr` | 只有 gr 与 dataset filter 检查最小镜像上界；其余截断超过 MIC 上界时只取单一镜像，静默漏邻居 | 逻辑确认；只在小胞 + 大截断时触发 |
 | ~~L3~~ **已修**（`chacha20 0.10.1` 设为直接依赖，用户批准；`shuffle_order(20, 666/42)` 换前后逐位相同，结果硬编码进测试）| `ml/merge.rs:129` | `StdRng` 不可移植：rand 0.10.2 源码 `rngs/std.rs` 明写「any future library version may replace the algorithm」，与「seed 默认 666、可归档复现」冲突 | 改用 `chacha20::ChaCha12Rng`（当前 StdRng 的实现，已在树里）固定版本，同 seed 结果不变 |
 | ~~L4~~ **已修**（续行改为单个 `\`，测试断言消息无反斜杠与连续空格）| `cmd/dataset.rs:191` | 普通字符串里写 `\\` + 换行，错误消息里多一个字面反斜杠和一段缩进 | 同 `issues.md`「用 Python heredoc 改 Rust 源码时」那一族 |
 | ~~L5~~ **已修**（判断移到 `FilterParams::enabled()`，`filter_frames` 与 `FilterResult::enabled()` 都调它）| `ml/filter.rs:270` | `filter_frames` 内联了一份与 `FilterResult::enabled()`（`:306`）相同的 match | match 是穷尽的，加变体会编译报错，**漏改不会静默**；风险是两处条件改得不一致。按 R6「同文件已有函数直接复用」 |

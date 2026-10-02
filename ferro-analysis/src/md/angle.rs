@@ -295,7 +295,13 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     let by = params.group_by;
     let elements = sorted_types(first_frame, by);
 
-    let max_rcut = params.r_cut_ab.max(params.r_cut_bc);
+    // 截断超过最小镜像上界时 CellList 每轴只剩 1 格，每对原子只看最近的镜像，漏邻居
+    let (rcut_name, max_rcut) = if params.r_cut_ab >= params.r_cut_bc {
+        ("r-cut-ab", params.r_cut_ab)
+    } else {
+        ("r-cut-bc", params.r_cut_bc)
+    };
+    check::within_minimum_image(traj, rcut_name, max_rcut)?;
 
     // 并行逐帧计数：每个线程独立维护局部直方图，最后 reduce 合并
     let init = || BTreeMap::<String, Vec<u64>>::new();
