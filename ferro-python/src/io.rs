@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use ferro_io::{
-    read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data,
+    is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data,
     read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
     write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_qe_input, write_xyz,
     LammpsUnits,
@@ -49,6 +49,8 @@ fn read(path: &str, metal_units: bool) -> PyResult<PyTrajectory> {
     };
     let p = std::path::Path::new(path);
     let traj = match detect(path).as_str() {
+        // .xyz 也常装 extxyz（ASE、GPUMD），与 CLI 的 io_dispatch 同一个判据
+        "xyz" if is_extxyz(p).map_err(pyerr)? => read_extxyz(p).map_err(pyerr)?,
         "xyz" => read_xyz(p).map_err(pyerr)?,
         "extxyz" => read_extxyz(p).map_err(pyerr)?,
         "pdb" => read_pdb(p).map_err(pyerr)?,

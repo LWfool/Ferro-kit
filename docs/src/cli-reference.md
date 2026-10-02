@@ -127,7 +127,7 @@ ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
 | Format | Recognised by | Read | Write | Frames written |
 |---|---|:-:|:-:|---|
 | XYZ | `.xyz` | y | y | all |
-| extended XYZ | `.extxyz` | y | y | all |
+| extended XYZ | `.extxyz`, or a `.xyz` whose comment line declares `Lattice=` / `Properties=` | y | y | all |
 | PDB | `.pdb` | y | y | all (MODEL records) |
 | CIF | `.cif` | y | y | all (several data blocks) |
 | LAMMPS dump | `.dump` `.lammpstrj` | y | y | all |
@@ -143,6 +143,10 @@ Things that trip people up:
   which writes a complete calculation setup rather than bare coordinates.
 - **"First frame only" is silent**: writing a 500-frame trajectory as a POSCAR gives frame 0, with no error.
 - Writing to the name `CONTCAR` produces content in **POSCAR format**.
+- **A `.xyz` can be extended XYZ.**  ASE, GPUMD's `train.xyz`, CP2K's EXTXYZ output and ferro's own
+  `dataset --type nep|extxyz` all write extended XYZ under `.xyz`, so a `.xyz` whose comment line (line 2)
+  declares `Lattice=` or `Properties=` is read with the extended XYZ reader; anything else stays plain XYZ.
+  Writing to `.xyz` still produces plain XYZ (no cell); write `.extxyz` to keep the cell.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
 

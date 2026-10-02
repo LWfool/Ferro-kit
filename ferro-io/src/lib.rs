@@ -14,7 +14,7 @@ pub use readers::{
     read_poscar, read_contcar,
     read_chgcar,
     read_cube_as_chg,
-    read_extxyz,
+    is_extxyz, read_extxyz,
     read_lammps_data, read_lammps_dump,
     read_cp2k_inp, read_cp2k_restart,
     read_qe_input,

@@ -15,6 +15,8 @@ pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Traject
     }
 
     match path.extension().and_then(|e| e.to_str()) {
+        // .xyz 也常装 extxyz（ASE、GPUMD、本仓 dataset --type nep），按第 2 行判
+        Some("xyz") if is_extxyz(path)?  => Ok(read_extxyz(path)?),
         Some("xyz")                      => Ok(read_xyz(path)?),
         Some("pdb")                      => Ok(read_pdb(path)?),
         Some("cif")                      => Ok(read_cif(path)?),
@@ -99,7 +101,7 @@ pub fn supported_formats() -> &'static str {
     "  Format        Detected by                    Read   Write  Frames on write
   ------------------------------------------------------------------
   XYZ           .xyz                           y      y      all
-  extended XYZ  .extxyz                        y      y      all
+  extended XYZ  .extxyz  .xyz*                 y      y      all
   PDB           .pdb                           y      y      all (MODEL records)
   CIF           .cif                           y      y      all (data blocks)
   LAMMPS dump   .dump  .lammpstrj              y      y      all
@@ -111,6 +113,9 @@ pub fn supported_formats() -> &'static str {
 
   Format is taken from the file NAME, never from a flag: an extension, or a
   POSCAR/CONTCAR prefix (case-insensitive) for VASP files that have none.
+  * The one look inside: a .xyz whose comment line (line 2) declares Lattice=
+  or Properties= is read as extended XYZ, as ASE and GPUMD write it. Writing
+  .xyz still gives plain XYZ; use .extxyz to keep the cell.
   Writing to a CONTCAR name emits POSCAR-format content.
 
   `-` under Write means read-only: a CP2K .inp can be converted FROM, not TO.
@@ -135,6 +140,44 @@ mod tests {
         frame.pbc = [true; 3];
         frame.atoms.push(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
         Trajectory { frames: vec![frame], metadata: Default::default() }
+    }
+
+    /// `.xyz` 里装的 extxyz 必须走 extxyz reader，否则胞、能量、力、速度全部静默丢掉。
+    #[test]
+    fn test_xyz_extension_holding_extxyz() {
+        let dir = std::env::temp_dir();
+        let read = |name: &str, text: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, text).unwrap();
+            read_trajectory(&p, LammpsUnits::Real).unwrap()
+        };
+
+        // ASE 写法：Lattice + Properties，带力、速度、能量
+        let t = read("dispatch_ase.xyz", "1\nLattice=\"5 0 0 0 5 0 0 0 5\" \
+            Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3 energy=-1.5 pbc=\"T T T\"\n\
+            Si 0 0 0 0.1 0.2 0.3 0.01 0.02 0.03\n");
+        let f = &t.frames[0];
+        assert!(f.cell.is_some(), "Lattice 应被读成晶胞");
+        assert!(f.forces.is_some() && f.velocities.is_some(), "力与速度不应丢");
+        assert_eq!(f.energy, Some(-1.5));
+
+        // GPUMD 的 train.xyz 常写小写键
+        let t = read("dispatch_gpumd.xyz", "1\nlattice=\"5 0 0 0 5 0 0 0 5\" \
+            properties=species:S:1:pos:R:3:force:R:3 energy=-2.0\nSi 0 0 0 0.1 0.2 0.3\n");
+        assert!(t.frames[0].cell.is_some() && t.frames[0].forces.is_some(), "小写键同样是 extxyz");
+
+        // ferro 自己 dataset --type nep 写出的 .xyz：自产自读必须无损
+        let p = dir.join("dispatch_self.xyz");
+        let mut src = one_atom_traj();
+        src.frames[0].forces = Some(vec![Vector3::new(0.1, -0.2, 0.3)]);
+        ferro_io::write_extxyz(&src, &p).unwrap();
+        let back = read_trajectory(&p, LammpsUnits::Real).unwrap();
+        assert!(back.frames[0].cell.is_some() && back.frames[0].forces.is_some(), "自产 extxyz 读回应无损");
+
+        // 纯 XYZ（含 CP2K 轨迹那种带 = 的注释）仍走 xyz reader
+        let t = read("dispatch_plain.xyz", "2\ni = 0, time = 0.000, E = -1.0\nO 0 0 0\nH 0 0 1\n");
+        assert_eq!(t.frames[0].n_atoms(), 2);
+        assert!(t.frames[0].cell.is_none());
     }
 
     /// `supported_formats()` 的 Write 列写着 `-` 的两个格式，dispatch 必须真的拒绝。
