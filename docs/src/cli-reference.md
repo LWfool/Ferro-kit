@@ -46,6 +46,7 @@ Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`conv
 | `--last-n N` | use only the last N frames (skipping the equilibration stage) |
 | `--ncore N` | number of parallel threads (all cores by default) |
 | `--metal-units` | LAMMPS metal units (velocity in Å/ps, force in eV/Å).  **Affects velocities and forces only** — coordinates and cells are in Å under either unit system, so gr/sq/msd/angle/rotcorr/vanhove/net are unaffected |
+| `--atom-style <STYLE>` | `atomic`, `charge` or `full`: the column layout of a LAMMPS data file's `Atoms` section.  **Required whenever an input is `.data` / `.lmp` / `.lammps`**, checked before the first file is read; see the format notes below |
 
 ### Batch processing
 
@@ -153,6 +154,13 @@ Things that trip people up:
   Writing to `.xyz` still produces plain XYZ (no cell); write `.extxyz` to keep the cell.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
+- **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot
+  be read off the file: the `Atoms # full` comment is optional, and the column count is ambiguous
+  (`charge` and `molecular` both have 6 columns).  Ferro guesses neither, and ignores the comment even
+  when it is present.  A line whose column count does not match the style (with or without the three
+  image flags) is an error, as is an atom count different from the header's `N atoms`.  Image flags
+  are applied, `x + ix·a + iy·b + iz·c`, as LAMMPS `read_data` and ASE do.  ferro's own data writer
+  uses `full`, so reading its output back takes `--atom-style full`.
 
 **LAMMPS dump with a triclinic cell**: the box lines carry LAMMPS's `*_bound` (the bounding box after
 tilting), not `xlo/xhi`.  Before 2026-09-21 ferro treated them as `xlo/xhi` on both read and write, which
@@ -223,6 +231,7 @@ names of different trajectories collide; that needs the input stem in the file n
 | `--mkdir` | off | create the parent directory of `-o` without asking |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
 | `--metal-units` | off | read and write LAMMPS dump in metal units (velocity in Å/ps, force in eV/Å) |
+| `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
 
 ---
 
@@ -272,6 +281,7 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 |---|---|---|
 | `-i <file>` | (required) | input file; omit it to print this page |
 | `--metal-units` | off | read LAMMPS dump in metal units (velocity in Å/ps, force in eV/Å) |
+| `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
 
 ---
 

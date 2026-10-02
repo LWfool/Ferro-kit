@@ -3,7 +3,29 @@ use anyhow::{bail, Result};
 use ferro_core::Trajectory;
 use ferro_io::{self, LammpsUnits, *};
 
-pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Trajectory> {
+use crate::args::common::ReadArgs;
+
+fn is_lammps_data(path: &Path) -> bool {
+    matches!(path.extension().and_then(|e| e.to_str()), Some("lammps") | Some("data") | Some("lmp"))
+}
+
+/// Fails when `path` is a LAMMPS data file and no `--atom-style` was given.
+///
+/// The `Atoms` layout is not recoverable from the file: the `# style` comment is
+/// optional and charge/molecular share a column count, so it is never guessed.
+/// Batch commands call this on every input before reading the first one.
+pub fn check_atom_style(path: &Path, style: Option<AtomStyle>) -> Result<Option<AtomStyle>> {
+    if style.is_none() && is_lammps_data(path) {
+        bail!(
+            "{} is a LAMMPS data file: give its atom style with --atom-style atomic|charge|full \
+             (Ferro never guesses it from the Atoms comment or the column count)",
+            path.display()
+        );
+    }
+    Ok(style)
+}
+
+pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
@@ -22,8 +44,11 @@ pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Traject
         Some("cif")                      => Ok(read_cif(path)?),
         Some("extxyz")                   => Ok(read_extxyz(path)?),
         Some("vasp") | Some("pos")       => read_poscar(path),
-        Some("lammps") | Some("data") | Some("lmp") => Ok(read_lammps_data(path)?),
-        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(path, lammps_units)?),
+        Some("lammps") | Some("data") | Some("lmp") => {
+            let style = check_atom_style(path, opts.atom_style)?.expect("check_atom_style 已拒绝 None");
+            Ok(read_lammps_data(path, style)?)
+        }
+        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(path, opts.units())?),
         Some("inp")                      => Ok(read_cp2k_inp(path)?),
         Some("restart")                  => Ok(read_cp2k_restart(path)?),
         Some("in") | Some("qe")          => Ok(read_qe_input(path)?),
@@ -38,10 +63,10 @@ pub fn read_trajectory(path: &Path, lammps_units: LammpsUnits) -> Result<Traject
 /// so the batch loop stays a one-liner in each of them.
 pub fn read_trajectory_tail(
     path: &Path,
-    lammps_units: LammpsUnits,
+    opts: &ReadArgs,
     last_n: Option<usize>,
 ) -> Result<Trajectory> {
-    let mut traj = read_trajectory(path, lammps_units)?;
+    let mut traj = read_trajectory(path, opts)?;
     if let Some(n) = last_n {
         traj = traj.tail(n);
     }
@@ -149,7 +174,7 @@ mod tests {
         let read = |name: &str, text: &str| {
             let p = dir.join(name);
             std::fs::write(&p, text).unwrap();
-            read_trajectory(&p, LammpsUnits::Real).unwrap()
+            read_trajectory(&p, &ReadArgs::default()).unwrap()
         };
 
         // ASE 写法：Lattice + Properties，带力、速度、能量
@@ -171,7 +196,7 @@ mod tests {
         let mut src = one_atom_traj();
         src.frames[0].forces = Some(vec![Vector3::new(0.1, -0.2, 0.3)]);
         ferro_io::write_extxyz(&src, &p).unwrap();
-        let back = read_trajectory(&p, LammpsUnits::Real).unwrap();
+        let back = read_trajectory(&p, &ReadArgs::default()).unwrap();
         assert!(back.frames[0].cell.is_some() && back.frames[0].forces.is_some(), "自产 extxyz 读回应无损");
 
         // 纯 XYZ（含 CP2K 轨迹那种带 = 的注释）仍走 xyz reader
@@ -239,7 +264,7 @@ mod tests {
         for name in ["ferro_vasp_test.vasp", "ferro_vasp_test.pos"] {
             let path = dir.join(name);
             write_trajectory(&traj, &path, LammpsUnits::Real).unwrap();
-            let back = read_trajectory(&path, LammpsUnits::Real).unwrap();
+            let back = read_trajectory(&path, &ReadArgs::default()).unwrap();
             assert_eq!(back.n_frames(), 1, "{name}");
             assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
             std::fs::remove_file(&path).ok();
@@ -256,6 +281,25 @@ mod tests {
         let traj = one_atom_traj();
         let path = std::env::temp_dir().join("ferro_dispatch_test.nosuchfmt");
         assert!(write_trajectory(&traj, &path, LammpsUnits::Real).is_err());
-        assert!(read_trajectory(&path, LammpsUnits::Real).is_err());
+        assert!(read_trajectory(&path, &ReadArgs::default()).is_err());
+    }
+
+    /// LAMMPS data 没给 --atom-style 就报错（三种扩展名都算），给了才读；
+    /// 别的格式不受影响
+    #[test]
+    fn test_lammps_data_needs_an_explicit_atom_style() {
+        let traj = one_atom_traj();
+        for name in ["ferro_style_test.data", "ferro_style_test.lmp", "ferro_style_test.lammps"] {
+            let path = std::env::temp_dir().join(name);
+            write_trajectory(&traj, &path, LammpsUnits::Real).unwrap();
+            let err = read_trajectory(&path, &ReadArgs::default()).unwrap_err().to_string();
+            assert!(err.contains("--atom-style"), "{name}：{err}");
+            let full = ReadArgs { atom_style: Some(AtomStyle::Full), ..ReadArgs::default() };
+            let back = read_trajectory(&path, &full).unwrap();
+            assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
+            std::fs::remove_file(&path).ok();
+        }
+        assert!(check_atom_style(Path::new("t.lammpstrj"), None).is_ok());
+        assert!(check_atom_style(Path::new("t.xyz"), None).is_ok());
     }
 }

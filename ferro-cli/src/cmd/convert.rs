@@ -1,8 +1,8 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
+use crate::args::common::ReadArgs;
 use crate::io_dispatch::{holds_multiple_frames, read_trajectory, write_trajectory};
 use ferro_core::Trajectory;
-use ferro_io::LammpsUnits;
 use std::path::{Path, PathBuf};
 
 #[derive(Args, Debug)]
@@ -35,9 +35,8 @@ pub struct ConvertCmd {
     #[arg(long, value_name = "N", conflicts_with = "stride")]
     pub number: Option<usize>,
 
-    /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
-    #[arg(long)]
-    pub metal_units: bool,
+    #[command(flatten)]
+    pub read: ReadArgs,
 }
 
 /// True when `ferro convert` was typed with no input: print the format matrix
@@ -86,8 +85,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("--number must be at least 1");
     }
 
-    let units = if args.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real };
-    let traj = read_trajectory(input, units)?;
+    let traj = read_trajectory(input, &args.read)?;
     let n_read = traj.n_frames();
 
     let indices = match args.number {
@@ -112,7 +110,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // 目标格式装得下多帧就写一个文件，装不下就一帧一个 —— 往 POSCAR 写 20 帧
     // 本来就只能是 20 个文件，不必再要用户记一个开关
     if holds_multiple_frames(output) || picked.n_frames() == 1 {
-        write_trajectory(&picked, output, units)?;
+        write_trajectory(&picked, output, args.read.units())?;
         println!(
             "Converted {} -> {}  ({} of {n_read} frame{} in 1 file)",
             input.display(),
@@ -125,7 +123,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         for (&frame_idx, frame) in indices.iter().zip(&picked.frames) {
             let path = indexed_path(output, frame_idx, width);
             let single = Trajectory::from_frame(frame.clone());
-            write_trajectory(&single, &path, units)
+            write_trajectory(&single, &path, args.read.units())
                 .with_context(|| format!("writing frame {frame_idx} to {}", path.display()))?;
         }
         println!(
@@ -191,7 +189,7 @@ mod tests {
             end: None,
             stride: None,
             number: None,
-            metal_units: false,
+            read: ReadArgs::default(),
             mkdir: false,
         }
     }

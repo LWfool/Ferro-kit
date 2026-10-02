@@ -135,7 +135,7 @@ fn bounding_box(frame: &ferro_core::Frame) -> (f64, f64, f64, f64, f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::readers::lammps_data::read_lammps_data;
+    use crate::readers::lammps_data::{read_lammps_data, AtomStyle};
     use ferro_core::{Atom, Cell, Frame, Trajectory};
     use nalgebra::Vector3;
 
@@ -153,7 +153,7 @@ mod tests {
         let p = &path;
         write_lammps_data(&bcc_traj(), p).unwrap();
 
-        let loaded = read_lammps_data(p).unwrap();
+        let loaded = read_lammps_data(p, AtomStyle::Full).unwrap();
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");

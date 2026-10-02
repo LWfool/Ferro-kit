@@ -68,7 +68,7 @@ Frame indices are 0-based; out-of-range raises `IndexError`.
 
 ## I/O
 
-### `read(path, metal_units=False) -> Trajectory`
+### `read(path, metal_units=False, atom_style=None) -> Trajectory`
 
 Format auto-detected from the file name / extension:
 
@@ -80,7 +80,7 @@ Format auto-detected from the file name / extension:
 | `.in` / `.qe` | Quantum ESPRESSO input |
 | `.inp` / `.restart` | CP2K input / restart |
 | `.lammpstrj` / `.dump` / `.lammps` | LAMMPS dump (`metal_units` switches real↔metal) |
-| `.data` / `.lmp` | LAMMPS data |
+| `.data` / `.lmp` | LAMMPS data; **`atom_style` (`"atomic"`, `"charge"` or `"full"`) is required**, never guessed from the `Atoms` comment or the column count |
 
 ### `write(traj, path, metal_units=False)`
 

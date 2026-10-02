@@ -45,7 +45,7 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 
 | Function | Description |
 |---|---|
-| `read(path, metal_units=False)` | Auto-detect format → `Trajectory` |
+| `read(path, metal_units=False, atom_style=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style` |
 | `write(traj, path, metal_units=False)` | Write by extension |
 | `supercell(traj, nx, ny, nz)` | Per-frame supercell |
 | `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along `x`/`y`/`z` |
