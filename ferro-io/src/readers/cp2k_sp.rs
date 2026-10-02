@@ -235,12 +235,8 @@ fn read_cell(lines: &[&str], lo: usize, hi: usize) -> Option<(Matrix3<f64>, [boo
             continue;
         }
         if f.get(1) == Some(&"Periodicity") {
-            let p = f.get(2).copied().unwrap_or("XYZ").to_ascii_uppercase();
-            pbc = if p == "NONE" {
-                [false; 3]
-            } else {
-                [p.contains('X'), p.contains('Y'), p.contains('Z')]
-            };
+            // 输出里的取值恒合法；认不出时按周期（CP2K 缺省 XYZ）
+            pbc = f.get(2).and_then(|p| super::cp2k::cp2k_periodic(p)).unwrap_or([true; 3]);
             continue;
         }
         if f.get(1) != Some(&"Vector") {

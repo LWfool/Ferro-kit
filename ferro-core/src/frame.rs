@@ -189,14 +189,24 @@ impl Frame {
         self.pbc.iter().any(|&p| p)
     }
 
-    /// 将所有原子位置折叠回盒子内（需要 cell 存在且对应方向周期性）。
+    /// 把周期方向上越出盒子的原子折回 `[0, 1)`；非周期方向、盒内原子都不动。
+    ///
+    /// 越界的原子平移整数个晶格矢量，不做「分数 → 笛卡尔」往返：往返会给每个原子
+    /// 带来 1e-15 级舍入，盒内原子的坐标末位也跟着变。判越界留 `WRAP_TOL` 的余量，
+    /// 坐标正好在 0 而算出分数 -1e-17 的原子不该被搬到盒子另一头。
+    /// 无 cell 或晶胞奇异时不动。
     pub fn wrap_all(&mut self) {
-        if let Some(cell) = &self.cell {
-            let cell = cell.clone();
-            for atom in &mut self.atoms {
-                if let Ok(wrapped) = cell.wrap_position(atom.position) {
-                    atom.position = wrapped;
-                }
+        const WRAP_TOL: f64 = 1e-10;
+        let Some(cell) = self.cell.as_ref() else { return };
+        let pbc = self.pbc;
+        for atom in &mut self.atoms {
+            let Ok(f) = cell.cartesian_to_fractional(atom.position) else { return };
+            let shift = Vector3::from_fn(|i, _| {
+                let out = f[i] < -WRAP_TOL || f[i] >= 1.0 + WRAP_TOL;
+                if pbc[i] && out { -f[i].floor() } else { 0.0 }
+            });
+            if shift != Vector3::zeros() {
+                atom.position += cell.fractional_to_cartesian(shift);
             }
         }
     }
@@ -269,5 +279,28 @@ mod tests {
         let pos = f.atom(0).position;
         assert!(pos.x >= 0.0 && pos.x < 10.0);
         assert!(pos.y >= 0.0 && pos.y < 10.0);
+    }
+
+    #[test]
+    fn test_wrap_all_respects_pbc_per_axis_and_leaves_inside_atoms_untouched() {
+        // 三斜，z 非周期（slab）
+        let cell = Cell::from_lengths_angles(9.0, 11.0, 8.0, 80.0, 105.0, 70.0).unwrap();
+        let mut f = Frame::with_cell(cell.clone(), [true, true, false]);
+        let inside = cell.fractional_to_cartesian(Vector3::new(0.3, 0.7, 0.2)) + Vector3::new(1e-13, 0.0, 0.0);
+        let at_zero = Vector3::new(0.0, 0.0, 0.0);
+        let out = cell.fractional_to_cartesian(Vector3::new(1.25, -0.4, 1.6));
+        for p in [inside, at_zero, out] { f.add_atom(Atom::new("Si", p)); }
+        f.wrap_all();
+        // 盒内原子逐位不动（不做分数往返）
+        assert_eq!(f.atom(0).position, inside);
+        assert_eq!(f.atom(1).position, at_zero);
+        // 越界原子：x、y 折回，z 非周期保持 1.6
+        let g = cell.cartesian_to_fractional(f.atom(2).position).unwrap();
+        for (k, w) in [0.25, 0.6, 1.6].iter().enumerate() {
+            assert!((g[k] - w).abs() < 1e-12, "第 {k} 轴分数坐标 {}，应为 {w}", g[k]);
+        }
+        // 位移恰为整数个晶格矢量
+        let d = cell.cartesian_to_fractional(f.atom(2).position - out).unwrap();
+        assert!((d - Vector3::new(-1.0, 1.0, 0.0)).norm() < 1e-12, "{d:?}");
     }
 }

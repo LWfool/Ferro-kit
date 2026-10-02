@@ -273,7 +273,15 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
     let mut steps: Vec<i64> = Vec::new();
     let mut scf: Vec<(usize, bool)> = Vec::new();
     let mut version: Option<String> = None;
+    // 头部 ` CELL| Periodicity  XYZ`（CELL_TOP / CELL_REF / POISSON 是别的段，不取）；缺省 XYZ
+    let mut pbc: Option<[bool; 3]> = None;
     for (i, l) in lines.iter().enumerate() {
+        if pbc.is_none() {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            if f.len() >= 3 && f[0] == "CELL|" && f[1] == "Periodicity" {
+                pbc = super::cp2k::cp2k_periodic(f[2]);
+            }
+        }
         if line_matches(l, tag::FRAME) {
             anchors.push(i);
             // 行末是步号本身；解析不出就不记，锚点本身仍然有效
@@ -481,7 +489,7 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
             .collect();
         let mut frame = Frame::with_cell(
             Cell::from_matrix(Matrix3::from_row_slice(&m)),
-            [true; 3],
+            pbc.unwrap_or([true; 3]),
         );
         frame.atoms = atoms;
         frame.energy = energy;
@@ -752,6 +760,19 @@ mod tests {
             let got = traj.frames[i].temperature.expect("temperature should be read");
             assert!((got - w).abs() < 1e-9, "frame {i}: got {got}, want {w}");
         }
+    }
+
+    #[test]
+    fn periodicity_comes_from_the_cell_header_line_only() {
+        let text = std::fs::read_to_string("../tests/cp2k_md_3frames.out").unwrap();
+        let (traj, _) = parse_cp2k_md(&text).unwrap();
+        assert!(traj.frames.iter().all(|f| f.pbc == [true; 3]));
+        // 只改 ` CELL| Periodicity`；CELL_TOP / CELL_REF 仍是 XYZ，不能被它们带偏
+        let xy: String = text.lines().map(|l| {
+            if l.trim_start().starts_with("CELL| Periodicity") { l.replace("XYZ", " XY") } else { l.to_string() }
+        }).collect::<Vec<_>>().join("\n");
+        let (traj, _) = parse_cp2k_md(&xy).unwrap();
+        assert!(traj.frames.iter().all(|f| f.pbc == [true, true, false]));
     }
 
     /// Runs against a real 40 MB restarted run; `examples/` is gitignored, so
