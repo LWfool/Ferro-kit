@@ -68,7 +68,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
     let cell_end = find_end(subsys, cell_start).context("&END CELL not found")?;
     let cell_section: &[&str] = &subsys[cell_start..=cell_end];
 
-    let cell = parse_cell_section(cell_section)?;
+    let (cell, pbc) = parse_cell_section(cell_section)?;
 
     // ── &COORD ────────────────────────────────────────────────────────────────
     let coord_start = subsys.iter().position(|l| l.to_lowercase().starts_with("&coord"))
@@ -92,7 +92,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         }
     }
 
-    let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+    let mut frame = Frame::with_cell(cell.clone(), pbc);
 
     for l in &coord_section[1..coord_section.len().saturating_sub(1)] {
         let l = l.trim();
@@ -124,7 +124,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
     Ok(Trajectory::from_frame(frame))
 }
 
-fn parse_cell_section(section: &[&str]) -> Result<Cell> {
+fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3])> {
     // Supports:
     //   A x y z / B x y z / C x y z  (explicit vectors)
     //   ABC a b c  (diagonal only, Angstrom)
@@ -132,6 +132,8 @@ fn parse_cell_section(section: &[&str]) -> Result<Cell> {
     let mut vecs: [Option<[f64; 3]>; 3] = [None; 3];
     let mut abc: Option<[f64; 3]> = None;
     let mut angles: [f64; 3] = [90.0; 3];
+    // PERIODIC：X Y Z XY XZ YZ XYZ NONE，缺省 XYZ（input_cp2k_subsys.F）
+    let mut pbc = [true; 3];
 
     // CP2K 的 &CELL 没有 UNIT 关键字：单位逐关键字写在数值前，`A [bohr] 10 0 0`，
     // 缺省 angstrom / deg（input_cp2k_subsys.F 的 unit_str）
@@ -164,6 +166,11 @@ fn parse_cell_section(section: &[&str]) -> Result<Cell> {
                 };
                 angles = parsed()?.map(|x| x * to_deg);
             }
+            "periodic" => {
+                let v = vals.first().copied().unwrap_or("");
+                pbc = cp2k_periodic(v).with_context(|| format!(
+                    "unknown &CELL PERIODIC {v:?} (expected X Y Z XY XZ YZ XYZ NONE)"))?;
+            }
             "unit" => bail!(
                 "&CELL has no UNIT keyword in CP2K; give the unit per keyword, e.g. A [bohr] 10 0 0"
             ),
@@ -171,22 +178,35 @@ fn parse_cell_section(section: &[&str]) -> Result<Cell> {
         }
     }
 
-    if let (Some(a), Some(b), Some(c)) = (vecs[0], vecs[1], vecs[2]) {
-        Ok(Cell::from_matrix(Matrix3::new(
+    let cell = if let (Some(a), Some(b), Some(c)) = (vecs[0], vecs[1], vecs[2]) {
+        Cell::from_matrix(Matrix3::new(
             a[0], a[1], a[2],
             b[0], b[1], b[2],
             c[0], c[1], c[2],
-        )))
+        ))
     } else if let Some([a, b, c]) = abc {
         Cell::from_lengths_angles(a, b, c, angles[0], angles[1], angles[2])
-            .map_err(|e| anyhow::anyhow!("{e}"))
+            .map_err(|e| anyhow::anyhow!("{e}"))?
     } else {
         bail!("cannot parse &CELL: need A/B/C vectors or ABC lengths")
-    }
+    };
+    Ok((cell, pbc))
 }
 
 /// 长度单位 → Å 的倍数。CP2K 认任意单位，这里只认 angstrom 与 bohr，其余报错 ——
 /// 此前非 bohr 一律当 Å，`UNIT nm` 会静默差 10 倍
+/// CP2K 的周期性取值（`&CELL PERIODIC`、输出头部的 `CELL| Periodicity`）→ 每轴 pbc。
+/// 取值表 X Y Z XY XZ YZ XYZ NONE（input_cp2k_subsys.F），大小写不敏感；认不出给 `None`。
+/// cp2k.rs、cp2k_sp.rs、cp2k_md.rs 三处共用。
+pub(crate) fn cp2k_periodic(v: &str) -> Option<[bool; 3]> {
+    let v = v.to_uppercase();
+    match v.as_str() {
+        "NONE" => Some([false; 3]),
+        "X" | "Y" | "Z" | "XY" | "XZ" | "YZ" | "XYZ" => Some([v.contains('X'), v.contains('Y'), v.contains('Z')]),
+        _ => None,
+    }
+}
+
 fn length_unit(u: &str) -> Result<f64> {
     match u.to_lowercase().as_str() {
         "angstrom" => Ok(1.0),
@@ -363,5 +383,16 @@ mod tests {
         let text = si(FCC, "", "1.0 1 2 3");
         let f = parse_cp2k(&text).unwrap();
         assert!(f.first().unwrap().velocities.is_none());
+    }
+
+    #[test]
+    fn test_periodic_keyword_sets_pbc() {
+        let pbc = |kw: &str| parse_cp2k(&si(&format!("{FCC}\n{kw}"), "", "1.0")).unwrap().frames[0].pbc;
+        assert_eq!(pbc(""), [true; 3], "缺省 XYZ");
+        assert_eq!(pbc("PERIODIC XYZ"), [true; 3]);
+        assert_eq!(pbc("PERIODIC xy"), [true, true, false]);
+        assert_eq!(pbc("PERIODIC Z"), [false, false, true]);
+        assert_eq!(pbc("PERIODIC NONE"), [false; 3]);
+        assert!(parse_cp2k(&si(&format!("{FCC}\nPERIODIC XYZW"), "", "1.0")).is_err());
     }
 }

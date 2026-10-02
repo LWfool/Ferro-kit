@@ -108,6 +108,15 @@ fn parse_frame(
     // BOX BOUNDS
     let bb = seek(na + 2, "BOX BOUNDS")?;
     let is_triclinic = lines[bb].contains("xy");
+    // 边界标志 `pp pp ff`：首字母 p 为周期，f/s/m 为非周期。旧版 LAMMPS 不写标志，
+    // 按周期处理（与此前的行为一致）
+    let flags: Vec<&str> = lines[bb].split_whitespace()
+        .filter(|t| t.len() == 2 && t.chars().all(|c| "pfsm".contains(c)))
+        .collect();
+    let pbc = match flags.as_slice() {
+        [x, y, z] => [x.starts_with('p'), y.starts_with('p'), z.starts_with('p')],
+        _ => [true; 3],
+    };
 
     let mut lo = [0.0_f64; 3];
     let mut hi = [0.0_f64; 3];
@@ -264,7 +273,7 @@ fn parse_frame(
     // Sort by atom id
     atoms_raw.sort_by_key(|(id, _, _, _)| *id);
 
-    let mut frame = Frame::with_cell(cell, [true; 3]);
+    let mut frame = Frame::with_cell(cell, pbc);
     let mut all_vels = Vec::new();
     let mut all_forces = Vec::new();
     let mut has_vel = false;
@@ -574,5 +583,19 @@ ITEM: ATOMS id type element x y z
         let bad = DUMP_ORTHO.replace("1 1 Fe 0.01  0.0   0.0", "1 1 Fe 0.01  0.0   0.0e");
         let msg = format!("{:#}", parse_lammps_dump(&bad, LammpsUnits::Real).unwrap_err());
         assert!(msg.contains("frame 1") && msg.contains("z = '0.0e'"), "{msg}");
+    }
+
+    #[test]
+    fn test_boundary_flags_set_pbc() {
+        let with = |flags: &str| {
+            let text = DUMP_ORTHO.replace("ITEM: BOX BOUNDS pp pp pp", &format!("ITEM: BOX BOUNDS {flags}"));
+            parse_lammps_dump(&text, LammpsUnits::Real).unwrap().frames[0].pbc
+        };
+        assert_eq!(with("pp pp pp"), [true; 3]);
+        assert_eq!(with("pp pp ff"), [true, true, false]);
+        assert_eq!(with("pp ss fm"), [true, false, false]);
+        assert_eq!(with("xy xz yz pp fs pp"), [true, false, true]);
+        // 旧版 LAMMPS 不写标志：按周期
+        assert_eq!(with(""), [true; 3]);
     }
 }
