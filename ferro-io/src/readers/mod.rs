@@ -25,7 +25,7 @@ pub use pdb::read_pdb;
 pub use cif::read_cif;
 pub use vasp::{read_poscar, read_contcar};
 pub use chgcar::read_chgcar;
-pub use extxyz::read_extxyz;
+pub use extxyz::{is_extxyz, read_extxyz};
 pub use lammps_data::read_lammps_data;
 pub use lammps_dump::{read_lammps_dump, LammpsUnits};
 pub use cp2k::{read_cp2k_inp, read_cp2k_restart};

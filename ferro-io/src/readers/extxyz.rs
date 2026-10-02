@@ -11,6 +11,26 @@ pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
     parse_extxyz(&content).with_context(|| format!("parsing {path_}"))
 }
 
+/// Whether a `.xyz` file is really extended XYZ: its first comment line (line 2)
+/// declares `Lattice=` or `Properties=` (keys are case-insensitive, as in the reader).
+///
+/// ASE, GPUMD (`train.xyz`), CP2K's EXTXYZ output and ferro's own `dataset --type
+/// nep|extxyz` all write extended XYZ under the `.xyz` extension. Routing those through
+/// the plain reader silently drops the cell, energy, forces, stress and velocities.
+pub fn is_extxyz(path: &Path) -> Result<bool> {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("cannot open {}", path.display()))?;
+    // 只读前两行，不为判格式把整条轨迹读进来
+    let Some(comment) = BufReader::new(file).lines().nth(1).transpose()? else {
+        return Ok(false);
+    };
+    Ok(comment.split_whitespace().any(|tok| {
+        let tok = tok.to_lowercase();
+        tok.starts_with("lattice=") || tok.starts_with("properties=")
+    }))
+}
+
 fn parse_extxyz(content: &str) -> Result<Trajectory> {
     let mut lines = content.lines().peekable();
     let mut traj = Trajectory::new();
