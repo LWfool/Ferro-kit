@@ -15,6 +15,7 @@
 //! - 对每个原子计算 bounding-box，只遍历可能在 radius 内的 voxel
 
 use crate::check;
+use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
@@ -111,11 +112,12 @@ fn window(c: i64, s: i64, n: usize) -> Vec<usize> {
 fn process_frame(
     frame: &Frame,
     params: &CubeRadiusParams,
-    search: (i64, i64, i64),
 ) -> Option<Array3<f64>> {
     let cell = frame.cell.as_ref()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
-    let (sx, sy, sz) = search;
+    // 搜索窗按**本帧**的晶胞算：NPT 下晶胞缩小时，按第一帧算的窗口偏小，
+    // 以前只靠 +1 格的余量兜底
+    let (sx, sy, sz) = search_range(&cell.matrix, params.radius, nx, ny, nz);
     let radius2 = params.radius * params.radius;
     // cart_disp = mat_t * frac_disp（与 C 代码 x = dx*A[0][0] + … 等价）
     let mat_t = cell.matrix.transpose();
@@ -171,28 +173,28 @@ fn process_frame(
 /// Each voxel accumulates the total count of (frame, atom) pairs where
 /// the atom lies within `params.radius` Å of the voxel centre.
 ///
-/// Returns `None` if no frame with a periodic cell is found.
+/// Returns `Err` if a parameter is out of range, no frame has a periodic cell, or
+/// `radius` exceeds the minimum-image bound (half the smallest interplanar spacing) of
+/// any frame — beyond it a voxel sees the same atom through several images, and only
+/// the nearest would be counted.
 pub fn calc_cube_radius(
     traj: &Trajectory,
     params: &CubeRadiusParams,
-) -> Option<CubeRadiusResult> {
-    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
-    params.validate().ok()?;
+) -> ferro_core::Result<CubeRadiusResult> {
+    params.validate()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
-    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
+    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
+        .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
-
-    let search = search_range(&ref_cell.matrix, params.radius, nx, ny, nz);
+    check::within_minimum_image(traj, "radius", params.radius)?;
 
     // 帧级并行
     let results: Vec<Array3<f64>> = traj
         .frames
         .par_iter()
-        .filter_map(|f| process_frame(f, params, search))
+        .filter_map(|f| process_frame(f, params))
         .collect();
-
-    if results.is_empty() { return None; }
 
     let n_frames = results.len();
 
@@ -228,7 +230,7 @@ pub fn calc_cube_radius(
         spacing,
     };
 
-    Some(CubeRadiusResult { cube, n_frames, n_atoms, params: params.clone() })
+    Ok(CubeRadiusResult { cube, n_frames, n_atoms, params: params.clone() })
 }
 
 // ─── 测试 ────────────────────────────────────────────────────────────────────
@@ -257,7 +259,7 @@ mod tests {
         let mut traj = Trajectory::new();
         traj.frames.push(frame);
         let params = CubeRadiusParams { nx: 10, ny: 10, nz: 10, ..Default::default() };
-        assert!(calc_cube_radius(&traj, &params).is_none());
+        assert!(calc_cube_radius(&traj, &params).is_err());
     }
 
     #[test]
@@ -393,15 +395,13 @@ mod tests {
             }
             traj
         };
-        // (轨迹, 网格, radius)：4³ 与 40³ 配 4.9 是登记的复现；radius 超半个胞长；
-        // 窗口小于网格的普通情形也要一致；非立方网格各轴分别超或不超
+        // (轨迹, 网格, radius)：4³ 与 40³ 配 4.9 是登记的复现；窗口小于网格的普通情形
+        // 也要一致；非立方网格各轴分别超或不超
         for (name, traj, n, r) in [
             ("4³ r4.9", &cubic, [4, 4, 4], 4.9),
             ("40³ r4.9", &cubic, [40, 40, 40], 4.9),
-            ("12³ r7", &cubic, [12, 12, 12], 7.0),
             ("20³ r1.2", &cubic, [20, 20, 20], 1.2),
             ("tri 6×30×5 r3", &tri, [6, 30, 5], 3.0),
-            ("tri 16³ r6", &tri, [16, 16, 16], 6.0),
         ] {
             let params = CubeRadiusParams { nx: n[0], ny: n[1], nz: n[2], radius: r, ..Default::default() };
             let got = calc_cube_radius(traj, &params).unwrap().cube.data;
@@ -410,6 +410,35 @@ mod tests {
             assert_eq!(bad, 0, "{name}：{bad} 个 voxel 与全遍历不同（max {} vs {}）",
                 got.iter().cloned().fold(0.0, f64::max), want.iter().cloned().fold(0.0, f64::max));
         }
+    }
+
+    #[test]
+    fn test_radius_beyond_minimum_image_is_an_error() {
+        // 半径超过半个面间距：一个 voxel 经几个镜像都在半径内，只计最近的那个就少算了。
+        // 以前这两种情形照算（旧测试还把它们当作与全遍历一致的用例）
+        let cubic = make_traj(vec![(1.3, 7.9, 4.4)], vec!["Li"]);
+        let params = CubeRadiusParams { nx: 12, ny: 12, nz: 12, radius: 7.0, ..Default::default() };
+        let msg = format!("{}", calc_cube_radius(&cubic, &params).err().expect("应报错"));
+        assert!(msg.contains("minimum-image bound 5.000"), "应点名上界，实际：{msg}");
+        let params = CubeRadiusParams { radius: 5.0, ..params };
+        assert!(calc_cube_radius(&cubic, &params).is_ok(), "恰好等于上界可以");
+    }
+
+    #[test]
+    fn test_search_window_follows_each_frames_cell() {
+        // NPT：第二帧晶胞缩到一半，窗口若仍按第一帧算会漏 voxel；与全遍历逐 voxel 对
+        let big = Cell::from_lengths_angles(12.0, 12.0, 12.0, 90.0, 90.0, 90.0).unwrap();
+        let small = Cell::from_lengths_angles(6.0, 6.0, 6.0, 90.0, 90.0, 90.0).unwrap();
+        let mut traj = Trajectory::new();
+        for cell in [big, small] {
+            let mut f = Frame::with_cell(cell, [true; 3]);
+            f.add_atom(Atom::new("Li", Vector3::new(1.1, 2.2, 0.4)));
+            traj.frames.push(f);
+        }
+        let n = [30, 30, 30];
+        let params = CubeRadiusParams { nx: 30, ny: 30, nz: 30, radius: 2.9, ..Default::default() };
+        let got = calc_cube_radius(&traj, &params).unwrap().cube.data;
+        assert_eq!(got, brute_force(&traj, n, 2.9));
     }
 
     #[test]

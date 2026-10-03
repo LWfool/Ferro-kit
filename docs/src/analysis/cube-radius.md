@@ -4,6 +4,12 @@
 
 The hard-sphere occupancy map treats each atom as a sphere of radius $r$.  For each (frame, atom) pair, every voxel whose centre lies within $r$ of the atom is incremented by 1.  The resulting 3-D grid represents the cumulative time-averaged occupancy: high values indicate regions of space that are frequently occupied by the selected atom type.
 
+Distances use the minimum-image convention, so **$r$ may not exceed half the smallest interplanar
+spacing of any frame**; beyond that a voxel would see the same atom through several periodic images
+and only the nearest would be counted, so the run is refused with the offending frame named.  The
+voxel search window is sized from each frame's own cell, so an NPT trajectory whose box shrinks is
+covered completely.
+
 Unlike the density mode (which bins atoms by position), this method smears each atom over a finite volume, producing smoother maps suitable for visualising preferred coordination sites or channel geometry in disordered materials.
 
 ### Voxel Inclusion Criterion

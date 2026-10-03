@@ -41,7 +41,7 @@ M1 期间另见、未修（待定口径）：
 - **dump 的 `typelabel` 与 `ix iy iz` 未接**（M2 时按 LAMMPS 手册逐列过了一遍）：`typelabel`
   要先定它与 `element` 谁优先；`ix iy iz` 对 msd 无影响（msd 自己按最小像展开）。其余列
   （`mol`、`mu*`、`c_*`/`f_*`/`v_*` 等）Ferro 数据模型无对应字段，忽略是对的
-- **cube_*、`calc_chg_sdf`、`calc_cluster_sdf` 仍返回 `Option`**（M3 未动；`calc_network` 已随 L2 改 `Result`）：
+- **cube_*（除 `calc_cube_radius`，已随审查低 6 改 `Result`）、`calc_chg_sdf`、`calc_cluster_sdf` 仍返回 `Option`**（M3 未动；`calc_network` 已随 L2 改 `Result`）：
   参数已在读文件前查过，剩下的 `None` 都是轨迹层面的（缺 cell、缺速度、没有团簇），
   但 CLI 只能猜原因（`missing cell, velocities, or forces?`）。改 `Result` 是同一个做法
 - **`Atoms` 段写在 `Masses` 之前**时 Masses 不会被读，元素退化为 `X<type>`
