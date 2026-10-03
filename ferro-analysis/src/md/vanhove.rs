@@ -1,14 +1,15 @@
 //! Van Hove self-correlation function Gs(r, τ) calculation and output.
 //!
-//! Gs(r, τ) gives the probability distribution of atomic displacement distances over time interval τ
-//! (discrete PMF, sum = 1).
+//! Gs(r, τ) gives the probability distribution of atomic displacement distances over time interval τ.
+//! The output is the radial probability density P(r) = 4πr²·Gs(r, τ) [Å⁻¹], so that
+//! ∫P dr = 1 − (fraction of displacements outside [r_min, r_max)).
 //!
-//! Workflow: `calc_vanhove` → `write_vanhove`.
+//! Workflow: `calc_vanhove` → `VanHoveResult::to_tables`.
 //! Algorithm follows code1/vanhove.c (`EstimateVanHove`):
 //!   1. Fractional coordinate conversion + lattice-view unwrapping (`unwrap_frac`).
 //!   2. Convert back to absolute Cartesian coordinates.
 //!   3. For each time origin p, compute |r(p+τ) − r(p)| and accumulate into a histogram.
-//!   4. Normalise: gs[i] /= n_origins × n_atoms.
+//!   4. Normalise: p_r[i] = count[i] / (n_origins × n_atoms × dr).
 //!
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
@@ -66,15 +67,19 @@ impl Default for VanHoveParams {
 
 /// Result of a van Hove self-correlation calculation.
 ///
-/// `gs` is a discrete probability distribution of atomic displacements:
-/// `gs[i]` is the fraction of (atom, origin) pairs whose displacement fell
-/// in bin `i`.  The sum of all `gs` values equals 1.0.
+/// `p_r` is the radial probability density of atomic displacements,
+/// P(r) = 4πr²·Gs(r, τ) in Å⁻¹: `p_r[i] · dr` is the fraction of (atom, origin)
+/// pairs whose displacement fell in bin `i`.  It is independent of `dr`, so it can be
+/// compared against the Gaussian reference directly, and Σ p_r·dr = 1 − `outside_fraction`.
 #[derive(Debug, Clone)]
 pub struct VanHoveResult {
     /// Bin-centre displacement values \[Å\]
     pub r: Vec<f64>,
-    /// Gs(r, τ): normalized displacement histogram (sum = 1)
-    pub gs: Vec<f64>,
+    /// P(r) = 4πr²·Gs(r, τ) \[Å⁻¹\]
+    pub p_r: Vec<f64>,
+    /// Fraction of (atom, origin) displacements outside \[r_min, r_max): missing from `p_r`.
+    /// A long τ in a liquid pushes the tail past `r_max`; this says how much was cut.
+    pub outside_fraction: f64,
     /// Actual τ used \[frames\]
     pub tau_frames: usize,
     /// Actual τ in physical time \[fs\]
@@ -134,7 +139,8 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 /// 3. Convert back to absolute Cartesian positions.
 /// 4. For each time origin p (spaced by `shift`), compute the scalar displacement
 ///    `|r(p+τ) − r(p)|` for every selected atom and accumulate into a histogram.
-/// 5. Normalise: `gs[i] = count[i] / (n_origins × n_atoms)`.
+/// 5. Normalise: `p_r[i] = count[i] / (n_origins × n_atoms × dr)`; displacements outside
+///    `[r_min, r_max)` stay in the denominator and are reported as `outside_fraction`.
 ///
 /// Returns `Err`, each with its own message, if:
 /// - a parameter is out of range ([`VanHoveParams::validate`])
@@ -251,15 +257,20 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
             |mut a, b| { for i in 0..n_bins { a[i] += b[i]; } a },
         );
 
-    // 归一化：bin 计数 / (n_origins × n_atoms)
-    let norm = 1.0 / (n_origins as f64 * n_atoms as f64);
+    // 归一化成概率密度：计数 / (样本数 × dr)。分母含落在范围外的样本 —— 它们是分布的
+    // 一部分，只是没画出来；除以落在范围内的样本数会把被截的尾巴摊进可见部分。
+    // 以前不除 dr，输出是每个 bin 的概率质量，数值随 dr 变，没法和 4πr²Gs 的高斯参考式比
+    let n_samples = n_origins as f64 * n_atoms as f64;
+    let norm = 1.0 / (n_samples * params.dr);
     let r: Vec<f64> = (0..n_bins)
         .map(|i| params.r_min + (i as f64 + 0.5) * params.dr)
         .collect();
-    let gs: Vec<f64> = hist.iter().map(|&c| c as f64 * norm).collect();
+    let p_r: Vec<f64> = hist.iter().map(|&c| c as f64 * norm).collect();
+    let inside: u64 = hist.iter().sum();
+    let outside_fraction = 1.0 - inside as f64 / n_samples;
 
     Ok(VanHoveResult {
-        r, gs,
+        r, p_r, outside_fraction,
         tau_frames: tau,
         time: tau as f64 * params.dt,
         n_atoms, n_origins,
@@ -270,19 +281,16 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
-/// Write van Hove self-correlation function to a tab-separated text file (`.vanhove`).
-///
-/// Two columns: `r[Å]` and `Gs(r,tau)`.  Values are normalised so that
 impl VanHoveResult {
     /// Projects the result into the table the writers consume.
     ///
-    /// Van Hove self-correlation at one tau: `r, gs`. The tau itself is metadata for now.
+    /// Van Hove self-correlation at one tau: `r, p_r` (P(r) = 4πr²Gs, Å⁻¹). The tau itself is metadata for now.
     /// The `file` column is added by the caller when stacking several inputs
     /// (see `ferro_core::Table::concat_union`).
     pub fn to_tables(&self) -> Vec<(String, Table)> {
         let mut t = Table::new();
         t.push_num("r", self.r.clone())
-            .push_num("gs", self.gs.clone());
+            .push_num("p_r", self.p_r.clone());
         vec![("vanhove".to_string(), t)]
     }
 
@@ -338,15 +346,13 @@ mod tests {
         let params = VanHoveParams { tau: Some(3), shift: 1, dr: 0.01, ..Default::default() };
         let res = calc_vanhove(&traj, &params).unwrap();
 
-        // bin 0 应包含所有计数（归一化后 = 1.0）
-        assert!((res.gs[0] - 1.0).abs() < 1e-10,
-            "static: gs[0] should be 1.0, got {}", res.gs[0]);
+        // bin 0 应包含所有计数：密度 = 1/dr
+        assert!((res.p_r[0] * 0.01 - 1.0).abs() < 1e-10,
+            "static: p_r[0]·dr should be 1.0, got {}", res.p_r[0] * 0.01);
         // 其余 bin 应为 0
-        let rest: f64 = res.gs[1..].iter().sum();
+        let rest: f64 = res.p_r[1..].iter().sum();
         assert!(rest.abs() < 1e-10, "static: non-zero bins beyond 0: {}", rest);
-        // 归一化检查：sum(gs) == 1
-        let total: f64 = res.gs.iter().sum();
-        assert!((total - 1.0).abs() < 1e-10, "normalization: sum={}", total);
+        assert_eq!(res.outside_fraction, 0.0);
     }
 
     #[test]
@@ -366,12 +372,12 @@ mod tests {
         let res = calc_vanhove(&traj, &params).unwrap();
 
         // 归一化检查
-        let sum: f64 = res.gs.iter().sum();
+        let sum: f64 = res.p_r.iter().sum::<f64>() * dr;
         assert!((sum - 1.0).abs() < 1e-10, "normalization: sum = {}", sum);
 
         // 所有概率质量应集中在 r = 3.0 Å 附近（单一 bin）
         let expected_r = tau as f64 * v;
-        let mean_r: f64 = res.r.iter().zip(res.gs.iter()).map(|(&r, &g)| r * g).sum();
+        let mean_r: f64 = res.r.iter().zip(res.p_r.iter()).map(|(&r, &p)| r * p * dr).sum();
         assert!((mean_r - expected_r).abs() < dr,
             "mean displacement {:.4} ≈ expected {:.1}", mean_r, expected_r);
     }
@@ -406,9 +412,9 @@ mod tests {
         // 期望位移 = tau * v = 1.2 Å
         // 用加权均值验证（避免浮点 bin 边界问题）
         let expected_r = tau as f64 * v;
-        let sum: f64 = res.gs.iter().sum();
+        let sum: f64 = res.p_r.iter().sum::<f64>() * dr;
         assert!((sum - 1.0).abs() < 1e-10, "normalization: sum = {}", sum);
-        let mean_r: f64 = res.r.iter().zip(res.gs.iter()).map(|(&r, &g)| r * g).sum();
+        let mean_r: f64 = res.r.iter().zip(res.p_r.iter()).map(|(&r, &p)| r * p * dr).sum();
         assert!((mean_r - expected_r).abs() < dr,
             "unwrap mean displacement {:.4} ≈ {:.4}", mean_r, expected_r);
     }
@@ -442,19 +448,38 @@ mod tests {
 
         // Li 位移 = tau * v = 1.0 Å；用加权均值验证
         let expected_r = tau as f64 * v;
-        let mean_r: f64 = res.r.iter().zip(res.gs.iter()).map(|(&r, &g)| r * g).sum();
+        let mean_r: f64 = res.r.iter().zip(res.p_r.iter()).map(|(&r, &p)| r * p * dr).sum();
         assert!((mean_r - expected_r).abs() < dr,
             "Li mean displacement {:.4} ≈ {:.4}", mean_r, expected_r);
     }
 
     #[test]
-    fn test_vanhove_normalization() {
-        // 任意轨迹的 gs 之和应等于 1（PMF 归一化）
-        let traj = make_static_traj(8);
-        let params = VanHoveParams { tau: Some(2), ..Default::default() };
-        let res = calc_vanhove(&traj, &params).unwrap();
-        let total: f64 = res.gs.iter().sum();
-        assert!((total - 1.0).abs() < 1e-10, "PMF sum = {}", total);
+    fn test_vanhove_density_is_dr_independent_and_reports_cut_tail() {
+        // 两个原子：一个不动，一个每帧走 1.5 Å；tau=2 → 位移 0 与 3 Å 各占一半
+        let cell = Cell::from_lengths_angles(50.0, 50.0, 50.0, 90.0, 90.0, 90.0).unwrap();
+        let mut traj = Trajectory::new();
+        for i in 0..6 {
+            let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+            frame.add_atom(Atom::new("Li", Vector3::new(1.0, 1.0, 1.0)));
+            frame.add_atom(Atom::new("Li", Vector3::new(1.0 + 1.5 * i as f64, 5.0, 5.0)));
+            traj.add_frame(frame);
+        }
+        let run = |r_max: f64, dr: f64| calc_vanhove(&traj, &VanHoveParams {
+            tau: Some(2), r_max, dr, ..Default::default()
+        }).unwrap();
+
+        // 范围盖住全部位移：积分 = 1，无溢出；换 dr 后 r=0 处的密度按 1/dr 变，积分不变
+        for dr in [0.5, 0.25] {
+            let res = run(10.0, dr);
+            let integral: f64 = res.p_r.iter().sum::<f64>() * dr;
+            assert!((integral - 1.0).abs() < 1e-10, "dr={dr}: ∫P dr 应为 1，实际 {integral}");
+            assert_eq!(res.outside_fraction, 0.0);
+        }
+        // r_max=2 截掉 3 Å 那一半：积分 0.5，溢出比例 0.5（以前静默报 Σ=0.5 冒充归一）
+        let res = run(2.0, 0.5);
+        let integral: f64 = res.p_r.iter().sum::<f64>() * 0.5;
+        assert!((integral - 0.5).abs() < 1e-10, "截尾后 ∫P dr 应为 0.5，实际 {integral}");
+        assert!((res.outside_fraction - 0.5).abs() < 1e-10, "溢出比例应为 0.5，实际 {}", res.outside_fraction);
     }
 
     #[test]
@@ -482,7 +507,7 @@ mod tests {
         let res = calc_vanhove(&traj, &VanHoveParams::default()).unwrap();
         let (name, t) = res.to_tables().remove(0);
         assert_eq!(name, "vanhove");
-        assert_eq!(t.names(), vec!["r", "gs"]);
+        assert_eq!(t.names(), vec!["r", "p_r"]);
         assert_eq!(t.n_rows(), res.r.len());
         assert!(t.validate().is_ok());
         // tau 目前是元信息而非列（见 dev/plan.md 搁置项）

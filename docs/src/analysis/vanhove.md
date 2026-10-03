@@ -8,13 +8,19 @@ The van Hove self-correlation function $G_s(r, \tau)$ is the probability distrib
 
 $$G_s(r, \tau) = \frac{1}{N} \sum_j \langle \delta\!\left(r - |\mathbf{r}_j(t_0 + \tau) - \mathbf{r}_j(t_0)|\right) \rangle_{t_0}$$
 
-In practice this is discretised as a histogram $P(r_i, \tau)$ normalised so that $\sum_i P(r_i, \tau) = 1$ (discrete probability mass function).
+ferro writes the **radial probability density** $P(r, \tau) = 4\pi r^2 G_s(r, \tau)$, in Å⁻¹: the histogram count of bin $i$ divided by $N_\text{origins} N_\text{atoms} \Delta r$.  It does not depend on the bin width, and
+
+$$\int_{r_\min}^{r_\max} P(r, \tau)\,dr = 1 - f_\text{out},$$
+
+where $f_\text{out}$ is the fraction of displacements outside $[r_\min, r_\max)$.  Those displacements stay in the denominator — they are part of the distribution, just not drawn — so a cut tail shows up as a missing integral rather than being spread over the visible range.  $f_\text{out}$ is listed per input as `outside_fraction` in `[inputs]`, with a warning above 1 %: at long $\tau$ in a liquid, raise `--r-max`.
 
 ### Gaussian Reference
 
 For a purely diffusive Gaussian process:
 
-$$G_s^\text{Gaussian}(r, \tau) = \left(\frac{1}{4\pi D\tau}\right)^{3/2} \exp\!\left(-\frac{r^2}{4D\tau}\right) \cdot 4\pi r^2$$
+$$P^\text{Gaussian}(r, \tau) = 4\pi r^2 \left(\frac{1}{4\pi D\tau}\right)^{3/2} \exp\!\left(-\frac{r^2}{4D\tau}\right)$$
+
+which is directly comparable with the `p_r` column (same units, Å⁻¹).
 
 Deviations from this Gaussian form — e.g. a secondary peak at large $r$ — indicate heterogeneous dynamics or discrete jump events.
 
@@ -24,7 +30,7 @@ The non-Gaussian parameter $\alpha_2(\tau)$ quantifies the deviation from Gaussi
 
 $$\alpha_2(\tau) = \frac{3\langle r^4(\tau)\rangle}{5\langle r^2(\tau)\rangle^2} - 1$$
 
-$\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 > 0$ indicates fat tails (fast-moving particles).
+$\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 > 0$ indicates fat tails (fast-moving particles).  ferro does not compute $\alpha_2$; with $f_\text{out} \approx 0$ it can be estimated from the output as $\langle r^n \rangle \approx \sum_i r_i^n P(r_i)\,\Delta r$.
 
 ### Algorithm
 
@@ -36,7 +42,7 @@ Follows code1/vanhove.c (`EstimateVanHove`):
 4. For each time origin $p$ and each selected atom $j$:
    $$r = |\mathbf{r}_j(p + \tau) - \mathbf{r}_j(p)|$$
    Accumulate into histogram bin $\lfloor r / \Delta r \rfloor$.
-5. Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms})$.
+5. Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms} \cdot \Delta r)$.
 
 ## Parameters
 
@@ -54,7 +60,7 @@ pub struct VanHoveParams {
 
 ## Output
 
-`vanhove_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vanhove_all…` without `--elements`): `file, r, gs` (normalised so that $\sum g_s = 1$).
+`vanhove_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vanhove_all…` without `--elements`): `file, r, p_r` — $P(r) = 4\pi r^2 G_s$ in Å⁻¹, $\int P\,dr = 1 - f_\text{out}$.
 
 The lag time $\tau$ is recorded only in the `#` header block (once in frames, once in fs).  One $\tau$ per run;
 when several $\tau$ are supported later a `tau` column will be added — that adds rows rather than changing the column structure.
@@ -70,7 +76,7 @@ ferro traj vanhove -i traj.dump --tau 500 --dt 2.0 -o run1
 ```
 
 ```rust
-use ferro_analysis::md::{VanHoveParams, calc_vanhove, write_vanhove};
+use ferro_analysis::md::{VanHoveParams, calc_vanhove};
 
 let params = VanHoveParams {
     tau: Some(500), shift: 1, dt: 2.0,
@@ -78,7 +84,8 @@ let params = VanHoveParams {
     elements: Some(vec!["Li".into()]),
 };
 let result = calc_vanhove(&traj, &params).unwrap();
-write_vanhove(&result, "output.vanhove").unwrap();
+println!("cut tail: {:.1} %", result.outside_fraction * 100.0);
+let tables = result.to_tables();   // [("vanhove", Table{r, p_r})]
 ```
 
 ## Interpreting Results

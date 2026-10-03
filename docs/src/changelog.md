@@ -51,6 +51,14 @@ A negative voxel count (Å units) used to give an empty grid and a Bader total o
 surplus data was cut off. All three now fail with a message, except a
 single-orbital cube, which is read correctly.
 
+### `traj vanhove`: the `gs` column is now `p_r`, a density in Å⁻¹
+
+The old `gs` was the probability per bin, so its values scaled with `--dr`, and
+displacements beyond `--r-max` were dropped while the total still claimed to be
+1. The column is now `p_r` $= 4\pi r^2 G_s = $ old `gs` / `dr`, directly comparable
+with the Gaussian reference, and `[inputs]` gains `outside_fraction` (the
+share beyond `--r-max`, warned above 1 %).
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run

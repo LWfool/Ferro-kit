@@ -731,15 +731,23 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     })?;
 
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
-    // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼
-    let mut summary = Summary::new(&["tau_frames", "time_fs", "origins"]);
+    // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼；
+    // outside_fraction 是落在 [r_min, r_max) 外、没画进 p_r 的位移比例，逐文件不同
+    let mut summary = Summary::new(&["tau_frames", "time_fs", "origins", "outside_fraction"]);
     for (input, r) in &results {
         summary.ok(
             input.label.clone(),
             r.r.len(),
             r.n_atoms,
-            &[r.tau_frames as f64, r.time, r.n_origins as f64],
+            &[r.tau_frames as f64, r.time, r.n_origins as f64, r.outside_fraction],
         );
+        if r.outside_fraction > 0.01 {
+            eprintln!(
+                "        warning: {}: {:.1}% of displacements exceed r_max = {} Å and are not in p_r; \
+                 raise --r-max",
+                input.label, r.outside_fraction * 100.0, c.r_max
+            );
+        }
     }
     summary.failed(&failures);
 

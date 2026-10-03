@@ -637,7 +637,8 @@ pub fn print_vanhove() {
     println!(
         r#"ferro traj vanhove — Van Hove Self-Correlation Function
 
-  Gs(r, τ), the distribution of atomic displacements over a fixed time lag τ.
+  Gs(r, τ), the distribution of atomic displacements over a fixed time lag τ,
+  written as the radial density P(r) = 4πr²·Gs [1/Å], ∫P dr = 1.
 
 Parameters:
   --tau      INT        Lag time in frames              default: half trajectory
@@ -654,8 +655,9 @@ Parameters:
   --units U             Dump vx/fx units: real | metal (required if present)
 
 Output:
-  vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv without
-  --elements
+  vanhove_<elements>[_<suffix>].csv (columns r, p_r), elements sorted;
+  vanhove_all.csv without --elements. [inputs] lists outside_fraction, the
+  share of displacements beyond --r-max (warned above 1%)
 
 Examples:
   ferro traj vanhove -i traj.xyz --tau 100 --dt 2.0
