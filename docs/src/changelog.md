@@ -29,6 +29,16 @@ positions only are unaffected. Python: `metal_units=True` → `units="metal"`.
 | `ferro traj vacf -i t.dump --metal-units` | `ferro traj vacf -i t.dump --units metal` |
 | `ferro traj gr -i t.dump …` (dump has `vx vy vz`) | add `--units real` or `--units metal` |
 
+### `--dt` is required for the time-correlation commands; uneven frames are refused
+
+`traj msd`, `vacf`, `rotcorr`, `bondlife` and `vanhove` no longer default `--dt`
+to 1.0 fs. It is the time between **stored** frames (MD time step × dump
+interval); a forgotten `--dt` used to rescale the time axis and $D$ silently by
+the dump interval. LAMMPS dumps now keep their `TIMESTEP`, and when step numbers
+are present (dump, CP2K, OUTCAR) a file with a duplicated frame (a restart
+written twice) or a changed dump interval is skipped with a message naming the
+frames. `convert` to a dump writes the original step numbers.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run

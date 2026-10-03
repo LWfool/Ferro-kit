@@ -137,7 +137,7 @@ pub struct BondLifeParams {
 | `--r-bond` | required | bond-forming distance [Å] |
 | `--r-break` | `--r-bond` | bond-breaking distance [Å], must be ≥ `--r-bond` |
 | `--intermittency` | 0 | breaks of at most this many frames are filled |
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | $N/2$ | longest lag [frames] |
 
 ## Output

@@ -188,7 +188,7 @@ pub struct MsdParams {
 
 | CLI flag | Default | Meaning |
 |---|---|---|
-| `--dt` | 1.0 | time between stored frames [fs] — the dump interval, not the MD time step |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | $N/2$ | longest lag in frames |
 | `--elements` | all | which atoms enter the average, chosen by element in the first frame |
 | `--fit-range` | off | `FMIN,FMAX` window as fractions of the lag axis → $D$ |

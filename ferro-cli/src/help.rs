@@ -456,7 +456,7 @@ pub fn print_msd() {
   TOR scheme (NPT-safe).
 
 Parameters:
-  --dt        FLOAT      Timestep between frames [fs]   default: 1.0
+  --dt        FLOAT      Time between frames [fs]       (required)
   --max-lag   INT        Longest lag [frames], 1..N-1   default: N/2
   --elements  Fe,O,...   Track only these elements      default: all
   --fit-range FMIN,FMAX  Linear-fit window as fractions of the lag axis
@@ -535,7 +535,7 @@ pub fn print_vacf() {
   Needs velocities in the input file.
 
 Parameters:
-  --dt       FLOAT      Timestep [fs]                 default: 1.0
+  --dt       FLOAT      Time between frames [fs]      (required)
   --max-lag  INT        Longest lag [frames], 1..N-1  default: N/2
   --elements Fe,O,...   Include only these elements    default: all
   --last-n   INT        Use only the last N frames
@@ -575,7 +575,7 @@ Parameters:
                              tetrahedra, whose summed bonds cancel
                                                         default: sum
   --legendre  1|2     P_l order of the correlation      default: 2
-  --dt        FLOAT   Timestep [fs]                     default: 1.0
+  --dt        FLOAT   Time between frames [fs]          (required)
   --max-lag   INT     Longest lag [frames], 1..N-1      default: N/2
   --last-n    INT     Use only the last N frames
   --ncore     INT     Parallel threads                  default: all cores
@@ -611,7 +611,7 @@ Parameters:
   --r-bond        FLOAT   A free pair bonds at r <= r-bond [Å] (required)
   --r-break       FLOAT   A bond survives while r <= r-break [Å]  default: --r-bond
   --intermittency INT     Fill breaks of <= INT frames (S_C, events) default: 0
-  --dt            FLOAT   Timestep between frames [fs]           default: 1.0
+  --dt            FLOAT   Time between frames [fs]               (required)
   --max-lag       INT     Longest lag [frames], 1..N-1           default: N/2
   --last-n        INT     Use only the last N frames
   --ncore         INT     Parallel threads                       default: all cores
@@ -641,7 +641,7 @@ pub fn print_vanhove() {
 
 Parameters:
   --tau      INT        Lag time in frames              default: half trajectory
-  --dt       FLOAT      Timestep [fs]                  default: 1.0
+  --dt       FLOAT      Time between frames [fs]       (required)
   --shift    INT        Time-origin stride              default: 1
   --r-max    FLOAT      Max displacement [Å]           default: 10.0
   --dr       FLOAT      Bin width [Å]                  default: 0.01

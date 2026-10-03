@@ -159,7 +159,7 @@ pub struct RotCorrParams {
 | `--r-cut` | 1.2 | bond search cutoff [Å]; in `bond` mode applied to the first frame only |
 | `--vector` | `sum` | `sum` or `bond`, see [Orientation vector](#orientation-vector---vector-sum-or-bond) |
 | `--legendre` | 2 | order $\ell$: 1 or 2 |
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | $N/2$ | longest lag in frames |
 
 ## Output

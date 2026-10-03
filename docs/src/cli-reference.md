@@ -467,7 +467,7 @@ columns `file, time, msd, msd_x, msd_y, msd_z` (Cartesian).  The conventions are
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
 | `--elements` | (all) | comma-separated element filter |
 | `--fit-range` | (none) | `FMIN,FMAX` linear-fit window as fractions of the lag axis (`0..max-lag`) → the self-diffusion coefficient D |
@@ -508,7 +508,7 @@ Details in [VACF](analysis/vacf.md).
 
 | Flag | Default | Description |
 |---|---|---|
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
 | `--elements` | (all) | element filter |
 
@@ -529,7 +529,7 @@ ferro traj rotcorr -i water.lammpstrj --center O --neighbor H --r-cut 1.2 --dt 2
 | `--r-cut` | 1.2 | cutoff for the bond search [Å] |
 | `--vector` | `sum` | `sum` = the centre's bonds summed, per frame; `bond` = each bond of frame 0 followed by atom identity (`gmx rotacf -d`) — use for tetrahedra |
 | `--legendre` | 2 | order of $P_\ell$: 1 or 2 |
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
 
 Every lag averages all (molecule, origin) pairs valid at both ends (FFT); `integral` is trapezoidal.
@@ -553,7 +553,7 @@ ferro traj bondlife -i glass_water.lammpstrj --center Si --neighbor O --r-bond 2
 | `--r-bond` | (required) | a free pair bonds at $r \le$ this [Å] |
 | `--r-break` | `--r-bond` | a bond survives while $r \le$ this [Å] |
 | `--intermittency` | 0 | fill breaks of at most this many frames ($S_C$, events) |
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | N/2 | longest lag [frames] |
 
 Columns: `bondlife_<C>-<N>.csv` → `file, time, c_int, s_cont`; `bondlife_events_<C>-<N>.csv` →
@@ -568,7 +568,7 @@ ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o
 | Flag | Default | Description |
 |---|---|---|
 | `--tau` | (last frame) | lag [frames] |
-| `--dt` | 1.0 | time step [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--shift` | 1 | spacing between time origins [frames] |
 | `--r-max` | 10.0 | maximum displacement [Å] |
 | `--dr` | 0.01 | bin width [Å] |
