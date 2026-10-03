@@ -11,25 +11,32 @@ use ferro_core::frame::Frame;
 /// Find the smallest `[nx, ny, nz]` satisfying the given box-size and
 /// atom-count constraints.
 ///
-/// - `min_length`: minimum required supercell length along each axis (Å).
-///   Pass `0.0` to skip the length constraint.
+/// - `min_length`: minimum required **interplanar spacing** of the supercell along each
+///   axis (Å) — the perpendicular thickness, which is what bounds a minimum-image cutoff
+///   (`r_cut ≤ min_length / 2`). For a non-orthogonal cell it is smaller than the vector
+///   length. Pass `0.0` to skip the length constraint.
 /// - `min_atoms`: minimum required total atom count.
 ///   Pass `0` to skip the atom-count constraint.
 ///
 /// When both constraints are `0` / `0.0`, returns `[1, 1, 1]`.
 ///
 /// # Algorithm
-/// 1. Set `ni = ceil(min_length / Li)` for each axis (length constraint).
-/// 2. Iteratively increment the shortest axis until
+/// 1. Set `ni = ceil(min_length / di)` for each axis, `di` the interplanar spacing.
+/// 2. Iteratively increment the thinnest axis until
 ///    `nx * ny * nz * n_atoms >= min_atoms` (atom-count constraint).
-///    Incrementing the shortest axis keeps the box as isotropic as possible.
+///    Incrementing the thinnest axis keeps the box as isotropic as possible.
+///
+/// # Errors
+/// - `ValidationError` if the cell matrix is singular.
 pub fn find_supercell_dims(
     cell: &Cell,
     n_atoms: usize,
     min_length: f64,
     min_atoms: usize,
-) -> [usize; 3] {
-    let lengths = cell.lengths();
+) -> Result<[usize; 3]> {
+    // 用面间距而非矢量长度：「满足最小镜像截断」要的是垂直厚度，三斜胞里 d < |a|，
+    // 按长度算会给出不够大的超胞。扩 n 倍后面间距恰好也是 n·d
+    let lengths = cell.interplanar_spacings()?;
 
     // 步骤 1：用长度约束确定每轴最小倍数
     let ceil_dim = |l: f64| -> usize {
@@ -48,7 +55,7 @@ pub fn find_supercell_dims(
             n[1] as f64 * lengths[1],
             n[2] as f64 * lengths[2],
         ];
-        // 找最短轴（f64 partial_cmp 不会 panic，因为 lengths 来自 norm()）
+        // 找最薄轴（f64 partial_cmp 不会 panic：面间距有限或为 +∞，不会是 NaN）
         let shortest = super_lengths
             .iter()
             .enumerate()
@@ -58,7 +65,7 @@ pub fn find_supercell_dims(
         n[shortest] += 1;
     }
 
-    n
+    Ok(n)
 }
 
 // ── 扩胞 ──────────────────────────────────────────────────────────────────────
@@ -271,10 +278,23 @@ mod tests {
     }
 
     #[test]
+    fn test_min_length_uses_interplanar_spacing() {
+        // γ = 60° 的六方型胞：|a| = |b| = 5，但 a、b 方向的面间距只有 5·sin60° ≈ 4.33。
+        // 要求 14 Å：按长度给 3（3·5 = 15），实际厚度 3·4.33 = 12.99 不够；按面间距给 4
+        let cell = Cell::from_lengths_angles(5.0, 5.0, 20.0, 90.0, 90.0, 60.0).unwrap();
+        let dims = find_supercell_dims(&cell, 1, 14.0, 0).unwrap();
+        assert_eq!(dims, [4, 4, 1], "最小镜像要的是垂直厚度");
+        let d = cell.interplanar_spacings().unwrap();
+        for i in 0..3 {
+            assert!(dims[i] as f64 * d[i] >= 14.0, "轴 {i} 的超胞厚度不足");
+        }
+    }
+
+    #[test]
     fn test_find_dims_min_length_only() {
         // a=b=c=5 Å，min_length=12 Å → 需要 ceil(12/5)=3 → [3,3,3]
         let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
-        let dims = find_supercell_dims(&cell, 1, 12.0, 0);
+        let dims = find_supercell_dims(&cell, 1, 12.0, 0).unwrap();
         assert_eq!(dims, [3, 3, 3]);
     }
 
@@ -292,7 +312,7 @@ mod tests {
         // [3,3,2]: 15,18,14 → 最短 z → 增 z
         // [3,3,3]: 15,18,21 → 3*3*3*2=54 ≥ 20 ✓
         let cell = Cell::from_lengths_angles(5.0, 6.0, 7.0, 90.0, 90.0, 90.0).unwrap();
-        let dims = find_supercell_dims(&cell, 2, 0.0, 20);
+        let dims = find_supercell_dims(&cell, 2, 0.0, 20).unwrap();
         assert!(dims[0] * dims[1] * dims[2] * 2 >= 20);
         // 同时验证各轴 super_length 尽量平衡（最大/最小比 < 2）
         let cell_lengths = cell.lengths();
@@ -307,7 +327,7 @@ mod tests {
         // a=b=c=3 Å，4 atoms，min_length=8, min_atoms=50
         // 长度约束：ceil(8/3)=3 → [3,3,3] → 3*3*3*4=108 ≥ 50 ✓
         let cell = Cell::from_lengths_angles(3.0, 3.0, 3.0, 90.0, 90.0, 90.0).unwrap();
-        let dims = find_supercell_dims(&cell, 4, 8.0, 50);
+        let dims = find_supercell_dims(&cell, 4, 8.0, 50).unwrap();
         assert!(dims[0] >= 3 && dims[1] >= 3 && dims[2] >= 3);
         assert!(dims[0] * dims[1] * dims[2] * 4 >= 50);
     }
@@ -315,6 +335,6 @@ mod tests {
     #[test]
     fn test_find_dims_no_constraint() {
         let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
-        assert_eq!(find_supercell_dims(&cell, 4, 0.0, 0), [1, 1, 1]);
+        assert_eq!(find_supercell_dims(&cell, 4, 0.0, 0).unwrap(), [1, 1, 1]);
     }
 }
