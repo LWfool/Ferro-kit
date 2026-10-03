@@ -159,6 +159,7 @@ Things that trip people up:
   (`Mg 0.5` / `Fe 0.5`) would become two overlapping atoms and a vacancy site (`O 0.9`) a full
   atom.  The error names every site with `_atom_site_occupancy` below 1; order the structure
   first (one species per site, a supercell for vacancies).
+  An unknown (`?`) or malformed coordinate is an error naming the site, not an atom at the origin.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
 - **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot

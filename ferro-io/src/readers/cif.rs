@@ -218,12 +218,22 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
 
     for (k, row) in rows.iter().enumerate() {
         let get = |i: usize| row.get(i).map(|s| s.as_str()).unwrap_or("?");
+        let name = idx_lbl.or(idx_sym).map(|i| get(i).to_string()).unwrap_or_default();
+        // 坐标与占位度的坏值报错并点名位点 —— 以前坐标 `unwrap_or(0.0)`，`?` 或写坏的数
+        // 把原子静默放到原点（与审查 L6 同一类）
+        let num = |i: usize, tag: &str| -> Result<f64> {
+            parse_cif_float(get(i)).with_context(|| {
+                format!("site {} '{name}': {tag} = {:?} is not a number", k + 1, get(i))
+            })
+        };
 
-        // 缺列或写 ?/. 时取 CIF 字典的默认值 1；容差只吸收 0.9995 这类舍入
-        let occ = idx_occ.and_then(|i| parse_cif_float(get(i))).unwrap_or(1.0);
+        // 缺列或写 ?/. 时取 CIF 字典的默认值 1（写坏的数仍报错）；容差只吸收 0.9995 这类舍入
+        let occ = match idx_occ {
+            Some(i) if !matches!(get(i).trim(), "?" | ".") => num(i, "_atom_site_occupancy")?,
+            _ => 1.0,
+        };
         if occ < 1.0 - 1e-3 {
-            let name = idx_lbl.or(idx_sym).map(|i| get(i).to_string()).unwrap_or_default();
-            partial.push((k + 1, name, occ));
+            partial.push((k + 1, name.clone(), occ));
         }
 
         let element = idx_sym
@@ -234,18 +244,21 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
         let label = idx_lbl.map(|i| get(i).to_string());
 
         let frac = if let (Some(ix), Some(iy), Some(iz)) = (idx_fx, idx_fy, idx_fz) {
-            let fx = parse_cif_float(get(ix)).unwrap_or(0.0);
-            let fy = parse_cif_float(get(iy)).unwrap_or(0.0);
-            let fz = parse_cif_float(get(iz)).unwrap_or(0.0);
-            Vector3::new(fx, fy, fz)
+            Vector3::new(
+                num(ix, "_atom_site_fract_x")?,
+                num(iy, "_atom_site_fract_y")?,
+                num(iz, "_atom_site_fract_z")?,
+            )
         } else if let (Some(ix), Some(iy), Some(iz)) = (idx_cx, idx_cy, idx_cz) {
             // Cartesian → fractional. Column presence is guaranteed by the
             // ensure! above; checked locally so the invariant is self-contained
             // and a future edit to ensure! cannot silently introduce a panic.
-            let x = parse_cif_float(get(ix)).unwrap_or(0.0);
-            let y = parse_cif_float(get(iy)).unwrap_or(0.0);
-            let z = parse_cif_float(get(iz)).unwrap_or(0.0);
-            cell.cartesian_to_fractional(Vector3::new(x, y, z))?
+            let cart = Vector3::new(
+                num(ix, "_atom_site_Cartn_x")?,
+                num(iy, "_atom_site_Cartn_y")?,
+                num(iz, "_atom_site_Cartn_z")?,
+            );
+            cell.cartesian_to_fractional(cart)?
         } else {
             bail!("atom site has neither fractional nor Cartesian coordinate columns");
         };
@@ -605,6 +618,22 @@ Mg1  Mg  0.0  0.0  0.0  0.5
 Fe1  Fe  0.0  0.0  0.0  0.5
 O1   O   0.5  0.5  0.5  1.0(0)
 ";
+
+    #[test]
+    fn test_bad_coordinate_or_occupancy_is_an_error_naming_the_site() {
+        let err = |text: String| format!("{:#}", read_cif(&write_tmp("test_badcoord.cif", &text)).unwrap_err());
+        // 未知坐标 `?`、写坏的数：以前原子静默落在原点
+        for (bad, tag) in [("0.0  ?  0.0  0.5\nFe1", "fract_y"), ("0.0  0.0  0.O  0.5\nFe1", "fract_z")] {
+            let text = MIXED_OCC_CIF.replacen("0.0  0.0  0.0  0.5\nFe1", bad, 1);
+            let msg = err(text);
+            assert!(msg.contains("site 1 'Mg1'") && msg.contains(tag), "应点名位点与列，实际：{msg}");
+        }
+        // 写坏的占位度报错；`?` / `.` 取默认值 1
+        let msg = err(MIXED_OCC_CIF.replace("1.0(0)", "1.O"));
+        assert!(msg.contains("site 3 'O1'") && msg.contains("occupancy"), "实际：{msg}");
+        let unknown = MIXED_OCC_CIF.replace("0.0  0.5\nFe1  Fe  0.0  0.0  0.0  0.5\n", "0.0  ?\n");
+        assert_eq!(read_cif(&write_tmp("test_occ_unknown.cif", &unknown)).unwrap().first().unwrap().n_atoms(), 2);
+    }
 
     #[test]
     fn test_partial_occupancy_is_an_error() {
