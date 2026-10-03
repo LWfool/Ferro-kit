@@ -14,7 +14,7 @@
 | ferro-workflow | 23 |
 | ferro-cli（lib 116 + bin 2 + 集成 8） | 126 |
 
-版本号 **0.3.3**（workspace 统一；ferro-python 已同步）。
+版本号 **0.3.4**（workspace 统一；ferro-python 已同步；2026-10-03 打 tag `v0.3.4`）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
 
 `v0.3.1` 相对 `v0.3.0` **全部是新增**（`ferro dataset` 三步、CP2K out reader、

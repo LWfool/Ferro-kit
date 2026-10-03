@@ -10,10 +10,11 @@ command line alike; regenerate it rather than migrating it.
 
 ---
 
-## Unreleased — the `0.3.2` / `0.3.3` batch
+## `v0.3.4` — 2026-10-03
 
-Three rounds of breaking changes sit under the version number `0.3.3`, none of
-them released yet. They will arrive together.
+This release carries everything since `v0.3.1`: the `0.3.2` and `0.3.3` batches,
+which were never released on their own, and the fixes of 2026-10-03. All three
+contain breaking changes; read the whole section before upgrading scripts.
 
 ### `--metal-units` → `--units real|metal`, required for dumps with velocities/forces
 
