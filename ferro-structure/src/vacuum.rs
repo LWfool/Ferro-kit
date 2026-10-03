@@ -7,7 +7,9 @@ use ferro_core::frame::Frame;
 /// Add a vacuum layer along the specified axis.
 ///
 /// - `axis`: "x", "y", or "z" (maps to cell matrix row 0, 1, 2).
-/// - `thickness`: vacuum thickness in Å (must be > 0).
+/// - `thickness`: vacuum thickness in Å (must be > 0), measured **perpendicular** to the
+///   two other lattice vectors — the real gap between periodic images, also for a tilted axis.
+///   Atoms are not moved or centred: a slab crossing the cell boundary is split by the gap.
 ///
 /// Returns a new `Frame` with the cell expanded along the given axis.
 /// Atomic positions, `pbc`, `bonds`, `charge`, and `multiplicity` are preserved.
@@ -41,9 +43,15 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
         ChemError::ValidationError("add_vacuum requires a periodic frame with a cell".into())
     })?;
 
+    // 沿该晶格矢量拉长，使它对面的面间距（两个相邻晶面的垂直距离）增加 thickness。
+    // 以前是让矢量长度增加 thickness，c 轴倾斜时实际真空间隙只有 thickness·cosθ。
+    // 面间距 d_i = V / |a_j × a_k| 与 |a_i| 成正比，所以按 d_i 求缩放比即可（同 ASE 的
+    // vacuum / cosθ）
     let m = &cell.matrix;
-    let row_len = m.row(axis_idx).norm();
-    let scale = (row_len + thickness) / row_len;
+    let (j, k) = ((axis_idx + 1) % 3, (axis_idx + 2) % 3);
+    let face = m.row(j).cross(&m.row(k)).norm();
+    let spacing = m.determinant().abs() / face;
+    let scale = (spacing + thickness) / spacing;
 
     let mut new_m = *m;
     for j in 0..3 {
@@ -110,6 +118,23 @@ mod tests {
     }
 
     #[test]
+    fn test_tilted_axis_gets_full_perpendicular_gap() {
+        // β = 60°：c 与 ab 面夹 60°，面间距 = 10·sin60°。加 5 Å 后面间距应恰好 +5
+        let cell = Cell::from_lengths_angles(8.0, 8.0, 10.0, 90.0, 60.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        frame.add_atom(Atom::new("O", Vector3::zeros()));
+        let spacing = |f: &Frame| {
+            let m = f.cell.as_ref().unwrap().matrix;
+            m.determinant().abs() / m.row(0).cross(&m.row(1)).norm()
+        };
+        let out = add_vacuum(&frame, "z", 5.0).unwrap();
+        assert!((spacing(&out) - spacing(&frame) - 5.0).abs() < 1e-10,
+            "垂直间隙应增加 5 Å，实际 {}", spacing(&out) - spacing(&frame));
+        let [_, _, lc] = out.cell.as_ref().unwrap().lengths();
+        assert!((lc - (10.0 + 5.0 / 60f64.to_radians().sin())).abs() < 1e-10, "c 应拉长 5/sin60°");
+    }
+
+    #[test]
     fn test_positions_unchanged() {
         let frame = cubic_frame(10.0);
         let out = add_vacuum(&frame, "z", 5.0).unwrap();
@@ -157,8 +182,9 @@ mod tests {
         frame.add_atom(Atom::new("Si", Vector3::new(1.0, 1.0, 1.0)));
         let out = add_vacuum(&frame, "z", 10.0).unwrap();
         let lengths = out.cell.as_ref().unwrap().lengths();
-        // z 轴（c）应从 7 增加到 17
-        assert!((lengths[2] - 17.0).abs() < 1e-10);
+        // c 拉长到垂直间隙 +10 Å：17.2099…，期望值取自 ASE 3.26 `add_vacuum`
+        //（旧实现让 |c| 本身 +10 = 17，倾斜时实际间隙不足 10）
+        assert!((lengths[2] - 17.20991466012953).abs() < 1e-9, "c = {}", lengths[2]);
         // x, y 不变
         assert!((lengths[0] - 5.0).abs() < 1e-10);
         assert!((lengths[1] - 6.0).abs() < 1e-10);

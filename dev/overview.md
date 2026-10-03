@@ -396,3 +396,6 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 - **CHGCAR 网格内坏值报错**（审查低 2，L6 漏的一处）。只解析前 N₁N₂N₃ 个数（之后的
   augmentation 段含文字，照旧忽略）；兼容 Fortran 三位指数省 E 的 `0.1234-100` ——
   以前它被当 0，碰巧近似对，改成报错前必须先认它。
+- **`add_vacuum` 的厚度改为垂直间隙**（审查低 3）。倾斜轴拉长 thickness/cosθ，与 ASE
+  对过数值；旧测试 `test_triclinic_cell` 钉的是旧行为（|c|+10），期望值改为 ASE 的结果。
+  仍不居中，手册写明。
