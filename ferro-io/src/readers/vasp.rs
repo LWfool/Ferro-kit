@@ -68,7 +68,9 @@ fn parse_poscar(content: &str) -> Result<Trajectory> {
     if coord_type.trim().to_lowercase().starts_with('s') {
         coord_type = next("coordinate type after Selective dynamics")?;
     }
-    let is_direct = coord_type.trim().to_lowercase().starts_with('d');
+    // VASP 的规则：首字符 C/c/K/k 为 Cartesian，其余（含 `Fractional`、空行）一律 Direct。
+    // 以前反过来只认 d 开头为 Direct，`Fractional` 之类被当 Cartesian 读
+    let is_direct = !coord_type.trim_start().starts_with(['C', 'c', 'K', 'k']);
 
     // Atom positions
     let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
@@ -151,6 +153,21 @@ Direct
 ";
 
     use crate::testutil::write_tmp as tmp;
+
+    #[test]
+    fn test_coordinate_mode_follows_vasp_rule() {
+        // 第 2 个原子在分数坐标 (0.5,0.5,0.5) = 笛卡尔 (1.435,…)；Cartesian 读则是 (0.5,…)
+        let x1 = |mode: &str| {
+            let text = BCC_FE.replace("Direct\n", &format!("{mode}\n"));
+            parse_poscar(&text).unwrap().frames[0].atoms[1].position.x
+        };
+        for mode in ["Direct", "direct", "Fractional", ""] {
+            assert!((x1(mode) - 1.435).abs() < 1e-9, "{mode:?} 应按 Direct 读");
+        }
+        for mode in ["Cartesian", "cart", "K", "k-space"] {
+            assert!((x1(mode) - 0.5).abs() < 1e-9, "{mode:?} 应按 Cartesian 读");
+        }
+    }
 
     #[test]
     fn test_bcc_fe() {

@@ -401,3 +401,4 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
   仍不居中，手册写明。
 - **`find_supercell_dims` 的 `min_length` 按面间距判**（审查低 4），返回值改 `Result`
   （奇异晶胞）。库级 API，目前无 CLI/Python 调用方。
+- **POSCAR 坐标模式照 VASP 规则**（审查低 5）：首字符 C/K 为 Cartesian，其余 Direct。
