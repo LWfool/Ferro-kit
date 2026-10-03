@@ -759,6 +759,10 @@ formats differ, and the single-frame restriction on selecting by label) see [Gla
 ## `ferro bader`
 
 Bader charge decomposition from a DFT charge density.  VASP CHGCAR and Gaussian/QE cube are supported.
+A cube must be in Bohr (positive voxel counts) and hold one value per grid point; an Å-unit cube
+(negative voxel count), a multi-orbital cube, or one whose data count differs from $N_1 N_2 N_3$ is
+refused rather than read as a shifted or empty grid.  An orbital cube (negative atom count) with a
+single orbital is read, skipping its orbital list.
 
 ```bash
 ferro bader                                # without -i: prints the methods and the output description

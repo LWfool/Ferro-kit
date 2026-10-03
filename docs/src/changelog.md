@@ -44,6 +44,13 @@ frames. `convert` to a dump writes the original step numbers.
 `_atom_site_occupancy` was ignored: a mixed site became two atoms at the same
 position, silently. Such a file is now refused, naming every partial site.
 
+### Malformed cube headers are errors
+
+A negative voxel count (Å units) used to give an empty grid and a Bader total of
+0 e with exit code 0; an orbital cube's orbital list shifted the whole grid;
+surplus data was cut off. All three now fail with a message, except a
+single-orbital cube, which is read correctly.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run

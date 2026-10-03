@@ -42,7 +42,10 @@ struct ParsedCube {
 
 fn parse_header(content: &str) -> Result<ParsedCube> {
     let mut lines = content.lines();
+    // 已读行数，给体数据的报错算行号（MO 列表行数不定，不能按 6 + n_atoms 推）
+    let mut used = 0usize;
     let mut next = |what: &str| -> Result<&str> {
+        used += 1;
         lines.next().with_context(|| format!("unexpected EOF before {what}"))
     };
 
@@ -52,7 +55,15 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 
     // 第 3 行：n_atoms  ox  oy  oz（Bohr）
     let f3 = parse_floats(next("atom count line")?, 4)?;
+    // n_atoms < 0 是 Gaussian 轨道 cube 的写法：原子行之后多一段 MO 列表
+    let has_mo_list = f3[0] < 0.0;
     let n_atoms = f3[0].abs() as usize;
+    // 第 5 个数（可省，默认 1）是每个格点的值数；多值 cube 交错存放，单张网格装不下
+    if let Some(&nval) = f3.get(4) {
+        if nval != 1.0 {
+            bail!("{nval} values per grid point (5th field of line 3); only single-valued cubes are supported");
+        }
+    }
     // 原点（Bohr）
     let origin_bohr = Vector3::new(f3[1], f3[2], f3[3]);
 
@@ -63,6 +74,16 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 
     for i in 0..3 {
         let fs = parse_floats(next(&format!("grid line {i}"))?, 4)?;
+        // 规范里 N_i < 0 表示该轴步长以 Å 计；原点与原子坐标此时用什么单位规范没说，
+        // 各程序不一致，按任一种读都是猜。以前 `as usize` 把负数饱和成 0，读出空网格、
+        // bader 报 0 e 且退出码 0
+        if fs[0] < 1.0 || fs[0].fract() != 0.0 {
+            bail!(
+                "grid line {i}: voxel count {} is not a positive integer (a negative count marks \
+                 Å units, whose origin/atom units the format leaves open; write the cube in Bohr)",
+                fs[0]
+            );
+        }
         shape[i] = fs[0] as usize;
         step_bohr[i] = [fs[1], fs[2], fs[3]];
         step_ang[i]  = [fs[1] * BOHR_TO_ANG, fs[2] * BOHR_TO_ANG, fs[3] * BOHR_TO_ANG];
@@ -95,10 +116,23 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
         frame.add_atom(Atom::new(symbol, pos));
     }
 
+    // MO 列表：首个数是轨道数 NMO，后跟 NMO 个轨道号，可能折行（同 ASE 的读法）
+    if has_mo_list {
+        let mut fields: Vec<&str> = next("MO list line")?.split_whitespace().collect();
+        let nmo: usize = fields.first().and_then(|t| t.parse().ok())
+            .context("MO list line (after the atoms of a cube with negative atom count) has no orbital count")?;
+        while fields.len() < 1 + nmo {
+            fields.extend(next("MO list continuation")?.split_whitespace());
+        }
+        if nmo != 1 {
+            bail!("cube holds {nmo} orbitals interleaved; only single-orbital cubes are supported");
+        }
+    }
+
     // 读取剩余所有密度值
     let nrho = shape[0] * shape[1] * shape[2];
     // 坏值报错而不是补 0：补 0 会冒充「这里密度为 0」。体数据从第 7 + n_atoms 行起
-    let first = 7 + n_atoms;
+    let first = used + 1;
     let mut raw: Vec<f64> = Vec::with_capacity(nrho);
     for (k, l) in lines.enumerate() {
         for tok in l.split_whitespace() {
@@ -108,10 +142,11 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
             raw.push(v);
         }
     }
-    if raw.len() < nrho {
-        bail!("volumetric data too short: got {}, expected {}", raw.len(), nrho);
+    // 多了也报错：多出来的数说明头部（MO 列表、多值格点）没读对，截掉会让整张网格错位
+    if raw.len() != nrho {
+        bail!("volumetric data has {} values, expected {} ({}×{}×{})",
+              raw.len(), nrho, shape[0], shape[1], shape[2]);
     }
-    let raw = raw[..nrho].to_vec();
 
     Ok(ParsedCube { origin_bohr, shape, step_bohr, step_ang, frame, raw })
 }
@@ -262,6 +297,30 @@ comment
     use crate::testutil::write_tmp;
 
     // ── CubeData tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_header_variants() {
+        let err = |text: String| format!("{:#}", parse_cube(&text).unwrap_err());
+        // N_i < 0（Å 单位）：以前饱和成 0 → 空网格、bader 报 0 e
+        let neg = CUBE_H2.replacen("  2   1.889726", " -2   1.889726", 1);
+        assert!(err(neg).contains("not a positive integer"), "负的网格数应报错");
+
+        // 轨道 cube：n_atoms < 0，原子行后跟 MO 列表；单轨道照常读，数据不错位
+        let mo1 = CUBE_H2.replacen("  2   0.000000   0.000000   0.000000\n", " -2   0.000000   0.000000   0.000000\n", 1)
+            .replacen(" 1.0e+00\n", "    1   5\n 1.0e+00\n", 1);
+        let cd = parse_cube(&mo1).unwrap();
+        assert_eq!(cd.frame.n_atoms(), 2);
+        assert_eq!(cd.get(0, 0, 0), 1.0, "MO 列表行没跳过时体数据会整体错位");
+        assert_eq!(cd.get(1, 1, 1), 8.0);
+
+        // 多轨道交错存放，单张网格装不下
+        let mo2 = mo1.replacen("    1   5\n", "    2   5   6\n", 1);
+        assert!(err(mo2).contains("2 orbitals"), "多轨道 cube 应报错");
+
+        // 数据多于 N1·N2·N3：说明头部没读对，不能截掉了事
+        let long = format!("{CUBE_H2} 9.0e+00\n");
+        assert!(err(long).contains("has 9 values, expected 8"), "数据过长应报错");
+    }
 
     #[test]
     fn test_read_atom_count() {
