@@ -83,6 +83,16 @@ From the raw count histogram $h(\theta_i)$:
 
 $$\bar{\theta} = \frac{\sum_i \theta_i \, h_i}{\sum_i h_i}, \quad \sigma = \sqrt{\frac{\sum_i (\theta_i - \bar{\theta})^2 h_i}{\sum_i h_i}}$$
 
+### Raw counts, not divided by $\sin\theta$
+
+The histogram is the **raw count per bin**, as in most MD bond-angle distributions.  It is *not* a density
+on the sphere: for two bond directions with no angular correlation at all, the counts follow
+$\sin\theta$ (there is more solid angle near 90° than near 0° or 180°), so a broad hump around 90° is
+partly geometry, not preference.  To compare against an isotropic baseline, divide each bin by
+$\sin\theta_i$ yourself — the result is flat for uncorrelated directions — but expect that quotient to be
+noisy near 0° and 180°, where $\sin\theta \to 0$ and few counts fall.  $\bar\theta$ and $\sigma$ above are
+taken over the raw counts.
+
 ## Parameters
 
 ```rust

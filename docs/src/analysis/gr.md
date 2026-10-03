@@ -47,6 +47,20 @@ $$\mathbf{r}_{ij}^\text{min} = \mathbf{r}_{ij} - \mathbf{M} \cdot \text{round}\!
 
 This is correct for orthorhombic and triclinic cells as long as $r_\text{max} < L_\text{min}/2$.
 
+### Every direction is treated as periodic
+
+`gr` (and with it `sq`), `angle`, `net` and `msd` do **not** read a frame's per-axis `pbc` flags: once a
+frame has a cell, all three directions are periodic and the density is $N/V$ of the whole cell.  For a
+**slab with vacuum** this has two consequences:
+
+- the density includes the vacuum, so $g(r)$ tends to the filling fraction $V_\text{slab}/V_\text{cell}$ at
+  large $r$ instead of 1 — the peak positions are right, the heights are scaled;
+- pairs across the vacuum gap are found through the periodic image if the gap is narrower than
+  $r_\text{max}$, so keep the gap wider than the cutoff.
+
+For bulk-like statistics of a slab, cut the bulk region out first, or rescale $g(r)$ by
+$V_\text{cell}/V_\text{slab}$.
+
 ## Parameters
 
 ```rust
