@@ -45,7 +45,7 @@ Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`conv
 | `--mkdir` | create the `-o` directory without asking.  **Required in non-interactive environments (scripts, CI)**, which otherwise error out |
 | `--last-n N` | use only the last N frames (skipping the equilibration stage) |
 | `--ncore N` | number of parallel threads (all cores by default) |
-| `--metal-units` | LAMMPS metal units (velocity in Å/ps, force in eV/Å).  **Affects velocities and forces only** — coordinates and cells are in Å under either unit system, so gr/sq/msd/angle/rotcorr/vanhove/net are unaffected |
+| `--units <UNITS>` | `real` (velocity Å/fs, force kcal/mol/Å) or `metal` (velocity Å/ps, force eV/Å): the LAMMPS unit system of a dump's velocity/force columns.  **Required whenever a dump has `vx`/`fx`-type columns** — a dump does not record its `units`, and the two systems differ by $10^3$ in velocity and ~23 in force, so the value is never guessed (DeePMD runs in `metal`).  Coordinates and cells are Å under either system; a dump with positions only reads without it |
 | `--atom-style <STYLE>` | `atomic`, `charge` or `full`: the column layout of a LAMMPS data file's `Atoms` section.  **Required whenever an input is `.data` / `.lmp` / `.lammps`**, checked before the first file is read; see the format notes below |
 
 ### Batch processing
@@ -129,7 +129,7 @@ Format conversion.  The format on both sides is decided by the **file name**; th
 ferro convert                              # without -i: prints the table below
 ferro convert -i input.xyz -o output.pdb
 ferro convert -i input.cif -o POSCAR
-ferro convert -i traj.lammpstrj -o traj.extxyz --metal-units
+ferro convert -i traj.lammpstrj -o traj.extxyz --units metal
 ```
 
 | Format | Recognised by | Read | Write | Frames written |
@@ -243,7 +243,7 @@ where it is a truncated final frame and is dropped with a warning.
 | `-o <file>` | (required) | output file, may include directories (`-o out/run1/x.extxyz`).  A missing parent directory is asked about first; `--mkdir` skips the question.  **A trailing `/` is an error** — the target format is inferred from the file name.  When several frames are written the index goes into the file-name part and the path is unchanged |
 | `--mkdir` | off | create the parent directory of `-o` without asking |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
-| `--metal-units` | off | read and write LAMMPS dump in metal units (velocity in Å/ps, force in eV/Å) |
+| `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
 
 ---
@@ -293,7 +293,7 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 | Flag | Default | Description |
 |---|---|---|
 | `-i <file>` | (required) | input file; omit it to print this page |
-| `--metal-units` | off | read LAMMPS dump in metal units (velocity in Å/ps, force in eV/Å) |
+| `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  Required when they are present |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
 
 ---
@@ -500,7 +500,7 @@ See [Bond Angle Distribution](analysis/angle.md) for details.
 ### `vacf` — velocity autocorrelation
 
 ```bash
-ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --metal-units -o run1
+ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --units metal -o run1
 ```
 
 Every lag averages all time origins (FFT); `diffusion` is the trapezoidal Green–Kubo running integral.
@@ -603,10 +603,10 @@ ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -o run
 
 ### `velocity` — mean speed per voxel
 
-Requires a trajectory carrying velocities (add `--metal-units` for a LAMMPS metal dump).
+Requires a trajectory carrying velocities (a LAMMPS dump needs `--units real|metal`).
 
 ```bash
-ferro map velocity -i traj.lammpstrj --metal-units -o run1
+ferro map velocity -i traj.lammpstrj --units metal -o run1
 ```
 
 ### `force` — mean force magnitude per voxel
@@ -716,7 +716,7 @@ in the **parameter name**, which clap cannot model, so `main` strips them out of
 | `--mkdir` | off | create `-o` without asking (required in non-interactive environments) |
 | `--last-n N` | all | use only the last N frames |
 | `--ncore N` | all cores | number of threads |
-| `--metal-units` | off | the statistics read neither velocities nor forces; affects `--export-traj extxyz` only |
+| `--units <UNITS>` | — | `real` or `metal`.  The statistics read neither velocities nor forces, but a dump that has them is refused without it |
 | `--modifier E,E` | — | elements that count towards **coordination number only**, taking no part in the bridge count or the ligand classification.  Their cutoffs must be given as well, otherwise ferro errors out |
 | `--qn E,E` | `B,P,Si` | network formers to report Qn for.  **Replaces** the default list rather than adding to it; naming a non-former, or an element already taken by `--modifier`, errors out |
 | `--export-traj [FMT]` | — | also write a labelled trajectory: `lammpstrj` (default) or `extxyz` |

@@ -246,7 +246,7 @@ The element pair lives in the **parameter name**, which clap cannot model, so `m
 | `--mkdir` | off | create the `-o` directory without asking (required in non-interactive environments) |
 | `--last-n N` | all frames | use only the last N frames |
 | `--ncore N` | all cores | number of parallel threads |
-| `--metal-units` | off | LAMMPS metal units.  The statistics read neither velocities nor forces, so this **only affects `--export-traj extxyz`** |
+| `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  The statistics read neither, but a dump that carries them is refused without it; the values then reach `--export-traj extxyz` |
 | `--modifier E,E` | — | comma-separated elements that count towards coordination number only.  Their cutoffs must be given as well |
 | `--qn E,E` | `B,P,Si` | comma-separated network formers to report Qn for.  **Replaces** the default list rather than adding to it |
 | `--export-traj [FMT]` | — | also write a labelled trajectory, `lammpstrj` (default) or `extxyz` |

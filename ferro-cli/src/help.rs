@@ -18,7 +18,7 @@ Common options:
                       hold the default name (job.gjf / job.inp / pw.in)
       --mkdir         Create -o's directory without asking
       --atom-style S  LAMMPS data input: atomic | charge | full (required)
-      --metal-units   LAMMPS metal units for dump files
+      --units U       Dump vx/fx units: real | metal (required if present)
 
 Full documentation:  ferro doc job"#
     );
@@ -165,8 +165,7 @@ Parameters:
       --number N          Take this many frames, spread evenly, both ends kept
       --mkdir             Create -o's directory without asking
       --atom-style S      LAMMPS data input: atomic | charge | full (required)
-      --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces
-                          eV/Å); default is real units
+      --units U           Dump vx/fx units: real | metal (required if present)
   -h, --help              Short parameter table (this page adds the formats)
  Formats -i / -o accept, recognised by file name:
 {}
@@ -197,8 +196,7 @@ pub fn print_info() {
 Parameters:
   -i, --input  FILE       Input file (format from its name)
       --atom-style S      LAMMPS data input: atomic | charge | full (required)
-      --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces
-                          eV/Å); default is real units
+      --units U           Dump vx/fx units: real | metal (required if present)
   -h, --help              Short parameter table
 
 Output:
@@ -331,7 +329,7 @@ Common options:
       --last-n N        Use only the last N frames of the trajectory
       --ncore  N        Parallel threads (default: all cores)
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
-      --metal-units     LAMMPS metal units (velocities in A/ps)
+      --units U         Dump vx/fx units: real | metal (required if present)
 
 Selecting types (gr / angle only):
   -a -b -c by element (-a P -b O), -x -y -z by site label (-x P_2 -y O_b); the
@@ -364,7 +362,7 @@ Common options:
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
-      --metal-units     LAMMPS metal units (velocities in A/ps)
+      --units U         Dump vx/fx units: real | metal (required if present)
 
 Output:
   One 3-D grid file per input, not a stacked table — nothing here stacks. The
@@ -397,7 +395,7 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U               Dump vx/fx units: real | metal (required if present)
 
 Output:
   gr_<pair>[_<suffix>].csv, long format: file pair r g_r cn_r
@@ -433,7 +431,7 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> sq_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U               Dump vx/fx units: real | metal (required if present)
 
 Output:
   sq[_<suffix>].csv, WIDE format, one row per (file, q):
@@ -469,7 +467,7 @@ Parameters:
   -o DIR                 Output directory; --mkdir creates it unasked
   -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
   --atom-style S        LAMMPS data input: atomic | charge | full (required)
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U             Dump vx/fx units: real | metal (required if present)
 
 Output:
   msd_<elements>[_<suffix>].csv, elements SORTED so one set has one name
@@ -510,7 +508,7 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U               Dump vx/fx units: real | metal (required if present)
 
 Output:
   angle_<triplet>[_<suffix>].csv, long format: file triplet theta count p
@@ -545,7 +543,7 @@ Parameters:
   -o DIR                Output directory; --mkdir creates it unasked
   -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
   --atom-style S        LAMMPS data input: atomic | charge | full (required)
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U             Dump vx/fx units: real | metal (required if present)
 
 Output:
   vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
@@ -584,7 +582,7 @@ Parameters:
   -o DIR              Output directory; --mkdir creates it unasked
   -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U           Dump vx/fx units: real | metal (required if present)
 
 Output:
   rotcorr_<centre>-<neighbour>[_<suffix>].csv — never falls back to "all",
@@ -620,7 +618,7 @@ Parameters:
   -o DIR                  Output directory; --mkdir creates it unasked
   -s SUFFIX               Batch tag -> bondlife_<centre>-<neighbour>_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --metal-units           LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U               Dump vx/fx units: real | metal (required if present)
 
 Output:
   bondlife_<C>-<N>.csv          time, c_int, s_cont
@@ -653,7 +651,7 @@ Parameters:
   -o DIR                Output directory; --mkdir creates it unasked
   -s SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
   --atom-style S        LAMMPS data input: atomic | charge | full (required)
-  --metal-units         LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U             Dump vx/fx units: real | metal (required if present)
 
 Output:
   vanhove_<elements>[_<suffix>].csv, elements sorted; vanhove_all.csv without
@@ -686,7 +684,7 @@ Parameters:
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: density.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U           Dump vx/fx units: real | metal (required if present)
 
 Output:
   <stem>.cube, one per input — a Gaussian cube VESTA and VMD read directly
@@ -715,7 +713,7 @@ Parameters:
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: velocity.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U           Dump vx/fx units: real | metal (required if present)
 
 Output:
   <stem>.cube, one per input
@@ -744,7 +742,7 @@ Parameters:
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: force.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U           Dump vx/fx units: real | metal (required if present)
 
 Output:
   <stem>.cube, one per input
@@ -776,7 +774,7 @@ Parameters:
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output name stem            default: radius.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U           Dump vx/fx units: real | metal (required if present)
 
 Output:
   <stem>.cube, one per input
@@ -813,7 +811,7 @@ Parameters:
   -o DIR              Output directory; --mkdir creates it unasked
   -s STEM             Output stem (no extension)              default: sdf
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --metal-units       LAMMPS dump in metal units (velocities Å/ps, forces eV/Å)
+  --units U           Dump vx/fx units: real | metal (required if present)
 
 Output:
   <stem>_<atom_type>.cube, or <stem>_fam<N>_<atom_type>.cube with more than

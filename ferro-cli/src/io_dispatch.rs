@@ -48,7 +48,7 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
             let style = check_atom_style(path, opts.atom_style)?.expect("check_atom_style 已拒绝 None");
             Ok(read_lammps_data(path, style)?)
         }
-        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(path, opts.units())?),
+        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(path, opts.units)?),
         Some("inp")                      => Ok(read_cp2k_inp(path)?),
         Some("restart")                  => Ok(read_cp2k_restart(path)?),
         Some("in") | Some("qe")          => Ok(read_qe_input(path)?),
@@ -73,7 +73,7 @@ pub fn read_trajectory_tail(
     Ok(traj)
 }
 
-pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: LammpsUnits) -> Result<()> {
+pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: Option<LammpsUnits>) -> Result<()> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
@@ -213,7 +213,7 @@ mod tests {
         let dir = std::env::temp_dir();
         for ext in ["inp", "restart"] {
             let path = dir.join(format!("ferro_dispatch_test.{ext}"));
-            let err = write_trajectory(&traj, &path, LammpsUnits::Real).unwrap_err();
+            let err = write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap_err();
             assert!(
                 err.to_string().contains("Unsupported output format"),
                 ".{ext} should be read-only, got: {err}"
@@ -263,7 +263,7 @@ mod tests {
         let dir = std::env::temp_dir();
         for name in ["ferro_vasp_test.vasp", "ferro_vasp_test.pos"] {
             let path = dir.join(name);
-            write_trajectory(&traj, &path, LammpsUnits::Real).unwrap();
+            write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap();
             let back = read_trajectory(&path, &ReadArgs::default()).unwrap();
             assert_eq!(back.n_frames(), 1, "{name}");
             assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
@@ -280,7 +280,7 @@ mod tests {
     fn test_unknown_extension_is_rejected_both_ways() {
         let traj = one_atom_traj();
         let path = std::env::temp_dir().join("ferro_dispatch_test.nosuchfmt");
-        assert!(write_trajectory(&traj, &path, LammpsUnits::Real).is_err());
+        assert!(write_trajectory(&traj, &path, Some(LammpsUnits::Real)).is_err());
         assert!(read_trajectory(&path, &ReadArgs::default()).is_err());
     }
 
@@ -291,7 +291,7 @@ mod tests {
         let traj = one_atom_traj();
         for name in ["ferro_style_test.data", "ferro_style_test.lmp", "ferro_style_test.lammps"] {
             let path = std::env::temp_dir().join(name);
-            write_trajectory(&traj, &path, LammpsUnits::Real).unwrap();
+            write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap();
             let err = read_trajectory(&path, &ReadArgs::default()).unwrap_err().to_string();
             assert!(err.contains("--atom-style"), "{name}：{err}");
             let full = ReadArgs { atom_style: Some(AtomStyle::Full), ..ReadArgs::default() };

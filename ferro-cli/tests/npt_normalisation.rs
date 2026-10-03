@@ -59,7 +59,7 @@ fn literal_per_frame(traj: &Trajectory) -> (BTreeMap<String, Vec<f64>>, BTreeMap
 #[test]
 fn npt_fixture_actually_fluctuates() {
     // 守住前提：若哪天有人换掉 fixture 而新文件体积恒定，下面的测试会全部空转通过。
-    let traj = read_lammps_dump(Path::new(NPT), LammpsUnits::Real).unwrap();
+    let traj = read_lammps_dump(Path::new(NPT), Some(LammpsUnits::Real)).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
     assert_eq!(traj.frames.len(), 5);
     let rel = g.volume_std / g.avg_volume;
@@ -68,7 +68,7 @@ fn npt_fixture_actually_fluctuates() {
 
 #[test]
 fn nvt_fixture_has_constant_volume() {
-    let traj = read_lammps_dump(Path::new(NVT), LammpsUnits::Real).unwrap();
+    let traj = read_lammps_dump(Path::new(NVT), Some(LammpsUnits::Real)).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
     assert_eq!(traj.frames.len(), 5);
     // 逐位相同的体积经 Σv/n 仍可能与单个 v 差 1 ulp（V≈6e4 时约 7e-12），
@@ -81,7 +81,7 @@ fn nvt_fixture_has_constant_volume() {
 fn nvt_is_unaffected_by_per_frame_normalisation() {
     // 定容轨迹上 ⟨ρ_f·g_f⟩ 精确等于 ρ·g，故 S(q) 与旧口径逐位相同 ——
     // 这是「本次改动不动存量 NVT 结果」的可执行证明。
-    let traj = read_lammps_dump(Path::new(NVT), LammpsUnits::Real).unwrap();
+    let traj = read_lammps_dump(Path::new(NVT), Some(LammpsUnits::Real)).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
     for (k, v) in &g.gr {
         for (i, &gv) in v.iter().enumerate() {
@@ -98,7 +98,7 @@ fn nvt_is_unaffected_by_per_frame_normalisation() {
 fn folded_matches_literal_per_frame_on_real_npt_trajectory() {
     // 生产路径只做一次傅里叶变换，靠 ⟨ρ_f·g_f⟩ 重构逐帧结果；这里在真实 NPT 轨迹上
     // 与字面逐帧实现对拍，确认两者是同一个数而非近似。
-    let traj = read_lammps_dump(Path::new(NPT), LammpsUnits::Real).unwrap();
+    let traj = read_lammps_dump(Path::new(NPT), Some(LammpsUnits::Real)).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
     let s = calc_sq_from_gr(&g, &sq_params()).unwrap();
     let (gr_lit, sq_lit) = literal_per_frame(&traj);
@@ -117,7 +117,7 @@ fn folded_matches_literal_per_frame_on_real_npt_trajectory() {
 fn npt_differs_from_average_volume_shortcut() {
     // 量化旧口径（先平均 g，再用 ρ=N/⟨V⟩ 变换一次）与逐帧口径的差距，确认改动
     // 在 NPT 上确实改变了结果 —— 否则前一个测试可能只是在比较两条相同的死路径。
-    let traj = read_lammps_dump(Path::new(NPT), LammpsUnits::Real).unwrap();
+    let traj = read_lammps_dump(Path::new(NPT), Some(LammpsUnits::Real)).unwrap();
     let g = calc_gr(&traj, &gr_params()).unwrap();
     let s = calc_sq_from_gr(&g, &sq_params()).unwrap();
 

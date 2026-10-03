@@ -15,6 +15,20 @@ command line alike; regenerate it rather than migrating it.
 Three rounds of breaking changes sit under the version number `0.3.3`, none of
 them released yet. They will arrive together.
 
+### `--metal-units` → `--units real|metal`, required for dumps with velocities/forces
+
+A LAMMPS dump does not record its `units`, and real and metal differ by $10^3$ in
+velocity and ~23 in force. The old default (real) silently mis-scaled every
+metal-unit dump read without `--metal-units` — which is every DeePMD run.
+`--metal-units` is gone; a dump with `vx`/`fx`-type columns now needs
+`--units real` or `--units metal`, on every command, or the read fails. Dumps with
+positions only are unaffected. Python: `metal_units=True` → `units="metal"`.
+
+| before | now |
+|---|---|
+| `ferro traj vacf -i t.dump --metal-units` | `ferro traj vacf -i t.dump --units metal` |
+| `ferro traj gr -i t.dump …` (dump has `vx vy vz`) | add `--units real` or `--units metal` |
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run

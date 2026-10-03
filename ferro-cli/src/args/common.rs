@@ -17,9 +17,15 @@ use crate::io_dispatch::{check_atom_style, read_trajectory_tail};
 /// a structure or trajectory through `io_dispatch::read_trajectory`.
 #[derive(Args, Clone, Debug, Default)]
 pub struct ReadArgs {
-    /// Use LAMMPS metal units for dump files (velocities Å/ps, forces eV/Å)
-    #[arg(long)]
-    pub metal_units: bool,
+    /// LAMMPS units of a dump's velocity/force columns: real (Å/fs, kcal/mol/Å) or
+    /// metal (Å/ps, eV/Å); required when the dump has them (never guessed)
+    #[arg(
+        long,
+        value_name = "UNITS",
+        value_parser = clap::builder::PossibleValuesParser::new(["real", "metal"])
+            .map(|s| s.parse::<LammpsUnits>().expect("取值已由 PossibleValuesParser 限定")),
+    )]
+    pub units: Option<LammpsUnits>,
 
     /// LAMMPS data atom style; required to read .data/.lmp/.lammps (never guessed)
     #[arg(
@@ -29,12 +35,6 @@ pub struct ReadArgs {
             .map(|s| s.parse::<AtomStyle>().expect("取值已由 PossibleValuesParser 限定")),
     )]
     pub atom_style: Option<AtomStyle>,
-}
-
-impl ReadArgs {
-    pub fn units(&self) -> LammpsUnits {
-        if self.metal_units { LammpsUnits::Metal } else { LammpsUnits::Real }
-    }
 }
 
 /// Input/output and run-wide options carried by every analysis subcommand.

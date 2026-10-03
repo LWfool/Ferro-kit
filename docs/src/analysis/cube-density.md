@@ -90,7 +90,7 @@ ferro map density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
 ferro map density -i traj.dump --elements Li -o li_density.cube
 
 # Time-averaged velocity magnitude
-ferro map velocity -i traj.dump --metal-units -o velocity.cube
+ferro map velocity -i traj.dump --units metal -o velocity.cube
 
 # Time-averaged force magnitude
 ferro map force -i traj.dump -o force.cube

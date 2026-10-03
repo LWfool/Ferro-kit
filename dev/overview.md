@@ -364,3 +364,13 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 
 同日第四次追加（仍在 0.3.3）：新增 `traj bondlife`（间歇/连续键相关函数 + 逐帧成键
 断键事件），`rotcorr` 新增 `--vector bond` 与 `--legendre 1|2`。均为新功能，无迁移。
+
+## 2026-10-03 的一批（版本号**仍是 0.3.3**，未发版）
+
+2026-10-02 物理审查的中等问题修复。破坏性的：
+
+- **`--metal-units` → `--units real|metal`，dump 含速度/力列时必填**（审查 M-A）。
+  dump 不记录 `units`，两种体系速度差 10³、力差 23 倍，旧默认 real 而 DeePMD 只能跑
+  metal，漏写开关是静默的数量级错误。同 M1 对 atom style 的裁定：不猜。只有坐标的
+  dump 不受影响。库层 `read_lammps_dump` / `write_lammps_dump` 收 `Option<LammpsUnits>`，
+  `LammpsUnits` 去掉了 `Default`；Python `metal_units=True` → `units="metal"`。

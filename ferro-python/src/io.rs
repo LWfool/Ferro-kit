@@ -33,21 +33,21 @@ fn detect(path: &str) -> String {
         .to_lowercase()
 }
 
+fn parse_units(units: Option<&str>) -> PyResult<Option<LammpsUnits>> {
+    units.map(|u| u.parse::<LammpsUnits>().map_err(pyerr)).transpose()
+}
+
 /// 读取结构 / 轨迹文件，按扩展名自动识别格式。
 ///
 /// 支持：xyz, extxyz, pdb, cif, POSCAR/CONTCAR, in/qe (Quantum ESPRESSO),
 /// inp/restart (CP2K), lammpstrj/dump/lammps (LAMMPS dump),
-/// data/lmp (LAMMPS data)。LAMMPS dump 默认 real 单位，`metal_units=True`
-/// 切换为 metal 单位。LAMMPS data 必须给 `atom_style`（"atomic" / "charge" /
+/// data/lmp (LAMMPS data)。LAMMPS dump 含速度/力列时必须给 `units`（"real" /
+/// "metal"），dump 不记录单位，不猜。LAMMPS data 必须给 `atom_style`（"atomic" / "charge" /
 /// "full"），不按注释或列数猜。
 #[pyfunction]
-#[pyo3(signature = (path, metal_units = false, atom_style = None))]
-fn read(path: &str, metal_units: bool, atom_style: Option<&str>) -> PyResult<PyTrajectory> {
-    let units = if metal_units {
-        LammpsUnits::Metal
-    } else {
-        LammpsUnits::Real
-    };
+#[pyo3(signature = (path, units = None, atom_style = None))]
+fn read(path: &str, units: Option<&str>, atom_style: Option<&str>) -> PyResult<PyTrajectory> {
+    let units = parse_units(units)?;
     let p = std::path::Path::new(path);
     let traj = match detect(path).as_str() {
         // .xyz 也常装 extxyz（ASE、GPUMD），与 CLI 的 io_dispatch 同一个判据
@@ -80,15 +80,11 @@ fn read(path: &str, metal_units: bool, atom_style: Option<&str>) -> PyResult<PyT
 /// 写出轨迹，按扩展名选择格式。
 ///
 /// 支持：xyz, extxyz, pdb, cif, POSCAR, in/qe, data/lmp,
-/// lammpstrj/dump。
+/// lammpstrj/dump。带速度/力的轨迹写 dump 时必须给 `units`（"real" / "metal"）。
 #[pyfunction]
-#[pyo3(signature = (traj, path, metal_units = false))]
-fn write(traj: &PyTrajectory, path: &str, metal_units: bool) -> PyResult<()> {
-    let units = if metal_units {
-        LammpsUnits::Metal
-    } else {
-        LammpsUnits::Real
-    };
+#[pyo3(signature = (traj, path, units = None))]
+fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
+    let units = parse_units(units)?;
     let t = &traj.inner;
     let p = std::path::Path::new(path);
     match detect(path).as_str() {

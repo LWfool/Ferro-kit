@@ -110,7 +110,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // 目标格式装得下多帧就写一个文件，装不下就一帧一个 —— 往 POSCAR 写 20 帧
     // 本来就只能是 20 个文件，不必再要用户记一个开关
     if holds_multiple_frames(output) || picked.n_frames() == 1 {
-        write_trajectory(&picked, output, args.read.units())?;
+        write_trajectory(&picked, output, args.read.units)?;
         println!(
             "Converted {} -> {}  ({} of {n_read} frame{} in 1 file)",
             input.display(),
@@ -123,7 +123,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         for (&frame_idx, frame) in indices.iter().zip(&picked.frames) {
             let path = indexed_path(output, frame_idx, width);
             let single = Trajectory::from_frame(frame.clone());
-            write_trajectory(&single, &path, args.read.units())
+            write_trajectory(&single, &path, args.read.units)
                 .with_context(|| format!("writing frame {frame_idx} to {}", path.display()))?;
         }
         println!(
