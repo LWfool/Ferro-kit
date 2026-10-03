@@ -80,6 +80,19 @@ A Gaussian cube file (`.cube`):
 
 The cube format is directly accepted by VESTA, VMD, Ovito, and most electronic-structure visualisation packages.
 
+### Units in the file — read before integrating
+
+- **Geometry is in Bohr** (the cube convention): origin, voxel vectors and atom positions.
+- **Data is in the table's unit**, atoms/Å³ for `density`, Å/fs or eV/Å for `velocity` / `force` — not
+  converted to Bohr.  Viewers only colour the values, so isosurfaces are fine; but a tool that
+  *integrates* the grid (VESTA's or Bader-style integration, which assume e/Bohr³) multiplies by a voxel
+  volume in Bohr³, and the total comes out too large by $(1\ \text{Å}/1\ \text{Bohr})^{3} \approx 6.748$.
+  To integrate, multiply the values by the voxel volume in Å³ yourself (the sum over the grid then gives
+  the mean number of atoms in the box).
+- In `velocity` and `force` modes a voxel **no atom ever visited is written as 0**: the cube format has
+  no missing-value marker.  0 there means "no data", not "measured at rest" — do not average those
+  voxels in.
+
 ## Usage
 
 ```bash

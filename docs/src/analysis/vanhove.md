@@ -97,6 +97,13 @@ let tables = result.to_tables();   // [("vanhove", Table{r, p_r})]
 | Bimodal distribution | Coexistence of slow and fast populations |
 | Secondary peak at $r \approx$ jump length | Discrete jump mechanism |
 
+## Scope: self part only
+
+ferro computes the **self part** $G_s$ (each atom against its own earlier position).  The **distinct
+part** $G_d(r,\tau)$ — an atom against *other* atoms' earlier positions, which at $\tau = 0$ reduces to
+$\rho\,g(r)$ and describes how the neighbour shell relaxes — is not computed, so the full
+$G(r,\tau) = G_s + G_d$ is not available.  For $\tau = 0$ use `traj gr`.
+
 ## Implementation Notes
 
 - Parallelism: per-origin `par_iter`.

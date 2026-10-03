@@ -158,6 +158,13 @@ and that fold stays inside the cube).  For TOR this matters under NPT:
 - **Every frame needs a cell** once the first frame has one; a frame without a cell, or with a singular
   cell, fails that input.
 - **Non-periodic input** (no cell in the first frame) is used as it is, with no unwrapping.
+- **The per-axis `pbc` flags are not read**: a frame with a cell is unwrapped in all three directions.
+  For a slab this is harmless along the vacuum (atoms do not cross it), but report $D$ from the in-plane
+  components (see below), not from the total.
+- **No centre-of-mass drift removal.**  If the whole system drifts (a thermostat that does not conserve
+  momentum, or a poorly zeroed initial velocity), the drift adds $v_\text{COM}^2 t^2$ to every atom's MSD
+  and inflates $D$.  `gmx msd -rmcomm` and LAMMPS `compute msd com yes` subtract it; ferro does not.
+  Check that the COM displacement is negligible against the MSD, or remove the drift before analysis.
 
 ## Components: Cartesian $x$, $y$, $z$
 
@@ -258,6 +265,17 @@ $m \in [\operatorname{round}(f_\min\, m_\max),\ \operatorname{round}(f_\max\, m_
 Check the window on a log-log plot (`scripts/plot_msd.py --loglog`): in the diffusive regime the MSD has
 slope 1, and the window should sit inside that stretch — past the ballistic start and before the poorly
 averaged tail.
+
+### Isotropy and finite size
+
+- **$D = \text{slope}/6$ assumes isotropic diffusion.**  For a slab, a channel structure or any anisotropic
+  system use the components: $D_\alpha = \text{slope}_\alpha/2$ from `msd_x`, `msd_y`, `msd_z`
+  (for in-plane diffusion in a slab, $D_\parallel = \text{slope}(\text{msd}_x + \text{msd}_y)/4$).
+- **$D$ from a periodic box is systematically too small** because of the hydrodynamic self-interaction
+  with the periodic images.  For a cubic box of side $L$ the Yeh–Hummer correction is
+  $D_\infty = D_\text{PBC} + \xi k_B T / (6\pi\eta L)$ with $\xi \approx 2.837$ and $\eta$ the shear viscosity.
+  It matters most for liquids in small boxes; ferro does not apply it, so compare $D$ between
+  runs of the same box size, or correct it yourself.
 
 ### Uncertainty
 

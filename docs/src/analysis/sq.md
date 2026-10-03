@@ -26,7 +26,12 @@ $$w_{\alpha\beta}(q) = \frac{(2 - \delta_{\alpha\beta}) \, c_\alpha c_\beta f_\a
 
 where $c_\alpha = N_\alpha / N$ is the mole fraction of species $\alpha$, and $f_\alpha(q)$ is the scattering factor.
 
-- **X-ray** (`Xrd`): $f_\alpha(q)$ are the $q$-dependent atomic form factors.
+- **X-ray** (`Xrd`): $f_\alpha(q)$ are the $q$-dependent atomic form factors of **neutral atoms**
+  (Waasmaier–Kirfel, 5-Gaussian fit).  In an ionic system the real scatterers are ions ($O^{2-}$,
+  $Zn^{2+}$, …): the difference is carried by the outer electrons, so it is largest at low $q$
+  (including the FSDP region) and vanishes at high $q$, where the core electrons dominate.  Expect
+  peak heights near the FSDP to differ from an experiment analysed with ionic form factors; positions
+  are unaffected.
 - **Neutron** (`Neutron`): $f_\alpha$ is replaced by the $q$-independent coherent scattering length $b_\alpha^\text{coh}$.  Values are the NIST table (Sears, *Neutron News* 3(3), 1992), real part for the complex ones, with
   one deliberate exception: **B is $^{11}B$ (6.65 fm), not natural B (5.30 fm)**, because neutron
   diffraction on borate glasses uses $^{11}B$-enriched samples ($^{10}B$ absorbs strongly).  For a
@@ -35,6 +40,9 @@ where $c_\alpha = N_\alpha / N$ is the mole fraction of species $\alpha$, and $f
   Pu and Cm have no natural value; the table carries $^{238}Pu$ and $^{244}Cm$.
 
 ### Physical Interpretation
+
+$S(q)$ is built from $g(r)$ and inherits its periodicity assumption: a slab's vacuum enters the density
+(see [g(r): every direction is treated as periodic](gr.md#every-direction-is-treated-as-periodic)).
 
 $S(q)$ characterises structural correlations at length scale $2\pi/q$. Key features:
 
