@@ -262,7 +262,7 @@ fn export_labelled(
     };
     let path = out.join(&name);
     match fmt {
-        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, ferro_io::LammpsUnits::Real)?,
+        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, Some(ferro_io::LammpsUnits::Real))?,
         ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
     }
     if skipped > 0 {
@@ -379,7 +379,7 @@ Parameters:
       --last-n N        Use only the last N frames (skip equilibration)
       --ncore N         Parallel threads                            [all cores]
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
-      --metal-units     LAMMPS metal units; only affects --export-traj extxyz
+      --units U         Dump vx/fx units: real | metal (required if present)
       --modifier E,E    Elements counted for coordination only: no bridging
                         count, no part in ligand classification. Give each a
                         cutoff too

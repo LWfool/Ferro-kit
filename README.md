@@ -217,7 +217,7 @@ pip install target/wheels/*.whl
 ```python
 import ferro
 
-t  = ferro.read("traj.lammpstrj", metal_units=True)
+t  = ferro.read("traj.lammpstrj", units="metal")
 sc = ferro.supercell(t, 2, 2, 1)
 ferro.write(sc, "POSCAR")
 

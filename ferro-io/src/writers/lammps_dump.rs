@@ -3,14 +3,23 @@ use crate::readers::lammps_dump::LammpsUnits;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 const EV_TO_KCAL: f64 = 1.0 / 0.04336410; // eV/Å → kcal/(mol·Å)
 
 /// 写 LAMMPS dump 文件。
 /// 包含列：id type element x y z [vx vy vz] [fx fy fz] [q]
-pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnits) -> Result<()> {
+/// `units` 为 `None` 时，带速度或力的轨迹报错：写出的数值取决于读它的 LAMMPS 用哪个 `units`。
+pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<LammpsUnits>) -> Result<()> {
     let path_ = path.display();
+    // 先查再建文件，免得报错后留下一个空文件
+    if units.is_none() && trajectory.frames.iter().any(|f| f.velocities.is_some() || f.forces.is_some()) {
+        bail!(
+            "{path_}: the trajectory carries velocities/forces, and their numbers in a dump depend \
+             on the LAMMPS `units` the reader will use; give it explicitly \
+             (CLI: --units real|metal, Python: units=\"real\"|\"metal\")"
+        );
+    }
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
@@ -99,9 +108,10 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
                     .unwrap_or_default();
                 let v = to_lammps(v)?;
                 // real: Å/fs (no-op), metal: Å/fs → Å/ps (×1000)
+                // units 为 None 时开头已拒绝了带速度/力的轨迹
                 let vscale = match units {
-                    LammpsUnits::Real  => 1.0,
-                    LammpsUnits::Metal => 1000.0,
+                    Some(LammpsUnits::Metal) => 1000.0,
+                    _ => 1.0,
                 };
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale));
             }
@@ -113,8 +123,8 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: LammpsUnit
                 let f = to_lammps(f)?;
                 // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
                 let fscale = match units {
-                    LammpsUnits::Real  => EV_TO_KCAL,
-                    LammpsUnits::Metal => 1.0,
+                    Some(LammpsUnits::Metal) => 1.0,
+                    _ => EV_TO_KCAL,
                 };
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale));
             }
@@ -196,7 +206,7 @@ mod tests {
 
         let path = std::env::temp_dir().join("type_stable.lammpstrj");
         let p = &path;
-        write_lammps_dump(&traj, p, LammpsUnits::Real).unwrap();
+        write_lammps_dump(&traj, p, Some(LammpsUnits::Real)).unwrap();
 
         let text = std::fs::read_to_string(p).unwrap();
         let mut seen: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
@@ -217,9 +227,9 @@ mod tests {
         let path = std::env::temp_dir().join("bcc_rt.dump");
         let p = &path;
         let orig = bcc_traj();
-        write_lammps_dump(&orig, p, LammpsUnits::Real).unwrap();
+        write_lammps_dump(&orig, p, Some(LammpsUnits::Real)).unwrap();
 
-        let loaded = read_lammps_dump(p, LammpsUnits::Real).unwrap();
+        let loaded = read_lammps_dump(p, Some(LammpsUnits::Real)).unwrap();
         assert_eq!(loaded.n_frames(), 2);
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
@@ -256,7 +266,7 @@ mod tests {
             frame.forces = Some(vec![Vector3::from(f)]);
             let path = std::env::temp_dir().join(format!("rot_{name}.dump"));
             // metal：力不换算，速度 Å/fs → Å/ps 乘 1000
-            write_lammps_dump(&Trajectory::from_frame(frame), &path, LammpsUnits::Metal).unwrap();
+            write_lammps_dump(&Trajectory::from_frame(frame), &path, Some(LammpsUnits::Metal)).unwrap();
 
             let text = std::fs::read_to_string(&path).unwrap();
             let cols: Vec<f64> = text.lines().last().unwrap()
@@ -294,7 +304,7 @@ mod tests {
         let mut traj = Trajectory::new();
         traj.add_frame(frame);
         let path = std::env::temp_dir().join("tri_w.dump");
-        write_lammps_dump(&traj, &path, crate::readers::lammps_dump::LammpsUnits::Metal).unwrap();
+        write_lammps_dump(&traj, &path, Some(crate::readers::lammps_dump::LammpsUnits::Metal)).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();
         let box_lines: Vec<&str> = text

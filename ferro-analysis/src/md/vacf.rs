@@ -9,7 +9,7 @@
 //! at the self-diffusion coefficient D.
 //!
 //! Velocities are used as stored in `frame.velocities`, in the internal unit Å/fs
-//! (the LAMMPS reader converts metal-unit Å/ps with `--metal-units`). `Cv` is then in
+//! (the LAMMPS reader converts metal-unit Å/ps with `--units metal`). `Cv` is then in
 //! Å²/fs² and `diffusion` in Å²/fs.
 //!
 //! Parallelism: per atom.

@@ -36,7 +36,7 @@ pip install target/wheels/ferro-*.whl
 ```python
 import ferro
 
-t = ferro.read("traj.lammpstrj", metal_units=True)   # -> Trajectory
+t = ferro.read("traj.lammpstrj", units="metal")   # -> Trajectory
 print(len(t), t.n_atoms(), t.elements())
 
 sc = ferro.supercell(t, 2, 2, 1)
@@ -68,7 +68,7 @@ Frame indices are 0-based; out-of-range raises `IndexError`.
 
 ## I/O
 
-### `read(path, metal_units=False, atom_style=None) -> Trajectory`
+### `read(path, units=None, atom_style=None) -> Trajectory`
 
 Format auto-detected from the file name / extension:
 
@@ -79,13 +79,13 @@ Format auto-detected from the file name / extension:
 | `POSCAR*` / `CONTCAR*` | VASP |
 | `.in` / `.qe` | Quantum ESPRESSO input |
 | `.inp` / `.restart` | CP2K input / restart |
-| `.lammpstrj` / `.dump` / `.lammps` | LAMMPS dump (`metal_units` switches real↔metal) |
+| `.lammpstrj` / `.dump` / `.lammps` | LAMMPS dump; **`units` (`"real"` or `"metal"`) is required when it has velocity/force columns**, since a dump does not record its unit system |
 | `.data` / `.lmp` | LAMMPS data; **`atom_style` (`"atomic"`, `"charge"` or `"full"`) is required**, never guessed from the `Atoms` comment or the column count |
 
-### `write(traj, path, metal_units=False)`
+### `write(traj, path, units=None)`
 
 Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`, `in`/`qe`,
-`data`/`lmp`, `lammpstrj`/`dump`.
+`data`/`lmp`, `lammpstrj`/`dump`.  Writing velocities or forces to a dump requires `units`.
 
 ## Structure operations
 

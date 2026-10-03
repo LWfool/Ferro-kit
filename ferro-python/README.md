@@ -26,7 +26,7 @@ Pin the interpreter explicitly: without `--interpreter`, maturin may pick a stra
 ```python
 import ferro
 
-t = ferro.read("traj.lammpstrj", metal_units=True)   # -> Trajectory
+t = ferro.read("traj.lammpstrj", units="metal")   # -> Trajectory
 print(len(t), t.n_atoms(), t.elements())
 
 sc = ferro.supercell(t, 2, 2, 1)
@@ -45,8 +45,8 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 
 | Function | Description |
 |---|---|
-| `read(path, metal_units=False, atom_style=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style` |
-| `write(traj, path, metal_units=False)` | Write by extension |
+| `read(path, units=None, atom_style=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style`, a dump with velocities/forces needs `units` |
+| `write(traj, path, units=None)` | Write by extension; velocities/forces to a dump need `units` |
 | `supercell(traj, nx, ny, nz)` | Per-frame supercell |
 | `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along `x`/`y`/`z` |
 | `merge(a, b, axis, gap)` | Merge the first frames of two systems |

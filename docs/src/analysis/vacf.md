@@ -64,9 +64,9 @@ Units: $D$ in Å²/fs; multiply by 0.1 for cm²/s.
 
 Velocities are used in the internal unit **Å/fs**:
 
-- LAMMPS dumps: `real` units are already Å/fs; `metal` units (Å/ps) are converted when read with
-  `--metal-units`.  Without that flag a metal-unit dump is read as if it were Å/fs, and $C_v$ comes out
-  $10^6$ times too large — check $C_v(0)$ against $3k_BT/m$.
+- LAMMPS dumps: `--units real|metal` is required, because a dump does not record its unit system.
+  `real` velocities are already Å/fs; `metal` (Å/ps) are converted.  Giving the wrong one makes $C_v$
+  off by $10^6$ — check $C_v(0)$ against $3k_BT/m$.
 - Extended XYZ: the `velocities` column is taken as it is, assumed Å/fs.
 
 Then $C_v$ is in Å²/fs² and `diffusion` in Å²/fs.
@@ -87,7 +87,7 @@ pub struct VacfParams {
 | `--max-lag` | $N/2$ | longest lag in frames |
 | `--elements` | all | atoms averaged, chosen by element in the first frame |
 | `--last-n` | all | keep only the last N frames before anything else |
-| `--metal-units` | off | LAMMPS dump in metal units (velocities Å/ps → Å/fs) |
+| `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of the dump velocities (required for a dump) |
 
 ## Output
 
@@ -114,7 +114,7 @@ it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
 ```bash
 ferro traj vacf -i traj.dump --dt 2.0 --elements Li -o run1
-ferro traj vacf -i traj.lammpstrj --dt 5.0 --metal-units --max-lag 400
+ferro traj vacf -i traj.lammpstrj --dt 5.0 --units metal --max-lag 400
 ```
 
 ```rust
@@ -146,7 +146,7 @@ D = np.concatenate([[0], np.cumsum(0.5 * dt * (vacf[1:] + vacf[:-1]))]) / 3
 
 | Symptom | First thing to check |
 |---|---|
-| $C_v(0)$ far from $3k_BT/m$ | velocity unit: metal-unit dump read without `--metal-units` (factor $10^6$) |
+| $C_v(0)$ far from $3k_BT/m$ | velocity unit: metal-unit dump read with `--units real` (factor $10^6$) |
 | `frame k has no velocities` | the dump lacks `vx vy vz`, or only some frames carry them |
 | $D$ differs from ferro 0.3.2 or earlier | expected — see below |
 | `diffusion` never levels off | trajectory too short for $C_v$ to decay, or `--max-lag` too small |

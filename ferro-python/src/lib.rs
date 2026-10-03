@@ -5,7 +5,7 @@
 //!
 //! ```python
 //! import ferro
-//! t = ferro.read("traj.lammpstrj", metal_units=True)
+//! t = ferro.read("traj.lammpstrj", units="metal")
 //! sc = ferro.supercell(t, 2, 2, 1)
 //! g  = ferro.gr(t, r_max=10.0, dr=0.02)   # dict[str, list[float]]
 //! d  = ferro.msd(t, dt=2.0, elements=["Li"])
