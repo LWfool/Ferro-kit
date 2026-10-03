@@ -370,6 +370,10 @@ impl SqResult {
         v.push(format!("dq      = {} Ang^-1", self.params.dq));
         v.push("partials: <A>-<B>_sq unweighted; _xrd / _neutron are w_ij(q)*S_ij(q),".to_string());
         v.push("          which sum over pairs to total_xrd / total_neutron".to_string());
+        if self.total_neutron.is_some() {
+            // ¹¹B 是有意的（富集样品），但不写出来，天然硼样品的用户会拿错的权重比实验
+            v.push("neutron b: NIST coherent lengths; B is 11B (6.65 fm), natural B is 5.30 fm".to_string());
+        }
         v
     }
 }

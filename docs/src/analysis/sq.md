@@ -27,7 +27,12 @@ $$w_{\alpha\beta}(q) = \frac{(2 - \delta_{\alpha\beta}) \, c_\alpha c_\beta f_\a
 where $c_\alpha = N_\alpha / N$ is the mole fraction of species $\alpha$, and $f_\alpha(q)$ is the scattering factor.
 
 - **X-ray** (`Xrd`): $f_\alpha(q)$ are the $q$-dependent atomic form factors.
-- **Neutron** (`Neutron`): $f_\alpha$ is replaced by the $q$-independent coherent scattering length $b_\alpha^\text{coh}$.
+- **Neutron** (`Neutron`): $f_\alpha$ is replaced by the $q$-independent coherent scattering length $b_\alpha^\text{coh}$.  Values are the NIST table (Sears, *Neutron News* 3(3), 1992), real part for the complex ones, with
+  one deliberate exception: **B is $^{11}B$ (6.65 fm), not natural B (5.30 fm)**, because neutron
+  diffraction on borate glasses uses $^{11}B$-enriched samples ($^{10}B$ absorbs strongly).  For a
+  natural-boron sample, every B-containing neutron weight is too large by $(6.65/5.30)^2 \approx 1.57$
+  for B–B and $6.65/5.30$ for B–X.  The `#` header says this whenever neutron weighting is written.
+  Pu and Cm have no natural value; the table carries $^{238}Pu$ and $^{244}Cm$.
 
 ### Physical Interpretation
 

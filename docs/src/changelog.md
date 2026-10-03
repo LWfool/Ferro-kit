@@ -59,6 +59,13 @@ displacements beyond `--r-max` were dropped while the total still claimed to be
 with the Gaussian reference, and `[inputs]` gains `outside_fraction` (the
 share beyond `--r-max`, warned above 1 %).
 
+### Neutron scattering lengths: Te, Eu, Hf corrected
+
+Checked entry by entry against the NIST table: Te 5.68 → 5.80 fm, Eu 5.30 →
+7.22 fm, Hf 7.77 → 7.7 fm. `total_neutron` changes for systems containing them.
+B stays at the $^{11}B$ value (6.65 fm) on purpose, now stated in the manual and
+the csv header.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run
