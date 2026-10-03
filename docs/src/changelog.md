@@ -39,6 +39,11 @@ are present (dump, CP2K, OUTCAR) a file with a duplicated frame (a restart
 written twice) or a changed dump interval is skipped with a message naming the
 frames. `convert` to a dump writes the original step numbers.
 
+### A CIF with partial occupancy is an error
+
+`_atom_site_occupancy` was ignored: a mixed site became two atoms at the same
+position, silently. Such a file is now refused, naming every partial site.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run

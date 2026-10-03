@@ -155,6 +155,10 @@ Things that trip people up:
   `dataset --type nep|extxyz` all write extended XYZ under `.xyz`, so a `.xyz` whose comment line (line 2)
   declares `Lattice=` or `Properties=` is read with the extended XYZ reader; anything else stays plain XYZ.
   Writing to `.xyz` still produces plain XYZ (no cell); write `.extxyz` to keep the cell.
+- **A CIF with partial occupancy is refused.**  A structure holds whole atoms, so a mixed site
+  (`Mg 0.5` / `Fe 0.5`) would become two overlapping atoms and a vacancy site (`O 0.9`) a full
+  atom.  The error names every site with `_atom_site_occupancy` below 1; order the structure
+  first (one species per site, a supercell for vacancies).
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
 - **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot

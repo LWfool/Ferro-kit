@@ -379,3 +379,5 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
   原步号）；带步号时重复帧与不等间隔逐文件报错跳过（`cmd/traj.rs::check_frame_spacing`）。
   上线即抓到 `tests/70Z30P00A_NVT_5.lammpstrj` 的步距是 12000/12000/13000/12000 ——
   这条 fixture 不能再喂给时间相关分析。
+- **CIF 部分占位报错**（审查 M-C）。`_atom_site_occupancy < 1 − 1e-3` 的位点逐个点名后
+  拒读；之前混占位静默写成重叠原子。容差只吸收 0.9995 这类舍入，0.99 也算部分占位。

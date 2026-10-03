@@ -201,6 +201,7 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
     let idx_cx  = col(&["_atom_site_cartn_x"]);
     let idx_cy  = col(&["_atom_site_cartn_y"]);
     let idx_cz  = col(&["_atom_site_cartn_z"]);
+    let idx_occ = col(&["_atom_site_occupancy"]);
 
     ensure!(idx_sym.is_some() || idx_lbl.is_some(), "no element/label column");
     ensure!(
@@ -210,9 +211,20 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
     );
 
     let mut sites = AtomSites { elements: vec![], labels: vec![], frac: vec![] };
+    // 部分占位的位点：(行号, 标签, 占位度)。Frame 只能装整原子，混占位（同一位点
+    // Mg 0.5 / Fe 0.5）照写会变成两个重叠原子，空位（O 0.9）会多出 10% 的原子 ——
+    // 密度、配位、喂给 QC 的结构都错，且没有任何症状。有序化怎么做是用户的物理判断
+    let mut partial: Vec<(usize, String, f64)> = Vec::new();
 
-    for row in rows {
+    for (k, row) in rows.iter().enumerate() {
         let get = |i: usize| row.get(i).map(|s| s.as_str()).unwrap_or("?");
+
+        // 缺列或写 ?/. 时取 CIF 字典的默认值 1；容差只吸收 0.9995 这类舍入
+        let occ = idx_occ.and_then(|i| parse_cif_float(get(i))).unwrap_or(1.0);
+        if occ < 1.0 - 1e-3 {
+            let name = idx_lbl.or(idx_sym).map(|i| get(i).to_string()).unwrap_or_default();
+            partial.push((k + 1, name, occ));
+        }
 
         let element = idx_sym
             .map(|i| clean_element(get(i)))
@@ -241,6 +253,19 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
         sites.elements.push(element);
         sites.labels.push(label);
         sites.frac.push(frac);
+    }
+
+    if !partial.is_empty() {
+        let list: Vec<String> = partial.iter()
+            .map(|(k, name, occ)| format!("site {k} '{name}' occupancy {occ}"))
+            .collect();
+        bail!(
+            "{} atom site(s) are partially occupied ({}); a structure holds whole atoms only, \
+             so they would become overlapping atoms or extra atoms. Order the structure first \
+             (pick one species per site, build a supercell for vacancies) and write occupancy 1",
+            partial.len(),
+            list.join(", ")
+        );
     }
 
     Ok(sites)
@@ -559,6 +584,40 @@ Si1  Si  0.0  0.0  0.0
 ";
 
     use crate::testutil::write_tmp;
+
+    // 混占位：同一位点 Mg 0.5 / Fe 0.5（ICSD 无序结构的典型写法）
+    const MIXED_OCC_CIF: &str = "\
+data_mixed
+_cell_length_a   4.2
+_cell_length_b   4.2
+_cell_length_c   4.2
+_cell_angle_alpha   90
+_cell_angle_beta    90
+_cell_angle_gamma   90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Mg1  Mg  0.0  0.0  0.0  0.5
+Fe1  Fe  0.0  0.0  0.0  0.5
+O1   O   0.5  0.5  0.5  1.0(0)
+";
+
+    #[test]
+    fn test_partial_occupancy_is_an_error() {
+        let err = read_cif(&write_tmp("test_mixed.cif", MIXED_OCC_CIF)).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("2 atom site(s)") && msg.contains("'Mg1' occupancy 0.5")
+                && msg.contains("'Fe1'") && !msg.contains("'O1'"),
+                "应点名两个半占位位点、不点名满占位的 O1，实际：{msg}");
+        // 全满占位（含 1.0(0) 的不确定度写法）照常读
+        let full = MIXED_OCC_CIF.replace("0.0  0.5\nFe1  Fe  0.0  0.0  0.0  0.5\n", "0.0  1\n");
+        let traj = read_cif(&write_tmp("test_full_occ.cif", &full)).unwrap();
+        assert_eq!(traj.first().unwrap().n_atoms(), 2);
+    }
 
     #[test]
     fn test_p1_two_atoms() {
