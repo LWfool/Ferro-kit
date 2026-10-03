@@ -4,6 +4,8 @@ use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, ensure, Context, Result};
 
+use super::spacegroup;
+
 // ─── Tokenizer ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -302,22 +304,28 @@ impl SymOp {
     }
 }
 
-fn collect_symops(block: &CifBlock) -> Vec<SymOp> {
-    // Tag names used by old and new CIF dictionaries
+/// 对称操作的来源按可靠程度排：CIF 显式列出的操作 → 空间群符号查表（Hall / H-M /
+/// IT 号，见 `spacegroup.rs`）→ 都没写才当 P1。以前没有操作循环就一律当 P1，只写
+/// `F m -3 m` 的 NaCl 读成 2 个原子、密度 0.54 g/cm³（2026-10-03 审查 A1）
+fn collect_symops(block: &CifBlock, cell: &Cell) -> Result<Vec<SymOp>> {
+    // Tag names used by old and new CIF dictionaries (CIF2 uses a dot)
     const TAGS: &[&str] = &[
         "_space_group_symop_operation_xyz",
+        "_space_group_symop.operation_xyz",
         "_symmetry_equiv_pos_as_xyz",
     ];
+    // 写坏的操作报错并点名 —— 以前 `filter_map(.ok())` 静默丢掉，全坏时退回 P1
+    let parse = |s: &str| parse_symop(s).with_context(|| format!("bad symmetry operation '{s}'"));
 
     // 1. Try loop
     for (headers, rows) in &block.loops {
         for tag in TAGS {
             if let Some(col) = headers.iter().position(|h| h == tag) {
-                let ops: Vec<SymOp> = rows.iter()
+                let ops = rows.iter()
                     .filter_map(|row| row.get(col))
-                    .filter_map(|s| parse_symop(s).ok())
-                    .collect();
-                if !ops.is_empty() { return ops; }
+                    .map(|s| parse(s))
+                    .collect::<Result<Vec<SymOp>>>()?;
+                if !ops.is_empty() { return Ok(ops); }
             }
         }
     }
@@ -325,14 +333,33 @@ fn collect_symops(block: &CifBlock) -> Vec<SymOp> {
     // 2. Try single tag
     for tag in TAGS {
         if let Some(val) = block.singles.get(*tag) {
-            if let Ok(op) = parse_symop(val) {
-                return vec![op];
-            }
+            return Ok(vec![parse(val)?]);
         }
     }
 
-    // 3. No symops: identity only
-    vec![SymOp::identity()]
+    // 3. Space-group symbol / number
+    let single = |tags: &[&str]| -> Option<&str> {
+        tags.iter()
+            .filter_map(|t| block.singles.get(*t))
+            .map(|v| v.trim())
+            .find(|v| !matches!(*v, "" | "?" | "."))
+    };
+    let hall = single(&["_space_group_name_hall", "_space_group.name_hall",
+                        "_symmetry_space_group_name_hall"]);
+    let hm = single(&["_space_group_name_h-m_alt", "_space_group.name_h-m_alt",
+                      "_symmetry_space_group_name_h-m"]);
+    let number = single(&["_space_group_it_number", "_space_group.it_number",
+                          "_symmetry_int_tables_number"])
+        .map(|v| v.parse::<u32>().with_context(|| format!("bad space-group number '{v}'")))
+        .transpose()?;
+    if hall.is_none() && hm.is_none() && number.is_none() {
+        // 4. No symmetry information at all: P1
+        return Ok(vec![SymOp::identity()]);
+    }
+    let metric = cell.matrix * cell.matrix.transpose();
+    let ops = spacegroup::lookup(&spacegroup::Query { hall, hm, number }, &metric)
+        .context("no symmetry operations listed; resolving the space group from its symbol failed")?;
+    Ok(ops.into_iter().map(|(rot, trans)| SymOp { rot, trans }).collect())
 }
 
 fn parse_symop(s: &str) -> Result<SymOp> {
@@ -440,7 +467,7 @@ fn block_to_frame(block: &CifBlock) -> Result<Frame> {
     let cell = parse_cell(block)?;
     let sites = parse_atom_sites(block, &cell)?;
 
-    let symops = collect_symops(block);
+    let symops = collect_symops(block, &cell)?;
     let sites = if symops.len() > 1 {
         expand_by_symmetry(sites, &symops)
     } else {
@@ -671,6 +698,72 @@ O1   O   0.5  0.5  0.5  1.0(0)
         assert_eq!(frame.n_atoms(), 2);
         assert_eq!(frame.atom(0).element, "Fe");
         assert_eq!(frame.atom(1).element, "Fe");
+    }
+
+    // 只写空间群符号、不列对称操作的 NaCl（审查 A1 的复现用例）
+    const NACL_HM_ONLY_CIF: &str = "\
+data_NaCl
+_cell_length_a   5.64
+_cell_length_b   5.64
+_cell_length_c   5.64
+_cell_angle_alpha   90
+_cell_angle_beta    90
+_cell_angle_gamma   90
+_symmetry_space_group_name_H-M  'F m -3 m'
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+Na1  Na  0.0  0.0  0.0
+Cl1  Cl  0.5  0.5  0.5
+";
+
+    fn n_atoms_of(name: &str, text: &str) -> Result<usize> {
+        Ok(read_cif(&write_tmp(name, text))?.first().unwrap().n_atoms())
+    }
+
+    #[test]
+    fn test_symbol_only_cif_is_expanded() {
+        // 以前当 P1 读成 2 个原子；ASE 读出 Cl4Na4
+        assert_eq!(n_atoms_of("test_nacl_hm.cif", NACL_HM_ONLY_CIF).unwrap(), 8);
+        let by_number = NACL_HM_ONLY_CIF.replace(
+            "_symmetry_space_group_name_H-M  'F m -3 m'", "_space_group_IT_number  225");
+        assert_eq!(n_atoms_of("test_nacl_it.cif", &by_number).unwrap(), 8);
+        let by_hall = NACL_HM_ONLY_CIF.replace(
+            "_symmetry_space_group_name_H-M  'F m -3 m'", "_space_group_name_Hall  '-F 4 2 3'");
+        assert_eq!(n_atoms_of("test_nacl_hall.cif", &by_hall).unwrap(), 8);
+    }
+
+    #[test]
+    fn test_symbol_only_cif_errors_instead_of_guessing() {
+        let err = |name: &str, text: String| format!("{:#}", read_cif(&write_tmp(name, &text)).unwrap_err());
+        // 原点选择不定：报错并给修法，不默认取 1
+        let diamond = NACL_HM_ONLY_CIF.replace("F m -3 m", "F d -3 m");
+        let msg = err("test_fd3m.cif", diamond.clone());
+        assert!(msg.contains("ambiguous") && msg.contains(":2"), "{msg}");
+        // 同样的坐标，原点 1 下是 8a+8b、原点 2 下是 16c+16d —— 选错原点原子数都会变
+        // （与 ASE Spacegroup(227, setting=1/2).equivalent_sites 一致）
+        assert_eq!(n_atoms_of("test_fd3m_1.cif", &diamond.replace("F d -3 m", "F d -3 m :1")).unwrap(), 16);
+        assert_eq!(n_atoms_of("test_fd3m_2.cif", &diamond.replace("F d -3 m", "F d -3 m :2")).unwrap(), 32);
+        // 符号与编号矛盾
+        let msg = err("test_conflict.cif", NACL_HM_ONLY_CIF.replace(
+            "_atom_site_label", "_space_group_IT_number 221\nloop_\n_atom_site_label").replacen("loop_\n_space", "_space", 1));
+        assert!(msg.contains("contradicts"), "{msg}");
+        // 不认识的符号
+        let msg = err("test_unknown_hm.cif", NACL_HM_ONLY_CIF.replace("F m -3 m", "F m -3 x"));
+        assert!(msg.contains("unknown Hermann-Mauguin"), "{msg}");
+    }
+
+    #[test]
+    fn test_cif2_dotted_symop_tag_and_bad_symop() {
+        let cif2 = BCC_CIF.replace("_space_group_symop_operation_xyz", "_space_group_symop.operation_xyz");
+        assert_eq!(n_atoms_of("test_cif2_symop.cif", &cif2).unwrap(), 2);
+        // 写坏的操作报错并点名，以前静默丢弃
+        let bad = BCC_CIF.replace("'x+1/2,y+1/2,z+1/2'", "'x+1/2,y+1/2'");
+        let msg = format!("{:#}", read_cif(&write_tmp("test_bad_symop.cif", &bad)).unwrap_err());
+        assert!(msg.contains("bad symmetry operation 'x+1/2,y+1/2'"), "{msg}");
     }
 
     #[test]

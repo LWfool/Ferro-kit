@@ -111,7 +111,7 @@ pub(super) fn lookup(q: &Query, metric: &Matrix3<f64>) -> Result<Vec<(Matrix3<f6
     let first = sorted_ops(cands[0]);
     if cands.iter().skip(1).any(|s| sorted_ops(s) != first) {
         let list: Vec<String> = cands.iter()
-            .map(|s| format!("Hall '{}' (setting '{}', choice {})",
+            .map(|s| format!("Hall #{} '{}' (setting '{}', choice {})", s.hall,
                              s.hall_symbol, s.hm_setting, if s.choice.is_empty() { "-" } else { s.choice }))
             .collect();
         bail!("space-group symbol is ambiguous: matches {}. Append the setting to the H-M symbol \
