@@ -317,15 +317,21 @@ pub static WAASMAIER_KIRFEL: [WkCoeff; 99] = [
 ];
 
 /// Neutron coherent scattering lengths bcoh [fm] for Z = 0..=98.
-/// Source: code2/coefficient.c (NIST / fityk/atomtables.c)
+/// Source: code2/coefficient.c (NIST / fityk/atomtables.c), checked entry by entry against the
+/// NIST table (Sears, Neutron News 3(3), 1992) on 2026-10-03.
 /// Complex entries use Re[bcoh]; 0.0 = no published data.
+///
+/// Deliberate departures from the natural-abundance values:
+/// - B uses ¹¹B (6.65 fm; natural B is 5.30 − 0.213i fm). Neutron diffraction on borate /
+///   borophosphate glasses is done on ¹¹B-enriched samples because ¹⁰B absorbs strongly.
+/// - Pu and Cm have no natural value; the table carries ²³⁸Pu and ²⁴⁴Cm.
 pub static NEUTRON_BCH: [f64; 99] = [
     0.000,  // Z=0 unused
     -3.739, // Z=1  H
      3.260, // Z=2  He
     -1.900, // Z=3  Li
      7.790, // Z=4  Be
-     6.650, // Z=5  B   (manually set to 11B value in code2)
+     6.650, // Z=5  B   11B on purpose (enriched samples); natural B = 5.30 - 0.213i
      6.646, // Z=6  C
      9.360, // Z=7  N
      5.803, // Z=8  O
@@ -372,7 +378,7 @@ pub static NEUTRON_BCH: [f64; 99] = [
      4.065, // Z=49 In  (Re[bcoh])
      6.225, // Z=50 Sn
      5.570, // Z=51 Sb
-     5.680, // Z=52 Te
+     5.800, // Z=52 Te  (was 5.68; NIST 5.80)
      5.280, // Z=53 I
      4.920, // Z=54 Xe
      5.420, // Z=55 Cs
@@ -383,7 +389,7 @@ pub static NEUTRON_BCH: [f64; 99] = [
      7.690, // Z=60 Nd
     12.600, // Z=61 Pm
      0.800, // Z=62 Sm (Re[bcoh])
-     5.300, // Z=63 Eu (Re[bcoh])
+     7.220, // Z=63 Eu  (was 5.30; NIST 7.22 - 1.26i)
      6.500, // Z=64 Gd (Re[bcoh])
      7.380, // Z=65 Tb
     16.900, // Z=66 Dy (Re[bcoh])
@@ -392,7 +398,7 @@ pub static NEUTRON_BCH: [f64; 99] = [
      7.070, // Z=69 Tm
     12.430, // Z=70 Yb
      7.210, // Z=71 Lu
-     7.770, // Z=72 Hf
+     7.700, // Z=72 Hf  (was 7.77; NIST 7.7)
      6.910, // Z=73 Ta
      4.860, // Z=74 W
      9.200, // Z=75 Re
@@ -414,9 +420,9 @@ pub static NEUTRON_BCH: [f64; 99] = [
      9.100, // Z=91 Pa
      8.417, // Z=92 U
     10.550, // Z=93 Np
-    14.100, // Z=94 Pu
+    14.100, // Z=94 Pu  238Pu (no natural value)
      8.300, // Z=95 Am
-     9.500, // Z=96 Cm
+     9.500, // Z=96 Cm  244Cm (no natural value)
      0.000, // Z=97 Bk (no data)
      0.000, // Z=98 Cf (no data)
 ];
@@ -448,6 +454,15 @@ pub fn neutron_bcoh(z: usize) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_neutron_lengths_pinned_to_nist() {
+        // 2026-10-03 与 NIST 表逐项核对后改过的三项 + 有意保留的 11B；改动它们要先回去查表
+        assert_eq!(neutron_bcoh(52), 5.80, "Te");
+        assert_eq!(neutron_bcoh(63), 7.22, "Eu 取实部");
+        assert_eq!(neutron_bcoh(72), 7.70, "Hf");
+        assert_eq!(neutron_bcoh(5), 6.65, "B 有意用 11B（富集样品），见表上方说明");
+    }
 
     #[test]
     fn test_form_factor_xrd_at_q0() {
