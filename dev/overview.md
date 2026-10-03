@@ -399,3 +399,5 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 - **`add_vacuum` 的厚度改为垂直间隙**（审查低 3）。倾斜轴拉长 thickness/cosθ，与 ASE
   对过数值；旧测试 `test_triclinic_cell` 钉的是旧行为（|c|+10），期望值改为 ASE 的结果。
   仍不居中，手册写明。
+- **`find_supercell_dims` 的 `min_length` 按面间距判**（审查低 4），返回值改 `Result`
+  （奇异晶胞）。库级 API，目前无 CLI/Python 调用方。
