@@ -132,7 +132,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | 状态 / 计划 | `dev/progress.md`、`dev/overview.md` / `dev/plan.md` | 已经完成了什么、版本批次；接下来按什么优先级做 | 问到进度时 |
 | 记忆 | `dev/memory.md` | 被纠正过的协作做法、容易答错的工具语义 | 精简文档、动版本号、提交之前 |
 | 细节 | `dev/issues.md`、`dev/bader.md`、`dev/glossary.md` | 编码陷阱、算法规格、译名 | 改代码前 |
-| 技能 | `.claude/skills/*/SKILL.md` | 反复做、步骤固定的操作 | 做对应操作时 |
+| 技能 | `dev/skills/*/SKILL.md` | 反复做、步骤固定的操作 | 做对应操作时 |
 
 新信息按上表归位：**进度变了改 `dev/progress.md`，不改本文件**；被用户纠正过一次的
 做法，记进 `dev/memory.md`。用法类内容仍进 `docs/src/`。
@@ -144,3 +144,6 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | `add-analysis` | 新增分析方法：实现 → CLI 分支 → 帮助页 → 手册页 → `PAGES` 登记 |
 | `add-format` | 新增文件格式：reader/writer → 导出 → `io_dispatch` 两处 → Python 包装 |
 | `update-dev-records` | 「更新开发记录」或「发版」：定版本号 → 更新 dev/ → 同步 ferro-python → 打 tag |
+
+技能实体在 `dev/skills/`（进 git）；Claude Code 只扫 `.claude/skills/`，那里是指向它的
+软链接。`.claude/` 整个被 `.gitignore` 忽略，新 clone 后须重建：`ln -s ../dev/skills .claude/skills`
