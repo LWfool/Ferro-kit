@@ -64,6 +64,10 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | 对拍 | `ferrocmp.py` | `compare_rdf/angle/sq/sq_experiment.py` | 跟 dump2analysis / dump2sq 逐点比 |
 | 出图 | `ferroplot.py` | `plot_gr/angle/sq/net.py` | 发表级 pdf（+ png 看效果） |
 
+另有两个与上面无关的独立脚本（不读 ferro 的 csv）：`gen_spacegroups.py` 从 spglib 生成
+CIF reader 的空间群数据表 `ferro-io/src/readers/spacegroups.dat`；`crosscheck_spacegroups.py`
+把 ferro 的 CIF 展开与 spglib、ASE 逐设置对拍。两者都用 deepmd 环境的 python 跑。
+
 对拍侧的产物名一律由 `ferrocmp.product_name()` 拼（`batch::out_path` 的镜像），
 调用点不写文件名字符串；四个脚本均已按 label 段复跑验证（2026-08-14）。
 
