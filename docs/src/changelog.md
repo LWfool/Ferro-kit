@@ -66,6 +66,12 @@ Checked entry by entry against the NIST table: Te 5.68 → 5.80 fm, Eu 5.30 →
 B stays at the $^{11}B$ value (6.65 fm) on purpose, now stated in the manual and
 the csv header.
 
+### Single-atom species: self-pair $g(r)$ and $S(q)$ are empty, not 0
+
+With one atom of a species, `gr` for its self-pair was 0 everywhere and $S_{AA}(q)$
+oscillated wildly. Both are now empty (NaN); the weighted totals treat that pair
+as $S_{AA} = 1$.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run
