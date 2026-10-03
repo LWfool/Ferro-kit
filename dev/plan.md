@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-01 全库审查发现（19 条，全部复核属实，均未修）
+### 2026-10-01 全库审查发现（19 条，全部复核属实；表内 19 条均已修，表后「待定口径」仍开着）
 
 子代理（Fable 5.1）只读审查，主会话用 debug 版 `ferro` 逐条复现。复现 fixture
 是一次性的，未进仓；每条的「复现」写到可以重做的程度。陷阱的一般化教训见
@@ -72,7 +72,7 @@ fixture；cube 往返只测零原点；cube_radius 无窗口超网格的用例�
 
 **审查未覆盖**：Bader 全套（已登记项之外）、`chg_sdf`、`cube_sdf` 聚类、`cube_jump`、
 `spin.rs`、`cp2k_basis_db`、workflow 模板、`cp2k_sp`、pdb / cif writer、doc 渲染器、
-ferro-python 运行时、`--metal-units` 全链路。
+ferro-python 运行时。（`--metal-units` 全链路已随 2026-10-03 的 `--units` 改造走过一遍）
 
 ### 全仓规则合规扫描的遗留违规（2026-09-27 扫描）
 
