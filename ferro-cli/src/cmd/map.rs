@@ -264,8 +264,7 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     drive(&c.common, |traj, stem, out| {
-        let result = calc_cube_radius(traj, &params)
-            .ok_or_else(|| anyhow!("Cube radius calc failed (missing cell?)"))?;
+        let result = calc_cube_radius(traj, &params)?;
 
         let file = if stem.is_empty() { "radius.cube".to_string() } else { format!("radius_{stem}.cube") };
         let path = out.join(&file);

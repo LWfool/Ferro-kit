@@ -82,6 +82,13 @@ its position. Fortran's `0.1234-100` (exponent without `E`) is read correctly.
 On a tilted axis the vacuum used to be added to the vector length, leaving a real
 gap of thickness·cos θ. The gap is now exactly `thickness`, as in ASE.
 
+### `map radius`: radius beyond the minimum-image bound is refused
+
+A `--radius` larger than half the cell's smallest interplanar spacing used to
+under-count (only the nearest image); it is now an error naming the frame. The
+search window follows each frame's cell, so a shrinking NPT box is fully
+covered.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run
