@@ -551,7 +551,7 @@ Output:
 
 Examples:
   ferro traj vacf -i traj.dump --dt 2.0
-  ferro traj vacf -i traj.dump --elements O --last-n 1000
+  ferro traj vacf -i traj.dump --units metal --dt 10 --elements O --last-n 1000
 
 Full documentation:  ferro doc traj vacf"#
     );
@@ -589,9 +589,9 @@ Output:
   since both ends are required (--center O --neighbor H -> rotcorr_O-H.csv)
 
 Examples:
-  ferro traj rotcorr -i traj.xyz --center O --neighbor H
+  ferro traj rotcorr -i traj.xyz --center O --neighbor H --dt 2.0
   ferro traj rotcorr -i traj.dump --center O --neighbor H --dt 2.0
-  ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond
+  ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond --dt 1000
 
 Full documentation:  ferro doc traj rotcorr"#
     );
@@ -626,8 +626,8 @@ Output:
   [inputs] lists both lifetimes: trapezoidal integral and 1/e crossing
 
 Examples:
-  ferro traj bondlife -i glass_water.dump --center Si --neighbor O --r-bond 2.2
-  ferro traj bondlife -i run.dump --center O --neighbor H --r-bond 1.25 --r-break 1.4 --intermittency 2
+  ferro traj bondlife -i glass_water.dump --center Si --neighbor O --r-bond 2.2 --dt 1000
+  ferro traj bondlife -i run.dump --center O --neighbor H --r-bond 1.25 --r-break 1.4 --intermittency 2 --dt 10
 
 Full documentation:  ferro doc traj bondlife"#
     );
@@ -658,7 +658,7 @@ Output:
   --elements
 
 Examples:
-  ferro traj vanhove -i traj.xyz --tau 100
+  ferro traj vanhove -i traj.xyz --tau 100 --dt 2.0
   ferro traj vanhove -i traj.dump --elements Li --tau 500 --dt 2.0
 
 Full documentation:  ferro doc traj vanhove"#

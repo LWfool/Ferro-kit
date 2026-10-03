@@ -157,7 +157,7 @@ occur within the lag axis, the events of the first frame.
 ferro traj bondlife -i glass_water.dump --center Si --neighbor O --r-bond 2.2 --dt 1000
 
 # O–H with a hysteresis band and 2-frame tolerance
-ferro traj bondlife -i run.dump --center O --neighbor H --r-bond 1.25 --r-break 1.4 --intermittency 2
+ferro traj bondlife -i run.dump --center O --neighbor H --r-bond 1.25 --r-break 1.4 --intermittency 2 --dt 10
 ```
 
 ## Verification
