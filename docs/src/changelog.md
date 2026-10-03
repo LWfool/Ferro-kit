@@ -77,6 +77,11 @@ as $S_{AA} = 1$.
 A malformed number inside the density grid used to become 0. It now fails with
 its position. Fortran's `0.1234-100` (exponent without `E`) is read correctly.
 
+### `add_vacuum_layer`: thickness is the perpendicular gap
+
+On a tilted axis the vacuum used to be added to the vector length, leaving a real
+gap of thickness·cos θ. The gap is now exactly `thickness`, as in ASE.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run
