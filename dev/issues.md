@@ -190,7 +190,7 @@ S(q) 一侧；g(r) 一侧基本是正确性洁癖。** 0.1.12 及更早跑出的
 | `lammps_dump.rs` | dump 缺 `element` 列时元素名为 `X1`/`X2`，`symbol_to_z` 全部返回 255 | S(q) 的 XRD 系数与中子散射长度查表全部失败，`total_xrd`/`total_neutron` 无意义。0.1.11 起 `calc_sq_from_gr` 会打印告警（此前静默）。用 `-m sq` 前仍应确认 `ITEM: ATOMS` 头含 `element` |
 | 三处元素提取 | `symbol_to_z`（精确→两字节→首字节）与 `cp2k.rs:221`/`qe.rs:193` 的 `extract_element`、`cif.rs:463` 的 `element_from_label`（字母前缀 + 首字母大写）**规则不一致** | 对 `ZnA`：前者 → `Zn`，后者 → `Zna`。新增的下划线拆分规则只作用于 LAMMPS dump，不动这三处（它们处理 `Fe1`/`O2` 原生命名，字母前缀规则对其正确） |
 | `symbol_to_z` 贪婪匹配 | `Pb`→铅(82)、`Po`→钋(84)、`Os`→锇(76) 会盖过"P bridging"这类伪标签意图 | 这是选择「按第一个下划线拆分」而非贪婪前缀匹配的主要理由 |
-| `typing.rs:22-23` | `apply_type_labels` 把类型标签写进 **`element`** 字段而非 `label` | 伪元素轨迹即由此产生；`elem_z` 的前缀匹配就是为它服务的 |
+| `typing.rs` | ~~`apply_type_labels` 把类型标签写进 **`element`** 字段而非 `label`~~ **已过时**（2026-10-03 核实）：现在写 `label`；折进 element 的是 `fold_labels`，只在导出 LAMMPS dump 时用 | 伪元素轨迹即由 `fold_labels` 产生；`elem_z` 的前缀匹配就是为它服务的 |
 | `cif.rs` 位点 | `Fe1`/`Fe2` 的 `element` 均为 `Fe`，g(r) 无法分辨不等价位点 | 用 `-x/-y` 按 `label` 选（CIF reader 已填 `label`）。注意 `Fe1` 不合 `<元素>_<后缀>` 约定，导出 LAMMPS dump 时**不会**被折进 element 列（0.2.1 的守卫），走 extxyz 的 `label:S:1` 列才无损 |
 
 ---
@@ -304,7 +304,7 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | `--outdir` 的创建时机 | 写第一个文件时才建 | `Output::prepare()` 在读第一个输入**之前**调用，与「参数级错误快速失败」一致。否则跑完一小时分析才发现路径打不开 |
 | `rotcorr` 的「无选择」分支 | 以为 `--center`/`--neighbor` 可省 | 两者都是必填（`Option` 只为「不带 `-i` 时打帮助」，随后 `bail`）。它恒有 label，`rotcorr_all.csv` 走不到，别为它写代码 |
 | `write_all` 的参数个数 | 继续加位置参数 | 加到第 8 个时收进 `Output { dir, label, suffix }`。三个字段总是一起走，分开传只会让调用点一串 `None, Some(x), None` |
-| `ferro-io` 的 writer 路径 | 以为都收 `&Path` | 九个 writer 全收 `&str`，`batch` 内部是 `PathBuf`，只能在边界转（`Output::join_str`）。统一成 `&Path` 是待办，见 `dev/plan.md` |
+| `ferro-io` 的 writer 路径 | 以为都收 `&Path` | ~~九个 writer 全收 `&str`~~ 2026-09-20 已统一成 `&Path`（2026-10-03 核实）；`Output::join_str` 随之零调用，见 `plan.md`「2026-10-03 四路审查」布局 7 |
 
 ## 发表级绘图脚本编码陷阱（2026-08-13，`scripts/plot_*.py`）
 
