@@ -7,6 +7,8 @@
 > **`docs/src/`** = 怎么用（用户手册，mdBook）· **`dev/`** = 为什么这样定 + 现状 + 待办 ·
 > **本文件** = 你必须遵守的规则。任何用法问题（CLI 参数、输出列、数据模型）查
 > `docs/src/`，不要在这里重述。
+>
+> 问到进度或下一步时，读 `dev/progress.md` / `dev/plan.md`，**不要凭记忆作答**。
 
 ## Build & Test
 
@@ -69,41 +71,24 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 `ferro-python` 是独立 workspace，需**手动同步**。
 
 **只在用户明确要求时才动版本号**，不要每次改代码就自动 +1。
-当前 `0.3.4`（2026-10-03 打 tag `v0.3.4`）。它一并发出了从未单独发版的 `0.3.2`、
-`0.3.3` 两批与 2026-10-03 的审查修复，三批都含破坏性改动却按用户要求走了 patch 位
-（0.3.2 `dataset collect` 产物布局、0.3.3 `-o` 语义、0.3.4 `--units` / `--dt` 必填等）——
-与 `v0.2.1` 同类例外。清单见 `dev/overview.md`。
+当前版本见 `dev/progress.md` 顶部，历次版本批次与破坏性改动（含走 patch 位的例外）见
+`dev/overview.md`。何时升版本号的细则见 `dev/memory.md`「版本号更新规则」。
 
 **`-o` 恒为路径**：写多个产物的命令指目录，`convert` / `job` 指文件；批次标记走
 `-s/--suffix`。目录缺失时经 `outpath.rs` 询问，非交互环境须给 `--mkdir`。
 
 ## 扩展项目
 
-**加文件格式**
-1. `ferro-io/src/readers/<fmt>.rs` 返回 `Result<Trajectory>` + `writers/<fmt>.rs`
-2. 从 `readers/mod.rs`、`writers/mod.rs` 导出
-3. `ferro-cli/src/io_dispatch.rs` 加格式检测（`read_trajectory` 与 `write_trajectory` **两处**）
-4. `ferro-python/src/io.rs` 加包装
+**加文件格式** → 技能 `add-format`。硬约束：`ferro-cli/src/io_dispatch.rs` 的
+`read_trajectory` 与 `write_trajectory` **两处**都要加检测，漏一处那个方向就认不出新格式。
 
-**加分析方法**
-1. 在 `ferro-analysis/src/<domain>/` 实现 —— **纯计算，无文件 I/O**
-2. 给结果类型 `to_tables() -> Vec<(String, Table)>` 与 `meta_lines() -> Vec<String>`。
-   `meta_lines` **只放批内共享的参数**；逐输入才有意义的量走 `[inputs]` 清单，
-   否则第一个文件的组成会摆在全局参数区冒充全局事实
-3. `ferro-cli/src/cmd/<group>.rs` 加分支：构造参数（**在读第一个文件前**校验）→
-   `batch::map_inputs` → `batch::stack` → `batch::write_all`
-4. `ferro-cli/src/help.rs` 加帮助并在 `print_overview` 列出。帮助页照同一模板，
-   **五段，且只有五段**：一句话用途 + `Parameters:`（完整，含值域枚举与默认值）
-   + `Output:`（≤4 行：产物叫什么、落在哪）+ `Examples:`（2~3 条）+
-   `Full documentation:  ferro doc <topic>`。目标 ≤30 行，**参数表与命令列表
-   不为凑行数砍** —— 不知道收哪些值就没法敲命令。
-
-   判据、口径、为什么这么设计**一律进手册**：帮助页答「怎么敲」，手册答
-   「为什么」。2026-09-22 按这条把 25 页推平了一遍（collect 96 → 28 行）
-5. `docs/src/analysis/<name>.md` 加手册页 + `SUMMARY.md` 挂上 +
-   **`ferro-cli/src/doc.rs` 的 `PAGES` 加一条**（否则第 4 步那行指针指向空）
-6. `main.rs` 的 `mod help_sync` 会自动校验帮助页与 clap 一致，不必手动核对；
-   有意不写的参数进 `UNDOCUMENTED` 并写明理由
+**加分析方法** → 技能 `add-analysis`。三条违反了会静默出错的：
+- `meta_lines` **只放批内共享的参数**；逐输入才有意义的量走 `[inputs]` 清单，
+  否则第一个文件的组成会摆在全局参数区冒充全局事实
+- 帮助页**五段，且只有五段**（用途 / `Parameters:` / `Output:` / `Examples:` /
+  `Full documentation:`）；判据与「为什么」一律进手册
+- 加手册页后 **`ferro-cli/src/doc.rs` 的 `PAGES` 加一条**，否则帮助页末行的
+  `ferro doc <topic>` 指向空
 
 **加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
 目前无 CLI 入口（`box_builder` 也是库级）。
@@ -136,3 +121,26 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 - 帮助页与 clap 是**两处手写同一份事实**，靠 `help_sync` 测试盯着。别放宽它的断言
   来让测试变绿：有意不写的进白名单并写明理由
 - 不按输入文件数分派单/批两条路径，N=1 是 N 的特例
+
+## 四类信息放在哪
+
+项目的规则、记忆、技能**全部放在本项目内**，不写进用户级的 `~/.claude/` 目录。
+
+| 类别 | 位置 | 放什么 | 什么时候读 |
+|---|---|---|---|
+| 规则 | 本文件 | 任何时候都要守、违反就出错的约束 | 每次会话自动加载 |
+| 状态 / 计划 | `dev/progress.md`、`dev/overview.md` / `dev/plan.md` | 已经完成了什么、版本批次；接下来按什么优先级做 | 问到进度时 |
+| 记忆 | `dev/memory.md` | 被纠正过的协作做法、容易答错的工具语义 | 精简文档、动版本号、提交之前 |
+| 细节 | `dev/issues.md`、`dev/bader.md`、`dev/glossary.md` | 编码陷阱、算法规格、译名 | 改代码前 |
+| 技能 | `.claude/skills/*/SKILL.md` | 反复做、步骤固定的操作 | 做对应操作时 |
+
+新信息按上表归位：**进度变了改 `dev/progress.md`，不改本文件**；被用户纠正过一次的
+做法，记进 `dev/memory.md`。用法类内容仍进 `docs/src/`。
+
+**技能清单：**
+
+| 技能 | 用途 |
+|---|---|
+| `add-analysis` | 新增分析方法：实现 → CLI 分支 → 帮助页 → 手册页 → `PAGES` 登记 |
+| `add-format` | 新增文件格式：reader/writer → 导出 → `io_dispatch` 两处 → Python 包装 |
+| `update-dev-records` | 「更新开发记录」或「发版」：定版本号 → 更新 dev/ → 同步 ferro-python → 打 tag |
