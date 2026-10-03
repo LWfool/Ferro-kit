@@ -19,6 +19,7 @@ pub mod qe;
 pub mod cube;
 
 pub(crate) mod util;
+mod spacegroup;
 
 pub use xyz::read_xyz;
 pub use pdb::read_pdb;
