@@ -160,6 +160,16 @@ Things that trip people up:
   atom.  The error names every site with `_atom_site_occupancy` below 1; order the structure
   first (one species per site, a supercell for vacancies).
   An unknown (`?`) or malformed coordinate is an error naming the site, not an atom at the origin.
+- **A CIF without symmetry operations is expanded from its space-group symbol.**  Explicit operations
+  (`_space_group_symop_operation_xyz`, its CIF2 form `_space_group_symop.operation_xyz`, or
+  `_symmetry_equiv_pos_as_xyz`) are used as given; otherwise the Hall symbol, the H-M symbol or the
+  IT number is looked up, and only a file with none of them is read as P1.  When a symbol fits more
+  than one setting — an origin choice (`F d -3 m`), or `C m m e`, whose two settings differ by an
+  origin shift — the read **fails** rather than guess, because the wrong origin keeps the atom count
+  plausible and every position wrong.  Append the setting (`F d -3 m :2`), give
+  `_space_group_name_Hall`, or list the operations.  The monoclinic unique axis and the hexagonal vs.
+  rhombohedral cell of an R group are taken from the cell parameters.  A symbol that contradicts
+  the IT number, or a malformed operation, is an error.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
 - **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot

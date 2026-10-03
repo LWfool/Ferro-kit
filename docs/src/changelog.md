@@ -10,6 +10,18 @@ command line alike; regenerate it rather than migrating it.
 
 ---
 
+## Unreleased
+
+### A CIF without symmetry operations is expanded from its space group
+
+A CIF that named its space group (`_symmetry_space_group_name_H-M 'F m -3 m'`,
+an IT number or a Hall symbol) but listed no operations was read as P1: the
+asymmetric unit only, e.g. 2 atoms of NaCl instead of 8, with exit code 0. The
+symbol is now looked up and expanded. An ambiguous symbol (an origin choice such
+as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
+operations. A malformed symmetry operation used to be dropped silently; it is
+now an error naming it.
+
 ## `v0.3.4` — 2026-10-03
 
 This release carries everything since `v0.3.1`: the `0.3.2` and `0.3.3` batches,
