@@ -634,8 +634,9 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 
 `bader_weight.rs:265` 取 `volchg[nvols]` 当真空电荷，但该数组在 weight 方法里是
 **1 索引**的（上方几行的注释自己写着 `volchg is 1-indexed`），`[nvols]` 于是指向
-最后一个 Bader 体积。`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]`，那边是
-对的 —— 两份代码索引基准不同，而这个下标在两边长得一样。
+最后一个 Bader 体积。`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]` —— 两份代码索引基准不同，
+而这个下标在两边长得一样。（2026-10-02 更正：原文称 grid 那边「是对的」，不成立 ——
+那里的 `volchg[nvols]` 是刚 push 的硬编码 0，真空电荷从未积分，见 `dev/plan.md` S-B。）
 
 后果：ACF 末尾的 `Total` 行虚高一个体积的电荷。`tests/CHGCAR_2atoms` 上报
 158.98 e，网格实际只有 105.99 e（逐原子的 `ionchg` 是对的，只有 `vacchg` 被污染）。

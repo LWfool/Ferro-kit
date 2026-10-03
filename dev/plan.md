@@ -195,6 +195,34 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 
 ## 优先级中
 
+### 2026-10-02 物理审查的三条严重问题（用户定为中，功能后续会改写，届时一并修）
+
+三条都已用数值实验证实（临时 crate，不在仓库），均未修。
+
+**S-A　Kabsch 旋转求成了转置**（`md/cube_sdf.rs::kabsch_rotation`）。H = Σ m·rᵀ =
+U S Vᵀ 时，使 R·m ≈ r 的解是 R = V·D·Uᵀ，代码返回 `u * diag * vt`（= Rᵀ）。
+`map sdf` 与 `map chg-sdf`（`dft/chg_sdf.rs` 复用，`rotate_grid` 的 pull 插值同错）
+叠加的是反向旋转的团簇，置换枚举也按错误 RMSD 选。实测同一畸变 PO₄ 刚性旋转两次，
+RMSD mean 1.47 Å（应 ≈ 0）。现有 `test_kabsch_known_rotation` 点全在 xy 平面、绕 z
+转，H 退化且旋转与 diag(1,1,0) 可交换，两种写法结果相同，所以没抓到。修法：
+`v * diag * u.transpose()` + 三维非退化回归测试（随机旋转 + 四面体，RMSD < 1e-10）。
+
+**S-B　Bader 三条网格路的真空电荷恒为 0，真空里冒出大量伪体积**（`dft/bader_grid.rs`
+on-grid `:213-232`、near-grid `:580-597`、off-grid `:763-770`）。`volchg.push(0.0)`
+后立刻把这个 0 当 `vacchg` 读出；且真空在梯度上升**之后**才标，平坦/噪声真空区的
+每个局部极大都成了独立 Bader 体积再分给最近原子（与 `dev/bader.md` §4 的伪代码顺序
+相反）。实测 20 Å 盒两高斯峰 + 5e-4 e/Å³ 背景：网格总电荷 17.61 e，三条路 Total 都是
+13.65 e，nvols 5 万量级；`vacvol` 是对的。修法：上升前 `mark_vacuum`，路径跳过
+`volnum == -1`；`vacchg = Σ_{vac} rho / nrho`；补带真空区的 fixture。
+
+**S-C　Bader weight 不守恒电荷，权重也不是 Yu–Trinkle 的**（`dft/bader_weight.rs`
+`:64`、`:138-140`、`:162`）。实测两峰无真空，网格总量 15.925 e：near-grid 严格守恒并随
+网格收敛，weight 丢 0.1–0.3 e 且不收敛。机理（推断）：边界点用负数存 basin，若某点所有
+上游邻居都是同一个边界点，它被判为内部点并继承负 basin，不在任何 `neigh` 列表里，电荷
+整体丢失。另：通量系数应为 Voronoi 面积 / |R|，代码用 |R|；WS 筛选严格不等式把面积为 0
+的棱/角向量也留下了；`ionvol` 不计边界点；真空点参与流动。修法：真空标记与 basin 号
+分开存、按 Voronoi 面积算 α、先标真空再流动。与下面「weight 的真空电荷取错」一并处理。
+
 ### 库 crate 的错误类型：`ferro-io` / `ferro-workflow` 用 `anyhow`（2026-09-27 扫描，2026-09-28 由高降中）
 
 违反 `CLAUDE.md`「库 crate 用 `ChemError`」。2026-09-28 摸底后的处置：
@@ -287,7 +315,7 @@ $N_\beta = (N-M+1)/2$ 切分，$N+M-1$ 为奇数报「try a different multiplici
 
 `bader_weight.rs:265` 用 `volchg[nvols]` 当真空电荷，而该数组在 weight 方法里是
 **1 索引**的（上方几行的注释自己写着），取到的是最后一个 Bader 体积。
-`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]`，那边是对的。
+`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]` —— 下标对，但那里是硬编码的 0（见上面 S-B）。
 
 实测（`tests/CHGCAR_2atoms`）：ACF 末尾的 `Total` 报 158.98 e，网格实际只有
 105.99 e。逐原子的 `ionchg` 不受影响，被污染的只有 `vacchg` 与由它加出来的
