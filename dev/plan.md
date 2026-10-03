@@ -5,6 +5,204 @@
 
 ## 优先级高
 
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；全部未修）
+
+四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
+D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
+dpdata 1.0.2、MDAnalysis 2.10、pymatgen 2026.7.16），CP2K 口径对照 `examples/cp2k-2026.2/src`。
+复现 fixture 是一次性的（会话 scratch），未进仓；复现写到可重做的程度。
+**「严重」级 21 条主会话已用 debug 版 `ferro` 逐条复现**（B-2 只复现了 sq 一路）；
+中 / 轻级与布局建议是子代理实测或读码的结论，标「推断」的未实测。
+已在本文件或 `issues.md` 登记的条目不重复。
+
+**已对拍一致、不必再查**：g(r)/CN（含三斜 27 镜像暴力、NPT 逐帧归一）、S(q) 各 partial 与
+XRD/中子加权、msd（对 MDA EinsteinMSD fft）、vacf、rotcorr、vanhove、bondlife、angle、
+`map density` 积分；OUTCAR（2000 帧）、vasprun（425 帧）、dump（NPT + 三斜）、CP2K 单点
+（对 dpdata）、CIF 对称展开（三个空间群）、extxyz 应力往返、CP2K `.inp` reader 跑 5502 份
+regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；Cell 运算；`net` 六张表
+（对 numpy）；dataset collect/merge/filter 产物（对 dpdata 读回）。
+
+**严重**（静默错数据 / 错物理，或 panic 打断批次）
+
+| # | 位置 | 问题 | 复现 | 修法 |
+|---|---|---|---|---|
+| A1 | `readers/cif.rs:334-335 collect_symops` | 无 symop 循环一律当 P1，H-M / IT 号写着非 P1 也不报；CIF2 点号标签 `_space_group_symop.operation_xyz` 同路 | NaCl CIF 只写 `_symmetry_space_group_name_H-M 'F m -3 m'` + Na1、Cl1：ferro 2 原子、密度 0.54 g/cm³；ASE `Cl4Na4` | 无 symop 而 H-M / IT 号非 P1 时 bail；点号标签加进 `TAGS` |
+| A2 | `writers/pdb.rs:19-24` | CRYST1 只按第 0 帧写一次，reader 套到所有帧 | `convert -i tests/43Z43P15A_NPT_5.lammpstrj -o npt.pdb`：1 个 CRYST1（ASE 写 5 个）；第 4 帧体积 27886.6 → 29687.3 Å³ | 每个 MODEL 前写本帧 CRYST1（reader 已认逐帧） |
+| A3 | `writers/lammps_dump.rs:48-54,69`、`writers/lammps_data.rs:37-50` | 无胞帧取包围盒尺寸写成 `0..L`、坐标不平移、边界硬写 `pp` | 水分子 xyz → `.lammpstrj` → `info`：Volume 0、β=γ=NaN、PBC 全 true，原子在盒外 | 无胞时坐标减 min、盒子加余量、写 `ff`；或报错要求先给胞 |
+| A4 | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
+| A5 | `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
+| A6 | `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
+| B-1 | `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
+| B-2 | `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
+| B-3 | `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
+| C-D1 | `ferro-core/src/spin.rs:200-213` | 镧系 `group_number` 为 None 落进主族分支，算出垃圾未成对数且无告警；CP2K/QE 默认 auto-spin | 萤石 CeO₂ 进 `job -s cp2k`：`MULTIPLICITY 9 / UKS`（应 1）。Ce₂O₃ 6（实 2）、Gd₂O₃ 6（实 14）、EuO 1（实 7） | f 区分支 `n_f = Z−54−ox` 再 `hund(n_f, 7)`；至少回退奇偶下限并告警 |
+| C-D2 | `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
+| D-S1 | `ferro-workflow/src/cp2k.rs` `write_motion` 压浴 | `PRESSURE 1.01325E+05 # bar`，CP2K 该关键字单位就是 bar → 约 10 GPa | `job -s cp2k -i examples/30Z70P.cif --task md --barostat` | 1 atm = `1.01325`；或加 `--pressure` |
+| D-S2 | `cp2k.rs` HSE06 分支 | `&HF` 缺 `&INTERACTION_POTENTIAL POTENTIAL_TYPE SHORTRANGE / OMEGA 0.11`，按 COULOMB 全程 25%，得到不存在的泛函且能跑 | `--functional hse06`：无 `INTERACTION_POTENTIAL`；对照 CP2K `tests/QS/regtest-hybrid-3/CH3-hybrid-HSE06-lsd.inp:36-39` | 补段 + 断言测试 |
+| D-S3 | `cp2k.rs` MD 分支 | `--thermostat none`（帮助写 NVE）仍写 `ENSEMBLE NVT`，CP2K 默认恒温器 NOSE | `--task md --thermostat none` → `ENSEMBLE NVT`（`input_cp2k_thermostats.F:234-238`） | 写 `ENSEMBLE NVE`；与 barostat 同开时报错或 NPE |
+| D-S4 | `ferro-cli/src/cmd/net.rs export_labelled` | `--export-traj lammpstrj` 恒以 real 单位写出，无视 `--units`；`inspect.rs` 恒写 metal，两出口口径相反 | 3 原子 dump vx=1.0，`net --units metal --P-O=2.0 --export-traj`：产物 vx=0.001 | 沿用 `common.read.units`，同 `convert` |
+
+**中**
+
+格式读写（A）：
+
+| # | 位置 | 问题 / 复现 | 修法 |
+|---|---|---|---|
+| A7 | `readers/vasp.rs:57`、`readers/chgcar.rs:57` | VASP 6 元素行带 POTCAR 哈希 `Na_pv/6a2f546d` 原样当元素名（ASE 读 Na） | 照 `ase/io/vasp.py:249-250` 取 `split('/')[0].split('_')[0]`，两处同改 |
+| A8 | `readers/cif.rs:480` | 任一 data 块无胞（常见 `data_global`）整份报错；ASE / pymatgen 跳过 | 跳过无 `_atom_site_` 循环的块，全跳过再报错 |
+| A9 | `writers/cif.rs:73-99` vs reader | 无胞帧写成只有 Cartn 的 CIF，ferro 自己读不回（ASE 读成 pbc=False） | 无胞参数但有 Cartn 列时按非周期读 |
+| A10 | `readers/pdb.rs:45,82,92-94` | 77–78 列为空时元素为 `""`；坐标坏或行短于 54 时原子静默丢弃；多字节字符切片 panic（推断） | 空元素回落原子名；坏坐标 bail 点名行号；按字节切 |
+| A11 | `readers/cp2k.rs:66,74` | 段名前缀匹配：`&COLVAR` 里的 `&COORDINATION` 先命中 `&coord`，合法输入报错（regtest `QS/regtest-gpw-2-2/H2O-meta.inp` 等 ≥9 份） | 段名按词精确比较；`&cell` 同改 |
+| A12 | `readers/qe.rs:175,29,152` | namelist 用空白分隔（`ibrav=0 nat=3 ntyp=1`）时整串成了一个值：`nat` 校验静默跳过、非零 ibrav 不被拒、`starting_magnetization` 丢失 | 按 `key=value` token 解析；ibrav / nat 解析失败报错 |
+| A13 | `readers/lammps_data.rs:60-61` | 空文件 `lines[i]` 越界 panic | `get` + bail |
+| A14 | `writers/lammps_dump.rs:56`、`writers/lammps_data.rs:46` | 三斜判定 `!= 0.0`，cos 90° 残留 1e-16 使正交盒写成三斜（`convert tests/70Z30P00A_NVT_5.lammpstrj -o x.lammpstrj` 即中） | 倾斜 / 边长 < 1e-10 置 0 |
+| A15 | `writers/lammps_dump.rs:64,69` | 边界恒写 `pp pp pp`，不看 `frame.pbc`；reader 却尊重标志（TTF slab 往返成 TTT） | 按 pbc 写 `pp`/`ff` |
+
+轨迹分析（B）：
+
+| # | 位置 | 问题 / 复现 | 修法 |
+|---|---|---|---|
+| B-4 | `cmd/traj.rs:740`（vanhove）、`run_angle` | `[inputs]` 的 `frames` 填 `r.r.len()`（bin 数）；angle 的 `atoms` 填 `r.elements.len()`（实 2004 写 4） | 结果结构体加 `n_frames`；填原子数 |
+| B-5 | `traj.rs:171`、`help.rs:644` | vanhove `--tau` 帮助写「default: half trajectory」，实为 `n_frames−1`（与手册一致）。`help_sync` 不比默认值 | 帮助页先对齐实现，或随「vanhove 默认 1 个原点」一节改默认 |
+| B-6 | `cube_sdf.rs:445-478 heap_permutations` | 同签名族对**全部 P** 做 n! 枚举，每排列一次 SVD；docstring（`:411`）说「组内」，代码不分组。10 元环 1.2 s、11 元 10.7 s、13 元外推约 28 min，偏磷酸盐 Q2 长链常见 | 只在同标签组内置换并设上限，超限退 Hungarian 并告警 |
+| B-7 | `gr.rs:495`（`params.r_max` 在 `:417` 被覆盖） | 头部写截断值却标「requested」，批内第一个文件的截断值冒充全批请求值；测试 `test_meta_lines_report_clamped_rmax_and_composition` 钉住的是错误语义 | 请求值留在 params，截断值另设字段 |
+| — | `cube_jump.rs` | 无 `validate()`（M3 那批漏了）：`nx=0` 在 `:95` 除零；`threshold ≤ 0` 全算跳跃；`:180`「与 msd.rs 一致」已过时（msd 已改 TOR） | 补 validate 接进 `check.rs` 测试宏 |
+
+network / dft / ml / core（C）：
+
+| # | 位置 | 问题 / 复现 | 修法 |
+|---|---|---|---|
+| C-D3 | `dft/bader.rs:174-178`；`cli-reference.md:800`、`dev/bader.md` §10 | ACF 的 `MinDist` 实为「极大值到原子距离」的最小值（原子 1 输出 0），不是 Henkelman 的「到 Bader 表面最小距离」；`bader.md` 称外部工具可按 Henkelman 格式解析，实测 ASE `attach_charges` 与 pymatgen `_parse_acf` 都失败（表头 `—` 非 ASCII、无 `----` 分隔、无 `VACUUM CHARGE:`） | 实现表面距离并恢复 Henkelman 版式；或改手册写明自有格式与列含义 |
+| C-D4 | `ml/filter.rs:219-239` | 力 / 应力含 NaN 的帧通过筛选进训练集（`fold(0.0, f64::max)` 吞 NaN，`m > f_max` 对 NaN 为假） | 非有限一律判坏 |
+| C-D5 | `ml/geometry.rs:224-236` | `--al6` 自动截断取峰后 3 Å 窗口内第一个严格最小 bin，g 恒 0 的平台上取到第一个零 bin。`collect tests/cp2k_md_3frames.out` → `filter --al6`：cutoff 2.05，cn5=2 / cn6=46；numpy 截断 2.2–2.6 得 cn6=48 | 平台取中点或末端；补零平台测试 |
+| C-D6 | `dataset.rs:1063-1068,1311`、`diagnostics.rs:108`、`table.rs:166` | 多 system 报告 `concat_union` 只留第一份 meta，逐 system 统计（O–O 分位、自动 rcut）冒充全批 | 统计改数据列，或走 `Summary::note` |
+
+入口 / 结构 / 工作流（D）：
+
+| # | 位置 | 问题 / 依据 | 修法 |
+|---|---|---|---|
+| D-M1 | `ferro-python/src/analysis.rs msd` | 仍默认 `dt=1.0`、不做 `check_frame_spacing`，与 CLI 已改必填的口径漂开 | `dt` 必填；间隔检查下沉共用 |
+| D-M2 | `ferro-structure/src/merge.rs` | ① 只给 B 居中，A 窄时不居中（与文档不符）；② B 沿自身单位矢量平移、胞用 A 的，倾角不同时剪切错位；③ gap 沿矢量量，与 `add_vacuum` 的垂直间隙口径不一 | 两块都按新胞分数坐标放；gap 按面间距 |
+| D-M3 | `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |
+| D-M4 | `cp2k.rs write_force_eval` | NPT 不写 `STRESS_TENSOR`，CP2K 启动报错（`md_run.F:331-344`） | NPT 时写 `ANALYTICAL` |
+| D-M5 | `cp2k.rs` Langevin | `&THERMOSTAT TYPE LANGEVIN` 非法（合法值 NOSE/CSVR/GLE/AD_LANGEVIN）；CP2K 是 `ENSEMBLE LANGEVIN` + `MD/&LANGEVIN` | 按 CP2K 写法 |
+| D-M6 | `cp2k.rs --smear` | 不写 `ADDED_MOS`，CP2K 报错（`qs_environment.F:2247`）；`--scf ot` 时 smear 静默丢。手册 `spin.md:76` 示例正中 | 写 `ADDED_MOS`；OT + smear 报错 |
+| D-M7 | `cp2k.rs` PBC | 分子 / `--pbc z` 不写 `POISSON_SOLVER`，默认 PERIODIC 报错；分子 `&CELL` 无 ABC。`test_energy_molecular` 断言的正是这份不可运行的输入 | 非 3D 写 MT / WAVELET + ABC，或报错 |
+| D-M8 | `cp2k.rs` | `--kpoints` + `--scf ot` CP2K 报错（`qs_scf_initialization.F:886-887`），builder 不拦 | 提前拒绝 |
+| D-M9 | `ferro-workflow/src/qe.rs build` | 无胞仍写 `ibrav = 0` 不写 `CELL_PARAMETERS`，pw.x 拒收；`test_scf_basic` 断言的正是它 | 报错或要求给盒子 |
+| D-M10 | `qe.rs` vc-md（推断，本机无 QE 源码） | 写 `ion_dynamics='verlet'`，INPUT_PW 中 vc-md 只支持 `'beeman'` | 改 `beeman` |
+| D-M11 | `ferro-workflow/src/job_builder.rs` Gaussian | 周期结构丢胞、不写 `TV`，静默变团簇计算（ASE 写三行 TV） | 写 TV 或报错 |
+| D-M12 | `cmd/job.rs` | 与所选软件无关的参数静默忽略（QE 不读 `--cutoff`/`--md-timestep`/`--thermostat`/`--pbc`）；`--task` 等枚举值读完输入、打印 auto-spin 之后才校验 | clap `ValueEnum`；不适用参数报错 |
+| D-M13 | `batch.rs out_path`（及 bader、chg-sdf 的 `-s`） | `-s` 不校验字符：`-s 'a/../../escaped'` 写到 `-o` 之外 | 复用 `label_char_ok`，读文件前校验 |
+| D-M15 | `cmd/convert.rs run` | `--start/--end` 校验前就建 `-o` 目录；写侧格式读完整条输入后才查 | 先查参数与格式再建目录 |
+| D-M16 | `main.rs split_pair_args` | 对所有子命令剥离 `--Xx-Yy=v`，`traj gr --P-O=2.3` 静默吞掉 | 只在 `argv[1]=="net"` 时剥离 |
+
+**轻**
+
+- A：`lammps_data.rs:135` 质量解析失败 `unwrap_or(1.0)` → 当成 H；`:208` 电荷 0 转 `None`；
+  `lammps_dump.rs:131` 新版 general triclinic `BOX BOUNDS abc origin` 会按 lo/hi/tilt 误读（推断）；
+  vasprun 空 `<i>` 不清 `reading_energy_name`（推断，最坏丢帧）；空 / 垃圾文件读成 0 帧返回 Ok，
+  报错不点明「不是该格式」；extxyz writer 不写 `masses`、电荷 / 磁矩缺失补 0；`writers/qe.rs`
+  无胞不写 `CELL_PARAMETERS`、写 `tot_magnetization` 不写 `nspin=2`（推断）；PDB 坐标 / 序号超宽错列；
+  `extxyz.rs parse_properties` 的 `count` 解析失败 `unwrap_or(1)`
+- B：`vanhove.rs:185`、`angle.rs:289` bin 数用 `ceil`，宽度不整除时末 bin 按整格归一、中心越界
+  （`vanhove --r-max 1.0 --dr 0.07` 末 bin p_r 低估约 3.5 倍）；rotcorr `--legendre 1` 头部仍写
+  `P2` / 「of c2」（`traj.rs:661`、`rotcorr.rs:329`）；`sq.rs:346 to_tables` 参数 `gr` 未用、`Result`
+  永不 Err；rotcorr Sum 模式串行暴力（`:171-189`，推断）；msd lag 0 输出 −1.7e-18
+- C：`cell.rs:147-160` 浮点 `rem_euclid` 可返回 L（`(-1e-17).rem_euclid(8.0)=8`），chg_sdf 三线性插值
+  由此越界（推断）→ 下标再 `% n`；`spin.rs:62-69` 未知元素 Z=255 计入电子数（元素表只到 Rn，
+  UO₂ 给双重态）；`dataset.rs:982,1003` `-f nan`、`--oo-min nan` 静默关判据、`--al6 nan` 删光
+  后才失败；`diagnostics.rs:101-104` 全非有限时 `len()-1` 下溢（C-D4 修后可达）、`:41` 实际可采
+  2·max−1 帧；三处注释错位 / 过时（`dataset.rs:281-293` 两段 `///` 挂错、`group_by_directory`
+  两条注释矛盾、`network_type.rs:21` 仍写「digit = bridging ligands」）
+- D：`--last-n 0` 不提前拦；`job` 不带 `-s` 退出码 0 不出文件；CP2K `r2scan + d3` 无 D3 参数
+  （`qs_dispersion_utils.F`）；`--cp2k-basis` 拼错落进 `Custom` 写不存在的基组名；chg-sdf 帮助页
+  `-s STEM` 与实际产物名不符，`map sdf` 的 `-s` 替换 stem 而 `density` 追加；chg-sdf 两条用户报错
+  是中文；`box_builder` HashMap 序 + 无种子 RNG 不可复现；Gaussian 恒写 `%chk=job.chk`
+
+**物理 / 口径（可能有意，待定）**
+
+- bondlife 的 $S_C$ 是「比值的和」（Luzar–Chandler / gmx 同构），MDA `autocorrelation` 是「比值的
+  平均」，lag 1 差 3e-4。手册 `bondlife.md:51-55,208` 应改说「与 MDA 只差平均顺序」
+- S(q) 无窗函数，默认 `q_min=0.1` 低于 $2\pi/r_{max}\approx0.63$ Å⁻¹，NVT 上 total_xrd(0.1)=−0.42。
+  建议 $q<2\pi/r_{max}$ 告警或提供 Lorch 调制
+- `map velocity/force` 空体素写 0.0（`cube_density.rs:207`），与「测到 0」不可分；手册注明或另出计数网格
+- chg_sdf 跨文件平均的是 ρ·V_cell，NPT 快照下是体积加权（推断）
+- `cluster.rs:56 NetworkGraph.former_qn` 是桥氧个数，`AtomType::Former.qn` 是同元素连接数，
+  core 里同名不同义 → 改名 `n_bo`
+- Bader 归属原子的 MIC 用分数取整、不查上界，强三斜小胞取错镜像（推断，极少触发）
+- merge `--mode by-source` 静默忽略 `--seed`，filter 遇无用 `--seed` 报错，口径不一；filter
+  几何判据不读 `Frame.pbc`，手册 dataset 页未写
+- `EV_TO_KCAL_MOL=23.0605419`（CODATA 2018 为 23.0605478，差 2.6e-7）
+- VASP4 POSCAR 元素给 `X1`（ASE 会推）；xyz 首列是原子序数时 ferro 存 `"8"`（ASE 转 O）；
+  QE `starting_magnetization` 存进 `magmom` 再经 extxyz 导出会被当 μB
+- CP2K：TTF slab 映射成 `PERIODIC XYZ`；`--task force/md` 不请求 `STRESS_TENSOR`，自家 AIMD
+  进 `collect` 无 virial；PBE0 / B3LYP 周期体系用 COULOMB 而非 TRUNCATED。QE bands/nscf 用
+  `K_POINTS gamma`；QE MD 时间步固定 20 a.u. 不接 `--md-timestep`
+- `merge` 侧向是插真空条带而非 ASE `stack` 的应变匹配；`box_builder` 按原子随机放、软约束
+  （SiO₂ ×200 实测 241 对略小于 `min_dist`）
+
+**代码布局建议**（判据注明；做与不做待定）
+
+1. **格式分派下沉 ferro-io**：CLI `io_dispatch` 读 / 写 / `holds_multiple_frames` /
+   `supported_formats` + Python 读 / 写共 6 张手写表，已在大小写（CLI 敏感、Python 转小写）、
+   CONTCAR、`.lammps`、`.vasp` 上漂开。建 `enum Format` + `Format::detect(path)`（R6 第三处、
+   同一变化原因；io 自己的职责，不违反分层）。A、D 两路独立提出
+2. **单位常数改调 `units.rs`**：`cp2k.rs:18,357`、`qe.rs:7` 的 `BOHR=0.52917721`，
+   `lammps_dump.rs` 的 `KCAL_TO_EV` / writer 的 `EV_TO_KCAL`，`box_builder::estimate_box_length`
+   的 `N_A`（R6 复用已有；`CLAUDE.md`「转换走 units.rs」）。A、C、D 三路都提到
+3. **md/util 合并**（R6，均 ≥3 处同一变化原因）：`--elements` 选原子 8 处（msd/vacf/vanhove/
+   cube_jump 取下标、cube_density/cube_radius 计数与内联）→ `select_atoms`；格点视图解包裹三份
+   （`vanhove.rs:105`、`cube_jump.rs:84`、`util.rs:63`）→ 下沉 `msd::unwrap_tor`；cube spacing
+   矩阵三份（`cube_density.rs:222`、`cube_radius.rs:217`、`cube_jump.rs:208`），`voxel_idx` 顺带
+4. **搬移**：`cube_reference_frame`（在 cube_density，radius/jump 共用）与 `CellList`（在 angle，
+   gr 共用）下沉 `md/util.rs`；`spin.rs` 搬 ferro-workflow、`build_network_graph`/`NetworkGraph`/
+   `LigandKind` 搬 ferro-analysis（下沉判据反向：只有一个中间层叫它的名字）
+5. **Bader weight 复用 grid**：`bader_weight.rs:236-262` 抄了 `assign_chg2atom` 与
+   `calc_atomic_vol`，改传 `&volchg[1..=nvols]` 复用（R6），同时消掉 C-D2 那一族索引错误
+6. **同文件已有函数直接复用**（R6）：`network_type.rs` 的 `label()`/`class_rank()` 改调
+   `site_digit()`；`Trajectory::select` 改调 `select_indices`；`find_clusters` 改用
+   `classify_frame_detailed` 的 `ligand_formers`（实测同为 569 团簇、56→19 ms；第 3 步注释
+   「恰好两个」与代码 ≥2 相反）；sq 的 `build_xrd_weights_at_q`/`build_neutron_weights` 分母
+   移进 `weights_from_factors` 后内联，`elem_z_local` 内联（R3）
+7. **内联 / 删死代码**：`ferro-structure/src/typing.rs classify_trajectory` 内联进 `net.rs`
+   （R1 单调用 + R3；跳过无胞帧造成下标错位）；`args/cube.rs CubeCliMode`（从未被 clap 解析，
+   三个变体从未构造）；`batch::Output::join_str` 零调用
+8. **拆分 / 改名**：`cmd/dataset.rs`（1921 行）拆 `cmd/dataset/{mod,collect,filter,merge,split}.rs`，
+   `cmd/inspect.rs` 搬入（R2a）；`ferro-workflow/src/job_builder.rs` → `gaussian.rs`，`lib.rs`
+   改显式导出；`job.rs` 约 10 处字符串 match 改 clap `ValueEnum`（同 D-M12）；`ml/geometry.rs`
+   的生产代码夹在两个测试模块之间，移到前面
+9. **性能**：`Cell::minimum_image` 每次调用 `try_inverse`，用在 network_type 三处、`cluster.rs`、
+   Bader 归属的 O(N²) 循环里 → core 加预存逆的 MIC 辅助（与 `issues.md:658` 否决的「并入现有
+   方法」不是一件事）；`classify_formers` 每个形成子重算 `params.ligands()`（`:385`）
+10. **决定不合、需两处互指注释**（R6）：`cell_to_lammps`/`lammps_cell_matrix`/`bounding_box`
+    在 lammps_data 与 lammps_dump writer 逐字两份（A3、A14、A15 必须两处同改）；POSCAR 头部
+    解析在 `vasp.rs` 与 `chgcar.rs` 两份且已漂过一次（`chgcar.rs:71` 仍是「`d` 开头才算 Direct」
+    旧规则，与 A7 一起修）；msd 与 bondlife 的逐帧 (Mᵀ, Mᵀ⁻¹) 预计算；`filter_split`/`merge_split`；
+    `job.rs:204` 与 `convert.rs:155` 的 `-o` 尾分隔判断；`vacuum.rs`/`merge.rs` 轴名解析；
+    rayon `build_global` 两处；io 与 workflow 两份 QE writer（分层所限不能合，先修平 nspin 漂移）。
+    ferro-structure 4 处手写完整 `Frame { … }` 字面量**有意不合**：新增字段时编译器逼每个构造点表态
+11. **库 crate 错误类型**：`Table::validate`、`concat_union` 返回 `Result<_, String>`（轻）
+12. **注释语言**：`cp2k.rs` 12 处、`qe.rs` 9 处、`box_builder.rs` 6 处英文 `//`；断言消息
+    `batch.rs:512`、`supercell.rs:322`、`box_builder.rs:531`、`dataset.rs:1854` 为英文
+13. **过时注释**：`map.rs drive` 文档仍提 `--outdir`；`traj.rs` 模块文档「seven analyses … PNG」；
+    两份 `qe.rs` 写 `fe-job`/`fe-convert`；`net.rs fmt_means` 的文档挂到 `warn_edge_sharing`；
+    `cube_density.rs:12-16,41-44` 写 `--grid`/`--mode`；`util.rs:1` 自称「三处以上共用」而
+    `build_avg_frame` 只有 1 个调用者（有测试，R2c 保留）；`dataset.rs` 模块文档「filter/merge
+    not implemented yet」
+
+**测试缺口**：workflow 只有子串断言、无一条对照 CP2K / pw.x 规则（S1–S3、M4–M10 全漏）；
+`help_sync` 的 PAGES 不含 job 三页（约 35 个参数无防漂）；CLI 集成测试只有 bader 与 npt；
+`check.rs` 无 inf；sq q=0；奇异胞进 vanhove / map sdf；gr 三斜数值（可用 27 镜像暴力对拍）；
+cube_sdf ≥8 P 的运行时上界与组内置换语义；vanhove / angle 末 bin；rotcorr `--legendre 1` 头部；
+bondlife 对 MDA 定义钉死；spin 镧系 / 锕系 / 未知元素；weight BCF 与 ACF 一致性、ACF 用 ASE /
+pymatgen 回读；filter 的 NaN 帧、多 system 报告头、零平台曲线；`wrap_position` 恰返 L；三斜下
+`classify_frame`；merge 乱序输入对 dpdata 端到端；extxyz 未闭合引号 / 裸键；CIF 仅 H-M、
+`data_global`、非周期自写自读；PDB 逐帧 CRYST1；LAMMPS 无胞写出、正交不写三斜、slab pbc 往返、
+空 data；VASP 6 哈希元素行、CHGCAR `Fractional`；mixed type 应被拒；CP2K `&COORDINATION` 在
+`&COORD` 前（regtest H2O-meta.inp）；QE 空白分隔 namelist；分派大小写、Python 写 CONTCAR；
+merge 窄 A / 倾角不同 / 垂直间隙；`-s` 非法字符、`--last-n 0`、`--P-O=nan`；Python 绑定零测试。
+
 ### 2026-10-01 全库审查发现（19 条，全部复核属实；表内 19 条均已修，表后「待定口径」仍开着）
 
 子代理（Fable 5.1）只读审查，主会话用 debug 版 `ferro` 逐条复现。复现 fixture
