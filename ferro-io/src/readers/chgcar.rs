@@ -104,25 +104,64 @@ fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
     let shape = [dims[0], dims[1], dims[2]];
     let nrho = shape[0] * shape[1] * shape[2];
 
-    // Read all remaining density values (whitespace-separated, x fastest)
-    let rho: Vec<f64> = lines
-        .flat_map(|l| l.split_whitespace().map(|s| s.parse::<f64>().unwrap_or(0.0)))
-        .collect();
+    // 只取前 nrho 个数（x 最快）。之后是 augmentation 段（含文字）与自旋密度块，不属于
+    // 这张网格；但前 nrho 个里的坏值要报错 —— 以前 `unwrap_or(0.0)` 让它冒充「这里密度为 0」
+    let mut rho: Vec<f64> = Vec::with_capacity(nrho);
+    'grid: for (k, l) in lines.enumerate() {
+        for tok in l.split_whitespace() {
+            if rho.len() == nrho { break 'grid; }
+            let v = parse_fortran_float(tok).with_context(|| format!(
+                "invalid charge density value {tok:?} on line {} after the grid dimensions \
+                 (value {} of {nrho})", k + 1, rho.len() + 1
+            ))?;
+            rho.push(v);
+        }
+    }
     ensure!(
-        rho.len() >= nrho,
+        rho.len() == nrho,
         "charge density data too short: got {}, expected {}",
         rho.len(), nrho
     );
-    let rho = rho[..nrho].to_vec();
 
     let chg = ChargeGrid::new(rho, shape, &cell);
     Ok((frame, chg))
 }
 
 
+/// 解析一个数，兼容 Fortran 在三位指数时省掉 `E` 的写法（`0.1234-100` = 0.1234E-100）。
+/// VASP 的 CHGCAR 在真空区的极小密度上会写出这种数。
+fn parse_fortran_float(tok: &str) -> Result<f64> {
+    if let Ok(v) = tok.parse::<f64>() {
+        return Ok(v);
+    }
+    // 第 0 位之后最后一个正负号前补 E；前面不能已经有 E/e（那是真坏值）
+    let split = tok.rfind(['+', '-']).filter(|&i| i > 0 && !tok[..i].contains(['E', 'e']));
+    split
+        .and_then(|i| format!("{}E{}", &tok[..i], &tok[i..]).parse::<f64>().ok())
+        .ok_or_else(|| anyhow::anyhow!("not a number"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_bad_density_value_is_an_error_but_trailing_sections_are_not() {
+        // 网格内的坏值：以前静默变 0
+        let bad = MINIMAL_CHGCAR.replace(" 5.0  6.0", " 5.0  6.O");
+        let msg = format!("{:#}", parse_chgcar(&bad).unwrap_err());
+        assert!(msg.contains("\"6.O\"") && msg.contains("value 6 of 8"), "应点名坏值与位置，实际：{msg}");
+        // Fortran 三位指数省掉 E 的写法照常读
+        let fortran = MINIMAL_CHGCAR.replace(" 5.0  6.0", " 0.5-100  6.0");
+        let (_, chg) = parse_chgcar(&fortran).unwrap();
+        assert!(chg.rho.iter().any(|&v| v > 0.0 && v < 1e-99), "0.5-100 应读成 5e-101");
+        assert_eq!(parse_fortran_float("-0.25-101").unwrap(), -0.25e-101);
+        assert!(parse_fortran_float("1.0E-3-2").is_err());
+        // 网格之后的 augmentation 段是文字，不该报错
+        let tail = format!("{MINIMAL_CHGCAR}augmentation occupancies   1  4\n 0.1 0.2 0.3 0.4\n");
+        let (_, chg) = parse_chgcar(&tail).unwrap();
+        assert_eq!(chg.shape, [2, 2, 2]);
+    }
 
     // Minimal CHGCAR: 2×2×2 grid, 1 atom (NaCl-like, single Na at origin)
     const MINIMAL_CHGCAR: &str = "\

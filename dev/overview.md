@@ -393,3 +393,6 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
   中子实验用富集样品），在手册与 sq 头部写明；Pu/Cm 无天然值，注明是 ²³⁸Pu/²⁴⁴Cm。
 - **单原子物种的同种 g/S 写 NaN**（审查低 1）。total 里该对按 S = 1 计，否则一个掺杂
   原子就让整条 total 变空；此时 Σ 加权偏函数 ≠ total，`apply_weights` 注释写明。
+- **CHGCAR 网格内坏值报错**（审查低 2，L6 漏的一处）。只解析前 N₁N₂N₃ 个数（之后的
+  augmentation 段含文字，照旧忽略）；兼容 Fortran 三位指数省 E 的 `0.1234-100` ——
+  以前它被当 0，碰巧近似对，改成报错前必须先认它。

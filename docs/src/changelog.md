@@ -72,6 +72,11 @@ With one atom of a species, `gr` for its self-pair was 0 everywhere and $S_{AA}(
 oscillated wildly. Both are now empty (NaN); the weighted totals treat that pair
 as $S_{AA} = 1$.
 
+### CHGCAR: an unreadable density value is an error
+
+A malformed number inside the density grid used to become 0. It now fails with
+its position. Fortran's `0.1234-100` (exponent without `E`) is read correctly.
+
 ### `-o` is always a path
 
 `--outdir` is gone. `-o` names a **directory** for every command whose run
