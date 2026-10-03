@@ -43,6 +43,8 @@ frames. `convert` to a dump writes the original step numbers.
 
 `_atom_site_occupancy` was ignored: a mixed site became two atoms at the same
 position, silently. Such a file is now refused, naming every partial site.
+An unknown (`?`) or malformed coordinate used to put the atom at the origin;
+it is now an error naming the site.
 
 ### Malformed cube headers are errors
 

@@ -405,3 +405,5 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 - **`map radius`：搜索窗按每帧晶胞、半径超过最小镜像上界报错**（审查低 6）。
   `calc_cube_radius` 改返回 `Result`（CLI 不再猜「missing cell?」）。旧测试有两条
   故意用 r > L/2 当「与全遍历一致」的用例，改为断言报错。
+- **CIF 坐标与占位度的坏值报错**（这轮修复中发现，L6 同类）。坐标 `?` 或写坏的数以前
+  `unwrap_or(0.0)` 落在原点；占位度 `?`/`.` 仍取字典默认 1，写坏的数报错。
