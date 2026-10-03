@@ -92,6 +92,12 @@ Types go into **data columns** rather than column names: trajectories with diffe
 directly without aligning columns, and omitting `-a/-b` adds rows rather than columns.  `gr` is symmetric
 (`A-B` and `B-A` are identical point by point), `cn` is directed (`CN(A→B) = Σ hist/(N_A·steps)`) — that distinction is written into the table structure, not into a footnote.
 
+A species with a **single atom** has no $A$–$A$ pairs: the normalisation $N_A(N_A-1)$ is zero, so its
+self-pair `gr` is written **empty (NaN)**, not 0 — 0 would claim "measured, no neighbours".  Its `cn` stays 0,
+which is a real count.  In `traj sq` the matching $S_{AA}(q)$ is empty too, and the weighted totals count that
+pair as $S_{AA} = 1$ (no structural contribution; its weight $\propto c_A^2$ is a finite-size term), so one
+dopant atom does not blank the total.
+
 All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
 (`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 

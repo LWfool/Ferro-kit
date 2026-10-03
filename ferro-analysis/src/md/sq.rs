@@ -160,7 +160,10 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
     let mut sq_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     for label in &canonical {
         let rho_g_vals = &gr.rho_g[label];
+        // g 无定义（单原子物种的同种对）时 S 也无定义，q = 0 的捷径也不例外
+        let undefined = rho_g_vals.iter().any(|v| v.is_nan());
         let sq_vals: Vec<f64> = q_vals.par_iter().map(|&qi| {
+            if undefined { return f64::NAN; }
             if qi.abs() < 1e-10 { return 1.0; }
             let prefactor = pi4 / qi;
             let integral: f64 = gr.r.iter().zip(rho_g_vals.iter())
@@ -226,7 +229,8 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
 }
 
 /// Multiply each partial by its weight and accumulate the total, so that
-/// `Σ_pairs parts[pair][qi] == total[qi]` holds by construction.
+/// `Σ_pairs parts[pair][qi] == total[qi]` holds by construction — except that an undefined
+/// (NaN) partial enters the total as S = 1.
 fn apply_weights<F>(
     sq_map: &BTreeMap<String, Vec<f64>>,
     n_q: usize,
@@ -240,8 +244,12 @@ where
     for (key, vals) in sq_map {
         let mut contrib = vec![0.0f64; n_q];
         for qi in 0..n_q {
-            contrib[qi] = weight(key, qi) * vals[qi];
-            total[qi] += contrib[qi];
+            let w = weight(key, qi);
+            contrib[qi] = w * vals[qi];
+            // 无定义的偏函数（单原子物种的同种对，见 gr.rs）在总和里按 S = 1 计，即不贡献
+            // 结构：这一对根本不存在，权重 ∝ c_A² ~ 1/N² 是有限尺寸项。若照加 NaN，一个
+            // 掺杂原子就会让整条 total 变空。此时 Σ parts（含 NaN）≠ total，是有意的
+            total[qi] += if vals[qi].is_nan() { w } else { contrib[qi] };
         }
         parts.insert(key.clone(), contrib);
     }
@@ -591,6 +599,35 @@ mod tests {
             let sn: f64 = sq.sq_neutron.values().map(|v| v[qi]).sum();
             assert!((sx - tx[qi]).abs() < 1e-12, "q={}: Σ xrd partials {sx} != total {}", sq.q[qi], tx[qi]);
             assert!((sn - tn[qi]).abs() < 1e-12, "q={}: Σ neutron partials {sn} != total {}", sq.q[qi], tn[qi]);
+        }
+    }
+
+    #[test]
+    fn test_single_atom_species_partial_is_undefined_not_zero() {
+        // 4³ 个 Fe 中换 1 个为 Ni：没有 Ni–Ni 对，g/S 都无定义
+        let mut frame = make_sc_fe(4);
+        frame.atoms[0].element = "Ni".into();
+        let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
+            r_min: 0.1, r_max: 5.5, dr: 0.01, ..Default::default()
+        }).unwrap();
+        assert!(gr_res.gr["Ni-Ni"].iter().all(|v| v.is_nan()), "g_NiNi 应为 NaN 而不是 0");
+        assert!(gr_res.cn["Ni-Ni"].iter().all(|&v| v == 0.0), "CN 是真计数，保持 0");
+        assert!(gr_res.gr["Fe-Ni"].iter().all(|v| v.is_finite()));
+
+        let sq = calc_sq_from_gr(&gr_res, &SqParams {
+            q_min: 0.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
+        }).unwrap();
+        assert!(sq.sq["Ni-Ni"].iter().all(|v| v.is_nan()), "S_NiNi 应为 NaN（含 q=0）");
+        for t in [sq.total_xrd.as_ref().unwrap(), sq.total_neutron.as_ref().unwrap()] {
+            assert!(t.iter().all(|v| v.is_finite()), "一个掺杂原子不该让 total 变空");
+        }
+        // 总和 = 有定义的加权偏函数之和 + 无定义那一对的权重 × 1
+        let tn = sq.total_neutron.as_ref().unwrap();
+        for qi in 0..sq.q.len() {
+            let defined: f64 = sq.sq_neutron.iter().filter(|(k, _)| *k != "Ni-Ni").map(|(_, v)| v[qi]).sum();
+            let w_nini = sq.sq_neutron["Ni-Ni"][qi];
+            assert!(w_nini.is_nan());
+            assert!(tn[qi] > defined, "q={}: Ni-Ni 应按 S=1 计入正权重", sq.q[qi]);
         }
     }
 

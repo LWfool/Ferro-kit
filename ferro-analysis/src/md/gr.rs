@@ -390,6 +390,12 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
                 running += ni * acc.plain[pidx][i] / (n_a * nf);
                 cn_vec[i] = running;
             }
+            // 同种且只有 1 个原子：没有 A–A 对，归一化分母 N_A(N_A−1) = 0，g_AA 无定义 ——
+            // 写 NaN（渲染为空），不写 0：0 是「测到了没有近邻」。CN 保持 0，那是真的计数
+            if n_neighbor == 0.0 {
+                gr_vec.fill(f64::NAN);
+                rho_g_vec.fill(f64::NAN);
+            }
             gr_map.insert(key.clone(), gr_vec);
             cn_map.insert(key.clone(), cn_vec);
             rho_g_map.insert(key, rho_g_vec);
