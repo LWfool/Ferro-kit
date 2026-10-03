@@ -42,3 +42,9 @@ ferro-cli / ferro-python        ← only layer combining multiple crates
 | Mass | amu |
 | Charge | e |
 | Temperature | K |
+
+## Third-party data
+
+The space-group table used to expand CIF files (`ferro-io/src/readers/spacegroups.dat`) is generated
+from [spglib](https://github.com/spglib/spglib), Copyright (c) 2024, Spglib team, used under the
+BSD 3-Clause license; the full license text is at the top of that file.
