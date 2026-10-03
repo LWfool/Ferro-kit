@@ -68,6 +68,11 @@ def main():
         rots, trans = sym["rotations"], sym["translations"]
         # `international` 形如 'P 2_1/c = P 1 2_1/n 1'，等号后才是本设置专用的符号
         hm_setting = t.international.split("=")[-1].strip()
+        # spglib 2.7 的 Hall 331（68 号 bca 轴序原点 2）写成 'B b c b'，同轴序原点 1（330）
+        # 与 ITA 都是 'B b e b'。不改则 'B b e b :2' 只剩 a-cb 一个候选，被静默选中
+        if hall == 331:
+            assert hm_setting in ("B b c b", "B b e b"), hm_setting
+            hm_setting = "B b e b"
         fields = [hall, t.number, t.choice or "-", t.hall_symbol, hm_setting,
                   t.international_short, t.international_full, len(rots)]
         assert all("\t" not in str(f) for f in fields)
