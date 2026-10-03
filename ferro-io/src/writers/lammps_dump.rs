@@ -38,8 +38,9 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
     for (ts, frame) in trajectory.frames.iter().enumerate() {
         let n = frame.n_atoms();
 
+        // 有原步号就写原步号，往返后时间相关分析的间隔检查仍看得到原来的步距
         writeln!(w, "ITEM: TIMESTEP")?;
-        writeln!(w, "{ts}")?;
+        writeln!(w, "{}", frame.step.unwrap_or(ts as i64))?;
         writeln!(w, "ITEM: NUMBER OF ATOMS")?;
         writeln!(w, "{n}")?;
 

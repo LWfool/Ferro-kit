@@ -374,3 +374,8 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
   metal，漏写开关是静默的数量级错误。同 M1 对 atom style 的裁定：不猜。只有坐标的
   dump 不受影响。库层 `read_lammps_dump` / `write_lammps_dump` 收 `Option<LammpsUnits>`，
   `LammpsUnits` 去掉了 `Default`；Python `metal_units=True` → `units="metal"`。
+- **时间相关分析的 `--dt` 必填 + 帧间隔检查**（审查 M-B）。msd/vacf/rotcorr/bondlife/
+  vanhove 去掉 `default 1.0`；dump reader 存 `TIMESTEP` 进 `frame.step`（writer 写回
+  原步号）；带步号时重复帧与不等间隔逐文件报错跳过（`cmd/traj.rs::check_frame_spacing`）。
+  上线即抓到 `tests/70Z30P00A_NVT_5.lammpstrj` 的步距是 12000/12000/13000/12000 ——
+  这条 fixture 不能再喂给时间相关分析。

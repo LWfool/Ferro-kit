@@ -83,7 +83,7 @@ pub struct VacfParams {
 
 | CLI flag | Default | Meaning |
 |---|---|---|
-| `--dt` | 1.0 | time between stored frames [fs] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--max-lag` | $N/2$ | longest lag in frames |
 | `--elements` | all | atoms averaged, chosen by element in the first frame |
 | `--last-n` | all | keep only the last N frames before anything else |

@@ -115,6 +115,11 @@ fn parse_frame(
         Err(format!("no ITEM: {tag} section"))
     };
 
+    // TIMESTEP 的值紧跟段头；时间相关分析靠它查重复帧与不等间隔
+    let step: i64 = lines.get(*i + 1)
+        .and_then(|l| l.trim().parse().ok())
+        .ok_or("ITEM: TIMESTEP has no step number")?;
+
     // NUMBER OF ATOMS
     let na = seek(*i + 1, "NUMBER OF ATOMS")?;
     let n: usize = lines.get(na + 1)
@@ -303,6 +308,7 @@ fn parse_frame(
     atoms_raw.sort_by_key(|(id, _, _, _)| *id);
 
     let mut frame = Frame::with_cell(cell, pbc);
+    frame.step = Some(step);
     let mut all_vels = Vec::new();
     let mut all_forces = Vec::new();
     let mut has_vel = false;
@@ -513,6 +519,13 @@ ITEM: ATOMS id type element x y z
         let traj = read_lammps_dump(&tmp("vel_real.dump", DUMP_VEL), Some(LammpsUnits::Real)).unwrap();
         let vx = traj.first().unwrap().velocities.as_ref().unwrap()[0].x;
         assert!((vx - 2.0).abs() < 1e-10, "real units: vx should be 2.0 Å/fs, got {vx}");
+    }
+
+    #[test]
+    fn test_timestep_is_kept() {
+        let traj = read_lammps_dump(&tmp("steps.dump", DUMP_ORTHO), None).unwrap();
+        let steps: Vec<_> = traj.frames.iter().map(|f| f.step).collect();
+        assert!(steps.iter().all(|s| s.is_some()), "每帧都应带上 TIMESTEP，实际 {steps:?}");
     }
 
     #[test]
