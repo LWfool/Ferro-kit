@@ -357,6 +357,25 @@ skipped files are listed again at the end with exit code 1. The second listing i
 not redundant: the system directory looks perfectly normal while holding fewer
 frames than you think.
 
+### PJM job logs are left out
+
+On clusters run by the PJM scheduler, `-i '*.out'` also matches the job's
+stdout/stderr files, named `x0-<jobname>.<jobid>.out` and `x1-…`. They are
+empty or hold scheduler messages, so each would be skipped as unreadable and
+count towards exit code 1 — burying the files that are really broken. `collect`
+therefore removes them **before** grouping and says so in one line:
+
+```
+NOTE: excluded 2 PJM job log(s) matching x<N>-<job>.<id>.out
+```
+
+The match is strict: `x`, digits, `-`, a non-empty job name (which may itself
+contain `.` and `-`), `.`, an all-digit job id, `.out`. A file of your own named
+`x1-run.out` has no job id and is read as usual. A directory holding only PJM
+logs forms no system, and if every input is a PJM log, `collect` stops before
+reading anything. There is no switch to turn this off; rename a file that
+happens to fit the pattern.
+
 ### float64, not float32
 
 dpdata defaults to `float32`; ferro writes `float64`. This directory is the head
