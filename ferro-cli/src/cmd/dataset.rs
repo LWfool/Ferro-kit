@@ -551,7 +551,7 @@ fn run_collect(args: &CollectCmd) -> Result<usize> {
             crate::cmd::inspect::DIR_NAME
         );
     }
-    let inputs = expand_inputs(&args.input)?;
+    let inputs = drop_pjm_logs(expand_inputs(&args.input)?)?;
     // 与其余命令一致：路径问题在读第一个文件之前就暴露，而不是跑完才发现写不出去
     if let Some(root) = &args.output {
         crate::outpath::ensure_dir(root, args.mkdir)?;
@@ -591,6 +591,53 @@ fn run_collect(args: &CollectCmd) -> Result<usize> {
         eprintln!("\n{failures} failure(s)");
     }
     Ok(failures)
+}
+
+/// Removes PJM job logs (`x0-<job>.<id>.out`) before grouping.
+///
+/// `-i '*.out'` matches them beside the real output, and they are empty or hold
+/// scheduler messages — each one used to count as a failure and turn the exit
+/// code to 1, which hid the files that were really broken.
+fn drop_pjm_logs(inputs: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    let total = inputs.len();
+    let (logs, kept): (Vec<PathBuf>, Vec<PathBuf>) = inputs.into_iter().partition(|p| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(is_pjm_log)
+    });
+    if logs.is_empty() {
+        return Ok(kept);
+    }
+    // 在分组之前剔除：只剩 PJM 日志的目录不成组，也就不会报 no usable file
+    if kept.is_empty() {
+        bail!("all {total} input(s) are PJM job logs (x<N>-<job>.<id>.out); nothing to collect");
+    }
+    eprintln!(
+        "NOTE: excluded {} PJM job log(s) matching x<N>-<job>.<id>.out",
+        logs.len()
+    );
+    Ok(kept)
+}
+
+/// `x<digits>-<jobname>.<jobid digits>.out`, the stdout/stderr name PJM gives.
+///
+/// The jobid part is what keeps a user's own `x1-run.out` out of the match.
+fn is_pjm_log(name: &str) -> bool {
+    let all_digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let Some(rest) = name.strip_prefix('x') else {
+        return false;
+    };
+    let Some((n, rest)) = rest.split_once('-') else {
+        return false;
+    };
+    let Some(rest) = rest.strip_suffix(".out") else {
+        return false;
+    };
+    // jobname 自身可含 `.` 与 `-`，故 jobid 取最后一个 `.` 之后
+    let Some((job, id)) = rest.rsplit_once('.') else {
+        return false;
+    };
+    all_digits(n) && !job.is_empty() && all_digits(id)
 }
 
 /// Where one group's system directory goes.
@@ -1701,6 +1748,34 @@ mod tests {
         assert!(f0.forces.as_ref().unwrap()[1].x > 0.0, "Si 受 +x");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pjm_log_names_are_recognised_and_nothing_else() {
+        assert!(is_pjm_log("x0-job.123.out"));
+        assert!(is_pjm_log("x1-a.b-c.99.out"), "jobname 可含 . 与 -");
+        assert!(!is_pjm_log("x1-run.out"), "无 jobid 的是用户自己的文件");
+        assert!(!is_pjm_log("x0-.123.out"), "jobname 不能为空");
+        assert!(!is_pjm_log("x0-job.12a.out"), "jobid 必须全是数字");
+        assert!(!is_pjm_log("total.out"));
+    }
+
+    #[test]
+    fn a_directory_of_only_pjm_logs_forms_no_group() {
+        let paths: Vec<PathBuf> = ["/s/run1/total.out", "/s/run1/x0-j.1.out", "/s/run2/x1-j.2.out"]
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        let kept = drop_pjm_logs(paths).unwrap();
+        assert_eq!(kept, vec![PathBuf::from("/s/run1/total.out")]);
+        assert_eq!(group_by_directory(&kept).len(), 1, "run2 只有 PJM 日志，不应成组");
+    }
+
+    #[test]
+    fn all_inputs_being_pjm_logs_is_an_error() {
+        let paths = vec![PathBuf::from("x0-j.1.out"), PathBuf::from("x1-j.1.out")];
+        let err = drop_pjm_logs(paths).unwrap_err().to_string();
+        assert!(err.contains("all 2 input(s)"), "报错应点明全部被剔除：{err}");
     }
 
     #[test]
