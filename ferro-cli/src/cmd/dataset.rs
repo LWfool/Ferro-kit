@@ -462,7 +462,8 @@ pub struct FilterCmd {
 
 #[derive(Args, Debug)]
 pub struct CollectCmd {
-    /// AIMD output files (glob patterns allowed; omit to print the full help)
+    /// AIMD output files (glob patterns allowed; PJM job logs x0-<job>.<id>.out are
+    /// skipped; omit to print the full help)
     #[arg(short, long, num_args = 1..)]
     pub input: Vec<PathBuf>,
 

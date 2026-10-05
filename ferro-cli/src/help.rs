@@ -888,7 +888,8 @@ pub fn print_dataset_collect() {
   comes from each file's own banner; --format overrides that.
 
 Parameters:
-  -i, --input  FILE...    AIMD output files; glob patterns allowed
+  -i, --input  FILE...    AIMD output files; glob patterns allowed. PJM job
+                          logs (x0-<job>.<id>.out) are skipped
   -o, --output DIR        Output root; default is beside each input
       --format FMT        Read the inputs as this format instead of trusting
                           the banner. cp2k/md | cp2k/sp | vasp/outcar |
