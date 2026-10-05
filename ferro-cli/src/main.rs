@@ -17,6 +17,16 @@ use ferro::help;
 #[command(
     name = "ferro",
     version,
+    // -V 保持一行供脚本解析；--version 加上 build.rs 导出的构建信息
+    long_version = concat!(
+        env!("CARGO_PKG_VERSION"),
+        "\ncommit:   ", env!("FERRO_BUILD_COMMIT"),
+        "\nbuilt:    ", env!("FERRO_BUILD_DATE"),
+        "\nprofile:  ", env!("FERRO_BUILD_PROFILE"),
+        "\ntarget:   ", env!("FERRO_BUILD_TARGET"),
+        "\nrustc:    ", env!("FERRO_BUILD_RUSTC"),
+        "\nfeatures: ", env!("FERRO_BUILD_FEATURES"),
+    ),
     about = "Computational chemistry toolkit for periodic systems",
     disable_help_subcommand = true,
     arg_required_else_help = false,
