@@ -119,7 +119,7 @@ pub struct MsdCmd {
     /// Track only these elements, e.g. Fe,O
     #[arg(long, value_delimiter = ',')]
     pub elements: Option<Vec<String>>,
-    /// Linear-fit window as trajectory fractions FMIN,FMAX (e.g. 0.3,0.8) -> D
+    /// Linear-fit window as fractions of the lag axis FMIN,FMAX (e.g. 0.3,0.8) -> D
     #[arg(long, value_delimiter = ',')]
     pub fit_range: Option<Vec<f64>>,
 }
