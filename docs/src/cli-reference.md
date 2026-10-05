@@ -841,7 +841,7 @@ All three steps read and write the same directory format, and **none of them mod
 
 | Flag | Description |
 |---|---|
-| `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported |
+| `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported; PJM job logs `x<N>-<job>.<id>.out` are left out before grouping |
 | `-o <DIR>` | output root directory, **optional**; without it the output lands next to each input directory |
 | `--type <WHAT>` | `deepmd` (a DeePMD system) \| `inspect` (diagnostics only, no dataset) [deepmd] |
 | `--mkdir` | create `-o` without asking (required when there is no terminal) |
