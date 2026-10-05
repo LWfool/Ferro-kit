@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：650 个（全部通过，clippy 零警告）
+## 测试总数：748 个（全部通过，clippy 零警告）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 95 |
-| ferro-io | 134（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
-| ferro-structure | 72 |
-| ferro-analysis | 200 |
+| ferro-core | 97 |
+| ferro-io | 179（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-structure | 74 |
+| ferro-analysis | 245 |
 | ferro-workflow | 23 |
-| ferro-cli（lib 116 + bin 2 + 集成 8） | 126 |
+| ferro-cli（lib 120 + bin 2 + 集成 8） | 130 |
 
 版本号 **0.3.4**（workspace 统一；ferro-python 已同步；2026-10-03 打 tag `v0.3.4`）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
@@ -332,7 +332,10 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **`cmd/dataset.rs`**：`ferro dataset collect` —— AIMD out → DeePMD system
   目录。**一目录一 system**（2026-08-26 改）：同目录的 `.out` 是同一次运行被
   重启切开的段，合并回去；命名保留目录层级（剥掉公共祖先，其余原样嵌套，
-  文件 stem 不进名字），只有一组时直接写进 `-o` 本身。`-o` 必填，
+  文件 stem 不进名字），只有一组时直接写进 `-o` 本身。
+  **分组前剔除 PJM 作业日志**（2026-10-05，`drop_pjm_logs` / `is_pjm_log`）：
+  `x<数字>-<jobname>.<全数字 jobid>.out`，不读、不计失败，打一行 NOTE；全被剔除
+  时读文件前报错；规则写死、无关闭开关（用户裁定）。此前它们逐个计入失败、退出码 1`-o` 必填，
   `--overwrite` 拦覆盖。文件按首个 step 排序，重复帧不去重但区间打出来。
   同目录成分不符报错（不当坏帧丢），单文件解析失败跳过且最后再报一遍。
   **每个文件读完当场 `sort_atoms`**（2026-09-22）：CP2K 按输入列原子的顺序写
