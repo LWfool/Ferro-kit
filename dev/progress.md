@@ -379,12 +379,14 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   **支持按小节寻址**（`Page.section`）：`convert` / `info` / `bader` 没有手册
   专页，是 `cli-reference.md` 的小节，取该 `##` 到下一个同级标题 —— 99 行而
   不是整本 863 行
-- **`doc/render.rs`**（2026-09-24）：`ferro doc` 的终端渲染器，**只在 stdout 是
+- **`ferro-render` crate**（2026-09-24；2026-10-06 从 `ferro-cli/src/doc/render.rs` 拆出，
+  `markdown.rs` + `latex.rs`，CLI 改动不再重编它）：`ferro doc` 的终端渲染器，**只在 stdout 是
   tty 时**介入，重定向输出仍是源文件原样（24 个整页主题逐字节核对过）。全自写，
   净新增 0 crate（`libc` 只在 `cfg(unix)` 下声明，且早已经 rand → getrandom 在树里）。
-  `split_blocks` 按行首切块、认不出的走 `Block::Raw`；`inline` 是一次扫描的
+  `split_blocks` 按行首切块；`inline` 是一次扫描的
   tokenizer；表格带完整边框、单元格按词折行；行内 `$...$` 按四条语法规则转
-  Unicode，块级 `$$` 原样。宽度取 ioctl → `COLUMNS` → 80，正文上限 100 列。
+  Unicode；块级 `$$` 用同一转换合成一行、缩进 4 格、超宽在空格处折行，
+  `\begin{}` 环境（矩阵、cases）保留原文。宽度取 ioctl → `COLUMNS` → 80，正文上限 100 列。
   **Windows 与 `NO_COLOR`**：前者纯 ASCII（无转义码、`+--+` 边框、公式留 TeX），
   后者只关颜色。`rendering_loses_no_content` 对每页两种样式校验不丢字
 - **帮助页与 clap 的防漂测试**（`main.rs` 的 `mod help_sync`）：正向断言每个

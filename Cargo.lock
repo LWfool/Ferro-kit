@@ -244,10 +244,10 @@ dependencies = [
  "ferro-analysis",
  "ferro-core",
  "ferro-io",
+ "ferro-render",
  "ferro-structure",
  "ferro-workflow",
  "glob",
- "libc",
  "nalgebra",
  "rayon",
 ]
@@ -284,6 +284,13 @@ dependencies = [
  "ndarray-npy",
  "quick-xml",
  "thiserror",
+]
+
+[[package]]
+name = "ferro-render"
+version = "0.3.4"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

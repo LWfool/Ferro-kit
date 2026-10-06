@@ -10,12 +10,12 @@
 //! to go looking for. Pages that describe no single command keep a flat name.
 //!
 //! Redirected output is the markdown as written, so `ferro doc net > net.md`
-//! is the source file. On a terminal it goes through [`render`] first: the
+//! is the source file. On a terminal it goes through `ferro-render` first: the
 //! tables are what breaks when read raw (`|---|---|` source never lines up),
 //! and a renderer written here costs no dependency where every library one
 //! costs dozens.
 
-mod render;
+use ferro_render as render;
 
 use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};
@@ -414,7 +414,7 @@ mod tests {
         // 宽度给足时表格不折行,顺序也必须一致;窄终端下单元格折行,屏幕逐行读会把
         // 相邻列的片段交错,那时只能比字符多重集。
         // 两种样式都不开 unicode:那条路上行内公式被改写成 Unicode,字符本来就该变,
-        // 它的正确性由 render 里 latex 的测试钉住;框线与项目符号在这里本就被滤掉
+        // 它的正确性由 ferro-render 里 latex 的测试钉住;框线与项目符号在这里本就被滤掉
         use render::{render, Style};
         let sorted = |s: String| {
             let mut v: Vec<char> = s.chars().collect();

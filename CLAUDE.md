@@ -33,7 +33,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
     ├── ferro-io        → core    格式读写；write_table 是分析产物的唯一出口
     ├── ferro-structure → core    超胞、真空层、合并、建盒
     ├── ferro-analysis  → core    纯计算，**不碰文件系统**
-    └── ferro-workflow  → core    QC 输入生成
+    ├── ferro-workflow  → core    QC 输入生成
+    └── ferro-render              `ferro doc` 的终端渲染（markdown + LaTeX），不依赖任何 ferro crate
 ```
 
 **中间层 crate 不得互相依赖。** 共享类型下沉而非横向依赖：
@@ -109,6 +110,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
 | `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表）、`merge`（分组、规范序、打乱） |
 | `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`outpath.rs`（`-o` 的目录创建与确认）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制） |
+| `ferro-render/src/` | `markdown.rs`（块切分、行内标记、折行、表格）、`latex.rs`（公式 → Unicode） |
 
 **几条容易违反的**（完整清单在 `dev/issues.md`）：
 
