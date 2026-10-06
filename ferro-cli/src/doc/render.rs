@@ -10,7 +10,8 @@
 //! - a new inline mark is one more flag on [`Look`], set in [`inline`]
 //! - a change of style stays inside the `render_*` functions
 //!
-//! Syntax the splitter does not recognise comes out as [`Block::Raw`], so new
+//! What a renderer cannot convert — a table without an alignment row, a math
+//! environment, a TeX command not known here — comes out as written, so new
 //! manual content can fail to be rendered but never be rendered wrong.
 
 use std::fmt::Write as _;
@@ -76,7 +77,7 @@ pub fn render(md: &str, width: usize, style: Style) -> String {
             Block::List(items) => render_list(items, text_width, style),
             Block::Rule => rule(if style.unicode { '─' } else { '-' }, text_width),
             Block::Table(lines) => render_table(lines, width.max(20), style),
-            Block::Raw(lines) => lines.join("\n"),
+            Block::Math(lines) => render_math(lines, text_width, style),
         })
         .collect();
     let mut out = blocks.join("\n\n");
@@ -98,7 +99,8 @@ enum Block<'a> {
     Quote(Vec<&'a str>),
     List(Vec<Item>),
     Rule,
-    Raw(Vec<&'a str>),
+    /// `$$` lines as written, delimiters included; converted at render.
+    Math(Vec<&'a str>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -133,7 +135,6 @@ fn split_blocks(md: &str) -> Vec<Block<'_>> {
             i += 1; // 闭合围栏;文件末尾没闭合时越过末尾,循环条件兜住
             blocks.push(Block::Code { indent, lines: body });
         } else if trimmed.starts_with("$$") {
-            // 块级公式不渲染(\begin{pmatrix} 在终端里无解),原样输出
             let start = i;
             let single = trimmed.len() > 2 && trimmed.trim_end().ends_with("$$");
             i += 1;
@@ -146,7 +147,7 @@ fn split_blocks(md: &str) -> Vec<Block<'_>> {
                     }
                 }
             }
-            blocks.push(Block::Raw(lines[start..i].to_vec()));
+            blocks.push(Block::Math(lines[start..i].to_vec()));
         } else if let Some(level) = heading_level(line) {
             blocks.push(Block::Heading { level, text: line[level..].trim() });
             i += 1;
@@ -472,7 +473,7 @@ fn paint(s: &Span, style: Style) -> String {
 }
 
 fn visible_len(spans: &[Span], style: Style) -> usize {
-    spans.iter().map(|s| shown(s, style).chars().count()).sum()
+    spans.iter().map(|s| screen_len(&shown(s, style))).sum()
 }
 
 /// Greedy word wrap of inline spans to `width` visible columns.
@@ -487,7 +488,7 @@ fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
     let mut open = false;
     for s in spans {
         let opaque = s.look.code || s.look.math;
-        if opaque && shown(s, style).chars().count() <= width {
+        if opaque && screen_len(&shown(s, style)) <= width {
             if !open {
                 words.push(Vec::new());
             }
@@ -629,11 +630,14 @@ fn command(chars: &[char], i: &mut usize) -> String {
     }
     let name: String = chars[start..*i].iter().collect();
     if name.is_empty() {
-        // \, \  \; 是间距,\{ \} \_ 是转义
+        // \, \  \; 是间距,\! 是负间距,\{ \} \_ 是转义
         let c = chars.get(*i).copied();
         *i += 1;
         return match c {
+            // 后面本来就有空格时不再添一个,否则 f_\min\, m 印成两个空格
+            Some(',' | ' ' | ';' | ':') if chars.get(*i) == Some(&' ') => String::new(),
             Some(',' | ' ' | ';' | ':') => " ".to_string(),
+            Some('!') => String::new(),
             Some(c) => c.to_string(),
             None => "\\".to_string(),
         };
@@ -657,6 +661,17 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "times" => "×",
         "to" | "rightarrow" => "→",
         "infty" => "∞",
+        "ell" => "ℓ",
+        "in" => "∈",
+        "int" => "∫",
+        "propto" => "∝",
+        "sim" => "∼",
+        "parallel" => "∥",
+        "wedge" => "∧",
+        "leftarrow" => "←",
+        "bmod" => "mod",
+        "quad" => " ",
+        "qquad" => "  ",
         "neq" | "ne" => "≠",
         "leq" | "le" => "≤",
         "geq" | "ge" => "≥",
@@ -671,10 +686,15 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "lceil" => "⌈",
         "rceil" => "⌉",
         "left" | "right" | "bigl" | "bigr" | "big" | "Big" => "",
-        "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "det" | "min" | "max" | "arccos" | "diag" => {
+        "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "det" | "min" | "max" | "arccos" | "diag" | "lim" => {
             return name;
         }
-        "text" | "mathrm" | "mathbf" | "mathit" | "boldsymbol" | "operatorname" => return arg(i),
+        "text" | "mathrm" | "mathbf" | "mathit" | "mathsf" | "boldsymbol" | "operatorname" | "mathrel"
+        | "underbrace" => return arg(i),
+        // 重音用 Unicode 组合字符叠在参数后面;多字符参数只叠在最后一个字符上
+        "hat" => return format!("{}\u{302}", arg(i)),
+        "bar" | "overline" => return format!("{}\u{304}", arg(i)),
+        "vec" | "overrightarrow" => return format!("{}\u{20d7}", arg(i)),
         "frac" | "tfrac" | "dfrac" => {
             let (a, b) = (arg(i), arg(i));
             return format!("{}/{}", grouped(&a), grouped(&b));
@@ -780,6 +800,26 @@ fn render_code(indent: usize, lines: &[&str]) -> String {
         .join("\n")
 }
 
+/// A `$$` block as one converted line, indented like code and broken at its
+/// spaces when wider than the page. Environments (`pmatrix`, `cases`) have no
+/// one-line form and stay as written, as does everything on an ASCII terminal.
+fn render_math(lines: &[&str], width: usize, style: Style) -> String {
+    let joined = lines.iter().map(|l| l.trim()).collect::<Vec<_>>().join(" ");
+    let body = joined.strip_prefix("$$").unwrap_or(&joined);
+    let body = body.strip_suffix("$$").unwrap_or(body).trim();
+    if !style.unicode || body.contains("\\begin") {
+        return lines.join("\n");
+    }
+    let indent = lines[0].len() - lines[0].trim_start().len() + 4;
+    let pad = " ".repeat(indent);
+    let span = Span { text: body.to_string(), look: Look { math: true, ..Look::default() } };
+    wrap(&[span], width.saturating_sub(indent).max(20), style)
+        .iter()
+        .map(|l| format!("{pad}{l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn render_quote(lines: &[&str], width: usize, style: Style) -> String {
     let bar = if style.unicode { "│" } else { "|" };
     let mut out: Vec<String> = Vec::new();
@@ -854,14 +894,15 @@ fn align_row(row: &str) -> Option<Vec<Align>> {
         })
 }
 
-/// Columns a painted string takes on screen: escape codes take none.
+/// Columns a painted string takes on screen: escape codes take none, and
+/// neither do the combining accents of `\hat` / `\bar` / `\overrightarrow`.
 fn screen_len(s: &str) -> usize {
     let mut n = 0;
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
             chars.by_ref().find(|&d| d == 'm');
-        } else {
+        } else if !matches!(c, '\u{300}'..='\u{36f}' | '\u{20d0}'..='\u{20ff}') {
             n += 1;
         }
     }
@@ -1094,11 +1135,36 @@ mod tests {
     }
 
     #[test]
-    fn block_math_is_raw() {
+    fn block_math_keeps_its_lines() {
         let md = "$$a$$\n\n$$\nb \\\\\n$$\n";
         let b = split_blocks(md);
-        assert_eq!(b[0], Block::Raw(vec!["$$a$$"]));
-        assert_eq!(b[1], Block::Raw(vec!["$$", "b \\\\", "$$"]));
+        assert_eq!(b[0], Block::Math(vec!["$$a$$"]));
+        assert_eq!(b[1], Block::Math(vec!["$$", "b \\\\", "$$"]));
+    }
+
+    #[test]
+    fn block_math_is_converted_and_indented() {
+        let out = render("$$D = \\lim_{t \\to \\infty} \\frac{\\text{MSD}(t)}{6t}$$\n", 80, RICH);
+        assert_eq!(out, "    D = lim_{t → ∞} (MSD(t))/(6t)\n");
+        // 跨行的块合成一行
+        let out = render("$$\nx = \\alpha\n+ 1\n$$\n", 80, RICH);
+        assert_eq!(out, "    x = α + 1\n");
+    }
+
+    #[test]
+    fn block_math_wider_than_the_page_breaks_at_spaces() {
+        let out = render("$$a + b + c + d + e + f + g + h + i + j + k + l$$\n", 24, RICH);
+        assert!(out.lines().count() > 1, "{out}");
+        for l in out.lines() {
+            assert!(l.starts_with("    ") && screen_len(l) <= 24, "折行后应保持缩进且不超宽: {l:?}");
+        }
+    }
+
+    #[test]
+    fn environments_and_ascii_terminals_keep_block_math_as_written() {
+        let md = "$$\\mathbf{M} = \\begin{pmatrix} a \\\\ b \\end{pmatrix}$$\n";
+        assert_eq!(render(md, 80, RICH), md);
+        assert_eq!(render("$$\\alpha$$\n", 80, PLAIN), "$$\\alpha$$\n");
     }
 
     #[test]
@@ -1177,6 +1243,18 @@ mod tests {
             (r"N_\text{frames} \cdot N_\text{atoms}", "N_{frames} · N_{atoms}"),
             (r"p + \tau \leq N_\text{frames}", "p + τ ≤ N_{frames}"),
             (r"m_\mathrm{Al}=1", "m_{Al}=1"),
+            (r"C_\ell(t)", "C_ℓ(t)"),
+            (r"n \in \text{neighbours}", "n ∈ neighbours"),
+            (r"S_{AA} \propto c_A^2", "S_{AA} ∝ c_A²"),
+            (r"D_{\parallel}", "D_∥"),
+            (r"\int P\,dr", "∫ P dr"),
+            (r"\theta = \arccos\!\left(x\right)", "θ = arccos(x)"),
+            (r"m \in [f_\min\, m_\max]", "m ∈ [fₘᵢₙ mₘₐₓ]"),
+            (r"i_k = n \bmod n_k", "iₖ = n mod nₖ"),
+            (r"\rho \mathrel{+}= x", "ρ += x"),
+            (r"\hat{\mathbf{u}}", "u\u{302}"),
+            (r"\bar\theta", "θ\u{304}"),
+            (r"|\overrightarrow{BA}|", "|BA\u{20d7}|"),
         ];
         for (tex, want) in cases {
             assert_eq!(latex(tex), want, "输入: {tex}");
@@ -1185,7 +1263,12 @@ mod tests {
 
     #[test]
     fn unknown_commands_stay_as_written() {
-        assert_eq!(latex(r"|\overrightarrow{BA}| < r"), r"|\overrightarrow{BA}| < r");
+        assert_eq!(latex(r"|\widetilde{BA}| < r"), r"|\widetilde{BA}| < r");
+    }
+
+    #[test]
+    fn combining_accents_take_no_column() {
+        assert_eq!(screen_len(&latex(r"\hat{u} \bar\theta")), 3);
     }
 
     #[test]
