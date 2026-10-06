@@ -5,6 +5,7 @@ members = [
     "ferro-structure",
     "ferro-analysis",
     "ferro-workflow",
+    "ferro-render",
     "ferro-cli",
     # "ferro-python",  # 暂时注释掉，等熟悉 Rust 后再启用
 ]
