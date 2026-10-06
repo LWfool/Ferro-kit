@@ -112,7 +112,7 @@ pub struct MsdCmd {
 
     /// Time between stored frames [fs] = MD timestep × dump interval; required
     #[arg(long)]
-    pub dt: f64,
+    pub dt: Option<f64>,
     /// Longest lag in frames (default: half the trajectory); every lag uses all time origins
     #[arg(long)]
     pub max_lag: Option<usize>,
@@ -153,7 +153,7 @@ pub struct AngleCmd {
 pub struct LagKnobs {
     /// Time between stored frames [fs] = MD timestep × dump interval; required
     #[arg(long)]
-    pub dt: f64,
+    pub dt: Option<f64>,
     /// Longest lag in frames (default: half the trajectory); every lag uses all time origins
     #[arg(long)]
     pub max_lag: Option<usize>,
@@ -164,7 +164,7 @@ pub struct LagKnobs {
 pub struct TimeKnobs {
     /// Time between stored frames [fs] = MD timestep × dump interval; required
     #[arg(long)]
-    pub dt: f64,
+    pub dt: Option<f64>,
     /// Time-origin stride
     #[arg(long, default_value = "1")]
     pub shift: usize,
@@ -456,7 +456,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         )),
     };
     let params = MsdParams {
-        dt: c.dt,
+        dt: c.dt.ok_or_else(|| anyhow!("--dt is required for msd (run without -i to see help)"))?,
         max_lag: c.max_lag,
         elements: c.elements.clone(),
         fit_range,
@@ -590,7 +590,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
 
 fn run_vacf(c: &VacfCmd) -> Result<usize> {
     let params = VacfParams {
-        dt: c.time.dt,
+        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for vacf (run without -i to see help)"))?,
         max_lag: c.time.max_lag,
         elements: c.elements.clone(),
     };
@@ -635,7 +635,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         center,
         neighbor,
         r_cut: c.r_cut,
-        dt: c.time.dt,
+        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for rotcorr (run without -i to see help)"))?,
         max_lag: c.time.max_lag,
         vector: c.vector.into(),
         legendre: if c.legendre == 1 { Legendre::P1 } else { Legendre::P2 },
@@ -680,7 +680,7 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
         r_break: c.r_break,
         intermittency: c.intermittency,
         max_lag: c.time.max_lag,
-        dt: c.time.dt,
+        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for bondlife (run without -i to see help)"))?,
     };
     // 取值范围（含 r-break >= r-bond）在建目录、读第一个文件之前查完
     params.validate()?;
@@ -715,7 +715,7 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
 fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     let params = VanHoveParams {
         tau: c.time.tau,
-        dt: c.time.dt,
+        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for vanhove (run without -i to see help)"))?,
         shift: c.time.shift,
         r_max: c.r_max,
         dr: c.dr,
@@ -817,6 +817,11 @@ mod tests {
             ("bondlife --dt 1 --center P --neighbor O --r-bond 2 --r-break 1", "r-break (1) must be >= r-bond (2)"),
             ("vanhove --dt 1 --dr 0", "dr must be"),
             ("vanhove --dt 1 --shift 0", "shift must be >= 1"),
+            ("msd", "--dt is required"),
+            ("vacf", "--dt is required"),
+            ("rotcorr --center P --neighbor O", "--dt is required"),
+            ("bondlife --center P --neighbor O --r-bond 2", "--dt is required"),
+            ("vanhove", "--dt is required"),
         ] {
             let mut argv = vec!["traj"];
             argv.extend(args.split_whitespace());
@@ -825,6 +830,17 @@ mod tests {
             let err = format!("{:#}", run(&w.cmd).expect_err(args));
             assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
             assert!(!out.exists(), "{args}：参数错误时不该建 -o 目录");
+        }
+    }
+
+    /// 不带 -i 显示帮助页的前提是 clap 先放行：任何必填参数都会让 clap 在
+    /// `wants_help` 之前报错退出，帮助页就永远到不了。必填项一律在 run 里查
+    #[test]
+    fn test_bare_subcommand_reaches_help_page() {
+        for sub in ["gr", "sq", "msd", "angle", "vacf", "rotcorr", "vanhove", "bondlife"] {
+            let w = Wrap::try_parse_from(["traj", sub])
+                .unwrap_or_else(|e| panic!("traj {sub}：不带参数应能解析以显示帮助页，实际 {e}"));
+            assert!(wants_help(&w.cmd), "traj {sub}：不带 -i 应显示帮助页");
         }
     }
 }
