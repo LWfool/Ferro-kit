@@ -37,7 +37,7 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
-
+._*
 .env
 config/secrets.yml
 *.key
