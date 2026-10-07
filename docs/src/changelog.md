@@ -37,6 +37,15 @@ as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
 operations. A malformed symmetry operation used to be dropped silently; it is
 now an error naming it.
 
+### extxyz comment lines are split the way ASE splits them
+
+A bare key without `=` (ASE reads it as `True`) used to glue itself to the key after
+it, so a comment line such as `energy=-1.5 is_relaxed Lattice="…" Properties=…`
+silently lost its `Lattice` and `Properties`. Bare keys are now read as `T`. Values
+in `[…]` or `{…}` and backslash-escaped quotes are understood as well. An
+unclosed quote or bracket used to crash ferro and is now an error naming the
+frame and line.
+
 ### PDB output: one `CRYST1` per model, coordinates in the cell's standard orientation
 
 A multi-frame `.pdb` carried only the first frame's cell, so every frame of an NPT
