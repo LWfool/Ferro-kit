@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1、A2，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1、A2、A4、A5，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -29,8 +29,8 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | ~~A1~~ **已修**（`acb282d` 数据表、`7638dc0` 查表、`1a76d49` 接入；判据见 `issues.md`「CIF 空间群符号展开」）| `readers/cif.rs:334-335 collect_symops` | 无 symop 循环一律当 P1，H-M / IT 号写着非 P1 也不报；CIF2 点号标签 `_space_group_symop.operation_xyz` 同路 | NaCl CIF 只写 `_symmetry_space_group_name_H-M 'F m -3 m'` + Na1、Cl1：ferro 2 原子、密度 0.54 g/cm³；ASE `Cl4Na4` | 无 symop 而 H-M / IT 号非 P1 时 bail；点号标签加进 `TAGS` |
 | ~~A2~~ **已修**（`c8ee8c8`；顺带修了同函数里的取向错位：CRYST1 只存六参数，非标准取向的胞原样写坐标，读回错位 —— 现经分数坐标转到 a 沿 x、b 在 xy 平面，同 ASE `standard_form`；对拍 ASE 写出逐位相同。**遗留**：ASE 把 `ENDMDL` 后的 `END` 读成第 N+1 个空帧，ASE 自己不写 `END`，未改）| `writers/pdb.rs:19-24` | CRYST1 只按第 0 帧写一次，reader 套到所有帧 | `convert -i tests/43Z43P15A_NPT_5.lammpstrj -o npt.pdb`：1 个 CRYST1（ASE 写 5 个）；第 4 帧体积 27886.6 → 29687.3 Å³ | 每个 MODEL 前写本帧 CRYST1（reader 已认逐帧） |
 | A3 | `writers/lammps_dump.rs:48-54,69`、`writers/lammps_data.rs:37-50` | 无胞帧取包围盒尺寸写成 `0..L`、坐标不平移、边界硬写 `pp` | 水分子 xyz → `.lammpstrj` → `info`：Volume 0、β=γ=NaN、PBC 全 true，原子在盒外 | 无胞时坐标减 min、盒子加余量、写 `ff`；或报错要求先给胞 |
-| A4 | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
-| A5 | `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
+| ~~A4~~ **已修**（`9ebb707` 逐字符解析，规则同 ASE `key_val_str_to_dict`，一并支持 `[]` `{}` 括号值与 `\` 转义；有意与 ASE 不同两处：未闭合报错、`a="" b=1` 读作两键，见 `parse_comment` 文档） | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
+| ~~A5~~ **已修**（同 A4）| `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
 | A6 | `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
 | B-1 | `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
 | B-2 | `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
