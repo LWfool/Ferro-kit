@@ -422,16 +422,26 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
     let tables =
         batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| Ok(sq.to_tables(gr)?))?;
 
-    let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
+    let mut summary = Summary::new(&["volume", "volume_std", "r_max", "q_trunc"]);
     for (input, (gr, _)) in &results {
         let atoms: usize = gr.element_counts.values().sum();
+        // g(r) 截断在 r_max，q ≲ 2π/r_max 的 S(q) 由截断振荡主导（审查 B-3）。
+        // r_max 逐输入截到最小镜像上界，故此值逐输入、进 [inputs] 而不进共享头部
+        let q_trunc = 2.0 * std::f64::consts::PI / gr.params.r_max;
         summary.ok(
             input.label.clone(),
             gr.n_frames,
             atoms,
-            &[gr.avg_volume, gr.volume_std, gr.params.r_max],
+            &[gr.avg_volume, gr.volume_std, gr.params.r_max, q_trunc],
         );
         summary.note("composition", gr.composition());
+        if c.q_min < q_trunc {
+            eprintln!(
+                "        warning: {}: S(q) below q_trunc = 2π/r_max = {:.3} Å⁻¹ (r_max = {:.3} Å) \
+                 is dominated by the truncation of g(r); --q-min is {}",
+                input.label, q_trunc, gr.params.r_max, c.q_min
+            );
+        }
     }
     summary.failed(&failures);
 
@@ -807,6 +817,7 @@ mod tests {
             ("gr --r-min 5 --r-max 3", "r-min (5) must be < r-max (3)"),
             ("gr --r-min=-1", "r-min must be a finite number >= 0"),
             ("sq --q-max inf", "q-max must be a finite number"),
+            ("sq --q-min 0", "q-min must be a finite number > 0"),
             ("sq --dq 0", "dq must be"),
             ("sq --q-min 5 --q-max 1", "q-min (5) must be < q-max (1)"),
             ("msd --dt 0", "dt must be"),

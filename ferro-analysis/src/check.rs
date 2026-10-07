@@ -136,7 +136,7 @@ mod tests {
         }
         case!(GrParams, r_min: -0.1, r_max: 0.0, dr: 0.0, dr: nan, dr: 20.0);
         let inf = f64::INFINITY;
-        case!(SqParams, q_min: -1.0, q_max: 0.0, q_max: inf, dq: 0.0, dq: nan);
+        case!(SqParams, q_min: -1.0, q_min: 0.0, q_max: 0.0, q_max: inf, dq: 0.0, dq: nan);
         case!(MsdParams, dt: 0.0, dt: nan, max_lag: Some(0),
               fit_range: Some((0.8, 0.2)), fit_range: Some((0.0, 1.5)), fit_range: Some((nan, 0.5)));
         case!(AngleParams, r_cut_ab: 0.0, r_cut_bc: nan, angle_min: -1.0, angle_max: 0.0,
