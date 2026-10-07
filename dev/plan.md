@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1、B-2，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1–B-3，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -34,7 +34,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | ~~A6~~ **已修**（`e46a5ab` 拒收；完整支持仍是下面「DeePMD mixed type」一节）| `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
 | ~~B-1~~ **已修**（`bb25ba7`；`check::invertible_cells` 在 vanhove / cluster SDF / cube_jump 入口逐帧查，`calc_cluster_sdf` 改返回 `Result<Option>`。实测 c=0 slab 过全部 13 个 CLI 分析，只有这两个 panic）| `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
 | ~~B-2~~ **已修**（`a5d1be8`；报错措辞改为「must be a finite number …」）| `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
-| B-3 | `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
+| ~~B-3~~ **已修**（`98b5e97`；**用户否了「取 q→0 极限」**：有限盒子的 S(0) 无物理意义，改为 q-min 必须 > 0；并加 `[inputs]` 的 `q_trunc = 2π/r_max` 与低于它时的告警。查证的行业做法与出处见手册 `sq.md`「The low-q limit」）| `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
 | C-D1 | `ferro-core/src/spin.rs:200-213` | 镧系 `group_number` 为 None 落进主族分支，算出垃圾未成对数且无告警；CP2K/QE 默认 auto-spin | 萤石 CeO₂ 进 `job -s cp2k`：`MULTIPLICITY 9 / UKS`（应 1）。Ce₂O₃ 6（实 2）、Gd₂O₃ 6（实 14）、EuO 1（实 7） | f 区分支 `n_f = Z−54−ox` 再 `hund(n_f, 7)`；至少回退奇偶下限并告警 |
 | C-D2 | `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
 | D-S1 | `ferro-workflow/src/cp2k.rs` `write_motion` 压浴 | `PRESSURE 1.01325E+05 # bar`，CP2K 该关键字单位就是 bar → 约 10 GPa | `job -s cp2k -i examples/30Z70P.cif --task md --barostat` | 1 atm = `1.01325`；或加 `--pressure` |
@@ -126,7 +126,8 @@ network / dft / ml / core（C）：
 - bondlife 的 $S_C$ 是「比值的和」（Luzar–Chandler / gmx 同构），MDA `autocorrelation` 是「比值的
   平均」，lag 1 差 3e-4。手册 `bondlife.md:51-55,208` 应改说「与 MDA 只差平均顺序」
 - S(q) 无窗函数，默认 `q_min=0.1` 低于 $2\pi/r_{max}\approx0.63$ Å⁻¹，NVT 上 total_xrd(0.1)=−0.42。
-  建议 $q<2\pi/r_{max}$ 告警或提供 Lorch 调制
+  建议 $q<2\pi/r_{max}$ 告警或提供 Lorch 调制。**2026-10-07 随 B-3 已加告警**（`[inputs]` 的 `q_trunc`）；剩两项待定：
+  默认 `q_min` 改为逐输入 auto（$2\pi/r_{max}$，破坏性：默认产物行数变）、Lorch 窗选项（改峰形，新功能）
 - `map velocity/force` 空体素写 0.0（`cube_density.rs:207`），与「测到 0」不可分；手册注明或另出计数网格
 - chg_sdf 跨文件平均的是 ρ·V_cell，NPT 快照下是体积加权（推断）
 - `cluster.rs:56 NetworkGraph.former_qn` 是桥氧个数，`AtomType::Former.qn` 是同元素连接数，
