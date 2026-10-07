@@ -37,6 +37,16 @@ as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
 operations. A malformed symmetry operation used to be dropped silently; it is
 now an error naming it.
 
+### `inf` is refused as a range bound; singular cells no longer crash `vanhove` / `map sdf`
+
+`--q-max inf`, `--r-max inf`, `--sigma inf`, `--padding inf` and the like slipped
+past the range checks: `traj sq` crashed or wrote a file with only a header and exit
+code 0. They are now parameter errors, reported before any file is read, as the
+reference already said. A frame whose cell is singular (ASE's convention for 2-D
+materials, $c = 0$) crashed `traj vanhove` and `map sdf` with exit code 101 and
+aborted the whole batch; it is now an error that skips that input, like every other
+command already did.
+
 ### Mixed-type DeePMD systems are refused
 
 A system in dpdata's mixed-type layout (`real_atom_types.npy` in its sets) was read
