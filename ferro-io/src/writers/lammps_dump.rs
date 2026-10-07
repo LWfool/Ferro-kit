@@ -5,6 +5,10 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
 
+/// 无胞帧的盒子取包围盒每侧外扩这么多（Å），坐标原样写（dump 与 data 都允许 lo ≠ 0）。
+/// 余量无物理意义，只保证 lo < hi（平面分子某维厚度为 0）、原子不落在 hi 边界上被
+/// `f` 边界判丢。与 `writers/lammps_data.rs` 同值
+const CELLLESS_PAD: f64 = 1.0;
 const EV_TO_KCAL: f64 = 1.0 / 0.04336410; // eV/Å → kcal/(mol·Å)
 
 /// 写 LAMMPS dump 文件。
@@ -45,13 +49,17 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
         writeln!(w, "{n}")?;
 
         // BOX BOUNDS
-        let (lx, ly, lz, xy, xz, yz) = match &frame.cell {
-            Some(cell) => cell_to_lammps(cell),
+        let (lo, (lx, ly, lz, xy, xz, yz)) = match &frame.cell {
+            Some(cell) => ([0.0; 3], cell_to_lammps(cell)),
             None => {
                 let (mnx, mxx, mny, mxy, mnz, mxz) = bounding_box(frame);
-                (mxx - mnx, mxy - mny, mxz - mnz, 0.0, 0.0, 0.0)
+                let w = 2.0 * CELLLESS_PAD;
+                ([mnx - CELLLESS_PAD, mny - CELLLESS_PAD, mnz - CELLLESS_PAD],
+                 (mxx - mnx + w, mxy - mny + w, mxz - mnz + w, 0.0, 0.0, 0.0))
             }
         };
+        // 边界标志按 pbc 写（reader 认它），slab 往返才不变成 TTT；无胞帧 pbc 恒为 ff
+        let flags = frame.pbc.map(|p| if p { "pp" } else { "ff" }).join(" ");
 
         let is_triclinic = xy != 0.0 || xz != 0.0 || yz != 0.0;
         if is_triclinic {
@@ -61,15 +69,15 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
             // 全绿（与 extxyz 应力符号同一个陷阱）
             let (xlo_b, xhi_b) = (min4(0.0, xy, xz, xy + xz), lx + max4(0.0, xy, xz, xy + xz));
             let (ylo_b, yhi_b) = (yz.min(0.0), ly + yz.max(0.0));
-            writeln!(w, "ITEM: BOX BOUNDS xy xz yz pp pp pp")?;
+            writeln!(w, "ITEM: BOX BOUNDS xy xz yz {flags}")?;
             writeln!(w, "{xlo_b:.10} {xhi_b:.10} {xy:.10}")?;
             writeln!(w, "{ylo_b:.10} {yhi_b:.10} {xz:.10}")?;
             writeln!(w, "{:.10} {:.10} {yz:.10}", 0.0, lz)?;
         } else {
-            writeln!(w, "ITEM: BOX BOUNDS pp pp pp")?;
-            writeln!(w, "{:.10} {:.10}", 0.0, lx)?;
-            writeln!(w, "{:.10} {:.10}", 0.0, ly)?;
-            writeln!(w, "{:.10} {:.10}", 0.0, lz)?;
+            writeln!(w, "ITEM: BOX BOUNDS {flags}")?;
+            writeln!(w, "{:.10} {:.10}", lo[0], lo[0] + lx)?;
+            writeln!(w, "{:.10} {:.10}", lo[1], lo[1] + ly)?;
+            writeln!(w, "{:.10} {:.10}", lo[2], lo[2] + lz)?;
         }
 
         // ATOMS header
@@ -144,6 +152,8 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
 fn min4(a: f64, b: f64, c: f64, d: f64) -> f64 { a.min(b).min(c).min(d) }
 fn max4(a: f64, b: f64, c: f64, d: f64) -> f64 { a.max(b).max(c).max(d) }
 
+// cell_to_lammps / lammps_cell_matrix / bounding_box 与 `writers/lammps_data.rs` 逐字两份，有意不合
+// （R6：只有两个使用点，合并只多一个跨文件依赖）。改一处必须同改另一处
 fn cell_to_lammps(cell: &ferro_core::Cell) -> (f64, f64, f64, f64, f64, f64) {
     let [a, b, c] = cell.lengths();
     let [alpha, beta, gamma] = cell.angles();
@@ -154,6 +164,10 @@ fn cell_to_lammps(cell: &ferro_core::Cell) -> (f64, f64, f64, f64, f64, f64) {
     let ly = (b * b - xy * xy).max(0.0).sqrt();
     let yz = if ly > 1e-10 { (b * c * al.cos() - xy * xz) / ly } else { 0.0 };
     let lz = (c * c - xz * xz - yz * yz).max(0.0).sqrt();
+    // 90° 的 cos 残留（~1e-16·L）会让正交盒被判成三斜；相对最大边长 1e-10 以下的倾斜置 0
+    let tol = 1e-10 * lx.max(ly).max(lz);
+    let snap = |t: f64| if t.abs() < tol { 0.0 } else { t };
+    let (xy, xz, yz) = (snap(xy), snap(xz), snap(yz));
     (lx, ly, lz, xy, xz, yz)
 }
 
@@ -329,5 +343,60 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn water() -> Frame {
+        // 平面分子：z 方向包围盒厚度为 0
+        let mut f = Frame::new();
+        f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
+        f.add_atom(Atom::new("H", Vector3::new(1.76, 2.59, 3.0)));
+        f.add_atom(Atom::new("H", Vector3::new(0.24, 2.59, 3.0)));
+        f
+    }
+
+    // 审查 A3 + A15：无胞帧以前按包围盒尺寸写成 0..L、坐标不平移（原子在盒外），
+    // 平面分子得到厚度 0 的盒子，边界还硬写 pp
+    #[test]
+    fn test_cellless_frame_gets_padded_box_and_ff() {
+        let path = std::env::temp_dir().join("ferro_dump_cellless.lammpstrj");
+        write_lammps_dump(&Trajectory::from_frame(water()), &path, None).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("ITEM: BOX BOUNDS ff ff ff\n"), "无胞帧应写 ff ff ff：\n{text}");
+
+        let f = read_lammps_dump(&path, None).unwrap().frames.remove(0);
+        assert_eq!(f.pbc, [false; 3]);
+        let [a, b, c] = f.cell.as_ref().unwrap().lengths();
+        // 包围盒 1.52 × 0.59 × 0，每侧加 1 Å
+        for (got, want) in [(a, 1.52 + 2.0), (b, 0.59 + 2.0), (c, 2.0)] {
+            assert!((got - want).abs() < 1e-9, "盒长 {got}，应为 {want}");
+        }
+        for (x, y) in f.atoms.iter().zip(&water().atoms) {
+            assert!((x.position - y.position).norm() < 1e-9, "坐标应原样写出");
+        }
+    }
+
+    // 审查 A14：90° 的 cos 残留 1e-17 量级，以前让正交盒写成三斜
+    #[test]
+    fn test_orthogonal_cell_from_angles_is_not_triclinic() {
+        let cell = Cell::from_lengths_angles(10.0, 11.0, 12.0, 90.0, 90.0, 90.0).unwrap();
+        let mut f = Frame::with_cell(cell, [true; 3]);
+        f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
+        let path = std::env::temp_dir().join("ferro_dump_ortho.lammpstrj");
+        write_lammps_dump(&Trajectory::from_frame(f), &path, None).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("ITEM: BOX BOUNDS pp pp pp\n"), "正交盒不应写倾斜量：\n{text}");
+    }
+
+    // 审查 A15：边界标志按 frame.pbc 写，slab（TTF）往返不变成 TTT
+    #[test]
+    fn test_boundary_flags_follow_pbc() {
+        let cell = Cell::from_matrix(nalgebra::Matrix3::from_diagonal(&Vector3::new(10.0, 10.0, 30.0)));
+        let mut f = Frame::with_cell(cell, [true, true, false]);
+        f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
+        let path = std::env::temp_dir().join("ferro_dump_slab.lammpstrj");
+        write_lammps_dump(&Trajectory::from_frame(f), &path, None).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("ITEM: BOX BOUNDS pp pp ff\n"), "slab 应写 pp pp ff：\n{text}");
+        assert_eq!(read_lammps_dump(&path, None).unwrap().frames[0].pbc, [true, true, false]);
     }
 }
