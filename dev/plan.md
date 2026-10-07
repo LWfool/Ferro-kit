@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1、A2，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -27,7 +27,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | # | 位置 | 问题 | 复现 | 修法 |
 |---|---|---|---|---|
 | ~~A1~~ **已修**（`acb282d` 数据表、`7638dc0` 查表、`1a76d49` 接入；判据见 `issues.md`「CIF 空间群符号展开」）| `readers/cif.rs:334-335 collect_symops` | 无 symop 循环一律当 P1，H-M / IT 号写着非 P1 也不报；CIF2 点号标签 `_space_group_symop.operation_xyz` 同路 | NaCl CIF 只写 `_symmetry_space_group_name_H-M 'F m -3 m'` + Na1、Cl1：ferro 2 原子、密度 0.54 g/cm³；ASE `Cl4Na4` | 无 symop 而 H-M / IT 号非 P1 时 bail；点号标签加进 `TAGS` |
-| A2 | `writers/pdb.rs:19-24` | CRYST1 只按第 0 帧写一次，reader 套到所有帧 | `convert -i tests/43Z43P15A_NPT_5.lammpstrj -o npt.pdb`：1 个 CRYST1（ASE 写 5 个）；第 4 帧体积 27886.6 → 29687.3 Å³ | 每个 MODEL 前写本帧 CRYST1（reader 已认逐帧） |
+| ~~A2~~ **已修**（`c8ee8c8`；顺带修了同函数里的取向错位：CRYST1 只存六参数，非标准取向的胞原样写坐标，读回错位 —— 现经分数坐标转到 a 沿 x、b 在 xy 平面，同 ASE `standard_form`；对拍 ASE 写出逐位相同。**遗留**：ASE 把 `ENDMDL` 后的 `END` 读成第 N+1 个空帧，ASE 自己不写 `END`，未改）| `writers/pdb.rs:19-24` | CRYST1 只按第 0 帧写一次，reader 套到所有帧 | `convert -i tests/43Z43P15A_NPT_5.lammpstrj -o npt.pdb`：1 个 CRYST1（ASE 写 5 个）；第 4 帧体积 27886.6 → 29687.3 Å³ | 每个 MODEL 前写本帧 CRYST1（reader 已认逐帧） |
 | A3 | `writers/lammps_dump.rs:48-54,69`、`writers/lammps_data.rs:37-50` | 无胞帧取包围盒尺寸写成 `0..L`、坐标不平移、边界硬写 `pp` | 水分子 xyz → `.lammpstrj` → `info`：Volume 0、β=γ=NaN、PBC 全 true，原子在盒外 | 无胞时坐标减 min、盒子加余量、写 `ff`；或报错要求先给胞 |
 | A4 | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
 | A5 | `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
