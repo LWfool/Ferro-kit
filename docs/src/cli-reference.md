@@ -185,6 +185,13 @@ tilting), not `xlo/xhi`.  Before 2026-09-21 ferro treated them as `xlo/xhi` on b
 was self-consistent but handed OVITO / ASE / LAMMPS `read_dump` a box that was too small.
 **Orthorhombic output is unaffected** (with all three tilt factors 0 the two forms are bit-for-bit identical).
 
+**LAMMPS output of a structure without a cell** (a molecule from `.xyz`): the box is the atoms' bounding
+box widened by 1 Å on every side, and the coordinates are written unchanged, so `xlo` is generally not 0.
+The 1 Å has no physical meaning; it only keeps the box non-degenerate (a planar molecule has zero thickness)
+and keeps atoms off the box faces.  A dump writes the boundary flags from the frame's periodicity, `pp` or
+`ff` per direction, so a cell-less frame gets `ff ff ff` and a slab keeps `pp pp ff`.  A data file has no
+boundary flags; set `boundary` in the LAMMPS input.
+
 **Whether velocities and forces survive depends on both sides supporting them**: `.dump` to `.xyz` silently
 drops the velocities, because plain XYZ has nowhere to put them.  Convert to `.extxyz` to keep them.
 

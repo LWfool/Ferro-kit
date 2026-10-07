@@ -37,6 +37,18 @@ as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
 operations. A malformed symmetry operation used to be dropped silently; it is
 now an error naming it.
 
+### LAMMPS output: boxes for cell-less structures, orthogonal boxes, boundary flags
+
+Three fixes to the dump and data writers. A structure without a cell used to get a
+box of the bounding box's size placed at the origin while the coordinates stayed
+put, so atoms sat outside it (and a planar molecule got a box of zero thickness).
+The box is now the bounding box widened by 1 Å on every side, around the unchanged
+coordinates. An orthogonal cell built from angles was written as triclinic because
+$\cos 90^\circ$ is not exactly 0 in floating point; tilts below $10^{-10}$ of the
+longest edge are now written as 0, which drops the tilt line from such boxes and
+leaves atom lines unchanged. A dump's boundary flags were always `pp pp pp`; they
+now follow the frame's periodicity, so a slab reads back as a slab.
+
 ### extxyz comment lines are split the way ASE splits them
 
 A bare key without `=` (ASE reads it as `True`) used to glue itself to the key after
