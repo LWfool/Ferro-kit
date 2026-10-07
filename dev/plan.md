@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1、A2、A4、A5，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A5、A14、A15，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -28,7 +28,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 |---|---|---|---|---|
 | ~~A1~~ **已修**（`acb282d` 数据表、`7638dc0` 查表、`1a76d49` 接入；判据见 `issues.md`「CIF 空间群符号展开」）| `readers/cif.rs:334-335 collect_symops` | 无 symop 循环一律当 P1，H-M / IT 号写着非 P1 也不报；CIF2 点号标签 `_space_group_symop.operation_xyz` 同路 | NaCl CIF 只写 `_symmetry_space_group_name_H-M 'F m -3 m'` + Na1、Cl1：ferro 2 原子、密度 0.54 g/cm³；ASE `Cl4Na4` | 无 symop 而 H-M / IT 号非 P1 时 bail；点号标签加进 `TAGS` |
 | ~~A2~~ **已修**（`c8ee8c8`；顺带修了同函数里的取向错位：CRYST1 只存六参数，非标准取向的胞原样写坐标，读回错位 —— 现经分数坐标转到 a 沿 x、b 在 xy 平面，同 ASE `standard_form`；对拍 ASE 写出逐位相同。**遗留**：ASE 把 `ENDMDL` 后的 `END` 读成第 N+1 个空帧，ASE 自己不写 `END`，未改）| `writers/pdb.rs:19-24` | CRYST1 只按第 0 帧写一次，reader 套到所有帧 | `convert -i tests/43Z43P15A_NPT_5.lammpstrj -o npt.pdb`：1 个 CRYST1（ASE 写 5 个）；第 4 帧体积 27886.6 → 29687.3 Å³ | 每个 MODEL 前写本帧 CRYST1（reader 已认逐帧） |
-| A3 | `writers/lammps_dump.rs:48-54,69`、`writers/lammps_data.rs:37-50` | 无胞帧取包围盒尺寸写成 `0..L`、坐标不平移、边界硬写 `pp` | 水分子 xyz → `.lammpstrj` → `info`：Volume 0、β=γ=NaN、PBC 全 true，原子在盒外 | 无胞时坐标减 min、盒子加余量、写 `ff`；或报错要求先给胞 |
+| ~~A3~~ **已修**（`a34b488`；无胞帧盒子取包围盒每侧外扩 1 Å，坐标原样、lo≠0；未在真 LAMMPS 里读过 data —— 本机无 LAMMPS）| `writers/lammps_dump.rs:48-54,69`、`writers/lammps_data.rs:37-50` | 无胞帧取包围盒尺寸写成 `0..L`、坐标不平移、边界硬写 `pp` | 水分子 xyz → `.lammpstrj` → `info`：Volume 0、β=γ=NaN、PBC 全 true，原子在盒外 | 无胞时坐标减 min、盒子加余量、写 `ff`；或报错要求先给胞 |
 | ~~A4~~ **已修**（`9ebb707` 逐字符解析，规则同 ASE `key_val_str_to_dict`，一并支持 `[]` `{}` 括号值与 `\` 转义；有意与 ASE 不同两处：未闭合报错、`a="" b=1` 读作两键，见 `parse_comment` 文档） | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
 | ~~A5~~ **已修**（同 A4）| `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
 | A6 | `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
@@ -55,8 +55,8 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | A11 | `readers/cp2k.rs:66,74` | 段名前缀匹配：`&COLVAR` 里的 `&COORDINATION` 先命中 `&coord`，合法输入报错（regtest `QS/regtest-gpw-2-2/H2O-meta.inp` 等 ≥9 份） | 段名按词精确比较；`&cell` 同改 |
 | A12 | `readers/qe.rs:175,29,152` | namelist 用空白分隔（`ibrav=0 nat=3 ntyp=1`）时整串成了一个值：`nat` 校验静默跳过、非零 ibrav 不被拒、`starting_magnetization` 丢失 | 按 `key=value` token 解析；ibrav / nat 解析失败报错 |
 | A13 | `readers/lammps_data.rs:60-61` | 空文件 `lines[i]` 越界 panic | `get` + bail |
-| A14 | `writers/lammps_dump.rs:56`、`writers/lammps_data.rs:46` | 三斜判定 `!= 0.0`，cos 90° 残留 1e-16 使正交盒写成三斜（`convert tests/70Z30P00A_NVT_5.lammpstrj -o x.lammpstrj` 即中） | 倾斜 / 边长 < 1e-10 置 0 |
-| A15 | `writers/lammps_dump.rs:64,69` | 边界恒写 `pp pp pp`，不看 `frame.pbc`；reader 却尊重标志（TTF slab 往返成 TTT） | 按 pbc 写 `pp`/`ff` |
+| ~~A14~~ **已修**（`a34b488`；`cell_to_lammps` 把相对最大边长 1e-10 以下的倾斜置 0，两份同改）| `writers/lammps_dump.rs:56`、`writers/lammps_data.rs:46` | 三斜判定 `!= 0.0`，cos 90° 残留 1e-16 使正交盒写成三斜（`convert tests/70Z30P00A_NVT_5.lammpstrj -o x.lammpstrj` 即中） | 倾斜 / 边长 < 1e-10 置 0 |
+| ~~A15~~ **已修**（`a34b488`；只改 dump，data 文件无边界标志）| `writers/lammps_dump.rs:64,69` | 边界恒写 `pp pp pp`，不看 `frame.pbc`；reader 却尊重标志（TTF slab 往返成 TTT） | 按 pbc 写 `pp`/`ff` |
 
 轨迹分析（B）：
 
@@ -176,7 +176,7 @@ network / dft / ml / core（C）：
    Bader 归属的 O(N²) 循环里 → core 加预存逆的 MIC 辅助（与 `issues.md:658` 否决的「并入现有
    方法」不是一件事）；`classify_formers` 每个形成子重算 `params.ligands()`（`:385`）
 10. **决定不合、需两处互指注释**（R6）：`cell_to_lammps`/`lammps_cell_matrix`/`bounding_box`
-    在 lammps_data 与 lammps_dump writer 逐字两份（A3、A14、A15 必须两处同改）；POSCAR 头部
+    在 lammps_data 与 lammps_dump writer 逐字两份（**互指注释已随 `a34b488` 加上**）；POSCAR 头部
     解析在 `vasp.rs` 与 `chgcar.rs` 两份且已漂过一次（`chgcar.rs:71` 仍是「`d` 开头才算 Direct」
     旧规则，与 A7 一起修）；msd 与 bondlife 的逐帧 (Mᵀ, Mᵀ⁻¹) 预计算；`filter_split`/`merge_split`；
     `job.rs:204` 与 `convert.rs:155` 的 `-o` 尾分隔判断；`vacuum.rs`/`merge.rs` 轴名解析；
