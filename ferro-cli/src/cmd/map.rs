@@ -293,7 +293,7 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     drive(&c.common, |traj, stem, out| {
-        let result = calc_cluster_sdf(traj, &params)
+        let result = calc_cluster_sdf(traj, &params)?
             .ok_or_else(|| anyhow!("No Q{} clusters found in trajectory", c.cluster.qn))?;
 
         let stem = if stem.is_empty() { "sdf" } else { stem };
