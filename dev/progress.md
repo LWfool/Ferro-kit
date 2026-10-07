@@ -255,6 +255,12 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 设计判据与踩过的坑见 `issues.md`「network 重构（0.2.1）编码陷阱」。这里只记实现事实：
 
 - 参数 `TypeParams`（`cutoffs` + `modifier_cutoffs` + `qn_elements`），`--qn` 整体替换名单
+- **截断可写 `auto`**（2026-10-07，`cmd/net.rs::resolve_auto`）：逐输入调
+  `md::first_shell_cutoffs`（一次 g(r) 查全部 auto 对），头部写 `P-O=auto`，逐输入的
+  截断（三位小数，手填回去逐字节相同）与 `g_min` 进 `[inputs]`。输入里没有这对元素时
+  截断置 0 照常分析（与定值截断时一致），记 `-`；元素都在但 g 越不过 1 则该文件失败。
+  `build_params` 阶段 auto 对占位 NaN，只为校验元素角色与打印标签方案，进
+  `calc_network` 前必被替换
 - `n_edge_sharing`：共享 ≥2 个配体的形成子对数（共边多面体），非零才告警。传统 Qn
   假设全共角，共边下一个邻居贡献两个桥氧。参考轨迹 3589 对全共角、零共边
 - `Bin { count, fraction, sd }`：`fraction` 是逐帧比例的平均，`sd` 是同一序列的样本
@@ -275,8 +281,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - 阈值 0 = 关闭；给了阈值但缺该标签 → 判之前就报错
 - **`geometry.rs`**：`min_pair_distance`（周期最小镜像，超出最小镜像上界报错）、
   `count_with_coordination` / `coordination_histogram`（走 `classify_frame`，读
-  `cn` **字段**不解析标签）、`first_shell_cutoff`（g(r) 第一峰后的极小 = 配位壳层
-  外沿，用 0.02 Å 粗 bin，细 bin 的局部极小是采样噪声）
+  `cn` **字段**不解析标签）。`first_shell_cutoff` 已于 2026-10-07 移到
+  `md/shell.rs`（改名 `first_shell_cutoffs`，net 的 auto 与 `--al6` 共用）：0.02 Å 粗
+  bin，极小在 0.10 Å 滑动平均上找，零平台取最长段中点
 - **`diagnostics.rs`**：只读模式的四张表 —— min d(O-O) 分布、每帧 Al6 个数、
   Al 配位分布、**rcut 敏感性扫描**。敏感性表在 49Z49P02A 上是陡坡
   （2.15→0.9%、2.45→13.1%、2.75→41.4%），在 43Z43P15A 上是平线（2.1–2.6 全
