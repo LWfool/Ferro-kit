@@ -19,14 +19,17 @@ pub(crate) fn positive(name: &str, v: f64) -> Check {
     fail(format!("{name} must be a finite number > 0, got {v}"))
 }
 
+/// 有限且 >= 0（`--q-max inf` 之类在下游得到 0 个或无穷多个 bin）
 pub(crate) fn non_negative(name: &str, v: f64) -> Check {
-    if v >= 0.0 { return Ok(()); }
-    fail(format!("{name} must be >= 0, got {v}"))
+    if v >= 0.0 && v.is_finite() { return Ok(()); }
+    fail(format!("{name} must be a finite number >= 0, got {v}"))
 }
 
-/// `lo < hi`
+/// `lo < hi`，两端都有限
 pub(crate) fn ordered(lo_name: &str, lo: f64, hi_name: &str, hi: f64) -> Check {
-    if lo < hi { return Ok(()); }
+    if lo < hi && lo.is_finite() && hi.is_finite() { return Ok(()); }
+    if !hi.is_finite() { return fail(format!("{hi_name} must be a finite number, got {hi}")); }
+    if !lo.is_finite() { return fail(format!("{lo_name} must be a finite number, got {lo}")); }
     fail(format!("{lo_name} ({lo}) must be < {hi_name} ({hi})"))
 }
 
@@ -90,6 +93,10 @@ mod tests {
         assert!(positive("dr", f64::INFINITY).is_err());
         assert!(non_negative("r-min", 0.0).is_ok());
         assert!(non_negative("r-min", -1e-12).is_err());
+        // 审查 B-2：以前只有 positive 查 is_finite，这两个放行 +inf
+        assert!(non_negative("r-min", f64::INFINITY).is_err());
+        assert!(ordered("a", 0.0, "b", f64::INFINITY).is_err());
+        assert!(ordered("a", f64::NEG_INFINITY, "b", 0.0).is_err());
         assert!(ordered("a", 1.0, "b", 1.0).is_err());
         assert!(ordered("a", 1.0, "b", 1.5).is_ok());
         assert!(at_least_one("nx", 0).is_err());
@@ -117,7 +124,8 @@ mod tests {
             }};
         }
         case!(GrParams, r_min: -0.1, r_max: 0.0, dr: 0.0, dr: nan, dr: 20.0);
-        case!(SqParams, q_min: -1.0, q_max: 0.0, dq: 0.0, dq: nan);
+        let inf = f64::INFINITY;
+        case!(SqParams, q_min: -1.0, q_max: 0.0, q_max: inf, dq: 0.0, dq: nan);
         case!(MsdParams, dt: 0.0, dt: nan, max_lag: Some(0),
               fit_range: Some((0.8, 0.2)), fit_range: Some((0.0, 1.5)), fit_range: Some((nan, 0.5)));
         case!(AngleParams, r_cut_ab: 0.0, r_cut_bc: nan, angle_min: -1.0, angle_max: 0.0,
@@ -125,11 +133,12 @@ mod tests {
         case!(VacfParams, dt: -1.0, max_lag: Some(0));
         case!(RotCorrParams, r_cut: 0.0, dt: nan, max_lag: Some(0));
         case!(BondLifeParams, r_bond: 0.0, r_bond: nan, r_break: Some(1.0), dt: 0.0, max_lag: Some(0));
-        case!(VanHoveParams, dt: 0.0, tau: Some(0), shift: 0, r_min: -1.0, dr: 0.0, r_max: 0.0);
+        case!(VanHoveParams, dt: 0.0, tau: Some(0), shift: 0, r_min: -1.0, dr: 0.0, r_max: 0.0,
+              r_max: inf);
         case!(CubeDensityParams, nx: 0, ny: 0, nz: 0);
         case!(CubeRadiusParams, nx: 0, ny: 0, nz: 0, radius: 0.0, radius: nan);
         case!(ClusterSdfParams, former_ligand_cutoff: 0.0, modifier_cutoff: nan, grid_res: 0.0,
-              sigma: -1.0, padding: -1.0, rmsd_warn_threshold: nan);
+              sigma: -1.0, sigma: inf, padding: -1.0, padding: inf, rmsd_warn_threshold: nan);
         case!(ChgSdfParams, former_ligand_cutoff: 0.0, modifier_cutoff: -1.0, padding: nan,
               rmsd_warn_threshold: -0.5);
     }
