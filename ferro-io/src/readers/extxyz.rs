@@ -52,7 +52,8 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 
         let (comment_no, comment) = lines.next().context("missing comment line")?;
         let frame_no = traj.n_frames();
-        let kv = parse_comment(comment);
+        let kv = parse_comment(comment)
+            .with_context(|| format!("frame {frame_no} (line {comment_no}): bad comment line"))?;
 
         // Cell and pbc
         let (cell, pbc) = match kv.get("lattice") {
@@ -177,35 +178,61 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 
 // ─── Comment line parser ──────────────────────────────────────────────────────
 
-fn parse_comment(line: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    let mut s = line.trim();
-    while !s.is_empty() {
-        // Find next '='
-        let eq = match s.find('=') {
-            Some(p) => p,
-            None => break,
-        };
-        let key = s[..eq].trim().to_lowercase();
-        s = &s[eq + 1..];
-        let (val, rest) = read_value(s);
-        if !key.is_empty() { map.insert(key, val); }
-        s = rest.trim_start();
+/// 注释行切成键值对，切词规则同 ASE `key_val_str_to_dict`：引号 / 括号（`"` `'`
+/// `[]` `{}`）外的空白分词，`=` 分开键与值（两侧可有空格，多出的 `=` 留在值里），
+/// `\` 转义下一个字符，不带 `=` 的裸词记作 `"T"`。键名转小写。
+///
+/// 与 ASE 有意不同的两处：未闭合的引号 / 括号报错（ASE 把行尾全吞进值里，
+/// `Lattice="…` 会吞掉 `Properties`）；`a="" b=1` 读作两个键（ASE 把 `b=1` 并进 `a`）
+fn parse_comment(line: &str) -> Result<HashMap<String, String>> {
+    // 每个词是 [键, 值, …] 的片段列表；`touched` 记最后一个片段是否已开始
+    // （空引号 `""` 也算开始，否则其后的空白不分词）
+    let mut pairs: Vec<Vec<String>> = vec![vec![String::new()]];
+    let mut touched = false;
+    let mut close: Option<char> = None;
+    let mut escaped = false;
+    for ch in line.trim().chars() {
+        let frag = pairs.last_mut().unwrap().last_mut().unwrap();
+        if escaped {
+            frag.push(ch);
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+            touched = true;
+        } else if let Some(c) = close {
+            if ch == c { close = None } else { frag.push(ch) }
+        } else if let Some(c) = match ch { '"' => Some('"'), '\'' => Some('\''), '[' => Some(']'), '{' => Some('}'), _ => None } {
+            close = Some(c);
+            touched = true;
+        } else if ch.is_whitespace() {
+            if touched {
+                pairs.push(vec![String::new()]);
+                touched = false;
+            }
+        } else if ch == '=' {
+            // `a = 1`：空白已开了新词，`=` 把它退回去，接到上一个词的值上
+            if !touched && pairs.len() > 1 && pairs.last().unwrap().len() == 1 {
+                pairs.pop();
+            }
+            pairs.last_mut().unwrap().push(String::new());
+            touched = false;
+        } else {
+            frag.push(ch);
+            touched = true;
+        }
     }
-    map
-}
+    if let Some(c) = close {
+        anyhow::bail!("unclosed quote or bracket (missing {c:?})");
+    }
 
-fn read_value(s: &str) -> (String, &str) {
-    let s = s.trim_start();
-    if let Some(q) = s.chars().next().filter(|&c| c == '"' || c == '\'') {
-        let inner = &s[1..];
-        // Find closing quote (not escaped)
-        let end = inner.find(q).unwrap_or(inner.len());
-        (inner[..end].to_string(), &inner[end + 1..])
-    } else {
-        let end = s.find(char::is_whitespace).unwrap_or(s.len());
-        (s[..end].to_string(), &s[end..])
+    let mut map = HashMap::new();
+    for mut pair in pairs {
+        let key = pair.remove(0).to_lowercase();
+        if key.is_empty() { continue; }
+        let val = if pair.is_empty() { "T".to_string() } else { pair.join("=") };
+        map.insert(key, val);
     }
+    Ok(map)
 }
 
 fn parse_lattice(s: &str) -> Result<Cell> {
@@ -534,6 +561,54 @@ Si 0.0 0.0 0.0
         let forces = f.forces.as_ref().expect("force column not read");
         assert!((forces[0].x - 0.1).abs() < 1e-12);
         assert!((forces[1].z + 0.3).abs() < 1e-12);
+    }
+
+    // 审查 A5：不带 `=` 的裸键（ASE 读作 True）以前与后一个键名粘连，Lattice 被静默丢弃
+    #[test]
+    fn test_bare_flag_does_not_swallow_next_key() {
+        let text = "1\nenergy=-1.5 is_relaxed Lattice=\"5 0 0 0 5 0 0 0 5\" \
+                    Properties=species:S:1:pos:R:3\nO 0 0 0\n";
+        let traj = parse_extxyz(text).unwrap();
+        let f = traj.first().unwrap();
+        let [a, ..] = f.cell.as_ref().expect("裸键之后的 Lattice 应被读到").lengths();
+        assert!((a - 5.0).abs() < 1e-12, "a = {a}");
+        assert_eq!(f.energy, Some(-1.5));
+    }
+
+    // 期望值取自 ASE 3.29 `key_val_str_to_dict` 在类型转换前的原始字符串
+    #[test]
+    fn test_parse_comment_matches_ase() {
+        let cases: [(&str, &[(&str, &str)]); 9] = [
+            ("a = 1 b=2", &[("a", "1"), ("b", "2")]),
+            ("a =1 b= 2", &[("a", "1"), ("b", "2")]),
+            ("x=\"p q\" is_relaxed c=3", &[("x", "p q"), ("is_relaxed", "T"), ("c", "3")]),
+            (r#"name="say \"hi\"" n=1"#, &[("name", "say \"hi\""), ("n", "1")]),
+            ("arr=[1, 2, 3] obj={4 5}", &[("arr", "1, 2, 3"), ("obj", "4 5")]),
+            ("s='single quoted' t=u=v", &[("s", "single quoted"), ("t", "u=v")]),
+            ("Energy=-1.5 PBC=\"T T F\"", &[("energy", "-1.5"), ("pbc", "T T F")]),
+            ("mid=ab\"c d\"e", &[("mid", "abc de")]),
+            // 与 ASE 有意不同：ASE 得 {a: "b=1"}
+            ("a=\"\" b=1", &[("a", ""), ("b", "1")]),
+        ];
+        for (line, want) in cases {
+            let got = parse_comment(line).unwrap();
+            let want: HashMap<String, String> =
+                want.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            assert_eq!(got, want, "注释行 {line:?}");
+        }
+        for bad in ["a=\"open", "a=[1 2", "a={x", "a='x"] {
+            assert!(parse_comment(bad).is_err(), "{bad:?} 应报未闭合");
+        }
+    }
+
+    // 审查 A4：未闭合引号以前切片越界 panic；ASE 则把行尾全吞进值里
+    #[test]
+    fn test_unclosed_quote_is_an_error_naming_frame_and_line() {
+        let good = "1\nLattice=\"5 0 0 0 5 0 0 0 5\" Properties=species:S:1:pos:R:3\nO 0 0 0\n";
+        let bad = "1\nLattice=\"5 0 0 0 5 0 0 0 5 Properties=species:S:1:pos:R:3\nO 0 0 0\n";
+        let msg = format!("{:#}", parse_extxyz(&format!("{good}{bad}")).unwrap_err());
+        assert!(msg.contains("frame 1") && msg.contains("line 5") && msg.contains("unclosed"),
+            "应点名帧号、行号与未闭合，实得：{msg}");
     }
 
     #[test]
