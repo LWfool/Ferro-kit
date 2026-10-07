@@ -297,3 +297,8 @@ very little.
 - **Extra keys.** `atom_ener.npy` and friends have no home in `Frame`; they are
   **reported** on read and would be lost on write. The reader names them rather
   than dropping them quietly.
+- **Mixed-type systems** (dpdata's `deepmd/npy/mixed`, for DPA models). There
+  `type.raw` is a placeholder of zeros and the real types sit in each set's
+  `real_atom_types.npy`. A system holding that file is **refused**, by `filter`
+  and `merge` alike, rather than read with every atom as the first element of
+  `type_map.raw`. Convert it to the standard layout first (dpdata `deepmd/npy`).
