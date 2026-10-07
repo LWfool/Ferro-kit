@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A5、A14、A15，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -31,7 +31,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | ~~A3~~ **已修**（`a34b488`；无胞帧盒子取包围盒每侧外扩 1 Å，坐标原样、lo≠0；未在真 LAMMPS 里读过 data —— 本机无 LAMMPS）| `writers/lammps_dump.rs:48-54,69`、`writers/lammps_data.rs:37-50` | 无胞帧取包围盒尺寸写成 `0..L`、坐标不平移、边界硬写 `pp` | 水分子 xyz → `.lammpstrj` → `info`：Volume 0、β=γ=NaN、PBC 全 true，原子在盒外 | 无胞时坐标减 min、盒子加余量、写 `ff`；或报错要求先给胞 |
 | ~~A4~~ **已修**（`9ebb707` 逐字符解析，规则同 ASE `key_val_str_to_dict`，一并支持 `[]` `{}` 括号值与 `\` 转义；有意与 ASE 不同两处：未闭合报错、`a="" b=1` 读作两键，见 `parse_comment` 文档） | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
 | ~~A5~~ **已修**（同 A4）| `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
-| A6 | `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
+| ~~A6~~ **已修**（`e46a5ab` 拒收；完整支持仍是下面「DeePMD mixed type」一节）| `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
 | B-1 | `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
 | B-2 | `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
 | B-3 | `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
@@ -303,6 +303,10 @@ ferro-python 运行时。（`--metal-units` 全链路已随 2026-10-03 的 `--un
 未做：全局规则「何时该有一个独立函数」（R1~R6）的逐函数审计。
 
 ### DeePMD mixed type 数据的读写（2026-08-26 提出）
+
+**现状（2026-10-07，审查 A6）**：reader 见到任一 set 有 `real_atom_types.npy` 即报错拒收。
+**只拒不读**是有意的：只做读侧的话 `filter` 读进来再写回标准布局（按第一帧定 `type.raw`），
+mixed 数据会静默降级成坏数据、退出码 0 —— 比拒收更糟。要支持就读写与下列判据一起做。
 
 现在 `readers/deepmd.rs` / `writers/deepmd.rs` 只做**标准 system**：`type.raw` 一份
 定型，故一个 system 里所有帧的成分必须完全相同 —— 这正是 `collect`「同目录成分不符

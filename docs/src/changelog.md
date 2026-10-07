@@ -37,6 +37,14 @@ as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
 operations. A malformed symmetry operation used to be dropped silently; it is
 now an error naming it.
 
+### Mixed-type DeePMD systems are refused
+
+A system in dpdata's mixed-type layout (`real_atom_types.npy` in its sets) was read
+with its placeholder `type.raw`, so every atom became the first element of
+`type_map.raw` and `dataset filter` / `merge` wrote that out with exit code 0. Such
+a system is now an error naming the set. Convert it to the standard `deepmd/npy`
+layout first.
+
 ### LAMMPS output: boxes for cell-less structures, orthogonal boxes, boundary flags
 
 Three fixes to the dump and data writers. A structure without a cell used to get a
