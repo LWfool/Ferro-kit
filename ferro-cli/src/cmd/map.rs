@@ -429,7 +429,8 @@ mod tests {
             ("velocity --nz 0", "nz must be >= 1"),
             ("radius --radius 0", "radius must be"),
             ("sdf --grid-res 0", "grid-res must be"),
-            ("sdf --sigma=-1", "sigma must be >= 0"),
+            ("sdf --sigma=-1", "sigma must be a finite number >= 0"),
+            ("sdf --padding inf", "padding must be a finite number >= 0"),
         ] {
             let mut argv = vec!["map"];
             argv.extend(args.split_whitespace());
