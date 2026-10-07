@@ -221,16 +221,18 @@ impl FamilyAccumulator {
 
 /// Compute the spatial distribution function (SDF) for clusters of the specified Qn level.
 ///
-/// Returns `None` if:
+/// Errors on invalid parameters or a singular cell. Returns `Ok(None)` if:
 /// - the trajectory has no frames, or no frame has a periodic cell
 /// - no target-Qn cluster is found in the entire trajectory
 pub fn calc_cluster_sdf(
     traj: &Trajectory,
     params: &ClusterSdfParams,
-) -> Option<ClusterSdfResult> {
-    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
-    params.validate().ok()?;
-    if traj.frames.is_empty() { return None; }
+) -> ferro_core::Result<Option<ClusterSdfResult>> {
+    params.validate()?;
+    // 奇异胞以前在 build_network_graph / extract_snapshot 的 expect 里 panic（审查 B-1）；
+    // 走 Err 而不是 None，CLI 才不会把它报成「没找到团簇」
+    check::invertible_cells(traj)?;
+    if traj.frames.is_empty() { return Ok(None); }
 
     let mut accumulators: HashMap<String, FamilyAccumulator> = HashMap::new();
     let mut n_frames = 0usize;
@@ -253,7 +255,7 @@ pub fn calc_cluster_sdf(
         }
     }
 
-    if accumulators.is_empty() { return None; }
+    if accumulators.is_empty() { return Ok(None); }
 
     let n_clusters_total = accumulators.values().map(|a| a.n_clusters).sum();
     let families = accumulators
@@ -264,7 +266,7 @@ pub fn calc_cluster_sdf(
         })
         .collect();
 
-    Some(ClusterSdfResult { families, n_frames, n_clusters_total })
+    Ok(Some(ClusterSdfResult { families, n_frames, n_clusters_total }))
 }
 
 // ─── 逐帧处理 ─────────────────────────────────────────────────────────────────
@@ -351,7 +353,7 @@ fn extract_snapshot(
             let ma_pos = frame.atoms[ma_idx].position;
             let is_near = cluster_o_pos.iter().any(|&op| {
                 cell.minimum_image(op - ma_pos)
-                    .expect("cell is non-singular")
+                    .expect("入口 check::invertible_cells 已查")
                     .norm_squared() < ml_cutoff2
             });
             if is_near { Some(mi) } else { None }
@@ -397,7 +399,7 @@ fn extract_snapshot(
 
     // PBC 展开：以锚原子为原点，用最小镜像得到局部坐标
     let positions: Vec<Vector3<f64>> = raw_pos.iter()
-        .map(|&pos| cell.minimum_image(pos - anchor_pos).expect("cell is non-singular"))
+        .map(|&pos| cell.minimum_image(pos - anchor_pos).expect("入口 check::invertible_cells 已查"))
         .collect();
 
     Some(ClusterSnapshot { types, positions, anchor_idx, anchor_global_pos: anchor_pos })

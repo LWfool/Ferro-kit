@@ -156,6 +156,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         return Err(ChemError::ValidationError(format!("trajectory requires at least 2 frames, got {n_steps}")));
     }
     traj.check_same_atoms()?;
+    check::invertible_cells(traj)?;
 
     // 按第一帧筛选参与计算的原子下标
     let ref_frame = &traj.frames[0];
@@ -210,7 +211,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
             let cell = frame.cell.as_ref().unwrap();
             atom_indices.iter().map(|&i| {
                 let f = cell.cartesian_to_fractional(frame.atoms[i].position)
-                    .expect("cell is non-singular");
+                    .expect("入口 check::invertible_cells 已查");
                 [f.x, f.y, f.z]
             }).collect()
         }).collect();

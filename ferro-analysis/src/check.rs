@@ -50,6 +50,17 @@ pub(crate) fn holds_a_bin(range: &str, lo: f64, hi: f64, step: &str, w: f64) -> 
     fail(format!("{range} [{lo}, {hi}] is narrower than one {step} = {w} bin"))
 }
 
+/// 有胞的帧，胞矩阵须可逆。下游在闭包 / 并行迭代里 `expect` 最小镜像不失败，
+/// 入口查一次，那些 `expect` 便成了不变式。ASE 二维材料约定（c=0、pbc TTF）即奇异
+pub(crate) fn invertible_cells(traj: &Trajectory) -> Check {
+    for (i, f) in traj.frames.iter().enumerate() {
+        if f.cell.as_ref().is_some_and(|c| c.matrix.try_inverse().is_none()) {
+            return fail(format!("frame {i}: cell matrix is singular"));
+        }
+    }
+    Ok(())
+}
+
 /// 截断不超过最小镜像上界（最小面间距的一半）。超过时只看得到最近的一个镜像，
 /// 更远镜像里的邻居被静默漏掉。逐帧查而不是只看第 0 帧：NPT 下盒子会缩，后面某帧
 /// 越界时结果同样静默错。报最紧的那一帧，用户由此知道能用的上限。
@@ -141,6 +152,39 @@ mod tests {
               sigma: -1.0, sigma: inf, padding: -1.0, padding: inf, rmsd_warn_threshold: nan);
         case!(ChgSdfParams, former_ligand_cutoff: 0.0, modifier_cutoff: -1.0, padding: nan,
               rmsd_warn_threshold: -0.5);
+    }
+
+    /// 审查 B-1：ASE 的二维材料约定 c=0（pbc TTF）给出奇异胞。这几处在闭包里
+    /// `expect` 可逆，以前直接 panic、打断整个批次（gr / msd 等同一文件是报错跳过）
+    fn singular_traj() -> Trajectory {
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::{Matrix3, Vector3};
+        let cell = Cell::from_matrix(Matrix3::new(10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0));
+        let mut traj = Trajectory::new();
+        for k in 0..3 {
+            let mut f = Frame::with_cell(cell.clone(), [true, true, false]);
+            f.add_atom(Atom::new("P", Vector3::new(5.0 + 0.01 * k as f64, 5.0, 5.0)));
+            for d in [[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]] {
+                f.add_atom(Atom::new("O", Vector3::new(5.0 + 0.9 * d[0], 5.0 + 0.9 * d[1], 5.0 + 0.9 * d[2])));
+            }
+            traj.add_frame(f);
+        }
+        traj
+    }
+
+    #[test]
+    fn test_singular_cells_are_an_error_not_a_panic() {
+        use crate::md::*;
+        let traj = singular_traj();
+        let msg = calc_vanhove(&traj, &VanHoveParams::default()).err().map(|e| e.to_string());
+        assert!(msg.as_deref().is_some_and(|m| m.contains("singular") && m.contains("frame 0")),
+            "vanhove 应报奇异胞并点名帧号：{msg:?}");
+        assert!(calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).is_none());
+        let params = ClusterSdfParams {
+            former: "P".into(), ligand: "O".into(), target_qn: 0, ..Default::default()
+        };
+        let msg = calc_cluster_sdf(&traj, &params).err().map(|e| e.to_string());
+        assert!(msg.as_deref().is_some_and(|m| m.contains("singular")), "map sdf 应报奇异胞：{msg:?}");
     }
 
     /// 四个按截断找邻居的分析都要拦下超过最小镜像上界的截断，并点名最紧的帧。

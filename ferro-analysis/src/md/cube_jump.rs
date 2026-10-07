@@ -13,6 +13,7 @@
 //!
 //! Parallelism: per-atom par_iter; each atom independently unwraps and accumulates, then results are reduced.
 
+use crate::check;
 use ferro_core::{CubeData, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
@@ -119,6 +120,7 @@ pub fn calc_cube_jump(
     let n_frames = traj.frames.len();
     if n_frames < params.tau + 1 { return None; }
     traj.check_same_atoms().ok()?;
+    check::invertible_cells(traj).ok()?;
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
@@ -146,7 +148,7 @@ pub fn calc_cube_jump(
         let cell = frame.cell.as_ref().unwrap_or(ref_cell);
         frame.atoms.iter().map(|a| {
             let f = cell.cartesian_to_fractional(a.position)
-                .expect("cell is non-singular");
+                .expect("入口 check::invertible_cells 已查");
             [f.x, f.y, f.z]
         }).collect()
     }).collect();
