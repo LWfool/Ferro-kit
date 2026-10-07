@@ -8,9 +8,15 @@
 //! Cutoffs are given as `--<Former>-<Ligand>=<Å>` (e.g. `--P-O=2.3`), which clap cannot
 //! model as a fixed flag set: the element pair is part of the flag name. `main` strips
 //! those out of argv before clap parses and hands them here.
+//!
+//! A cutoff may also be `auto` (`--P-O=auto`): the first minimum of that pair's g(r)
+//! behind its first peak, taken from **each input separately**. The shell edge moves
+//! with composition, and one shared hard cutoff either cuts into the shell of one
+//! composition or reaches past it in another, which shifts the coordination fractions.
 
 use anyhow::{anyhow, bail, Result};
 use clap::{Args, ValueEnum};
+use ferro_analysis::md::{first_shell_cutoffs, ShellCutoff};
 use ferro_analysis::{calc_network, NetworkResult};
 use ferro_core::{Trajectory, TypeParams};
 use ferro_io::{write_extxyz, write_lammps_dump};
@@ -61,6 +67,9 @@ impl ExportFormat {
     }
 }
 
+/// One input's result and the `auto` shells it was classified with (`None`: pair absent).
+type Resolved = (NetworkResult, Vec<Option<ShellCutoff>>);
+
 pub fn wants_help(cmd: &NetCmd) -> bool {
     cmd.common.input.is_empty()
 }
@@ -76,7 +85,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     if pair_args.is_empty() {
         bail!("No pair cutoffs specified. Use --Former-Ligand=cutoff, e.g. --P-O=2.3");
     }
-    let params = build_params(pair_args, cmd.modifier.as_deref(), cmd.qn.as_deref())?;
+    let (params, auto) = build_params(pair_args, cmd.modifier.as_deref(), cmd.qn.as_deref())?;
     if params.cutoffs.is_empty() {
         bail!("Every cutoff names a modifier element; at least one former is required");
     }
@@ -93,23 +102,36 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
 
     let (results, failures) = batch::map_inputs(&inputs, |inp| {
         let traj = cmd.common.load(&inp.path)?;
+        let (params, shells) = resolve_auto(&params, &auto, &traj)?;
         let result = calc_network(&traj, &params)?;
         if let Some(fmt) = cmd.export_traj {
             export_labelled(&traj, &params, &inp.label, &out, fmt)?;
         }
-        Ok(result)
+        Ok((result, shells))
     });
     if results.is_empty() {
         return Err(anyhow!("every input failed; nothing to write"));
     }
 
-    let tables = batch::stack(&results, |r: &NetworkResult| Ok(r.to_tables()))?;
+    let tables = batch::stack(&results, |(r, _): &Resolved| {
+        Ok(r.to_tables())
+    })?;
     note_missing_qn_tables(&params);
     warn_edge_sharing(&results);
 
     let mut summary = Summary::new(&[]);
-    for (input, r) in &results {
+    for (input, (r, shells)) in &results {
         summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &[]);
+        // auto 截断逐输入各取各的，故值进 [inputs] 而不是共享头部；g_min 是
+        // 极小处的 g(r)，读者据此判断那个极小是不是一道干净的空隙
+        if !auto.is_empty() {
+            let pairs = || auto.iter().zip(shells);
+            let show = |f: fn(&ShellCutoff) -> String| pairs()
+                .map(|((a, b), s)| format!("{a}-{b}={}", s.as_ref().map_or("-".into(), f)))
+                .collect::<Vec<_>>().join(" ");
+            summary.note("cutoff", show(|s| format!("{:.3}", s.min_r)));
+            summary.note("g_min", show(|s| format!("{:.3}", s.depth)));
+        }
         summary.note("mean_qn", fmt_means(&r.mean_qn, &r.qn_dist));
         // mean_n_bo 与 mean_qn 并列：前者是桥氧个数(旧口径的那个数)，后者只数
         // 同元素连接。两者在无三簇氧的纯磷酸盐里相等，混合体系里分叉，摆在
@@ -122,7 +144,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     batch::write_all(
         "network",
         "Glass Network Topology — Qn speciation, ligand types, coordination numbers",
-        &results[0].1.meta_lines(),
+        &results[0].1.0.meta_lines(&auto),
         &summary.into_table(),
         tables,
         &out,
@@ -187,8 +209,8 @@ fn note_missing_qn_tables(params: &TypeParams) {
 /// sharing is genuinely rare in phosphates, so the likelier cause is a cutoff
 /// that reaches into the second shell — say so rather than leaving the user to
 /// wonder why one neighbour produced two bridges.
-fn warn_edge_sharing(results: &[(batch::Input, NetworkResult)]) {
-    for (input, r) in results {
+fn warn_edge_sharing(results: &[(batch::Input, Resolved)]) {
+    for (input, (r, _)) in results {
         if r.n_edge_sharing == 0 { continue; }
         eprintln!(
             "warning: {}: {} former pair(s) share 2+ ligands (edge-sharing).\n\
@@ -298,17 +320,27 @@ fn split_elems(s: Option<&str>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Builds the run's parameters and lists the `auto` pairs.
+///
+/// An `auto` pair holds `NaN` in the returned table until [`resolve_auto`] fills it
+/// from each input; the table is needed before any input is read, to validate the
+/// element roles and print the label scheme, and those only look at the keys.
 fn build_params(
     pair_args: &[String],
     modifier: Option<&str>,
     qn: Option<&str>,
-) -> Result<TypeParams> {
+) -> Result<(TypeParams, Vec<(String, String)>)> {
     let modifier_elems: std::collections::HashSet<String> =
         split_elems(modifier).into_iter().collect();
 
     let mut cutoffs = BTreeMap::new();
     let mut modifier_cutoffs = BTreeMap::new();
+    let mut auto = Vec::new();
     for ((elem, ligand), cutoff) in parse_pairs(pair_args)? {
+        let cutoff = cutoff.unwrap_or_else(|| {
+            auto.push((elem.clone(), ligand.clone()));
+            f64::NAN
+        });
         if modifier_elems.contains(&elem) {
             modifier_cutoffs.insert((elem, ligand), cutoff);
         } else {
@@ -343,10 +375,65 @@ fn build_params(
         }
         params = params.with_qn_elements(elems);
     }
-    Ok(params)
+    Ok((params, auto))
 }
 
-fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> {
+/// Fills the `auto` cutoffs from this input's own g(r) and prints what it chose.
+///
+/// Each input gets its own value: the first-shell edge moves with composition, so one
+/// shared number would cut into the shell of some inputs and reach past it in others.
+fn resolve_auto(
+    template: &TypeParams,
+    auto: &[(String, String)],
+    traj: &Trajectory,
+) -> Result<(TypeParams, Vec<Option<ShellCutoff>>)> {
+    if auto.is_empty() {
+        return Ok((template.clone(), Vec::new()));
+    }
+    let pairs: Vec<(&str, &str)> = auto.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+    let found = first_shell_cutoffs(traj, &pairs)?;
+
+    let present = traj.frames.first().map(|f| f.unique_elements()).unwrap_or_default();
+    let mut params = template.clone();
+    let mut shells = Vec::with_capacity(auto.len());
+    for ((a, b), shell) in auto.iter().zip(found) {
+        let key = (a.clone(), b.clone());
+        let slot = params.cutoffs.get_mut(&key)
+            .or_else(|| params.modifier_cutoffs.get_mut(&key))
+            .expect("auto 对来自 build_params，必在两张表之一");
+        // 这一对元素在本输入里不存在（按成分扫描时常见，如不含 Al 的样品）：与给了
+        // 定值截断时一样照常分析。没有这对原子，截断取什么都不影响结果；取 0 而不
+        // 留 NaN，是为了不让它进 calc_network 的最小镜像上界检查
+        if !present.contains(a) || !present.contains(b) {
+            println!("        {a}-{b} cutoff -     (no {a}-{b} pair in this input)");
+            *slot = 0.0;
+            shells.push(None);
+            continue;
+        }
+        let s = shell.ok_or_else(|| anyhow!(
+            "--{a}-{b}=auto: g(r) of {a}-{b} has no first peak above 1 in this input \
+             ({a} and {b} are not bonded); give the cutoff as a number"))?;
+        println!(
+            "        {a}-{b} cutoff {:.3} A  (first shell peak {:.2} A, g(min) = {:.3})",
+            s.min_r, s.peak_r, s.depth
+        );
+        // 阈值与 dataset filter --al6 的同一条告警相同（cmd/dataset.rs filter_one）
+        if s.depth > 0.5 {
+            eprintln!(
+                "warning: {a}-{b}: the g(r) minimum at {:.2} A is shallow (g = {:.2}); \
+                 there is no clean gap behind the first shell, so the coordination \
+                 numbers depend on where inside the trough the cutoff falls",
+                s.min_r, s.depth
+            );
+        }
+        *slot = s.min_r;
+        shells.push(Some(s));
+    }
+    Ok((params, shells))
+}
+
+/// `None` is `auto`: the cutoff is derived from each input's g(r).
+fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option<f64>>> {
     let mut map = BTreeMap::new();
     for arg in pair_args {
         let inner = arg.trim_start_matches('-');
@@ -354,9 +441,14 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), f64>> 
             .ok_or_else(|| anyhow!("Invalid pair argument (missing '='): {arg}"))?;
         let (former, ligand) = pair.split_once('-')
             .ok_or_else(|| anyhow!("Invalid pair argument (missing '-'): {arg}"))?;
-        let cutoff: f64 = cutoff_str.parse()
-            .map_err(|_| anyhow!("Invalid cutoff value in '{arg}'"))?;
-        if cutoff <= 0.0 { bail!("Cutoff must be positive, got {cutoff} in '{arg}'"); }
+        let cutoff = if cutoff_str == "auto" {
+            None
+        } else {
+            let c: f64 = cutoff_str.parse()
+                .map_err(|_| anyhow!("Invalid cutoff value in '{arg}' (a number or auto)"))?;
+            if c <= 0.0 { bail!("Cutoff must be positive, got {c} in '{arg}'"); }
+            Some(c)
+        };
         map.insert((former.to_string(), ligand.to_string()), cutoff);
     }
     Ok(map)
@@ -370,8 +462,9 @@ ferro net — Glass network topology
 
 Parameters:
   --<Former>-<Ligand>=<cutoff>
-                        Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1. At least
-                        one is required
+                        Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1, or auto:
+                        the first minimum of that pair's g(r), taken from each
+                        input separately. At least one is required
   -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
   -o, --output DIR      Write every product here, tables and --export-traj alike;
                         --mkdir creates it without asking
@@ -395,11 +488,13 @@ Output:
   network_<table>[_<suffix>].csv, six stacked tables with a `file` column:
   composition qn qn_partner ligand_type coordination linkage
   (the two qn tables only when some former is a Qn element)
+  With auto, each input's cutoffs and g(min) are in the [inputs] block
 
 Examples:
   ferro net -i traj.lammpstrj --P-O=2.4
   ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
   ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan --export-traj
+  ferro net -i 'runs/*/prod.lammpstrj' --P-O=auto --Al-O=auto -o scan
 
 Full documentation:  ferro doc net";
 
@@ -423,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_modifier_cutoffs_are_routed_out_of_the_former_table() {
-        let p = build_params(&args(&["--P-O=2.4", "--Zn-O=2.6"]), Some("Zn"), None).unwrap();
+        let p = build_params(&args(&["--P-O=2.4", "--Zn-O=2.6"]), Some("Zn"), None).unwrap().0;
         assert_eq!(p.formers(), vec!["P".to_string()]);
         assert_eq!(p.modifiers(), vec!["Zn".to_string()]);
     }
@@ -437,10 +532,10 @@ mod tests {
 
     #[test]
     fn test_qn_replaces_the_default_list_rather_than_adding_to_it() {
-        let p = build_params(&args(&["--P-O=2.4", "--Al-O=2.4"]), None, Some("Al")).unwrap();
+        let p = build_params(&args(&["--P-O=2.4", "--Al-O=2.4"]), None, Some("Al")).unwrap().0;
         assert_eq!(p.qn_formers(), vec!["Al".to_string()], "P 必须被替换掉,不是叠加");
         // 不给 --qn 时走默认表:P 有 Qn,Al 没有
-        let d = build_params(&args(&["--P-O=2.4", "--Al-O=2.4"]), None, None).unwrap();
+        let d = build_params(&args(&["--P-O=2.4", "--Al-O=2.4"]), None, None).unwrap().0;
         assert_eq!(d.qn_formers(), vec!["P".to_string()]);
     }
 
@@ -460,5 +555,58 @@ mod tests {
         assert!(parse_pairs(&args(&["--P-O=abc"])).is_err());
         assert!(parse_pairs(&args(&["--P-O=-1.0"])).is_err());
         assert!(parse_pairs(&args(&["--PO=2.4"])).is_err());
+        assert!(parse_pairs(&args(&["--P-O=AUTO"])).is_err(), "只认小写 auto");
+        assert_eq!(parse_pairs(&args(&["--P-O=auto"])).unwrap()
+                   [&("P".to_string(), "O".to_string())], None);
+    }
+
+    #[test]
+    fn test_auto_pairs_are_listed_and_hold_nan_until_resolved() {
+        let (p, auto) = build_params(&args(&["--P-O=auto", "--Al-O=2.4", "--Zn-O=auto"]),
+                                     Some("Zn"), None).unwrap();
+        assert_eq!(auto, vec![("P".to_string(), "O".to_string()),
+                              ("Zn".to_string(), "O".to_string())]);
+        assert!(p.cutoffs[&("P".to_string(), "O".to_string())].is_nan());
+        assert!(p.modifier_cutoffs[&("Zn".to_string(), "O".to_string())].is_nan());
+        assert_eq!(p.cutoffs[&("Al".to_string(), "O".to_string())], 2.4);
+    }
+
+    /// 周期盒里一圈 P 各带 4 个 O（P-O 1.5 Å），其余空着：P-O 第一壳层外是干净空隙
+    fn phosphate_box() -> Trajectory {
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::{Matrix3, Vector3};
+        let cell = Cell::from_matrix(Matrix3::identity() * 20.0);
+        let mut f = Frame::with_cell(cell, [true; 3]);
+        let d = 1.5 / 3f64.sqrt();
+        for c in [[3.0, 3.0, 3.0], [3.0, 13.0, 8.0], [13.0, 6.0, 15.0], [10.0, 15.0, 4.0]] {
+            let c = Vector3::new(c[0], c[1], c[2]);
+            f.atoms.push(Atom::new("P", c));
+            for s in [[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]] {
+                f.atoms.push(Atom::new("O", c + Vector3::new(s[0], s[1], s[2]) * d));
+            }
+        }
+        Trajectory { frames: vec![f], metadata: Default::default() }
+    }
+
+    #[test]
+    fn test_resolve_auto_fills_the_cutoff_from_the_gap_behind_the_first_shell() {
+        let (p, auto) = build_params(&args(&["--P-O=auto"]), None, None).unwrap();
+        let (p, shells) = resolve_auto(&p, &auto, &phosphate_box()).unwrap();
+        let rc = p.cutoffs[&("P".to_string(), "O".to_string())];
+        assert!(rc > 1.6 && rc < 4.6, "截断应落在 1.5 Å 壳层之后的空隙里，得到 {rc}");
+        let s = shells[0].expect("P-O 有第一壳层");
+        assert_eq!(s.min_r, rc);
+        assert_eq!(s.depth, 0.0);
+    }
+
+    #[test]
+    fn test_resolve_auto_skips_a_pair_absent_from_the_input() {
+        // 不含 Al 的样品照常分析：与给了定值截断时的行为一致，而不是整个文件失败
+        let (p, auto) = build_params(&args(&["--P-O=auto", "--Al-O=auto"]), None, None).unwrap();
+        let (p, shells) = resolve_auto(&p, &auto, &phosphate_box()).unwrap();
+        assert!(shells[0].is_none(), "Al-O 不存在，应记为 None");
+        assert_eq!(p.cutoffs[&("Al".to_string(), "O".to_string())], 0.0);
+        assert!(p.cutoffs.values().all(|c| c.is_finite()), "NaN 不能留到 calc_network");
+        calc_network(&phosphate_box(), &p).expect("缺 Al 的输入应能照常分析");
     }
 }

@@ -232,7 +232,10 @@ At least one pair parameter of the form `--<Former>-<Ligand>=<cutoff>` (element 
 --Si-O=1.8       Si-O cutoff 1.8 Å
 --Al-O=2.4       Al-O cutoff 2.4 Å
 --Al-F=2.1       one network former may have several ligand species
+--P-O=auto       the first minimum of the P-O g(r), taken from each input separately
 ```
+
+`auto` and numbers can be mixed (`--P-O=auto --Zn-O=2.6`); see [Automatic cutoffs](#automatic-cutoffs-auto).
 
 The element pair lives in the **parameter name**, which clap cannot model, so `main` strips them out of argv before parsing.
 
@@ -508,3 +511,50 @@ Cutoffs should be chosen from the position of the first minimum in g(r):
 ```bash
 ferro traj gr -i traj.lammpstrj -a P -b O --r-max 5
 ```
+
+`--P-O=auto` does this for you, per input — see the next section.
+
+---
+
+## Automatic cutoffs (`auto`)
+
+`--<Former>-<Ligand>=auto` takes the cutoff from **each input's own g(r)**: the first minimum behind the
+first peak, i.e. the outer edge of the first coordination shell.  The shell edge moves with composition, so
+one hard cutoff shared by a composition series cuts into the shell of some inputs and reaches past it in
+others, and the coordination fractions shift with it.  Per-input cutoffs avoid that; the price is that the
+value differs between inputs, so it is reported for every input.
+
+How the minimum is found:
+
+1. g(r) of the pair on 0.02 Å bins out to 6 Å (or the minimum-image bound, if smaller), over the same
+   frames the analysis uses (`--last-n` applies).
+2. The first peak is the maximum after g(r) first rises above 1.
+3. The minimum is searched within 3 Å behind the peak, on a 0.10 Å moving average of g(r).  When the
+   minimum is an empty gap (g = 0 over a range), the cutoff is the **midpoint of the longest such gap**.
+   Inside a true gap every cutoff gives the same coordination numbers; the midpoint keeps away from both
+   shells.
+
+What you see:
+
+- one line per pair and input on screen: the cutoff, the first-peak position and g(min);
+- the shared `#` header says `P-O=auto`, because one number cannot describe the batch;
+- the `[inputs]` block gains a `cutoff` column (e.g. `Al-O=2.591 P-O=2.111`) and a `g_min` column.  The
+  cutoff is printed to 3 decimals: passing that number back by hand reproduces the tables exactly.
+
+**Read `g_min` before trusting the fractions.**  $g_{min} \approx 0$ means a clean gap: the coordination
+numbers do not depend on the exact cutoff.  A non-zero `g_min` means atoms sit in the trough, and the
+coordination numbers move with the cutoff.  On the 5-frame `43Z43P15A` test trajectory, Al-O has
+`g_min` = 0.027 and the mean Al coordination climbs steadily through the trough: 4.08 at 2.2 Å, 4.12 at
+2.4 Å, 4.15 at 2.6 Å.  P-O on the same trajectory has `g_min` = 0 and a coordination of exactly 4 anywhere
+in its gap.  Above `g_min` = 0.5 a warning is printed: there is no gap left to speak of.
+
+Special cases:
+
+| Case | What happens |
+|---|---|
+| The pair does not occur in an input (e.g. `--Al-O=auto` on an Al-free composition) | that input is analysed as usual; the pair shows as `Al-O=-` in `[inputs]` |
+| Both elements occur but g(r) never rises above 1 | that input fails (skipped, exit code 1): give the cutoff as a number |
+
+An automatic cutoff that reaches further than the usual hand-picked value can make formers share two
+ligands, and the warning `former pair(s) share 2+ ligands (edge-sharing)` then fires: on `43Z43P15A`,
+Al-O = 2.591 Å gives 3 such pairs where 2.4 Å gives none.  Look at the g(r) before reading it as structure.
