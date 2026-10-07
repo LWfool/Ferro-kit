@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1、B-2，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -32,8 +32,8 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | ~~A4~~ **已修**（`9ebb707` 逐字符解析，规则同 ASE `key_val_str_to_dict`，一并支持 `[]` `{}` 括号值与 `\` 转义；有意与 ASE 不同两处：未闭合报错、`a="" b=1` 读作两键，见 `parse_comment` 文档） | `readers/extxyz.rs:203-204 read_value` | 未闭合引号 `&inner[end+1..]` 越界 panic | 注释行 `Lattice="5 0 0 0 5 0 0 0 5 Properties=…`（缺右引号）：退出码 101 | 无闭合引号 bail 并点名帧号 |
 | ~~A5~~ **已修**（同 A4）| `readers/extxyz.rs:180-196 parse_comment` | 不带 `=` 的裸键（ASE 读作 True）与下一个键名粘连，Lattice/Properties 被静默丢弃 | `energy=-1.5 is_relaxed Lattice="5 0 0 0 5 0 0 0 5" Properties=…`：ferro `Cell: none`；ASE 5 Å 立方 | 按空白切词，无 `=` 的词记作标志 |
 | ~~A6~~ **已修**（`e46a5ab` 拒收；完整支持仍是下面「DeePMD mixed type」一节）| `readers/deepmd.rs:62,107` | mixed type system（`type.raw` 全 0 + `real_atom_types.npy`）读入即全成 `type_map[0]`；本文件「DeePMD mixed type」一节只写了「未实现」 | dpdata `to('deepmd/npy/mixed')`（源 `tests/vasp_OUTCAR_2frames`）→ `dataset filter --type extxyz`：594 行全是 O，退出码 0 | 见到 `real_atom_types.npy` 就 bail，直到真正实现 |
-| B-1 | `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
-| B-2 | `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
+| ~~B-1~~ **已修**（`bb25ba7`；`check::invertible_cells` 在 vanhove / cluster SDF / cube_jump 入口逐帧查，`calc_cluster_sdf` 改返回 `Result<Option>`。实测 c=0 slab 过全部 13 个 CLI 分析，只有这两个 panic）| `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
+| ~~B-2~~ **已修**（`a5d1be8`；报错措辞改为「must be a finite number …」）| `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
 | B-3 | `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
 | C-D1 | `ferro-core/src/spin.rs:200-213` | 镧系 `group_number` 为 None 落进主族分支，算出垃圾未成对数且无告警；CP2K/QE 默认 auto-spin | 萤石 CeO₂ 进 `job -s cp2k`：`MULTIPLICITY 9 / UKS`（应 1）。Ce₂O₃ 6（实 2）、Gd₂O₃ 6（实 14）、EuO 1（实 7） | f 区分支 `n_f = Z−54−ox` 再 `hund(n_f, 7)`；至少回退奇偶下限并告警 |
 | C-D2 | `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
@@ -83,6 +83,7 @@ network / dft / ml / core（C）：
 |---|---|---|---|
 | D-M1 | `ferro-python/src/analysis.rs msd` | 仍默认 `dt=1.0`、不做 `check_frame_spacing`，与 CLI 已改必填的口径漂开 | `dt` 必填；间隔检查下沉共用 |
 | D-M2 | `ferro-structure/src/merge.rs` | ① 只给 B 居中，A 窄时不居中（与文档不符）；② B 沿自身单位矢量平移、胞用 A 的，倾角不同时剪切错位；③ gap 沿矢量量，与 `add_vacuum` 的垂直间隙口径不一 | 两块都按新胞分数坐标放；gap 按面间距 |
+| D-M17 | `ferro-structure::find_clusters` → `classify_frame` → `network_type.rs:353,394`（2026-10-07 修 B-1 时发现） | 奇异胞（c=0 slab）在 `expect("cell must be non-singular")` panic。CLI `net` 在前面已拦，Python 绑定直调仍会 panic；`dft/chg_sdf` 经 `process_frame` 同路（cube 文件的胞，推断难触发） | 入口查可逆（同 `check::invertible_cells`；它是 ferro-analysis 私有，structure 那边要么自查要么下沉 core） |
 | D-M3 | `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |
 | D-M4 | `cp2k.rs write_force_eval` | NPT 不写 `STRESS_TENSOR`，CP2K 启动报错（`md_run.F:331-344`） | NPT 时写 `ANALYTICAL` |
 | D-M5 | `cp2k.rs` Langevin | `&THERMOSTAT TYPE LANGEVIN` 非法（合法值 NOSE/CSVR/GLE/AD_LANGEVIN）；CP2K 是 `ENSEMBLE LANGEVIN` + `MD/&LANGEVIN` | 按 CP2K 写法 |
