@@ -27,7 +27,8 @@ use ferro_analysis::ml::diagnostics::{
 use ferro_analysis::ml::merge::{
     composition_key, group_name, shuffle_order, sort_atoms, DEFAULT_SEED,
 };
-use ferro_analysis::ml::{filter_frames, first_shell_cutoff, FilterParams, FilterResult};
+use ferro_analysis::md::first_shell_cutoffs;
+use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
@@ -1215,8 +1216,8 @@ fn filter_one(
     let mut params = params.clone();
     let mut derived = None;
     if args.al6.as_deref() == Some("auto") {
-        let shell = first_shell_cutoff(&traj, "Al", "O")
-            .map_err(|e| anyhow::anyhow!("{e}"))?
+        let shell = first_shell_cutoffs(&traj, &[("Al", "O")])
+            .map_err(|e| anyhow::anyhow!("{e}"))?[0]
             .context("no Al-O pair in this system, so --al6 has no cutoff to derive")?;
         println!(
             "  Al-O first shell: peak {:.2} A (g={:.1}), cutoff {:.2} A (g={:.3})",
