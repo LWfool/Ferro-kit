@@ -52,6 +52,26 @@ $S(q)$ characterises structural correlations at length scale $2\pi/q$. Key featu
 | Principal peak at $q \approx 2$–3 Å⁻¹ | Nearest-neighbour distance |
 | $S(q) \to 1$ as $q \to \infty$ | Loss of structural correlations at short wavelengths |
 
+### The low-$q$ limit
+
+**$S(q)$ is not computed at $q = 0$**, and `--q-min` must be greater than 0. For a bulk liquid $S(0)$ is
+the compressibility limit, but the value transformed from the $g(r)$ of a finite periodic box depends only
+on the box size and the cutoff $r_{max}$, not on the material.
+
+Two bounds limit the low-$q$ end:
+
+- **Box periodicity.** Periodic boundaries make any period longer than the box length $L$ meaningless,
+  so the smallest wavevector a simulation resolves is about $2\pi/L$.
+- **Truncation of $g(r)$.** The transform stops at $r_{max}$ (at most half the box). Below roughly
+  $2\pi/r_{max}$ the truncation dominates and produces ripples and even negative values.
+
+ferro reports the second bound per input as `q_trunc` $= 2\pi/r_{max}$ in the `[inputs]` block and
+prints a warning when `--q-min` lies below it. With the default `--r-max 10` that is $0.63$ Å⁻¹, so
+the default `--q-min 0.1` always warns; raise `--r-max` (up to half the box) to push the bound down.
+For comparison, neutron diffractometers for glasses start around $0.3$ Å⁻¹ (ILL D4c: $0.3$–$23.6$ Å⁻¹
+at $\lambda = 0.5$ Å). Published MD work on glasses also damps the truncation with a Lorch-type window
+$\sin(\pi r/R)/(\pi r/R)$, $R = L/2$; ferro does not apply a window.
+
 ## Parameters
 
 ```rust
@@ -119,6 +139,9 @@ in `scripts/trajcheck.py`.
 
 The primary output is the two totals (one $q$ per row); the weighted partials $w_{ij}(q)\,S_{ij}(q)$ are a
 diagnostic decomposition that sums point by point back to the total.  Inputs with different element sets take the union of columns; **gaps stay empty (NaN), never interpolated, never padded with zeros**.
+
+The `[inputs]` block carries `r_max` (after clamping to the minimum-image bound) and
+`q_trunc` $= 2\pi/r_{max}$, the low-$q$ bound described in [The low-$q$ limit](#the-low-q-limit).
 
 `sq` no longer writes a `gr` alongside; run `ferro traj gr` separately when $g(r)$ is needed.
 

@@ -37,6 +37,16 @@ as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
 operations. A malformed symmetry operation used to be dropped silently; it is
 now an error naming it.
 
+### `traj sq`: no $q = 0$, and a warning below $2\pi/r_{max}$
+
+`--q-min 0` used to give $S(0) = 1$ by fiat, a value disconnected from the
+neighbouring points. The transform of a finite box's $g(r)$ has no physical meaning
+at $q = 0$, so `--q-min` must now be greater than 0. The `[inputs]` block gains a
+`q_trunc` column, $2\pi/r_{max}$, below which the truncation of $g(r)$ dominates
+$S(q)$, and a warning is printed when `--q-min` lies below it. With the default
+`--r-max 10` and `--q-min 0.1` that warning appears on every run; the data rows are
+unchanged.
+
 ### `inf` is refused as a range bound; singular cells no longer crash `vanhove` / `map sdf`
 
 `--q-max inf`, `--r-max inf`, `--sigma inf`, `--padding inf` and the like slipped
