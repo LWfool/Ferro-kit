@@ -37,6 +37,17 @@ as `F d -3 m`) is an error asking for `:1`/`:2`, the Hall symbol, or the
 operations. A malformed symmetry operation used to be dropped silently; it is
 now an error naming it.
 
+### PDB output: one `CRYST1` per model, coordinates in the cell's standard orientation
+
+A multi-frame `.pdb` carried only the first frame's cell, so every frame of an NPT
+trajectory read back with frame 0's box. Each `MODEL` is now preceded by its own
+`CRYST1`. Because `CRYST1` holds only $a, b, c, \alpha, \beta, \gamma$, a reader
+rebuilds the cell with $a$ along $x$ and $b$ in the $xy$ plane; coordinates of a cell
+in any other orientation (a POSCAR, for instance) used to be written unrotated and
+no longer matched the cell. They are now rotated into that orientation, as ASE does.
+LAMMPS cells are already in it, so their coordinates are unchanged. Regenerate
+`.pdb` files written from NPT trajectories or non-LAMMPS cells.
+
 ## `v0.3.4` — 2026-10-03
 
 This release carries everything since `v0.3.1`: the `0.3.2` and `0.3.3` batches,
