@@ -12,6 +12,21 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro net` cutoffs can be `auto`
+
+`--P-O=auto` takes the cutoff from each input's own g(r) (first minimum behind the
+first peak). New; command lines with numbers are unaffected. With `auto` the
+`[inputs]` block gains `cutoff` and `g_min` columns and the shared header shows
+`P-O=auto`.
+
+### `dataset filter --al6` (bare): the derived cutoff changes
+
+The first-minimum search now works on a 0.10 Å moving average and, inside an empty
+gap, takes the gap's midpoint instead of its first bin. The old search could land on
+an isolated empty bin in the tail of the peak (2.05 Å instead of 2.57 Å on the
+CP2K test trajectory). Datasets filtered with bare `--al6` may keep or drop
+different frames; rerun the filter if that matters.
+
 ### A CIF without symmetry operations is expanded from its space group
 
 A CIF that named its space group (`_symmetry_space_group_name_H-M 'F m -3 m'`,

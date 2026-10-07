@@ -233,7 +233,10 @@ coordination number.
 
 The cutoff can be derived. Bare `--al6` takes **the first minimum of the Al–O
 g(r) past its first peak** — the outer edge of the first coordination shell —
-computed per system, because compositions differ and so do shell positions. On
+computed per system, because compositions differ and so do shell positions. The
+search is the one `ferro net --Al-O=auto` uses (0.10 Å moving average; inside an
+empty gap, its midpoint), see
+[network analysis](../analysis/network.md#automatic-cutoffs-auto). On
 the reference system that gives 2.45 Å against the 2.4 Å normally used by hand.
 The value is always printed, and the mean over systems reported at the end: a
 cutoff that decides which frames die must not be an invisible number.

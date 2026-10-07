@@ -27,7 +27,8 @@ pub struct ShellCutoff {
     pub peak_g: f64,
     /// Position of the first minimum past the peak \[Å\] — the cutoff
     pub min_r: f64,
-    /// g(r) at that minimum; near zero means a clean shell, ~1 means no shell
+    /// g(r) at that minimum, on the 0.10 Å moving average the minimum is located on;
+    /// near zero means a clean shell, ~1 means no shell
     pub depth: f64,
 }
 
@@ -39,7 +40,8 @@ pub struct ShellCutoff {
 ///
 /// Uses a coarse 0.02 Å bin on purpose: the default 0.002 Å of `GrParams` gives
 /// a noisy curve whose local minima are sampling artefacts rather than
-/// structure.
+/// structure. The minimum is then located on a 0.10 Å moving average, so a few empty
+/// bins in a sparsely sampled tail do not pass for a clean gap.
 pub fn first_shell_cutoffs(
     traj: &ferro_core::Trajectory,
     pairs: &[(&str, &str)],
@@ -57,6 +59,7 @@ fn shell_from_curve(r: &[f64], g: &[f64]) -> Option<ShellCutoff> {
     if r.len() != g.len() || r.len() < 3 {
         return None;
     }
+    // 第一峰在原始曲线上找：峰位与峰高照实报，平滑只用于找极小
     // 第一峰：g 首次越过 1 之后的最大值；越不过 1 说明这对根本没有近邻壳层
     let start = g.iter().position(|&v| v > 1.0)?;
     let mut ip = start;
@@ -69,8 +72,19 @@ fn shell_from_curve(r: &[f64], g: &[f64]) -> Option<ShellCutoff> {
             break;
         }
     }
-    // 峰后 3 Å 窗口内的最小值
+    let peak_g = g[ip];
+    // 峰后 3 Å 窗口内的最小值，在 0.10 Å 滑动平均后的曲线上找。帧少时峰尾是
+    // 一段稀疏采样的低尾巴，里面零星有恰好为 0 的格子；不平滑的话那些空格会被当成
+    // 「干净空隙」，g_min 报 0（实测 43Z43P15A 的 Al-O：原始曲线极小 g=0.000，
+    // 平滑后 0.027，CN 在 2.2–2.6 Å 间一直在涨）。真空隙平滑后仍是 0
     let dr = r[1] - r[0];
+    let half = ((0.05 / dr).round() as usize).max(1);
+    let g: Vec<f64> = (0..g.len())
+        .map(|i| {
+            let w = &g[i.saturating_sub(half)..(i + half + 1).min(g.len())];
+            w.iter().sum::<f64>() / w.len() as f64
+        })
+        .collect();
     let window = ((3.0 / dr) as usize).max(1);
     let hi = (ip + window).min(g.len());
     if ip + 1 >= hi {
@@ -102,7 +116,7 @@ fn shell_from_curve(r: &[f64], g: &[f64]) -> Option<ShellCutoff> {
         }
     }
     let mid = best + (best_len - 1) / 2;
-    Some(ShellCutoff { peak_r: r[ip], peak_g: g[ip], min_r: r[mid], depth: g[mid] })
+    Some(ShellCutoff { peak_r: r[ip], peak_g, min_r: r[mid], depth: g[mid] })
 }
 
 #[cfg(test)]
@@ -171,5 +185,24 @@ mod tests {
             .collect();
         let s = shell_from_curve(&r, &g).unwrap();
         assert!((2.3..2.4).contains(&s.min_r), "应取 2.08–2.60 空隙的中点，得到 {}", s.min_r);
+    }
+
+    /// 低尾巴里零星的空格不算空隙：depth 报平滑后的值，不是 0
+    #[test]
+    fn a_sparse_tail_does_not_report_a_clean_gap() {
+        let r: Vec<f64> = (0..200).map(|i| i as f64 * 0.02).collect();
+        let g: Vec<f64> = r
+            .iter()
+            .enumerate()
+            .map(|(i, &x)| match x {
+                x if x < 1.79 => 0.0,
+                x if x < 2.01 => 6.0,
+                x if x < 3.01 => if i % 3 == 0 { 0.0 } else { 0.1 },
+                _ => 1.0,
+            })
+            .collect();
+        let s = shell_from_curve(&r, &g).unwrap();
+        assert!(s.depth > 0.03, "稀疏尾巴不应报成干净空隙，depth = {}", s.depth);
+        assert!((2.0..3.0).contains(&s.min_r), "极小应在尾巴里，得到 {}", s.min_r);
     }
 }

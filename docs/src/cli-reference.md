@@ -705,6 +705,7 @@ Glass network topology: bridging-ligand count (the Qn of P), ligand classificati
 ferro net -i traj.lammpstrj --P-O=2.4
 ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
+ferro net -i 'runs/*/prod.lammpstrj' --P-O=auto --Al-O=auto -o scan
 ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
 ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 ```
@@ -719,7 +720,11 @@ in the **parameter name**, which clap cannot model, so `main` strips them out of
 --Al-O=2.4    one system may have several network formers
 --Al-F=2.1    one network former may have several ligand species
 --Zn-O=2.6    read as a modifier-ligand cutoff when --modifier Zn is given
+--P-O=auto    the first minimum of the P-O g(r), taken from each input separately
 ```
+
+`auto` and numbers can be mixed.  Each input's chosen values are printed and written to the `[inputs]`
+block; see [network analysis](analysis/network.md#automatic-cutoffs-auto) for how the minimum is found.
 
 ### Ordinary parameters
 

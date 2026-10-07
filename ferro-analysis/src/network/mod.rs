@@ -282,16 +282,30 @@ impl NetworkResult {
     /// Only what is shared by every input goes here — the cutoff table and the
     /// modifier list.  Per-input quantities (frames, atoms, composition) belong in
     /// the CLI's `[inputs]` summary, or they masquerade as global facts.
-    pub fn meta_lines(&self) -> Vec<String> {
+    ///
+    /// `per_input` names the pairs whose cutoff was derived from each input's own g(r):
+    /// they render as `P-O=auto`, because this header is shared by the whole batch and
+    /// `self` holds only the first input's value. The per-input values go to `[inputs]`.
+    pub fn meta_lines(&self, per_input: &[(String, String)]) -> Vec<String> {
         let fmt = |t: &CutoffTable| -> String {
             t.iter()
-                .map(|((a, b), c)| format!("{a}-{b}={c}"))
+                .map(|((a, b), c)| {
+                    if per_input.iter().any(|(x, y)| x == a && y == b) {
+                        format!("{a}-{b}=auto")
+                    } else {
+                        format!("{a}-{b}={c}")
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join("  ")
         };
         let mut v = vec![format!("cutoffs   : {}", fmt(&self.params.cutoffs))];
         if !self.params.modifier_cutoffs.is_empty() {
             v.push(format!("modifiers : {}", fmt(&self.params.modifier_cutoffs)));
+        }
+        if !per_input.is_empty() {
+            v.push("auto      : first minimum of g(r) behind its first peak, per input;".to_string());
+            v.push("            the values are in the cutoff column of [inputs]".to_string());
         }
         v.push("fraction  : mean over frames; sd = sample std (ddof=1) of the".to_string());
         v.push("            per-frame fraction — a spread, not a standard error".to_string());
