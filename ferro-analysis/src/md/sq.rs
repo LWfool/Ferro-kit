@@ -48,7 +48,9 @@ impl SqParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
-        check::non_negative("q-min", self.q_min)?;
+        // q = 0 不输出（审查 B-3）：有限盒子上从截断 g(r) 变换出的 S(0) 只反映盒长与
+        // r_max，没有物理意义；有意义的下限约是 2π/r_max，由 CLI 逐输入告警
+        check::positive("q-min", self.q_min)?;
         check::positive("dq", self.dq)?;
         check::ordered("q-min", self.q_min, "q-max", self.q_max)
     }
@@ -160,11 +162,10 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
     let mut sq_map: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     for label in &canonical {
         let rho_g_vals = &gr.rho_g[label];
-        // g 无定义（单原子物种的同种对）时 S 也无定义，q = 0 的捷径也不例外
+        // g 无定义（单原子物种的同种对）时 S 也无定义
         let undefined = rho_g_vals.iter().any(|v| v.is_nan());
         let sq_vals: Vec<f64> = q_vals.par_iter().map(|&qi| {
             if undefined { return f64::NAN; }
-            if qi.abs() < 1e-10 { return 1.0; }
             let prefactor = pi4 / qi;
             let integral: f64 = gr.r.iter().zip(rho_g_vals.iter())
                 .map(|(&ri, &rg)| ri * (rg - rho) * (qi * ri).sin() * dr)
@@ -615,9 +616,9 @@ mod tests {
         assert!(gr_res.gr["Fe-Ni"].iter().all(|v| v.is_finite()));
 
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
-            q_min: 0.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
+            q_min: 0.5, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
         }).unwrap();
-        assert!(sq.sq["Ni-Ni"].iter().all(|v| v.is_nan()), "S_NiNi 应为 NaN（含 q=0）");
+        assert!(sq.sq["Ni-Ni"].iter().all(|v| v.is_nan()), "S_NiNi 应为 NaN");
         for t in [sq.total_xrd.as_ref().unwrap(), sq.total_neutron.as_ref().unwrap()] {
             assert!(t.iter().all(|v| v.is_finite()), "一个掺杂原子不该让 total 变空");
         }
