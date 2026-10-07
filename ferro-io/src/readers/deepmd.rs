@@ -62,6 +62,16 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
     let elements: Vec<&str> = types.iter().map(|t| type_map[*t].as_str()).collect();
 
     let sets = set_dirs(dir)?;
+    // mixed type 的 type.raw 是全 0 占位，真实类型在逐帧的 real_atom_types.npy；照读会
+    // 让所有原子静默成 type_map[0]。只拒不读：只读不写的话 filter 一趟会写回标准布局，
+    // 成了更隐蔽的坏数据（完整支持见 dev/plan.md「DeePMD mixed type 数据的读写」）
+    if let Some(set) = sets.iter().find(|s| s.join("real_atom_types.npy").exists()) {
+        bail!(
+            "{}: real_atom_types.npy marks a mixed-type system (type.raw there is only a \
+             placeholder); ferro does not support the mixed-type layout yet",
+            set.display()
+        );
+    }
     let nopbc = dir.join("nopbc").exists();
 
     let mut warnings = Vec::new();
@@ -332,5 +342,16 @@ mod tests {
         write_npy(d.join("set.000").join("box.npy"), &a).unwrap();
         let err = read_deepmd_npy(&d).unwrap_err().to_string();
         assert!(err.contains("box.npy"), "{err}");
+    }
+
+    // 审查 A6：mixed type 的 type.raw 是全 0 占位，以前照读，所有原子都成了 type_map[0]
+    #[test]
+    fn a_mixed_type_system_is_refused() {
+        let d = scratch("ferro_dp_mixed");
+        write_deepmd_npy(&demo(), &d).unwrap();
+        let a: Array2<i64> = Array2::zeros((3, 2));
+        write_npy(d.join("set.000").join("real_atom_types.npy"), &a).unwrap();
+        let err = format!("{:#}", read_deepmd_npy(&d).unwrap_err());
+        assert!(err.contains("mixed") && err.contains("set.000"), "应点名 mixed 与 set，实得：{err}");
     }
 }
