@@ -169,7 +169,7 @@ S(q) 一侧；g(r) 一侧基本是正确性洁癖。** 0.1.12 及更早跑出的
 
 `calc_gr` / `calc_angle` 默认读 `atom.element`，`GroupBy::Label` 时读 `atom.label`
 （未设则回退 element）。除此之外 `atom.label` 的消费者只有
-`ferro-io/src/writers/cif.rs:57,82`。各 reader 的分配：
+`ferro-io/src/writers/cif.rs:65`。各 reader 的分配：
 
 | Reader | `element` 来源 | `label` |
 |---|---|---|

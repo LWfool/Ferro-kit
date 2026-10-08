@@ -499,12 +499,22 @@ pub fn read_cif(path: &Path) -> Result<Trajectory> {
 
     ensure!(!blocks.is_empty(), "no data_ blocks found in {path_}");
 
+    // 没有 `_atom_site_` 循环的 block 不是结构（Acta Cryst / COD 常见的 `data_global`
+    // 只放作者与期刊信息）—— 跳过，同 ASE / pymatgen；以前整份文件因它报错
+    let (structs, skipped): (Vec<&CifBlock>, Vec<&CifBlock>) = blocks.iter().partition(|b| {
+        b.loops.iter().any(|(hdrs, _)| hdrs.iter().any(|h| h.starts_with("_atom_site_")))
+    });
+    if structs.is_empty() {
+        let names: Vec<String> = skipped.iter().map(|b| format!("data_{}", b.name)).collect();
+        bail!("no data block in {path_} has an _atom_site_ loop ({})", names.join(", "));
+    }
+
     let mut traj = Trajectory::new();
-    if let Some(name) = blocks.first().map(|b| b.name.clone()) {
+    if let Some(name) = structs.first().map(|b| b.name.clone()) {
         if !name.is_empty() { traj.metadata.source = Some(name); }
     }
 
-    for block in &blocks {
+    for block in structs {
         let frame = block_to_frame(block)
             .with_context(|| format!("error in data_{}", block.name))?;
         traj.add_frame(frame);
@@ -673,6 +683,19 @@ O1   O   0.5  0.5  0.5  1.0(0)
         let full = MIXED_OCC_CIF.replace("0.0  0.5\nFe1  Fe  0.0  0.0  0.0  0.5\n", "0.0  1\n");
         let traj = read_cif(&write_tmp("test_full_occ.cif", &full)).unwrap();
         assert_eq!(traj.first().unwrap().n_atoms(), 2);
+    }
+
+    #[test]
+    fn test_blocks_without_atom_sites_are_skipped() {
+        // Acta Cryst / COD 的 data_global：只有出版信息，含一个非 atom_site 的 loop
+        const GLOBAL: &str = "data_global\n_journal_name_full 'Acta Cryst.'\n\
+            loop_\n_publ_author_name\n'Doe, J.'\n'Roe, R.'\n\n";
+        let traj = read_cif(&write_tmp("test_global.cif", &format!("{GLOBAL}{P1_CIF}"))).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert_eq!(traj.metadata.source.as_deref(), Some("test_p1"), "source 取第一个结构 block");
+
+        let err = read_cif(&write_tmp("test_global_only.cif", GLOBAL)).unwrap_err();
+        assert!(format!("{err:#}").contains("data_global"), "{err:#}");
     }
 
     #[test]
