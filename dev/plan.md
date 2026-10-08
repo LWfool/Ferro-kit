@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1–B-3、C-D1，C-D2 搁置，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1–B-3、C-D1、D-S1–D-S5，C-D2 搁置，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -37,10 +37,11 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | ~~B-3~~ **已修**（`98b5e97`；**用户否了「取 q→0 极限」**：有限盒子的 S(0) 无物理意义，改为 q-min 必须 > 0；并加 `[inputs]` 的 `q_trunc = 2π/r_max` 与低于它时的告警。查证的行业做法与出处见手册 `sq.md`「The low-q limit」）| `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
 | ~~C-D1~~ **已修**（`4a34108`；用户要求先查行业做法，结论记在下面「自旋多重度」一节。范围扩到同一函数的 4d/5d：一律低自旋、d⁸ 取平面四方 0；氧化态凑不平单独告警。镧系假定 4f 在价层，加告警）| `ferro-core/src/spin.rs:200-213` | 镧系 `group_number` 为 None 落进主族分支，算出垃圾未成对数且无告警；CP2K/QE 默认 auto-spin | 萤石 CeO₂ 进 `job -s cp2k`：`MULTIPLICITY 9 / UKS`（应 1）。Ce₂O₃ 6（实 2）、Gd₂O₃ 6（实 14）、EuO 1（实 7） | f 区分支 `n_f = Z−54−ox` 再 `hund(n_f, 7)`；至少回退奇偶下限并告警 |
 | C-D2 **搁置**（2026-10-08 用户定：随 Bader 重写一并修，同 S-B / S-C）| `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
-| D-S1 | `ferro-workflow/src/cp2k.rs` `write_motion` 压浴 | `PRESSURE 1.01325E+05 # bar`，CP2K 该关键字单位就是 bar → 约 10 GPa | `job -s cp2k -i examples/30Z70P.cif --task md --barostat` | 1 atm = `1.01325`；或加 `--pressure` |
-| D-S2 | `cp2k.rs` HSE06 分支 | `&HF` 缺 `&INTERACTION_POTENTIAL POTENTIAL_TYPE SHORTRANGE / OMEGA 0.11`，按 COULOMB 全程 25%，得到不存在的泛函且能跑 | `--functional hse06`：无 `INTERACTION_POTENTIAL`；对照 CP2K `tests/QS/regtest-hybrid-3/CH3-hybrid-HSE06-lsd.inp:36-39` | 补段 + 断言测试 |
-| D-S3 | `cp2k.rs` MD 分支 | `--thermostat none`（帮助写 NVE）仍写 `ENSEMBLE NVT`，CP2K 默认恒温器 NOSE | `--task md --thermostat none` → `ENSEMBLE NVT`（`input_cp2k_thermostats.F:234-238`） | 写 `ENSEMBLE NVE`；与 barostat 同开时报错或 NPE |
-| D-S4 | `ferro-cli/src/cmd/net.rs export_labelled` | `--export-traj lammpstrj` 恒以 real 单位写出，无视 `--units`；`inspect.rs` 恒写 metal，两出口口径相反 | 3 原子 dump vx=1.0，`net --units metal --P-O=2.0 --export-traj`：产物 vx=0.001 | 沿用 `common.read.units`，同 `convert` |
+| ~~D-S1~~ **已修**（`a92e4b9`；用户定：`--pressure P`（bar）取代 `--barostat`，给出即 NPT_F，不给为 NVT；只拦非有限值，负压允许）| `ferro-workflow/src/cp2k.rs` `write_motion` 压浴 | `PRESSURE 1.01325E+05 # bar`，CP2K 该关键字单位就是 bar → 约 10 GPa | `job -s cp2k -i examples/30Z70P.cif --task md --barostat` | 1 atm = `1.01325`；或加 `--pressure` |
+| ~~D-S2~~ **已修**（`bd21bc2`；用户注：杂化泛函一般用不到，作功能完善）| `cp2k.rs` HSE06 分支 | `&HF` 缺 `&INTERACTION_POTENTIAL POTENTIAL_TYPE SHORTRANGE / OMEGA 0.11`，按 COULOMB 全程 25%，得到不存在的泛函且能跑 | `--functional hse06`：无 `INTERACTION_POTENTIAL`；对照 CP2K `tests/QS/regtest-hybrid-3/CH3-hybrid-HSE06-lsd.inp:36-39` | 补段 + 断言测试 |
+| ~~D-S3~~ **已修**（`bd21bc2`；系综按恒温器 × 压强查表：csvr/nose → NVT/NPT_F，none → NVE/NPE_F，langevin → `ENSEMBLE LANGEVIN` + `&MD/&LANGEVIN`，与 `--pressure` 同给报错。**顺带修**：原 langevin 写进 `THERMOSTAT%TYPE`，CP2K 只认 NOSE/CSVR/GLE/AD_LANGEVIN（`input_cp2k_thermostats.F:237`））| `cp2k.rs` MD 分支 | `--thermostat none`（帮助写 NVE）仍写 `ENSEMBLE NVT`，CP2K 默认恒温器 NOSE | `--task md --thermostat none` → `ENSEMBLE NVT`（`input_cp2k_thermostats.F:234-238`） | 写 `ENSEMBLE NVE`；与 barostat 同开时报错或 NPE |
+| ~~D-S4~~ **已修**（`e78e609`；沿用 `common.read.units`。**未改**：`inspect.rs` 是 CP2K 产物导出、无 `--units`，恒写 metal，属有意的固定口径）| `ferro-cli/src/cmd/net.rs export_labelled` | `--export-traj lammpstrj` 恒以 real 单位写出，无视 `--units`；`inspect.rs` 恒写 metal，两出口口径相反 | 3 原子 dump vx=1.0，`net --units metal --P-O=2.0 --export-traj`：产物 vx=0.001 | 沿用 `common.read.units`，同 `convert` |
+| ~~D-S5~~ **已修**（`bd21bc2`；第 8 轮对照 CP2K 源码时新发现）| `cp2k.rs` CSVR 分支 | 写 `TIMECON_CSVR`，CP2K `&CSVR` 只有 `TIMECON`（`input_cp2k_thermostats.F:580`，无别名）；默认 `--task md` 即走此路，推断 CP2K 解析即中止（本机无 CP2K，未实跑） | `job -s cp2k --task md` | 改 `TIMECON`；一次性脚本把 21 份生成输入的全部小节 / 关键字名对照 CP2K 源码定义，仅此一处不存在 |
 
 **中**
 
@@ -192,6 +193,9 @@ network / dft / ml / core（C）：
     `cube_density.rs:12-16,41-44` 写 `--grid`/`--mode`；`util.rs:1` 自称「三处以上共用」而
     `build_avg_frame` 只有 1 个调用者（有测试，R2c 保留）；`dataset.rs` 模块文档「filter/merge
     not implemented yet」
+
+**待核实**（第 8 轮顺带记下，未查）：PBE0 / B3LYP 在周期体系下用全程 COULOMB 的 HFX，CP2K
+通常要求 `TRUNCATED` + `CUTOFF_RADIUS`，ferro 不写。
 
 **测试缺口**：workflow 只有子串断言、无一条对照 CP2K / pw.x 规则（S1–S3、M4–M10 全漏）；
 `help_sync` 的 PAGES 不含 job 三页（约 35 个参数无防漂）；CLI 集成测试只有 bader 与 npt；
