@@ -84,6 +84,8 @@ pub struct VanHoveResult {
     pub tau_frames: usize,
     /// Actual τ in physical time \[fs\]
     pub time: f64,
+    /// Frames in the trajectory
+    pub n_frames: usize,
     /// Number of atoms included
     pub n_atoms: usize,
     /// Number of time origins averaged
@@ -275,7 +277,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         r, p_r, outside_fraction,
         tau_frames: tau,
         time: tau as f64 * params.dt,
-        n_atoms, n_origins,
+        n_frames: n_steps, n_atoms, n_origins,
         params: params.clone(),
         elements,
     })
@@ -492,6 +494,8 @@ mod tests {
         let res = calc_vanhove(&traj, &params).unwrap();
         // take_while(p+3 < 10) → p ∈ {0,1,2,3,4,5,6} → 7 origins
         assert_eq!(res.n_origins, 7);
+        // [inputs] 的 frames 列读它；旧代码填的是 bin 数，见审查 B-4
+        assert_eq!(res.n_frames, 10);
     }
 
     #[test]

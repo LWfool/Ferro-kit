@@ -239,6 +239,8 @@ pub struct AngleResult {
     /// Per-triplet statistics (mean, std, count)
     pub stats: BTreeMap<String, AngleStats>,
     pub n_frames: usize,
+    /// Atoms per frame (all atoms; angle has no element filter)
+    pub n_atoms: usize,
     pub params: AngleParams,
     /// Types present (elements or site labels), sorted by (Z, string)
     pub elements: Vec<String>,
@@ -414,7 +416,10 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
         stats.insert(key.clone(), AngleStats { mean, std: var.sqrt(), count: total_count });
     }
 
-    Ok(AngleResult { angle, hist: total_hist, stats, n_frames, params: params.clone(), elements })
+    Ok(AngleResult {
+        angle, hist: total_hist, stats, n_frames, n_atoms: first_frame.atoms.len(),
+        params: params.clone(), elements,
+    })
 }
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
@@ -552,6 +557,8 @@ mod tests {
         assert!((stats.mean - 90.0).abs() < 1.0,
             "expected ~90°, got {:.2}°", stats.mean);
         assert_eq!(stats.count, 1, "should have exactly 1 angle pair");
+        // [inputs] 的 atoms 列读它；旧代码填的是类型数（2），见审查 B-4
+        assert_eq!(res.n_atoms, 3, "n_atoms 应为原子数而非类型数");
     }
 
     #[test]

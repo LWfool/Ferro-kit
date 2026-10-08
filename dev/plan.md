@@ -62,13 +62,12 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 轨迹分析（B）：
 
 **B 组进度（2026-10-08 会话中断时）**：已读代码、给出方案，**未动手**，等用户确认：
-- B-4：`VanHoveResult` 加 `n_frames`、`AngleResult` 加 `n_atoms`，CLI 填它们 → 验证：NPT fixture 的 `[inputs]` 与 `ferro info` 一致。
 - B-7：`GrResult` 加 `r_max_used`，`params.r_max` 保留请求值；CLI 三处（gr / sq 的 `[inputs]`、sq 的 `q_trunc`）改读 `r_max_used`；重写 `test_meta_lines_report_clamped_rmax_and_composition`（请求 10、截断 3：头部写 10，`[inputs]` 写 3）→ 验证：新测试在旧代码上失败，未截断的 gr / sq 产物逐字节不变。
 - 之后：C-D3/4/6、D-M 各项，照例逐条先给方案。
 
 | # | 位置 | 问题 / 复现 | 修法 |
 |---|---|---|---|
-| B-4 | `cmd/traj.rs:740`（vanhove）、`run_angle` | `[inputs]` 的 `frames` 填 `r.r.len()`（bin 数）；angle 的 `atoms` 填 `r.elements.len()`（实 2004 写 4） | 结果结构体加 `n_frames`；填原子数 |
+| ~~B-4~~ **已修**（NPT fixture 实跑 5 帧 / 2004 原子，与 `ferro info` 一致）| `cmd/traj.rs:740`（vanhove）、`run_angle` | `[inputs]` 的 `frames` 填 `r.r.len()`（bin 数）；angle 的 `atoms` 填 `r.elements.len()`（实 2004 写 4） | 结果结构体加 `n_frames`；填原子数 |
 | ~~B-5~~ **已修**（用户选默认改 N/2：同 msd/vacf/rotcorr/bondlife 的 `--max-lag` 与 gmx `-acflen`；pymatgen `VanHoveAnalysis` 是另一套设计 —— 扫一串 lag、每个 lag 固定 50 个原点。破坏性，进 changelog）| `traj.rs:171`、`help.rs:644` | vanhove `--tau` 帮助写「default: half trajectory」，实为 `n_frames−1`（与手册一致）。`help_sync` 不比默认值 | 帮助页先对齐实现，或随「vanhove 默认 1 个原点」一节改默认 |
 | B-6 **搁置**（2026-10-08 用户定：该功能后续会更新，届时一并修；候选思路：组内枚举、匈牙利 + Kabsch 迭代如 ArbAlign、距离指纹配对）| `cube_sdf.rs:445-478 heap_permutations` | 同签名族对**全部 P** 做 n! 枚举，每排列一次 SVD；docstring（`:411`）说「组内」，代码不分组。10 元环 1.2 s、11 元 10.7 s、13 元外推约 28 min，偏磷酸盐 Q2 长链常见 | 只在同标签组内置换并设上限，超限退 Hungarian 并告警 |
 | B-7 | `gr.rs:495`（`params.r_max` 在 `:417` 被覆盖） | 头部写截断值却标「requested」，批内第一个文件的截断值冒充全批请求值；测试 `test_meta_lines_report_clamped_rmax_and_composition` 钉住的是错误语义 | 请求值留在 params，截断值另设字段 |

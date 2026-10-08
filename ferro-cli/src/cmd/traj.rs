@@ -583,7 +583,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
 
     let mut summary = Summary::new(&["triplets"]);
     for (input, r) in &results {
-        summary.ok(input.label.clone(), r.n_frames, r.elements.len(), &[r.hist.len() as f64]);
+        summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &[r.hist.len() as f64]);
     }
     summary.failed(&failures);
 
@@ -747,7 +747,7 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     for (input, r) in &results {
         summary.ok(
             input.label.clone(),
-            r.r.len(),
+            r.n_frames,
             r.n_atoms,
             &[r.tau_frames as f64, r.time, r.n_origins as f64, r.outside_fraction],
         );
