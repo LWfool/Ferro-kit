@@ -53,8 +53,10 @@ fn parse_poscar(content: &str) -> Result<Trajectory> {
             let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
             (e, c)
         } else {
-            // VASP5: element symbols + counts on next line
-            let e: Vec<String> = line5.split_whitespace().map(|s| s.to_string()).collect();
+            // VASP5: element symbols + counts on next line。6.4.2 起（HDF5 编译）写成
+            // `POTCAR 标签/哈希`，如 `C_h/1e4d9ea6ed`、`Cs/`；5.4.4 等旧版只写 `Na`，
+            // 两者同一规则取元素：`/` 前、再 `_` 前（同 ASE vasp.py）。chgcar.rs 有同一份头部解析
+            let e: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
             let c: Vec<usize> = next("atom counts")?
                 .split_whitespace()
                 .map(|s| s.parse().context("invalid count"))
@@ -125,6 +127,12 @@ fn parse_poscar(content: &str) -> Result<Trajectory> {
 }
 
 
+/// 元素行的一项 → 元素符号：`Na_pv/6a2f546d` → `Na`，`Na` 原样
+pub(super) fn potcar_symbol(s: &str) -> String {
+    let label = s.split('/').next().unwrap_or(s);
+    label.split('_').next().unwrap_or(label).to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +175,22 @@ Direct
         for mode in ["Cartesian", "cart", "K", "k-space"] {
             assert!((x1(mode) - 0.5).abs() < 1e-9, "{mode:?} 应按 Cartesian 读");
         }
+    }
+
+    #[test]
+    fn test_element_line_across_vasp_versions() {
+        let elems = |line: &str| -> Vec<String> {
+            let text = BCC_FE.replace("   Fe\n   2\n", line);
+            parse_poscar(&text).unwrap().frames[0].atoms.iter().map(|a| a.element.clone()).collect()
+        };
+        // 5.4.4 等旧版：纯元素符号
+        assert_eq!(elems("Fe Co\n1 1\n"), ["Fe", "Co"]);
+        // 6.4.2（HDF5 编译）：`POTCAR 标签/哈希`，POTCAR 无哈希时只剩 `/`
+        assert_eq!(elems("Fe_pv/6a2f546d Co/\n1 1\n"), ["Fe", "Co"]);
+        // 手写的 POTCAR 标签
+        assert_eq!(elems("Fe_sv_GW Co_h\n1 1\n"), ["Fe", "Co"]);
+        // VASP 4：无元素行，只有计数
+        assert_eq!(elems("1 1\n"), ["X1", "X2"]);
     }
 
     #[test]
