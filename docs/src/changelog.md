@@ -12,6 +12,18 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro job` auto-spin: lanthanides and 4d/5d metals
+
+The estimated multiplicity changes for compounds of La–Lu and of the 4d/5d
+transition metals. Lanthanides were treated as main-group elements (fluorite
+$CeO_2$ came out as multiplicity 9 with `UKS`); they now fill 4f by Hund's rule
+($CeO_2$ 1, $Ce_2O_3$ 3, $Gd_2O_3$ 15, $EuO$ 8). 4d/5d ions were estimated
+high-spin like 3d ions; they are now low-spin, with $d^8$ square-planar ($K_2PtCl_4$
+3 → 1, $RuO_2$ 5 → 3). CP2K and QE inputs generated without `--multiplicity` for
+such systems should be regenerated. A new warning names the 4f-in-core case, and
+a compound whose oxidation states cannot be balanced (mixed valence such as
+$Fe_3O_4$) now says so instead of reporting it as non-ionic.
+
 ### `ferro net` cutoffs can be `auto`
 
 `--P-O=auto` takes the cutoff from each input's own g(r) (first minimum behind the
