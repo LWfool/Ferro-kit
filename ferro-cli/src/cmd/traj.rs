@@ -383,7 +383,7 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
             input.label.clone(),
             r.n_frames,
             atoms,
-            &[r.avg_volume, r.volume_std, r.params.r_max],
+            &[r.avg_volume, r.volume_std, r.r_max_used],
         );
         summary.note("composition", r.composition());
     }
@@ -427,19 +427,19 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         let atoms: usize = gr.element_counts.values().sum();
         // g(r) 截断在 r_max，q ≲ 2π/r_max 的 S(q) 由截断振荡主导（审查 B-3）。
         // r_max 逐输入截到最小镜像上界，故此值逐输入、进 [inputs] 而不进共享头部
-        let q_trunc = 2.0 * std::f64::consts::PI / gr.params.r_max;
+        let q_trunc = 2.0 * std::f64::consts::PI / gr.r_max_used;
         summary.ok(
             input.label.clone(),
             gr.n_frames,
             atoms,
-            &[gr.avg_volume, gr.volume_std, gr.params.r_max, q_trunc],
+            &[gr.avg_volume, gr.volume_std, gr.r_max_used, q_trunc],
         );
         summary.note("composition", gr.composition());
         if c.q_min < q_trunc {
             eprintln!(
                 "        warning: {}: S(q) below q_trunc = 2π/r_max = {:.3} Å⁻¹ (r_max = {:.3} Å) \
                  is dominated by the truncation of g(r); --q-min is {}",
-                input.label, q_trunc, gr.params.r_max, c.q_min
+                input.label, q_trunc, gr.r_max_used, c.q_min
             );
         }
     }

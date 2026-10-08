@@ -26,6 +26,13 @@ unchanged.
 element types as `atoms` (angle). They are now the frame and atom counts that
 `ferro info` reports. Data columns are unchanged.
 
+### `traj gr` / `traj sq`: the header's requested `r_max`
+
+When `--r-max` was clamped to half the smallest interplanar spacing, the header line
+`r_max = … (requested; …)` showed the clamped value of the first input instead of the
+request. It now shows the request; the clamped value per input stays in `[inputs]`.
+Data are unchanged.
+
 ### Reading VASP 6.4.2 element lines, CIF, PDB, CP2K and QE input
 
 - POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5
