@@ -1028,8 +1028,10 @@ fn report_kind_labels(traj: &Trajectory) {
 
 fn run_filter(args: &FilterCmd) -> Result<usize> {
     // 参数级错误在读第一个数据集之前暴露
-    if args.f_max < 0.0 || args.s_max < 0.0 {
-        bail!("thresholds cannot be negative (0 switches the criterion off)");
+    // NaN 与任何数比较都为假，`< 0.0` 拦不住它，进了 FilterParams 又被当成「关闭」
+    let usable = |v: f64| v.is_finite() && v >= 0.0;
+    if !usable(args.f_max) || !usable(args.s_max) {
+        bail!("thresholds must be finite and non-negative (0 switches the criterion off)");
     }
     let manual_rcut = match args.al6.as_deref() {
         None | Some("auto") => None,
@@ -1039,8 +1041,8 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
         ),
     };
     if let Some(r) = manual_rcut {
-        if r <= 0.0 {
-            bail!("--al6 cutoff must be positive");
+        if !(r.is_finite() && r > 0.0) {
+            bail!("--al6 cutoff must be a finite positive number");
         }
     }
     let split = filter_split(args)?;
@@ -1050,8 +1052,8 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     if !split.is_off() && args.output.is_none() {
         bail!("--ratio needs an output directory (-o DIR); a read-only run writes nothing");
     }
-    if args.oo_min.is_some_and(|v| v <= 0.0) {
-        bail!("--oo-min must be positive (omit the flag to switch the criterion off)");
+    if args.oo_min.is_some_and(|v| !(v.is_finite() && v > 0.0)) {
+        bail!("--oo-min must be a finite positive number (omit the flag to switch the criterion off)");
     }
 
     let params = FilterParams {
@@ -1655,6 +1657,32 @@ fn refuse_held_out_inputs(systems: &[PathBuf]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 审查 C-D4 连带：`-f nan` / `--oo-min nan` 曾静默关掉判据，`--al6 nan` 要删光帧才失败
+    #[test]
+    fn non_finite_thresholds_fail_before_any_input_is_read() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        for (args, want) in [
+            ("-f nan", "finite"),
+            ("-f inf", "finite"),
+            ("-s nan", "finite"),
+            ("--oo-min nan", "--oo-min"),
+            ("--oo-min inf", "--oo-min"),
+            ("--al6 nan", "--al6"),
+            ("--al6 inf", "--al6"),
+        ] {
+            let mut argv = vec!["filter", "-i", "no_such_system_dir"];
+            argv.extend(args.split_whitespace());
+            let w = Wrap::try_parse_from(&argv).unwrap_or_else(|e| panic!("{args}: {e}"));
+            let err = format!("{:#}", run_filter(&w.cmd).expect_err(args));
+            assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
+        }
+    }
 
     fn rels(inputs: &[&str]) -> Vec<String> {
         let paths: Vec<PathBuf> = inputs.iter().map(PathBuf::from).collect();

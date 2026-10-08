@@ -76,7 +76,7 @@ network / dft / ml / core（C）：
 | # | 位置 | 问题 / 复现 | 修法 |
 |---|---|---|---|
 | C-D3 | `dft/bader.rs:174-178`；`cli-reference.md:800`、`dev/bader.md` §10 | ACF 的 `MinDist` 实为「极大值到原子距离」的最小值（原子 1 输出 0），不是 Henkelman 的「到 Bader 表面最小距离」；`bader.md` 称外部工具可按 Henkelman 格式解析，实测 ASE `attach_charges` 与 pymatgen `_parse_acf` 都失败（表头 `—` 非 ASCII、无 `----` 分隔、无 `VACUUM CHARGE:`） | 实现表面距离并恢复 Henkelman 版式；或改手册写明自有格式与列含义 |
-| C-D4 | `ml/filter.rs:219-239` | 力 / 应力含 NaN 的帧通过筛选进训练集（`fold(0.0, f64::max)` 吞 NaN，`m > f_max` 对 NaN 为假） | 非有限一律判坏 |
+| ~~C-D4~~ **已修**（判据开着时非有限峰值判坏，峰值保留 NaN 供报告；连带修了下面「轻」C 里的 `-f nan` / `--oo-min nan` / `--al6 nan` 与诊断下溢）| `ml/filter.rs:219-239` | 力 / 应力含 NaN 的帧通过筛选进训练集（`fold(0.0, f64::max)` 吞 NaN，`m > f_max` 对 NaN 为假） | 非有限一律判坏 |
 | ~~C-D5~~ **已修**（`deac6ae` 取最长零平台中点、移入 `md/shell.rs`；`e9a88a3` 改在 0.10 Å 滑动平均上找极小，实测 2.05 → 2.57 Å。**遗留**：手册 `dataset/filter.md` 的「2.45 Å」与三对极小表是旧算法在参考体系上测的，数据不在仓内，未重测）| `ml/geometry.rs:224-236` | `--al6` 自动截断取峰后 3 Å 窗口内第一个严格最小 bin，g 恒 0 的平台上取到第一个零 bin。`collect tests/cp2k_md_3frames.out` → `filter --al6`：cutoff 2.05，cn5=2 / cn6=46；numpy 截断 2.2–2.6 得 cn6=48 | 平台取中点或末端；补零平台测试 |
 | C-D6 | `dataset.rs:1063-1068,1311`、`diagnostics.rs:108`、`table.rs:166` | 多 system 报告 `concat_union` 只留第一份 meta，逐 system 统计（O–O 分位、自动 rcut）冒充全批 | 统计改数据列，或走 `Summary::note` |
 
@@ -115,8 +115,8 @@ network / dft / ml / core（C）：
   永不 Err；rotcorr Sum 模式串行暴力（`:171-189`，推断）；msd lag 0 输出 −1.7e-18
 - C：`cell.rs:147-160` 浮点 `rem_euclid` 可返回 L（`(-1e-17).rem_euclid(8.0)=8`），chg_sdf 三线性插值
   由此越界（推断）→ 下标再 `% n`；`spin.rs:62-69` 未知元素 Z=255 计入电子数（元素表只到 Rn，
-  UO₂ 给双重态）；`dataset.rs:982,1003` `-f nan`、`--oo-min nan` 静默关判据、`--al6 nan` 删光
-  后才失败；`diagnostics.rs:101-104` 全非有限时 `len()-1` 下溢（C-D4 修后可达）、`:41` 实际可采
+  UO₂ 给双重态）；~~`dataset.rs:982,1003` `-f nan`、`--oo-min nan` 静默关判据、`--al6 nan` 删光
+  后才失败；`diagnostics.rs:101-104` 全非有限时 `len()-1` 下溢~~（随 C-D4 修）；`diagnostics.rs``:41` 实际可采
   2·max−1 帧；三处注释错位 / 过时（`dataset.rs:281-293` 两段 `///` 挂错、`group_by_directory`
   两条注释矛盾、`network_type.rs:21` 仍写「digit = bridging ligands」）
 - D：`--last-n 0` 不提前拦；`job` 不带 `-s` 退出码 0 不出文件；CP2K `r2scan + d3` 无 D3 参数
