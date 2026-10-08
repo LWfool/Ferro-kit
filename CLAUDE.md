@@ -81,7 +81,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 ## 扩展项目
 
 **加文件格式** → 技能 `add-format`。硬约束：`ferro-cli/src/io_dispatch.rs` 的
-`read_trajectory` 与 `write_trajectory` **两处**都要加检测，漏一处那个方向就认不出新格式。
+`read_trajectory` 与 `out_format`（写侧）**两处**都要加检测，漏一处那个方向就认不出新格式。
 
 **加分析方法** → 技能 `add-analysis`。三条违反了会静默出错的：
 - `meta_lines` **只放批内共享的参数**；逐输入才有意义的量走 `[inputs]` 清单，

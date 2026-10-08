@@ -98,7 +98,7 @@ network / dft / ml / core（C）：
 | D-M11 | `ferro-workflow/src/job_builder.rs` Gaussian | 周期结构丢胞、不写 `TV`，静默变团簇计算（ASE 写三行 TV） | 写 TV 或报错 |
 | D-M12 | `cmd/job.rs` | 与所选软件无关的参数静默忽略（QE 不读 `--cutoff`/`--md-timestep`/`--thermostat`/`--pbc`）；`--task` 等枚举值读完输入、打印 auto-spin 之后才校验 | clap `ValueEnum`；不适用参数报错 |
 | ~~D-M13~~ **已修**（`batch::check_suffix`，在 `CommonArgs::inputs`、chg-sdf、bader 三处入口调用。**未覆盖**：`dataset merge --suffix` 是目录后缀，合法值含 `.`，另一套语义，未动）| `batch.rs out_path`（及 bader、chg-sdf 的 `-s`） | `-s` 不校验字符：`-s 'a/../../escaped'` 写到 `-o` 之外 | 复用 `label_char_ok`，读文件前校验 |
-| D-M15 | `cmd/convert.rs run` | `--start/--end` 校验前就建 `-o` 目录；写侧格式读完整条输入后才查 | 先查参数与格式再建目录 |
+| ~~D-M15~~ **已修**（参数检查移到建目录前；写侧格式判定抽成 `io_dispatch::out_format`，`write_trajectory` 改走它，convert 读输入前先调）| `cmd/convert.rs run` | `--start/--end` 校验前就建 `-o` 目录；写侧格式读完整条输入后才查 | 先查参数与格式再建目录 |
 | ~~D-M16~~ **已修**（判据放进 `split_pair_args` 本身，有测试）| `main.rs split_pair_args` | 对所有子命令剥离 `--Xx-Yy=v`，`traj gr --P-O=2.3` 静默吞掉 | 只在 `argv[1]=="net"` 时剥离 |
 
 **轻**
