@@ -12,6 +12,13 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `dataset filter`: frames with NaN forces or stresses
+
+A frame whose forces or stress contain NaN passed the `-f` / `-s` criteria and went
+into the training set. With the criterion on, such a frame is now dropped (inf
+already was). `-f`, `-s`, `--oo-min` and `--al6` given `nan` or `inf` are now an
+error before any input is read; `nan` used to switch the criterion off silently.
+
 ### `traj vanhove`: `--tau` defaults to half the trajectory
 
 Without `--tau`, the lag was the last frame, so frame 0 was the only time origin. It is

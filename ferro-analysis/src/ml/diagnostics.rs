@@ -95,10 +95,11 @@ pub fn pooled_coordination(
 /// distribution — and only the first is worth filtering.
 pub fn distribution_table(name: &str, values: &[f64], bins: usize) -> Table {
     let mut t = Table::new();
-    if values.is_empty() {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
+    // 先滤后判空：全是非有限值时下面的 `len() - 1` 会下溢
+    if v.is_empty() {
         return t;
     }
-    let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let q = |p: f64| -> f64 {
         let i = ((v.len() - 1) as f64 * p).round() as usize;
@@ -186,6 +187,13 @@ pub fn cell_of(traj: &Trajectory, i: usize) -> Option<&Cell> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distribution_of_only_non_finite_values_is_empty_not_a_panic() {
+        // 过滤掉非有限值后为空时，`len() - 1` 曾下溢
+        let t = distribution_table("d", &[f64::NAN, f64::INFINITY], 4);
+        assert_eq!(t.n_rows(), 0);
+    }
 
     #[test]
     fn distribution_reports_quantiles_and_bins() {

@@ -216,23 +216,24 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
         .par_iter()
         .enumerate()
         .map(|(i, f)| {
-            let max_force = f.forces.as_ref().map(|v| {
-                v.iter().map(|x| x.norm()).fold(0.0_f64, f64::max)
-            });
-            let max_stress = f
-                .stress
-                .map(|s| s.iter().map(|x| x.abs()).fold(0.0_f64, f64::max));
+            // f64::max 会吞掉 NaN（返回另一个数），峰值必须让 NaN 传下去
+            let peak = |it: &mut dyn Iterator<Item = f64>| {
+                it.fold(0.0_f64, |a, x| if a.is_nan() || x.is_nan() { f64::NAN } else { a.max(x) })
+            };
+            let max_force = f.forces.as_ref().map(|v| peak(&mut v.iter().map(|x| x.norm())));
+            let max_stress = f.stress.map(|s| peak(&mut s.iter().map(|x| x.abs())));
             let mut flags = 0;
+            // NaN 与阈值比较恒假，单写 `m > 阈值` 会放它过去，须显式判坏
             if params.f_max > 0.0 {
                 if let Some(m) = max_force {
-                    if m > params.f_max {
+                    if m.is_nan() || m > params.f_max {
                         flags |= Criterion::Force.bit();
                     }
                 }
             }
             if params.s_max > 0.0 {
                 if let Some(m) = max_stress {
-                    if m > params.s_max {
+                    if m.is_nan() || m > params.s_max {
                         flags |= Criterion::Stress.bit();
                     }
                 }
@@ -443,6 +444,20 @@ mod tests {
             })
             .collect();
         Trajectory { frames, metadata: Default::default() }
+    }
+
+    #[test]
+    fn non_finite_forces_and_stresses_are_dropped() {
+        // 审查 C-D4：fold(0.0, f64::max) 吞掉 NaN、`m > f_max` 对 NaN 为假，
+        // 含 NaN 的帧曾原样进训练集
+        let nan = f64::NAN;
+        let r = filter_frames(&traj_of(&[1.0, nan, 1.0], &[0.0, 0.0, 0.0]),
+                              &FilterParams { f_max: 5.0, ..Default::default() }).unwrap();
+        assert_eq!(r.keep, vec![0, 2], "NaN 力的帧应被力判据删掉");
+        assert!(r.verdicts[1].max_force.unwrap().is_nan(), "报告里的峰值应保留 NaN，不是被吞掉后的 0");
+        let r = filter_frames(&traj_of(&[1.0, 1.0, 1.0], &[0.0, nan, f64::INFINITY]),
+                              &FilterParams { s_max: 1.0, ..Default::default() }).unwrap();
+        assert_eq!(r.keep, vec![0], "NaN / inf 应力的帧应被应力判据删掉");
     }
 
     #[test]
