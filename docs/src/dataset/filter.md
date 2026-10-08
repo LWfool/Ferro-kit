@@ -205,6 +205,13 @@ one file with a `system` column holding the path **relative to `-i`** — nested
 systems `a/md` and `b/md` share a leaf name and would otherwise be
 indistinguishable once stacked.
 
+Statistics that differ from system to system go in `[inputs]` as columns, one
+row per system, rather than in a table's header, where only the first system's
+values would survive stacking. These are the quantiles of the per-frame minimum
+O–O distance (`min_oo_min`, `min_oo_p1`, `min_oo_p50`, `min_oo_p99`,
+`min_oo_max`, `min_oo_mean`; with `--oo-min`) and the Al–O cutoff actually used
+(`al6_rcut`; with `--al6`).
+
 They sit flat in the root rather than in a `report/` subdirectory on purpose: a
 later `ferro dataset merge -i clean/*` keeps only directories, so the CSVs are
 filtered out by themselves, while a `report/` directory would be picked up as a
