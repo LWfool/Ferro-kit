@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1–B-3、C-D1、D-S1–D-S5，C-D2 搁置，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A15、B-1–B-3、C-D1、D-S1–D-S5，C-D2 搁置，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -49,13 +49,13 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 
 | # | 位置 | 问题 / 复现 | 修法 |
 |---|---|---|---|
-| A7 | `readers/vasp.rs:57`、`readers/chgcar.rs:57` | VASP 6 元素行带 POTCAR 哈希 `Na_pv/6a2f546d` 原样当元素名（ASE 读 Na） | 照 `ase/io/vasp.py:249-250` 取 `split('/')[0].split('_')[0]`，两处同改 |
-| A8 | `readers/cif.rs:480` | 任一 data 块无胞（常见 `data_global`）整份报错；ASE / pymatgen 跳过 | 跳过无 `_atom_site_` 循环的块，全跳过再报错 |
-| A9 | `writers/cif.rs:73-99` vs reader | 无胞帧写成只有 Cartn 的 CIF，ferro 自己读不回（ASE 读成 pbc=False） | 无胞参数但有 Cartn 列时按非周期读 |
-| A10 | `readers/pdb.rs:45,82,92-94` | 77–78 列为空时元素为 `""`；坐标坏或行短于 54 时原子静默丢弃；多字节字符切片 panic（推断） | 空元素回落原子名；坏坐标 bail 点名行号；按字节切 |
-| A11 | `readers/cp2k.rs:66,74` | 段名前缀匹配：`&COLVAR` 里的 `&COORDINATION` 先命中 `&coord`，合法输入报错（regtest `QS/regtest-gpw-2-2/H2O-meta.inp` 等 ≥9 份） | 段名按词精确比较；`&cell` 同改 |
-| A12 | `readers/qe.rs:175,29,152` | namelist 用空白分隔（`ibrav=0 nat=3 ntyp=1`）时整串成了一个值：`nat` 校验静默跳过、非零 ibrav 不被拒、`starting_magnetization` 丢失 | 按 `key=value` token 解析；ibrav / nat 解析失败报错 |
-| A13 | `readers/lammps_data.rs:60-61` | 空文件 `lines[i]` 越界 panic | `get` + bail |
+| ~~A7~~ **已修**（`d7876a1`；VASP 6.4.2 HDF5 编译才写 `标签/哈希`，6.4.3 起官方称已解决；5.4.4 纯符号、VASP 4 无元素行均有测试钉住。顺带：`chgcar.rs` 坐标类型只认 d 开头，改为同 POSCAR 的 C/K 规则）| `readers/vasp.rs:57`、`readers/chgcar.rs:57` | VASP 6 元素行带 POTCAR 哈希 `Na_pv/6a2f546d` 原样当元素名（ASE 读 Na） | 照 `ase/io/vasp.py:249-250` 取 `split('/')[0].split('_')[0]`，两处同改 |
+| ~~A8~~ **已修**（`714cac6`）| `readers/cif.rs:480` | 任一 data 块无胞（常见 `data_global`）整份报错；ASE / pymatgen 跳过 | 跳过无 `_atom_site_` 循环的块，全跳过再报错 |
+| ~~A9~~ **已修**（`714cac6`；2026-10-08 用户定：无胞结构只写 xyz —— 改为 **writer 报错**，同 POSCAR writer，读侧不改）| `writers/cif.rs:73-99` vs reader | 无胞帧写成只有 Cartn 的 CIF，ferro 自己读不回（ASE 读成 pbc=False） | 无胞参数但有 Cartn 列时按非周期读 |
+| ~~A10~~ **已修**（`a6740d5`；用户定按 PDB 列对齐从原子名推元素，不照 ASE 先试两字母。顺带：77–78 列大写 `FE` 原样当元素名，改为规范成 `Fe`）| `readers/pdb.rs:45,82,92-94` | 77–78 列为空时元素为 `""`；坐标坏或行短于 54 时原子静默丢弃；多字节字符切片 panic（推断） | 空元素回落原子名；坏坐标 bail 点名行号；按字节切 |
+| ~~A11~~ **已修**（`276b465`；用户定整行比较，`&KIND` 带 kind 名故比首词；剥注释后补 trim_end。新发现：`&CELL_REF` 的 ABC 覆盖 `&CELL`，`parse_cell_section` 改为只读本层。regtest `H2O-meta.inp` 实读通过）| `readers/cp2k.rs:66,74` | 段名前缀匹配：`&COLVAR` 里的 `&COORDINATION` 先命中 `&coord`，合法输入报错（regtest `QS/regtest-gpw-2-2/H2O-meta.inp` 等 ≥9 份） | 段名按词精确比较；`&cell` 同改 |
+| ~~A12~~ **已修**（`307cd4d`）| `readers/qe.rs:175,29,152` | namelist 用空白分隔（`ibrav=0 nat=3 ntyp=1`）时整串成了一个值：`nat` 校验静默跳过、非零 ibrav 不被拒、`starting_magnetization` 丢失 | 按 `key=value` token 解析；ibrav / nat 解析失败报错 |
+| ~~A13~~ **已修**（`d734593`）| `readers/lammps_data.rs:60-61` | 空文件 `lines[i]` 越界 panic | `get` + bail |
 | ~~A14~~ **已修**（`a34b488`；`cell_to_lammps` 把相对最大边长 1e-10 以下的倾斜置 0，两份同改）| `writers/lammps_dump.rs:56`、`writers/lammps_data.rs:46` | 三斜判定 `!= 0.0`，cos 90° 残留 1e-16 使正交盒写成三斜（`convert tests/70Z30P00A_NVT_5.lammpstrj -o x.lammpstrj` 即中） | 倾斜 / 边长 < 1e-10 置 0 |
 | ~~A15~~ **已修**（`a34b488`；只改 dump，data 文件无边界标志）| `writers/lammps_dump.rs:64,69` | 边界恒写 `pp pp pp`，不看 `frame.pbc`；reader 却尊重标志（TTF slab 往返成 TTT） | 按 pbc 写 `pp`/`ff` |
 
