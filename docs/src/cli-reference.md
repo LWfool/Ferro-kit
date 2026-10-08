@@ -397,7 +397,7 @@ described in [Spin Estimation](workflow/spin.md).
 | `--md-steps` | `10000` | number of MD steps |
 | `--md-timestep` | `1.0` | time step [fs] |
 | `--temperature` | `298.15` | temperature [K] |
-| `--thermostat` | `csvr` | `csvr`, `nose`, `langevin`, `none` |
+| `--thermostat` | `csvr` | `csvr`, `nose`, `langevin`, `none` (NVE; NPE with `--pressure`). `langevin` is CP2K's LANGEVIN ensemble and cannot take `--pressure` |
 | `--traj-freq` | `100` | trajectory output frequency [steps] |
 | `--pressure` | none (NVT) | pressure [bar]; giving it switches to NPT with a flexible cell (CP2K `NPT_F`). 1 atm = `1.01325` |
 

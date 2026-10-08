@@ -12,6 +12,21 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro job -s cp2k`: MD ensembles, the CSVR keyword, HSE06
+
+- `--task md` with the default CSVR thermostat wrote `TIMECON_CSVR`, a keyword
+  CP2K does not have (it is `TIMECON`), so the input stopped at parsing.
+- `--thermostat none` wrote `ENSEMBLE NVT`, which CP2K runs with its default
+  Nosé–Hoover thermostat. It now writes `NVE` (`NPE_F` with `--pressure`).
+- `--thermostat langevin` put `LANGEVIN` into `&THERMOSTAT TYPE`, which CP2K
+  rejects. It now writes `ENSEMBLE LANGEVIN` with `&LANGEVIN GAMMA`. CP2K's
+  Langevin ensemble has no barostat, so combining it with `--pressure` is an error.
+- `--functional hse06` used the full-range Coulomb operator for its 25% exact
+  exchange, a functional that is not HSE06. It now writes
+  `&INTERACTION_POTENTIAL` with `POTENTIAL_TYPE SHORTRANGE` and `OMEGA 0.11`.
+
+Regenerate MD and HSE06 inputs made by earlier versions.
+
 ### `ferro job -s cp2k`: `--barostat` is replaced by `--pressure`
 
 `--barostat` wrote `PRESSURE 1.01325E+05`, but CP2K reads that keyword in bar:
