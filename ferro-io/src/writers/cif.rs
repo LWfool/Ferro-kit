@@ -5,16 +5,23 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{Context, Result};
 
-/// 将轨迹写入 CIF 文件。每帧作为独立的 `data_` block 写出。
+/// 将轨迹写入 CIF 文件。每帧作为独立的 `data_` block 写出，用分数坐标
+/// （`_atom_site_fract_*`），写 P1 对称性。
 ///
-/// 周期性帧：用分数坐标（`_atom_site_fract_*`），写 P1 对称性。
-/// 非周期性帧：用 Cartesian 坐标（`_atom_site_Cartn_*`），省略晶格参数。
+/// 无胞帧报错：CIF 描述晶体，无胞结构该写 xyz / extxyz（同 POSCAR writer）。以前写成
+/// 只有 Cartn 列、没有胞参数的 block，ferro 自己读不回
 pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let path_ = path.display();
+    // 建文件前查完，不留半截文件
+    let cells = trajectory.frames.iter().enumerate()
+        .map(|(i, f)| f.cell.as_ref().with_context(|| format!(
+            "frame {i} has no cell; CIF requires a periodic frame (write a non-periodic \
+             structure as .xyz or .extxyz)")))
+        .collect::<Result<Vec<_>>>()?;
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
-    for (idx, frame) in trajectory.frames.iter().enumerate() {
+    for (idx, (frame, cell)) in trajectory.frames.iter().zip(cells).enumerate() {
         // 生成 data block 名称
         let block_name = trajectory.metadata.source
             .as_deref()
@@ -32,71 +39,42 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
         writeln!(w, "data_{block_name}")?;
         writeln!(w)?;
 
-        if let Some(cell) = &frame.cell {
-            let [a, b, c] = cell.lengths();
-            let [alpha, beta, gamma] = cell.angles();
+        let [a, b, c] = cell.lengths();
+        let [alpha, beta, gamma] = cell.angles();
 
-            writeln!(w, "_cell_length_a         {a:.6}")?;
-            writeln!(w, "_cell_length_b         {b:.6}")?;
-            writeln!(w, "_cell_length_c         {c:.6}")?;
-            writeln!(w, "_cell_angle_alpha       {alpha:.4}")?;
-            writeln!(w, "_cell_angle_beta        {beta:.4}")?;
-            writeln!(w, "_cell_angle_gamma       {gamma:.4}")?;
-            writeln!(w)?;
-            writeln!(w, "_space_group_name_H-M   'P 1'")?;
-            writeln!(w, "_space_group_IT_number  1")?;
-            writeln!(w)?;
+        writeln!(w, "_cell_length_a         {a:.6}")?;
+        writeln!(w, "_cell_length_b         {b:.6}")?;
+        writeln!(w, "_cell_length_c         {c:.6}")?;
+        writeln!(w, "_cell_angle_alpha       {alpha:.4}")?;
+        writeln!(w, "_cell_angle_beta        {beta:.4}")?;
+        writeln!(w, "_cell_angle_gamma       {gamma:.4}")?;
+        writeln!(w)?;
+        writeln!(w, "_space_group_name_H-M   'P 1'")?;
+        writeln!(w, "_space_group_IT_number  1")?;
+        writeln!(w)?;
 
-            writeln!(w, "loop_")?;
-            writeln!(w, "_atom_site_label")?;
-            writeln!(w, "_atom_site_type_symbol")?;
-            writeln!(w, "_atom_site_fract_x")?;
-            writeln!(w, "_atom_site_fract_y")?;
-            writeln!(w, "_atom_site_fract_z")?;
+        writeln!(w, "loop_")?;
+        writeln!(w, "_atom_site_label")?;
+        writeln!(w, "_atom_site_type_symbol")?;
+        writeln!(w, "_atom_site_fract_x")?;
+        writeln!(w, "_atom_site_fract_y")?;
+        writeln!(w, "_atom_site_fract_z")?;
 
-            let mut counters: HashMap<String, usize> = HashMap::new();
-            for atom in &frame.atoms {
-                let label = if let Some(l) = &atom.label {
-                    l.clone()
-                } else {
-                    let n = counters.entry(atom.element.clone()).or_insert(0);
-                    *n += 1;
-                    format!("{}{n}", atom.element)
-                };
-                let frac = cell.cartesian_to_fractional(atom.position)?;
-                writeln!(
-                    w,
-                    "{label:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
-                    atom.element, frac.x, frac.y, frac.z
-                )?;
-            }
-        } else {
-            // 非周期性：Cartesian 坐标
-            writeln!(w, "loop_")?;
-            writeln!(w, "_atom_site_label")?;
-            writeln!(w, "_atom_site_type_symbol")?;
-            writeln!(w, "_atom_site_Cartn_x")?;
-            writeln!(w, "_atom_site_Cartn_y")?;
-            writeln!(w, "_atom_site_Cartn_z")?;
-
-            let mut counters: HashMap<String, usize> = HashMap::new();
-            for atom in &frame.atoms {
-                let label = if let Some(l) = &atom.label {
-                    l.clone()
-                } else {
-                    let n = counters.entry(atom.element.clone()).or_insert(0);
-                    *n += 1;
-                    format!("{}{n}", atom.element)
-                };
-                writeln!(
-                    w,
-                    "{label:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
-                    atom.element,
-                    atom.position.x,
-                    atom.position.y,
-                    atom.position.z
-                )?;
-            }
+        let mut counters: HashMap<String, usize> = HashMap::new();
+        for atom in &frame.atoms {
+            let label = if let Some(l) = &atom.label {
+                l.clone()
+            } else {
+                let n = counters.entry(atom.element.clone()).or_insert(0);
+                *n += 1;
+                format!("{}{n}", atom.element)
+            };
+            let frac = cell.cartesian_to_fractional(atom.position)?;
+            writeln!(
+                w,
+                "{label:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
+                atom.element, frac.x, frac.y, frac.z
+            )?;
         }
 
         writeln!(w)?;
@@ -147,21 +125,18 @@ mod tests {
     }
 
     #[test]
-    fn test_roundtrip_nonperiodic() {
-        let path = std::env::temp_dir().join("water_rt.cif");
-        let path_str = &path;
+    fn test_cell_less_frame_is_an_error() {
+        let path = std::env::temp_dir().join("water_nocell.cif");
+        let _ = std::fs::remove_file(&path);
 
         let mut frame = Frame::new();
         frame.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.119)));
-        frame.add_atom(Atom::new("H", Vector3::new(0.0, 0.763, -0.477)));
-        frame.add_atom(Atom::new("H", Vector3::new(0.0, -0.763, -0.477)));
-        let traj = Trajectory::from_frame(frame);
-        write_cif(&traj, path_str).unwrap();
-
-        // 非周期性 CIF 不能 roundtrip via read_cif (无 cell)，只验证写入不报错
-        let content = std::fs::read_to_string(path_str).unwrap();
-        assert!(content.contains("_atom_site_Cartn_x"));
-        assert!(content.contains("O1"));
+        let mut traj = Trajectory::from_frame(make_bcc_frame());
+        traj.add_frame(frame);
+        let e = write_cif(&traj, &path).unwrap_err();
+        assert!(format!("{e:#}").contains("frame 1 has no cell"), "{e:#}");
+        assert!(format!("{e:#}").contains(".xyz"), "报错应指向 xyz：{e:#}");
+        assert!(!path.exists(), "报错时不应留下半截文件");
     }
 
     #[test]

@@ -12,6 +12,20 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Reading VASP 6.4.2 element lines; CIF reading and writing
+
+- POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5
+  (`Na_pv/6a2f546d`, `Cs/`) were taken verbatim as element names. The element is
+  now the part before `/` and `_`, as ASE reads it; plain symbols (VASP 5.4.4)
+  and count-only lines (VASP 4) read as before.
+- A CHGCAR whose coordinate line is not `Direct` (e.g. `Fractional`) was read as
+  Cartesian; it now follows VASP's rule (only `C`/`K` mean Cartesian), as POSCAR
+  already did.
+- A CIF with a block that has no atom sites (`data_global`) failed as a whole;
+  such blocks are now skipped.
+- **Writing a frame without a cell to `.cif` is now an error** (write `.xyz` or
+  `.extxyz`). It used to produce a block ferro itself could not read back.
+
 ### `ferro net --export-traj lammpstrj` honours `--units`
 
 The exported dump always wrote velocities and forces in LAMMPS `real` units,

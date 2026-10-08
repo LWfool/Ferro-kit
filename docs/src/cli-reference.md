@@ -160,6 +160,11 @@ Things that trip people up:
   atom.  The error names every site with `_atom_site_occupancy` below 1; order the structure
   first (one species per site, a supercell for vacancies).
   An unknown (`?`) or malformed coordinate is an error naming the site, not an atom at the origin.
+- **CIF blocks without atom sites are skipped.**  A `data_global` block that only carries journal
+  and author fields (common in Acta Cryst and COD files) does not stop the read; only a file in
+  which no block has an `_atom_site_` loop is an error.
+- **Writing a CIF needs a cell.**  A frame without one is an error before the file is created;
+  write a non-periodic structure as `.xyz` or `.extxyz`.
 - **A CIF without symmetry operations is expanded from its space-group symbol.**  Explicit operations
   (`_space_group_symop_operation_xyz`, its CIF2 form `_space_group_symop.operation_xyz`, or
   `_symmetry_equiv_pos_as_xyz`) are used as given; otherwise the Hall symbol, the H-M symbol or the
