@@ -147,6 +147,8 @@ mod tests {
         case!(VanHoveParams, dt: 0.0, tau: Some(0), shift: 0, r_min: -1.0, dr: 0.0, r_max: 0.0,
               r_max: inf);
         case!(CubeDensityParams, nx: 0, ny: 0, nz: 0);
+        case!(CubeJumpParams, nx: 0, ny: 0, nz: 0, tau: 0, threshold: 0.0, threshold: nan,
+              threshold: inf);
         case!(CubeRadiusParams, nx: 0, ny: 0, nz: 0, radius: 0.0, radius: nan);
         case!(ClusterSdfParams, former_ligand_cutoff: 0.0, modifier_cutoff: nan, grid_res: 0.0,
               sigma: -1.0, sigma: inf, padding: -1.0, padding: inf, rmsd_warn_threshold: nan);

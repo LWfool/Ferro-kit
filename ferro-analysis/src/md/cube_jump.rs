@@ -52,6 +52,18 @@ pub struct CubeJumpParams {
     pub record_at: JumpPosition,
 }
 
+impl CubeJumpParams {
+    /// Range checks, run before any file is read (nx = 0 used to divide by zero;
+    /// threshold ≤ 0 counted every displacement as a jump).
+    pub fn validate(&self) -> ferro_core::Result<()> {
+        check::at_least_one("nx", self.nx)?;
+        check::at_least_one("ny", self.ny)?;
+        check::at_least_one("nz", self.nz)?;
+        check::at_least_one("tau", self.tau)?;
+        check::positive("threshold", self.threshold)
+    }
+}
+
 impl Default for CubeJumpParams {
     fn default() -> Self {
         Self {
@@ -117,6 +129,8 @@ pub fn calc_cube_jump(
     traj: &Trajectory,
     params: &CubeJumpParams,
 ) -> Option<CubeJumpResult> {
+    // 无 CLI 入口，库调用方未必先调 validate；坏参数在这里拦下而不是除零
+    params.validate().ok()?;
     let n_frames = traj.frames.len();
     if n_frames < params.tau + 1 { return None; }
     traj.check_same_atoms().ok()?;
@@ -179,7 +193,8 @@ pub fn calc_cube_jump(
                 let f0 = frac_atom[t];
                 let f1 = frac_atom[t + params.tau];
 
-                // unwrapped Δfrac → Cartesian（NPT：用两帧矩阵的平均，与 msd.rs 一致）
+                // unwrapped Δfrac → Cartesian（NPT：用两帧矩阵的平均，即格点视图；msd.rs 已改 TOR，
+                // 此处未跟，同 vanhove，见 dev/plan.md）
                 let dfrac = Vector3::new(f1[0] - f0[0], f1[1] - f0[1], f1[2] - f0[2]);
                 let avg_mat_t = (mat_t_all[t] + mat_t_all[t + params.tau]) * 0.5;
 
