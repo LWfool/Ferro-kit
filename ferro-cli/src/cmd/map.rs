@@ -352,7 +352,8 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
 
-    // 这个命令不走 CommonArgs(它吃 --cubes 而不是 -i),所以 Output 自己拼
+    // 这个命令不走 CommonArgs(它吃 --cubes 而不是 -i),所以 Output 自己拼,-s 也自己查
+    batch::check_suffix(c.suffix.as_deref())?;
     let out = batch::Output {
         dir: c.output.clone(),
         suffix: c.suffix.clone(),

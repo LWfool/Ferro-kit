@@ -12,6 +12,13 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `-s` accepts only letters, digits, `_`, `+` and `-`
+
+The batch tag goes into the output file name, and `-s 'a/../../x'` used to write
+outside `-o`. Other characters are now an error before any input is read, as they
+already were for `-a` / `-b` / `--elements`. Applies to `traj`, `map`, `net`,
+`map chg-sdf` and `bader`.
+
 ### Element-pair cutoffs: `nan` rejected, and only `ferro net` takes them
 
 `--P-O=nan` was accepted and every pair counted as bonded; it is now an error, as
