@@ -26,7 +26,10 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
 
     // ── &SYSTEM namelist ──────────────────────────────────────────────────────
     let sys = collect_namelist(&stripped, "system");
-    let ibrav: i32 = sys.get("ibrav").and_then(|s| s.parse().ok()).unwrap_or(0);
+    // 写了却解析不了要报错：以前回落 0，空白分隔切坏的值会让非零 ibrav 蒙混过关
+    let ibrav: i32 = sys.get("ibrav")
+        .map(|s| s.parse().with_context(|| format!("invalid ibrav = {s:?}")))
+        .transpose()?.unwrap_or(0);
     if ibrav != 0 {
         bail!("ibrav={ibrav} is not supported; use ibrav=0 with explicit CELL_PARAMETERS");
     }
@@ -149,7 +152,10 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         if tidx > 0 { atom.magmom = type_magmom.get(&tidx).copied(); }
         frame.add_atom(atom);
     }
-    if let Some(nat) = sys.get("nat").and_then(|s| s.parse::<usize>().ok()) {
+    if let Some(nat) = sys.get("nat")
+        .map(|s| s.parse::<usize>().with_context(|| format!("invalid nat = {s:?}")))
+        .transpose()?
+    {
         anyhow::ensure!(
             frame.n_atoms() == nat,
             "ATOMIC_POSITIONS has {} atoms but nat = {nat}", frame.n_atoms()
@@ -171,21 +177,51 @@ fn collect_namelist(lines: &[&str], name: &str) -> HashMap<String, String> {
     for l in &lines[start..] {
         let l = l.trim();
         if l == "/" || l.starts_with('&') { break; }
-        // Parse "key = value," pairs (may be multiple per line)
-        for pair in l.split(',') {
-            let pair = pair.trim();
-            if let Some(eq) = pair.find('=') {
-                let key = pair[..eq].trim().to_lowercase()
-                    .replace(' ', "");
-                let val = pair[eq+1..].trim()
-                    .trim_matches('\'')
-                    .trim_matches('"')
-                    .to_string();
+        for item in namelist_items(l) {
+            if let Some((key, val)) = item.split_once('=') {
+                let key = key.to_lowercase();
+                let val = val.trim_matches('\'').trim_matches('"').to_string();
                 if !key.is_empty() { map.insert(key, val); }
             }
         }
     }
     map
+}
+
+/// namelist 一行 → `key=value` 项。Fortran namelist 里逗号与空白都是分隔符
+/// （`ibrav=0 nat=3 ntyp=1` 合法，pw.x 与 ASE 都认）；`=` 两侧、括号内的空白不算，
+/// 引号内原样。以前只按逗号切，空白分隔的一整行成了 `ibrav` 一个键的值
+fn namelist_items(line: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let (mut quote, mut paren) = (None, 0usize);
+    for c in line.chars() {
+        if let Some(q) = quote {
+            cur.push(c);
+            if c == q { quote = None; }
+            continue;
+        }
+        match c {
+            '\'' | '"' => { quote = Some(c); cur.push(c); }
+            '(' => { paren += 1; cur.push(c); }
+            ')' => { paren = paren.saturating_sub(1); cur.push(c); }
+            c if paren > 0 && c.is_whitespace() => {}
+            c if c == ',' || c.is_whitespace() => {
+                if !cur.is_empty() { words.push(std::mem::take(&mut cur)); }
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.is_empty() { words.push(cur); }
+    // `key = value` / `key= value` / `key =value` 拆成了几个词，粘回 `key=value`
+    let mut items: Vec<String> = Vec::new();
+    for w in words {
+        match items.last_mut() {
+            Some(last) if last.ends_with('=') || w.starts_with('=') => last.push_str(&w),
+            _ => items.push(w),
+        }
+    }
+    items
 }
 
 fn find_card(lines: &[&str], card: &str) -> Option<usize> {
@@ -339,6 +375,31 @@ CELL_PARAMETERS {angstrom}
             let x = f.atom(1).position;
             assert!((x - Vector3::repeat(p2)).norm() < 1e-6, "{what}：第 2 个 Si 在 {x:?}，应为 {p2}");
         }
+    }
+
+    #[test]
+    fn test_namelist_items_split_on_commas_and_blanks() {
+        assert_eq!(namelist_items("ibrav=0 nat=3 ntyp=1"), ["ibrav=0", "nat=3", "ntyp=1"]);
+        assert_eq!(namelist_items("ibrav = 0, nat= 3 ,ntyp =1,"), ["ibrav=0", "nat=3", "ntyp=1"]);
+        assert_eq!(namelist_items("starting_magnetization( 1 ) = 0.5 title='a b, c'"),
+                   ["starting_magnetization(1)=0.5", "title='a b, c'"]);
+    }
+
+    #[test]
+    fn test_blank_separated_namelist() {
+        let fe = |sys: &str| read_qe_input(&tmp("fe_blank.qe", &CRYSTAL_POS
+            .replace("  ibrav = 0,\n  nat = 2,\n  ntyp = 1,\n", sys)));
+        // 空白分隔：nat 校验生效、磁矩读到
+        let traj = fe("  ibrav=0 nat=2 ntyp=1 starting_magnetization(1)=0.5\n").unwrap();
+        assert_eq!(traj.first().unwrap().atom(0).magmom, Some(0.5));
+        let e = fe("  ibrav=0 nat=3 ntyp=1\n").unwrap_err();
+        assert!(format!("{e:#}").contains("nat = 3"), "{e:#}");
+        // 非零 ibrav 不再因切坏的值蒙混过关
+        let e = fe("  ibrav=2 nat=2 ntyp=1\n").unwrap_err();
+        assert!(format!("{e:#}").contains("ibrav=2"), "{e:#}");
+        // 写坏的值报错
+        let e = fe("  ibrav=0, nat=two, ntyp=1\n").unwrap_err();
+        assert!(format!("{e:#}").contains("invalid nat"), "{e:#}");
     }
 
     #[test]

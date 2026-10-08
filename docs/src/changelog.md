@@ -12,7 +12,7 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
-### Reading VASP 6.4.2 element lines, CIF, PDB and CP2K input
+### Reading VASP 6.4.2 element lines, CIF, PDB, CP2K and QE input
 
 - POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5
   (`Na_pv/6a2f546d`, `Cs/`) were taken verbatim as element names. The element is
@@ -33,6 +33,11 @@ command line alike; regenerate it rather than migrating it.
   `&COORDINATION` before `&COORD` made the read fail (CP2K's own
   `H2O-meta.inp`). An `ABC` inside `&CELL_REF` replaced the `&CELL` one; it is
   now ignored.
+- QE input: a namelist written with blanks between assignments
+  (`ibrav=0 nat=3 ntyp=1`, legal Fortran) was read as one value, so the `nat`
+  check was skipped, a non-zero `ibrav` got through and `starting_magnetization`
+  was lost. Blanks and commas now both separate; an `ibrav` or `nat` that does
+  not parse is an error.
 - **Writing a frame without a cell to `.cif` is now an error** (write `.xyz` or
   `.extxyz`). It used to produce a block ferro itself could not read back.
 
