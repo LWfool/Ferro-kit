@@ -211,6 +211,18 @@ fn label_char_ok(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-')
 }
 
+/// Checks the `-s` batch tag, which becomes part of a file name, before any file is
+/// read: `-s 'a/../../x'` used to write outside `-o`.
+pub fn check_suffix(suffix: Option<&str>) -> Result<()> {
+    if let Some(bad) = suffix.and_then(|s| s.chars().find(|c| !label_char_ok(*c))) {
+        bail!(
+            "invalid character {bad:?} in -s: the batch tag goes into the output file \
+             name, so only letters, digits, '_', '+' and '-' are accepted"
+        );
+    }
+    Ok(())
+}
+
 /// Joins the selected types into the label that goes in the file name.
 ///
 /// `["P", "O"] -> "P-O"`, `[] -> "all"`. The parts are what the caller wrote, so

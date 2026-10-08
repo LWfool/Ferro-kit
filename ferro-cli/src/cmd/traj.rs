@@ -834,6 +834,9 @@ mod tests {
             ("rotcorr --center P --neighbor O", "--dt is required"),
             ("bondlife --center P --neighbor O --r-bond 2", "--dt is required"),
             ("vanhove", "--dt is required"),
+            // 审查 D-M13：-s 进文件名，`a/../../x` 会写到 -o 之外
+            ("gr -s a/../../escaped", "-s"),
+            ("sq -s ..", "-s"),
         ] {
             let mut argv = vec!["traj"];
             argv.extend(args.split_whitespace());

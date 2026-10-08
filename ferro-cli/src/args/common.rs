@@ -72,6 +72,7 @@ impl CommonArgs {
     /// Expands `-i` and checks, before any file is read, that the inputs can be
     /// read with the options given (a LAMMPS data file needs `--atom-style`).
     pub fn inputs(&self) -> Result<Vec<PathBuf>> {
+        batch::check_suffix(self.suffix.as_deref())?;
         let inputs = batch::expand_inputs(&self.input)?;
         for p in &inputs {
             check_atom_style(p, self.read.atom_style)?;

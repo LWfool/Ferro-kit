@@ -67,6 +67,7 @@ pub fn run(args: &BaderCmd) -> Result<()> {
         bail!("bader needs an input file: -i <CHGCAR|FILE.cube>");
     };
     // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等
+    crate::batch::check_suffix(args.suffix.as_deref())?;
     let method = match args.method.to_lowercase().as_str() {
         "ongrid"   => BaderMethod::OnGrid,
         "neargrid" => BaderMethod::NearGrid,
@@ -171,5 +172,14 @@ mod tests {
         c.method = "nosuchmethod".into();
         let err = run(&c).unwrap_err();
         assert!(err.to_string().contains("Unknown method"), "{err}");
+    }
+
+    /// 审查 D-M13：-s 进文件名，读文件前拦下能把产物写到别处的字符
+    #[test]
+    fn test_suffix_with_path_characters_is_rejected() {
+        let mut c = cmd(Some("no_such_CHGCAR"));
+        c.suffix = Some("a/../../escaped".into());
+        let err = run(&c).unwrap_err();
+        assert!(err.to_string().contains("-s"), "{err}");
     }
 }
