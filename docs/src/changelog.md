@@ -12,7 +12,7 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
-### Reading VASP 6.4.2 element lines, CIF and PDB
+### Reading VASP 6.4.2 element lines, CIF, PDB and CP2K input
 
 - POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5
   (`Na_pv/6a2f546d`, `Cs/`) were taken verbatim as element names. The element is
@@ -29,6 +29,10 @@ command line alike; regenerate it rather than migrating it.
   column alignment (` CA ` is carbon, `CA  ` is calcium). An `ATOM`/`HETATM` line
   with a bad or missing coordinate was dropped silently; it is now an error naming
   the line. A non-ASCII title no longer crashes the reader.
+- CP2K input: section names were matched by prefix, so a `&COLVAR` holding
+  `&COORDINATION` before `&COORD` made the read fail (CP2K's own
+  `H2O-meta.inp`). An `ABC` inside `&CELL_REF` replaced the `&CELL` one; it is
+  now ignored.
 - **Writing a frame without a cell to `.cif` is now an error** (write `.xyz` or
   `.extxyz`). It used to produce a block ferro itself could not read back.
 

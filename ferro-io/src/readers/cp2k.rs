@@ -25,14 +25,16 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         .map(|l| {
             let l = l.trim();
             // CP2K comments start with ! or #
-            if let Some(p) = l.find('!').or_else(|| l.find('#')) { &l[..p] } else { l }
+            // 剥完再 trim：段名按整行比较，`&CELL ! 注释` 剩下的行尾空格会让它失配
+            if let Some(p) = l.find('!').or_else(|| l.find('#')) { l[..p].trim_end() } else { l }
         })
         .collect();
 
     // ── Find &SUBSYS ──────────────────────────────────────────────────────────
     let subsys_start = stripped.iter().position(|l| {
-        let low = l.to_lowercase();
-        low.starts_with("&subsys")
+        // 段名按整行比较（注释已剥、已 trim）：前缀匹配会让 `&COLVAR` 里的 `&COORDINATION`
+        // 命中 `&coord`、`&CELL_REF` 命中 `&cell`（CP2K regtest H2O-meta.inp 即报错）
+        l.eq_ignore_ascii_case("&subsys")
     }).context("&SUBSYS section not found")?;
 
     let subsys_end = find_end(&stripped, subsys_start)
@@ -46,7 +48,8 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         let mut j = 0;
         while j < subsys.len() {
             let low = subsys[j].to_lowercase();
-            if low.starts_with("&kind") {
+            // `&KIND` 行带 kind 名（`&KIND O`），比较第一个词
+            if low.split_whitespace().next() == Some("&kind") {
                 let label = low.strip_prefix("&kind").unwrap_or("").trim().to_string();
                 let end = find_end(subsys, j).unwrap_or(subsys.len() - 1);
                 for l in &subsys[j..=end] {
@@ -63,7 +66,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
     }
 
     // ── &CELL ─────────────────────────────────────────────────────────────────
-    let cell_start = subsys.iter().position(|l| l.to_lowercase().starts_with("&cell"))
+    let cell_start = subsys.iter().position(|l| l.eq_ignore_ascii_case("&cell"))
         .context("&CELL not found")?;
     let cell_end = find_end(subsys, cell_start).context("&END CELL not found")?;
     let cell_section: &[&str] = &subsys[cell_start..=cell_end];
@@ -71,7 +74,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
     let (cell, pbc) = parse_cell_section(cell_section)?;
 
     // ── &COORD ────────────────────────────────────────────────────────────────
-    let coord_start = subsys.iter().position(|l| l.to_lowercase().starts_with("&coord"))
+    let coord_start = subsys.iter().position(|l| l.eq_ignore_ascii_case("&coord"))
         .context("&COORD not found")?;
     let coord_end = find_end(subsys, coord_start).context("&END COORD not found")?;
     let coord_section: &[&str] = &subsys[coord_start..=coord_end];
@@ -137,9 +140,14 @@ fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3])> {
 
     // CP2K 的 &CELL 没有 UNIT 关键字：单位逐关键字写在数值前，`A [bohr] 10 0 0`，
     // 缺省 angstrom / deg（input_cp2k_subsys.F 的 unit_str）
+    // 只读 &CELL 本层：子段 &CELL_REF（NPT 的参考胞）也有 ABC / A B C，以前后写的覆盖前写的
+    let mut depth = 0usize;
     for l in section {
         let parts: Vec<&str> = l.split_whitespace().collect();
         let Some(key) = parts.first().map(|s| s.to_lowercase()) else { continue };
+        if key.starts_with("&end") { depth = depth.saturating_sub(1); continue; }
+        if key.starts_with('&') { depth += 1; continue; }
+        if depth != 1 { continue; }
         let (unit, vals) = match parts.get(1) {
             Some(u) if u.starts_with('[') && u.ends_with(']') => (Some(&u[1..u.len() - 1]), &parts[2..]),
             _ => (None, &parts[1..]),
@@ -304,6 +312,22 @@ mod tests {
 ";
 
     use crate::testutil::write_tmp as tmp;
+
+    #[test]
+    fn test_section_names_match_whole_words() {
+        // 摘自 CP2K regtest QS/regtest-gpw-2-2/H2O-meta.inp：&COLVAR 里的 &COORDINATION
+        // 在 &COORD 之前；另在 &CELL 内 ABC 前后各加一个 &CELL_REF 子段，及行尾注释
+        let text = WATER_INP
+            .replace("    &CELL\n", "    &CELL ! 注释\n      &CELL_REF\n        ABC 9 9 9\n      &END CELL_REF\n")
+            .replace("    &END CELL\n", "      &CELL_REF\n        ABC 8 8 8\n      &END CELL_REF\n    &END CELL\n")
+            .replace("    &COORD\n", "    &COLVAR\n      &COORDINATION\n        ATOMS_FROM 1\n        \
+                ATOMS_TO 2\n      &END COORDINATION\n    &END COLVAR\n    &COORD\n");
+        let traj = read_cp2k_inp(&tmp("colvar.inp", &text)).unwrap();
+        let f = traj.first().unwrap();
+        assert_eq!(f.n_atoms(), 3);
+        let [a, ..] = f.cell.as_ref().unwrap().lengths();
+        assert!((a - 10.0).abs() < 1e-9, "胞应取 &CELL 的 ABC 10，不是 &CELL_REF 的 9 / 8：{a}");
+    }
 
     #[test]
     fn test_water_abc() {
