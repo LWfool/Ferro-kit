@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro net --export-traj lammpstrj` honours `--units`
+
+The exported dump always wrote velocities and forces in LAMMPS `real` units,
+whatever `--units` said: a `metal` dump with `vx = 1.0` came back as `0.001`. The
+export now uses the `--units` it was read with, as `convert` does; a trajectory
+with velocities or forces and no `--units` is an error naming the flag.
+Coordinate-only exports are unchanged.
+
 ### `ferro job -s cp2k`: MD ensembles, the CSVR keyword, HSE06
 
 - `--task md` with the default CSVR thermostat wrote `TIMECON_CSVR`, a keyword

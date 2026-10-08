@@ -19,7 +19,7 @@ use clap::{Args, ValueEnum};
 use ferro_analysis::md::{first_shell_cutoffs, ShellCutoff};
 use ferro_analysis::{calc_network, NetworkResult};
 use ferro_core::{Trajectory, TypeParams};
-use ferro_io::{write_extxyz, write_lammps_dump};
+use ferro_io::{write_extxyz, write_lammps_dump, LammpsUnits};
 use ferro_structure::{apply_type_labels, classify_trajectory, fold_labels};
 use std::collections::BTreeMap;
 
@@ -105,7 +105,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         let (params, shells) = resolve_auto(&params, &auto, &traj)?;
         let result = calc_network(&traj, &params)?;
         if let Some(fmt) = cmd.export_traj {
-            export_labelled(&traj, &params, &inp.label, &out, fmt)?;
+            export_labelled(&traj, &params, &inp.label, &out, fmt, cmd.common.read.units)?;
         }
         Ok((result, shells))
     });
@@ -249,6 +249,7 @@ fn export_labelled(
     label: &str,
     out: &batch::Output,
     fmt: ExportFormat,
+    units: Option<LammpsUnits>,
 ) -> Result<()> {
     let per_frame = classify_trajectory(traj, params);
     if per_frame.len() != traj.frames.len() {
@@ -284,7 +285,8 @@ fn export_labelled(
     };
     let path = out.join(&name);
     match fmt {
-        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, Some(ferro_io::LammpsUnits::Real))?,
+        // 同 convert：沿用读入时的 --units；没给而帧里有速度 / 力时由 writer 报错要求给出
+        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, units)?,
         ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
     }
     if skipped > 0 {
@@ -586,6 +588,28 @@ mod tests {
             }
         }
         Trajectory { frames: vec![f], metadata: Default::default() }
+    }
+
+    // 审查 D-S4：--export-traj lammpstrj 原先恒以 real 写速度，无视 --units
+    #[test]
+    fn test_export_lammpstrj_follows_units() {
+        let mut traj = phosphate_box();
+        let n = traj.frames[0].atoms.len();
+        let v = nalgebra::Vector3::new(0.001, 0.0, 0.0); // 内部 Å/fs = metal 的 1 Å/ps
+        traj.frames[0].velocities = Some(vec![v; n]);
+        let (p, _) = build_params(&args(&["--P-O=2.0"]), None, None).unwrap();
+        let dir = std::env::temp_dir().join("ferro_net_export_units");
+        let out = batch::Output { dir: Some(dir.clone()), label: None, suffix: None, mkdir: true };
+        out.prepare().unwrap();
+
+        export_labelled(&traj, &p, "box", &out, ExportFormat::Lammpstrj, Some(LammpsUnits::Metal)).unwrap();
+        let path = dir.join("box_types.lammpstrj");
+        let back = ferro_io::read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap();
+        let got = back.frames[0].velocities.as_ref().unwrap()[0];
+        assert!((got - v).norm() < 1e-12, "按 metal 写出再按 metal 读回应不变，得到 {got:?}");
+
+        let err = export_labelled(&traj, &p, "box", &out, ExportFormat::Lammpstrj, None).unwrap_err();
+        assert!(format!("{err:#}").contains("--units"), "没给 --units 且有速度应报错：{err:#}");
     }
 
     #[test]
