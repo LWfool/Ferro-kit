@@ -12,6 +12,16 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `dataset filter`: per-system statistics move to `[inputs]` (breaking)
+
+With several systems, the stacked report kept only the first system's header, so
+its minimum O–O quantiles and its Al–O cutoff read as if they held for the whole
+batch. `filter_min_oo.csv` and `filter_al_cn.csv` no longer carry those lines.
+Instead `[inputs]` has one value per system: `min_oo_min`, `min_oo_p1`,
+`min_oo_p50`, `min_oo_p99`, `min_oo_max` and `min_oo_mean` with `--oo-min`, and
+`al6_rcut` (the cutoff actually used) with `--al6`. The quantile line is now also
+printed in read-only mode.
+
 ### `convert`: bad arguments no longer leave an empty directory
 
 `--stride 0`, `--number 0`, `--start` past `--end` and an unknown output extension

@@ -88,17 +88,16 @@ pub fn pooled_coordination(
     hist.into_iter().collect()
 }
 
-/// Quantiles and a coarse histogram of a per-frame quantity.
+/// `[min, p1, p50, p99, max, mean]` over the finite values; `None` when there are none.
 ///
 /// Reported instead of a single "how many are below the threshold" count
 /// because that count cannot distinguish an outlier tail from a smooth
 /// distribution — and only the first is worth filtering.
-pub fn distribution_table(name: &str, values: &[f64], bins: usize) -> Table {
-    let mut t = Table::new();
+pub fn quantiles(values: &[f64]) -> Option<[f64; 6]> {
     let mut v: Vec<f64> = values.iter().copied().filter(|x| x.is_finite()).collect();
     // 先滤后判空：全是非有限值时下面的 `len() - 1` 会下溢
     if v.is_empty() {
-        return t;
+        return None;
     }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let q = |p: f64| -> f64 {
@@ -106,15 +105,20 @@ pub fn distribution_table(name: &str, values: &[f64], bins: usize) -> Table {
         v[i]
     };
     let mean = v.iter().sum::<f64>() / v.len() as f64;
-    t.meta_line(format!(
-        "{name}: min {:.3}  p1 {:.3}  p50 {:.3}  p99 {:.3}  max {:.3}  mean {:.3}",
-        v[0], q(0.01), q(0.5), q(0.99), v[v.len() - 1], mean
-    ));
+    Some([v[0], q(0.01), q(0.5), q(0.99), v[v.len() - 1], mean])
+}
 
-    let (lo, hi) = (v[0], v[v.len() - 1]);
+/// A coarse histogram of a per-frame quantity, over its finite values.
+///
+/// Carries no header line: the quantiles are per input, so they belong in the
+/// `[inputs]` block (see [`quantiles`]) — a header line would survive stacking
+/// only for the first input and pass for the whole batch.
+pub fn distribution_table(values: &[f64], bins: usize) -> Table {
+    let mut t = Table::new();
+    let Some([lo, _, _, _, hi, _]) = quantiles(values) else { return t };
     let width = ((hi - lo) / bins as f64).max(f64::MIN_POSITIVE);
     let mut counts = vec![0usize; bins];
-    for &x in &v {
+    for &x in values.iter().filter(|x| x.is_finite()) {
         let k = (((x - lo) / width) as usize).min(bins - 1);
         counts[k] += 1;
     }
@@ -191,21 +195,25 @@ mod tests {
     #[test]
     fn distribution_of_only_non_finite_values_is_empty_not_a_panic() {
         // 过滤掉非有限值后为空时，`len() - 1` 曾下溢
-        let t = distribution_table("d", &[f64::NAN, f64::INFINITY], 4);
+        let t = distribution_table(&[f64::NAN, f64::INFINITY], 4);
         assert_eq!(t.n_rows(), 0);
+        assert!(quantiles(&[f64::NAN]).is_none());
     }
 
     #[test]
     fn distribution_reports_quantiles_and_bins() {
         let v: Vec<f64> = (0..100).map(|i| i as f64 * 0.01).collect();
-        let t = distribution_table("d", &v, 4);
-        assert!(t.meta.iter().any(|m| m.contains("p50 0.500")), "{:?}", t.meta);
+        let q = quantiles(&v).unwrap();
+        assert!((q[2] - 0.5).abs() < 1e-12, "p50 应为 0.5：{q:?}");
+        let t = distribution_table(&v, 4);
+        // 分位数逐输入，进 [inputs]；表头留空，否则堆叠后只剩第一个输入的
+        assert!(t.meta.is_empty(), "{:?}", t.meta);
         assert_eq!(t.cols.len(), 3);
     }
 
     #[test]
     fn empty_input_gives_an_empty_table() {
-        assert_eq!(distribution_table("d", &[], 4).cols.len(), 0);
+        assert_eq!(distribution_table(&[], 4).cols.len(), 0);
     }
 
     #[test]

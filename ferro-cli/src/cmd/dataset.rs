@@ -22,6 +22,7 @@ use clap::{Args, Subcommand};
 use crate::batch::expand_inputs;
 use ferro_analysis::ml::diagnostics::{
     coordination_table, count_histogram, cutoff_scan, distribution_table, pooled_coordination,
+    quantiles,
     scan_table,
 };
 use ferro_analysis::ml::merge::{
@@ -1103,14 +1104,30 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     // 嵌套结构下 a/md 与 b/md 的叶子名相同，堆起来就分不出是谁
     let mut order: Vec<String> = Vec::new();
     let mut groups: Vec<Vec<(String, ferro_core::Table)>> = Vec::new();
-    let mut summary = crate::batch::Summary::new(&["frames_out"]);
+    // 逐 system 的统计（O–O 分位、实际所用 Al–O 截断）进 [inputs] 的列，
+    // 不进表头：表头堆叠后只剩第一个 system 的，会冒充整批
+    let mut columns = vec!["frames_out"];
+    if params.oo_min > 0.0 {
+        columns.extend(OO_COLUMNS);
+    }
+    if args.al6.is_some() {
+        columns.push("al6_rcut");
+    }
+    let mut summary = crate::batch::Summary::new(&columns);
 
     for (sys, rel) in &jobs {
         let label = rel.display().to_string();
         match filter_one(sys, rel, args, &params) {
             Ok(one) => {
                 auto_rcuts.extend(one.rcut);
-                summary.ok(label.clone(), one.n_input, one.n_atoms, &[one.n_kept as f64]);
+                let mut values = vec![one.n_kept as f64];
+                if params.oo_min > 0.0 {
+                    values.extend(one.min_oo.unwrap_or([f64::NAN; 6]));
+                }
+                if args.al6.is_some() {
+                    values.push(one.rcut.or(params.al6_rcut).unwrap_or(f64::NAN));
+                }
+                summary.ok(label.clone(), one.n_input, one.n_atoms, &values);
                 for (name, table) in one.tables {
                     match order.iter().position(|n| *n == name) {
                         Some(i) => groups[i].push((label.clone(), table)),
@@ -1192,10 +1209,17 @@ fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
     v
 }
 
+/// `[inputs]` columns for the quantiles of the per-frame minimum O–O distance,
+/// in the order [`quantiles`] returns them.
+const OO_COLUMNS: [&str; 6] =
+    ["min_oo_min", "min_oo_p1", "min_oo_p50", "min_oo_p99", "min_oo_max", "min_oo_mean"];
+
 /// What one system contributed: its report tables and its frame counts.
 struct FilterOne {
     /// The automatically derived Al-O cutoff, when one was derived.
     rcut: Option<f64>,
+    /// Quantiles of the per-frame minimum O–O distance, when `--oo-min` is on.
+    min_oo: Option<[f64; 6]>,
     tables: Vec<(String, ferro_core::Table)>,
     n_input: usize,
     n_kept: usize,
@@ -1244,11 +1268,22 @@ fn filter_one(
     let diagnostics = diagnostic_tables(&traj, &result, &params);
     let mut tables = result.to_tables();
     tables.extend(diagnostics.iter().cloned());
+    let min_oo = if params.oo_min > 0.0 {
+        quantiles(&result.verdicts.iter().filter_map(|x| x.min_oo).collect::<Vec<_>>())
+    } else {
+        None
+    };
 
     if args.output.is_none() {
         // 只读模式：四张诊断表也打出来，但一个字不落盘
         for (name, table) in &diagnostics {
             println!("  [{name}]");
+            if let (Some(q), "min_oo") = (min_oo, name.as_str()) {
+                println!(
+                    "    min d(O-O) [A]: min {:.3}  p1 {:.3}  p50 {:.3}  p99 {:.3}  max {:.3}  mean {:.3}",
+                    q[0], q[1], q[2], q[3], q[4], q[5]
+                );
+            }
             print_table(table);
         }
         println!();
@@ -1256,6 +1291,7 @@ fn filter_one(
 
     let one = FilterOne {
         rcut: derived,
+        min_oo,
         tables,
         n_input: result.n_input,
         n_kept: result.keep.len(),
@@ -1347,7 +1383,7 @@ fn diagnostic_tables(
     let mut out = Vec::new();
     if params.oo_min > 0.0 {
         let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
-        out.push(("min_oo".to_string(), distribution_table("min d(O-O) [A]", &v, 16)));
+        out.push(("min_oo".to_string(), distribution_table(&v, 16)));
     }
 
     let Some(rcut) = params.al6_rcut else { return out };
@@ -1362,9 +1398,8 @@ fn diagnostic_tables(
     let tp = ferro_core::TypeParams::new(cut, Default::default());
     let hist = pooled_coordination(traj, &tp, "Al");
     if !hist.is_empty() {
-        let mut t = coordination_table(&hist);
-        t.meta_line(format!("Al coordination at rcut = {rcut:.2} A"));
-        out.push(("al_cn".to_string(), t));
+        // 所用截断逐 system 不同（--al6 不带值时），记在 [inputs] 的 al6_rcut 列
+        out.push(("al_cn".to_string(), coordination_table(&hist)));
     }
 
     // 以当前截断为中心扫一圈：陡不陡才是这张表要说的事
@@ -1682,6 +1717,78 @@ mod tests {
             let err = format!("{:#}", run_filter(&w.cmd).expect_err(args));
             assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
         }
+    }
+
+    /// 审查 C-D6：多 system 的报告曾只留第一个 system 的表头，
+    /// 它的 O–O 分位数与 Al 截断摆在头部冒充整批
+    #[test]
+    fn per_system_statistics_go_to_inputs_not_the_table_header() {
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::{Matrix3, Vector3};
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+
+        let root = std::env::temp_dir().join(format!("ferro_cd6_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // 两个 system 各一个 AlO6 八面体，Al–O 分别 1.8 / 2.0 Å，故最近 O–O 为 d·√2；
+        // 要有 Al6：--al6 删的是不含六配位 Al 的帧
+        for (name, d) in [("a", 1.8), ("b", 2.0)] {
+            let cell = Cell::from_matrix(Matrix3::from_diagonal_element(10.0));
+            let frames = (0..3)
+                .map(|_| {
+                    let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+                    let c = Vector3::new(5.0, 5.0, 5.0);
+                    f.atoms = vec![Atom::new("Al", c)];
+                    for k in 0..3 {
+                        for sgn in [1.0, -1.0] {
+                            let mut v = Vector3::zeros();
+                            v[k] = sgn * d;
+                            f.atoms.push(Atom::new("O", c + v));
+                        }
+                    }
+                    f.energy = Some(-1.0);
+                    f.forces = Some(vec![Vector3::zeros(); 7]);
+                    f.stress = Some(Matrix3::zeros());
+                    f
+                })
+                .collect();
+            let t = Trajectory { frames, metadata: Default::default() };
+            ferro_io::write_deepmd_npy(&t, &root.join("in").join(name)).unwrap();
+        }
+        let (inp, out) = (root.join("in"), root.join("out"));
+        let argv = [
+            "filter", "-i", inp.to_str().unwrap(), "-o", out.to_str().unwrap(),
+            "--mkdir", "--oo-min", "1.0", "--al6", "2.3",
+        ];
+        let w = Wrap::try_parse_from(argv).unwrap();
+        assert_eq!(run_filter(&w.cmd).unwrap(), 0);
+
+        let text = std::fs::read_to_string(out.join("filter_min_oo.csv")).unwrap();
+        assert!(!text.contains("min d(O-O)"), "分位数不应留在表头：\n{text}");
+        let text = std::fs::read_to_string(out.join("filter_al_cn.csv")).unwrap();
+        assert!(!text.contains("rcut ="), "截断不应留在表头：\n{text}");
+
+        // [inputs] 两行各带自己的分位数与截断
+        let row = |sys: &str| -> String {
+            text.lines()
+                .find(|l| l.split_whitespace().nth(1) == Some(sys))
+                .unwrap_or_else(|| panic!("[inputs] 缺 {sys} 行：\n{text}"))
+                .to_string()
+        };
+        let header = text.lines().find(|l| l.contains("min_oo_p50")).expect("[inputs] 缺 min_oo_p50 列");
+        let col = |name: &str| header.split_whitespace().position(|c| c == name).unwrap();
+        for (sys, d) in [("a", 1.8f64), ("b", 2.0)] {
+            let r = row(sys);
+            let cells: Vec<&str> = r.split_whitespace().collect();
+            let p50: f64 = cells[col("min_oo_p50")].parse().unwrap();
+            assert!((p50 - d * 2f64.sqrt()).abs() < 1e-3, "{sys} 的 p50：{r}");
+            assert_eq!(cells[col("al6_rcut")].parse::<f64>().unwrap(), 2.3, "{sys} 的截断：{r}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn rels(inputs: &[&str]) -> Vec<String> {
