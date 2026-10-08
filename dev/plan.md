@@ -87,7 +87,7 @@ network / dft / ml / core（C）：
 | D-M17 | `ferro-structure::find_clusters` → `classify_frame` → `network_type.rs:353,394`（2026-10-07 修 B-1 时发现） | 奇异胞（c=0 slab）在 `expect("cell must be non-singular")` panic。CLI `net` 在前面已拦，Python 绑定直调仍会 panic；`dft/chg_sdf` 经 `process_frame` 同路（cube 文件的胞，推断难触发） | 入口查可逆（同 `check::invertible_cells`；它是 ferro-analysis 私有，structure 那边要么自查要么下沉 core） |
 | D-M3 | `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |
 | D-M4 | `cp2k.rs write_force_eval` | NPT 不写 `STRESS_TENSOR`，CP2K 启动报错（`md_run.F:331-344`） | NPT 时写 `ANALYTICAL` |
-| D-M5 | `cp2k.rs` Langevin | `&THERMOSTAT TYPE LANGEVIN` 非法（合法值 NOSE/CSVR/GLE/AD_LANGEVIN）；CP2K 是 `ENSEMBLE LANGEVIN` + `MD/&LANGEVIN` | 按 CP2K 写法 |
+| ~~D-M5~~ **已修**（`bd21bc2`，随 D-S3 一并改）| `cp2k.rs` Langevin | `&THERMOSTAT TYPE LANGEVIN` 非法（合法值 NOSE/CSVR/GLE/AD_LANGEVIN）；CP2K 是 `ENSEMBLE LANGEVIN` + `MD/&LANGEVIN` | 按 CP2K 写法 |
 | D-M6 | `cp2k.rs --smear` | 不写 `ADDED_MOS`，CP2K 报错（`qs_environment.F:2247`）；`--scf ot` 时 smear 静默丢。手册 `spin.md:76` 示例正中 | 写 `ADDED_MOS`；OT + smear 报错 |
 | D-M7 | `cp2k.rs` PBC | 分子 / `--pbc z` 不写 `POISSON_SOLVER`，默认 PERIODIC 报错；分子 `&CELL` 无 ABC。`test_energy_molecular` 断言的正是这份不可运行的输入 | 非 3D 写 MT / WAVELET + ABC，或报错 |
 | D-M8 | `cp2k.rs` | `--kpoints` + `--scf ot` CP2K 报错（`qs_scf_initialization.F:886-887`），builder 不拦 | 提前拒绝 |
