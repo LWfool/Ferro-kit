@@ -68,8 +68,6 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
              format comes from it. Try -o '{shown}conf.extxyz'"
         );
     }
-    crate::outpath::ensure_parent(output, args.mkdir)?;
-
     // 参数级错误在读第一个文件之前失败：轨迹可能是几个 GB，读完再报「--start 比
     // --end 大」是白等。跨参数的一致性能在这里查的都查掉
     let start = args.start.unwrap_or(0);
@@ -84,6 +82,9 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     if args.number == Some(0) {
         bail!("--number must be at least 1");
     }
+    // 目标格式也是参数：认不出就别建目录、别读输入（审查 D-M15）
+    crate::io_dispatch::out_format(output)?;
+    crate::outpath::ensure_parent(output, args.mkdir)?;
 
     let traj = read_trajectory(input, &args.read)?;
     let n_read = traj.n_frames();
@@ -201,6 +202,30 @@ mod tests {
         let err = run(&c).unwrap_err().to_string();
         assert!(err.contains("names a directory"), "{err}");
         assert!(err.contains("conf.extxyz"), "错误信息要给出可直接抄的写法: {err}");
+    }
+
+    /// 审查 D-M15：参数与目标格式错了，应在建 -o 的目录、读输入之前报错，不留空目录
+    #[test]
+    fn bad_values_fail_before_the_directory_is_made() {
+        let dir = std::env::temp_dir().join("ferro_d_m15_convert_must_not_exist");
+        let _ = std::fs::remove_dir_all(&dir);
+        let good = dir.join("out.extxyz");
+        let bad_fmt = dir.join("out.nosuchfmt");
+        type Case<'a> = (&'a Path, fn(&mut ConvertCmd), &'a str);
+        let cases: [Case; 4] = [
+            (&good, |c| c.stride = Some(0), "--stride"),
+            (&good, |c| c.number = Some(0), "--number"),
+            (&good, |c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
+            (&bad_fmt, |_| {}, "Unsupported output format"),
+        ];
+        for (out, tweak, want) in cases {
+            let mut c = cmd(Some("no_such_input.xyz"), Some(out.to_str().unwrap()));
+            c.mkdir = true;
+            tweak(&mut c);
+            let err = run(&c).unwrap_err().to_string();
+            assert!(err.contains(want), "应报「{want}」，实际 {err}");
+            assert!(!dir.exists(), "「{want}」：参数错误时不该建 -o 的目录");
+        }
     }
 
     #[test]

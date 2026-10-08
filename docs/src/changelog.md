@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `convert`: bad arguments no longer leave an empty directory
+
+`--stride 0`, `--number 0`, `--start` past `--end` and an unknown output extension
+are now reported before `-o`'s directory is created and before the input is read.
+The unknown extension used to be reported only after the whole input was read.
+
 ### `-s` accepts only letters, digits, `_`, `+` and `-`
 
 The batch tag goes into the output file name, and `-s 'a/../../x'` used to write

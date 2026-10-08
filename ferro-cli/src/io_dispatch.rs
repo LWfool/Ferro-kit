@@ -73,25 +73,43 @@ pub fn read_trajectory_tail(
     Ok(traj)
 }
 
-pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: Option<LammpsUnits>) -> Result<()> {
+/// Write-side format, resolved from the file name alone.
+pub enum OutFormat { Poscar, Xyz, Pdb, Cif, Extxyz, LammpsData, LammpsDump, Qe }
+
+/// Resolves the write format without touching the disk, so a caller can reject a bad
+/// `-o` before reading a multi-GB input (`convert`); `write_trajectory` goes through it.
+pub fn out_format(path: &Path) -> Result<OutFormat> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
     if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
-        return write_poscar(traj, path);
+        return Ok(OutFormat::Poscar);
     }
 
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("xyz")                      => Ok(write_xyz(traj, path)?),
-        Some("pdb")                      => Ok(write_pdb(traj, path)?),
-        Some("cif")                      => Ok(write_cif(traj, path)?),
-        Some("extxyz")                   => Ok(write_extxyz(traj, path)?),
-        Some("vasp") | Some("pos")       => write_poscar(traj, path),
-        Some("lammps") | Some("data") | Some("lmp") => Ok(write_lammps_data(traj, path)?),
-        Some("dump") | Some("lammpstrj") => Ok(write_lammps_dump(traj, path, lammps_units)?),
-        Some("in") | Some("qe")          => Ok(write_qe_input(traj, path)?),
+    Ok(match path.extension().and_then(|e| e.to_str()) {
+        Some("xyz")                      => OutFormat::Xyz,
+        Some("pdb")                      => OutFormat::Pdb,
+        Some("cif")                      => OutFormat::Cif,
+        Some("extxyz")                   => OutFormat::Extxyz,
+        Some("vasp") | Some("pos")       => OutFormat::Poscar,
+        Some("lammps") | Some("data") | Some("lmp") => OutFormat::LammpsData,
+        Some("dump") | Some("lammpstrj") => OutFormat::LammpsDump,
+        Some("in") | Some("qe")          => OutFormat::Qe,
         Some(ext) => bail!("Unsupported output format: .{ext}"),
         None      => bail!("Cannot determine format (no extension): {}", path.display()),
+    })
+}
+
+pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: Option<LammpsUnits>) -> Result<()> {
+    match out_format(path)? {
+        OutFormat::Poscar     => write_poscar(traj, path),
+        OutFormat::Xyz        => Ok(write_xyz(traj, path)?),
+        OutFormat::Pdb        => Ok(write_pdb(traj, path)?),
+        OutFormat::Cif        => Ok(write_cif(traj, path)?),
+        OutFormat::Extxyz     => Ok(write_extxyz(traj, path)?),
+        OutFormat::LammpsData => Ok(write_lammps_data(traj, path)?),
+        OutFormat::LammpsDump => Ok(write_lammps_dump(traj, path, lammps_units)?),
+        OutFormat::Qe         => Ok(write_qe_input(traj, path)?),
     }
 }
 
