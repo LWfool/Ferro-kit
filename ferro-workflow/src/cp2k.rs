@@ -1,5 +1,5 @@
 use ferro_core::{guess_spin, Frame};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::fmt::Write;
 
 use crate::cp2k_basis_db::{self, DbFunc};
@@ -157,7 +157,7 @@ pub struct Cp2kMdParams {
     pub temperature: f64,   // K
     pub thermostat: Cp2kThermostat,
     pub traj_freq: u32,     // write every N steps
-    pub barostat: bool,     // NPT
+    pub pressure: Option<f64>, // bar（CP2K 原生单位）；Some 即开压浴（NPT）
 }
 
 impl Default for Cp2kMdParams {
@@ -168,7 +168,7 @@ impl Default for Cp2kMdParams {
             temperature: 298.15,
             thermostat: Cp2kThermostat::CSVR,
             traj_freq: 100,
-            barostat: false,
+            pressure: None,
         }
     }
 }
@@ -692,7 +692,7 @@ impl Cp2kJobBuilder {
             }
             Cp2kTask::MD => {
                 let md = &self.md;
-                let ensemble = if md.barostat { "NPT_F" } else { "NVT" };
+                let ensemble = if md.pressure.is_some() { "NPT_F" } else { "NVT" };
                 writeln!(out, "&MOTION")?;
                 writeln!(out, "  &MD")?;
                 writeln!(out, "    ENSEMBLE {ensemble}")?;
@@ -726,9 +726,13 @@ impl Cp2kJobBuilder {
                     }
                     Cp2kThermostat::None => {}
                 }
-                if md.barostat {
+                if let Some(p) = md.pressure {
+                    // 负压（拉伸）在 MD 里合法，只拦 NaN / inf
+                    if !p.is_finite() {
+                        bail!("--pressure must be a finite number (bar), got {p}");
+                    }
                     writeln!(out, "    &BAROSTAT")?;
-                    writeln!(out, "      PRESSURE 1.01325E+05 # bar")?;
+                    writeln!(out, "      PRESSURE {p} # bar")?;
                     writeln!(out, "      TIMECON 1000 # fs")?;
                     writeln!(out, "    &END BAROSTAT")?;
                 }
@@ -926,6 +930,24 @@ mod tests {
         assert!(inp.contains("STEPS 5000"));
         assert!(inp.contains("TEMPERATURE 1000.00"));
         assert!(inp.contains("TYPE CSVR"));
+    }
+
+    // 审查 D-S1：CP2K 的 BAROSTAT%PRESSURE 单位就是 bar，原先写 1.01325E+05 ≈ 10 GPa
+    #[test]
+    fn test_pressure_is_bar_and_switches_to_npt() {
+        let mut b = Cp2kJobBuilder::new(cell_frame(&[("Si", 2)]));
+        b.task = Cp2kTask::MD;
+        b.auto_spin = false;
+        let inp = b.build().unwrap();
+        assert!(inp.contains("ENSEMBLE NVT") && !inp.contains("&BAROSTAT"), "不给压强应为 NVT");
+
+        b.md.pressure = Some(1.01325);
+        let inp = b.build().unwrap();
+        assert!(inp.contains("ENSEMBLE NPT_F"));
+        assert!(inp.contains("      PRESSURE 1.01325 # bar"), "{inp}");
+
+        b.md.pressure = Some(f64::INFINITY);
+        assert!(b.build().is_err(), "非有限压强应报错");
     }
 
     #[test]

@@ -142,9 +142,9 @@ pub struct JobCmd {
     #[arg(long, default_value = "100")]
     pub traj_freq: u32,
 
-    /// Enable NPT barostat  [cp2k]
-    #[arg(long)]
-    pub barostat: bool,
+    /// Pressure [bar]; giving it switches MD to NPT with a flexible cell  [cp2k]
+    #[arg(long, allow_negative_numbers = true)]
+    pub pressure: Option<f64>,
 
     // ── Quantum ESPRESSO ─────────────────────────────────────────────────────
     /// Calculation type  [qe]  scf|nscf|bands|relax|vc-relax|md|vc-md
@@ -374,7 +374,7 @@ pub fn run(args: &JobCmd) -> Result<()> {
             builder.md.timestep     = args.md_timestep;
             builder.md.temperature  = args.temperature;
             builder.md.traj_freq    = args.traj_freq;
-            builder.md.barostat     = args.barostat;
+            builder.md.pressure     = args.pressure;
             builder.md.thermostat   = match args.thermostat.as_str() {
                 "csvr"     => Cp2kThermostat::CSVR,
                 "nose"     => Cp2kThermostat::NoseHoover,
