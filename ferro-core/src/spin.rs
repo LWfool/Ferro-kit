@@ -4,16 +4,19 @@
 //!
 //! 1. **磁矩求和**（最可靠）：若原子带 `magmom`，`n_unpaired = round(|Σ magmom|)`。
 //! 2. **氧化态 + Hund 规则**：对离子型固体用电负性规则定氧化态，
-//!    过渡金属按 `n_d = 族号 − 氧化态` 取高自旋未成对数，主族按 s/p 填充。
+//!    3d 过渡金属按 `n_d = 族号 − 氧化态` 取高自旋、4d/5d 取低自旋未成对数，
+//!    镧系按 `n_f = Z − 54 − 氧化态` 填 7 个 f 轨道，主族按 s/p 填充。
 //! 3. **电子数奇偶下限**（兜底）：奇数电子 → 至少 1 个未成对（双重态）。
 //!
 //! 结果始终做电子数奇偶校验；矛盾时回退到奇偶下限并给出警告。
 //!
 //! ## 已知限制
 //! - 多磁中心间的磁耦合（铁磁 / 反铁磁）无法从结构推断，按铁磁求和给出上限。
-//! - 低自旋判定需配位场分析（暂未实现），过渡金属一律按**高自旋**估计。
+//! - 高 / 低自旋判定需配位场分析（暂未实现）：3d 一律按**高自旋**、4d/5d 一律按
+//!   **低自旋**估计（4d/5d 配体场强，d⁸ 取平面四方单重态）。
+//! - 镧系假定 4f 在价层；4f 冻结在核内的赝势 / ECP 下该估计不成立。
+//! - 混合价（如 Fe₃O₄）每种元素只取一个整数氧化态，凑不平电荷，回退到奇偶下限。
 //! - 共价过渡金属配合物、单质 / 纯共价分子不适用氧化态法，回退到奇偶下限。
-//! - 镧系 f 区元素的 f 电子未计入。
 
 use std::collections::BTreeMap;
 
@@ -85,13 +88,23 @@ pub fn parity_min_multiplicity(frame: &Frame) -> u32 {
 /// `frame.atoms` 顺序对齐。无法判定（单质、纯共价、无明确阴离子、
 /// 电荷无法配平）时返回 `None`。
 pub fn assign_oxidation_states(frame: &Frame) -> Option<Vec<i8>> {
+    oxidation_states_or_reason(frame).ok()
+}
+
+// 非离子型 / 凑不平电荷两种失败原因不同，告警措辞须分开
+const NOT_IONIC: &str = "无法判定氧化态（单质 / 纯共价 / 无明确阴离子），仅给出电子数奇偶下限。";
+const UNBALANCED: &str = "阳离子的常见氧化态凑不平电荷（混合价如 Fe₃O₄，或电荷 / 组成有误），\
+                          仅给出电子数奇偶下限。";
+
+/// [`assign_oxidation_states`] 的实现，失败时带上告警文本。
+fn oxidation_states_or_reason(frame: &Frame) -> Result<Vec<i8>, &'static str> {
     // distinct 元素 → 数量，保持确定性顺序
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for a in &frame.atoms {
         *counts.entry(a.element.as_str()).or_insert(0) += 1;
     }
     if counts.len() < 2 {
-        return None; // 单质：氧化态法不适用
+        return Err(NOT_IONIC); // 单质：氧化态法不适用
     }
 
     // 选阴离子：电负性最高且存在负氧化态的 distinct 元素
@@ -104,7 +117,7 @@ pub fn assign_oxidation_states(frame: &Frame) -> Option<Vec<i8>> {
             (min_ox < 0).then_some((s, en, min_ox))
         })
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-    let (anion_sym, _, anion_ox) = anion?;
+    let (anion_sym, _, anion_ox) = anion.ok_or(NOT_IONIC)?;
 
     let anion_count = counts[anion_sym] as i32;
     let anion_total = anion_count * anion_ox as i32;
@@ -118,7 +131,7 @@ pub fn assign_oxidation_states(frame: &Frame) -> Option<Vec<i8>> {
         if sym == anion_sym {
             continue;
         }
-        let e = elem_data(sym)?;
+        let e = elem_data(sym).ok_or(NOT_IONIC)?;
         let pos: Vec<i8> = e
             .common_oxidation_states
             .iter()
@@ -126,12 +139,12 @@ pub fn assign_oxidation_states(frame: &Frame) -> Option<Vec<i8>> {
             .filter(|&o| o > 0)
             .collect();
         if pos.is_empty() {
-            return None; // 该元素无正氧化态，无法作阳离子
+            return Err(NOT_IONIC); // 该元素无正氧化态，无法作阳离子
         }
         cations.push((sym, cnt as i32, pos));
     }
     if cations.is_empty() {
-        return None;
+        return Err(NOT_IONIC);
     }
 
     // 枚举各阳离子正氧化态的笛卡尔积，找所有配平解
@@ -139,7 +152,7 @@ pub fn assign_oxidation_states(frame: &Frame) -> Option<Vec<i8>> {
     let mut current = vec![0i8; cations.len()];
     enumerate_solutions(&cations, cation_target, 0, &mut current, &mut solutions);
     if solutions.is_empty() {
-        return None;
+        return Err(UNBALANCED);
     }
 
     // 多解时取氧化态总和最大者（磷酸盐 / 硅酸盐等形成子取最高价），
@@ -160,7 +173,7 @@ pub fn assign_oxidation_states(frame: &Frame) -> Option<Vec<i8>> {
     for ((sym, _, _), &o) in cations.iter().zip(&chosen) {
         ox_of.insert(sym, o);
     }
-    Some(
+    Ok(
         frame
             .atoms
             .iter()
@@ -196,12 +209,17 @@ fn enumerate_solutions(
 
 // ─── 单离子未成对电子数 ───────────────────────────────────────────────────────
 
-/// 给定元素与形式氧化态，估计该离子的未成对电子数（过渡金属取高自旋）。
+/// 给定元素与形式氧化态，估计该离子的未成对电子数（3d 高自旋，4d/5d 低自旋）。
 fn ion_unpaired(z: u8, ox: i8) -> u32 {
+    if is_lanthanide(z) {
+        // Xe 芯 54 个电子，离子剩下的全在 4f（Ln³⁺ 的 5d6s 先失去）
+        let nf = (z as i32 - 54 - ox as i32).clamp(0, 14) as u32;
+        return hund(nf, 7); // 7 个 f 轨道，自由离子 Hund 高自旋
+    }
     if is_transition_metal(z) {
         let g = group_number(z).unwrap() as i32;
         let nd = (g - ox as i32).clamp(0, 10) as u32;
-        return hund(nd, 5); // 5 个 d 轨道，高自旋
+        return if z <= 30 { hund(nd, 5) } else { low_spin(nd) };
     }
     // 主族：离子价电子数填入 s(1)+p(3) 八隅
     let v0 = valence_electrons(z).map(|v| v as i32).unwrap_or(0);
@@ -211,6 +229,22 @@ fn ion_unpaired(z: u8, ox: i8) -> u32 {
     } else {
         hund(v_ion - 2, 3) // s 满，p 亚层 3 轨道
     }
+}
+
+/// 4d/5d 低自旋：先填满 t₂g 再进 e_g；d⁸ 取平面四方单重态（Pd²⁺、Pt²⁺、Au³⁺
+/// 几乎都是平面四方，八面体低自旋 d⁸ 的 2 在 4d/5d 罕见）。
+fn low_spin(nd: u32) -> u32 {
+    match nd {
+        0..=3 => nd,
+        4..=6 => 6 - nd,
+        8 | 10 => 0,
+        _ => 1, // d⁷、d⁹
+    }
+}
+
+/// 镧系（含 La，57–71）。
+fn is_lanthanide(z: u8) -> bool {
+    (57..=71).contains(&z)
 }
 
 /// Hund 规则：`e` 个电子填入 `n_orb` 个简并轨道的未成对数。
@@ -247,7 +281,14 @@ pub fn guess_spin(frame: &Frame) -> SpinGuess {
     }
 
     // 路径 2：氧化态 + Hund
-    if let Some(ox) = assign_oxidation_states(frame) {
+    let ox = match oxidation_states_or_reason(frame) {
+        Ok(ox) => Some(ox),
+        Err(reason) => {
+            warnings.push(reason.into());
+            None
+        }
+    };
+    if let Some(ox) = ox {
         let n: u32 = frame
             .atoms
             .iter()
@@ -262,9 +303,24 @@ pub fn guess_spin(frame: &Frame) -> SpinGuess {
         }
         let ox_pairs: Vec<(String, i8)> = distinct.into_iter().collect();
 
-        if frame.atoms.iter().any(|a| is_transition_metal(symbol_to_z(&a.element))) {
+        let zs: Vec<u8> = frame.atoms.iter().map(|a| symbol_to_z(&a.element)).collect();
+        // La 被 is_transition_metal 算作第 3 族，已归镧系分支，这里排除
+        let tm = |z: u8| is_transition_metal(z) && !is_lanthanide(z);
+        if zs.iter().any(|&z| tm(z) && z <= 30) {
             warnings.push(
-                "过渡金属一律按高自旋估计；低自旋 / 多中心磁耦合需 DFT 验证。".into(),
+                "3d 过渡金属一律按高自旋估计；低自旋 / 多中心磁耦合需 DFT 验证。".into(),
+            );
+        }
+        if zs.iter().any(|&z| tm(z) && z > 30) {
+            warnings.push(
+                "4d/5d 过渡金属一律按低自旋估计（d⁸ 取平面四方单重态）；需 DFT 验证。".into(),
+            );
+        }
+        if zs.iter().any(|&z| is_lanthanide(z)) {
+            warnings.push(
+                "镧系按 4f 在价层、自由离子 Hund 高自旋估计；4f 冻结在核内的赝势 / ECP \
+                 应手动给 --multiplicity。"
+                    .into(),
             );
         }
         let (n, mult) = reconcile_parity(n, parity_odd, &mut warnings, "氧化态");
@@ -277,10 +333,7 @@ pub fn guess_spin(frame: &Frame) -> SpinGuess {
         };
     }
 
-    // 路径 3：奇偶下限
-    warnings.push(
-        "无法判定氧化态（单质 / 纯共价 / 无明确阴离子），仅给出电子数奇偶下限。".into(),
-    );
+    // 路径 3：奇偶下限（原因已在上面记入 warnings）
     let n = u32::from(parity_odd);
     SpinGuess {
         n_unpaired: n,
@@ -440,6 +493,50 @@ mod tests {
         assert_eq!(hund(10, 5), 0); // d¹⁰
         assert_eq!(hund(3, 3), 3);  // p³
         assert_eq!(hund(4, 3), 2);  // p⁴
+    }
+
+    // 审查 C-D1：镧系 group_number 为 None，原先落进主族分支（CeO₂ 算出 9）
+    #[test]
+    fn test_lanthanide_4f_hund() {
+        // (组成, 未成对数, 多重度)：Ce⁴⁺ f⁰、Ce³⁺ f¹、Gd³⁺ f⁷、Eu²⁺ f⁷、Eu³⁺ f⁶（S=3）
+        let check = |elems: &[(&str, usize)], n: u32, m: u32| {
+            let g = guess_spin(&frame_of(elems));
+            assert_eq!(g.method, SpinMethod::OxidationState, "{elems:?}");
+            assert_eq!((g.n_unpaired, g.multiplicity), (n, m), "{elems:?}");
+            assert!(g.warnings.iter().any(|w| w.contains("4f")), "{elems:?} 应提示 4f-in-core: {:?}", g.warnings);
+        };
+        check(&[("Ce", 1), ("O", 2)], 0, 1);
+        check(&[("Ce", 2), ("O", 3)], 2, 3);
+        check(&[("Gd", 2), ("O", 3)], 14, 15);
+        check(&[("Eu", 1), ("O", 1)], 7, 8);
+        check(&[("Eu", 2), ("O", 3)], 12, 13);
+    }
+
+    #[test]
+    fn test_4d5d_low_spin() {
+        // K₂PtCl₄：Pt²⁺ d⁸ 平面四方 → 0；RuO₂：Ru⁴⁺ d⁴ 低自旋 t₂g⁴ → 2
+        let g = guess_spin(&frame_of(&[("K", 2), ("Pt", 1), ("Cl", 4)]));
+        assert_eq!((g.n_unpaired, g.multiplicity), (0, 1));
+        let g = guess_spin(&frame_of(&[("Ru", 1), ("O", 2)]));
+        assert_eq!((g.n_unpaired, g.multiplicity), (2, 3));
+        assert!(g.warnings.iter().any(|w| w.contains("低自旋")), "{:?}", g.warnings);
+        assert!(!g.warnings.iter().any(|w| w.contains("高自旋") || w.contains("4f")), "{:?}", g.warnings);
+    }
+
+    #[test]
+    fn test_low_spin_table() {
+        let got: Vec<u32> = (0..=10).map(low_spin).collect();
+        assert_eq!(got, [0, 1, 2, 3, 2, 1, 0, 1, 0, 1, 0]);
+    }
+
+    // 混合价凑不平电荷时须说明原因，不能与「非离子型」混为一谈
+    #[test]
+    fn test_unbalanced_mixed_valence_warns() {
+        let g = guess_spin(&frame_of(&[("Fe", 3), ("O", 4)]));
+        assert_eq!(g.method, SpinMethod::Parity);
+        assert!(g.warnings.iter().any(|w| w.contains("凑不平")), "{:?}", g.warnings);
+        let g = guess_spin(&frame_of(&[("Na", 1)]));
+        assert!(g.warnings.iter().any(|w| w.contains("单质")), "{:?}", g.warnings);
     }
 
     #[test]
