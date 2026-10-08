@@ -58,7 +58,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
     // ── Header ────────────────────────────────────────────────────────────────
     // First non-blank line is the comment
     while i < lines.len() && skip(lines[i]) { i += 1; }
-    let comment = lines[i].trim().to_string();
+    // 空文件 / 只有空行时以前 `lines[i]` 越界 panic
+    let comment = lines.get(i).context("empty file: no header comment line")?.trim().to_string();
     i += 1;
 
     // Box bounds
@@ -369,6 +370,14 @@ Atoms # full
                 }
                 assert_eq!(f.atom(k).charge, q[k], "{style} 原子 {k} 电荷");
             }
+        }
+    }
+
+    #[test]
+    fn test_empty_file_is_an_error() {
+        for text in ["", "\n  \n# 只有注释\n"] {
+            let e = parse_lammps_data(text, AtomStyle::Atomic).unwrap_err();
+            assert!(format!("{e:#}").contains("empty file"), "{e:#}");
         }
     }
 
