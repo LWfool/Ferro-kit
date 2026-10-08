@@ -12,7 +12,7 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
-### Reading VASP 6.4.2 element lines; CIF reading and writing
+### Reading VASP 6.4.2 element lines, CIF and PDB
 
 - POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5
   (`Na_pv/6a2f546d`, `Cs/`) were taken verbatim as element names. The element is
@@ -23,6 +23,12 @@ command line alike; regenerate it rather than migrating it.
   already did.
 - A CIF with a block that has no atom sites (`data_global`) failed as a whole;
   such blocks are now skipped.
+- PDB: an element in columns 77–78 written in capitals (`FE`, as RCSB files do)
+  was taken as the element name `FE`; it is now `Fe`. Blank columns 77–78 gave an
+  empty element; the element now comes from the atom name, following the PDB
+  column alignment (` CA ` is carbon, `CA  ` is calcium). An `ATOM`/`HETATM` line
+  with a bad or missing coordinate was dropped silently; it is now an error naming
+  the line. A non-ASCII title no longer crashes the reader.
 - **Writing a frame without a cell to `.cif` is now an error** (write `.xyz` or
   `.extxyz`). It used to produce a block ferro itself could not read back.
 
