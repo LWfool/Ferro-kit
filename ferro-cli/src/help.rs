@@ -130,7 +130,7 @@ Parameters:
   --temperature F     Temperature [K]                                  [298.15]
   --thermostat STR    csvr | nose | langevin | none (NVE)                [csvr]
   --traj-freq INT     Write the trajectory every N steps                  [100]
-  --barostat          NPT with a flexible cell
+  --pressure F        Pressure [bar]; switches to NPT, flexible cell      [NVT]
 
 Output:
   One .inp, the path -o names (job.inp by default). Only frame 0 is used. The

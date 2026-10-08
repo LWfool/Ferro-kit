@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro job -s cp2k`: `--barostat` is replaced by `--pressure`
+
+`--barostat` wrote `PRESSURE 1.01325E+05`, but CP2K reads that keyword in bar:
+the run was set to about 10 GPa, not 1 atm. The flag is gone; `--pressure P` gives
+the pressure in bar and switches MD to NPT with a flexible cell (`--pressure 1.01325`
+is 1 atm). Without it MD stays NVT. Regenerate any NPT input made with
+`--barostat`.
+
 ### `ferro job` auto-spin: lanthanides and 4d/5d metals
 
 The estimated multiplicity changes for compounds of La–Lu and of the 4d/5d

@@ -399,7 +399,7 @@ described in [Spin Estimation](workflow/spin.md).
 | `--temperature` | `298.15` | temperature [K] |
 | `--thermostat` | `csvr` | `csvr`, `nose`, `langevin`, `none` |
 | `--traj-freq` | `100` | trajectory output frequency [steps] |
-| `--barostat` | off | enable an NPT barostat |
+| `--pressure` | none (NVT) | pressure [bar]; giving it switches to NPT with a flexible cell (CP2K `NPT_F`). 1 atm = `1.01325` |
 
 > Basis-set and pseudopotential names are resolved **per element** from a 2829-entry database (PBE / SCAN /
 > all-electron, with a consistent valence-electron count `q`).  `--cp2k-basis` picks the family and the
