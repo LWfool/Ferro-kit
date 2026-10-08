@@ -5,7 +5,7 @@
 
 ## 优先级高
 
-### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1–B-3，其余未修）
+### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；已修 A1–A6、A14、A15、B-1–B-3、C-D1，C-D2 搁置，其余未修）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -35,8 +35,8 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 | ~~B-1~~ **已修**（`bb25ba7`；`check::invertible_cells` 在 vanhove / cluster SDF / cube_jump 入口逐帧查，`calc_cluster_sdf` 改返回 `Result<Option>`。实测 c=0 slab 过全部 13 个 CLI 分析，只有这两个 panic）| `md/vanhove.rs:213`；`map sdf` 经 `cube_sdf.rs:354,400` → `ferro-core/src/cluster.rs:106`；`cube_jump.rs:149` | 奇异胞 `expect("cell is non-singular")` panic。ASE 二维材料约定（c=0、pbc TTF）即触发；gr/msd 等同一文件是「singular 跳过 + 退出码 1」 | c=0 slab extxyz 进 `traj vanhove --dt 1`：退出码 101 | 入口逐帧查可逆，或 `expect` 改 `?` |
 | ~~B-2~~ **已修**（`a5d1be8`；报错措辞改为「must be a finite number …」）| `ferro-analysis/src/check.rs:22 non_negative`、`:28 ordered` | 只有 `positive` 查 `is_finite`，两者放行 `+inf` | `traj sq --q-max inf`：`sq.rs:130` panic（debug；release 回卷成 0 → 只有表头、退出码 0）。子代理另报 `vanhove --r-max inf`、`map sdf --sigma inf` 退出码 134、`--padding inf` 写出 −inf 原点的 cube（主会话未复现） | 一律要求有限 |
 | ~~B-3~~ **已修**（`98b5e97`；**用户否了「取 q→0 极限」**：有限盒子的 S(0) 无物理意义，改为 q-min 必须 > 0；并加 `[inputs]` 的 `q_trunc = 2π/r_max` 与低于它时的告警。查证的行业做法与出处见手册 `sq.md`「The low-q limit」）| `md/sq.rs:167` | q=0 捷径返回 1.0，而公式极限是 $1+4\pi\rho\int r^2(g-1)\,dr$ | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj --q-min 0 --q-max 0.03 --dq 0.01`：q=0 各列 1.000，q=0.01 处 total_xrd −0.45、O-O 0.600 | q=0 用 $\sin(qr)/q \to r$ |
-| C-D1 | `ferro-core/src/spin.rs:200-213` | 镧系 `group_number` 为 None 落进主族分支，算出垃圾未成对数且无告警；CP2K/QE 默认 auto-spin | 萤石 CeO₂ 进 `job -s cp2k`：`MULTIPLICITY 9 / UKS`（应 1）。Ce₂O₃ 6（实 2）、Gd₂O₃ 6（实 14）、EuO 1（实 7） | f 区分支 `n_f = Z−54−ox` 再 `hund(n_f, 7)`；至少回退奇偶下限并告警 |
-| C-D2 | `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
+| ~~C-D1~~ **已修**（`4a34108`；用户要求先查行业做法，结论记在下面「自旋多重度」一节。范围扩到同一函数的 4d/5d：一律低自旋、d⁸ 取平面四方 0；氧化态凑不平单独告警。镧系假定 4f 在价层，加告警）| `ferro-core/src/spin.rs:200-213` | 镧系 `group_number` 为 None 落进主族分支，算出垃圾未成对数且无告警；CP2K/QE 默认 auto-spin | 萤石 CeO₂ 进 `job -s cp2k`：`MULTIPLICITY 9 / UKS`（应 1）。Ce₂O₃ 6（实 2）、Gd₂O₃ 6（实 14）、EuO 1（实 7） | f 区分支 `n_f = Z−54−ox` 再 `hund(n_f, 7)`；至少回退奇偶下限并告警 |
+| C-D2 **搁置**（2026-10-08 用户定：随 Bader 重写一并修，同 S-B / S-C）| `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
 | D-S1 | `ferro-workflow/src/cp2k.rs` `write_motion` 压浴 | `PRESSURE 1.01325E+05 # bar`，CP2K 该关键字单位就是 bar → 约 10 GPa | `job -s cp2k -i examples/30Z70P.cif --task md --barostat` | 1 atm = `1.01325`；或加 `--pressure` |
 | D-S2 | `cp2k.rs` HSE06 分支 | `&HF` 缺 `&INTERACTION_POTENTIAL POTENTIAL_TYPE SHORTRANGE / OMEGA 0.11`，按 COULOMB 全程 25%，得到不存在的泛函且能跑 | `--functional hse06`：无 `INTERACTION_POTENTIAL`；对照 CP2K `tests/QS/regtest-hybrid-3/CH3-hybrid-HSE06-lsd.inp:36-39` | 补段 + 断言测试 |
 | D-S3 | `cp2k.rs` MD 分支 | `--thermostat none`（帮助写 NVE）仍写 `ENSEMBLE NVT`，CP2K 默认恒温器 NOSE | `--task md --thermostat none` → `ENSEMBLE NVT`（`input_cp2k_thermostats.F:234-238`） | 写 `ENSEMBLE NVE`；与 barostat 同开时报错或 NPE |
@@ -476,6 +476,19 @@ $N_\beta = (N-M+1)/2$ 切分，$N+M-1$ 为奇数报「try a different multiplici
    `--auto-spin --smear` 示例因此名不副实。选项：只改手册 / 自动锁 M−1 / 加开关
 4. **多磁性中心按铁磁叠加**：`ion_unpaired` 逐离子取高自旋后直接求和，是**铁磁上限**，
    现有 warning 只说了「单离子高自旋」没说离子间排布
+
+**行业做法**（2026-10-08 调研，修 C-D1 前用户要求查）：没有软件单凭结构可靠给出未成对数 ——
+它取决于配体场（高 / 低自旋）与磁性中心间排布，结构看不出。分层：① 奇偶下限（CP2K 缺省、
+pymatgen `Molecule` 缺省）；② 用户 / 磁矩给定（ASE 写 Gaussian 取 Σ 初始磁矩 + 1；Gaussian、
+ORCA、xtb `--uhf` 都要用户给）；③ 氧化态 + 电子计数（pymatgen `oxi_state_guesses` 按 ICSD
+概率排序、`BVAnalyzer` 按键价和；`get_crystal_field_spin` 只做 d 区，高 / 低自旋与八面体 /
+四面体由**用户指定**）；④ 配位环境判高低自旋（cell2mol 2024，仅 3d 单核，d⁴–d⁸ 才有歧义，
+97–98%）；⑤ 周期体系**不定总自旋**：MP 给偏大初始 MAGMOM（Ce 5、Eu 10）、VASP 缺省
+1 μB/原子且不设 `NUPDOWN`，由 SCF 弛豫；磁序靠枚举 FM / AFM / 亚铁磁再比能量（Horton 2019
+npj Comput Mater，atomate）。MP 的 POTCAR 对 Pr–Lu 多数用 `Ln_3`（4f 在核内）。
+ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非按统计概率（`assign_oxidation_states`
+文档说「调用方给歧义警告」，实际没有调用方给）；共价分子只给奇偶（$O_2$ 报单重态，OpenBabel
+从 xyz 读同样报 1）。第 1、4 条的裁决应参照 ⑤。
 
 **实测线索**：用户曾用网页版 Claude（约 Opus 4.6/4.7）生成过 MnS 夹杂 MnO 的 CP2K
 输入，多重度 500 多，看着异常但 CP2K 跑得很顺、SCF 收敛特别顺利，细节已不可考。
