@@ -8,6 +8,7 @@ use ferro_core::{Atom, Cell, ChargeGrid, Frame};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{ensure, Context, Result};
 use super::util::floats;
+use super::vasp::potcar_symbol;
 
 /// Read a VASP CHGCAR file, returning the structural frame and charge density grid.
 pub fn read_chgcar(path: &Path) -> Result<(Frame, ChargeGrid)> {
@@ -54,7 +55,8 @@ fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
             let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
             (e, c)
         } else {
-            let e: Vec<String> = line5.split_whitespace().map(|s| s.to_string()).collect();
+            // 元素行规则与 POSCAR 相同（含 6.4.2 的 `标签/哈希`），见 vasp.rs
+            let e: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
             let c: Vec<usize> = next("atom counts")?
                 .split_whitespace()
                 .map(|s| s.parse().context("invalid count"))
@@ -68,7 +70,8 @@ fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
     if coord_type.trim().to_lowercase().starts_with('s') {
         coord_type = next("coordinate type after Selective dynamics")?;
     }
-    let is_direct = coord_type.trim().to_lowercase().starts_with('d');
+    // VASP 的规则：首字符 C/c/K/k 为 Cartesian，其余一律 Direct（同 vasp.rs）
+    let is_direct = !coord_type.trim_start().starts_with(['C', 'c', 'K', 'k']);
 
     // Atom positions
     let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
@@ -239,6 +242,18 @@ Direct
         assert_eq!(frame.n_atoms(), 2);
         assert_eq!(frame.atom(0).element, "Fe");
         assert_eq!(frame.atom(1).element, "O");
+    }
+
+    #[test]
+    fn test_element_line_and_coordinate_mode() {
+        // 6.4.2 的 `标签/哈希`；`Fractional` 按 VASP 规则是 Direct（以前只认 d 开头）
+        let text = VASP5_CHGCAR
+            .replace("  Fe  O\n", "  Fe_pv/6a2f546d  O/\n")
+            .replace("Direct\n", "Fractional\n");
+        let (frame, _) = parse_chgcar(&text).unwrap();
+        assert_eq!(frame.atom(0).element, "Fe");
+        assert_eq!(frame.atom(1).element, "O");
+        assert!((frame.atom(1).position.x - 2.0).abs() < 1e-6, "Fractional 应按 Direct 读");
     }
 
     #[test]
