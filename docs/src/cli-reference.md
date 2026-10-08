@@ -594,7 +594,7 @@ ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o
 
 | Flag | Default | Description |
 |---|---|---|
-| `--tau` | (last frame) | lag [frames] |
+| `--tau` | N/2 | lag [frames] |
 | `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
 | `--shift` | 1 | spacing between time origins [frames] |
 | `--r-max` | 10.0 | maximum displacement [Å] |

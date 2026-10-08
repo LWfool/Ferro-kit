@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `traj vanhove`: `--tau` defaults to half the trajectory
+
+Without `--tau`, the lag was the last frame, so frame 0 was the only time origin. It is
+now $N/2$ frames ($N/2$ origins with the default `--shift 1`), as `--max-lag` in msd /
+vacf / rotcorr / bondlife and `gmx velacc -acflen`. Runs without `--tau` give different
+numbers; to reproduce an old product pass `--tau` = frames − 1. Runs with `--tau` are
+unchanged.
+
 ### Reading VASP 6.4.2 element lines, CIF, PDB, CP2K and QE input
 
 - POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5

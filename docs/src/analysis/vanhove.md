@@ -48,7 +48,7 @@ Follows code1/vanhove.c (`EstimateVanHove`):
 
 ```rust
 pub struct VanHoveParams {
-    pub tau: Option<usize>,            // lag [frames]; None = n_frames - 1
+    pub tau: Option<usize>,            // lag [frames]; None = n_frames / 2
     pub shift: usize,                  // origin spacing [frames]; default: 1
     pub dt: f64,                       // time step [fs]; default: 1.0
     pub r_min: f64,                    // default: 0.0 Å

@@ -24,7 +24,7 @@ use ferro_core::{Table, Trajectory};
 /// Parameters for van Hove self-correlation function calculation.
 #[derive(Debug, Clone)]
 pub struct VanHoveParams {
-    /// Time lag in frames (`None` = `n_frames − 1`)
+    /// Time lag in frames (`None` = `n_frames / 2`)
     pub tau: Option<usize>,
     /// Time shift between origins in frames (default: 1)
     pub shift: usize,
@@ -172,8 +172,9 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     }
     let n_atoms = atom_indices.len();
 
-    // tau 不超过 n_steps-1；None 时使用全轨迹长度
-    let tau = params.tau.unwrap_or(n_steps - 1).min(n_steps - 1).max(1);
+    // tau 不超过 n_steps-1；None 时取半条轨迹（同 correlate.rs 的 max_lag 默认）——
+    // 取 n_steps-1 只剩 1 个原点
+    let tau = params.tau.unwrap_or(n_steps / 2).min(n_steps - 1).max(1);
     let shift = params.shift.max(1);
 
     // 收集元素列表（用于输出文件头）
@@ -491,6 +492,19 @@ mod tests {
         let res = calc_vanhove(&traj, &params).unwrap();
         // take_while(p+3 < 10) → p ∈ {0,1,2,3,4,5,6} → 7 origins
         assert_eq!(res.n_origins, 7);
+    }
+
+    #[test]
+    fn test_vanhove_default_tau_is_half_trajectory() {
+        // 不给 tau 时取 n/2（同 correlate.rs 的 max_lag 默认与 gmx 的 -acflen），
+        // 而不是 n-1 —— 后者只剩 1 个原点
+        let traj = make_static_traj(10);
+        let res = calc_vanhove(&traj, &VanHoveParams::default()).unwrap();
+        assert_eq!(res.tau_frames, 5, "默认 tau 应为 10/2");
+        assert_eq!(res.n_origins, 5, "p ∈ {{0..4}} 满足 p+5 < 10");
+        // 两帧时 n/2 = 1，仍有 1 个原点
+        let res = calc_vanhove(&make_static_traj(2), &VanHoveParams::default()).unwrap();
+        assert_eq!((res.tau_frames, res.n_origins), (1, 1));
     }
 
     #[test]

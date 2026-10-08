@@ -641,7 +641,7 @@ pub fn print_vanhove() {
   written as the radial density P(r) = 4πr²·Gs [1/Å], ∫P dr = 1.
 
 Parameters:
-  --tau      INT        Lag time in frames              default: half trajectory
+  --tau      INT        Lag time in frames              default: N/2
   --dt       FLOAT      Time between frames [fs]       (required)
   --shift    INT        Time-origin stride              default: 1
   --r-max    FLOAT      Max displacement [Å]           default: 10.0
