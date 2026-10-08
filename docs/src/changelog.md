@@ -20,6 +20,12 @@ vacf / rotcorr / bondlife and `gmx velacc -acflen`. Runs without `--tau` give di
 numbers; to reproduce an old product pass `--tau` = frames − 1. Runs with `--tau` are
 unchanged.
 
+### `traj vanhove` / `traj angle`: `[inputs]` frames and atoms
+
+`[inputs]` listed the number of `r` bins as `frames` (vanhove) and the number of
+element types as `atoms` (angle). They are now the frame and atom counts that
+`ferro info` reports. Data columns are unchanged.
+
 ### Reading VASP 6.4.2 element lines, CIF, PDB, CP2K and QE input
 
 - POSCAR / CONTCAR / CHGCAR element lines written by VASP 6.4.2 built with HDF5
