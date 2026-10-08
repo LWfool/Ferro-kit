@@ -576,6 +576,12 @@ impl Cp2kJobBuilder {
                 writeln!(out, "      &END XC_FUNCTIONAL")?;
                 writeln!(out, "      &HF")?;
                 writeln!(out, "        FRACTION 0.25")?;
+                // HSE 的 25% 精确交换只取短程（erfc(ωr)/r），与 XWPBE 的 ω 同值；
+                // 缺这段 CP2K 按 COULOMB 全程取，成了不存在的泛函（照 regtest-hybrid-3/CH3-hybrid-HSE06-lsd.inp）
+                writeln!(out, "        &INTERACTION_POTENTIAL")?;
+                writeln!(out, "          POTENTIAL_TYPE SHORTRANGE")?;
+                writeln!(out, "          OMEGA 0.11")?;
+                writeln!(out, "        &END INTERACTION_POTENTIAL")?;
                 writeln!(out, "        &SCREENING")?;
                 writeln!(out, "          EPS_SCHWARZ 1E-7")?;
                 writeln!(out, "          SCREEN_ON_INITIAL_P F")?;
@@ -692,7 +698,20 @@ impl Cp2kJobBuilder {
             }
             Cp2kTask::MD => {
                 let md = &self.md;
-                let ensemble = if md.pressure.is_some() { "NPT_F" } else { "NVT" };
+                // CP2K 的 Langevin 是独立系综（MD%LANGEVIN），不进 THERMOSTAT%TYPE
+                // （只认 NOSE / CSVR / GLE / AD_LANGEVIN），也不带压浴；不恒温即 NVE / NPE
+                let npt = md.pressure.is_some();
+                let ensemble = match (&md.thermostat, npt) {
+                    (Cp2kThermostat::Langevin, true) => bail!(
+                        "--thermostat langevin cannot be combined with --pressure: \
+                         CP2K's LANGEVIN ensemble has no barostat (use csvr or nose)"
+                    ),
+                    (Cp2kThermostat::Langevin, false) => "LANGEVIN",
+                    (Cp2kThermostat::None, false) => "NVE",
+                    (Cp2kThermostat::None, true) => "NPE_F",
+                    (_, false) => "NVT",
+                    (_, true) => "NPT_F",
+                };
                 writeln!(out, "&MOTION")?;
                 writeln!(out, "  &MD")?;
                 writeln!(out, "    ENSEMBLE {ensemble}")?;
@@ -704,7 +723,7 @@ impl Cp2kJobBuilder {
                         writeln!(out, "    &THERMOSTAT")?;
                         writeln!(out, "      TYPE CSVR")?;
                         writeln!(out, "      &CSVR")?;
-                        writeln!(out, "        TIMECON_CSVR 100 # fs")?;
+                        writeln!(out, "        TIMECON 100 # fs")?;
                         writeln!(out, "      &END CSVR")?;
                         writeln!(out, "    &END THERMOSTAT")?;
                     }
@@ -717,12 +736,9 @@ impl Cp2kJobBuilder {
                         writeln!(out, "    &END THERMOSTAT")?;
                     }
                     Cp2kThermostat::Langevin => {
-                        writeln!(out, "    &THERMOSTAT")?;
-                        writeln!(out, "      TYPE LANGEVIN")?;
-                        writeln!(out, "      &LANGEVIN")?;
-                        writeln!(out, "        GAMMA 0.01 # 1/fs")?;
-                        writeln!(out, "      &END LANGEVIN")?;
-                        writeln!(out, "    &END THERMOSTAT")?;
+                        writeln!(out, "    &LANGEVIN")?;
+                        writeln!(out, "      GAMMA 0.01 # 1/fs")?;
+                        writeln!(out, "    &END LANGEVIN")?;
                     }
                     Cp2kThermostat::None => {}
                 }
@@ -948,6 +964,55 @@ mod tests {
 
         b.md.pressure = Some(f64::INFINITY);
         assert!(b.build().is_err(), "非有限压强应报错");
+    }
+
+    // 审查 D-S3：--thermostat none 原先仍写 NVT（CP2K 缺省 NOSE 恒温）；
+    // langevin 原先写进 THERMOSTAT%TYPE，CP2K 不认；CSVR 的关键字是 TIMECON 不是 TIMECON_CSVR
+    #[test]
+    fn test_md_ensemble_table() {
+        let build = |t: Cp2kThermostat, p: Option<f64>| {
+            let mut b = Cp2kJobBuilder::new(cell_frame(&[("Si", 2)]));
+            b.task = Cp2kTask::MD;
+            b.auto_spin = false;
+            b.md.thermostat = t;
+            b.md.pressure = p;
+            b.build()
+        };
+        let cases = [
+            (Cp2kThermostat::CSVR, None, "NVT", "TYPE CSVR"),
+            (Cp2kThermostat::CSVR, Some(1.0), "NPT_F", "TYPE CSVR"),
+            (Cp2kThermostat::NoseHoover, None, "NVT", "TYPE NOSE"),
+            (Cp2kThermostat::NoseHoover, Some(1.0), "NPT_F", "TYPE NOSE"),
+            (Cp2kThermostat::None, None, "NVE", ""),
+            (Cp2kThermostat::None, Some(1.0), "NPE_F", ""),
+            (Cp2kThermostat::Langevin, None, "LANGEVIN", ""),
+        ];
+        for (t, p, ens, ty) in cases {
+            let label = format!("{t:?} {p:?}");
+            let inp = build(t, p).unwrap();
+            assert!(inp.contains(&format!("    ENSEMBLE {ens}\n")), "{label}: 应为 {ens}");
+            assert_eq!(inp.contains("&THERMOSTAT"), !ty.is_empty(), "{label}: &THERMOSTAT 有无");
+            if !ty.is_empty() {
+                assert!(inp.contains(ty), "{label}");
+            }
+            assert_eq!(inp.contains("    &LANGEVIN\n      GAMMA"), ens == "LANGEVIN", "{label}");
+            assert!(!inp.contains("TIMECON_CSVR"), "{label}");
+        }
+        assert!(build(Cp2kThermostat::CSVR, None).unwrap().contains("        TIMECON 100 # fs"));
+        assert!(build(Cp2kThermostat::Langevin, Some(1.0)).is_err(), "Langevin 系综不带压浴，应报错");
+    }
+
+    // 审查 D-S2：HSE06 的 HF 须是短程作用势，ω 与 XWPBE 一致
+    #[test]
+    fn test_hse06_shortrange_hf() {
+        let mut b = Cp2kJobBuilder::new(water_frame());
+        b.pbc = Cp2kPbc::None;
+        b.functional = Cp2kFunctional::HSE06;
+        let inp = b.build().unwrap();
+        let hf = &inp[inp.find("      &HF").unwrap()..inp.find("      &END HF").unwrap()];
+        assert!(hf.contains("POTENTIAL_TYPE SHORTRANGE"), "{hf}");
+        assert!(hf.contains("OMEGA 0.11"), "{hf}");
+        assert!(inp.contains("&XWPBE") && inp.matches("OMEGA 0.11").count() == 2, "XWPBE 与 HF 的 ω 应同为 0.11");
     }
 
     #[test]
