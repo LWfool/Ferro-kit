@@ -172,7 +172,9 @@ pub struct GrResult {
     /// Note this is the average of the per-frame densities, **not** `N/⟨V⟩` — the two
     /// differ by an O(σ_V²/⟨V⟩²) term whenever the box fluctuates.
     pub rho: f64,
-    /// Parameters actually used (`r_max` reflects the applied clamp)
+    /// `r_max` after the minimum-image clamp: the range actually covered, per input
+    pub r_max_used: f64,
+    /// Parameters as requested (`r_max` is the request; see `r_max_used`)
     pub params: GrParams,
 }
 
@@ -414,7 +416,8 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         avg_volume,
         volume_std,
         rho,
-        params: GrParams { r_max, ..params.clone() },
+        r_max_used: r_max,
+        params: params.clone(),
     })
 }
 
@@ -844,12 +847,15 @@ mod tests {
     }
 
     #[test]
-    fn test_meta_lines_report_clamped_rmax_and_composition() {
+    fn test_meta_lines_report_requested_rmax_and_composition() {
+        // 9 Å 立方胞 → 截断到 4.5；头部是批内共享的请求值，截断值逐文件进 [inputs]
+        // （审查 B-7：旧代码头部写截断值却标 requested，第一个文件的值冒充全批）
         let traj = Trajectory::from_frame(make_o_si_crystal(3));
-        let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
+        let params = GrParams { r_min: 0.1, r_max: 10.0, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
+        assert!(res.r_max_used < 10.0, "该胞应触发截断");
         let meta = res.meta_lines().join("\n");
-        assert!(meta.contains("r_max"));
+        assert!(meta.contains("r_max   = 10 Ang (requested"), "头部应写请求值 10：{meta}");
         assert!(meta.contains("clamped per input"), "r_max 是逐文件 clamp 的,头里要说清");
         assert!(!meta.contains("Si:"), "逐文件的组成不能混进共享参数块");
         assert!(res.composition().contains("Si:"), "组成走 composition()");
@@ -880,7 +886,8 @@ mod tests {
         let res = calc_gr(&traj, &params).unwrap();
 
         assert!(res.r.last().copied().unwrap() <= 3.0 + 1e-9);
-        assert!(res.params.r_max <= 3.0 + 1e-9);
+        assert!(res.r_max_used <= 3.0 + 1e-9);
+        assert_eq!(res.params.r_max, 10.0, "params 保留请求值，截断值走 r_max_used");
     }
 
     #[test]
@@ -898,9 +905,9 @@ mod tests {
 
         assert!(mic < 5.0, "sanity: skewed cell spacing/2 = {mic:.4} should be < min(L)/2 = 5");
         assert!(
-            (res.params.r_max - mic).abs() < 1e-9,
+            (res.r_max_used - mic).abs() < 1e-9,
             "r_max clamped to {:.6}, expected interplanar bound {mic:.6}",
-            res.params.r_max
+            res.r_max_used
         );
     }
 
@@ -909,7 +916,7 @@ mod tests {
         let traj = Trajectory::from_frame(make_sc_fe(3));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
-        assert!((res.params.r_max - 3.9).abs() < 1e-12);
+        assert!((res.r_max_used - 3.9).abs() < 1e-12);
     }
 
     #[test]
