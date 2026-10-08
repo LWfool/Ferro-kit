@@ -303,6 +303,10 @@ fn export_labelled(
 
 /// Splits `--Former-Ligand=cutoff` arguments out of argv; the rest goes to clap.
 pub fn split_pair_args(all: &[String]) -> (Vec<String>, Vec<String>) {
+    // 只有 net 收元素对；别的子命令原样交给 clap，写错了由它报 unexpected argument
+    if all.get(1).map(String::as_str) != Some("net") {
+        return (Vec::new(), all.to_vec());
+    }
     let mut pairs = Vec::new();
     let mut clap  = Vec::new();
     for arg in all {
@@ -448,7 +452,10 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option
         } else {
             let c: f64 = cutoff_str.parse()
                 .map_err(|_| anyhow!("Invalid cutoff value in '{arg}' (a number or auto)"))?;
-            if c <= 0.0 { bail!("Cutoff must be positive, got {c} in '{arg}'"); }
+            // NaN 与 0 比较为假，`c <= 0.0` 拦不住它
+            if !(c.is_finite() && c > 0.0) {
+                bail!("Cutoff must be a finite positive number, got {c} in '{arg}'");
+            }
             Some(c)
         };
         map.insert((former.to_string(), ligand.to_string()), cutoff);
@@ -516,6 +523,26 @@ mod tests {
         ]));
         assert_eq!(pairs, args(&["--P-O=2.4", "--Zn-O=2.6"]));
         assert_eq!(rest, args(&["ferro", "net", "-i", "a.dump", "--modifier", "Zn"]));
+    }
+
+    #[test]
+    fn test_pair_args_are_only_stripped_for_net() {
+        // 审查 D-M16：对所有子命令都剥离时，`traj gr --P-O=2.3` 被静默吞掉
+        let argv = args(&["ferro", "traj", "gr", "-i", "a.dump", "--P-O=2.3"]);
+        let (pairs, rest) = split_pair_args(&argv);
+        assert!(pairs.is_empty(), "非 net 子命令不应剥离元素对参数");
+        assert_eq!(rest, argv, "原样交给 clap，由它报 unexpected argument");
+    }
+
+    #[test]
+    fn test_non_finite_cutoffs_are_rejected() {
+        // 审查 D-M3：`--P-O=nan` 曾通过（nan <= 0 为假），P 的 cn=1314、全 Q0
+        for v in ["nan", "inf", "-inf", "0", "-1"] {
+            let arg = format!("--P-O={v}");
+            let err = parse_pairs(&args(&[&arg])).expect_err(&arg).to_string();
+            assert!(err.contains("finite positive"), "{arg}：{err}");
+        }
+        assert!(parse_pairs(&args(&["--P-O=2.3", "--Al-O=auto"])).is_ok());
     }
 
     #[test]

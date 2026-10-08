@@ -12,6 +12,13 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Element-pair cutoffs: `nan` rejected, and only `ferro net` takes them
+
+`--P-O=nan` was accepted and every pair counted as bonded; it is now an error, as
+`inf` and non-positive values are. A `--X-Y=value` given to any other subcommand
+(`ferro traj gr --P-O=2.3`) was dropped silently; clap now reports it as an
+unexpected argument.
+
 ### `dataset filter`: frames with NaN forces or stresses
 
 A frame whose forces or stress contain NaN passed the `-f` / `-s` criteria and went

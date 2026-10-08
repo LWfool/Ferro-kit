@@ -87,7 +87,7 @@ network / dft / ml / core（C）：
 | D-M1 | `ferro-python/src/analysis.rs msd` | 仍默认 `dt=1.0`、不做 `check_frame_spacing`，与 CLI 已改必填的口径漂开 | `dt` 必填；间隔检查下沉共用 |
 | D-M2 | `ferro-structure/src/merge.rs` | ① 只给 B 居中，A 窄时不居中（与文档不符）；② B 沿自身单位矢量平移、胞用 A 的，倾角不同时剪切错位；③ gap 沿矢量量，与 `add_vacuum` 的垂直间隙口径不一 | 两块都按新胞分数坐标放；gap 按面间距 |
 | D-M17 | `ferro-structure::find_clusters` → `classify_frame` → `network_type.rs:353,394`（2026-10-07 修 B-1 时发现） | 奇异胞（c=0 slab）在 `expect("cell must be non-singular")` panic。CLI `net` 在前面已拦，Python 绑定直调仍会 panic；`dft/chg_sdf` 经 `process_frame` 同路（cube 文件的胞，推断难触发） | 入口查可逆（同 `check::invertible_cells`；它是 ferro-analysis 私有，structure 那边要么自查要么下沉 core） |
-| D-M3 | `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |
+| ~~D-M3~~ **已修**（nan / inf / ≤0 一律报错）| `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |
 | D-M4 | `cp2k.rs write_force_eval` | NPT 不写 `STRESS_TENSOR`，CP2K 启动报错（`md_run.F:331-344`） | NPT 时写 `ANALYTICAL` |
 | ~~D-M5~~ **已修**（`bd21bc2`，随 D-S3 一并改）| `cp2k.rs` Langevin | `&THERMOSTAT TYPE LANGEVIN` 非法（合法值 NOSE/CSVR/GLE/AD_LANGEVIN）；CP2K 是 `ENSEMBLE LANGEVIN` + `MD/&LANGEVIN` | 按 CP2K 写法 |
 | D-M6 | `cp2k.rs --smear` | 不写 `ADDED_MOS`，CP2K 报错（`qs_environment.F:2247`）；`--scf ot` 时 smear 静默丢。手册 `spin.md:76` 示例正中 | 写 `ADDED_MOS`；OT + smear 报错 |
@@ -99,7 +99,7 @@ network / dft / ml / core（C）：
 | D-M12 | `cmd/job.rs` | 与所选软件无关的参数静默忽略（QE 不读 `--cutoff`/`--md-timestep`/`--thermostat`/`--pbc`）；`--task` 等枚举值读完输入、打印 auto-spin 之后才校验 | clap `ValueEnum`；不适用参数报错 |
 | D-M13 | `batch.rs out_path`（及 bader、chg-sdf 的 `-s`） | `-s` 不校验字符：`-s 'a/../../escaped'` 写到 `-o` 之外 | 复用 `label_char_ok`，读文件前校验 |
 | D-M15 | `cmd/convert.rs run` | `--start/--end` 校验前就建 `-o` 目录；写侧格式读完整条输入后才查 | 先查参数与格式再建目录 |
-| D-M16 | `main.rs split_pair_args` | 对所有子命令剥离 `--Xx-Yy=v`，`traj gr --P-O=2.3` 静默吞掉 | 只在 `argv[1]=="net"` 时剥离 |
+| ~~D-M16~~ **已修**（判据放进 `split_pair_args` 本身，有测试）| `main.rs split_pair_args` | 对所有子命令剥离 `--Xx-Yy=v`，`traj gr --P-O=2.3` 静默吞掉 | 只在 `argv[1]=="net"` 时剥离 |
 
 **轻**
 
