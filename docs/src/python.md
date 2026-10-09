@@ -93,7 +93,7 @@ Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`, `in`/`qe`,
 |---|---|
 | `supercell(traj, nx, ny, nz)` | Per-frame supercell → new `Trajectory` |
 | `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along the `"x"`/`"y"`/`"z"` lattice vector; `thickness` is the **perpendicular** gap (a tilted axis is lengthened by thickness / cos θ, as in ASE).  Atoms are not moved or centred |
-| `merge(a, b, axis, gap)` | Merge first frames of two trajectories |
+| `merge(a, b, axis, gap)` | Stack the first frames of two trajectories along `axis`: neither is strained, both are centred in the interface plane, `gap` is measured along the interface normal (as in `add_vacuum`); the interfaces must be parallel |
 
 ## Analysis
 

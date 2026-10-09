@@ -12,6 +12,21 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Python `merge`: placement fixed for unequal and tilted cells (breaking)
+
+- The narrower block is now centred in the interface plane whichever it is;
+  before, only the second one was.
+- The second block used to be shifted along its own lattice vectors inside a
+  cell built from the first one's. When the two tilts differed, its bottom face
+  missed the first block's top face. It now sits exactly `gap` above it.
+- `gap` is measured along the interface normal, as in `add_vacuum`. Along a
+  tilted join axis it used to be measured along the lattice vector, so the real
+  gap came out smaller.
+- Interfaces that are not parallel (more than 1° apart) are now an error, and so
+  is a non-finite `gap`.
+
+Orthogonal cells of equal in-plane size give the same result as before.
+
 ### Python `msd`: `dt` is required (breaking)
 
 `ferro.msd(traj)` used to assume 1 fs between frames and skip the frame-spacing
