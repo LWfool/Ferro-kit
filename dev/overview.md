@@ -421,6 +421,8 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 
 ## 2026-10-03 – 10-09 的一批（版本号 **0.3.5**，未发版）
 
+2026-10-09 打开发版 tag `v0.3.5-alpha`（中途锚点，不是发版点）。
+
 2026-10-03 四路审查（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码）严重与中两级的
 修复，39 条，逐条见 `plan.md` 归档。按以往惯例（`v0.3.2`、`v0.3.4`）走 patch 位，尽管含
 破坏性改动。用户可见的变化逐条写在 changelog 的 `Unreleased`。破坏性的：
