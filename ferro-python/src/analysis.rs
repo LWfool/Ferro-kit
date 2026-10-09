@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use ferro_analysis::md::check_frame_spacing;
 use ferro_analysis::{calc_gr, calc_msd, GrParams, GroupBy, MsdParams};
 use pyo3::prelude::*;
 
@@ -94,14 +95,18 @@ fn run_gr(
 ///
 /// 返回字典：`"time"` \[fs\]、`"msd"`（总）、`"msd_x"/"msd_y"/"msd_z"`（笛卡尔分量，
 /// 三者之和等于总量）。`max_lag` 默认取帧数的一半。
+///
+/// `dt` = 存储帧间隔 \[fs\]（MD 步长 × dump 间隔），必填，与 CLI 的 `--dt` 同一口径：
+/// 默认值猜错时整条时间轴静默缩放。带步号的轨迹先查帧等间隔、不重复。
 #[pyfunction]
-#[pyo3(signature = (traj, dt=1.0, max_lag=None, elements=None))]
+#[pyo3(signature = (traj, dt, max_lag=None, elements=None))]
 fn msd(
     traj: &PyTrajectory,
     dt: f64,
     max_lag: Option<usize>,
     elements: Option<Vec<String>>,
 ) -> PyResult<HashMap<String, Vec<f64>>> {
+    check_frame_spacing(&traj.inner).map_err(pyerr)?;
     let params = MsdParams { max_lag, dt, elements, fit_range: None };
     let res = calc_msd(&traj.inner, &params).map_err(pyerr)?;
 

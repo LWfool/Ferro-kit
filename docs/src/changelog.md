@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Python `msd`: `dt` is required (breaking)
+
+`ferro.msd(traj)` used to assume 1 fs between frames and skip the frame-spacing
+check that `traj msd` makes. `dt` now has no default, and a trajectory with
+repeated or unevenly spaced steps is rejected, as on the command line.
+
 ### `dataset filter`: per-system statistics move to `[inputs]` (breaking)
 
 With several systems, the stacked report kept only the first system's header, so
