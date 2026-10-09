@@ -46,6 +46,7 @@
 //! described by their coordination number instead.
 
 use crate::data::qn_elements;
+use crate::error::Result;
 use crate::{Cell, Frame};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -269,8 +270,10 @@ pub struct FrameTypes {
 }
 
 /// Classify every atom in one frame.  Returns one type per atom (same order as `frame.atoms`).
-pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Vec<AtomType> {
-    classify_frame_detailed(frame, cell, params).types
+///
+/// `Err` when the cell matrix is singular (e.g. a slab written with `c = 0`).
+pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Result<Vec<AtomType>> {
+    Ok(classify_frame_detailed(frame, cell, params)?.types)
 }
 
 /// [`classify_frame`] plus the ligand→former adjacency, for pairwise statistics.
@@ -278,7 +281,10 @@ pub fn classify_frame_detailed(
     frame: &Frame,
     cell: &Cell,
     params: &TypeParams,
-) -> FrameTypes {
+) -> Result<FrameTypes> {
+    // 下面每一对原子都走最小镜像，奇异胞在那里求不了逆；入口查一次
+    cell.interplanar_spacings()?;
+
     // 按元素建立索引
     let elem_map = build_elem_map(frame);
 
@@ -306,7 +312,7 @@ pub fn classify_frame_detailed(
     for (idx, t) in classify_modifiers_inner(frame, cell, params, &elem_map) {
         types[idx] = t;
     }
-    FrameTypes { types, ligand_formers }
+    Ok(FrameTypes { types, ligand_formers })
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -350,7 +356,7 @@ fn build_nf_map(
                 for &fa_idx in former_idxs {
                     if fa_idx == la_idx { continue; }
                     let diff = cell.minimum_image(frame.atoms[fa_idx].position - la_pos)
-                        .expect("cell must be non-singular");
+                        .expect("入口 classify_frame_detailed 已查奇异胞");
                     if diff.norm_squared() < c2 {
                         nf_map.entry(la_idx).or_default().push((former.clone(), fa_idx));
                     }
@@ -391,7 +397,7 @@ fn classify_formers(
                 for &la_idx in ligand_idxs {
                     if la_idx == fa_idx { continue; }
                     let diff = cell.minimum_image(frame.atoms[la_idx].position - fa_pos)
-                        .expect("cell must be non-singular");
+                        .expect("入口 classify_frame_detailed 已查奇异胞");
                     if diff.norm_squared() >= c2 { continue; }
                     cn += 1;
 
@@ -450,7 +456,7 @@ fn classify_modifiers_inner(
                 for &la_idx in ligand_idxs {
                     if la_idx == ma_idx { continue; }
                     let diff = cell.minimum_image(frame.atoms[la_idx].position - ma_pos)
-                        .expect("cell must be non-singular");
+                        .expect("入口 classify_frame_detailed 已查奇异胞");
                     if diff.norm_squared() < c2 { cn += 1; }
                 }
             }
@@ -614,6 +620,15 @@ mod tests {
         TypeParams::new(c, CutoffTable::new())
     }
 
+    /// 审查 D-M17：奇异胞（c=0 的 slab）曾在最小镜像处 panic，公开函数应报错
+    #[test]
+    fn test_singular_cell_is_an_error_not_a_panic() {
+        let (frame, _) = frame_of(&[("P", 0.0, 0.0, 0.0), ("O", 1.5, 0.0, 0.0)]);
+        let flat = Cell::from_matrix(nalgebra::Matrix3::from_diagonal(&nalgebra::Vector3::new(10.0, 10.0, 0.0)));
+        let err = classify_frame(&frame, &flat, &params_po_alo()).unwrap_err().to_string();
+        assert!(err.contains("singular"), "实际 {err}");
+    }
+
     #[test]
     fn test_non_qn_former_labels_by_coordination_not_bridging() {
         // 盲区回归:参考轨迹里的 Al 恰好不带非桥氧,于是 bridging == cn,
@@ -627,7 +642,7 @@ mod tests {
             ("P",  3.0, 0.0, 0.0),
             ("O",  0.0, 1.5, 0.0),   // 只连 Al 的非桥氧
         ]);
-        let types = classify_frame(&frame, &cell, &params_po_alo());
+        let types = classify_frame(&frame, &cell, &params_po_alo()).unwrap();
 
         let AtomType::Former { qn, n_bo, cn, .. } = &types[0] else {
             panic!("Al 应被分类为形成子, got {:?}", types[0])
@@ -664,7 +679,7 @@ mod tests {
             ("O",  0.0, 1.5, 0.0),
         ]);
         let params = params_po_alo().with_qn_elements(["Al".to_string()]);
-        let types = classify_frame(&frame, &cell, &params);
+        let types = classify_frame(&frame, &cell, &params).unwrap();
 
         // Al 现在报 Qn = 同元素连接数。这个构型里没有 Al-O-Al,故为 0 ——
         // 与它的配位数 2 不同,正好证明约定确实切换了

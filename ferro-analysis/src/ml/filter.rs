@@ -251,7 +251,8 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
                     min_oo = d;
                 }
                 if let Some(tp) = &type_params {
-                    let n = count_with_coordination(f, cell, tp, "Al", 6);
+                    let n = count_with_coordination(f, cell, tp, "Al", 6)
+                        .expect("入口 check::within_minimum_image 已查奇异胞");
                     // 「保留含 Al6 的帧」与「删除不含 Al6 的帧」是同一件事，
                     // 表达成后者，判据语义就和其余三条一致，交叉表也不必分裂
                     if n == 0 {

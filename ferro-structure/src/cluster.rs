@@ -35,10 +35,10 @@ impl ClusterResult {
 /// Two former atoms are in the same cluster when they share at least one
 /// bridging oxygen (a ligand atom bonded to ≥2 formers).
 ///
-/// Returns `None` if `frame.cell` is missing.
+/// Returns `None` if `frame.cell` is missing or singular (e.g. a slab with `c = 0`).
 pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult> {
     let cell = frame.cell.as_ref()?;
-    let types = classify_frame(frame, cell, params);
+    let types = classify_frame(frame, cell, params).ok()?;
 
     // 1. 找到所有形成子原子的索引
     let formers = params.formers();
@@ -81,7 +81,7 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
             for &fa_idx in fa_idxs {
                 if fa_idx == la_idx { continue; }
                 let diff = cell.minimum_image(frame.atoms[fa_idx].position - la_pos)
-                    .expect("cell must be non-singular");
+                    .expect("classify_frame 已查奇异胞");
                 if diff.norm_squared() < c2 {
                     if let Some(&li) = local.get(&fa_idx) {
                         nf_locals.push(li);
@@ -126,6 +126,15 @@ mod tests {
     fn atom(elem: &str, x: f64, y: f64, z: f64) -> Atom {
         Atom { element: elem.to_string(), position: Vector3::new(x, y, z),
                label: None, mass: None, magmom: None, charge: None }
+    }
+
+    /// 审查 D-M17：奇异胞（c=0 的 slab）曾在 classify_frame 里 panic
+    #[test]
+    fn test_singular_cell_gives_none() {
+        let atoms = vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)];
+        let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 0.0)));
+        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        assert!(find_clusters(&frame, &make_params(2.3)).is_none());
     }
 
     /// 两个 P 原子共享一个桥氧 → 同一团簇

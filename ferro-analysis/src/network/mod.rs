@@ -707,7 +707,8 @@ fn compute_frame(
     cell: &ferro_core::Cell,
     params: &TypeParams,
 ) -> Option<FrameData> {
-    let ft = classify_frame_detailed(frame, cell, params);
+    let ft = classify_frame_detailed(frame, cell, params)
+        .expect("入口 check::within_minimum_image 已查奇异胞");
     let types = &ft.types;
 
     let mut bridge: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();

@@ -251,7 +251,7 @@ fn export_labelled(
     fmt: ExportFormat,
     units: Option<LammpsUnits>,
 ) -> Result<()> {
-    let per_frame = classify_trajectory(traj, params);
+    let per_frame = classify_trajectory(traj, params)?;
     if per_frame.len() != traj.frames.len() {
         bail!(
             "cannot export: {} of {} frames have no cell",

@@ -36,7 +36,7 @@ pub fn cutoff_scan(
     target_cn: u32,
     rcuts: &[f64],
     max_frames: usize,
-) -> Vec<CutoffScan> {
+) -> ferro_core::Result<Vec<CutoffScan>> {
     let n = traj.n_frames();
     let step = (n / max_frames.max(1)).max(1);
     let sampled: Vec<usize> = (0..n).step_by(step).collect();
@@ -52,7 +52,7 @@ pub fn cutoff_scan(
             for &i in &sampled {
                 let f = &traj.frames[i];
                 let Some(cell) = f.cell.as_ref() else { continue };
-                let n_target: usize = coordination_histogram(f, cell, &params, elem)
+                let n_target: usize = coordination_histogram(f, cell, &params, elem)?
                     .into_iter()
                     .filter(|(cn, _)| *cn == target_cn)
                     .map(|(_, c)| c)
@@ -63,11 +63,11 @@ pub fn cutoff_scan(
                 total += n_target;
             }
             let m = sampled.len().max(1) as f64;
-            CutoffScan {
+            Ok(CutoffScan {
                 rcut,
                 frame_fraction: hit as f64 / m,
                 per_frame: total as f64 / m,
-            }
+            })
         })
         .collect()
 }
@@ -77,15 +77,15 @@ pub fn pooled_coordination(
     traj: &Trajectory,
     params: &TypeParams,
     elem: &str,
-) -> Vec<(u32, usize)> {
+) -> ferro_core::Result<Vec<(u32, usize)>> {
     let mut hist: BTreeMap<u32, usize> = BTreeMap::new();
     for f in &traj.frames {
         let Some(cell) = f.cell.as_ref() else { continue };
-        for (cn, n) in coordination_histogram(f, cell, params, elem) {
+        for (cn, n) in coordination_histogram(f, cell, params, elem)? {
             *hist.entry(cn).or_default() += n;
         }
     }
-    hist.into_iter().collect()
+    Ok(hist.into_iter().collect())
 }
 
 /// `[min, p1, p50, p99, max, mean]` over the finite values; `None` when there are none.
