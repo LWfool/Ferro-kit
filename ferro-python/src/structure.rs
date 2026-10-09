@@ -33,6 +33,8 @@ fn add_vacuum_layer(
 }
 
 /// 沿 `axis` 以 `gap` Å 间隙合并两个体系的首帧，返回单帧轨迹。
+///
+/// 两块都不拉伸、只整体平移；`gap` 沿界面法向量（同 `add_vacuum`），细节见 `merge_frames`。
 #[pyfunction]
 fn merge(
     a: &PyTrajectory,
