@@ -677,6 +677,16 @@ f64。数组命名与形状在实现时定。
 
 ## 优先级低
 
+### 代码注释中的 code1 / code2 引用统一扫描（2026-10-09 提出）
+
+`private/code1`（dump2analysis）与 `code2`（dump2sq）是私有参考代码，**不是行业标准做法** ——
+vanhove 的归一化就不除 dr，与 GROMACS / pymatgen 相差 1/dr（手册已于本日改为对照这两者）。
+注释里写「follows code1/xxx.c」会让读者以为 ferro 的口径以它为准。2026-10-09 实数：
+`angle.rs` 5、`gr.rs` 6、`sq.rs` 5、`scattering_data.rs` 4、`cube_radius.rs` 2、`vanhove.rs` 2
+（模块文档与 `calc_vanhove` 文档，均写「follows code1/vanhove.c」）、`tests/npt_normalisation.rs` 1。
+逐条判：口径已偏离 code1 的改写为描述 ferro 自己的做法（必要时对照行业实现）；只是记录
+「对拍时如何与它对齐」的保留。手册里 gr/msd/vacf/rotcorr 四页的 code1 提及是历史与对拍说明，已看过、不动。
+
 ### ferro-cli：REPL / 脚本模式（2026-08-11 由高降中，2026-09-15 降低）
 
 `main.rs` 现在是子命令分发器，裸 `ferro` 打印分类总览。REPL 落地时改为
