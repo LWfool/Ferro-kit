@@ -334,6 +334,26 @@ mod help_sync {
         out
     }
 
+    /// clap 自己会把 `default_value(_t)` 渲染成 `[default: …]`；doc 注释里再手写一份，
+    /// 短帮助就显示两遍（`dataset collect --type` 曾如此）
+    #[test]
+    fn a_clap_default_is_not_also_written_by_hand() {
+        fn walk(cmd: &clap::Command, path: &str, bad: &mut Vec<String>) {
+            for a in cmd.get_arguments() {
+                let hand = a.get_help().is_some_and(|h| h.to_string().contains("[default:"));
+                if hand && !a.get_default_values().is_empty() {
+                    bad.push(format!("{path} --{}", a.get_long().unwrap_or("?")));
+                }
+            }
+            for sub in cmd.get_subcommands() {
+                walk(sub, &format!("{path} {}", sub.get_name()), bad);
+            }
+        }
+        let mut bad = Vec::new();
+        walk(&super::Cli::command(), "ferro", &mut bad);
+        assert!(bad.is_empty(), "默认值手写与 clap 重复：{bad:?}");
+    }
+
     fn collect_longs(cmd: &clap::Command, out: &mut Vec<String>) {
         out.extend(cmd.get_arguments().filter_map(|a| a.get_long()).map(String::from));
         for sub in cmd.get_subcommands() {

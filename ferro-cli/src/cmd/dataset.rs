@@ -359,7 +359,7 @@ pub struct MergeCmd {
     #[arg(long)]
     pub mkdir: bool,
 
-    /// How frames from different sources are laid out         [default: shuffle]
+    /// How frames from different sources are laid out
     #[arg(long, value_enum, default_value_t = MergeMode::Shuffle)]
     pub mode: MergeMode,
 
@@ -367,7 +367,7 @@ pub struct MergeCmd {
     #[arg(long, value_name = "N")]
     pub seed: Option<u64>,
 
-    /// Frames per output set; 0 keeps everything in one set    [default: 400]
+    /// Frames per output set; 0 keeps everything in one set
     #[arg(long, value_name = "N", default_value_t = DEFAULT_SET_SIZE)]
     pub set_size: usize,
 
@@ -379,7 +379,7 @@ pub struct MergeCmd {
     #[arg(long)]
     pub overwrite: bool,
 
-    /// What to write                                       [default: deepmd]
+    /// What to write
     #[arg(long = "type", value_enum, default_value_t = OutType::Deepmd)]
     pub out_type: OutType,
 
@@ -445,7 +445,7 @@ pub struct FilterCmd {
     #[arg(long, value_name = "N")]
     pub seed: Option<u64>,
 
-    /// Frames per output set; 0 keeps everything in one set    [default: 400]
+    /// Frames per output set; 0 keeps everything in one set
     #[arg(long, value_name = "N", default_value_t = 400)]
     pub set_size: usize,
 
@@ -453,7 +453,7 @@ pub struct FilterCmd {
     #[arg(long)]
     pub overwrite: bool,
 
-    /// What to write                                       [default: deepmd]
+    /// What to write
     #[arg(long = "type", value_enum, default_value_t = OutType::Deepmd)]
     pub out_type: OutType,
 
@@ -481,7 +481,7 @@ pub struct CollectCmd {
     #[arg(long)]
     pub overwrite: bool,
 
-    /// What to write                                       [default: deepmd]
+    /// What to write
     #[arg(long = "type", value_enum, default_value_t = CollectType::Deepmd)]
     pub out_type: CollectType,
 
