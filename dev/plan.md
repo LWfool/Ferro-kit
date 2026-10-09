@@ -61,7 +61,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 
 轨迹分析（B）：
 
-**B 组进度**：B-4、B-5、B-7 已修，B-6 搁置（2026-10-08）；B 组表内全部处理完。下一步 D-M1/2/17；D-M4、D-M6–12 挂起作专项。照例逐条先给方案。
+**B 组进度**：B-4、B-5、B-7 已修，B-6 搁置（2026-10-08）；B 组表内全部处理完。下一步 D-M2、D-M17；D-M4、D-M6–12 挂起作专项。照例逐条先给方案。
 
 | # | 位置 | 问题 / 复现 | 修法 |
 |---|---|---|---|
@@ -86,7 +86,7 @@ network / dft / ml / core（C）：
 
 | # | 位置 | 问题 / 依据 | 修法 |
 |---|---|---|---|
-| D-M1 | `ferro-python/src/analysis.rs msd` | 仍默认 `dt=1.0`、不做 `check_frame_spacing`，与 CLI 已改必填的口径漂开 | `dt` 必填；间隔检查下沉共用 |
+| ~~D-M1~~ **已修**（`check_frame_spacing` 下沉为 `ferro_analysis::md::check_frame_spacing`，CLI 五处与 Python `msd` 共用；`dt` 必填；wheel 实测：NVT fixture 步距 12000/13000 不均被拦，CLI 同句）| `ferro-python/src/analysis.rs msd` | 仍默认 `dt=1.0`、不做 `check_frame_spacing`，与 CLI 已改必填的口径漂开 | `dt` 必填；间隔检查下沉共用 |
 | D-M2 | `ferro-structure/src/merge.rs` | ① 只给 B 居中，A 窄时不居中（与文档不符）；② B 沿自身单位矢量平移、胞用 A 的，倾角不同时剪切错位；③ gap 沿矢量量，与 `add_vacuum` 的垂直间隙口径不一 | 两块都按新胞分数坐标放；gap 按面间距 |
 | D-M17 | `ferro-structure::find_clusters` → `classify_frame` → `network_type.rs:353,394`（2026-10-07 修 B-1 时发现） | 奇异胞（c=0 slab）在 `expect("cell must be non-singular")` panic。CLI `net` 在前面已拦，Python 绑定直调仍会 panic；`dft/chg_sdf` 经 `process_frame` 同路（cube 文件的胞，推断难触发） | 入口查可逆（同 `check::invertible_cells`；它是 ferro-analysis 私有，structure 那边要么自查要么下沉 core） |
 | ~~D-M3~~ **已修**（nan / inf / ≤0 一律报错）| `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |

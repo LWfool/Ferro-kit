@@ -16,6 +16,7 @@ use ferro_analysis::{
     AngleParams, AngleResult, BondLifeParams, BondLifeResult, GroupBy, GrParams, GrResult, Legendre, MsdParams, MsdResult, RotCorrParams,
     RotCorrResult, SqParams, SqResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
+use ferro_analysis::md::check_frame_spacing;
 
 use crate::args::common::{CommonArgs, SelectArgs};
 use crate::args::traj::{RotVectorCli, SqWeightingCli};
@@ -329,35 +330,6 @@ fn drive<T>(
         return Err(anyhow!("every input failed; nothing to write"));
     }
     Ok((results, failures, out))
-}
-
-/// 时间相关分析的前提：帧等间隔、不重复。轨迹带步号（LAMMPS dump、CP2K、OUTCAR）时
-/// 逐帧核对；没有步号的格式无从查起，只能信 `--dt`。
-///
-/// 重启拼接的 dump 常把重启点写两次（同一个 TIMESTEP），或中途改过 dump 间隔；
-/// 全原点平均把每一对帧都当成 `lag × dt` 相隔，这两种情形都会静默算错。
-fn check_frame_spacing(traj: &Trajectory) -> Result<()> {
-    let steps: Option<Vec<i64>> = traj.frames.iter().map(|f| f.step).collect();
-    let Some(steps) = steps else { return Ok(()) };
-    let Some(first_gap) = steps.get(1).map(|s1| s1 - steps[0]) else { return Ok(()) };
-    for (k, w) in steps.windows(2).enumerate() {
-        let gap = w[1] - w[0];
-        if gap <= 0 {
-            return Err(anyhow!(
-                "frames {k} and {} have steps {} and {}: duplicated or out-of-order frames \
-                 (a restart written twice?); remove them before a time-correlation analysis",
-                k + 1, w[0], w[1]
-            ));
-        }
-        if gap != first_gap {
-            return Err(anyhow!(
-                "frames are not evenly spaced: step gap {first_gap} at the start, {gap} between \
-                 frames {k} and {} (steps {} → {}); --dt assumes one constant spacing",
-                k + 1, w[0], w[1]
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn run_gr(c: &GrCmd) -> Result<usize> {
@@ -785,27 +757,6 @@ mod tests {
 
     /// 坏参数必须在读文件、建目录之前报错（审查 M3）。输入文件不存在：若先读文件，
     /// 报的会是「找不到输入」而不是参数错误；`-o` 目录不存在且给了 --mkdir：若先建
-    fn frames_with_steps(steps: &[i64]) -> Trajectory {
-        let mut t = Trajectory::new();
-        for &s in steps {
-            let mut f = ferro_core::Frame::new();
-            f.step = Some(s);
-            t.add_frame(f);
-        }
-        t
-    }
-
-    #[test]
-    fn test_frame_spacing() {
-        assert!(check_frame_spacing(&frames_with_steps(&[0, 100, 200, 300])).is_ok());
-        assert!(check_frame_spacing(&frames_with_steps(&[0])).is_ok(), "单帧无间隔可查");
-        assert!(check_frame_spacing(&Trajectory::from_frame(ferro_core::Frame::new())).is_ok(), "无步号的格式只能信 --dt");
-        let dup = format!("{:#}", check_frame_spacing(&frames_with_steps(&[0, 100, 100, 200])).unwrap_err());
-        assert!(dup.contains("frames 1 and 2") && dup.contains("duplicated"), "重启点写两次应点名帧，实际 {dup}");
-        let uneven = format!("{:#}", check_frame_spacing(&frames_with_steps(&[0, 100, 200, 400])).unwrap_err());
-        assert!(uneven.contains("not evenly spaced") && uneven.contains("frames 2 and 3"), "改过 dump 间隔应点名帧，实际 {uneven}");
-    }
-
     /// 目录，测试结束时它就在
     #[test]
     fn test_bad_values_fail_before_any_file_or_directory() {

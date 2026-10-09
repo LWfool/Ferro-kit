@@ -52,7 +52,7 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 | `merge(a, b, axis, gap)` | Merge the first frames of two systems |
 | `gr_pair(traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005)` | g(r) + CN(r) for one pair |
 | `gr_all(traj, by="element", r_max=None, dr=0.01, r_min=0.005)` | g(r) + CN(r) for all n² ordered pairs |
-| `msd(traj, dt=1.0, shift=1, tau=None, elements=None)` | MSD(t), time-origin averaged |
+| `msd(traj, dt, max_lag=None, elements=None)` | MSD(t), time-origin averaged |
 
 `Trajectory` methods: `n_frames()`, `n_atoms()`, `elements()`,
 `positions(frame)`, `symbols(frame)`, `cell(frame)`, `charge(frame)`,

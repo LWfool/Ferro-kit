@@ -33,6 +33,7 @@ pub use vanhove::{VanHoveParams, VanHoveResult, calc_vanhove};
 pub use vacf::{VacfParams, VacfResult, calc_vacf};
 pub use bondlife::{BondLifeParams, BondLifeResult, calc_bondlife};
 pub use shell::{first_shell_cutoffs, ShellCutoff};
+pub use util::check_frame_spacing;
 pub use rotcorr::{Legendre, RotCorrParams, RotCorrResult, RotVector, calc_rotcorr};
 pub use cube_density::{CubeMode, CubeDensityParams, CubeDensityResult, calc_cube_density};
 pub use cube_jump::{JumpPosition, CubeJumpParams, CubeJumpResult, calc_cube_jump};

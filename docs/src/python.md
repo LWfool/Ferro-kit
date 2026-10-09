@@ -129,10 +129,13 @@ plt.plot(g["r"], g["P-O_gr"])
 g = ferro.gr_pair(t, "P_3", "O_b", by="label", r_max=5.0)
 ```
 
-### `msd(traj, dt=1.0, max_lag=None, elements=None)`
+### `msd(traj, dt, max_lag=None, elements=None)`
 
 Mean squared displacement: every lag averaged over all time origins (FFT), periodic systems unwrapped
-with the TOR scheme.  `max_lag` in frames, default half the trajectory.  Details in
+with the TOR scheme.  `dt` is the time between stored frames in fs (MD timestep × dump interval) and
+is required, as `--dt` is on the command line: a guessed default rescales the whole time axis
+silently.  A trajectory that carries step numbers must be evenly spaced with no repeated frames,
+otherwise a `RuntimeError` names the offending pair.  `max_lag` in frames, default half the trajectory.  Details in
 [MSD](analysis/msd.md).
 
 Returned keys: `"time"` [fs], `"msd"` (total), `"msd_x"`, `"msd_y"`, `"msd_z"` (Cartesian components,
