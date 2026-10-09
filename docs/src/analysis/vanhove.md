@@ -14,6 +14,10 @@ $$\int_{r_\min}^{r_\max} P(r, \tau)\,dr = 1 - f_\text{out},$$
 
 where $f_\text{out}$ is the fraction of displacements outside $[r_\min, r_\max)$.  Those displacements stay in the denominator — they are part of the distribution, just not drawn — so a cut tail shows up as a missing integral rather than being spread over the visible range.  $f_\text{out}$ is listed per input as `outside_fraction` in `[inputs]`, with a warning above 1 %: at long $\tau$ in a liquid, raise `--r-max`.
 
+### Conventions in other codes
+
+`p_r` is the same quantity as the `-or` output of GROMACS `gmx vanhove` (count divided by origins, atoms and bin width, in nm⁻¹; its first bin is centred on $r = 0$ and therefore half as wide) and as `gsrt` of pymatgen's `VanHoveAnalysis` (labelled $4\pi r^2 G_s$; each displacement is smeared with a Gaussian instead of binned).  Codes that divide the histogram only by origins and atoms output the probability mass per bin, $P(r_i)\,\Delta r$: it sums to 1, has no unit, and is smaller than ferro's `p_r` by the factor $\Delta r$ — 100 times at the default $\Delta r = 0.01$ Å.  Multiply `p_r` by `--dr` to compare with such output.
+
 ### Gaussian Reference
 
 For a purely diffusive Gaussian process:
@@ -34,14 +38,12 @@ $\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 > 0$ indicates fat tails (
 
 ### Algorithm
 
-Follows code1/vanhove.c (`EstimateVanHove`):
-
 1. Convert Cartesian positions to fractional coordinates.
-2. Unwrap fractional coordinates (same procedure as MSD).
-3. Convert back to absolute Cartesian positions.
-4. For each time origin $p$ and each selected atom $j$:
+2. Unwrap the fractional coordinates frame by frame: a jump of more than half a cell between neighbouring frames is taken as a boundary crossing and removed.  This is the **lattice view**, not the TOR scheme that `msd` uses — see [Periodic boundaries](#periodic-boundaries) below.
+3. Convert back to absolute Cartesian positions with each frame's own cell.
+4. For each time origin $p$ (every `--shift` frames, while $p + \tau$ is still inside the trajectory) and each selected atom $j$:
    $$r = |\mathbf{r}_j(p + \tau) - \mathbf{r}_j(p)|$$
-   Accumulate into histogram bin $\lfloor r / \Delta r \rfloor$.
+   Accumulate into histogram bin $\lfloor (r - r_\min) / \Delta r \rfloor$ if $r_\min \le r < r_\max$.
 5. Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms} \cdot \Delta r)$.
 
 ## Parameters
@@ -57,6 +59,8 @@ pub struct VanHoveParams {
     pub elements: Option<Vec<String>>, // None = all atoms
 }
 ```
+
+These are the library defaults.  On the command line `--dt` is required, and `r_min` is not exposed: `ferro traj vanhove` always uses $r_\min = 0$.
 
 ## Output
 
@@ -107,5 +111,8 @@ $G(r,\tau) = G_s + G_d$ is not available.  For $\tau = 0$ use `traj gr`.
 ## Implementation Notes
 
 - Parallelism: per-origin `par_iter`.
-- For periodic systems, fractional-coordinate unwrapping (shared with MSD) is applied before computing displacements.
 - For non-periodic systems, raw Cartesian distances are used directly.
+
+### Periodic boundaries
+
+Periodic trajectories are unwrapped in the lattice view (step 2 above): fractional coordinates are unwrapped, then multiplied by the current cell.  **Under NVT this is identical to the TOR scheme of `msd`.**  Under NPT it is not: the barostat's rescaling moves an atom that has crossed $n$ boundaries by $n$ times the change in box length, which widens $G_s$ at long $\tau$.  The mechanism and a worked example are in the [MSD page](msd.md#why-tor-and-not-the-lattice-view).  Switching vanhove to TOR is planned.

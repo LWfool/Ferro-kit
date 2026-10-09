@@ -601,7 +601,7 @@ ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o
 | `--dr` | 0.01 | bin width [Å] |
 | `--elements` | (all) | element filter |
 
-Columns: `file, r, gs`
+Columns: `file, r, p_r`
 
 ### Plotting
 
