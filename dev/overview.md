@@ -418,3 +418,31 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
   不除 sinθ、MSD 不扣质心 + 各向异性用分量 + Yeh–Hummer、map 的 cube 几何 Bohr 数据 Å⁻³
   （积分差 6.748 倍）与空体素写 0、XRD 用中性原子形状因子、vanhove 无异部分。第 10 条
   （Qn 口径）手册早已写明；第 1 条（Lorch 窗）待加功能，第 6、7 条等 Kabsch 修复时一起写。
+
+## 2026-10-03 – 10-09 的一批（版本号 **0.3.5**，未发版）
+
+2026-10-03 四路审查（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码）严重与中两级的
+修复，39 条，逐条见 `plan.md` 归档。按以往惯例（`v0.3.2`、`v0.3.4`）走 patch 位，尽管含
+破坏性改动。用户可见的变化逐条写在 changelog 的 `Unreleased`。破坏性的：
+
+- **格式读写**：CIF 无 symop 时按空间群符号展开（此前当 P1，原子数会变）、无胞帧拒写 CIF；
+  PDB 每个 MODEL 写本帧 CRYST1；LAMMPS 无胞帧盒子外扩 1 Å、近正交不再写三斜、dump 边界按 pbc；
+  extxyz 注释行按 ASE 切词；mixed type DeePMD 拒收；POSCAR / CHGCAR 元素行取 POTCAR 标签前缀
+- **轨迹分析**：`vanhove --tau` 默认 `n_frames−1` → N/2（原点由 1 个变多）；gr / sq 头部的
+  `r_max` 写请求值（截断时此前写截断值）；sq 的 `q-min` 必须 > 0；vanhove / angle 的
+  `[inputs]` 帧数与原子数改对
+- **dataset filter**：力 / 应力含 NaN 的帧被删；O–O 分位与 Al–O 截断从表头移进 `[inputs]`；
+  `--al6` 自动截断换算法（实测 2.05 → 2.57 Å）
+- **job（CP2K）**：`--barostat` 删除，改 `--pressure P`（bar）；`--thermostat none` 写 NVE、
+  langevin 走 `ENSEMBLE LANGEVIN`；auto-spin 对镧系与 4d/5d 的多重度变了
+- **CLI 入口**：`--X-Y=v` 只有 `net` 认、拒收 nan；`-s` 只收字母数字与 `_+-`
+- **Python**：`msd` 的 `dt` 必填并查帧间隔；`merge` 的放置重写（两块居中、gap 沿法向、界面
+  不平行报错），正交等大胞结果不变
+- **库 API**（不进 changelog）：`ferro_core::classify_frame[_detailed]`、`build_network_graph`、
+  `ferro_structure::classify_trajectory`、`ml::geometry` 两个配位函数、`cutoff_scan`、
+  `pooled_coordination` 改返回 `Result`；`check_frame_spacing` 由 CLI 下沉为
+  `ferro_analysis::md::check_frame_spacing`；`diagnostics::distribution_table` 去掉 `name` 参数
+
+挂起未修：B-6（cube_sdf 置换枚举）、C-D2 / C-D3（随 Bader 重写）、D-M4 与 D-M6–D-M12
+（QC 输入生成专项）。
+

@@ -3,18 +3,20 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：748 个（全部通过，clippy 零警告）
+## 测试总数：806 个（全部通过，clippy 零警告；2026-10-09 实数）
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 97 |
-| ferro-io | 179（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
-| ferro-structure | 74 |
-| ferro-analysis | 245 |
-| ferro-workflow | 23 |
-| ferro-cli（lib 120 + bin 2 + 集成 8） | 130 |
+| ferro-core | 103 |
+| ferro-io | 200（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-structure | 79 |
+| ferro-analysis | 253 |
+| ferro-workflow | 26 |
+| ferro-render | 30 |
+| ferro-cli（lib 104 + bin 3 + 集成 8） | 115 |
 
-版本号 **0.3.4**（workspace 统一；ferro-python 已同步；2026-10-03 打 tag `v0.3.4`）。
+版本号 **0.3.5**（workspace 统一；ferro-python 已同步；**未发版**，最近的 tag 仍是 2026-10-03 的 `v0.3.4`）。
+0.3.5 的内容是 2026-10-03 四路审查严重 / 中两级的修复，含破坏性改动，清单见 `overview.md`。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
 
 `v0.3.1` 相对 `v0.3.0` **全部是新增**（`ferro dataset` 三步、CP2K out reader、
@@ -103,14 +105,16 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     最小镜像的正确几何上界（非正交晶胞 d < L，用边长会高估）；`calc_gr` 与
     `CellList::build` 共用同一份
 - **`spin.rs`**：`guess_spin`（magmom 求和 → 氧化态+Hund → 电子数奇偶下限，三级回退）、
-  `assign_oxidation_states`、`total_electron_count`、`parity_min_multiplicity`；过渡金属取高自旋
+  `assign_oxidation_states`、`total_electron_count`、`parity_min_multiplicity`；3d 取高自旋、
+  4d/5d 取低自旋（d⁸ 平面四方为 0）、镧系按 4f 填 Hund 高自旋并告警；氧化态凑不平单独告警（2026-10-08）
   - 验证：ZnP₂O₆→0（抗磁）、MnS→5（d⁵ 高自旋）、Fe₂O₃→10
 - **`cluster.rs`**：`build_network_graph`（former–ligand 邻接 + 配体分类 + 个人 Qn +
   连通分量）、`connected_components`（通用并查集）。供 `ferro-structure::find_clusters`
   与 `ferro-analysis::cube_sdf` 复用
 - **`network_type.rs`**：`enum AtomType`（`Former{elem,qn,n_bo,cn,bridges_to}` /
   `Ligand{elem,partners}` / `Modifier{elem,cn}` / `Other`）、`TypeParams`、
-  `classify_frame[_detailed]`
+  `classify_frame[_detailed]`。它与 `cluster.rs::build_network_graph` 入口查奇异胞并返回
+  `Result`（2026-10-09）—— c=0 的 slab 此前在最小镜像的 `expect` 处 panic
   - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` / `display_rank()`
     取代三个 `*_label_order` 与 `type_sort_key`；`is_bridging()` 取代前缀匹配
   - `classify_frame_detailed` 另返回 ligand→former 邻接（`FrameTypes`）供 linkage 使用
@@ -202,16 +206,25 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `GLOBAL| Run type` 就报错**并点名 `--format` —— 此前默认按 MD 走，
   一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
+- **2026-10-03 审查 A 组的修复**（判据见 `plan.md` 归档与 `issues.md`）：CIF 无 symop 时按
+  空间群符号展开（`spacegroup.rs` + spglib 生成的 530 条 Hall 设置表）、跳过无 `_atom_site_`
+  的 block、无胞帧拒写；PDB 每个 MODEL 前写本帧 CRYST1，非标准取向先转坐标；LAMMPS 无胞帧盒子
+  外扩 1 Å、近正交不写三斜、dump 边界按 pbc；extxyz 注释行按 ASE 规则切词；DeePMD 见
+  `real_atom_types.npy` 即拒收；POSCAR / CHGCAR 元素行取 POTCAR 标签前缀；CP2K 段名整行比较、
+  `&CELL_REF` 不再覆盖 `&CELL`；QE namelist 按逗号与空白切分；LAMMPS data 空文件报错
 
 ### ferro-structure
 
 - `supercell.rs`、`vacuum.rs`、`merge.rs`
+  - `merge_frames`（2026-10-09 重写放置）：**不拉伸**，两块整体平移、胞中心在面内居中；
+    gap 沿界面法向量（同 `add_vacuum`）；界面夹角 > 1° 报错。共格应变匹配（ASE `stack`、
+    pymatgen `from_slabs`）有意不做
 - `box_builder.rs`：随机放置 + soft-core 弛豫，O(N) cell-list 加速
   - `parse_formula` 栈式解析，支持嵌套 `()` / `[]`：`Ca3(PO4)2`、`(NH4)2SO4`、`K4[Fe(CN)6]`
   - `resolve_component`：先查 COMPOUNDS，查不到则当化学式解析 → 可建库外化合物的盒子
   - 拒绝空式、空组、零计数、括号错配、未知元素
 - `typing.rs`：`classify_trajectory`、`apply_type_labels`
-- `cluster.rs`：`find_clusters`（复用 `ferro_core::connected_components`）
+- `cluster.rs`：`find_clusters`（复用 `ferro_core::connected_components`；奇异胞返回 `None`）
 
 ### ferro-analysis / md
 
@@ -227,14 +240,18 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 | `vanhove.rs` `vacf.rs` `rotcorr.rs` | 自关联 / 速度自关联 / 转动相关 | |
 | `cube_density.rs` | 3D 密度/速度/力分布 | |
 | `cube_radius.rs` | 硬球占据图 | `ferro map radius` |
-| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 10 个测试，但**没有 CLI 入口**，`lib.rs` 的再导出清单里也漏了它（只能走 `md::calc_cube_jump`）。手册页与 `ferro doc cube-jump` 都在位。见 `plan.md` |
+| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 测试，2026-10-08 补 `validate()`，但**没有 CLI 入口**，`lib.rs` 的再导出清单里也漏了它（只能走 `md::calc_cube_jump`）。手册页与 `ferro doc cube-jump` 都在位。见 `plan.md` |
 | `cube_sdf.rs` | 团簇 SDF（Kabsch 对齐） | 用 `ferro_core::build_network_graph`，已去 petgraph |
-| `util.rs` | `build_avg_frame`（cube 文件头的时间平均帧） | 2026-09-12 由三份逐字相同的实现合并而来，同时修掉三份都带的 PBC bug：解缠在**参考帧 cell** 的分数坐标下做，故没跨边界的原子逐位不变 |
+| `util.rs` | `build_avg_frame`（cube 文件头的时间平均帧）；`check_frame_spacing`（帧等间隔、不重复，2026-10-09 由 CLI 下沉，CLI 五个时间相关分析与 Python `msd` 共用） | 2026-09-12 由三份逐字相同的实现合并而来，同时修掉三份都带的 PBC bug：解缠在**参考帧 cell** 的分数坐标下做，故没跨边界的原子逐位不变 |
 | `scattering_data.rs` | X 射线 / 中子散射因子表 | 供 `sq.rs` 加权 |
 
 `gr.rs` 的字段：`rho_g = ⟨ρ_f·g_f⟩`（供 S(q) 逐帧变换重构）、`volume_std`（两遍算法）、
 `rho = N·⟨1/V⟩`。粒子数守恒校验：逐帧比对总数与分组计数，不符即 `Err`。
 排序为 `(elem_z, 字符串)` 二级比较。`GroupBy::{Element, Label}`。
+
+2026-10-07 – 10-08 的口径修正：`vanhove --tau` 默认 N/2（同 `--max-lag`）；`GrResult.r_max_used`
+存截断后的值，头部写请求值；S(q) 的 `q-min` 必须 > 0，`[inputs]` 带 `q_trunc = 2π/r_max`，
+低于它告警；`check::non_negative` / `ordered` 要求有限值；vanhove / map sdf / cube_jump 入口查胞可逆。
 
 `sq.rs` 的 `to_tables(gr)` 恒写全部规范半边；加权 partial `w_ij(q)·S_ij(q)` 逐点相加
 恰等于对应 total。散射因子查表失败时告警。
@@ -279,6 +296,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   才能报出每个判据「独占抓到」多少 —— 漏斗每步只在上一步存活帧上报数，冗余判据
   在那里看着也很能干
 - 阈值 0 = 关闭；给了阈值但缺该标签 → 判之前就报错
+- 判据开着时，力 / 应力峰值非有限的帧判坏（2026-10-08，此前 `fold(0.0, f64::max)` 吞掉 NaN）
 - **`geometry.rs`**：`min_pair_distance`（周期最小镜像，超出最小镜像上界报错）、
   `count_with_coordination` / `coordination_histogram`（走 `classify_frame`，读
   `cn` **字段**不解析标签）。`first_shell_cutoff` 已于 2026-10-07 移到
@@ -287,7 +305,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **`diagnostics.rs`**：只读模式的四张表 —— min d(O-O) 分布、每帧 Al6 个数、
   Al 配位分布、**rcut 敏感性扫描**。敏感性表在 49Z49P02A 上是陡坡
   （2.15→0.9%、2.45→13.1%、2.75→41.4%），在 43Z43P15A 上是平线（2.1–2.6 全
-  100%）—— 同一张表给出相反提示，这是它的价值
+  100%）—— 同一张表给出相反提示，这是它的价值。逐 system 的统计（O–O 分位、实际所用
+  Al–O 截断）进 `[inputs]` 的列而不进表头（2026-10-08，`quantiles`）—— 表头堆叠后只剩第一个
 - 四条判据同一语义：「保留含 Al6 的帧」写成「删除不含 Al6 的帧」，交叉表不分裂
 - **`merge.rs`**：`composition_key`（逐原子元素序列，分组用，**不看目录名**）、
   `sort_atoms`（规范序 (Z,符号)；coord/**force/velocities/bonds** 跟同一置换 ——
@@ -315,7 +334,10 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - `GaussianJobBuilder`
 - `Cp2kJobBuilder`：energy/force/geo-opt/cell-opt/md/freq；PBE/BLYP/PBE0/B3LYP/SCAN/
   r2SCAN/HSE06 等；DFT-D3(BJ)；对角化/OT；k 点、涂抹、cube/Molden 输出；
-  CSVR/NoseHoover/Langevin/NVE + NPT
+  CSVR/NoseHoover/Langevin/NVE + NPT。2026-10-08：`--pressure P`（bar）取代 `--barostat`，
+  系综按恒温器 × 压强查表（langevin 走 `ENSEMBLE LANGEVIN`）、CSVR 写 `TIMECON`、HSE06 补
+  短程 `INTERACTION_POTENTIAL`。**CP2K / QE / Gaussian 输入仍有 8 条已知不可运行或静默错的
+  问题**（D-M4、D-M6–D-M12），挂起作 QC 专项，见 `plan.md`
   - `auto_spin` 经 `ferro_core::guess_spin` 推断多重度 + UKS（CLI 显式 `--multiplicity` 时关闭）
   - **`cp2k_basis_db`**：从 6 个 CP2K 文件解析的基组/赝势库（**2829 条**），覆盖
     PBE/SCAN/全电子（pob、-ae）；`basis()`/`potential()` 按元素+族前缀+泛函精确匹配
@@ -404,6 +426,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   12 页没写、`--tau`/`--ncore` 在 rotcorr/vacf/vanhove 共 5 处没写；
   `gr` 的 `--atom-c`/`--label-z` 是有意不写（SelectArgs 与 angle 共享），
   进 `UNDOCUMENTED` 白名单并写明理由
+  。另一条（2026-10-09）：带 `default_value(_t)` 的参数 doc 注释里不许再手写
+  `[default: …]` —— clap 自己会渲染，曾在 dataset 的六个参数上显示两遍
 - **帮助页全部按同一模板**（2026-09-22 重定为五段）：一句话用途 +
   `Parameters:`（完整）+ `Output:`（≤4 行）+ `Examples:` +
   `Full documentation:  ferro doc <topic>`，目标 ≤30 行。判据与口径一律进手册。
@@ -429,7 +453,12 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   三件事清单里各占一列而不是一句散文：CP2K 的 `.inp`/`.restart` 只读不写；
   POSCAR / LAMMPS data / QE 只写第一帧且**不警告**。有测试钉住表与 `match`
   分支一致（表里写 `-` 的格式必须真的拒绝写入），否则两处手写的事实会漂
-- `net` 的 `--P-O=2.3` 由 `main` 在 clap 解析前从 argv 剥离
+- `net` 的 `--P-O=2.3` 由 `main` 在 clap 解析前从 argv 剥离，**只在 `argv[1] == "net"` 时**
+  （2026-10-08；此前对所有子命令剥离，`traj gr --P-O=2.3` 被静默吞掉）；截断拒收 nan / inf / ≤0
+- **`-s` 只收字母、数字、`_`、`+`、`-`**（`batch::check_suffix`，2026-10-08），traj / map / net /
+  chg-sdf / bader 入口查；`dataset merge --suffix` 是目录后缀，另一套语义
+- **写侧格式判定是 `io_dispatch::out_format`**（2026-10-08），`convert` 在建目录、读输入之前调
+- `--version` 带 commit、构建日期、profile、target、rustc 与 features（2026-10-05）
 - **无绘图**：`--plot` 与 `plot.rs` 已于 2026-09-26 移除（理由见 `plan.md` 归档
   「依赖精简」与手册 `plotting.md`），出图走 `scripts/plot_*.py`
 - **不留兼容层**：输出格式同期变更，留着 `fe-traj` 会让旧脚本「跑成功」却吐出自己
@@ -439,7 +468,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 
 独立 workspace（pyo3 0.29 extension-module），用 maturin 构建。
 `lib.rs` / `types.rs`（`PyTrajectory`）/ `io.rs`（11 格式按扩展名分派）/ `structure.rs` /
-`analysis.rs`（`gr_pair` / `gr_all` / `msd` → `dict[str, list[float]]`）。
+`analysis.rs`（`gr_pair` / `gr_all` / `msd` → `dict[str, list[float]]`）。`msd` 的 `dt` 必填并先查
+帧间隔（2026-10-09，与 CLI 同一口径）；`merge` 走重写后的 `merge_frames`。
 
 本 crate 无 `cargo test`（cdylib 绑定层），经 maturin + Python 冒烟测试验证。
 
