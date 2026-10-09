@@ -12,6 +12,17 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Smaller changes
+
+- `dataset collect` skips PJM job logs (`x<N>-<job>.<id>.out`) before grouping,
+  with one `NOTE` line. They used to count as failed inputs and set exit code 1.
+- `ferro --version` also prints the commit, build date, profile, target, rustc
+  version and enabled features.
+- `traj msd` / `vacf` / `rotcorr` / `vanhove` / `bondlife` without `-i` show the
+  help page again, instead of a "missing `--dt`" error.
+- `ferro doc` renders display formulas (`$$ … $$`) in the terminal.
+- `dataset` help pages no longer print some defaults twice.
+
 ### Python `merge`: placement fixed for unequal and tilted cells (breaking)
 
 - The narrower block is now centred in the interface plane whichever it is;
