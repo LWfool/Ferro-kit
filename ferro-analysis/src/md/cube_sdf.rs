@@ -286,7 +286,8 @@ pub(crate) fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParam
         frame, cell,
         &params.former, &params.ligand,
         params.former_ligand_cutoff,
-    );
+    )
+    .expect("调用方已查奇异胞（cube_sdf 入口 check::invertible_cells，chg_sdf 入口同查）");
     if g.components.is_empty() { return Vec::new(); }
 
     let ml_cutoff2 = params.modifier_cutoff * params.modifier_cutoff;

@@ -5,6 +5,7 @@
 //! 计算该图的共享原语，供 `ferro-structure::find_clusters` 与
 //! `ferro-analysis::cube_sdf` 等复用，避免重复实现连通分量逻辑。
 
+use crate::error::Result;
 use crate::{Cell, Frame};
 
 /// 配体按所连形成子数量分类。
@@ -62,14 +63,16 @@ pub struct NetworkGraph {
 ///
 /// 两个形成子若共享至少一个桥联配体（连 ≥2 形成子的配体）则属同一连通分量。
 /// `cutoff` 为形成子–配体键长截断 \[Å\]。无形成子或无配体时返回空图
-/// （`components` 为空）。
+/// （`components` 为空）。奇异胞（如 `c = 0` 的 slab）返回 `Err`。
 pub fn build_network_graph(
     frame: &Frame,
     cell: &Cell,
     former: &str,
     ligand: &str,
     cutoff: f64,
-) -> NetworkGraph {
+) -> Result<NetworkGraph> {
+    // 下面逐对走最小镜像，奇异胞在那里求不了逆；入口查一次
+    cell.interplanar_spacings()?;
     let mut former_global: Vec<usize> = Vec::new();
     let mut ligand_global: Vec<usize> = Vec::new();
     for (i, atom) in frame.atoms.iter().enumerate() {
@@ -86,7 +89,7 @@ pub fn build_network_graph(
     let mut l_f_adj: Vec<Vec<usize>> = vec![Vec::new(); nl];
 
     if nf == 0 || nl == 0 {
-        return NetworkGraph {
+        return Ok(NetworkGraph {
             former_global,
             ligand_global,
             f_l_adj,
@@ -94,7 +97,7 @@ pub fn build_network_graph(
             ligand_kind: vec![LigandKind::Free; nl],
             former_qn: vec![0; nf],
             components: Vec::new(),
-        };
+        });
     }
 
     let cut2 = cutoff * cutoff;
@@ -103,7 +106,7 @@ pub fn build_network_graph(
         for (li, &la) in ligand_global.iter().enumerate() {
             let diff = cell
                 .minimum_image(frame.atoms[la].position - fpos)
-                .expect("cell must be non-singular");
+                .expect("入口 build_network_graph 已查奇异胞");
             if diff.norm_squared() < cut2 {
                 f_l_adj[fi].push(li);
                 l_f_adj[li].push(fi);
@@ -142,7 +145,7 @@ pub fn build_network_graph(
         components[cid].push(fi);
     }
 
-    NetworkGraph {
+    Ok(NetworkGraph {
         former_global,
         ligand_global,
         f_l_adj,
@@ -150,7 +153,7 @@ pub fn build_network_graph(
         ligand_kind,
         former_qn,
         components,
-    }
+    })
 }
 
 /// 通用并查集连通分量。
@@ -221,6 +224,14 @@ mod tests {
         assert_ne!(id[2], id[3]);
     }
 
+    /// 审查 D-M17：奇异胞曾 panic
+    #[test]
+    fn singular_cell_is_an_error() {
+        let (frame, _) = cubic(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)], 20.0);
+        let flat = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 0.0)));
+        assert!(build_network_graph(&frame, &flat, "P", "O", 2.3).is_err());
+    }
+
     #[test]
     fn two_formers_bridged_one_cluster() {
         // P – O – P，共享桥氧 → 1 个团簇
@@ -229,7 +240,7 @@ mod tests {
             atom("O", 1.6, 0.0, 0.0),
             atom("P", 3.2, 0.0, 0.0),
         ], 20.0);
-        let g = build_network_graph(&frame, &cell, "P", "O", 2.3);
+        let g = build_network_graph(&frame, &cell, "P", "O", 2.3).unwrap();
         assert_eq!(g.components.len(), 1);
         assert_eq!(g.components[0].len(), 2);
         assert_eq!(g.ligand_kind[0], LigandKind::Bridging);
@@ -245,7 +256,7 @@ mod tests {
             atom("P", 10.0, 0.0, 0.0),
             atom("O", 11.6, 0.0, 0.0),
         ], 30.0);
-        let g = build_network_graph(&frame, &cell, "P", "O", 2.3);
+        let g = build_network_graph(&frame, &cell, "P", "O", 2.3).unwrap();
         assert_eq!(g.components.len(), 2);
         assert_eq!(g.ligand_kind[0], LigandKind::NonBridging);
         assert_eq!(g.former_qn, vec![0, 0]);
@@ -254,7 +265,7 @@ mod tests {
     #[test]
     fn empty_when_no_ligand() {
         let (frame, cell) = cubic(vec![atom("P", 0.0, 0.0, 0.0)], 20.0);
-        let g = build_network_graph(&frame, &cell, "P", "O", 2.3);
+        let g = build_network_graph(&frame, &cell, "P", "O", 2.3).unwrap();
         assert!(g.components.is_empty());
         assert_eq!(g.former_global.len(), 1);
     }

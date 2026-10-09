@@ -61,7 +61,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 
 轨迹分析（B）：
 
-**B 组进度**：B-4、B-5、B-7 已修，B-6 搁置（2026-10-08）；B 组表内全部处理完。下一步 D-M17；D-M4、D-M6–12 挂起作专项。照例逐条先给方案。
+**B 组进度**：B-4、B-5、B-7 已修，B-6 搁置（2026-10-08）；B 组表内全部处理完。D 组小修全部处理完（2026-10-09）；D-M4、D-M6–12 挂起作专项。照例逐条先给方案。
 
 | # | 位置 | 问题 / 复现 | 修法 |
 |---|---|---|---|
@@ -88,7 +88,7 @@ network / dft / ml / core（C）：
 |---|---|---|---|
 | ~~D-M1~~ **已修**（`check_frame_spacing` 下沉为 `ferro_analysis::md::check_frame_spacing`，CLI 五处与 Python `msd` 共用；`dt` 必填；wheel 实测：NVT fixture 步距 12000/13000 不均被拦，CLI 同句）| `ferro-python/src/analysis.rs msd` | 仍默认 `dt=1.0`、不做 `check_frame_spacing`，与 CLI 已改必填的口径漂开 | `dt` 必填；间隔检查下沉共用 |
 | ~~D-M2~~ **已修**（用户定保留不拉伸的填充式拼接，不做 ASE `stack` / pymatgen `from_slabs` 的共格拉伸；两块整体平移、胞中心面内居中，gap 按面间距，界面不平行（>1°）报错。原 13 个测试中正交胞的结果不变，三斜测试改按法向高度断言）| `ferro-structure/src/merge.rs` | ① 只给 B 居中，A 窄时不居中（与文档不符）；② B 沿自身单位矢量平移、胞用 A 的，倾角不同时剪切错位；③ gap 沿矢量量，与 `add_vacuum` 的垂直间隙口径不一 | 两块都按新胞分数坐标放；gap 按面间距 |
-| D-M17 | `ferro-structure::find_clusters` → `classify_frame` → `network_type.rs:353,394`（2026-10-07 修 B-1 时发现） | 奇异胞（c=0 slab）在 `expect("cell must be non-singular")` panic。CLI `net` 在前面已拦，Python 绑定直调仍会 panic；`dft/chg_sdf` 经 `process_frame` 同路（cube 文件的胞，推断难触发） | 入口查可逆（同 `check::invertible_cells`；它是 ferro-analysis 私有，structure 那边要么自查要么下沉 core） |
+| ~~D-M17~~ **已修**（核实：Python 并未暴露这几个函数，原描述「Python 直调会 panic」不成立，暴露面只在库公开 API。`classify_frame(_detailed)`、`build_network_graph` 入口查奇异胞并返回 `Result`；`find_clusters` 返回 `None`，`classify_trajectory`、ml geometry 两个配位函数、`cutoff_scan`、`pooled_coordination` 向上透传；network、filter、cube_sdf 入口已查，内部 `expect` 写明由谁查过；`chg_sdf` 入口遇奇异胞返回 `None`）| `ferro-structure::find_clusters` → `classify_frame` → `network_type.rs:353,394`（2026-10-07 修 B-1 时发现） | 奇异胞（c=0 slab）在 `expect("cell must be non-singular")` panic。CLI `net` 在前面已拦，Python 绑定直调仍会 panic；`dft/chg_sdf` 经 `process_frame` 同路（cube 文件的胞，推断难触发） | 入口查可逆（同 `check::invertible_cells`；它是 ferro-analysis 私有，structure 那边要么自查要么下沉 core） |
 | ~~D-M3~~ **已修**（nan / inf / ≤0 一律报错）| `cmd/net.rs parse_pairs` | `--P-O=nan` 通过校验：P 的 cn=1314、全 Q0，退出码 0 | `is_finite() && > 0` |
 | D-M4 | `cp2k.rs write_force_eval` | NPT 不写 `STRESS_TENSOR`，CP2K 启动报错（`md_run.F:331-344`） | NPT 时写 `ANALYTICAL` |
 | ~~D-M5~~ **已修**（`bd21bc2`，随 D-S3 一并改）| `cp2k.rs` Langevin | `&THERMOSTAT TYPE LANGEVIN` 非法（合法值 NOSE/CSVR/GLE/AD_LANGEVIN）；CP2K 是 `ENSEMBLE LANGEVIN` + `MD/&LANGEVIN` | 按 CP2K 写法 |

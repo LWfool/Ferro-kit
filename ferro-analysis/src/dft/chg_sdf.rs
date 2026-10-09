@@ -159,6 +159,10 @@ pub fn calc_chg_sdf(
     // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
     params.validate().ok()?;
     if pairs.is_empty() { return None; }
+    // 奇异胞会在 process_frame 的最小镜像处 panic（审查 D-M17）；同上，只防 panic
+    if pairs.iter().any(|(f, _)| f.cell.as_ref().is_some_and(|c| c.interplanar_spacings().is_err())) {
+        return None;
+    }
 
     // 从第一个 ChargeGrid 确定输出格分辨率
     let first_chg = &pairs[0].1;

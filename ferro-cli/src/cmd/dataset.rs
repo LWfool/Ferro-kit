@@ -1265,7 +1265,7 @@ fn filter_one(
 
     // 诊断表恒算：实测 1110 帧 / 302 原子挂钟时间与不算时相同（rayon 跑满），
     // 而它是选阈值的依据，只在只读模式算就等于永远落不了盘
-    let diagnostics = diagnostic_tables(&traj, &result, &params);
+    let diagnostics = diagnostic_tables(&traj, &result, &params)?;
     let mut tables = result.to_tables();
     tables.extend(diagnostics.iter().cloned());
     let min_oo = if params.oo_min > 0.0 {
@@ -1379,14 +1379,14 @@ fn diagnostic_tables(
     traj: &ferro_core::Trajectory,
     r: &FilterResult,
     params: &FilterParams,
-) -> Vec<(String, ferro_core::Table)> {
+) -> Result<Vec<(String, ferro_core::Table)>> {
     let mut out = Vec::new();
     if params.oo_min > 0.0 {
         let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
         out.push(("min_oo".to_string(), distribution_table(&v, 16)));
     }
 
-    let Some(rcut) = params.al6_rcut else { return out };
+    let Some(rcut) = params.al6_rcut else { return Ok(out) };
 
     let n6: Vec<usize> = r.verdicts.iter().filter_map(|x| x.n_al6).collect();
     if !n6.is_empty() {
@@ -1396,7 +1396,7 @@ fn diagnostic_tables(
     let mut cut = std::collections::BTreeMap::new();
     cut.insert(("Al".to_string(), "O".to_string()), rcut);
     let tp = ferro_core::TypeParams::new(cut, Default::default());
-    let hist = pooled_coordination(traj, &tp, "Al");
+    let hist = pooled_coordination(traj, &tp, "Al")?;
     if !hist.is_empty() {
         // 所用截断逐 system 不同（--al6 不带值时），记在 [inputs] 的 al6_rcut 列
         out.push(("al_cn".to_string(), coordination_table(&hist)));
@@ -1404,9 +1404,9 @@ fn diagnostic_tables(
 
     // 以当前截断为中心扫一圈：陡不陡才是这张表要说的事
     let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1).filter(|v| *v > 0.0).collect();
-    let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200);
+    let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200)?;
     out.push(("rcut_scan".to_string(), scan_table(&scan)));
-    out
+    Ok(out)
 }
 
 fn print_table(t: &ferro_core::Table) {

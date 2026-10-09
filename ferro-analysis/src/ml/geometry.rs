@@ -69,11 +69,11 @@ pub fn count_with_coordination(
     params: &TypeParams,
     elem: &str,
     cn: u32,
-) -> usize {
-    ferro_core::classify_frame(frame, cell, params)
+) -> ferro_core::Result<usize> {
+    Ok(ferro_core::classify_frame(frame, cell, params)?
         .iter()
         .filter(|t| matches!(t, AtomType::Former { elem: e, cn: c, .. } if e == elem && *c == cn))
-        .count()
+        .count())
 }
 
 /// Distribution of coordination numbers for one element, `cn -> count`.
@@ -86,16 +86,16 @@ pub fn coordination_histogram(
     cell: &Cell,
     params: &TypeParams,
     elem: &str,
-) -> Vec<(u32, usize)> {
+) -> ferro_core::Result<Vec<(u32, usize)>> {
     let mut hist: std::collections::BTreeMap<u32, usize> = Default::default();
-    for t in ferro_core::classify_frame(frame, cell, params) {
+    for t in ferro_core::classify_frame(frame, cell, params)? {
         if let AtomType::Former { elem: e, cn, .. } = t {
             if e == elem {
                 *hist.entry(cn).or_default() += 1;
             }
         }
     }
-    hist.into_iter().collect()
+    Ok(hist.into_iter().collect())
 }
 
 #[cfg(test)]
@@ -149,8 +149,8 @@ mod tests {
         let mut cut = std::collections::BTreeMap::new();
         cut.insert(("Al".to_string(), "O".to_string()), 2.4);
         let p = TypeParams::new(cut, Default::default());
-        assert_eq!(count_with_coordination(&f, &c, &p, "Al", 6), 1);
-        assert_eq!(count_with_coordination(&f, &c, &p, "Al", 4), 0);
-        assert_eq!(coordination_histogram(&f, &c, &p, "Al"), vec![(6, 1)]);
+        assert_eq!(count_with_coordination(&f, &c, &p, "Al", 6).unwrap(), 1);
+        assert_eq!(count_with_coordination(&f, &c, &p, "Al", 4).unwrap(), 0);
+        assert_eq!(coordination_histogram(&f, &c, &p, "Al").unwrap(), vec![(6, 1)]);
     }
 }
