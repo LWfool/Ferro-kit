@@ -5,6 +5,136 @@
 
 ## 优先级高
 
+### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；未修）
+
+六个子代理按领域只读审查：A `ferro-io` · B 结构分析（gr/sq/angle/cube_*）· C 动力学（msd/vacf/
+rotcorr/vanhove/bondlife）· D network/dft/ml/core · E cli 驱动/render/structure · G 横切（R1–R6、
+死代码、手册一致性、scripts/、dev/ 漂移）。`ferro-python`、`ferro-workflow`、`cmd/job.rs` 按用户
+要求**不在范围内**。对照 deepmd 环境的 ase 3.29 / dpdata 1.0.2 / MDAnalysis / pymatgen 源码与
+`examples/cp2k-2026.2/src`，可联网查文献。复现 fixture 是一次性的（会话 scratch），未进仓；复现
+写到可重做的程度。A-18 与 G-6 是同一条，合并。四条登记勘误（G-2、G-3、G-4、G-15）已直接改在
+`plan.md` / `progress.md` / `issues.md` 的原条目里，G-3 并入零调用清单的判断。
+
+**本轮核对一致、不必再查**：Waasmaier–Kirfel 形状因子（对 ASE；ASE 自己 Cu 常数项、O 一个系数
+有误）与 pymatgen（Sn 是 pymatgen 错）；中子散射长度 99 项对 pymatgen（只 B 不同，有意 ¹¹B）；
+Faber–Ziman 权重；msd / vacf / rotcorr / vanhove / bondlife 对合成轨迹解析解与 numpy 独立实现
+（csv 精度 5e-8 内，含 metal 单位带速度 dump 的 vacf C_v(0) 与 Green–Kubo 平台）；changelog
+`Unreleased` 覆盖 0.3.5 全部破坏性改动；手册 LaTeX 约定零违规；PAGES 覆盖全部手册页；
+traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物可跑通；分层、`as_slice`、`Molecule`、
+`label()` 反解析零违规；collect → filter → dpdata 读回一致。
+
+**严重**（全部由主会话复现）
+
+| # | 位置 | 问题 | 复现 | 修法 |
+|---|---|---|---|---|
+| A-13 | `readers/qe.rs:191-211 collect_namelist`、`:96-97` | `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时整段被忽略，`celldm(1)` 丢失，无选项的 `CELL_PARAMETERS` 回落 Bohr | Si 原胞一行 namelist + `CELL_PARAMETERS` 无选项 + `ATOMIC_POSITIONS crystal` → `ferro info`：a=0.3742 Å、密度 2517.8 g/cm³，exit 0（应 a=3.84 Å） | namelist 按 token 流收：`&name` 后（同行剩余也算）到引号外的 `/`；缺 `&SYSTEM` 报错；`ibrav` 缺省报错（INPUT_PW 标 REQUIRED） |
+| B-1 | `md/sq.rs:167-174`；`cmd/traj.rs:379`（sq 与 gr 共用 `GrKnobs`） | `--r-min > 0` 时 FT 积分从 r_min 起，漏掉 $[0,r_{min}]$ 段的 $-\rho$ 项，整条 S(q) 平移，exit 0 | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj` 只改 `--r-min` 0.001 → 1.2（该区间对计数为 0）：total_neutron q=0.7 0.085 → 0.644，q=2 0.919 → 1.238。默认 0.001 下可忽略 | 补解析项 $-\rho\int_0^{a} r\sin(qr)\,dr$；或 sq 一律从 0 积分、拒收 `--r-min`。测试：r_min 取在第一峰前与 0.001 结果一致 |
+| D-8 | `dft/bader_grid.rs:474`（refine_edge 内 `max_ongrid`）、`:439-449`（边缘只看 6 个面邻居） | **CLI 默认的 near-grid（`-r -1`）与 on-grid 逐位相同**：refine_edge 对边缘点跑 on-grid 上升，边缘判定也只看 6 邻（规格与 Henkelman 2009 为 26 邻、near-grid 时调 near-grid 上升）。即默认路径实际是 on-grid | 10 Å 立方胞两高斯（中心 (3.1,3.3,5.0) σ0.9 幅 1.0；(6.3,6.9,5.2) σ1.4 幅 0.6），N=60：on-grid 与 near-grid `-r -1` 均 11.91354，near-grid `-r 0` 11.88225；N=120 默认误差 0.024 e 且随加密几乎不降，`-r 0` 1e-4 | refine_edge 按方法分派，near-grid 调 `max_neargrid`（顺带解决「`max_neargrid` 被绕过」一节）；边缘判定改 26 邻；加收敛测试 |
+| D-9 | `dft/bader_grid.rs:658`（`grad_lat_1`）、`:736`（`start = [i+0.5, …]`） | off-grid 三线性插值的 $\partial\rho/\partial f_2$ 写成 x 向差分，起点偏半格 | 同 D-8 体系 `-m offgrid`：N=60 nvols **21918**（应 2）；N=30 3064；原子电荷误差 0.1–0.19 e | 改 `grad_lat_1`、起点 `[i,j,k]`；单测「线性密度 ρ=y 的梯度只有 y 分量」+ 收敛测试 |
+
+**中**
+
+| # | 位置 | 问题 | 修法 |
+|---|---|---|---|
+| A-2 | `readers/extxyz.rs:160`；`writers/extxyz.rs:62` | 读侧不认 GPUMD 的 `vel` 列，速度静默丢；写侧的 `velocities` 列 ASE（写 `momenta`）与 GPUMD 都不认 | reader 认 `vel`（Å/fs，直收）；writer 列名需定口径；与「extxyz 把 momenta 当速度读」同改 |
+| A-10 | `readers/lammps_data.rs:125-147`、`:239-244 is_section_header` | Masses 后接未登记段（`PairIJ Coeffs` 等）时其行被当成 Masses：O/H 两 type 都成 `X` 并合并，exit 0 | 用 LAMMPS 文档完整段名表识别段头；Masses 行恰 2 个数否则报错；同 type 重复报错 |
+| A-12 | `readers/lammps_dump.rs:166-180`（丢 lo）；`writers/lammps_dump.rs:58-60`、`lammps_data.rs:44-46` | dump / data 往返丢盒子原点：写出的盒子从 0 起、坐标保留原值，`convert` 后首帧 225/5003 原子在盒外 | `Cell` 或 `Frame` 带可选 origin，dump/data 读填 lo、写回；与 M5「坐标不平移」不冲突 |
+| A-17 | `readers/cp2k_md.rs:384-414`；`docs/src/dataset/collect.md:117-140` | reader 要求力块后紧跟 `&CELL` 打到标准输出的 cell 行，手册模板没有 `&CELL`；照手册跑出的日志全部帧判 incomplete，报错不说缺什么。VELOCITIES 打到标准输出时同样 | 手册模板补 `&CELL FILENAME __STD_OUT__` 并写明勿把 VELOCITIES 打到 stdout；缺 cell 行单独计数并点名；见到第三个同构 xyz 块时报「额外 xyz 块（VELOCITIES?）」 |
+| B-2 | `md/cube_density.rs:112-117,229-236`；`cube_radius.rs:149-151,229`；`cube_jump.rs:107-112,237`；`cube_sdf.rs:595-597` | cube 网格整体偏半个体素：体素平均值写在格点上而 origin 写 0（规范：第 i 点在 origin + i·spacing）。单原子 4³/10 Å 偏 1.25 Å/轴；默认 50³/40 Å 约 0.4 Å/轴 | origin 写 ½ 个 spacing（四处同改，可与布局建议 3 的 cube spacing 下沉合并）；或改按最近格点分箱、radius 球心改 i/n。手册 cube-density / cube-radius 公式随改；加单原子测试 |
+| B-3 | `md/cube_sdf.rs:614-627 build_reference_frame` | `map sdf` 参考结构多加一次 `(min+max)/2` 平移，与密度网格错位；现被 S-A 掩盖（实测仅 0.04 Å），S-A 修后显形 | 直接用 `pos`，删 `center`/`box_size` 参数；随 S-A 修，测试「参考原子落在各自密度峰上」 |
+| B-4 | `md/cube_sdf.rs:401-404` | 以锚原子最小镜像取局部坐标，跨度超过半盒或逾渗的团簇被折断，无告警（推断，未构造算例） | BFS 展开 + 逾渗检测；结果计数被跳过的团簇。随 B-6 / S-A 一并做 |
+| C-9 **已定：改手册**（2026-10-11 用户） | `docs/src/analysis/bondlife.md:55`、`:81-83` | 手册称 $S_C$「always ≤ $C_I$」、两者之差 = 断后重连的量；开 `--intermittency` 后只有 $S_C$ 补缺口，$S_C$ 可大于 $C_I$（序列 `1 1 0 1 1 0 1 1 1`、k=1：$C_I$ 0.6–0.67，$S_C$ 全 1） | 手册把「≤」限定为 `--intermittency 0`，写明补缺口后两者不可直接相减。数值不改 |
+| D-1 | `ferro-core/src/spin.rs:162-171`（`max_by_key`） | 多解择优的键恒为常数，实际取枚举序最后一个解：FeTiO₃ 给 Fe³⁺/Ti³⁺ | 按明确判据择优（各元素常见氧化态次序等）；多解时告警 |
+| D-4 | `cmd/dataset.rs:410-412`（`s_max` 默认 10）；`ml/filter.rs:181-185` | `dataset filter` 默认开着 `-s 10 GPa`，无 virial 的数据集按默认参数整批失败，报错却说「你给了阈值」 | 用户未显式给 `-s`/`-f` 时，缺标签的 system 关掉该判据并打 Note；显式给了才报错 |
+| D-10 | `dft/bader_weight.rs:107-113`、`:146-148` | S-C 的补充：weight 在等密度平台上 `tsum = 0` → 0/0 = NaN，电荷成片丢（floor=0.2 时 208.6 e 剩 97.2 e） | 随 S-C / Bader 重写；回归测试 Σionchg + vacchg == 网格总量 |
+| D-11 | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³ | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
+| E-1 | `ferro-cli/src/help.rs:361,687,716,745,777`；`cmd/map.rs:184-192` | `map density/velocity/force/radius` 帮助页把 `-s` 写成「产物 stem」，实际追加后缀（`-s foo` → `density_foo.cube`） | 帮助页按实际规则写；随合规扫描第 2 条（map 命名）一并改手册 |
+| E-3 | `docs/src/cli-reference.md:443-688` 共 16 处 | traj / map 章节仍按 0.3.2 前「`-o` 是后缀」写用法与示例（`-o run1`） | 用法行 `[-o DIR] [-s SUFFIX]`，示例改 `-s run1` |
+| E-9 | `ferro-structure/src/vacuum.rs:35,50-59` | `add_vacuum` 对奇异胞（ASE 二维材料 c=0 约定）与 NaN 厚度静默返回 NaN 晶胞；Python 接口直接暴露 | 厚度非有限或 ≤0 报错；奇异胞报错或按 ASE `center` 口径补 c；加 c=0 回归测试 |
+| E-10 | `ferro-structure/src/merge.rs:100-114` | `merge_frames` 按胞面放块、不先折回胞内：原子不在 [0,1) 时（如 LAMMPS lo≠0）两块静默重叠，gap 2 Å 实测最近距离 0.18 Å | 平移前按各自胞折回（`Frame::wrap_all` 现成）；或写明前置条件并在越界时报错 |
+| E-12 | `ferro-cli/src/batch.rs:51-75 unique_labels` | 撞名判定区分大小写，macOS / Windows 上 `Prod`/`prod` 两输入的 `map` 产物静默互相覆盖，exit 0（S7 修复的缺口）；`net --export-traj` 同 | 撞名键用 `to_lowercase()`（显示仍原样）；补单测 |
+| E-15 | `docs/src/installation.md:5` | 写「Rust 1.75+」，nalgebra 0.35 要求 ≥ 1.89 | 手册改 1.89+；根 `[workspace.package]` 加 `rust-version = "1.89"` |
+
+**口径**
+
+- **A-7 已定：容差改 1e-3 分数坐标（2026-10-11 用户，与 ASE 默认一致）**。`readers/cif.rs:427`（`TOL_SQ = 1e-4` 即 0.01）。
+  附带的判重范围问题仍开着：现在对已展开的全部同元素原子判重，两个不等价位点相距小于容差时后一个被整体吞掉 ——
+  修时一并把判重限定在同一非对称位点的像之间、跨位点重合报错
+- **D-2 已定：暂不改默认表，手册注明（2026-10-11 用户）**。`data/qn_elements.rs:25` 默认 `{B,P,Si}`；手册写明
+  Si / B 的 n 也是同核连接，与常见硅酸盐 / 硼酸盐 Qn（总桥氧数）不同，总桥 = n + Σm
+- **B-9**（挂到「`ferro map jump`：丢失的 CLI 入口」，补入口时一并定）：`cube_jump.rs:192-217` 滑窗重叠，τ > 1 时同一次
+  跳跃计 τ 次，手册却称「raw count of jump events」。二选一：窗口不重叠（步长 τ），或改称「超阈值窗口数」
+- **B-10**（挂到 B-6，cube_sdf 改写时一并定）：`cube_sdf.rs:607-609` 每张网格按全体体素均值 = 1 归一，含 padding 空体素，
+  `--padding` 3 → 6 Å 数值降为 1/2–1/3，不同类型不可横比。TRAVIS / VMD volmap 按每帧每团簇数密度或相对体相密度归一
+
+**轻**（位置见各条）
+
+- A（格式）：`io_dispatch.rs:275-278` 测试 doc 注释挂错；extxyz 电荷列只认 `charges`，ASE 写 `charge` / `initial_charges`
+  （`readers/extxyz.rs:141`）；extxyz writer 定点 `{:.10}` 丢小数有效位（`writers/extxyz.rs:139-142`）；PDB 末个 MODEL
+  缺 ENDMDL 整帧静默丢、`CRYST1 1 1 1 90 90 90` 当 1 Å 周期胞（`pdb.rs:35-62`）；CIF symop 认不出的项静默丢
+  （`cif.rs:380-411`，A1 漏网）；cube writer 不在每条 z 列末换行（`writers/cube.rs:59-64`）；LAMMPS data 的 Masses 注释
+  直接当元素不校验（`lammps_data.rs:136-142`）；QE `ATOMIC_POSITIONS` 用了未声明的标签不报错（`qe.rs:152-154`）；QE
+  writer 把 `metadata.source` 原样写进 `prefix`（`writers/qe.rs:22,30`）；CP2K `.inp` 的 `MULTIPLE_UNIT_CELL` 静默忽略
+  （`cp2k.rs:139-210`）；xyz / extxyz 末帧截断整份报错，与 dump「丢末帧 + 告警」不一且不点名帧号（`xyz.rs:41-45`、
+  `extxyz.rs:113-115`）；手册 `data-model.md:89`、`cli-reference.md:305` 过时；DeePMD writer 文档写 `energy.npy (nframes,)`
+  实为 `(nframes,1)`，部分周期（slab）静默写成全周期（`writers/deepmd.rs:12,130-136`）
+- B（结构）：`shell.rs:81` 平滑窗实为 0.14 Å，注释（`:30,:43`）与 `issues.md`「g(r) 第一极小的自动定位」写 0.10 Å；
+  手册 sq.md / gr.md 的过时与不存在的 API（`sq.rs:1-7,19-24` 同）；CN(r) 标在 bin 中心、实际累计到上沿（`gr.rs:385-394`）；
+  cube-jump.md「Displacement Calculation」「Implementation Notes」两处与代码不符；cube-sdf.md「Implementation Notes」
+  「Kabsch Algorithm」「Atom-Type Labels」过时
+- C（动力学）：`md/mod.rs:3-8`、`correlate.rs:7`、`msd.md:356-357` 对 correlate 调用者的描述过时；`vanhove.rs:94`
+  `elements` 文档写按原子序数排、实为字母序；`cmd/traj.rs:716`「tau 逐文件相同」在默认 N/2 后不成立；vanhove `--tau`
+  超出帧数静默截到 N−1（`vanhove.rs:179`），其余四个分析的 `--max-lag` 是报错；帮助页 vanhove 写 ∫P dr = 1
+  （`help.rs:641`），手册 / 代码是 1 − outside_fraction；库层五个 `XxxParams::default()` 仍给 `dt = 1.0`、`calc_*` 不查帧
+  间隔，与 issues.md「--dt 必填」判据相反（`msd.rs:56-60` 等五处）；帧间盒子有无不一致时 msd/vanhove 报错而
+  rotcorr/bondlife 静默改用笛卡尔差（`rotcorr.rs:158-164` 等）；msd.md:29-30 称 gmx msd 无原点间隔，gmx 默认 `-trestart` 10 ps
+- D（network/dft/ml/core）：network 表头说明 / doc 注释 / 手册仍有旧口径（qn = 桥氧数）与已删 `average` 表；`collect -o DIR`
+  单组时先建空 DIR 再写到同级 `DIR.db`，手册两处说法相反（`dataset.rs:568-570,672`）；inspect「温度由动能反算」说明永不
+  输出 —— vasprun reader 不设 `metadata.source`（`inspect.rs:144-152`）；refine_edge 取负标边缘，体积 1 取负后是 −1 与
+  真空哨兵相撞、凭空多一个体积（`bader_grid.rs:478-487`，`ionchg` 不受影响）；Bader / chg-sdf 参数校验与手册零碎不符；
+  `dev/bader.md` 过时处与 Bader 单测的空断言；并查集 `find` 递归且无按秩合并，链序输入深度 O(n)，rayon 线程上栈溢出
+  abort（`ferro-core/src/cluster.rs:183-198`）
+- E（cli/render/structure）：chg-sdf 帮助页 `--qn` 默认写 2、实为 3（`help.rs:842`；21 页默认值自动比对仅此一处）；gr / angle
+  帮助页 Output 列名过时（`help.rs:401,514`）；`ferro traj` 总览漏 bondlife、「seven」计数过时（`help.rs:316-323`、
+  `traj.rs:304,309`、`cli-reference.md:440`）；`\frac` 不给整个分式加括号，后随项被读进分母，测试 `latex.rs:222` 断言的
+  正是歧义输出（`latex.rs:144-147`）；标题不折行、`ferro doc` 小节截取把代码块里的 `#` 行当标题（`markdown.rs:572-587`、
+  `doc.rs:276-284`）；`doc.rs` 别名表只覆盖一半 traj 命令、PAGES 顺序与 SUMMARY 不符、`:6`「208 KB」`:35`「863 lines」过时；
+  ferro-structure 三处参数校验漏 NaN / ∞ → panic（`supercell.rs:42-52`、`box_builder.rs:197,230-247`）；只给选项不给 `-i`
+  时打帮助页且退出码 0（`traj.rs:271-283`、`map.rs:149-156`）；`batch.rs:380,307-308` 注释仍说 writer 收 `&str`；
+  `installation.md:20-26` 的命令表是第四份命令树，缺 bondlife / dataset / doc
+- G（横切）：
+  - code1 / code2 引用 25 处逐条判断（并入低优先级「code1 / code2 引用统一扫描」一节）
+  - 布局建议 13 之外的过时注释
+  - 手册参数表漏列：dataset 三节缺 `--type`、`--ratio`、`--mkdir`、`--format`（`cli-reference.md:857-1048`）；
+    `collect.md:390` 写的 `merge --shuffle` 不存在，应为 `merge --mode shuffle`
+  - 英文 `//` 内部注释远多于布局建议 12 登记的几处
+  - `scripts/ferrocmp.py:11-13`、`compare_sq.py:40`、`compare_sq_experiment.py:21` 的说明仍写「`-o` 是后缀」（代码已跟上）
+  - `plot_net.py` 给错表时抛裸 `KeyError`
+  - 根 `Cargo.toml:9` 对 ferro-python 的注释（「等熟悉 Rust 后再启用」）与独立 workspace 的设计相反
+
+**布局**
+
+- **cp2k_md / cp2k_sp 的五个重复函数**（A-18 / G-6）：`version_note`、`unit_in_brackets`、`energy_unit`、`energy_to_ev`、
+  `stress_unit`（`cp2k_md.rs:122-215` 与 `cp2k_sp.rs:81-153`），报错文案已开始漂移。**注意 2026-09-22 用户明确要求两者
+  「不共用单位与数据抽取」**（`overview.md`），故不合；按 R6 补两处互指注释，并把已漂开的文案修平
+- 「字母前缀 → 首字母大写元素符号，空则 X」在 ferro-io 写了三份半：`cp2k.rs:263`、`qe.rs:264`（逐字相同）、
+  `cif.rs:540+557`（G-5，R6 第三处、同一变化原因）→ 并入 `readers/util.rs`
+- `bader_grid.rs` 三条网格路的后处理逐段复制（`:161-`、`:508-`、`:719-`，15 个连续 6 行窗口相同；G-7），S-B 修法要改三遍 →
+  随 Bader 重写抽出
+- R3 内联：`cmd/net.rs:318 is_pair_arg`；`io_dispatch.rs:8 is_lammps_data` 随布局建议 1（`enum Format`）一起做（G-8；其余
+  258 个单调用函数逐个过，均满足 R2）
+- `MsdCmd` 手抄 `LagKnobs` 两字段（`traj.rs:114-119` vs `:153-161`）；`help.rs:1-2` 留着 `print_fe_job_overview` 旧名（E-17）
+- `TableFormat` 只有一个变体（`writers/table.rs:13-37`）；`chgcar.rs:80 _total` 死变量；`cp2k.rs:265-268 find_end` 死变量
+- `thiserror` 在 ferro-io 与 ferro-structure 未使用（G-1）
+- `md/` 下挂错位置或截断的 doc 注释（`gr.rs:426`、`angle.rs:427-429` 等，B-12）
+- `trajectory_analysis.rs` 与 `geometry.rs` 经 `pub use *` 进 crate 根：`ferro_analysis::mean_squared_displacement`（不解包裹、单原点）
+  与 `calc_msd` 并列，`angle` 函数与 `md::angle` 模块同名，库用户易拿错；模块文档称 RMSD / Rg 已迁到 `md/`，实际没有（G-3）。
+  随零调用清单定夺；若留，至少去掉两处 glob 再导出并改正文档
+
+**测试缺口**：sq 的 r_min 不变性；Bader near-grid / off-grid 对解析密度的收敛；cube 网格的单原子定位；`merge_frames` 原子越界；
+`add_vacuum` c=0；`unique_labels` 大小写；QE 一行 namelist；LAMMPS data 未登记段；带速度的 dump fixture（C 用合成数据验过 vacf，
+仓库里仍无）。
+
 ### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；严重 / 中两级 2026-10-09 处理完：39 条已修并归档，B-6、C-D2、C-D3 搁置，D-M4、D-M6–D-M12 挂起作 QC 专项；轻、口径、布局建议、测试缺口仍开着）
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
@@ -38,7 +168,7 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 
 | # | 位置 | 问题 / 复现 | 修法 |
 |---|---|---|---|
-| B-6 **搁置**（2026-10-08 用户定：该功能后续会更新，届时一并修；候选思路：组内枚举、匈牙利 + Kabsch 迭代如 ArbAlign、距离指纹配对）| `cube_sdf.rs:445-478 heap_permutations` | 同签名族对**全部 P** 做 n! 枚举，每排列一次 SVD；docstring（`:411`）说「组内」，代码不分组。10 元环 1.2 s、11 元 10.7 s、13 元外推约 28 min，偏磷酸盐 Q2 长链常见 | 只在同标签组内置换并设上限，超限退 Hungarian 并告警 |
+| B-6 **搁置**（2026-10-08 用户定：该功能后续会更新，届时一并修；候选思路：组内枚举、匈牙利 + Kabsch 迭代如 ArbAlign、距离指纹配对）| `cube_sdf.rs:502` 起 `heap_permutations` | 同签名族对**全部 P** 做 n! 枚举，每排列一次 SVD；docstring（`:414`）说「组内」，代码不分组。10 元环 1.2 s、11 元 10.7 s、13 元外推约 28 min，偏磷酸盐 Q2 长链常见 | 只在同标签组内置换并设上限，超限退 Hungarian 并告警 |
 
 network / dft / ml / core（C）：
 
@@ -73,7 +203,7 @@ network / dft / ml / core（C）：
   （`vanhove --r-max 1.0 --dr 0.07` 末 bin p_r 低估约 3.5 倍）；rotcorr `--legendre 1` 头部仍写
   `P2` / 「of c2」（`traj.rs:661`、`rotcorr.rs:329`）；`sq.rs:346 to_tables` 参数 `gr` 未用、`Result`
   永不 Err；rotcorr Sum 模式串行暴力（`:171-189`，推断）；msd lag 0 输出 −1.7e-18
-- C：`cell.rs:147-160` 浮点 `rem_euclid` 可返回 L（`(-1e-17).rem_euclid(8.0)=8`），chg_sdf 三线性插值
+- C：浮点 `rem_euclid` 可返回 L（`(-1e-17).rem_euclid(8.0)=8`）。**位置勘误（2026-10-11 审查 G-4）**：原记 `cell.rs:147-160`，但 `Cell::wrap_position` 生产零调用；真正的越界点是 `chg_sdf.rs:265-273 trilinear_interp_pbc` 自己的 `rem_euclid`（`x0 = n1` 读到下一行体素，`z0 = n3` 越界 panic），chg_sdf 三线性插值
   由此越界（推断）→ 下标再 `% n`；`spin.rs:62-69` 未知元素 Z=255 计入电子数（元素表只到 Rn，
   UO₂ 给双重态）；~~`dataset.rs:982,1003` `-f nan`、`--oo-min nan` 静默关判据、`--al6 nan` 删光
   后才失败；`diagnostics.rs:101-104` 全非有限时 `len()-1` 下溢~~（随 C-D4 修）；`diagnostics.rs``:41` 实际可采
@@ -478,9 +608,10 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 | 整文件零引用 | `ferro-cli/src/args/corr.rs`（`CorrMode`）· `args/traj.rs:5`（`TrajMode`），0.2.0 前 `--mode` 时代遗留 | 8 + 8 |
 | 单位转换链 | `ferro-core/src/units.rs` 的 `convert_length` / `convert_energy` / `convert_time` **生产零调用**（只有自己的测试），连带 6 个私有方法只服务它们。四个 `convert_*` 里只有 `convert_pressure` 活着（vasprun / vasp_outcar / cp2k_out / filter / dataset 共 5 处） | ~55 |
 | 被绕过的算法 | `ferro-analysis/src/dft/bader_grid.rs:375 max_neargrid` —— 见下一条 | 20 |
-| 取代方案只落实了一半 | `ferro-core/src/network_type.rs:233 display_rank` 生产零调用（`class_rank` 有 3 处）。`progress.md` 说两者一起取代了三个 `*_label_order`，实际只落实了一半 | 8 |
-| 基础访问器 | `Frame::geometric_center` / `atom_mut` / `wrap_all` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames` / `time_at`、`Atom::distance_to`、`Table::n_cols`、`compounds::with_density`、`ClusterResult::ids`、`ml/diagnostics.rs:177,182`、`filter::is_clean`、`qn_elements::has_qn`、`charge_grid::lat_dist_i` | ~50 |
+| 取代方案只落实了一半 | `ferro-core/src/network_type.rs:233 display_rank` 生产零调用（`class_rank` 有 3 处）。`progress.md` 说两者一起取代了三个 `*_label_order`，实际只落实了一半。**2026-10-11 补**：`is_bridging`（`:251`）同样生产零调用（`ferro-structure/src/cluster.rs:68` 注释明说不能用它）；`site_digit`（`:194`）生产零调用，布局建议 6 做了它才活 | 8 |
+| 基础访问器 | `Frame::geometric_center` / `atom_mut` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames` / `time_at`、`Atom::distance_to`、`Table::n_cols`、`compounds::with_density`、`ClusterResult::ids`、`ml/diagnostics.rs:182 all_frames_have_cells`、`:187 cell_of`、`filter::is_clean`、`qn_elements::has_qn`、`charge_grid::lat_dist_i` | ~50 |
 | ~~未使用依赖~~ | ~~`ferro-workflow` 的 `serde`~~ —— 2026-09-26 随 serde 整体移除 | — |
+| 2026-10-11 重扫新增（审查 G-2） | `Cell::wrap_position`（只有测试用；`Frame::wrap_all` 自己按 pbc 逐轴实现）；`cube_sdf.rs:141-142 ClusterSnapshot::anchor_idx`（`#[allow(dead_code)]` 压住的只写字段）；`ferro-cli/src/args/mod.rs:2 pub mod corr`（只为 `CorrMode` 存在，删时连 mod 行一起删）。**已失效**：`Frame::wrap_all` 自 `48bf11e`（审查 M5）起被 `cube_reference_frame` 调用，已移出基础访问器行 | — |
 
 **方法上要记住的一条**：`cargo clippy` 零警告不说明没有死代码 —— 库 crate 里
 `pub` 项不触发 `dead_code` lint，上面全部躲过了它。查零调用要按名字逐个 grep
@@ -726,6 +857,16 @@ vanhove 的归一化就不除 dr，与 GROMACS / pymatgen 相差 1/dr（手册�
 （模块文档与 `calc_vanhove` 文档，均写「follows code1/vanhove.c」）、`tests/npt_normalisation.rs` 1。
 逐条判：口径已偏离 code1 的改写为描述 ferro 自己的做法（必要时对照行业实现）；只是记录
 「对拍时如何与它对齐」的保留。手册里 gr/msd/vacf/rotcorr 四页的 code1 提及是历史与对拍说明，已看过、不动。
+
+**2026-10-11 审查 G-9 的逐条判断**（25 处与上面实数吻合；改 11、删 2、留 12）：
+- **改**：`vanhove.rs:8,138`（优先：写「照 code1」却给出除以 dr 的公式，code1 不除；改为对照 GROMACS / pymatgen）；
+  `cube_radius.rs:7`（路径错，应为 `private/code1`，且 M4 后搜索窗已不是 code1 的全遍历）；`angle.rs:20,170`；
+  **`angle.rs:489`（用户可见：进 angle 产物 csv 头部，把私有代码名写进用户数据文件；改中性表述）**；
+  `gr.rs:5,363,304`（改引 Allen & Tildesley）；`sq.rs:6,107`（改引 Faber & Ziman 1965 / Keen 2001）、`sq.rs:315`
+  （(2−δ_ij) 对称求和是 Faber–Ziman 加权的定义）
+- **删**：`gr.rs:4`、`gr.rs:314`（纯历史，无判据）
+- **留**：`angle.rs:16,268`（计数差一半的对拍说明）；`cube_radius.rs:354`（测试的 brute-force 对照）；
+  `gr.rs:575`、`npt_normalisation.rs:34`、`sq.rs:153,705`（对拍基准）；`scattering_data.rs:3,10,18,320`（数据出处）
 
 ### ferro-cli：REPL / 脚本模式（2026-08-11 由高降中，2026-09-15 降低）
 

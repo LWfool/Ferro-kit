@@ -115,8 +115,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `Ligand{elem,partners}` / `Modifier{elem,cn}` / `Other`）、`TypeParams`、
   `classify_frame[_detailed]`。它与 `cluster.rs::build_network_graph` 入口查奇异胞并返回
   `Result`（2026-10-09）—— c=0 的 slab 此前在最小镜像的 `expect` 处 panic
-  - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` / `display_rank()`
-    取代三个 `*_label_order` 与 `type_sort_key`；`is_bridging()` 取代前缀匹配
+  - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` 取代三个
+    `*_label_order` 与 `type_sort_key`；`display_rank()`、`is_bridging()` 目前无生产调用
+    （见 `plan.md` 零调用清单；2026-10-11 审查 G-15 勘误）
   - `classify_frame_detailed` 另返回 ligand→former 邻接（`FrameTypes`）供 linkage 使用
 - `data/elements.rs`：含 `symbol_to_z`、`group_number`、`valence_electrons`、
   `is_transition_metal`、**`split_element_label`**（按第一个下划线拆分，返回

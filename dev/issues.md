@@ -659,10 +659,10 @@ git 历史（`8a8fe75`..`443d45c`），未定的留在 `plan.md`「零调用清�
 | 全局 | 拿 `cargo clippy` 零警告当「没有死代码」 | **库 crate 里 `pub` 项不触发 `dead_code` lint**，零调用的那几百行全部躲过了它，其中两个整文件还被 `lib.rs` 的 `pub use ...::*` 再导出。查零调用要按名字逐个 grep 全仓，不能靠编译器 |
 | 全局 | 看见两处相似就合并 | **Rule of Three**：两处不动，第三处才评估，判据是「是否同一个变化原因」。2026-09-12 那轮按此把六条 ×2 的重复判为**有意保留**（见下） |
 | 「零调用 = 死代码」 | 直接删 | 本仓多数功能**还没进入实际使用**，「需求确定但 CLI 层没接」与「开发遗留」在代码里长得一样。`cube_jump` 就是前者（429 行 + 10 测试 + 手册页齐全，只缺 CLI 入口）。判据要靠人，清单见 `plan.md` |
-| `readers/` 的 `floats` 辅助 | 看见同名函数就全合成一个 | 合并后的 `readers/util.rs::floats` 是 `map_while`（**遇到非数字即停**，让行尾注释不中断解析）。`vasp_outcar.rs:56` 那个是 `filter_map`（**跳过非数字继续**，为了 `in kB` 这类行首带标签的行），**语义相反，不能并**。另：第四份曾藏在 `cube.rs` 叫 `parse_floats`，按名字 grep 找不到 |
+| `readers/` 的 `floats` 辅助 | 看见同名函数就全合成一个 | 合并后的 `readers/util.rs::floats` 是 `map_while`（**遇到非数字即停**，让行尾注释不中断解析）。`vasp_outcar.rs:57` 那个是 `filter_map`（**跳过非数字继续**，为了 `in kB` 这类行首带标签的行），**语义相反，不能并**。另：第四份曾藏在 `cube.rs` 叫 `parse_floats`，按名字 grep 找不到 |
 | `ml/geometry.rs:43 min_image` vs `Cell::minimum_image` | 语义相同，想合 | 前者把矩阵 transpose 与 inverse **提到 O(N²) 内循环之外**。合并等于把 `try_inverse()` 放回内循环 |
-| `md/gr.rs:33 elem_z` vs `md/sq.rs:87 elem_z_local` | 两个 `symbol_to_z` 的薄包装，想统一 | **未知符号的回退值相反且都对**：`elem_z` 给 255（排到末尾），`elem_z_local` 给 0（sq 用 Z 当电子数，255 是荒谬值）。统一任何一个都会弄坏另一边 |
-| `md/cube_sdf.rs:135 signature` | 当成第三套化学式渲染 | 它拼的是**原子类型**当 HashMap key（`Ob:6\|P_2:1`），不是化学式。骨架（BTreeMap 计数 → 拼串）像而已 |
+| `md/gr.rs:34 elem_z` vs `md/sq.rs:100 elem_z_local` | 两个 `symbol_to_z` 的薄包装，想统一 | **未知符号的回退值相反且都对**：`elem_z` 给 255（排到末尾），`elem_z_local` 给 0（sq 用 Z 当电子数，255 是荒谬值）。统一任何一个都会弄坏另一边 |
+| `md/cube_sdf.rs:149 signature` | 当成第三套化学式渲染 | 它拼的是**原子类型**当 HashMap key（`Ob:6\|P_2:1`），不是化学式。骨架（BTreeMap 计数 → 拼串）像而已 |
 | 化学式渲染两套 | 当成不一致要统一 | `group_name` 省略计数 1（目录名，`ls` 里当名字读），`formula_of` 不省略（报错里与第二个化学式上下叠着读，补齐的下标才对得上列）。**用途相反，都对**。两处已互相指名 |
 | `set_bounds`（ferro-io）vs `set_spans`（ferro-cli） | 逐字相同的十四行，想合 | 两份不到 Rule of Three 门槛，不合；但「余数摊进各 set」是一条成文的跨模式规则，两处已加注释互指。改一处必须改另一处 |
 | `md/mod.rs` 的 `pub use` 与 `lib.rs` 的 `pub use md::{...}` | 以为加了模块就导出了 | **两处手写同一份清单**。`cube_jump` 在 `md/mod.rs` 导出了、在 `lib.rs` 漏了。加分析模块时两处都要看 |
