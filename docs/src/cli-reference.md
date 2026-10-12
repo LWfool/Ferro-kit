@@ -130,6 +130,7 @@ ferro convert                              # without -i: prints the table below
 ferro convert -i input.xyz -o output.pdb
 ferro convert -i input.cif -o POSCAR
 ferro convert -i traj.lammpstrj -o traj.extxyz --units metal
+ferro convert -i traj.lammpstrj -o cifs/ --format cif --units metal   # one CIF per frame in cifs/
 ```
 
 | Format | Recognised by | Read | Write | Frames written |
@@ -137,11 +138,11 @@ ferro convert -i traj.lammpstrj -o traj.extxyz --units metal
 | XYZ | `.xyz` | y | y | all |
 | extended XYZ | `.extxyz`, or a `.xyz` whose comment line declares `Lattice=` / `Properties=` | y | y | all |
 | PDB | `.pdb` | y | y | all (MODEL records) |
-| CIF | `.cif` | y | y | all (several data blocks) |
 | LAMMPS dump | `.dump` `.lammpstrj` | y | y | all |
-| VASP | `.vasp` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **first frame only** |
-| LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **first frame only** |
-| QE (pw.x) | `.in` `.qe` | y | y | **first frame only** |
+| CIF | `.cif` | y | y | **one per file** |
+| VASP | `.vasp` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **one per file** |
+| LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **one per file** |
+| QE (pw.x) | `.in` `.qe` | y | y | **one per file** |
 | CP2K input | `.inp` | y | — | — |
 | CP2K restart | `.restart` | y | — | — |
 
@@ -149,7 +150,10 @@ Things that trip people up:
 
 - **The two CP2K input formats are read-only.**  To generate a CP2K input use `ferro job -s cp2k`,
   which writes a complete calculation setup rather than bare coordinates.
-- **"First frame only" is silent**: writing a 500-frame trajectory as a POSCAR gives frame 0, with no error.
+- **"One per file" splits the trajectory**: 500 frames written to `conf.cif` give `conf_0000.cif` …
+  `conf_0499.cif`, the index being the original frame number.  CIF is split too, although the format
+  allows several `data_` blocks in one file: VESTA and Materials Studio show only the first block.
+  Thin the frames out with `--stride` / `--number`.
 - Writing to the name `CONTCAR` produces content in **POSCAR format**.
 - **A `.xyz` can be extended XYZ.**  ASE, GPUMD's `train.xyz`, CP2K's EXTXYZ output and ferro's own
   `dataset --type nep|extxyz` all write extended XYZ under `.xyz`, so a `.xyz` whose comment line (line 2)
@@ -267,8 +271,8 @@ where it is a truncated final frame and is dropped with a warning.
 | Flag | Default | Description |
 |---|---|---|
 | `-i <file>` | (required) | input file (a single one); omit it to print the format table |
-| `-o <file>` | (required) | output file, may include directories (`-o out/run1/x.extxyz`).  A missing parent directory is asked about first; `--mkdir` skips the question.  **A trailing `/` is an error** — the target format is inferred from the file name.  When several frames are written the index goes into the file-name part and the path is unchanged |
-| `--mkdir` | off | create the parent directory of `-o` without asking |
+| `-o <path>` | (required) | output file, may include directories (`-o out/run1/x.extxyz`); the target format is inferred from the file name.  With `--format` it is a **directory** instead.  Missing directories are created without asking.  When several frames are written the index goes into the file-name part and the path is unchanged |
+| `--format <EXT>` | — | treat `-o` as a directory and write this format into it (`cif`, `vasp`, `extxyz`, …): `DIR/frame_0000.cif` … for one-structure formats, `DIR/frame.extxyz` for trajectory formats.  Without it, an `-o` ending in `/` or naming an existing directory is an error |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |

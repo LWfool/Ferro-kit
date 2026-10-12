@@ -12,6 +12,16 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `convert`: CIF is written one frame per file; `-o` can be a directory (breaking)
+
+- Several frames written to `.cif` now give `conf_0000.cif`, `conf_0001.cif`, …
+  like POSCAR, instead of one file with several `data_` blocks, which VESTA and
+  Materials Studio read as its first frame only.
+- `--format EXT` makes `-o` a directory: `-o cifs/ --format cif` writes
+  `cifs/frame_0000.cif` …
+- `--mkdir` is removed from `convert`; a missing output directory is created
+  without asking. The other commands keep `--mkdir`.
+
 ### Smaller changes
 
 - `dataset collect` skips PJM job logs (`x<N>-<job>.<id>.out`) before grouping,
