@@ -11,13 +11,14 @@ pub struct ConvertCmd {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Output file (format auto-detected); may name a directory that does not exist yet
+    /// Output file (format from its name), or a directory when --format is given;
+    /// missing directories are created
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Create the output directory without asking (required when there is no terminal)
-    #[arg(long)]
-    pub mkdir: bool,
+    /// Treat -o as a directory and write this format into it (an extension: cif, vasp, extxyz…)
+    #[arg(long, value_name = "EXT")]
+    pub format: Option<String>,
 
     /// First frame to take (0-based, inclusive)               [default: 0]
     #[arg(long, value_name = "N")]
@@ -58,16 +59,24 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("Input and output paths are identical");
     }
 
-    // 目标格式正是从文件名推断的,故 -o 必须以文件名收尾。以分隔符结尾时
-    // file_name() 为 None(Rust 与 pathlib 一样丢掉末尾分隔符,但目录本身没有
-    // 扩展名可判),报错并给出可直接抄的写法
-    if ends_with_separator(output) {
-        let shown = output.display();
-        bail!(
-            "-o '{shown}' names a directory, but convert needs a file name — the target \
-             format comes from it. Try -o '{shown}conf.extxyz'"
-        );
-    }
+    // 给了 --format 则 -o 是目录，产物名为 frame.<EXT>（逐帧时 frame_0000.<EXT>）；
+    // 否则 -o 是文件，目标格式从文件名推断。目录形状的 -o 不带 --format 时无格式
+    // 可判（Rust 与 pathlib 一样丢掉末尾分隔符，只有原文能看出意图），报错并给出
+    // 可直接抄的写法
+    let output = &match &args.format {
+        Some(ext) => output.join(format!("frame.{}", ext.trim_start_matches('.'))),
+        None => {
+            if ends_with_separator(output) || output.is_dir() {
+                let shown = output.display();
+                bail!(
+                    "-o '{shown}' names a directory, but no format was given. \
+                     Add --format (e.g. --format cif), or name a file: -o '{}'",
+                    output.join("conf.extxyz").display()
+                );
+            }
+            output.clone()
+        }
+    };
     // 参数级错误在读第一个文件之前失败：轨迹可能是几个 GB，读完再报「--start 比
     // --end 大」是白等。跨参数的一致性能在这里查的都查掉
     let start = args.start.unwrap_or(0);
@@ -83,8 +92,12 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("--number must be at least 1");
     }
     // 目标格式也是参数：认不出就别建目录、别读输入（审查 D-M15）
-    crate::io_dispatch::out_format(output)?;
-    crate::outpath::ensure_parent(output, args.mkdir)?;
+    crate::io_dispatch::out_format(output).with_context(|| match &args.format {
+        Some(ext) => format!("--format {ext}"),
+        None => "-o names the output FILE; to write into a directory, add --format EXT".into(),
+    })?;
+    // convert 只写这一个目标，路径是用户逐字写出的，不必再问是否建目录
+    crate::outpath::ensure_parent(output, true)?;
 
     let traj = read_trajectory(input, &args.read)?;
     let n_read = traj.n_frames();
@@ -149,8 +162,8 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
 /// True when the user wrote a trailing separator (`-o out/`).
 ///
 /// `Path` drops it the way `pathlib` does — `Path::new("out/").file_name()` is `Some("out")`
-/// — so the raw text is the only place that intent survives. Every other command reads
-/// such a path as a directory; `convert` cannot, having no default file name to put in it.
+/// — so the raw text is the only place that intent survives. Without `--format`,
+/// `convert` has no format to write into such a directory.
 fn ends_with_separator(p: &Path) -> bool {
     let s = p.to_string_lossy();
     s.ends_with(std::path::MAIN_SEPARATOR) || s.ends_with('/')
@@ -191,17 +204,43 @@ mod tests {
             stride: None,
             number: None,
             read: ReadArgs::default(),
-            mkdir: false,
+            format: None,
         }
     }
 
-    /// `-o out/` has no file name, and convert reads the format out of the file name.
+    /// `-o out/` 没有文件名可判格式：不给 --format 就报错，并给出两种可抄的写法
     #[test]
-    fn a_trailing_separator_is_refused_with_a_usable_hint() {
-        let c = cmd(Some("in.xyz"), Some("out/"));
-        let err = run(&c).unwrap_err().to_string();
-        assert!(err.contains("names a directory"), "{err}");
-        assert!(err.contains("conf.extxyz"), "错误信息要给出可直接抄的写法: {err}");
+    fn a_directory_without_format_is_refused_with_a_usable_hint() {
+        let existing = std::env::temp_dir();
+        for out in ["out/", existing.to_str().unwrap()] {
+            let err = run(&cmd(Some("in.xyz"), Some(out))).unwrap_err().to_string();
+            assert!(err.contains("names a directory"), "{out}: {err}");
+            assert!(err.contains("--format"), "{out}: 要提示 --format: {err}");
+            assert!(err.contains("conf.extxyz"), "{out}: 要给出可直接抄的文件写法: {err}");
+        }
+    }
+
+    /// --format 让 -o 成为目录：缺失的目录直接建（不问、无需 --mkdir），单结构格式
+    /// 逐帧 frame_NNNN.EXT，多帧格式一个 frame.EXT
+    #[test]
+    fn format_turns_output_into_a_directory_created_on_demand() {
+        let root = std::env::temp_dir().join(format!("ferro_convert_dir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (ext, want) in [
+            ("cif", vec!["frame_0000.cif", "frame_0004.cif"]),
+            (".vasp", vec!["frame_0000.vasp", "frame_0004.vasp"]),
+            ("extxyz", vec!["frame.extxyz"]),
+        ] {
+            let dir = root.join(ext.trim_start_matches('.')).join("nested");
+            let mut c = cmd(fixture().to_str(), dir.to_str());
+            c.read.units = Some(ferro_io::LammpsUnits::Metal);
+            c.format = Some(ext.into());
+            run(&c).unwrap_or_else(|e| panic!("--format {ext}: {e}"));
+            for name in want {
+                assert!(dir.join(name).is_file(), "--format {ext}: 缺 {name}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 审查 D-M15：参数与目标格式错了，应在建 -o 的目录、读输入之前报错，不留空目录
@@ -212,17 +251,17 @@ mod tests {
         let good = dir.join("out.extxyz");
         let bad_fmt = dir.join("out.nosuchfmt");
         type Case<'a> = (&'a Path, fn(&mut ConvertCmd), &'a str);
-        let cases: [Case; 4] = [
+        let cases: [Case; 5] = [
             (&good, |c| c.stride = Some(0), "--stride"),
             (&good, |c| c.number = Some(0), "--number"),
             (&good, |c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
             (&bad_fmt, |_| {}, "Unsupported output format"),
+            (&dir, |c| c.format = Some("nosuchfmt".into()), "Unsupported output format"),
         ];
         for (out, tweak, want) in cases {
             let mut c = cmd(Some("no_such_input.xyz"), Some(out.to_str().unwrap()));
-            c.mkdir = true;
             tweak(&mut c);
-            let err = run(&c).unwrap_err().to_string();
+            let err = format!("{:#}", run(&c).unwrap_err());
             assert!(err.contains(want), "应报「{want}」，实际 {err}");
             assert!(!dir.exists(), "「{want}」：参数错误时不该建 -o 的目录");
         }

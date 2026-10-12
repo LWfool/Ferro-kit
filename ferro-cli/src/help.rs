@@ -156,14 +156,13 @@ pub fn print_convert() {
 
 Parameters:
   -i, --input  FILE       Input file  (format from its name)
-  -o, --output FILE       Output file; may include directories that do not exist
-                          yet (--mkdir creates them). A trailing / is refused:
-                          the target format comes from the file name
+  -o, --output PATH       Output file (format from its name), or a directory
+                          when --format is given. Missing directories are created
+      --format EXT        Write EXT (cif, vasp, extxyz, ...) into the -o directory
       --start  N          First frame to take      (0-based, inclusive) [0]
       --end    N          Last frame to take       (0-based, INCLUSIVE) [last]
       --stride N          Take every Nth frame within [start, end]      [1]
       --number N          Take this many frames, spread evenly, both ends kept
-      --mkdir             Create -o's directory without asking
       --atom-style S      LAMMPS data input: atomic | charge | full (required)
       --units U           Dump vx/fx units: real | metal (required if present)
   -h, --help              Short parameter table (this page adds the formats)
@@ -172,13 +171,15 @@ Parameters:
 
 Output:
   One file when the target format holds a trajectory (Frames column above),
-  one file PER FRAME when it holds a single structure (POSCAR, data, QE):
-  POSCAR_0000, conf_0002.vasp — the index is the ORIGINAL frame number
+  one file PER FRAME when it holds a single structure (CIF, POSCAR, data, QE):
+  POSCAR_0000, conf_0002.cif — the index is the ORIGINAL frame number.
+  With --format the stem is `frame`: DIR/frame_0000.cif, DIR/frame.extxyz
 
 Examples:
   ferro convert -i input.cif -o POSCAR
   ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
-  ferro convert -i traj.dump -o out/conf.vasp --number 20 --mkdir
+  ferro convert -i traj.dump -o out/conf.vasp --number 20
+  ferro convert -i traj.dump -o cifs/ --format cif --stride 10
 
 Full documentation:  ferro doc convert"#,
         crate::io_dispatch::supported_formats()
@@ -295,7 +296,7 @@ Conventions:
   analysed on its own and the results stack into ONE csv carrying a `file`
   column; a failed input is skipped and the exit code is 1.
   -o is a DIRECTORY for the commands that write several products, the output
-  FILE for `convert` and `job`. -s tags a batch:
+  FILE for `convert` (a directory with --format) and `job`. -s tags a batch:
     <-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
   A command typed without -i prints its own page; -h gives the short table.
 
