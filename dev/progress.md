@@ -459,6 +459,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **`-s` 只收字母、数字、`_`、`+`、`-`**（`batch::check_suffix`，2026-10-08），traj / map / net /
   chg-sdf / bader 入口查；`dataset merge --suffix` 是目录后缀，另一套语义
 - **写侧格式判定是 `io_dispatch::out_format`**（2026-10-08），`convert` 在建目录、读输入之前调
+- **`convert` 写出前一律按 (Z, 符号) 重排原子**（2026-10-12，用户要求，无开关）：所有格式
+  同一体系的原子顺序一致，像 POSCAR 那样同元素成块。复用 `ml::merge::sort_atoms`，但**逐帧**
+  各取置换。writer 未改 —— vasp / lammps_data 按首次出现分组，排完序后自然是 Z 序
 - `--version` 带 commit、构建日期、profile、target、rustc 与 features（2026-10-05）
 - **无绘图**：`--plot` 与 `plot.rs` 已于 2026-09-26 移除（理由见 `plan.md` 归档
   「依赖精简」与手册 `plotting.md`），出图走 `scripts/plot_*.py`
