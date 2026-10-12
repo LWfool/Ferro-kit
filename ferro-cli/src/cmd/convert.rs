@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::Args;
 use crate::args::common::ReadArgs;
 use crate::io_dispatch::{holds_multiple_frames, read_trajectory, write_trajectory};
+use ferro_analysis::ml::merge::sort_atoms;
 use ferro_core::Trajectory;
 use std::path::{Path, PathBuf};
 
@@ -116,8 +117,14 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         );
     }
 
+    // 所有产物一律按 (Z, 符号) 重排原子，像 POSCAR 那样同元素成块、块按周期表序，
+    // 同一体系无论来自哪个程序，写出的原子顺序都一致。逐帧各自取置换：sort_atoms
+    // 用第 0 帧的置换套全部帧，而 xyz 等格式不保证帧间原子顺序不变
     let picked = Trajectory {
-        frames: indices.iter().map(|&i| traj.frames[i].clone()).collect(),
+        frames: indices
+            .iter()
+            .map(|&i| sort_atoms(&Trajectory::from_frame(traj.frames[i].clone())).frames.remove(0))
+            .collect(),
         metadata: traj.metadata.clone(),
     };
 
@@ -347,6 +354,44 @@ mod tests {
             assert_eq!(text.matches("data_").count(), 1, "{} 应只有一个 data_ 块", p.display());
         }
         assert!(!dir.join("conf.cif").exists(), "不该再写出多块的 conf.cif");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 输出的原子按 (Z, 符号) 排：Zn Al P O → O Al P Zn。每个原子的坐标与力
+    /// 跟着自己走；逐帧取置换，第 1 帧的原子顺序与第 0 帧不同也照样排对
+    #[test]
+    fn atoms_are_written_in_atomic_number_order() {
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::{Matrix3, Vector3};
+        let frame_of = |elements: &[&str]| {
+            let mut f = Frame::with_cell(Cell::from_matrix(Matrix3::identity() * 10.0), [true; 3]);
+            // 坐标与力都由元素决定，排序后能逐原子核对是否跟对了
+            let x = |e: &str| match e { "O" => 1.0, "Al" => 2.0, "P" => 3.0, _ => 4.0 };
+            f.atoms = elements.iter().map(|e| Atom::new(*e, Vector3::new(x(e), 0.5, 0.5))).collect();
+            f.forces = Some(elements.iter().map(|e| Vector3::new(-x(e), 0.0, 0.0)).collect());
+            f
+        };
+        let dir = std::env::temp_dir().join(format!("ferro_convert_sort_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("in.extxyz");
+        let t = Trajectory {
+            frames: vec![frame_of(&["Zn", "Al", "P", "O"]), frame_of(&["O", "P", "Zn", "Al"])],
+            metadata: Default::default(),
+        };
+        write_trajectory(&t, &input, None).unwrap();
+
+        let output = dir.join("out.extxyz");
+        run(&cmd(input.to_str(), output.to_str())).unwrap();
+        let back = read_trajectory(&output, &ReadArgs::default()).unwrap();
+        for (k, f) in back.frames.iter().enumerate() {
+            let order: Vec<&str> = f.atoms.iter().map(|a| a.element.as_str()).collect();
+            assert_eq!(order, ["O", "Al", "P", "Zn"], "第 {k} 帧应按原子序数排");
+            let forces = f.forces.as_ref().expect("力应写出");
+            for (a, fv) in f.atoms.iter().zip(forces) {
+                assert_eq!(fv.x, -a.position.x, "第 {k} 帧 {} 的力没跟着原子走", a.element);
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
