@@ -148,6 +148,11 @@ ferro convert -i traj.lammpstrj -o cifs/ --format cif --units metal   # one CIF 
 
 Things that trip people up:
 
+- **Atoms are written in atomic-number order, in every format.**  A file listing Zn, Al, P, O is
+  written as all O, then Al, P, Zn, the way a POSCAR groups its species, so one system converted
+  from any program comes out in the same order.  Atoms of one element keep their relative order,
+  and forces, velocities and bonds move with their atoms.  The LAMMPS atom ids and type numbers
+  follow the new order (`O` becomes type 1).  There is no switch to keep the input order.
 - **The two CP2K input formats are read-only.**  To generate a CP2K input use `ferro job -s cp2k`,
   which writes a complete calculation setup rather than bare coordinates.
 - **"One per file" splits the trajectory**: 500 frames written to `conf.cif` give `conf_0000.cif` …

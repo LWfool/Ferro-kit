@@ -21,6 +21,10 @@ command line alike; regenerate it rather than migrating it.
   `cifs/frame_0000.cif` …
 - `--mkdir` is removed from `convert`; a missing output directory is created
   without asking. The other commands keep `--mkdir`.
+- Every format is now written with its atoms sorted by atomic number (Zn, Al,
+  P, O → O, Al, P, Zn). Positions are unchanged; only the order is. LAMMPS atom
+  ids and type numbers follow the new order, so scripts that pick atoms by id
+  or type need checking.
 
 ### Smaller changes
 
