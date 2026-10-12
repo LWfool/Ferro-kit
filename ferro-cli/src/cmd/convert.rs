@@ -292,6 +292,25 @@ mod tests {
         assert!(!out.exists(), "选不到帧时不该留下文件");
     }
 
+    /// 多帧写 CIF：每帧一个文件、每个文件一个 data_ 块。VESTA 等只认第一个块，
+    /// 写成一个多块文件时用户看到的只有第 0 帧
+    #[test]
+    fn test_cif_is_written_one_frame_per_file() {
+        let dir = std::env::temp_dir().join(format!("ferro_convert_cif_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut c = cmd(fixture().to_str(), dir.join("conf.cif").to_str());
+        c.read.units = Some(ferro_io::LammpsUnits::Metal);
+        run(&c).unwrap();
+        for i in 0..5 {
+            let p = dir.join(format!("conf_{i:04}.cif"));
+            let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+            assert_eq!(text.matches("data_").count(), 1, "{} 应只有一个 data_ 块", p.display());
+        }
+        assert!(!dir.join("conf.cif").exists(), "不该再写出多块的 conf.cif");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn test_wants_help_only_without_input() {
         assert!(wants_help(&cmd(None, None)));

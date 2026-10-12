@@ -116,8 +116,9 @@ pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: Option<Lam
 /// Whether the format named by `path` can hold more than one frame on write.
 ///
 /// The `Frames on write` column of [`supported_formats`] in code form: XYZ, extxyz,
-/// PDB, CIF and LAMMPS dump carry a whole trajectory, while POSCAR, LAMMPS data and
-/// QE input hold a single structure and would silently keep only frame 0. Callers
+/// PDB and LAMMPS dump carry a whole trajectory, while POSCAR, CIF, LAMMPS data and
+/// QE input hold a single structure. CIF can technically carry several `data_` blocks,
+/// but VESTA / Materials Studio show only the first, so it is split like POSCAR. Callers
 /// writing several frames use this to decide between one file and one file per frame.
 ///
 /// Unknown extensions answer `true` so the write itself produces the "Unsupported
@@ -132,7 +133,7 @@ pub fn holds_multiple_frames(path: &Path) -> bool {
     !matches!(
         path.extension().and_then(|e| e.to_str()),
         Some("lammps") | Some("data") | Some("lmp") | Some("in") | Some("qe")
-            | Some("vasp") | Some("pos")
+            | Some("vasp") | Some("pos") | Some("cif")
     )
 }
 
@@ -146,11 +147,11 @@ pub fn supported_formats() -> &'static str {
   XYZ           .xyz                           y      y      all
   extended XYZ  .extxyz  .xyz*                 y      y      all
   PDB           .pdb                           y      y      all (MODEL records)
-  CIF           .cif                           y      y      all (data blocks)
   LAMMPS dump   .dump  .lammpstrj              y      y      all
-  VASP          .vasp  .pos  POSCAR*/CONTCAR*  y      y      FIRST only
-  LAMMPS data   .lammps  .data  .lmp           y      y      FIRST only
-  QE (pw.x)     .in  .qe                       y      y      FIRST only
+  CIF           .cif                           y      y      one per file
+  VASP          .vasp  .pos  POSCAR*/CONTCAR*  y      y      one per file
+  LAMMPS data   .lammps  .data  .lmp           y      y      one per file
+  QE (pw.x)     .in  .qe                       y      y      one per file
   CP2K input    .inp                           y      -      -
   CP2K restart  .restart                       y      -      -
 
@@ -165,9 +166,9 @@ pub fn supported_formats() -> &'static str {
   To generate CP2K input use `ferro job -s cp2k`, which writes a full run
   setup rather than bare coordinates.
 
-  `FIRST only` means the format holds one structure: a 500-frame trajectory
-  written to POSCAR gives you frame 0 and no warning. Use --stride / --number
-  to write one file per frame instead."
+  `one per file` means the format holds one structure: 500 frames written
+  to conf.cif give conf_0000.cif ... conf_0499.cif. Use --stride / --number
+  to thin them out."
 }
 
 
@@ -256,7 +257,7 @@ mod tests {
     #[test]
     fn test_multi_frame_capability_agrees_with_the_table() {
         for (name, expected) in [
-            ("t.xyz", true), ("t.extxyz", true), ("t.pdb", true), ("t.cif", true),
+            ("t.xyz", true), ("t.extxyz", true), ("t.pdb", true), ("t.cif", false),
             ("t.dump", true), ("t.lammpstrj", true),
             ("POSCAR", false), ("CONTCAR", false), ("poscar", false),
             ("run1_POSCAR", true),   // 前缀匹配，不是包含匹配
