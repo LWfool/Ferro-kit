@@ -3,17 +3,17 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：806 个（全部通过，clippy 零警告；2026-10-09 实数）
+## 测试总数：811 个（全部通过，clippy 零警告；2026-10-13 实数）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 103 |
-| ferro-io | 200（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
+| ferro-io | 202（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
 | ferro-structure | 79 |
 | ferro-analysis | 253 |
 | ferro-workflow | 26 |
 | ferro-render | 30 |
-| ferro-cli（lib 104 + bin 3 + 集成 8） | 115 |
+| ferro-cli（lib 107 + bin 3 + 集成 8） | 118 |
 
 版本号 **0.3.5**（workspace 统一；ferro-python 已同步；**未发版**；最近的发版 tag 是 2026-10-03 的 `v0.3.4`，2026-10-09 打了开发版锚点 `v0.3.5-alpha`）。
 0.3.5 的内容是 2026-10-03 四路审查严重 / 中两级的修复，含破坏性改动，清单见 `overview.md`。
@@ -56,6 +56,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | **`5Al_0003_1500K_f394.out`**（2026-09-22，用户提供） | 真实 CP2K 2025.2 单点，457 原子 | 新布局：`FORCES|`、`STRESS| … [bar]`、`CELL_TOP|` 干扰项 |
 | **`cp2k_sp_v61.out`**（2026-09-22） | cp2kdata 的 `test_energy_force/v6.1/normal/output`，MIT，107 KB 整份照抄 | 老布局三个块一次到齐：`energy (a.u.):`、`ATOMIC FORCES in [a.u.]`、无前缀的 ` STRESS TENSOR [GPa]`；外加 gamma=120 的三斜胞与 `Fe1`/`Fe2` 两个 kind。断言数值全取自 cp2kdata 自己的 `answer/`，是跟独立实现对表 |
 | **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见 |
+| **`vasp651_sp/frame_{0011,0161,0194}/`**（2026-10-13，用户提供） | VASP 6.5.1 单点（r2SCAN-D3，302 原子）200 帧中挑 3 帧，`OUTCAR` + `vasprun.xml` 原样，1.3 MB | 单点布局。全部 200 帧当时与 dpdata 1.0.2 逐帧对拍（两条路），box / coord / energy / force 逐位相同，virial 差 1.4e-6 eV（换算常数 160.2176634 vs 160.2176621）。原数据随后由用户删除，测试钉住 3 帧的 dpdata 参考值。0011 的 xml 应力非对称最大（见 `plan.md`「vasprun 的非对称应力」） |
 
 ## scripts/
 
