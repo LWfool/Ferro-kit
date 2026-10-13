@@ -261,8 +261,11 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
         .kinetic
         .filter(|_| n > 0)
         .map(|ek| 2.0 * ek / (3.0 * n as f64 * BOLTZMANN_EV_K));
-    // <varray name="stress"> 是 kB 的完整 3x3,顺序无歧义;符号与 OUTCAR 同,不变
+    // <varray name="stress"> 是 kB 的完整 3x3,顺序无歧义;符号与 OUTCAR 同,不变。
+    // 取 (σ+σᵀ)/2:VASP 6.5.1 写的这九个数不对称(相对 ~4e-5,OUTCAR 只打六个数故看不见),
+    // 原样留着则导出成 extxyz 的 virial= 后,本仓自己的 extxyz reader 按规范拒收
     if let Some(kb) = st.stress_kb {
+        let kb = (kb + kb.transpose()) * 0.5;
         frame.stress = Some(kb.map(|v| {
             convert_pressure(v, PressureUnit::Kbar, PressureUnit::EVPerAng3)
         }));
@@ -348,8 +351,8 @@ mod tests {
 
     /// VASP 6.5.1 single points, the same three runs as the OUTCAR test.
     /// Reference values from dpdata 1.0.2. The `stress` varray of this VASP is
-    /// not symmetric (frame_0011: xy = -0.95709 kB, yx = -0.95685 kB) and both
-    /// dpdata and this reader keep all nine numbers as written.
+    /// not symmetric (frame_0011: xy = -0.95709 kB, yx = -0.95685 kB); dpdata
+    /// keeps all nine numbers as written, this reader takes (σ+σᵀ)/2.
     #[test]
     fn matches_dpdata_on_vasp_6_5_single_points() {
         // 循环体与 vasp_outcar.rs 的同名测试相同；只两处，按 R6 不抽 helper
@@ -390,13 +393,34 @@ mod tests {
             for (g, w) in f.forces.as_ref().unwrap()[i].iter().zip(&force) {
                 assert!((g - w).abs() < 1e-9, "{dir} 力 {g} vs {w}");
             }
+            // 表里是 dpdata 原样的九个数,期望值取其对称部分。
             // 1e-7 相对容差:dpdata 的 eV/Å³ 换算常数与 units.rs 差 8e-9
             let v = f.stress.unwrap() * cell.volume();
+            assert_eq!(v, v.transpose(), "{dir} 读出的应力应已对称化");
             let got = ferro_core::matrix3_row_major(&v);
-            for (k, (g, w)) in got.iter().zip(&virial).enumerate() {
+            for (k, g) in got.iter().enumerate() {
+                let w = (virial[k] + virial[(k % 3) * 3 + k / 3]) / 2.0;
                 assert!((g - w).abs() <= 1e-7 * w.abs().max(1.0), "{dir} virial[{k}] {g} vs {w}");
             }
         }
+    }
+
+    /// The asymmetric stress of VASP 6.5.1 used to survive into `virial=` and
+    /// make the extxyz reader reject a file this crate had just written (the
+    /// `dataset --type nep` path). Without the symmetrisation this fails.
+    #[test]
+    fn asymmetric_vasp_stress_round_trips_through_extxyz_virial() {
+        let (traj, _) = read_vasprun_with_stats(Path::new(
+            "../tests/vasp651_sp/frame_0011/vasprun.xml",
+        ))
+        .unwrap();
+        use crate::readers::extxyz::read_extxyz;
+        use crate::writers::extxyz::{write_extxyz_with, StressKey};
+        let p = std::env::temp_dir().join("ferro_vasprun_virial_roundtrip.xyz");
+        write_extxyz_with(&traj, &p, StressKey::Virial).unwrap();
+        let back = read_extxyz(&p).unwrap();
+        let (s0, s1) = (traj.frames[0].stress.unwrap(), back.frames[0].stress.unwrap());
+        assert!((s0 - s1).abs().max() < 1e-12, "往返后应力变了:{s0} vs {s1}");
     }
 
     /// The first `<energy>` of a calculation belongs to an SCF iterate and is
