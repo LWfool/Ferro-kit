@@ -497,21 +497,6 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 
 ## 优先级中
 
-### vasprun 的非对称应力：导出 nep 后 ferro 读不回自己的文件（2026-10-13 发现，修法未定）
-
-VASP 6.5.1 写进 vasprun.xml 的 `<varray name="stress">` 不对称（`tests/vasp651_sp/frame_0011`：
-xy = −0.95709、yx = −0.95684 kB；200 帧中相对非对称最大 4.4e-5，virial 绝对差最大 2.0e-3 eV）。OUTCAR
-的 `in kB` 只有 6 个数，看不见这件事。`vasprun.rs` 与 dpdata 一样原样保留 9 个数，读取本身没错。
-
-出问题的是下游：`dataset filter --type nep` 把它写成 `virial="…"`，`readers/extxyz.rs::parse_tensor9`
-的对称检查拒收（`virial= is not symmetric (0,1) = -2.49164 but (1,0) = -2.49100`）。`--type extxyz`
-（`stress=`）同一个张量却能读回 —— 容差是 `TENSOR_TOL · max(|v|, 1)`，stress 量级 < 1 eV/Å³ 时
-退化成绝对容差 1e-6，非对称 4.8e-7 恰好过线；virial 量级 ~100 eV，容差 1.1e-4 拦下 6.4e-4。同一张量
-换个单位结论相反。
-
-候选修法（未定）：① vasprun 读侧取 $(\sigma+\sigma^T)/2$（与 dpdata 差 ~1e-3 eV，物理上应力本就对称）；
-② extxyz 读侧容差改纯相对量、放到 ~1e-4；③ extxyz 写侧对称化。GPUMD 对 9 个数不查对称性。
-
 ### 2026-10-02 物理审查的三条严重问题（用户定为中，功能后续会改写，届时一并修）
 
 三条都已用数值实验证实（临时 crate，不在仓库），均未修。
@@ -972,6 +957,23 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### vasprun 的非对称应力：导出 nep 后 ferro 读不回自己的文件（2026-10-13 发现并修复）
+
+VASP 6.5.1 写进 vasprun.xml 的 `<varray name="stress">` 不对称（`tests/vasp651_sp/frame_0011`：
+xy = −0.95709、yx = −0.95684 kB；200 帧中相对非对称最大 4.4e-5，virial 绝对差最大 2.0e-3 eV），OUTCAR
+的 `in kB` 只打 6 个数故看不见。原样保留时 `dataset filter --type nep` 写出的 `virial=` 被本仓
+`readers/extxyz.rs::parse_tensor9` 的对称检查拒收。
+
+**用户选的修法**：vasprun 读侧取 $(\sigma+\sigma^T)/2$。与 dpdata（原样保留 9 个数）在 vasprun 路上因此差
+最多 ~1e-3 eV，OUTCAR 路不受影响。否掉的两条：extxyz 读侧放宽容差（规范要求对称，放宽等于替上游的
+不对称背书）、写侧对称化（不对称的张量仍留在 `Frame` 里，别的出口照样会漏）。
+
+**OUTCAR 与对称化后的 vasprun 仍差半个非对称量**（3 帧 fixture 实测 2.0e-3 → 1.0e-3 eV）：OUTCAR 的 `in kB`
+不取平均，而是各挑一个分量（frame_0011 的 XY 取 yx、ZX 取 xz）。VASP 输出本身的属性，不是读取错误。
+
+**遗留**：`parse_tensor9` 的容差是 `TENSOR_TOL · max(|v|, 1)`，stress 量级 < 1 eV/Å³ 时退化成绝对 1e-6 ——
+同一张量写成 `stress=` 能过、写成 `virial=` 被拒。本次修复后无实例触发，口径未动。
 
 ### 2026-10-03 四路审查：严重 / 中两级已修条目（2026-10-03 – 10-09，0.3.5）
 

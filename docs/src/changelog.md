@@ -36,6 +36,10 @@ command line alike; regenerate it rather than migrating it.
   help page again, instead of a "missing `--dt`" error.
 - `ferro doc` renders display formulas (`$$ … $$`) in the terminal.
 - `dataset` help pages no longer print some defaults twice.
+- `dataset collect` symmetrises the stress read from vasprun.xml. VASP 6.5.1
+  writes it slightly asymmetric, and `filter` / `merge --type nep` then wrote
+  a `virial=` that ferro itself refused to read back. Off-diagonal virials
+  move by up to about 1 meV.
 
 ### Python `merge`: placement fixed for unequal and tilted cells (breaking)
 

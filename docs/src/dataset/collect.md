@@ -107,6 +107,14 @@ can drop a different number of frames depending on which file you point at.
 The rule that applied is printed with the per-directory report rather than left
 for you to guess.
 
+The stress from vasprun.xml is symmetrised, $(\sigma+\sigma^T)/2$. VASP 6.5.1
+writes a slightly asymmetric 3×3 there (relative asymmetry up to about
+$4\times10^{-5}$, i.e. a few meV in the virial of a 300-atom cell), while OUTCAR
+prints only six components. Kept as written, the tensor would be exported as an
+asymmetric `virial=` that extxyz readers, ferro's own included, reject. dpdata
+keeps the nine numbers, so its `virial.npy` from vasprun.xml differs from
+ferro's by that asymmetry; from OUTCAR the two agree.
+
 `energy(sigma->0)` is deliberately *not* used: the forces VASP prints are the
 derivatives of the free energy, so pairing them with the extrapolated energy
 would give a model two halves of different functionals. dpdata makes the same
