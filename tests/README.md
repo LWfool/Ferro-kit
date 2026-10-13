@@ -12,6 +12,7 @@
 | `CHGCAR_2atoms` | VASP | 电荷密度网格 |
 | `vasp_OUTCAR_2frames` | VASP AIMD | OUTCAR 逐帧量 |
 | `vasp_vasprun_2frames.xml` | VASP AIMD | vasprun.xml 逐帧量 |
+| `vasp651_sp/frame_{0011,0161,0194}/` | VASP 6.5.1 单点（r2SCAN-D3，302 原子），200 帧中挑 3 帧，`OUTCAR` 与 `vasprun.xml` 原样 | 单点布局；一目录一次运行（collect 的分组单位）。0011 的 xml 应力非对称最大，0161 力最大（13.76 eV/Å），0194 能量最低 |
 | `cp2k_md_3frames.out` | CP2K 2025.2 AIMD | MD 布局：xyz 块、`MD\| Step number` |
 | `5Al_0003_1500K_f394.out` | CP2K 2025.2 单点 | 新布局：`FORCES\|`、`STRESS\| … [bar]`、`CELL_TOP\|` 干扰项 |
 | `cp2k_sp_v61.out` | [cp2kdata][] 的 `tests/test_energy_force/v6.1/normal/output`（MIT） | 老布局：`energy (a.u.):`、`ATOMIC FORCES in [a.u.]`、无前缀的 ` STRESS TENSOR [GPa]`、`Fe1`/`Fe2` 两个 kind 名 |

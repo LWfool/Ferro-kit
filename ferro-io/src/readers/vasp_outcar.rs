@@ -456,6 +456,55 @@ mod tests {
         }
     }
 
+    /// VASP 6.5.1 single points (`IBRION = -1`, r2SCAN-D3), one run per directory.
+    /// Reference values from dpdata 1.0.2 on the same files; the atom checked is
+    /// the one with the largest force component (frame_0161 holds 13.76 eV/Å).
+    #[test]
+    fn matches_dpdata_on_vasp_6_5_single_points() {
+        // 循环体与 vasprun.rs 的同名测试相同；只两处，按 R6 不抽 helper
+        // (帧目录, 能量, a, 原子号, 坐标, 力, dpdata 的 virial [eV] 行优先)
+        type Case = (&'static str, f64, f64, usize, [f64; 3], [f64; 3], [f64; 9]);
+        let cases: [Case; 3] = [
+            ("frame_0011", -2724.82410263, 16.097083299, 74,
+             [13.4443, 11.7632, 0.13422], [-4.344955, 8.577855, -0.540248],
+             [-107.24791778309772, -2.491007558473333, 22.105417411592217,
+              -2.491007558473333, -73.32043909350077, -4.5931799923884,
+              22.105417411592217, -4.5931799923884, -58.82932771438383]),
+            ("frame_0161", -2720.29256226, 15.961594023, 250,
+             [14.5466, 11.3152, 0.15063], [-13.760733, -1.107166, 2.543958],
+             [-60.961416673758784, 2.282868690706929, -8.862531703448,
+              2.282868690706929, -80.22866395078611, 3.43681614744905,
+              -8.862531703448, 3.43681614744905, -49.58770910528141]),
+            ("frame_0194", -2733.85701426, 16.008691724, 66,
+             [9.96777, 7.67749, 8.11269], [0.117336, 8.390219, -1.05019],
+             [-32.26905676301085, 0.8548097898401235, 14.74407329827738,
+              0.8548097898401235, -60.361703715538376, -4.227802874056789,
+              14.74407329827738, -4.227802874056789, -49.205234994157856]),
+        ];
+        for (dir, e, a, i, pos, force, virial) in cases {
+            let path = format!("../tests/vasp651_sp/{dir}/OUTCAR");
+            let (traj, stats) = read_vasp_outcar_with_stats(Path::new(&path)).unwrap();
+            assert_eq!((traj.n_frames(), stats.n_dropped()), (1, 0), "{dir}");
+            let f = &traj.frames[0];
+            assert_eq!(f.n_atoms(), 302, "{dir}");
+            assert!((f.energy.unwrap() - e).abs() < 1e-8, "{dir} 能量");
+            let cell = f.cell.as_ref().unwrap();
+            assert!((cell.matrix[(0, 0)] - a).abs() < 1e-9, "{dir} 晶胞");
+            for (g, w) in f.atom(i).position.iter().zip(&pos) {
+                assert!((g - w).abs() < 1e-9, "{dir} 坐标 {g} vs {w}");
+            }
+            for (g, w) in f.forces.as_ref().unwrap()[i].iter().zip(&force) {
+                assert!((g - w).abs() < 1e-9, "{dir} 力 {g} vs {w}");
+            }
+            // 1e-7 相对容差同上:两边 eV/Å³ 换算常数差 8e-9
+            let v = f.stress.unwrap() * cell.volume();
+            let got = ferro_core::matrix3_row_major(&v);
+            for (k, (g, w)) in got.iter().zip(&virial).enumerate() {
+                assert!((g - w).abs() <= 1e-7 * w.abs().max(1.0), "{dir} virial[{k}] {g} vs {w}");
+            }
+        }
+    }
+
     #[test]
     fn the_stress_is_symmetric_and_positive_for_compression() {
         let (traj, _) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();

@@ -346,6 +346,59 @@ mod tests {
         }
     }
 
+    /// VASP 6.5.1 single points, the same three runs as the OUTCAR test.
+    /// Reference values from dpdata 1.0.2. The `stress` varray of this VASP is
+    /// not symmetric (frame_0011: xy = -0.95709 kB, yx = -0.95685 kB) and both
+    /// dpdata and this reader keep all nine numbers as written.
+    #[test]
+    fn matches_dpdata_on_vasp_6_5_single_points() {
+        // 循环体与 vasp_outcar.rs 的同名测试相同；只两处，按 R6 不抽 helper
+        // (帧目录, 能量, a, 原子号, 坐标, 力, dpdata 的 virial [eV] 行优先)
+        type Case = (&'static str, f64, f64, usize, [f64; 3], [f64; 3], [f64; 9]);
+        let cases: [Case; 3] = [
+            ("frame_0011", -2724.82410263, 16.0970833, 74,
+             [13.444300069243301, 11.76320004801197, 0.13421667570123502],
+             [-4.34495478, 8.57785538, -0.54024799],
+             [-107.24792121346321, -2.4916439978965976, 22.105411766460396,
+              -2.491002170020148, -73.32045030153505, -4.593407369113374,
+              22.103421824089178, -4.59317916017507, -58.829334754370585]),
+            ("frame_0161", -2720.29256226, 15.96159402, 250,
+             [14.54659998705452, 11.315200018176252, 0.15063403201306558],
+             [-13.7607334, -1.10716601, 2.54395791],
+             [-60.96141432966301, 2.2831840299791653, -8.86253317058157,
+              2.282867141144278, -80.22867355054338, 3.437238469365705,
+              -8.862113054923174, 3.4368162216558793, -49.58771016872843]),
+            ("frame_0194", -2733.85701426, 16.00869172, 66,
+             [9.967769956685695, 7.677489997676073, 8.11268996408337],
+             [0.11733578, 8.3902186, -1.05019035],
+             [-32.26906431846686, 0.8540925909315585, 14.744078741496649,
+              0.8548218500528398, -60.36171619206951, -4.226226227980381,
+              14.743517079585551, -4.227800258983086, -49.20522737762933]),
+        ];
+        for (dir, e, a, i, pos, force, virial) in cases {
+            let path = format!("../tests/vasp651_sp/{dir}/vasprun.xml");
+            let (traj, stats) = read_vasprun_with_stats(Path::new(&path)).unwrap();
+            assert_eq!((traj.n_frames(), stats.n_dropped()), (1, 0), "{dir}");
+            let f = &traj.frames[0];
+            assert_eq!(f.n_atoms(), 302, "{dir}");
+            assert!((f.energy.unwrap() - e).abs() < 1e-8, "{dir} 能量");
+            let cell = f.cell.as_ref().unwrap();
+            assert!((cell.matrix[(0, 0)] - a).abs() < 1e-9, "{dir} 晶胞");
+            for (g, w) in f.atom(i).position.iter().zip(&pos) {
+                assert!((g - w).abs() < 1e-9, "{dir} 坐标 {g} vs {w}");
+            }
+            for (g, w) in f.forces.as_ref().unwrap()[i].iter().zip(&force) {
+                assert!((g - w).abs() < 1e-9, "{dir} 力 {g} vs {w}");
+            }
+            // 1e-7 相对容差:dpdata 的 eV/Å³ 换算常数与 units.rs 差 8e-9
+            let v = f.stress.unwrap() * cell.volume();
+            let got = ferro_core::matrix3_row_major(&v);
+            for (k, (g, w)) in got.iter().zip(&virial).enumerate() {
+                assert!((g - w).abs() <= 1e-7 * w.abs().max(1.0), "{dir} virial[{k}] {g} vs {w}");
+            }
+        }
+    }
+
     /// The first `<energy>` of a calculation belongs to an SCF iterate and is
     /// tens of thousands of eV away from the converged value; only the last one
     /// is the answer. Nothing about the wrong choice looks wrong.
