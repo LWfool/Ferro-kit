@@ -104,6 +104,8 @@ One Gaussian cube file per atom type per family:
 - Multiple families: `<stem>_fam0_<label>.cube`, `<stem>_fam1_<label>.cube`, …
 
 All cube files within a family share the same grid origin and spacing, enabling direct overlay in VESTA or VMD.
+Positions are binned into voxels starting at the lower corner of the padded box; the header origin is that
+corner plus half a voxel, so each value sits at its voxel centre.
 
 ## Usage
 

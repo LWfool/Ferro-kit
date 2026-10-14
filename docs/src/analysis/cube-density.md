@@ -51,7 +51,10 @@ This ensures correct spatial mapping for both orthogonal and triclinic simulatio
 The cube file header includes a time-averaged atomic structure (mean position over all frames), which serves as a reference geometry for visualisation.
 
 The grid always starts at the origin and spans the cell, $[0, L)$ along each axis, and every atom is binned by
-its position folded back into the cell.  The reference structure is folded the same way: an atom whose mean
+its position folded back into the cell.  Each value is the average over its voxel, so it is written at the
+voxel centre: the cube header's origin is half a voxel, $\tfrac12(\mathbf{s}_1+\mathbf{s}_2+\mathbf{s}_3)$ for
+voxel vectors $\mathbf{s}_k$, and point $i$ lies at $(i+\tfrac12)\,\mathbf{s}$ — the Gaussian cube convention
+puts point $i$ at origin $+\, i\,\mathbf{s}$.  The same holds for `map radius`, the jump map and the cluster SDF.  The reference structure is folded the same way: an atom whose mean
 position lies outside the cell along a periodic axis is moved back by whole lattice vectors, so that the atoms
 and the grid line up in a viewer.  A LAMMPS box with `xlo` $\neq 0$ is the usual case: its atoms sit in
 $[x_{lo}, x_{lo} + L)$, and without the fold the part beyond $L$ would be drawn outside the grid.

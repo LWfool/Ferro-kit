@@ -234,7 +234,8 @@ pub fn calc_cube_jump(
         frame: cube_reference_frame(traj),
         data: data.into_iter().collect(),
         shape: [nx, ny, nz],
-        origin: Vector3::zeros(),
+        // 值属于体素中心，cube 规范的第 i 点在 origin + i·spacing，故 origin 取半个体素（审查 B-2）
+        origin: spacing.transpose() * Vector3::repeat(0.5),
         spacing,
     };
 

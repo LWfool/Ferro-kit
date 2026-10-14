@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `map` cube files: the grid is no longer shifted by half a voxel
+
+Each cube value is a voxel average (or, for `map radius`, a test at the voxel centre), but the
+header origin was written as the voxel corner, so a viewer drew the whole grid half a voxel off —
+about 0.4 Å per axis at the default 50³ grid on a 40 Å box. The origin is now half a voxel in,
+which puts every point at its voxel centre. Applies to `map density/velocity/force/radius/sdf`
+and the library's jump map; the grid values themselves are unchanged.
+
 ### LAMMPS dump / data keep the box origin
 
 A box whose `xlo ylo zlo` is not 0 used to lose its origin on reading: the writers put the box at

@@ -608,7 +608,10 @@ fn build_cube_for_type(
     let mean = smoothed.mean().unwrap_or(1.0);
     let data = if mean > 0.0 { smoothed.mapv(|v| v / mean) } else { smoothed };
 
-    CubeData { frame, data: data.into_iter().collect(), shape: [nx, ny, nz], origin: *origin, spacing }
+    // 直方图按 floor 分箱，值属于体素中心；cube 规范的第 i 点在 origin + i·spacing，
+    // 故写出的 origin 比分箱下角多半个体素（审查 B-2）
+    let grid_origin = origin + spacing.transpose() * Vector3::repeat(0.5);
+    CubeData { frame, data: data.into_iter().collect(), shape: [nx, ny, nz], origin: grid_origin, spacing }
 }
 
 /// 构建放置在 cube box 中心的参考结构帧（用于 cube 文件头）。

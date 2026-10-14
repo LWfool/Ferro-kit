@@ -226,7 +226,8 @@ pub fn calc_cube_radius(
         frame: cube_reference_frame(traj),
         data: data.into_iter().collect(),
         shape: [nx, ny, nz],
-        origin: Vector3::zeros(),
+        // 值属于体素中心，cube 规范的第 i 点在 origin + i·spacing，故 origin 取半个体素（审查 B-2）
+        origin: spacing.transpose() * Vector3::repeat(0.5),
         spacing,
     };
 
@@ -250,6 +251,18 @@ mod tests {
         let mut traj = Trajectory::new();
         traj.frames.push(frame);
         traj
+    }
+
+    // 审查 B-2：占据按体素中心判定，格点 i 须写在 origin + i·spacing = 体素中心
+    #[test]
+    fn test_grid_point_sits_on_voxel_centre() {
+        let atom = Vector3::new(3.75, 6.25, 1.25); // 4³ 网格、spacing 2.5 时体素 (1,2,0) 的中心
+        let traj = make_traj(vec![(atom.x, atom.y, atom.z)], vec!["Li"]);
+        let params = CubeRadiusParams { nx: 4, ny: 4, nz: 4, radius: 1.0, elements: None };
+        let cube = calc_cube_radius(&traj, &params).unwrap().cube;
+        assert!(cube.get(1, 2, 0) > 0.0, "原子应占据体素 (1,2,0)");
+        let at = cube.origin + cube.spacing.transpose() * Vector3::new(1.0, 2.0, 0.0);
+        assert!((at - atom).norm() < 1e-10, "被占据的格点应在原子上，实得 {at:?}");
     }
 
     #[test]

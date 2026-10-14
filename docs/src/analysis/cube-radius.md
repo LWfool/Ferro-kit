@@ -28,6 +28,9 @@ The voxel centre fractional coordinates are:
 
 $$v_k = \frac{i_k + 0.5}{n_k}, \quad i_k \in \{0, \ldots, n_k - 1\}$$
 
+and that is where the cube file places point $i$: its header origin is half a voxel, so origin $+\, i\,\mathbf{s}$
+(the Gaussian cube convention) lands on the voxel centre.
+
 ### Bounding-Box Optimisation
 
 Brute-force comparison of every atom against every voxel is $O(N \cdot n_x n_y n_z)$.  Instead, for each atom, only the voxels within a bounding box of half-width
