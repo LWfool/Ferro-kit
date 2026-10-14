@@ -485,7 +485,10 @@ ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -o run1
 | `--dq` | 0.02 | $q$ bin width [Å⁻¹] |
 | `--weighting` | `both` | `none`, `xrd`, `neutron`, `both` |
 
-The `--r-min` / `--r-max` / `--dr` of `gr` apply here too — they set the range of the $g(r)$ being transformed.
+| `--r-max` | 10.005 | max radius of the transformed $g(r)$ [Å] |
+| `--dr` | 0.002 | $g(r)$ bin width [Å] |
+
+There is no `--r-min`: the transform always integrates from $r = 0$ (see [S(q)](analysis/sq.md)).
 
 **Wide table**: `file, q, total_xrd, total_neutron`, then three columns per pair (`_sq` / `_xrd` /
 `_neutron`, canonical half only).  The primary output is the two totals (one $q$ per row); the weighted

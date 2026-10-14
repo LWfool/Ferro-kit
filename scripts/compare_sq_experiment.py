@@ -39,7 +39,7 @@ import ferrocmp as fc
 from trajcheck import partial_independence, report_order_stability, scan_traj
 
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
-R_MIN = 0.005   # 两侧显式对齐（ferro 默认 0.001）
+R_MIN = 0.005   # dump2sq 的 --GRmin 与 gr 对拍用；ferro sq 没有 --r-min，恒从 0 积分（审查 B-1）
 DR = 0.01
 Q_MIN = 0.1
 Q_MAX = 45.0    # 覆盖实验中子数据的完整范围（0.5–45）
@@ -88,7 +88,7 @@ def compute(traj, outdir, r_max, ferro_bin, d2sq_bin):
         ferro_bin,
         ["traj", "sq", "-i", traj, "-s", "exp",
          "--q-min", Q_MIN, "--q-max", Q_MAX, "--dq", DQ,
-         "--r-min", R_MIN, "--r-max", r_max, "--dr", DR,
+         "--r-max", r_max, "--dr", DR,
          "--weighting", "both"],
         outdir, fc.product_name("sq", suffix="exp"))   # sq 无类型选择,故无 label 段
 

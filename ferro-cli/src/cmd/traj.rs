@@ -46,7 +46,7 @@ pub enum TrajCmd {
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
-/// Options shared by g(r) and the S(q) that is derived from it.
+/// g(r) range options. S(q) has its own two (`SqCmd`): its transform must start at r = 0.
 #[derive(Args, Debug)]
 pub struct GrKnobs {
     /// Min cutoff radius [Å]
@@ -89,8 +89,15 @@ pub struct GrCmd {
 pub struct SqCmd {
     #[command(flatten)]
     pub common: CommonArgs,
-    #[command(flatten)]
-    pub knobs: GrKnobs,
+
+    // 没有 --r-min（审查 B-1）：变换须从 r = 0 积分，否则漏掉 [0, r_min] 段的 −ρ 项
+    /// Max radius of the transformed g(r) [Å]; clamped to half the smallest interplanar spacing
+    #[arg(long, default_value = "10.005")]
+    pub r_max: f64,
+
+    /// g(r) histogram bin width [Å]
+    #[arg(long, default_value = "0.002")]
+    pub dr: f64,
 
     /// Min q [Å⁻¹]
     #[arg(long, default_value = "0.1")]
@@ -375,7 +382,7 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
 fn run_sq(c: &SqCmd) -> Result<usize> {
     // S(q) 恒输出全部 partial 与两条 total:主产物是那两条 total,partial 是能加回
     // total 的诊断分解,只留一对反而看不出闭合。故这里没有类型选择,也没有 label 段
-    let gr_params = c.knobs.params(GroupBy::Element);
+    let gr_params = GrParams { r_min: 0.0, r_max: c.r_max, dr: c.dr, group_by: GroupBy::Element };
     let sq_params = SqParams {
         q_min: c.q_min,
         q_max: c.q_max,

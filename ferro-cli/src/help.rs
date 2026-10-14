@@ -424,7 +424,6 @@ Parameters:
   --q-max      FLOAT      Max q [Å⁻¹]                                [25.0]
   --dq         FLOAT      q bin width [Å⁻¹]                          [0.02]
   --weighting  ENUM       none | xrd | neutron | both                [both]
-  --r-min      FLOAT      g(r) lower cutoff [Å]                     [0.001]
   --r-max      FLOAT      g(r) cutoff [Å]                          [10.005]
   --dr         FLOAT      g(r) bin width [Å]                        [0.002]
   --last-n     INT        Use only the last N frames

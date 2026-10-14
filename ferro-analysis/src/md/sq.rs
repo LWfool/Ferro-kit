@@ -129,6 +129,13 @@ fn elem_z_local(symbol: &str) -> usize {
 /// vanishes as the system grows.
 pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<SqResult> {
     params.validate()?;
+    // 审查 B-1：积分只覆盖 g(r) 的 bin，r_min > 0 时漏掉 [0, r_min] 段的 −ρ 项，
+    // 整条 S(q) 平移。补解析项要假设该段无原子对，r_min 越过第一峰时静默错，故直接要求从 0 起
+    if gr.params.r_min != 0.0 {
+        return Err(ChemError::ValidationError(format!(
+            "S(q) needs g(r) computed from r = 0, got r_min = {} Ang", gr.params.r_min
+        )));
+    }
     let n_q = ((params.q_max - params.q_min) / params.dq).floor() as usize + 1;
     let q_vals: Vec<f64> = (0..n_q)
         .map(|i| params.q_min + i as f64 * params.dq)
@@ -413,10 +420,21 @@ mod tests {
     }
 
     #[test]
+    fn test_sq_rejects_gr_not_starting_at_zero() {
+        // 审查 B-1：积分从 r_min 起会漏掉 [0, r_min] 段的 −ρ 项，整条 S(q) 平移
+        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let gr_res = calc_gr(&traj, &GrParams {
+            r_min: 1.2, r_max: 3.9, dr: 0.01, ..Default::default()
+        }).unwrap();
+        let err = calc_sq_from_gr(&gr_res, &SqParams::default());
+        assert!(err.is_err(), "r_min > 0 的 g(r) 必须被拒绝");
+    }
+
+    #[test]
     fn test_sq_q_axis_length() {
         let traj = Trajectory::from_frame(make_sc_fe(3));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 0.5, q_max: 10.0, dq: 0.1, ..Default::default()
@@ -430,7 +448,7 @@ mod tests {
         // S(q) 对称、无有向对应物，故只保留规范半边，不复制镜像键
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 5.9, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams::default()).unwrap();
 
@@ -448,7 +466,7 @@ mod tests {
     fn test_sq_large_q_tail_near_one() {
         let traj = Trajectory::from_frame(make_sc_fe(4));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 5.5, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 5.5, dr: 0.01, ..Default::default()
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 30.0, dq: 0.1, ..Default::default()
@@ -467,7 +485,7 @@ mod tests {
     fn test_xrd_total_equals_partial_for_single_element() {
         let traj = Trajectory::from_frame(make_sc_fe(3));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5,
@@ -485,7 +503,7 @@ mod tests {
     fn test_neutron_total_equals_partial_for_single_element() {
         let traj = Trajectory::from_frame(make_sc_fe(3));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5,
@@ -535,7 +553,7 @@ mod tests {
         for elems_list in [&["O", "Si"][..], &["O", "P", "Zn"][..]] {
             let traj = Trajectory::from_frame(make_multi_crystal(4, elems_list));
             let gr_res = calc_gr(&traj, &GrParams {
-                r_min: 0.1, r_max: 5.9, dr: 0.01, ..Default::default()
+                r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
             });
             let elems = build_elems(&gr_res);
             let gr_gr = &gr_res.as_ref().unwrap().gr;
@@ -563,7 +581,7 @@ mod tests {
         // 二元体系异种对权重应为 2·c_A·c_B·f_A·f_B/<f>²，而非其两倍。
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 5.9, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         });
         let elems = build_elems(&gr_res);
         let w = build_neutron_weights(&elems, &gr_res.as_ref().unwrap().gr);
@@ -587,7 +605,7 @@ mod tests {
         // 加权 partial 是 total 的精确分解 —— 这正是导出这些列的意义
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "P", "Zn"]));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 5.9, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         }).unwrap();
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 0.5, q_max: 20.0, dq: 0.25, weighting: SqWeighting::Both,
@@ -609,7 +627,7 @@ mod tests {
         let mut frame = make_sc_fe(4);
         frame.atoms[0].element = "Ni".into();
         let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
-            r_min: 0.1, r_max: 5.5, dr: 0.01, ..Default::default()
+            r_min: 0.0, r_max: 5.5, dr: 0.01, ..Default::default()
         }).unwrap();
         assert!(gr_res.gr["Ni-Ni"].iter().all(|v| v.is_nan()), "g_NiNi 应为 NaN 而不是 0");
         assert!(gr_res.cn["Ni-Ni"].iter().all(|&v| v == 0.0), "CN 是真计数，保持 0");
@@ -671,7 +689,7 @@ mod tests {
         };
         let run = |by| {
             let gr = calc_gr(&traj, &GrParams {
-                r_min: 0.1, r_max: 5.9, dr: 0.01, group_by: by,
+                r_min: 0.0, r_max: 5.9, dr: 0.01, group_by: by,
             }).unwrap();
             let sq = calc_sq_from_gr(&gr, &sq_params).unwrap();
             (sq.total_xrd.unwrap(), sq.total_neutron.unwrap())
@@ -709,7 +727,7 @@ mod tests {
         // 单帧调用 calc_gr + calc_sq_from_gr 就是「该帧的 g_f 与 ρ_f 各变换一次」，
         // 对全部帧取算术平均即得字面逐帧结果。
         let traj = make_npt_traj(4, &["O", "Si"], &[1.0, 1.09, 0.93, 1.13, 0.90]);
-        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+        let gp = GrParams { r_min: 0.0, r_max: 5.0, dr: 0.02, ..Default::default() };
         let sp = SqParams { q_min: 0.5, q_max: 12.0, dq: 0.1, ..Default::default() };
 
         let folded = calc_sq_from_gr(&calc_gr(&traj, &gp).unwrap(), &sp).unwrap();
@@ -739,7 +757,7 @@ mod tests {
         // ρ=N/⟨V⟩）与逐帧口径**不同**。没有这条，上面的对拍在两种口径恰好等价时
         // 也会通过。
         let traj = make_npt_traj(4, &["O", "Si"], &[1.0, 1.09, 0.93, 1.13, 0.90]);
-        let gp = GrParams { r_min: 0.1, r_max: 5.0, dr: 0.02, ..Default::default() };
+        let gp = GrParams { r_min: 0.0, r_max: 5.0, dr: 0.02, ..Default::default() };
         let sp = SqParams { q_min: 0.5, q_max: 12.0, dq: 0.1, ..Default::default() };
         let gr = calc_gr(&traj, &gp).unwrap();
         let folded = calc_sq_from_gr(&gr, &sp).unwrap();
@@ -794,7 +812,7 @@ mod tests {
     fn test_to_tables_always_writes_every_pair() {
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 5.9, dr: 0.05, ..Default::default()
+            r_min: 0.0, r_max: 5.9, dr: 0.05, ..Default::default()
         }).unwrap();
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
@@ -817,7 +835,7 @@ mod tests {
         // 0.1.10 立起来的恒等式必须在导出层依然成立
         let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 5.9, dr: 0.05, ..Default::default()
+            r_min: 0.0, r_max: 5.9, dr: 0.05, ..Default::default()
         }).unwrap();
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
@@ -845,7 +863,7 @@ mod tests {
     fn test_meta_lines_carry_both_parameter_blocks() {
         let traj = Trajectory::from_frame(make_sc_fe(2));
         let gr_res = calc_gr(&traj, &GrParams {
-            r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default()
+            r_min: 0.0, r_max: 3.9, dr: 0.1, ..Default::default()
         }).unwrap();
         let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, ..Default::default()

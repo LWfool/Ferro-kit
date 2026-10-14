@@ -58,7 +58,7 @@ import ferrocmp as fc
 from trajcheck import partial_independence, report_order_stability, scan_traj
 
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
-R_MIN = 0.005   # 两侧显式对齐（ferro 默认 0.001）
+R_MIN = 0.005   # dump2sq 的 --GRmin 与 gr 对拍用；ferro sq 没有 --r-min，恒从 0 积分（审查 B-1）
 R_MAX = 15.0    # 小于 ferro 的最小镜像 clamp 上界（本轨迹 15.16）
 DR = 0.01
 Q_MIN = 0.1
@@ -79,7 +79,7 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
         ferro_bin,
         ["traj", "sq", "-i", traj, "-s", "cmp",
          "--q-min", Q_MIN, "--q-max", Q_MAX, "--dq", DQ,
-         "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR,
+         "--r-max", R_MAX, "--dr", DR,
          "--weighting", "both"],
         outdir, fc.product_name("sq", suffix="cmp"))   # sq 无类型选择,故无 label 段
 

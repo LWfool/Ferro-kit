@@ -96,9 +96,15 @@ pub enum SqWeighting {
 | `--q-max` | `q_max` | 25.0 |
 | `--dq` | `dq` | 0.02 |
 | `--weighting` | `weighting` | `both` |
+| `--r-max` | — | 10.005 |
+| `--dr` | — | 0.002 |
 
-The $g(r)$ that feeds the transform is controlled by the `gr` flags — `--r-min`, `--r-max`,
-`--dr` — which therefore set the integration range and hence the truncation ripple.
+`--r-max` and `--dr` set the $g(r)$ that feeds the transform, and hence the truncation ripple.
+There is no `--r-min`: the integral starts at $r = 0$. Below the closest contact $g = 0$, and that
+stretch still contributes the $-\rho$ term of $r[g(r)-1]$; starting at some $r_{min} > 0$ drops it
+and shifts the whole curve (with $r_{min} = 1.2$ Å on a ZnO–$P_2O_5$ glass, the neutron-weighted $S(0.7)$ moved from
+0.09 to 0.64). The library enforces the same rule: `calc_sq_from_gr` rejects a `GrResult` whose
+`r_min` is not 0.
 
 ## Comparison with `code2/dump2sq`
 

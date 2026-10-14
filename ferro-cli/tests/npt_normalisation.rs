@@ -20,7 +20,7 @@ const NVT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/70Z30P00A_NVT_5
 
 fn gr_params() -> GrParams {
     // r_max 固定且远小于任一帧的最小镜像上界，使逐帧与全轨迹的 bin 数一致
-    GrParams { r_min: 0.005, r_max: 8.0, dr: 0.02, ..Default::default() }
+    GrParams { r_min: 0.0, r_max: 8.0, dr: 0.02, ..Default::default() }
 }
 
 fn sq_params() -> SqParams {

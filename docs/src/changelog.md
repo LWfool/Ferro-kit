@@ -12,6 +12,15 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `traj sq`: `--r-min` removed; the transform starts at $r = 0$ (breaking)
+
+The Fourier transform integrated only over the $g(r)$ bins, so with `--r-min` above 0 it
+dropped the $-\rho$ contribution of $[0, r_{min}]$ and shifted the whole $S(q)$ without any
+warning (`--r-min 1.2` moved the neutron-weighted $S(0.7)$ of a ZnO–$P_2O_5$ glass from 0.09
+to 0.64). `traj sq` no longer takes `--r-min`, and the library's `calc_sq_from_gr` rejects a
+$g(r)$ whose `r_min` is not 0. At the old default of 0.001 Å the change is below
+$10^{-3}$. `traj gr` keeps `--r-min`.
+
 ### `convert`: CIF is written one frame per file; `-o` can be a directory (breaking)
 
 - Several frames written to `.cif` now give `conf_0000.cif`, `conf_0001.cif`, …
