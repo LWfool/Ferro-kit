@@ -170,7 +170,7 @@ fn parse_frame(
     let ly = (hi[1] - lo[1]) - yz.abs();
     let lz = hi[2] - lo[2];
 
-    let cell = if is_triclinic || xy != 0.0 || xz != 0.0 || yz != 0.0 {
+    let mut cell = if is_triclinic || xy != 0.0 || xz != 0.0 || yz != 0.0 {
         Cell::from_matrix(Matrix3::new(
             lx,  0.0, 0.0,
             xy,  ly,  0.0,
@@ -225,6 +225,8 @@ fn parse_frame(
         lo[1] - 0.0_f64.min(yz),
         lo[2],
     );
+    // 原点随盒子带走，writer 写回 lo（审查 A-12：丢掉它往返后原子落到盒外）
+    cell.origin = origin;
 
     let mut atoms_raw: Vec<AtomRaw> = Vec::new();
 

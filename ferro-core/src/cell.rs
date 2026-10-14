@@ -16,12 +16,16 @@ use crate::error::{ChemError, Result};
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub matrix: Matrix3<f64>,
+    /// 盒子原点（LAMMPS 的 lo），构造器一律填 0。只有认原点的格式（LAMMPS dump / data）
+    /// 读写它；分数坐标、wrap、最小镜像与全部分析都**不用**它（同 ASE 的 `celldisp`）。
+    /// 读入时把坐标平移到原点 0 会扰动 NPT 的 MSD，已否决（审查 M5），故原点作为数据带着走
+    pub origin: Vector3<f64>,
 }
 
 impl Cell {
     /// 直接由 3×3 矩阵构造（行 = 晶格矢量）。
     pub fn from_matrix(matrix: Matrix3<f64>) -> Self {
-        Self { matrix }
+        Self { matrix, origin: Vector3::zeros() }
     }
 
     /// 由晶格常数 (a, b, c, α, β, γ) 构造。
@@ -63,7 +67,7 @@ impl Cell {
             b * cos_g,      b * sin_g,  0.0,
             c * cx,         c * cy,     c * cz,
         );
-        Ok(Self { matrix })
+        Ok(Self { matrix, origin: Vector3::zeros() })
     }
 
     // ── 查询 ──────────────────────────────────────────────────────────────────

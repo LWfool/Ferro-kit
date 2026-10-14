@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### LAMMPS dump / data keep the box origin
+
+A box whose `xlo ylo zlo` is not 0 used to lose its origin on reading: the writers put the box at
+0 while the coordinates kept their values, so after `ferro convert` hundreds of atoms sat outside
+the box (225 of 5003 on a sample trajectory with `lo = 1.82` Å). `Cell` now carries an `origin`,
+which the LAMMPS readers fill and the LAMMPS writers write back; supercells and added vacuum keep
+it. Analyses do not use it, so their results are unchanged.
+
 ### `traj sq`: `--r-min` removed; the transform starts at $r = 0$ (breaking)
 
 The Fourier transform integrated only over the $g(r)$ bins, so with `--r-min` above 0 it

@@ -108,7 +108,8 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         m[(1,0)] * ny as f64, m[(1,1)] * ny as f64, m[(1,2)] * ny as f64,
         m[(2,0)] * nz as f64, m[(2,1)] * nz as f64, m[(2,2)] * nz as f64,
     );
-    let new_cell = Cell::from_matrix(new_matrix);
+    // 副本沿 +a/+b/+c 展开，盒子原点不动（审查 A-12：from_matrix 会把 LAMMPS 的 lo 清零）
+    let new_cell = Cell { matrix: new_matrix, origin: cell.origin };
 
     // ── 晶格行向量（用于 Cartesian 偏移计算）──────────────────────────────────
     let a_vec = Vector3::new(m[(0, 0)], m[(0, 1)], m[(0, 2)]);
@@ -185,6 +186,16 @@ mod tests {
         assert!((la - 2.87).abs() < 1e-10);
         assert!((lb - 2.87).abs() < 1e-10);
         assert!((lc - 2.87).abs() < 1e-10);
+    }
+
+    // 审查 A-12：LAMMPS 读进来的 lo 不能被超胞清零
+    #[test]
+    fn test_box_origin_preserved() {
+        let mut frame = bcc_frame(2.87);
+        let o = Vector3::new(1.5, -2.0, 3.0);
+        frame.cell.as_mut().unwrap().origin = o;
+        let sc = make_supercell(&frame, 2, 1, 3).unwrap();
+        assert_eq!(sc.cell.as_ref().unwrap().origin, o, "超胞应保留盒子原点");
     }
 
     #[test]

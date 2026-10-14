@@ -60,7 +60,8 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
 
     Ok(Frame {
         atoms: frame.atoms.clone(),
-        cell: Some(Cell::from_matrix(new_m)),
+        // 只拉长一条晶格矢量，盒子原点不动（审查 A-12）
+        cell: Some(Cell { matrix: new_m, origin: cell.origin }),
         pbc: frame.pbc,
         charge: frame.charge,
         multiplicity: frame.multiplicity,
@@ -132,6 +133,16 @@ mod tests {
             "垂直间隙应增加 5 Å，实际 {}", spacing(&out) - spacing(&frame));
         let [_, _, lc] = out.cell.as_ref().unwrap().lengths();
         assert!((lc - (10.0 + 5.0 / 60f64.to_radians().sin())).abs() < 1e-10, "c 应拉长 5/sin60°");
+    }
+
+    // 审查 A-12：LAMMPS 读进来的 lo 不能被加真空清零
+    #[test]
+    fn test_box_origin_preserved() {
+        let mut frame = cubic_frame(10.0);
+        let o = Vector3::new(1.5, -2.0, 3.0);
+        frame.cell.as_mut().unwrap().origin = o;
+        let out = add_vacuum(&frame, "z", 5.0).unwrap();
+        assert_eq!(out.cell.as_ref().unwrap().origin, o, "加真空应保留盒子原点");
     }
 
     #[test]

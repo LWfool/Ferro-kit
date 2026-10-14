@@ -40,7 +40,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
 
     // Box bounds
     let (lo, (lx, ly, lz, xy, xz, yz)) = match &frame.cell {
-        Some(cell) => ([0.0; 3], cell_to_lammps(cell)),
+        Some(cell) => (cell.origin.into(), cell_to_lammps(cell)),
         None => {
             // Non-periodic: compute bounding box
             let (minx, maxx, miny, maxy, minz, maxz) = bounding_box(frame);
@@ -84,9 +84,10 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
 
         // Transform position to LAMMPS coordinate frame
         let pos = match &frame.cell {
+            // 旋转绕盒子原点做：非规范取向的胞带非零原点时，原点那段平移不能跟着转
             Some(orig_cell) => {
-                let frac = orig_cell.cartesian_to_fractional(atom.position)?;
-                lammps_cell.fractional_to_cartesian(frac)
+                let frac = orig_cell.cartesian_to_fractional(atom.position - orig_cell.origin)?;
+                lammps_cell.fractional_to_cartesian(frac) + orig_cell.origin
             }
             None => atom.position,
         };
@@ -202,5 +203,24 @@ mod tests {
         write_lammps_data(&bcc_traj(), &path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("xy xz yz"), "正交盒不应写倾斜量：\n{text}");
+    }
+
+    // 审查 A-12：data 往返同样丢 lo
+    #[test]
+    fn test_box_origin_survives_roundtrip() {
+        let text = "test\n\n1 atoms\n1 atom types\n\n1.5 11.5 xlo xhi\n-2.0 8.0 ylo yhi\n3.0 13.0 zlo zhi\n\
+                    2.0 -1.0 0.5 xy xz yz\n\nMasses\n\n1 15.999  # O\n\nAtoms # full\n\n1 1 1 0.0 2.0 -1.0 12.0\n";
+        let src = std::env::temp_dir().join("ferro_data_origin_in.lammps");
+        let dst = std::env::temp_dir().join("ferro_data_origin_out.lammps");
+        std::fs::write(&src, text).unwrap();
+        let a = read_lammps_data(&src, AtomStyle::Full).unwrap();
+        write_lammps_data(&a, &dst).unwrap();
+        let b = read_lammps_data(&dst, AtomStyle::Full).unwrap();
+        let (fa, fb) = (&a.frames[0], &b.frames[0]);
+        let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());
+        assert!((ca.origin - Vector3::new(1.5, -2.0, 3.0)).norm() < 1e-12, "原点应为 lo，实得 {:?}", ca.origin);
+        assert!((ca.origin - cb.origin).norm() < 1e-9, "原点应往返不变：{:?} 变成 {:?}", ca.origin, cb.origin);
+        assert!((ca.matrix - cb.matrix).norm() < 1e-9, "晶格应往返不变");
+        assert!((fa.atoms[0].position - fb.atoms[0].position).norm() < 1e-9, "坐标应往返不变");
     }
 }

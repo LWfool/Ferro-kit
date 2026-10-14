@@ -104,7 +104,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
     let lx = xhi - xlo;
     let ly = yhi - ylo;
     let lz = zhi - zlo;
-    let cell = if is_triclinic {
+    let mut cell = if is_triclinic {
         Cell::from_matrix(Matrix3::new(
             lx,  0.0, 0.0,
             xy,  ly,  0.0,
@@ -117,6 +117,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
             0.0, 0.0, lz,
         ))
     };
+    // data 的 lo 就是真实原点（不同于 dump 三斜的 *_bound），writer 写回（审查 A-12）
+    cell.origin = nalgebra::Vector3::new(xlo, ylo, zlo);
 
     // ── Masses section ────────────────────────────────────────────────────────
     let mut type_element: HashMap<usize, String> = HashMap::new();

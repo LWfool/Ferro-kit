@@ -50,7 +50,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
 
         // BOX BOUNDS
         let (lo, (lx, ly, lz, xy, xz, yz)) = match &frame.cell {
-            Some(cell) => ([0.0; 3], cell_to_lammps(cell)),
+            Some(cell) => (cell.origin.into(), cell_to_lammps(cell)),
             None => {
                 let (mnx, mxx, mny, mxy, mnz, mxz) = bounding_box(frame);
                 let w = 2.0 * CELLLESS_PAD;
@@ -67,12 +67,12 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
             // 倾斜向量会把盒子探出 [0, l) 之外，bound 把那部分包进来。写成 xlo/xhi
             // 的话 reader 端 hi-lo 得到的边长偏小，而读写两侧一致地错时往返测试
             // 全绿（与 extxyz 应力符号同一个陷阱）
-            let (xlo_b, xhi_b) = (min4(0.0, xy, xz, xy + xz), lx + max4(0.0, xy, xz, xy + xz));
-            let (ylo_b, yhi_b) = (yz.min(0.0), ly + yz.max(0.0));
+            let (xlo_b, xhi_b) = (lo[0] + min4(0.0, xy, xz, xy + xz), lo[0] + lx + max4(0.0, xy, xz, xy + xz));
+            let (ylo_b, yhi_b) = (lo[1] + yz.min(0.0), lo[1] + ly + yz.max(0.0));
             writeln!(w, "ITEM: BOX BOUNDS xy xz yz {flags}")?;
             writeln!(w, "{xlo_b:.10} {xhi_b:.10} {xy:.10}")?;
             writeln!(w, "{ylo_b:.10} {yhi_b:.10} {xz:.10}")?;
-            writeln!(w, "{:.10} {:.10} {yz:.10}", 0.0, lz)?;
+            writeln!(w, "{:.10} {:.10} {yz:.10}", lo[2], lo[2] + lz)?;
         } else {
             writeln!(w, "ITEM: BOX BOUNDS {flags}")?;
             writeln!(w, "{:.10} {:.10}", lo[0], lo[0] + lx)?;
@@ -105,7 +105,9 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
         for (i, atom) in frame.atoms.iter().enumerate() {
             let tp = elem_types.iter().position(|e| *e == atom.element).unwrap_or(0) + 1;
 
-            let pos = to_lammps(atom.position)?;
+            // 旋转绕盒子原点做：非规范取向的胞带非零原点时，原点那段平移不能跟着转
+            let o = frame.cell.as_ref().map_or_else(nalgebra::Vector3::zeros, |c| c.origin);
+            let pos = to_lammps(atom.position - o)? + o;
 
             let mut line = format!("{} {tp} {} {:.10} {:.10} {:.10}",
                 i + 1, atom.element, pos.x, pos.y, pos.z);
@@ -398,5 +400,30 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS pp pp ff\n"), "slab 应写 pp pp ff：\n{text}");
         assert_eq!(read_lammps_dump(&path, None).unwrap().frames[0].pbc, [true, true, false]);
+    }
+    // 审查 A-12：盒子 lo ≠ 0 时往返丢原点，写出的盒子从 0 起而坐标保留原值，原子落到盒外
+    #[test]
+    fn test_box_origin_survives_roundtrip() {
+        let ortho = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS pp pp pp\n\
+                     1.5 11.5\n-2.0 8.0\n3.0 13.0\nITEM: ATOMS id type element x y z\n1 1 O 2.0 -1.0 12.0\n";
+        let tri = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS xy xz yz pp pp pp\n\
+                   0.0 12.0 2.0\n-1.0 8.0 -1.0\n3.0 13.0 0.0\nITEM: ATOMS id type element x y z\n1 1 O 2.0 1.0 12.0\n";
+        for (tag, text) in [("ortho", ortho), ("tri", tri)] {
+            let src = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_in.lammpstrj"));
+            let dst = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_out.lammpstrj"));
+            std::fs::write(&src, text).unwrap();
+            let a = read_lammps_dump(&src, None).unwrap();
+            write_lammps_dump(&a, &dst, None).unwrap();
+            let b = read_lammps_dump(&dst, None).unwrap();
+            let (fa, fb) = (&a.frames[0], &b.frames[0]);
+            let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());
+            assert!((ca.origin - cb.origin).norm() < 1e-9, "{tag}: 原点应往返不变，{:?} → {:?}", ca.origin, cb.origin);
+            assert!((ca.matrix - cb.matrix).norm() < 1e-9, "{tag}: 晶格应往返不变");
+            assert!((fa.atoms[0].position - fb.atoms[0].position).norm() < 1e-9, "{tag}: 坐标应往返不变");
+        }
+        // 第一个盒子的原点就是 lo；三斜的原点是 lo_bound 减去倾斜外探量
+        let src = std::env::temp_dir().join("ferro_dump_origin_ortho_in.lammpstrj");
+        let o = read_lammps_dump(&src, None).unwrap().frames[0].cell.as_ref().unwrap().origin;
+        assert!((o - Vector3::new(1.5, -2.0, 3.0)).norm() < 1e-12, "正交盒原点应为 lo，实得 {o:?}");
     }
 }

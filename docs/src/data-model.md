@@ -93,8 +93,15 @@ order is not consistent across programs (the specification and ASE use `xx yy zz
 ```rust
 pub struct Cell {
     pub matrix: Matrix3<f64>,  // row vectors a, b, c  [Å]
+    pub origin: Vector3<f64>,  // box origin [Å]; 0 unless read from LAMMPS
 }
 ```
+
+`origin` is the corner of the box — LAMMPS's `xlo ylo zlo`, which need not be 0. The LAMMPS dump
+and data readers fill it and their writers write it back, so a `convert` round trip keeps the
+box where the atoms are. It is metadata only, like ASE's `celldisp`: fractional coordinates,
+wrapping, the minimum image and every analysis ignore it, and the other formats neither read
+nor write it. `make_supercell` and `add_vacuum` keep it; every other constructor sets it to 0.
 
 | Method | Description |
 |---|---|
