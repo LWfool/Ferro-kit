@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Inputs whose names differ only in case no longer overwrite each other
+
+Two inputs named `Prod.lammpstrj` and `prod.lammpstrj` (in different directories) kept their
+stems, so on macOS and Windows their `map` cubes and `net --export-traj` files overwrote each
+other. Stems are now compared ignoring case; the second becomes `prod_2`, with a `Note`.
+
 ### Python `merge`: atoms outside their cell no longer land in the other block
 
 Each block is placed by its cell, but atoms were moved as they were: one outside its cell

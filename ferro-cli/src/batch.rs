@@ -50,12 +50,14 @@ fn label_of(path: &Path) -> String {
 /// (user decision 2026-10-02).
 pub fn unique_labels(inputs: &[PathBuf]) -> Vec<String> {
     let stems: Vec<String> = inputs.iter().map(|p| label_of(p)).collect();
+    // 撞名按小写比：macOS / Windows 的文件系统不分大小写，Prod 与 prod 的产物会互相
+    // 覆盖（审查 E-12）。显示仍用原样的 stem
     // 改名不能撞上别的输入原本就叫的名字（prod、prod、prod_2 三个输入）
-    let mut used: HashSet<String> = stems.iter().cloned().collect();
-    let mut count: HashMap<&str, usize> = HashMap::new();
+    let mut used: HashSet<String> = stems.iter().map(|s| s.to_lowercase()).collect();
+    let mut count: HashMap<String, usize> = HashMap::new();
     let mut out = Vec::with_capacity(stems.len());
     for (path, stem) in inputs.iter().zip(&stems) {
-        let n = count.entry(stem).or_insert(0);
+        let n = count.entry(stem.to_lowercase()).or_insert(0);
         *n += 1;
         if *n == 1 {
             out.push(stem.clone());
@@ -64,7 +66,7 @@ pub fn unique_labels(inputs: &[PathBuf]) -> Vec<String> {
         let mut k = *n;
         let label = loop {
             let cand = format!("{stem}_{k}");
-            if used.insert(cand.clone()) { break cand; }
+            if used.insert(cand.to_lowercase()) { break cand; }
             k += 1;
         };
         println!("Note  : {} shares the name '{stem}' with an earlier input, labelled '{label}'",
@@ -547,6 +549,10 @@ mod tests {
         // 改名不能撞上别的输入原本的名字
         assert_eq!(unique_labels(&p(&["a/prod.dump", "prod_2.dump", "b/prod.dump"])),
                    ["prod", "prod_2", "prod_3"]);
+        // 审查 E-12：macOS / Windows 的文件系统不分大小写，Prod 与 prod 的产物会互相覆盖
+        assert_eq!(unique_labels(&p(&["a/Prod.dump", "b/prod.dump"])), ["Prod", "prod_2"]);
+        assert_eq!(unique_labels(&p(&["a/prod.dump", "PROD_2.dump", "b/prod.dump"])),
+                   ["prod", "PROD_2", "prod_3"]);
     }
 
     #[test]

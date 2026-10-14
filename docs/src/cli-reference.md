@@ -70,7 +70,8 @@ are the exception: the input stem has to be part of the file name, otherwise the
 
 The `file` column and those file names use the input's **stem**.  When two inputs share a stem
 (`runs/700K/prod.lammpstrj`, `runs/900K/prod.lammpstrj`), the second and later become `prod_2`, `prod_3`, … in
-input order, and ferro prints a `Note` naming each renamed file.
+input order, and ferro prints a `Note` naming each renamed file.  Stems are compared ignoring case
+(`Prod` and `prod` clash), because the macOS and Windows file systems do.
 
 ### Output naming
 
