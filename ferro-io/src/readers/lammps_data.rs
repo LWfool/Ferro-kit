@@ -92,9 +92,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
             let v = floats(line, 3)?;
             xy = v[0]; xz = v[1]; yz = v[2];
             is_triclinic = true;
-        } else if line == "Masses" || line == "Atoms" || line == "Atoms # full"
-                || line == "Atoms # atomic" || line == "Atoms # charge"
-                || line.starts_with("Masses") || line.starts_with("Atoms") {
+        } else if is_section_header(line) {
             break;
         }
         i += 1;
@@ -120,41 +118,38 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
     // data 的 lo 就是真实原点（不同于 dump 三斜的 *_bound），writer 写回（审查 A-12）
     cell.origin = nalgebra::Vector3::new(xlo, ylo, zlo);
 
+    // LAMMPS 的段可任意排序（read_data 文档），按段名定位；段内容到下一个段头为止。
+    // 段头后的 `# style` 注释被 strip_comment 去掉，布局只由调用者给的 style 决定
+    let section = |name: &str| (i..lines.len()).find(|&k| strip_comment(lines[k]) == name);
+
     // ── Masses section ────────────────────────────────────────────────────────
     let mut type_element: HashMap<usize, String> = HashMap::new();
-    while i < lines.len() {
-        let raw = lines[i];
-        let line = strip_comment(raw).trim();
-        if line == "Masses" { i += 1; continue; }
-        if line.is_empty() { i += 1; continue; }
-
-        // Check if this line is a section header (Atoms, Velocities, ...)
-        if is_section_header(line) { break; }
-
-        // Masses line: type_id mass  # element_comment
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            if let Ok(tid) = parts[0].parse::<usize>() {
-                let mass: f64 = parts[1].parse().unwrap_or(1.0);
-                // Try comment for element symbol: "# Fe" or "# Fe ..."
-                let elem = raw.find('#')
-                    .and_then(|p| {
-                        raw[p+1..].split_whitespace().next().map(|s| s.to_string())
-                    })
-                    .unwrap_or_else(|| element_from_mass(mass).to_string());
-                type_element.insert(tid, elem);
+    if let Some(start) = section("Masses") {
+        for (k, raw) in lines.iter().enumerate().skip(start + 1) {
+            let line = strip_comment(raw);
+            if line.is_empty() { continue; }
+            if is_section_header(line) { break; }
+            // 恰好 `type mass` 两项：多出的列多半是认不出段头的另一段混了进来（审查 A-10）
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            let entry = match parts[..] {
+                [t, m] => t.parse::<usize>().ok().zip(m.parse::<f64>().ok()),
+                _ => None,
+            };
+            let Some((tid, mass)) = entry else {
+                bail!("line {}: Masses entry '{line}' is not 'type mass'", k + 1);
+            };
+            // 注释里的元素符号优先："# Fe" 或 "# Fe ..."
+            let elem = raw.find('#')
+                .and_then(|p| raw[p+1..].split_whitespace().next().map(|s| s.to_string()))
+                .unwrap_or_else(|| element_from_mass(mass).to_string());
+            if type_element.insert(tid, elem).is_some() {
+                bail!("line {}: Masses gives atom type {tid} twice", k + 1);
             }
         }
-        i += 1;
     }
 
     // ── Atoms section ─────────────────────────────────────────────────────────
-    // 段头后的 `# style` 注释不看，布局只由调用者给的 style 决定
-    while i < lines.len() {
-        let line = strip_comment(lines[i]);
-        i += 1;
-        if line.starts_with("Atoms") { break; }
-    }
+    i = section("Atoms").context("no Atoms section")? + 1;
 
     let Some(n_atoms) = n_atoms else { bail!("header has no 'N atoms' line") };
     let base = style.columns();
@@ -221,11 +216,18 @@ fn strip_comment(l: &str) -> &str {
     l.split('#').next().unwrap_or("").trim()
 }
 
+/// `line` 须已经过 `strip_comment`。名单取自 LAMMPS `read_data` 文档的全部段名
+/// （审查 A-10：只认十个时，`PairIJ Coeffs` 等段的行被当成上一段的内容）
 fn is_section_header(line: &str) -> bool {
-    matches!(line, "Masses" | "Atoms" | "Velocities" | "Bonds" | "Angles"
-        | "Dihedrals" | "Impropers" | "Pair Coeffs" | "Bond Coeffs"
-        | "Angle Coeffs")
-    || line.starts_with("Atoms #")
+    matches!(line,
+        "Atoms" | "Velocities" | "Masses" | "Ellipsoids" | "Lines" | "Triangles" | "Bodies"
+        | "Bonds" | "Angles" | "Dihedrals" | "Impropers"
+        | "Pair Coeffs" | "PairIJ Coeffs" | "Bond Coeffs" | "Angle Coeffs" | "Dihedral Coeffs"
+        | "Improper Coeffs" | "BondBond Coeffs" | "BondAngle Coeffs" | "MiddleBondTorsion Coeffs"
+        | "EndBondTorsion Coeffs" | "AngleTorsion Coeffs" | "AngleAngleTorsion Coeffs"
+        | "BondBond13 Coeffs" | "AngleAngle Coeffs"
+        | "Atom Type Labels" | "Bond Type Labels" | "Angle Type Labels" | "Dihedral Type Labels"
+        | "Improper Type Labels")
 }
 
 
@@ -404,6 +406,42 @@ Atoms # full
         // 没有 N atoms
         let no_n = WATER_FULL.replace("6 atoms\n", "");
         assert!(err("w7.data", &no_n, AtomStyle::Full).contains("no 'N atoms'"));
+    }
+
+    // 审查 A-10：Masses 后接未登记的段时，其行被当成 Masses，O/H 两 type 都成 X 并合并
+    #[test]
+    fn test_sections_after_masses_are_not_masses() {
+        let pairij = "\nPairIJ Coeffs # lj/cut\n\n1 1 0.15 3.15\n1 2 0.0 1.0\n2 2 0.0 1.0\n";
+        let text = WATER_FULL.replace("2 1.008   # H\n", &format!("2 1.008   # H\n{pairij}"));
+        let traj = read_lammps_data(&tmp("pairij.data", &text), AtomStyle::Full).unwrap();
+        let f = traj.first().unwrap();
+        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("O", "H"));
+    }
+
+    // LAMMPS 的段可任意排序：Masses 写在 Atoms 之后也得读到
+    #[test]
+    fn test_masses_after_atoms() {
+        let masses = "Masses\n\n1 15.999  # O\n2 1.008   # H\n\n";
+        let text = WATER_FULL.replace(masses, "") + "\n" + masses;
+        let traj = read_lammps_data(&tmp("late_masses.data", &text), AtomStyle::Full).unwrap();
+        let f = traj.first().unwrap();
+        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("O", "H"));
+    }
+
+    #[test]
+    fn test_bad_masses_lines_are_errors() {
+        let err = |name: &str, text: &str| {
+            format!("{:#}", read_lammps_data(&tmp(name, text), AtomStyle::Full).unwrap_err())
+        };
+        // 一行三个数：多半是认不出的段混了进来
+        let three = WATER_FULL.replace("2 1.008   # H", "2 1.008 3.0");
+        assert!(err("m1.data", &three).contains("Masses"), "三个数应报错");
+        // 同一 type 写两次
+        let dup = WATER_FULL.replace("2 1.008   # H", "1 1.008   # H");
+        assert!(err("m2.data", &dup).contains("twice"), "重复 type 应报错");
+        // mass 不是数
+        let nan = WATER_FULL.replace("2 1.008   # H", "2 abc   # H");
+        assert!(err("m3.data", &nan).contains("Masses"), "坏 mass 应报错");
     }
 
     #[test]

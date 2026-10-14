@@ -12,6 +12,15 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### LAMMPS data: every section is recognised; bad `Masses` lines are errors
+
+The reader knew ten section names. Any other section after `Masses` (`PairIJ Coeffs`,
+`Dihedral Coeffs`, …) was read as more masses: its lines became new atom types, and on a
+water file both O and H turned into `X` with no error. All section names of LAMMPS
+`read_data` are now recognised, sections are found in any order (a `Masses` written after
+`Atoms` used to be skipped), and a `Masses` line that is not exactly `type mass`, or a type
+given twice, is an error naming the line.
+
 ### `map` cube files: the grid is no longer shifted by half a voxel
 
 Each cube value is a voxel average (or, for `map radius`, a test at the voxel centre), but the
