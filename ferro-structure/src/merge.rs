@@ -2,6 +2,7 @@
 
 use nalgebra::{Matrix3, Vector3};
 
+use ferro_core::atom::Atom;
 use ferro_core::cell::Cell;
 use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
@@ -26,6 +27,10 @@ use ferro_core::frame::Frame;
 /// interface plane both blocks are centred: each cell's centre is moved onto the
 /// merged cell's centre line.
 ///
+/// Each block is placed by its cell, so its atoms are first folded into that cell
+/// (relative to `Cell::origin`) along its periodic axes; the box may start anywhere,
+/// as a LAMMPS box with `xlo ≠ 0` does.
+///
 /// `bonds` are not merged (indices shift). `energy`, `forces`, `stress`,
 /// `velocities` are set to `None`. `charge` = sum of both. `multiplicity` = 1.
 ///
@@ -35,6 +40,7 @@ use ferro_core::frame::Frame;
 /// - `ValidationError` if `gap < 0`.
 /// - `ValidationError` if the two interfaces are not parallel (normals more than
 ///   1° apart): a gap along the normal has no meaning then.
+/// - `ValidationError` if an atom lies outside its cell along a non-periodic axis.
 pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> Result<Frame> {
     let join = match axis {
         "x" => 0,
@@ -99,23 +105,48 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
 
     // ── 整体平移：块的胞中心挪到新胞面内中心线上、该块自身的半高处 ────────────
     // 中心线上高度 z 的点 = 面内两矢量各一半 + 拼接矢量的 z/H
+    // 块的胞中心 = 盒子原点 + 半条体对角线（LAMMPS 的 lo ≠ 0 时原点不在 0，审查 E-10）
     let centre_line = (new_rows[p] + new_rows[q]) * 0.5;
-    let shift = |r: &[Vector3<f64>; 3], bottom: f64, h: f64| -> Vector3<f64> {
+    let shift = |c: &Cell, r: &[Vector3<f64>; 3], bottom: f64, h: f64| -> Vector3<f64> {
         let target = centre_line + new_rows[join] * ((bottom + h / 2.0) / height);
-        target - (r[0] + r[1] + r[2]) * 0.5
+        target - (c.origin + (r[0] + r[1] + r[2]) * 0.5)
     };
-    let (shift_a, shift_b) = (shift(&ra, 0.0, h_a), shift(&rb, h_a + gap, h_b));
-    let moved = |frame: &Frame, t: Vector3<f64>| -> Vec<_> {
-        frame.atoms.iter().map(|atom| {
+    let (shift_a, shift_b) = (shift(cell_a, &ra, 0.0, h_a), shift(cell_b, &rb, h_a + gap, h_b));
+
+    // 放置按胞面算，故原子先相对盒子原点折回胞内，否则不在胞内的原子跟着块平移后
+    // 落进另一块（审查 E-10：gap 2 Å 实测最近距离 0.18 Å）。非周期方向越界的原子
+    // 没有合理的折回方式，报错而不是让两块重叠
+    const WRAP_TOL: f64 = 1e-10;
+    let moved = |frame: &Frame, cell: &Cell, t: Vector3<f64>, name: &str| -> Result<Vec<Atom>> {
+        let mut atoms = Vec::with_capacity(frame.atoms.len());
+        let mut stranded = 0usize;
+        for atom in &frame.atoms {
+            let f = cell.cartesian_to_fractional(atom.position - cell.origin)?;
             let mut a = atom.clone();
+            for i in 0..3 {
+                if f[i] >= -WRAP_TOL && f[i] < 1.0 + WRAP_TOL { continue; }
+                if frame.pbc[i] {
+                    a.position -= cell.matrix.row(i).transpose() * f[i].floor();
+                } else {
+                    stranded += 1;
+                    break;
+                }
+            }
             a.position += t;
-            a
-        }).collect()
+            atoms.push(a);
+        }
+        if stranded > 0 {
+            return Err(ChemError::ValidationError(format!(
+                "merge_frames: {stranded} atom(s) of {name} lie outside its cell along a \
+                 non-periodic axis, where they cannot be folded back"
+            )));
+        }
+        Ok(atoms)
     };
 
     // ── 组装 ──────────────────────────────────────────────────────────────────
-    let mut atoms = moved(frame_a, shift_a);
-    atoms.extend(moved(frame_b, shift_b));
+    let mut atoms = moved(frame_a, cell_a, shift_a, "frame_a")?;
+    atoms.extend(moved(frame_b, cell_b, shift_b, "frame_b")?);
 
     Ok(Frame {
         atoms,
@@ -136,7 +167,6 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferro_core::atom::Atom;
 
     fn cubic_frame(a: f64, atoms: Vec<(&str, f64, f64, f64)>) -> Frame {
         let cell = Cell::from_lengths_angles(a, a, a, 90.0, 90.0, 90.0).unwrap();
@@ -198,6 +228,37 @@ mod tests {
         // frame_b 原子 x 平移 10 + 3 = 13
         let pos_b = out.atoms[1].position;
         assert!((pos_b.x - 13.0).abs() < 1e-10);
+    }
+
+    // 审查 E-10：块按胞面放置，原子不在胞内时两块静默重叠
+    #[test]
+    fn test_atoms_outside_cell_are_folded_first() {
+        let a = cubic_frame(10.0, vec![("Fe", 5.0, 5.0, 9.0)]);
+        // 分数 z = -0.9，折回后 0.1：应落在 B 块底部 12 + 1，而不是 12 − 9 = 3（A 块内部）
+        let b = cubic_frame(10.0, vec![("O", 5.0, 5.0, -9.0)]);
+        let out = merge_frames(&a, &b, "z", 2.0).unwrap();
+        assert!((out.atoms[1].position.z - 13.0).abs() < 1e-10, "实得 {}", out.atoms[1].position.z);
+    }
+
+    // LAMMPS 的 lo ≠ 0：块在 [lo, lo+L)，按盒子的真实位置放
+    #[test]
+    fn test_box_origin_is_respected() {
+        let mut a = cubic_frame(10.0, vec![("Fe", 5.0, 5.0, 2.0)]);
+        let mut b = cubic_frame(10.0, vec![("O", 5.0, 5.0, 1.92)]);
+        a.cell.as_mut().unwrap().origin = Vector3::new(0.0, 0.0, 1.82);
+        b.cell.as_mut().unwrap().origin = Vector3::new(0.0, 0.0, 1.82);
+        let out = merge_frames(&a, &b, "z", 2.0).unwrap();
+        assert!((out.atoms[0].position.z - 0.18).abs() < 1e-10, "A：实得 {}", out.atoms[0].position.z);
+        assert!((out.atoms[1].position.z - 12.1).abs() < 1e-10, "B：实得 {}", out.atoms[1].position.z);
+    }
+
+    // 非周期方向越出盒子的原子没有合理的折回方式，报错而不是让两块重叠
+    #[test]
+    fn test_error_atom_outside_non_periodic_axis() {
+        let a = cubic_frame(10.0, vec![("Fe", 5.0, 5.0, 5.0)]);
+        let mut b = cubic_frame(10.0, vec![("O", 5.0, 5.0, -3.0)]);
+        b.pbc = [true, true, false];
+        assert!(merge_frames(&a, &b, "z", 2.0).is_err());
     }
 
     #[test]

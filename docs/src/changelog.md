@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Python `merge`: atoms outside their cell no longer land in the other block
+
+Each block is placed by its cell, but atoms were moved as they were: one outside its cell
+(a LAMMPS box with `xlo ≠ 0`, or unwrapped coordinates) followed the block into the other
+one — with a 2 Å gap two atoms ended up 0.18 Å apart. Atoms are now folded into their own
+cell first, the box origin is respected, and an atom outside its cell along a non-periodic
+axis is an error.
+
 ### LAMMPS data: every section is recognised; bad `Masses` lines are errors
 
 The reader knew ten section names. Any other section after `Masses` (`PairIJ Coeffs`,
