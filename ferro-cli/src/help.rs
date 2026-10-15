@@ -359,7 +359,7 @@ Commands:
 Common options:
   -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
   -o, --output DIR      Write the cubes here; --mkdir creates it unasked
-  -s, --suffix STEM     Output file stem (default depends on the command)
+  -s, --suffix SUFFIX   Batch tag appended to each cube name (density_<suffix>.cube)
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
@@ -684,7 +684,7 @@ Parameters:
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s STEM             Output name stem            default: density.cube
+  -s SUFFIX           Batch tag -> density_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
 
@@ -713,7 +713,7 @@ Parameters:
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s STEM             Output name stem            default: velocity.cube
+  -s SUFFIX           Batch tag -> velocity_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
 
@@ -742,7 +742,7 @@ Parameters:
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s STEM             Output name stem            default: force.cube
+  -s SUFFIX           Batch tag -> force_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
 
@@ -774,7 +774,7 @@ Parameters:
   --last-n  INT       Use only the last N frames
   --ncore   INT       Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s STEM             Output name stem            default: radius.cube
+  -s SUFFIX           Batch tag -> radius_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
 

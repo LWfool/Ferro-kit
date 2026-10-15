@@ -625,7 +625,10 @@ ferro writes csv only; figures are made in Python. See [Plotting](plotting.md).
 
 ## `ferro map`
 
-3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table, so the file name always carries the input stem (`density_<stem>.cube`).
+3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table.
+A single input writes `density.cube`; with several, each name carries its input's label (`density_<label>.cube`)
+so that none overwrites another.  `-s TAG` is appended after the command name: `density_TAG.cube`, or
+`density_TAG_<label>.cube` with several inputs.
 
 ```bash
 ferro map <command> -i traj.lammpstrj [flags] -o <suffix>
