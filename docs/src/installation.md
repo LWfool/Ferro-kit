@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Rust 1.75+ (`rustup` recommended)
+- Rust 1.89+ (`rustup` recommended; nalgebra 0.35 needs it)
 - Cargo (bundled with Rust)
 
 ## Build from Source

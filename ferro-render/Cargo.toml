@@ -2,6 +2,7 @@
 name = "ferro-render"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 
 # 终端宽度的 ioctl(TIOCGWINSZ)。libc 已经经 rand → getrandom 在编译图里,净新增 0;
 # 版本只写 0.2 —— 它是 C 声明,不决定 glibc 下限。Windows 用不到它(宽度退回 COLUMNS / 80)
