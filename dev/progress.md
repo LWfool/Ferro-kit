@@ -3,20 +3,22 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：812 个（全部通过，clippy 零警告；2026-10-13 实数）
+## 测试总数：836 个（全部通过，clippy 零警告；2026-10-15 实数）
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 103 |
-| ferro-io | 203（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`） |
-| ferro-structure | 79 |
-| ferro-analysis | 253 |
+| ferro-io | 216（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
+| ferro-structure | 86 |
+| ferro-analysis | 256 |
 | ferro-workflow | 26 |
 | ferro-render | 30 |
-| ferro-cli（lib 107 + bin 3 + 集成 8） | 118 |
+| ferro-cli（lib 108 + bin 3 + 集成 8） | 119 |
 
-版本号 **0.3.5**（workspace 统一；ferro-python 已同步；**未发版**；最近的发版 tag 是 2026-10-03 的 `v0.3.4`，2026-10-09 打了开发版锚点 `v0.3.5-alpha`）。
-0.3.5 的内容是 2026-10-03 四路审查严重 / 中两级的修复，含破坏性改动，清单见 `overview.md`。
+版本号 **0.3.6**（workspace 统一；ferro-python 已同步；**2026-10-15 发版，tag `v0.3.6`**）。
+0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
+与 2026-10-11 全库审查的 15 条修复一起随 `v0.3.6` 发出，两批都含破坏性改动，清单见 `overview.md`。
+`rust-version = 1.89` 自 0.3.6 起声明（依赖树最高要求，nalgebra 0.35）。
 `v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
 
 `v0.3.1` 相对 `v0.3.0` **全部是新增**（`ferro dataset` 三步、CP2K out reader、
@@ -102,6 +104,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   - `to_comment_lines()`：渲染成对齐文本，供 `#` 元信息块内嵌
   - `Column::cell()` 定义全项目输出约定：`{:.6e}`，**NaN 渲染为空字段**
 - `cell.rs`：`cartesian_to_fractional` / `wrap_position` / `minimum_image` 均返回 `Result`
+  - **`Cell.origin`**（2026-10-14，审查 A-12）：盒子原点（LAMMPS 的 lo），构造器一律填 0。
+    只是元数据，同 ASE `celldisp`：分数坐标、wrap、最小镜像与全部分析都不用它；只有 LAMMPS
+    dump / data 读写它，`make_supercell` / `add_vacuum` / `merge_frames` 认它，其余格式不读不写
   - **`interplanar_spacings()` / `minimum_image_cutoff()`**：dᵢ = 1/‖(Mᵀ)⁻¹.row(i)‖，
     最小镜像的正确几何上界（非正交晶胞 d < L，用边长会高估）；`calc_gr` 与
     `CellList::build` 共用同一份
@@ -125,7 +130,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `LabelSplit::{Plain, Split, Unknown}`；不用贪婪前缀匹配，避免 `Pb`→铅的静默误判）
 - `data/compounds.rs`、`data/qn_elements.rs`（默认 `{B,P,Si}`）
 - `CubeData`、`charge_grid.rs`、`units.rs`（含 `AMU_ANG3_TO_G_CM3`，由 `AVOGADRO`
-  导出，供 `ferro info` 报 g/cm³）、`error.rs`
+  导出，供 `ferro info` 报 g/cm³；`ASE_FS` = `ase.units.fs`，取 ASE 默认 CODATA 2014 下的值，
+  供 extxyz 的 `momenta` 换算）、`error.rs`
 - `Frame::unique_elements()`（替代 5 处重复实现）
 - **`array_order.rs`**（2026-08-25）：`matrix3_row_major` / `matrix3_from_row_major`。
   nalgebra 是列优先且无开关，`as_slice()` 给出的是转置，而 npy 的 box/virial、
@@ -156,6 +162,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     检测）。写侧只写 `stress=`，不写 `virial=`
   - `Properties` 的力列 **`force` 与 `forces` 两种拼法都收** —— GPUMD 的
     `train.xyz` 用单数，此前只认复数，读 NEP 数据集会静默丢掉全部受力
+  - **速度**（2026-10-14，审查 A-2）：读侧 `velocities` / `vel`（GPUMD）/ `velo`（QUIP）按 Å/fs 直收，
+    ASE 的 `momenta` 除以质量（`masses` 列优先）再乘 `ASE_FS`；写侧写 `masses` + `momenta`
+    两列（ASE 与 GPUMD 都不认 `velocities`），ASE 3.29 `get_velocities()` 读回差 ~1e-11
   - 符号的依据是**外部实物**：fixture 由 ASE 3.29.0 生成，期望值由 dpdata 1.0.2
     的换算式独立算出（`~/.miniforge3/envs/deepmd`）。自读自写的回路验证不了符号
   - **写侧可选 `virial=`**（`write_extxyz_with` + `StressKey`，2026-08-26）：eV，
@@ -215,13 +224,22 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   外扩 1 Å、近正交不写三斜、dump 边界按 pbc；extxyz 注释行按 ASE 规则切词；DeePMD 见
   `real_atom_types.npy` 即拒收；POSCAR / CHGCAR 元素行取 POTCAR 标签前缀；CP2K 段名整行比较、
   `&CELL_REF` 不再覆盖 `&CELL`；QE namelist 按逗号与空白切分；LAMMPS data 空文件报错
+- **2026-10-11 审查 A 组的修复**（2026-10-14，随 `v0.3.6`）：LAMMPS dump / data 读写 `Cell.origin`
+  （A-12，三斜 dump 的 `*_bound` 也加原点、非规范胞绕原点旋转）；LAMMPS data 段头取 `read_data`
+  文档全名单、Masses / Atoms 按段名定位不依赖顺序、Masses 行须恰为 `type mass`、重复 type 报错
+  （A-10）；CP2K MD 缺 cell 行计入 `AimdStats.n_no_cell` 并在报错里点名 `&CELL`，第三个同构 xyz
+  块（VELOCITIES 打到 stdout）整份报错（A-17）；CIF 判重按 ASE `symprec`：逐分量 1e-3、只在同一
+  非对称位点的像之间、跨位点重合报错（A-7）。**A-13（QE 一行 namelist）挂起**，随 QC 专项
 
 ### ferro-structure
 
 - `supercell.rs`、`vacuum.rs`、`merge.rs`
   - `merge_frames`（2026-10-09 重写放置）：**不拉伸**，两块整体平移、胞中心在面内居中；
     gap 沿界面法向量（同 `add_vacuum`）；界面夹角 > 1° 报错。共格应变匹配（ASE `stack`、
-    pymatgen `from_slabs`）有意不做
+    pymatgen `from_slabs`）有意不做。2026-10-14（审查 E-10）：原子先相对 `Cell.origin` 在周期
+    方向折回各自胞内，块中心取 origin + 半体对角线；非周期方向越界报错
+  - `add_vacuum`：厚度须有限且 > 0，奇异胞（c=0）报错（2026-10-14，审查 E-9）；
+    它与 `make_supercell` 都保留 `Cell.origin`
 - `box_builder.rs`：随机放置 + soft-core 弛豫，O(N) cell-list 加速
   - `parse_formula` 栈式解析，支持嵌套 `()` / `[]`：`Ca3(PO4)2`、`(NH4)2SO4`、`K4[Fe(CN)6]`
   - `resolve_component`：先查 COMPOUNDS，查不到则当化学式解析 → 可建库外化合物的盒子
@@ -257,7 +275,11 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 低于它告警；`check::non_negative` / `ordered` 要求有限值；vanhove / map sdf / cube_jump 入口查胞可逆。
 
 `sq.rs` 的 `to_tables(gr)` 恒写全部规范半边；加权 partial `w_ij(q)·S_ij(q)` 逐点相加
-恰等于对应 total。散射因子查表失败时告警。
+恰等于对应 total。散射因子查表失败时告警。**变换恒从 r=0 积分**（2026-10-14，审查 B-1）：
+`calc_sq_from_gr` 拒收 `r_min ≠ 0` 的 `GrResult`，`traj sq` 没有 `--r-min`（与 gr 不再共用 `GrKnobs`）。
+
+四种 cube（density/velocity/force、radius、jump、sdf）的 `CubeData.origin` 取半个体素
+（2026-10-14，审查 B-2）：值属于体素中心，cube 规范第 i 点在 origin + i·spacing。
 
 ### ferro-analysis / network
 
@@ -359,7 +381,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   指文件；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
   `[y/N]`，非交互环境报错并指明 `--mkdir`，询问都在读第一个输入之前
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
-  零匹配报错）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
+  零匹配报错）、`unique_labels`（同名输入改 `_2`，撞名按小写比 —— macOS / Windows 文件系统
+  不分大小写，2026-10-14 审查 E-12）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
 - **`cmd/dataset.rs`**：`ferro dataset collect` —— AIMD out → DeePMD system
   目录。**一目录一 system**（2026-08-26 改）：同目录的 `.out` 是同一次运行被
@@ -380,7 +403,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   **产物默认带 `.train`**（2026-09-20 起，`filter` 与 `merge`；`collect` 不加），
   `--ratio` 划分出的三部分是 `.train`/`.valid`/`.test`；已带后缀不叠加，`merge`
   遇到混合后缀报错，`.train` 输入可再划分而 `.valid`/`.test` 拒绝。
-  `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧，
+  `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧（`-f`/`-s` 是 `Option`，
+  默认 20 / 10 经 `FilterCmd::f_max()/s_max()` 取；用户没给时缺该标签的 system 只关掉这一条并打
+  Note，显式给了才报错 —— 2026-10-14，审查 D-4），
   `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
   **不给 `-o` 即只读**。七张表（三张统计 + 四张诊断）经 `write_all` 出 csv，
   平铺在 `-o` 根下；诊断恒算（实测挂钟无差别），只读模式全打屏、一字不落盘，

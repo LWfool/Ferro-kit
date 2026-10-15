@@ -10,7 +10,7 @@ command line alike; regenerate it rather than migrating it.
 
 ---
 
-## Unreleased
+## `v0.3.6` — 2026-10-15
 
 ### CIF symmetry expansion: duplicates judged as in ASE
 

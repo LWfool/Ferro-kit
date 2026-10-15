@@ -87,6 +87,8 @@
 |---|---|---|
 | `cmd/job.rs` 的 `-h` | 自己声明 `help` 字段接管 `-h/--help`，却没关掉 clap 自动生成的那个。**两个同名参数只在 debug 断言里报**：`cargo build` 通过、release 正常跑，而 **debug 版 `ferro job` 一跑就 panic**（`clap_builder/debug_asserts.rs:99`）。测试全绿也发现不了 —— 23 个 workflow 测试测的是 builder，从不经过 clap 解析 | `#[command(disable_help_flag = true)]`。2026-08-24 修。**任何自定义 `-h`/`-V` 都要同时关掉 clap 的自动版**；发现它的唯一途径是拿 debug 二进制真跑一次子命令 |
 | `cargo fmt`（全仓） | 代码库未用 rustfmt 管理，全仓 `cargo fmt` 会改动 ~80 文件（含 22k 行生成的 `cp2k_basis_db.rs`），淹没特性 diff | 只对改动文件 `cargo fmt -- <file>`，或跳过格式化手工对齐周边风格；用 `cargo build`/`cargo clippy` 验证。若已误跑全仓，先提交真实改动再 `git checkout -- .` 丢弃格式化 |
+| CLI 的包名 | 目录叫 `ferro-cli`，包名是 **`ferro`**：`cargo build -p ferro-cli` 报错而 `target/` 里的旧二进制照跑，端到端检查拿旧结果当新的（2026-10-14 实测踩到） | `cargo build -p ferro` / `cargo test -p ferro`；端到端前看一眼二进制时间戳 |
+| Claude Code 的 shell 与非 ASCII 字符（2026-10-14 / 15 实测） | 命令行里的中文与「—」偶发被截成非法 UTF-8：`python - <<'PY'` 报 `Non-UTF-8 code`；`git commit -m` **提交成功但信息是乱码**（git 只警告）；`sed -i 's/…—…/'` 把坏字节写进 changelog，因手册经 `include_str!` 编进二进制，下一次 `cargo build` 才报 `not valid utf-8` | 命令行只放 ASCII：提交信息用 Write 写文件再 `git commit -F`；含非 ASCII 的替换用 Edit 工具或 Write 写的脚本 |
 
 ## g(r) / box_builder / Bader 编码陷阱
 
@@ -909,3 +911,13 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | clap 默认值 | doc 注释手写 `[default: x]` 又给 `default_value_t`，短帮助显示两遍 | 有 `default_value(_t)` 就不手写；`help_sync::a_clap_default_is_not_also_written_by_hand` 盯着 |
 | argv 预处理 | `--X-Y=v` 的剥离对所有子命令生效，`traj gr --P-O=2.3` 被吞、退出码 0（D-M16） | 预处理只对需要它的子命令（判据写在 `split_pair_args` 里）|
 | 进文件名的用户字符串 | `-s` 不校验，`a/../../x` 写到 `-o` 之外（D-M13） | 一律过 `label_char_ok`，在读第一个输入前查 |
+
+## 2026-10-11 审查修复的编码陷阱（2026-10-14）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `Cell.origin` | `Cell::from_matrix` / `from_lengths_angles` 一律把原点置 0。从旧胞造新胞（超胞、加真空）时用构造器，LAMMPS 的 lo 就静默丢了 —— 正是 A-12 本身 | 由旧胞派生的新胞写 `Cell { matrix, origin: cell.origin }`；`origin` 只给认原点的格式和需要盒子真实位置的结构操作用，**分析一律不用** |
+| 非规范取向胞的 LAMMPS 写出 | 坐标经「分数 → 规范胞」线性变换，原点不为 0 时平移那段也被转走 | 绕原点转：`to_lammps(pos − o) + o`；速度、力是矢量不减原点 |
+| 对称展开的测试坐标 | 想测「特殊位置上的像合并」，写了 `(0.0004, 0.25, 0.25)` 配反演 —— y、z 在反演下变 0.75，根本不是不动点，测试按错因失败 | 特殊位置的其余分量取该操作的不动值（反演取 0 或 0.5）|
+| CLI 参数的「默认」与「给了」 | `default_value_t` 之后 derive 结构里分不清用户给没给（D-4 要据此决定关判据还是报错） | 改 `Option<T>` + 方法取默认；doc 注释手写 `[default: …]`（无 `default_value` 时 `help_sync` 允许） |
+| 第三个同构 xyz 块 | CP2K MD 按「第一块坐标、第二块力」取，VELOCITIES 也打到 stdout 且排在力前时，速度当力存、全程无错 | 两块之后继续扫到下一锚点，再见同原子数的块整份报错 |

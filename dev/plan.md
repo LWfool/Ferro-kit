@@ -10,7 +10,12 @@
 
 ## 优先级高
 
-### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；未修）
+### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
+
+**2026-10-14 处置（用户定）**：B-1、中级 7 条静默错数据（A-12 B-2 A-10 E-10 E-12 A-2 E-9）、D-4、A-17、
+文档 5 条（C-9 D-2 E-1 E-3 E-15）、A-7 已修，随 `v0.3.6` 发版，判据见归档「2026-10-11 全库审查：15 条已修」。
+**挂起**：D-8、D-9、D-10、D-11 随 Bader 重写（与 C-D2 / C-D3 同组）；A-13、D-1 随 QC 专项（与 D-M4、
+D-M6–D-M12 同组）；B-3、B-4 随 cube_sdf 改写（与 B-6、S-A 同组）。下表只留未修与挂起的条目。
 
 六个子代理按领域只读审查：A `ferro-io` · B 结构分析（gr/sq/angle/cube_*）· C 动力学（msd/vacf/
 rotcorr/vanhove/bondlife）· D network/dft/ml/core · E cli 驱动/render/structure · G 横切（R1–R6、
@@ -32,41 +37,22 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
 
 | # | 位置 | 问题 | 复现 | 修法 |
 |---|---|---|---|---|
-| A-13 | `readers/qe.rs:191-211 collect_namelist`、`:96-97` | `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时整段被忽略，`celldm(1)` 丢失，无选项的 `CELL_PARAMETERS` 回落 Bohr | Si 原胞一行 namelist + `CELL_PARAMETERS` 无选项 + `ATOMIC_POSITIONS crystal` → `ferro info`：a=0.3742 Å、密度 2517.8 g/cm³，exit 0（应 a=3.84 Å） | namelist 按 token 流收：`&name` 后（同行剩余也算）到引号外的 `/`；缺 `&SYSTEM` 报错；`ibrav` 缺省报错（INPUT_PW 标 REQUIRED） |
-| B-1 | `md/sq.rs:167-174`；`cmd/traj.rs:379`（sq 与 gr 共用 `GrKnobs`） | `--r-min > 0` 时 FT 积分从 r_min 起，漏掉 $[0,r_{min}]$ 段的 $-\rho$ 项，整条 S(q) 平移，exit 0 | `traj sq -i tests/70Z30P00A_NVT_5.lammpstrj` 只改 `--r-min` 0.001 → 1.2（该区间对计数为 0）：total_neutron q=0.7 0.085 → 0.644，q=2 0.919 → 1.238。默认 0.001 下可忽略 | 补解析项 $-\rho\int_0^{a} r\sin(qr)\,dr$；或 sq 一律从 0 积分、拒收 `--r-min`。测试：r_min 取在第一峰前与 0.001 结果一致 |
-| D-8 | `dft/bader_grid.rs:474`（refine_edge 内 `max_ongrid`）、`:439-449`（边缘只看 6 个面邻居） | **CLI 默认的 near-grid（`-r -1`）与 on-grid 逐位相同**：refine_edge 对边缘点跑 on-grid 上升，边缘判定也只看 6 邻（规格与 Henkelman 2009 为 26 邻、near-grid 时调 near-grid 上升）。即默认路径实际是 on-grid | 10 Å 立方胞两高斯（中心 (3.1,3.3,5.0) σ0.9 幅 1.0；(6.3,6.9,5.2) σ1.4 幅 0.6），N=60：on-grid 与 near-grid `-r -1` 均 11.91354，near-grid `-r 0` 11.88225；N=120 默认误差 0.024 e 且随加密几乎不降，`-r 0` 1e-4 | refine_edge 按方法分派，near-grid 调 `max_neargrid`（顺带解决「`max_neargrid` 被绕过」一节）；边缘判定改 26 邻；加收敛测试 |
-| D-9 | `dft/bader_grid.rs:658`（`grad_lat_1`）、`:736`（`start = [i+0.5, …]`） | off-grid 三线性插值的 $\partial\rho/\partial f_2$ 写成 x 向差分，起点偏半格 | 同 D-8 体系 `-m offgrid`：N=60 nvols **21918**（应 2）；N=30 3064；原子电荷误差 0.1–0.19 e | 改 `grad_lat_1`、起点 `[i,j,k]`；单测「线性密度 ρ=y 的梯度只有 y 分量」+ 收敛测试 |
+| A-13 **挂起：QC 专项** | `readers/qe.rs:191-211 collect_namelist`、`:96-97` | `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时整段被忽略，`celldm(1)` 丢失，无选项的 `CELL_PARAMETERS` 回落 Bohr | Si 原胞一行 namelist + `CELL_PARAMETERS` 无选项 + `ATOMIC_POSITIONS crystal` → `ferro info`：a=0.3742 Å、密度 2517.8 g/cm³，exit 0（应 a=3.84 Å） | namelist 按 token 流收：`&name` 后（同行剩余也算）到引号外的 `/`；缺 `&SYSTEM` 报错；`ibrav` 缺省报错（INPUT_PW 标 REQUIRED） |
+| D-8 **挂起：Bader 重写** | `dft/bader_grid.rs:474`（refine_edge 内 `max_ongrid`）、`:439-449`（边缘只看 6 个面邻居） | **CLI 默认的 near-grid（`-r -1`）与 on-grid 逐位相同**：refine_edge 对边缘点跑 on-grid 上升，边缘判定也只看 6 邻（规格与 Henkelman 2009 为 26 邻、near-grid 时调 near-grid 上升）。即默认路径实际是 on-grid | 10 Å 立方胞两高斯（中心 (3.1,3.3,5.0) σ0.9 幅 1.0；(6.3,6.9,5.2) σ1.4 幅 0.6），N=60：on-grid 与 near-grid `-r -1` 均 11.91354，near-grid `-r 0` 11.88225；N=120 默认误差 0.024 e 且随加密几乎不降，`-r 0` 1e-4 | refine_edge 按方法分派，near-grid 调 `max_neargrid`（顺带解决「`max_neargrid` 被绕过」一节）；边缘判定改 26 邻；加收敛测试 |
+| D-9 **挂起：Bader 重写** | `dft/bader_grid.rs:658`（`grad_lat_1`）、`:736`（`start = [i+0.5, …]`） | off-grid 三线性插值的 $\partial\rho/\partial f_2$ 写成 x 向差分，起点偏半格 | 同 D-8 体系 `-m offgrid`：N=60 nvols **21918**（应 2）；N=30 3064；原子电荷误差 0.1–0.19 e | 改 `grad_lat_1`、起点 `[i,j,k]`；单测「线性密度 ρ=y 的梯度只有 y 分量」+ 收敛测试 |
 
 **中**
 
 | # | 位置 | 问题 | 修法 |
 |---|---|---|---|
-| A-2 | `readers/extxyz.rs:160`；`writers/extxyz.rs:62` | 读侧不认 GPUMD 的 `vel` 列，速度静默丢；写侧的 `velocities` 列 ASE（写 `momenta`）与 GPUMD 都不认 | reader 认 `vel`（Å/fs，直收）；writer 列名需定口径；与「extxyz 把 momenta 当速度读」同改 |
-| A-10 | `readers/lammps_data.rs:125-147`、`:239-244 is_section_header` | Masses 后接未登记段（`PairIJ Coeffs` 等）时其行被当成 Masses：O/H 两 type 都成 `X` 并合并，exit 0 | 用 LAMMPS 文档完整段名表识别段头；Masses 行恰 2 个数否则报错；同 type 重复报错 |
-| A-12 | `readers/lammps_dump.rs:166-180`（丢 lo）；`writers/lammps_dump.rs:58-60`、`lammps_data.rs:44-46` | dump / data 往返丢盒子原点：写出的盒子从 0 起、坐标保留原值，`convert` 后首帧 225/5003 原子在盒外 | `Cell` 或 `Frame` 带可选 origin，dump/data 读填 lo、写回；与 M5「坐标不平移」不冲突 |
-| A-17 | `readers/cp2k_md.rs:384-414`；`docs/src/dataset/collect.md:117-140` | reader 要求力块后紧跟 `&CELL` 打到标准输出的 cell 行，手册模板没有 `&CELL`；照手册跑出的日志全部帧判 incomplete，报错不说缺什么。VELOCITIES 打到标准输出时同样 | 手册模板补 `&CELL FILENAME __STD_OUT__` 并写明勿把 VELOCITIES 打到 stdout；缺 cell 行单独计数并点名；见到第三个同构 xyz 块时报「额外 xyz 块（VELOCITIES?）」 |
-| B-2 | `md/cube_density.rs:112-117,229-236`；`cube_radius.rs:149-151,229`；`cube_jump.rs:107-112,237`；`cube_sdf.rs:595-597` | cube 网格整体偏半个体素：体素平均值写在格点上而 origin 写 0（规范：第 i 点在 origin + i·spacing）。单原子 4³/10 Å 偏 1.25 Å/轴；默认 50³/40 Å 约 0.4 Å/轴 | origin 写 ½ 个 spacing（四处同改，可与布局建议 3 的 cube spacing 下沉合并）；或改按最近格点分箱、radius 球心改 i/n。手册 cube-density / cube-radius 公式随改；加单原子测试 |
-| B-3 | `md/cube_sdf.rs:614-627 build_reference_frame` | `map sdf` 参考结构多加一次 `(min+max)/2` 平移，与密度网格错位；现被 S-A 掩盖（实测仅 0.04 Å），S-A 修后显形 | 直接用 `pos`，删 `center`/`box_size` 参数；随 S-A 修，测试「参考原子落在各自密度峰上」 |
-| B-4 | `md/cube_sdf.rs:401-404` | 以锚原子最小镜像取局部坐标，跨度超过半盒或逾渗的团簇被折断，无告警（推断，未构造算例） | BFS 展开 + 逾渗检测；结果计数被跳过的团簇。随 B-6 / S-A 一并做 |
-| C-9 **已定：改手册**（2026-10-11 用户） | `docs/src/analysis/bondlife.md:55`、`:81-83` | 手册称 $S_C$「always ≤ $C_I$」、两者之差 = 断后重连的量；开 `--intermittency` 后只有 $S_C$ 补缺口，$S_C$ 可大于 $C_I$（序列 `1 1 0 1 1 0 1 1 1`、k=1：$C_I$ 0.6–0.67，$S_C$ 全 1） | 手册把「≤」限定为 `--intermittency 0`，写明补缺口后两者不可直接相减。数值不改 |
-| D-1 | `ferro-core/src/spin.rs:162-171`（`max_by_key`） | 多解择优的键恒为常数，实际取枚举序最后一个解：FeTiO₃ 给 Fe³⁺/Ti³⁺ | 按明确判据择优（各元素常见氧化态次序等）；多解时告警 |
-| D-4 | `cmd/dataset.rs:410-412`（`s_max` 默认 10）；`ml/filter.rs:181-185` | `dataset filter` 默认开着 `-s 10 GPa`，无 virial 的数据集按默认参数整批失败，报错却说「你给了阈值」 | 用户未显式给 `-s`/`-f` 时，缺标签的 system 关掉该判据并打 Note；显式给了才报错 |
-| D-10 | `dft/bader_weight.rs:107-113`、`:146-148` | S-C 的补充：weight 在等密度平台上 `tsum = 0` → 0/0 = NaN，电荷成片丢（floor=0.2 时 208.6 e 剩 97.2 e） | 随 S-C / Bader 重写；回归测试 Σionchg + vacchg == 网格总量 |
-| D-11 | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³ | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
-| E-1 | `ferro-cli/src/help.rs:361,687,716,745,777`；`cmd/map.rs:184-192` | `map density/velocity/force/radius` 帮助页把 `-s` 写成「产物 stem」，实际追加后缀（`-s foo` → `density_foo.cube`） | 帮助页按实际规则写；随合规扫描第 2 条（map 命名）一并改手册 |
-| E-3 | `docs/src/cli-reference.md:443-688` 共 16 处 | traj / map 章节仍按 0.3.2 前「`-o` 是后缀」写用法与示例（`-o run1`） | 用法行 `[-o DIR] [-s SUFFIX]`，示例改 `-s run1` |
-| E-9 | `ferro-structure/src/vacuum.rs:35,50-59` | `add_vacuum` 对奇异胞（ASE 二维材料 c=0 约定）与 NaN 厚度静默返回 NaN 晶胞；Python 接口直接暴露 | 厚度非有限或 ≤0 报错；奇异胞报错或按 ASE `center` 口径补 c；加 c=0 回归测试 |
-| E-10 | `ferro-structure/src/merge.rs:100-114` | `merge_frames` 按胞面放块、不先折回胞内：原子不在 [0,1) 时（如 LAMMPS lo≠0）两块静默重叠，gap 2 Å 实测最近距离 0.18 Å | 平移前按各自胞折回（`Frame::wrap_all` 现成）；或写明前置条件并在越界时报错 |
-| E-12 | `ferro-cli/src/batch.rs:51-75 unique_labels` | 撞名判定区分大小写，macOS / Windows 上 `Prod`/`prod` 两输入的 `map` 产物静默互相覆盖，exit 0（S7 修复的缺口）；`net --export-traj` 同 | 撞名键用 `to_lowercase()`（显示仍原样）；补单测 |
-| E-15 | `docs/src/installation.md:5` | 写「Rust 1.75+」，nalgebra 0.35 要求 ≥ 1.89 | 手册改 1.89+；根 `[workspace.package]` 加 `rust-version = "1.89"` |
+| B-3 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:614-627 build_reference_frame` | `map sdf` 参考结构多加一次 `(min+max)/2` 平移，与密度网格错位；现被 S-A 掩盖（实测仅 0.04 Å），S-A 修后显形 | 直接用 `pos`，删 `center`/`box_size` 参数；随 S-A 修，测试「参考原子落在各自密度峰上」 |
+| B-4 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:401-404` | 以锚原子最小镜像取局部坐标，跨度超过半盒或逾渗的团簇被折断，无告警（推断，未构造算例） | BFS 展开 + 逾渗检测；结果计数被跳过的团簇。随 B-6 / S-A 一并做 |
+| D-1 **挂起：QC 专项** | `ferro-core/src/spin.rs:162-171`（`max_by_key`） | 多解择优的键恒为常数，实际取枚举序最后一个解：FeTiO₃ 给 Fe³⁺/Ti³⁺ | 按明确判据择优（各元素常见氧化态次序等）；多解时告警 |
+| D-10 **挂起：Bader 重写** | `dft/bader_weight.rs:107-113`、`:146-148` | S-C 的补充：weight 在等密度平台上 `tsum = 0` → 0/0 = NaN，电荷成片丢（floor=0.2 时 208.6 e 剩 97.2 e） | 随 S-C / Bader 重写；回归测试 Σionchg + vacchg == 网格总量 |
+| D-11 **挂起：Bader 重写** | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³ | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
 
 **口径**
 
-- **A-7 已定：容差改 1e-3 分数坐标（2026-10-11 用户，与 ASE 默认一致）**。`readers/cif.rs:427`（`TOL_SQ = 1e-4` 即 0.01）。
-  附带的判重范围问题仍开着：现在对已展开的全部同元素原子判重，两个不等价位点相距小于容差时后一个被整体吞掉 ——
-  修时一并把判重限定在同一非对称位点的像之间、跨位点重合报错
-- **D-2 已定：暂不改默认表，手册注明（2026-10-11 用户）**。`data/qn_elements.rs:25` 默认 `{B,P,Si}`；手册写明
-  Si / B 的 n 也是同核连接，与常见硅酸盐 / 硼酸盐 Qn（总桥氧数）不同，总桥 = n + Σm
 - **B-9**（挂到「`ferro map jump`：丢失的 CLI 入口」，补入口时一并定）：`cube_jump.rs:192-217` 滑窗重叠，τ > 1 时同一次
   跳跃计 τ 次，手册却称「raw count of jump events」。二选一：窗口不重叠（步长 τ），或改称「超阈值窗口数」
 - **B-10**（挂到 B-6，cube_sdf 改写时一并定）：`cube_sdf.rs:607-609` 每张网格按全体体素均值 = 1 归一，含 padding 空体素，
@@ -136,9 +122,9 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
   与 `calc_msd` 并列，`angle` 函数与 `md::angle` 模块同名，库用户易拿错；模块文档称 RMSD / Rg 已迁到 `md/`，实际没有（G-3）。
   随零调用清单定夺；若留，至少去掉两处 glob 再导出并改正文档
 
-**测试缺口**：sq 的 r_min 不变性；Bader near-grid / off-grid 对解析密度的收敛；cube 网格的单原子定位；`merge_frames` 原子越界；
-`add_vacuum` c=0；`unique_labels` 大小写；QE 一行 namelist；LAMMPS data 未登记段；带速度的 dump fixture（C 用合成数据验过 vacf，
-仓库里仍无）。
+
+**测试缺口**（2026-10-14 删去已随修复补上的项）：Bader near-grid / off-grid 对解析密度的收敛；QE 一行 namelist；
+带速度的 dump fixture（C 用合成数据验过 vacf，仓库里仍无）。
 
 ### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；严重 / 中两级 2026-10-09 处理完：39 条已修并归档，B-6、C-D2、C-D3 搁置，D-M4、D-M6–D-M12 挂起作 QC 专项；轻、口径、布局建议、测试缺口仍开着）
 
@@ -729,13 +715,6 @@ CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/
 问题）。改默认 tau（N/2？）并换 TOR —— `msd.rs::unwrap_tor` 届时有第二个用户，
 可下沉共享。
 
-### extxyz 把 `momenta` 当速度读（2026-09-27 发现）
-
-`readers/extxyz.rs` 找不到 `velocities` 列时退到 `momenta`，但直接当速度存，没有除以
-质量（ASE 的 `momenta` 是 m·v，且时间单位是 ASE 自己的）。ASE 写 extxyz 时带的正是
-`momenta`，所以 ASE 产出的轨迹进 `traj vacf` 会得到错误量纲。修法：除以
-`effective_mass()` 并换算 ASE 时间单位，或拒绝 `momenta` 并报错。
-
 ### bondlife 的后续（2026-09-27 记）
 
 - **氢键几何判据**（供体–H–受体角度）：水–玻璃界面的 H 键需要它；现只有距离判据
@@ -957,6 +936,26 @@ MACE/NequIP 兼容格式仍未开始。
 ---
 
 ## 已完成（归档）
+
+### 2026-10-11 全库审查：15 条已修（2026-10-14，随 `v0.3.6`）
+
+范围由用户 2026-10-14 圈定（另 8 条挂起，见优先级高的同名一节）。每条一个提交，均先写复现测试再修。
+
+| # | 判据 | 提交 |
+|---|---|---|
+| B-1 | 方案二选一：补解析项 $-\rho\int_0^a r\sin(qr)\,dr$ 要假设 $[0,r_{min}]$ 无原子对，r_min 越过第一峰时静默错；**定为 sq 恒从 0 积分、删 `--r-min`**（用户选，与 TRAVIS / ISAACS 等从 0 起的直方图及教科书下限一致）。库层同守，拒收 r_min≠0 的 `GrResult` | `93b0ad4` |
+| A-12 | 原点放 `Cell` 不放 `Frame`（用户选）：放 Frame 则每个产生新 Frame 的地方都得记得带，漏一处就静默丢。只作元数据（同 ASE `celldisp`），分析一律不用 —— 读入时平移已在 M5 实测扰动 NPT MSD 被否决。范围只限 dump / data（用户选），cube 的盒子原点未接 | `3c775ca` |
+| B-2 | 值属于体素中心，cube 规范第 i 点在 origin + i·spacing，故 origin 取半体素；四处同一变化原因但一行，按 R6 不合 | `0dc1387` |
+| A-10 | 段头名单取 LAMMPS `read_data` 文档全集；Masses / Atoms 按段名定位（段序任意）；Masses 行恰两项否则报错 | `dc1cf1a` |
+| E-10 | 放置按胞面算，原子须先相对 `Cell.origin` 折回；非周期方向越界无合理折回，报错（自定） | `57ead5d` |
+| E-12 | 撞名键小写、显示原样；`net --export-traj` 经同一函数一并覆盖 | `7685d40` |
+| A-2 | 写侧列名定为 ASE 的 `momenta`（用户选）并带 `masses`：ASE 只认 momenta，`velocities`/`vel` 在 ASE 里是普通数组。换算常数取 ASE 默认 CODATA 2014 的 `units.fs`，不用本仓 2018 常数自算。顺带了结中级「extxyz 把 momenta 当速度读」 | `66e9340` |
+| E-9 | 奇异胞报错，不做 ASE 式「按原子跨度补 c」（那是新功能，自定） | `03c7fa7` |
+| D-4 | 区分「用户给了」与「默认值」只能靠 `Option`（derive 拿不到 value_source）；默认值缺标签时关掉该条并 Note，显式给了才报错 | `2cb7e29` |
+| A-17 | 缺 cell 行单独计数（`n_no_cell`），全丢时报错点名 `&CELL`；第三个同构 xyz 块整份报错 —— VELOCITIES 若排在力块前会被当力读 | `f350185` |
+| C-9 / D-2 / E-1 / E-3 | 只改手册 / 帮助页。E-3 顺带改了 6 个分析手册页同样的 8 处 `-o` 旧写法；sdf / chg-sdf 的 `-o` 本是目录不动 | `055596b` `7bfcd87` `a3154fe` `0807f17` |
+| E-15 | 下限取依赖树（两个 workspace 各自 `cargo metadata`）最高 `rust-version` = 1.89；clippy `incompatible_msrv` 零告警，**未装 1.89 工具链实编** | `1b67d80` |
+| A-7 | 判重同 ASE `equivalent_sites`：逐分量 1e-3、只在同一位点的像之间；跨位点重合报错（部分占位本已拒收，不多拒任何此前能读的结构）。`crosscheck_spacegroups.py` 复跑与 10-03 基线相同 | `dd76f07` |
 
 ### vasprun 的非对称应力：导出 nep 后 ferro 读不回自己的文件（2026-10-13 发现并修复）
 
