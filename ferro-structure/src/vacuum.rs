@@ -18,7 +18,8 @@ use ferro_core::frame::Frame;
 /// # Errors
 /// - `ValidationError` if the frame has no cell.
 /// - `ValidationError` if `axis` is not "x"/"y"/"z".
-/// - `ValidationError` if `thickness <= 0`.
+/// - `ValidationError` if `thickness` is not a finite number > 0.
+/// - `ValidationError` if the cell is singular (e.g. c = 0, the ASE convention for 2D materials).
 pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
     let axis_idx = match axis {
         "x" => 0,
@@ -32,9 +33,10 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
         }
     };
 
-    if thickness <= 0.0 {
+    // 写成「合法则放行」，NaN 落到报错分支（审查 E-9：以前 NaN 厚度静默得到 NaN 晶胞）
+    if !(thickness > 0.0 && thickness.is_finite()) {
         return Err(ChemError::ValidationError(format!(
-            "vacuum thickness must be > 0, got {}",
+            "vacuum thickness must be a finite number > 0, got {}",
             thickness
         )));
     }
@@ -42,6 +44,13 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
     let cell = frame.cell.as_ref().ok_or_else(|| {
         ChemError::ValidationError("add_vacuum requires a periodic frame with a cell".into())
     })?;
+    // 奇异胞（ASE 二维材料的 c=0 约定）的面间距是 0/0；按原子跨度补出 c 是另一项功能
+    if cell.matrix.determinant().abs() < 1e-12 {
+        return Err(ChemError::ValidationError(
+            "add_vacuum: the cell is singular (e.g. c = 0 for a 2D material); \
+             give the frame a full 3D cell first".into(),
+        ));
+    }
 
     // 沿该晶格矢量拉长，使它对面的面间距（两个相邻晶面的垂直距离）增加 thickness。
     // 以前是让矢量长度增加 thickness，c 轴倾斜时实际真空间隙只有 thickness·cosθ。
@@ -218,6 +227,22 @@ mod tests {
     fn test_error_zero_thickness() {
         let frame = cubic_frame(10.0);
         assert!(add_vacuum(&frame, "z", 0.0).is_err());
+    }
+
+    // 审查 E-9：NaN / inf 厚度与奇异胞（ASE 二维材料的 c=0 约定）以前静默返回 NaN 晶胞
+    #[test]
+    fn test_error_non_finite_thickness() {
+        let frame = cubic_frame(10.0);
+        for t in [f64::NAN, f64::INFINITY] {
+            assert!(add_vacuum(&frame, "z", t).is_err(), "厚度 {t} 应报错");
+        }
+    }
+
+    #[test]
+    fn test_error_singular_cell() {
+        let mut frame = cubic_frame(10.0);
+        frame.cell.as_mut().unwrap().matrix[(2, 2)] = 0.0;
+        assert!(add_vacuum(&frame, "z", 5.0).is_err());
     }
 
     #[test]

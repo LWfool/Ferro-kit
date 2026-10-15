@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Python `add_vacuum_layer`: NaN thickness and singular cells are errors
+
+A `NaN` thickness, or a cell with a zero lattice vector (ASE's $c = 0$ convention for 2D
+materials), returned a frame whose cell was all `NaN`. Both are now errors; give a 2D
+structure a full 3-D cell first.
+
 ### Extended XYZ velocities: GPUMD and ASE files read correctly; written for ASE (breaking)
 
 Reading dropped the velocities of a GPUMD file (`vel`) or a QUIP file (`velo`) without notice,
