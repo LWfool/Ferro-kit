@@ -76,7 +76,7 @@ All output is **one** csv; multiple inputs are stacked into a single table with 
 ## Usage
 
 ```bash
-ferro traj vanhove -i traj.dump --tau 500 --dt 2.0 -o run1
+ferro traj vanhove -i traj.dump --tau 500 --dt 2.0 -s run1
 ```
 
 ```rust

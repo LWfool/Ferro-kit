@@ -237,7 +237,7 @@ draws the fitted line from the `[inputs]` columns.
 ## Usage
 
 ```bash
-ferro traj msd -i traj.dump --dt 2.0 --fit-range 0.3,0.8 -o run1
+ferro traj msd -i traj.dump --dt 2.0 --fit-range 0.3,0.8 -s run1
 ferro traj msd -i 'runs/*.lammpstrj' --elements Li --dt 1000 --max-lag 500
 ```
 

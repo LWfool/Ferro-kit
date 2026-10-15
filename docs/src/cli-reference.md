@@ -451,7 +451,7 @@ the shared inference chain → `nspin` / `tot_magnetization`.
 Seven trajectory analyses sharing one export pipeline: a single long or wide csv.
 
 ```bash
-ferro traj <command> -i traj.lammpstrj [flags] -o <suffix>
+ferro traj <command> -i traj.lammpstrj [flags] [-o DIR] [-s SUFFIX]
 ```
 
 ### `gr` — radial distribution function
@@ -459,7 +459,7 @@ ferro traj <command> -i traj.lammpstrj [flags] -o <suffix>
 $g(r)$ and the coordination number $\text{CN}(r)$.
 
 ```bash
-ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -o run1
+ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -s run1
 ```
 
 | Flag | Default | Description |
@@ -477,7 +477,7 @@ different element sets stack directly; omitting `-a/-b` adds rows rather than co
 $S(q)$ from the Fourier transform of $g(r)$.
 
 ```bash
-ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -o run1
+ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -s run1
 ```
 
 | Flag | Default | Description |
@@ -499,7 +499,7 @@ partials are a diagnostic decomposition that sums back to the total.
 ### `msd` — mean squared displacement
 
 ```bash
-ferro traj msd -i traj.lammpstrj --dt 2.0 --elements Li --fit-range 0.3,0.8 -o run1
+ferro traj msd -i traj.lammpstrj --dt 2.0 --elements Li --fit-range 0.3,0.8 -s run1
 ```
 
 Every lag is averaged over all time origins (FFT); periodic inputs are unwrapped with the TOR scheme;
@@ -520,7 +520,7 @@ Plot with `scripts/plot_msd.py`, which draws the fitted line from those columns.
 ### `angle` — bond angle distribution
 
 ```bash
-ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 -o run1
+ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 -s run1
 ```
 
 | Flag | Default | Description |
@@ -541,7 +541,7 @@ See [Bond Angle Distribution](analysis/angle.md) for details.
 ### `vacf` — velocity autocorrelation
 
 ```bash
-ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --units metal -o run1
+ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --units metal -s run1
 ```
 
 Every lag averages all time origins (FFT); `diffusion` is the trapezoidal Green–Kubo running integral.
@@ -560,7 +560,7 @@ Columns: `file, time, vacf, vacf_norm, vacf_x, vacf_y, vacf_z, diffusion`
 $C_2(t)$ of a molecular orientation vector.
 
 ```bash
-ferro traj rotcorr -i water.lammpstrj --center O --neighbor H --r-cut 1.2 --dt 2.0 -o run1
+ferro traj rotcorr -i water.lammpstrj --center O --neighbor H --r-cut 1.2 --dt 2.0 -s run1
 ```
 
 | Flag | Default | Description |
@@ -584,7 +584,7 @@ Intermittent $C_I(t)$ and continuous $S_C(t)$ bond correlation functions over al
 bonds formed / broken per frame.  Details in [Bond lifetimes](analysis/bondlife.md).
 
 ```bash
-ferro traj bondlife -i glass_water.lammpstrj --center Si --neighbor O --r-bond 2.2 --dt 1000 -o run1
+ferro traj bondlife -i glass_water.lammpstrj --center Si --neighbor O --r-bond 2.2 --dt 1000 -s run1
 ```
 
 | Flag | Default | Description |
@@ -603,7 +603,7 @@ Columns: `bondlife_<C>-<N>.csv` → `file, time, c_int, s_cont`; `bondlife_event
 ### `vanhove` — Van Hove self-correlation
 
 ```bash
-ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -o run1
+ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -s run1
 ```
 
 | Flag | Default | Description |
@@ -631,13 +631,13 @@ so that none overwrites another.  `-s TAG` is appended after the command name: `
 `density_TAG_<label>.cube` with several inputs.
 
 ```bash
-ferro map <command> -i traj.lammpstrj [flags] -o <suffix>
+ferro map <command> -i traj.lammpstrj [flags] [-o DIR] [-s SUFFIX]
 ```
 
 ### `density` — atom number density
 
 ```bash
-ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -o run1
+ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -s run1
 ```
 
 | Flag | Default | Description |
@@ -650,7 +650,7 @@ ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -o run
 Requires a trajectory carrying velocities (a LAMMPS dump needs `--units real|metal`).
 
 ```bash
-ferro map velocity -i traj.lammpstrj --units metal -o run1
+ferro map velocity -i traj.lammpstrj --units metal -s run1
 ```
 
 ### `force` — mean force magnitude per voxel
@@ -658,13 +658,13 @@ ferro map velocity -i traj.lammpstrj --units metal -o run1
 Requires a trajectory carrying forces.
 
 ```bash
-ferro map force -i traj.lammpstrj -o run1
+ferro map force -i traj.lammpstrj -s run1
 ```
 
 ### `radius` — hard-sphere occupancy
 
 ```bash
-ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -o run1
+ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -s run1
 ```
 
 | Flag | Default | Description |
@@ -677,7 +677,7 @@ ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 
 
 ```bash
 ferro map sdf -i traj.lammpstrj --qn 3 --former P --ligand O --cutoff-fl 2.4 \
-    --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -o run1
+    --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -s run1
 ```
 
 | Flag | Default | Description |
@@ -702,7 +702,7 @@ charge-density cubes.  It does **not** use `-i`; it takes `--cubes` instead.
 
 ```bash
 ferro map chg-sdf --cubes frame_000.cube frame_001.cube frame_002.cube \
-    --qn 2 --former P --ligand O --cutoff-fl 2.4 -o run1
+    --qn 2 --former P --ligand O --cutoff-fl 2.4 -s run1
 ```
 
 | Flag | Default | Description |

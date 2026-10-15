@@ -115,7 +115,7 @@ it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 ## Usage
 
 ```bash
-ferro traj vacf -i traj.dump --dt 2.0 --elements Li -o run1
+ferro traj vacf -i traj.dump --dt 2.0 --elements Li -s run1
 ferro traj vacf -i traj.lammpstrj --dt 5.0 --units metal --max-lag 400
 ```
 

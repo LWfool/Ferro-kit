@@ -126,10 +126,10 @@ Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
 ## Usage
 
 ```bash
-ferro traj gr -i traj.dump -o run1
+ferro traj gr -i traj.dump -s run1
 
 # one pair, narrowed range
-ferro traj gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -o po
+ferro traj gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -s po
 ```
 
 ```rust

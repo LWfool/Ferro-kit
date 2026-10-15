@@ -180,7 +180,7 @@ it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 ## Usage
 
 ```bash
-ferro traj rotcorr -i water.dump --center O --neighbor H --r-cut 1.2 --dt 2.0 -o run1
+ferro traj rotcorr -i water.dump --center O --neighbor H --r-cut 1.2 --dt 2.0 -s run1
 
 # PO4 tetrahedra in a glass: each P–O bond (first g(r) minimum as r-cut), both orders
 ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond --legendre 1 --dt 1000 -s P1

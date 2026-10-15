@@ -132,11 +132,11 @@ Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
 ## Usage
 
 ```bash
-ferro traj angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -o run1
+ferro traj angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -s run1
 
 # one triplet, narrowed to the tetrahedral region
 ferro traj angle -a O -b P -c O -i traj.dump \
-        --angle-min 90 --angle-max 130 --d-angle 0.2 -o opo
+        --angle-min 90 --angle-max 130 --d-angle 0.2 -s opo
 ```
 
 ```rust
