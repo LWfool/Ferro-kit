@@ -423,8 +423,15 @@ fn parse_fraction(s: &str) -> Option<f64> {
 
 // ─── Symmetry expansion ───────────────────────────────────────────────────────
 
-fn expand_by_symmetry(sites: AtomSites, symops: &[SymOp]) -> AtomSites {
-    const TOL_SQ: f64 = 1e-4; // (0.01)² in fractional space
+fn expand_by_symmetry(sites: AtomSites, symops: &[SymOp]) -> Result<AtomSites> {
+    // 判重口径同 ASE `Spacegroup.equivalent_sites`（审查 A-7，用户 2026-10-11 定）：分数坐标
+    // 逐分量取最小镜像，|Δ| < 1e-3 即同一点。以前是欧氏距离 < 0.01，且对全部同元素原子判重，
+    // 两个相距不到 0.01 的不等价位点后一个被整体吞掉
+    const SYMPREC: f64 = 1e-3;
+    let same = |a: Vector3<f64>, b: Vector3<f64>| {
+        let d = a - b;
+        [d.x, d.y, d.z].iter().all(|c| (c - c.round()).abs() < SYMPREC)
+    };
 
     let mut out = AtomSites { elements: vec![], labels: vec![], frac: vec![] };
 
@@ -432,33 +439,33 @@ fn expand_by_symmetry(sites: AtomSites, symops: &[SymOp]) -> AtomSites {
         .zip(sites.labels.iter())
         .zip(sites.frac.iter())
     {
+        // 只在本位点的像之间去重：特殊位置上的多个像是同一个原子
+        let mut orbit: Vec<Vector3<f64>> = Vec::new();
         for op in symops {
-            let mut p = op.apply(frac);
-            // Wrap to [0, 1)
-            p.x = p.x.rem_euclid(1.0);
-            p.y = p.y.rem_euclid(1.0);
-            p.z = p.z.rem_euclid(1.0);
-
-            // Duplicate check using minimum-image fractional distance
-            let is_dup = out.frac.iter().zip(out.elements.iter()).any(|(&q, e)| {
-                e == element && frac_dist_sq(p, q) < TOL_SQ
-            });
-            if !is_dup {
-                out.elements.push(element.clone());
-                out.labels.push(label.clone());
-                out.frac.push(p);
+            let p = op.apply(frac).map(|c| c.rem_euclid(1.0));
+            if !orbit.iter().any(|&q| same(p, q)) {
+                orbit.push(p);
             }
         }
+        // 与先前位点的像重合 = 同一位置写了两个非对称位点：不替用户挑一个
+        // （部分占位已在 parse_atom_sites 拒收，这里剩下的是 CIF 写错了）
+        for &p in &orbit {
+            if let Some(k) = out.frac.iter().position(|&q| same(p, q)) {
+                bail!(
+                    "CIF sites {} and {} land on the same position (within 1e-3 \
+                     fractional) after symmetry expansion",
+                    label.as_deref().unwrap_or(element),
+                    out.labels[k].as_deref().unwrap_or(&out.elements[k])
+                );
+            }
+        }
+        for p in orbit {
+            out.elements.push(element.clone());
+            out.labels.push(label.clone());
+            out.frac.push(p);
+        }
     }
-    out
-}
-
-fn frac_dist_sq(a: Vector3<f64>, b: Vector3<f64>) -> f64 {
-    let mut d = a - b;
-    d.x -= d.x.round();
-    d.y -= d.y.round();
-    d.z -= d.z.round();
-    d.norm_squared()
+    Ok(out)
 }
 
 // ─── Block → Frame ────────────────────────────────────────────────────────────
@@ -469,7 +476,7 @@ fn block_to_frame(block: &CifBlock) -> Result<Frame> {
 
     let symops = collect_symops(block, &cell)?;
     let sites = if symops.len() > 1 {
-        expand_by_symmetry(sites, &symops)
+        expand_by_symmetry(sites, &symops)?
     } else {
         sites
     };
@@ -721,6 +728,32 @@ O1   O   0.5  0.5  0.5  1.0(0)
         assert_eq!(frame.n_atoms(), 2);
         assert_eq!(frame.atom(0).element, "Fe");
         assert_eq!(frame.atom(1).element, "Fe");
+    }
+
+    // 审查 A-7：判重容差 0.01 → ASE 的 1e-3（分数坐标逐分量），且只在同一非对称位点的像之间判重
+    fn inversion_cif(sites: &str) -> String {
+        BCC_CIF.replace("'x+1/2,y+1/2,z+1/2'", "'-x,-y,-z'")
+               .replace("Fe1  Fe  0.00000  0.00000  0.00000\n", sites)
+    }
+
+    #[test]
+    fn test_images_merge_only_within_ase_symprec() {
+        let n = |name: &str, sites: &str| {
+            read_cif(&write_tmp(name, &inversion_cif(sites))).unwrap().frames[0].n_atoms()
+        };
+        // 像相距 0.0008 < 1e-3：同一个原子
+        assert_eq!(n("a7_close.cif", "O1 O 0.0004 0.5 0.5\n"), 1);
+        // 像相距 0.006：以前 0.01 的容差吞成一个，实为两个原子
+        assert_eq!(n("a7_apart.cif", "O1 O 0.003 0.5 0.5\n"), 2);
+        // 两个不等价位点相距 0.005：以前后一个整体被吞
+        assert_eq!(n("a7_two_sites.cif", "O1 O 0.100 0.1 0.1\nO2 O 0.105 0.1 0.1\n"), 4);
+    }
+
+    #[test]
+    fn test_two_sites_on_one_position_is_an_error() {
+        let text = inversion_cif("O1 O 0.1 0.2 0.3\nO2 O -0.1 -0.2 -0.3\n");
+        let err = format!("{:#}", read_cif(&write_tmp("a7_same.cif", &text)).unwrap_err());
+        assert!(err.contains("O1") && err.contains("O2"), "应点名两个位点：{err}");
     }
 
     // 只写空间群符号、不列对称操作的 NaCl（审查 A1 的复现用例）

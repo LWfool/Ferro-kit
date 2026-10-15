@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### CIF symmetry expansion: duplicates judged as in ASE
+
+Symmetry images were merged when closer than 0.01 in fractional distance, against every atom of
+the same element. Two distinct sites closer than that lost one of them without notice, and images
+0.001–0.01 apart were taken for one atom. The rule is now ASE's: images of the **same** site merge
+when every fractional coordinate agrees within $10^{-3}$, and two sites landing on one position is an
+error naming both.
+
 ### `dataset collect` (CP2K MD): the manual's input template prints the cell; missing cells are named
 
 The CP2K MD template in the manual left out `&MOTION/&PRINT/&CELL`, so a run set up from it had

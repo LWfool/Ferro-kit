@@ -184,7 +184,9 @@ Things that trip people up:
   plausible and every position wrong.  Append the setting (`F d -3 m :2`), give
   `_space_group_name_Hall`, or list the operations.  The monoclinic unique axis and the hexagonal vs.
   rhombohedral cell of an R group are taken from the cell parameters.  A symbol that contradicts
-  the IT number, or a malformed operation, is an error.
+  the IT number, or a malformed operation, is an error.  Images of one site closer than $10^{-3}$ in
+  every fractional coordinate are one atom (ASE's `symprec`); two different sites landing on the same
+  position is an error rather than one silently winning.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
 - **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot
