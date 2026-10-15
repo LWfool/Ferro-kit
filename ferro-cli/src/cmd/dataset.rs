@@ -403,13 +403,15 @@ pub struct FilterCmd {
     #[arg(long)]
     pub mkdir: bool,
 
-    /// Drop frames whose largest force magnitude exceeds this, eV/A; 0 = off
-    #[arg(short = 'f', long, value_name = "EV_PER_A", default_value_t = 20.0)]
-    pub f_max: f64,
+    // Option 而非 default_value_t（审查 D-4）：要分清「用户给了」与「默认值」——
+    // 默认值遇到缺该标签的 system 只关掉这一条，显式给了才报错
+    /// Drop frames whose largest force magnitude exceeds this, eV/A; 0 = off   [default: 20]
+    #[arg(short = 'f', long, value_name = "EV_PER_A")]
+    pub f_max: Option<f64>,
 
-    /// Drop frames whose largest |stress component| exceeds this, GPa; 0 = off
-    #[arg(short = 's', long, value_name = "GPA", default_value_t = 10.0)]
-    pub s_max: f64,
+    /// Drop frames whose largest |stress component| exceeds this, GPa; 0 = off  [default: 10]
+    #[arg(short = 's', long, value_name = "GPA")]
+    pub s_max: Option<f64>,
 
     /// First surviving frame to take (0-based, inclusive)          [default: 0]
     #[arg(long, value_name = "N")]
@@ -460,6 +462,13 @@ pub struct FilterCmd {
     /// Split each system train:valid:test, e.g. 8:1:1 (or 9:1 for train:test)
     #[arg(long, value_name = "A:B:C")]
     pub ratio: Option<String>,
+}
+
+impl FilterCmd {
+    /// `-f` 的实际值，没给取默认
+    fn f_max(&self) -> f64 { self.f_max.unwrap_or(20.0) }
+    /// `-s` 的实际值（GPa），没给取默认
+    fn s_max(&self) -> f64 { self.s_max.unwrap_or(10.0) }
 }
 
 #[derive(Args, Debug)]
@@ -1031,7 +1040,7 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     // 参数级错误在读第一个数据集之前暴露
     // NaN 与任何数比较都为假，`< 0.0` 拦不住它，进了 FilterParams 又被当成「关闭」
     let usable = |v: f64| v.is_finite() && v >= 0.0;
-    if !usable(args.f_max) || !usable(args.s_max) {
+    if !usable(args.f_max()) || !usable(args.s_max()) {
         bail!("thresholds must be finite and non-negative (0 switches the criterion off)");
     }
     let manual_rcut = match args.al6.as_deref() {
@@ -1058,9 +1067,9 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     }
 
     let params = FilterParams {
-        f_max: args.f_max,
+        f_max: args.f_max(),
         // CLI 收 GPa（用起来顺手），内部一律 eV/Å³
-        s_max: convert_pressure(args.s_max, PressureUnit::GPa, PressureUnit::EVPerAng3),
+        s_max: convert_pressure(args.s_max(), PressureUnit::GPa, PressureUnit::EVPerAng3),
         start: args.start.unwrap_or(0),
         end: args.end,
         stride: args.stride.unwrap_or(1),
@@ -1193,8 +1202,8 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
 fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
     let off = |v: f64| if v > 0.0 { format!("{v}") } else { "off".to_string() };
     let mut v = vec![
-        format!("f_max     = {} eV/Ang", off(args.f_max)),
-        format!("s_max     = {} GPa", off(args.s_max)),
+        format!("f_max     = {} eV/Ang", off(args.f_max())),
+        format!("s_max     = {} GPa", off(args.s_max())),
         format!("oo_min    = {} Ang", off(params.oo_min)),
         match args.al6.as_deref() {
             None => "al6       = off".to_string(),
@@ -1240,6 +1249,16 @@ fn filter_one(
     // --al6 不带值：从这个 system 自己的 Al-O RDF 取第一壳层的外沿。
     // 逐 system 各算各的 —— 成分不同，壳层位置本来就不同
     let mut params = params.clone();
+    // 审查 D-4：-f / -s 默认开着，无 virial 的数据集很常见。用户没给时，缺该标签的 system
+    // 只关掉这一条并说明；显式给了才交给 filter_frames 按「给了阈值却缺标签」报错
+    if args.s_max.is_none() && params.s_max > 0.0 && traj.frames.iter().any(|f| f.stress.is_none()) {
+        params.s_max = 0.0;
+        println!("  Note: {} has no virial; the default stress criterion is off for it", rel.display());
+    }
+    if args.f_max.is_none() && params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces.is_none()) {
+        params.f_max = 0.0;
+        println!("  Note: {} has no forces; the default force criterion is off for it", rel.display());
+    }
     let mut derived = None;
     if args.al6.as_deref() == Some("auto") {
         let shell = first_shell_cutoffs(&traj, &[("Al", "O")])
@@ -1788,6 +1807,44 @@ mod tests {
             assert!((p50 - d * 2f64.sqrt()).abs() < 1e-3, "{sys} 的 p50：{r}");
             assert_eq!(cells[col("al6_rcut")].parse::<f64>().unwrap(), 2.3, "{sys} 的截断：{r}");
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// 审查 D-4：`-s` 默认开着 10 GPa，无 virial 的数据集按默认参数整批失败，报错却说「你给了阈值」
+    #[test]
+    fn a_default_threshold_is_switched_off_for_a_system_without_that_label() {
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::{Matrix3, Vector3};
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+
+        let root = std::env::temp_dir().join(format!("ferro_d4_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let cell = Cell::from_matrix(Matrix3::from_diagonal_element(10.0));
+        let frames = (0..3)
+            .map(|_| {
+                let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+                f.atoms = vec![Atom::new("O", Vector3::new(1.0, 1.0, 1.0)), Atom::new("H", Vector3::new(2.0, 1.0, 1.0))];
+                f.energy = Some(-1.0);
+                f.forces = Some(vec![Vector3::zeros(); 2]);
+                f
+            })
+            .collect();
+        let sys = root.join("novirial");
+        ferro_io::write_deepmd_npy(&Trajectory { frames, metadata: Default::default() }, &sys).unwrap();
+        let run = |extra: &[&str]| {
+            let mut argv = vec!["filter", "-i", sys.to_str().unwrap()];
+            argv.extend_from_slice(extra);
+            run_filter(&Wrap::try_parse_from(argv).unwrap().cmd)
+        };
+        // 默认参数：应力判据对这个 system 关掉，照常完成
+        assert_eq!(run(&[]).unwrap(), 0, "默认参数下无 virial 的 system 不应失败");
+        // 显式给了 -s：仍按「给了阈值却缺标签」处理
+        assert!(!matches!(run(&["-s", "10"]), Ok(0)), "显式 -s 时应失败");
         let _ = std::fs::remove_dir_all(&root);
     }
 

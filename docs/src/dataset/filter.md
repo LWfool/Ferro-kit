@@ -48,6 +48,12 @@ Stress is recovered as `virial / volume` with the volume from `|det(box)|`; a
 DeePMD system carries no `volume.npy`. `-s` is given in GPa for convenience and
 converted internally to eV/Å³.
 
+A system without `virial.npy` (common for cluster or non-periodic data) cannot be
+judged on stress. Left at its default, the stress criterion is then switched off
+for that system alone, with a `Note`; the same goes for `-f` and a system without
+forces. Giving `-s` or `-f` explicitly means "judge this", so a system lacking the
+label is then an error.
+
 ## The range counts survivors
 
 `--start` / `--end` / `--stride` / `-N` operate on the frames that **passed the

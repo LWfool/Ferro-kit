@@ -12,6 +12,13 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `dataset filter`: a system without virial no longer fails at the default settings
+
+`-s` defaults to 10 GPa, so a dataset without `virial.npy` failed under the default
+settings, with an error saying a stress threshold had been given. At its default the
+criterion is now switched off for such a system, with a `Note`; `-f` likewise for a
+system without forces. An explicit `-s` / `-f` still makes a missing label an error.
+
 ### Python `add_vacuum_layer`: NaN thickness and singular cells are errors
 
 A `NaN` thickness, or a cell with a zero lattice vector (ASE's $c = 0$ convention for 2D
