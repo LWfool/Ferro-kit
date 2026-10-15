@@ -208,7 +208,8 @@ and keeps atoms off the box faces.  A dump writes the boundary flags from the fr
 boundary flags; set `boundary` in the LAMMPS input.
 
 **Whether velocities and forces survive depends on both sides supporting them**: `.dump` to `.xyz` silently
-drops the velocities, because plain XYZ has nowhere to put them.  Convert to `.extxyz` to keep them.
+drops the velocities, because plain XYZ has nowhere to put them.  Convert to `.extxyz` to keep them: they are
+written as ASE's `momenta` column with a `masses` column next to it, so ASE's `get_velocities()` returns them.
 
 ### Frame selection
 

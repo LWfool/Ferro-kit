@@ -1,5 +1,6 @@
 use std::path::Path;
 use ferro_core::Trajectory;
+use ferro_core::units::ASE_FS;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -59,7 +60,9 @@ pub fn write_extxyz_with(
         // Properties spec
         let mut prop_spec = "species:S:1:pos:R:3".to_string();
         if frame.forces.is_some() { prop_spec.push_str(":forces:R:3"); }
-        if frame.velocities.is_some() { prop_spec.push_str(":velocities:R:3"); }
+        // 速度写成 ASE 认的 momenta（审查 A-2）：ASE 与 GPUMD 都不认 velocities 列。
+        // 带上换算所用的 masses，ASE 的 get_velocities 与本仓 reader 都按它除回，往返无损
+        if frame.velocities.is_some() { prop_spec.push_str(":masses:R:1:momenta:R:3"); }
         let has_charge = frame.atoms.iter().any(|a| a.charge.is_some());
         if has_charge { prop_spec.push_str(":charges:R:1"); }
         let has_magmom = frame.atoms.iter().any(|a| a.magmom.is_some());
@@ -119,7 +122,10 @@ pub fn write_extxyz_with(
                 line.push_str(&format!(" {} {} {}", fmt(f.x), fmt(f.y), fmt(f.z)));
             }
             if let Some(v) = vels.get(i) {
-                line.push_str(&format!(" {} {} {}", fmt(v.x), fmt(v.y), fmt(v.z)));
+                // Å/fs → amu·Å/(ASE 时间)
+                let m = atom.effective_mass();
+                let p = v * (m / ASE_FS);
+                line.push_str(&format!(" {} {} {} {}", fmt(m), fmt(p.x), fmt(p.y), fmt(p.z)));
             }
             if has_charge {
                 line.push_str(&format!(" {}", fmt(atom.charge.unwrap_or(0.0))));
@@ -195,6 +201,37 @@ mod tests {
         assert_eq!(atoms[1].element, "O");
         assert_eq!(atoms[1].label.as_deref(), Some("O_b"));
         assert_eq!(atoms[2].label.as_deref(), Some("Zn"));
+    }
+
+    // 审查 A-2：速度写成 ASE 认的 momenta（m·v，ASE 时间单位）并带 masses 列。
+    // 锚点是 ASE 3.29 对同一组 Å/fs 速度写出的 momenta，不是本 writer 的往返
+    #[test]
+    fn test_velocities_written_as_ase_momenta() {
+        let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        frame.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.0)));
+        frame.add_atom(Atom::new("H", Vector3::new(0.96, 0.0, 0.0)));
+        let v = vec![Vector3::new(0.01, -0.02, 0.03), Vector3::new(0.1, 0.2, -0.3)];
+        frame.velocities = Some(v.clone());
+        let path = std::env::temp_dir().join("ferro_momenta.extxyz");
+        write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(":masses:R:1:momenta:R:3"), "应写 masses 与 momenta 列：\n{text}");
+        assert!(!text.contains("velocities"), "不应再写 velocities 列：\n{text}");
+        let ase = [[1.62877910, -3.25755820, 4.88633731], [1.02619497, 2.05238994, -3.07858491]];
+        for (line, want) in text.lines().skip(2).zip(ase) {
+            let cols: Vec<f64> = line.split_whitespace().skip(5).map(|s| s.parse().unwrap()).collect();
+            for k in 0..3 {
+                assert!((cols[k] - want[k]).abs() < 1e-8, "momenta 与 ASE 不符：{line}");
+            }
+        }
+        // 往返：ferro 自己读回的速度与写入的一致。writer 定点 {:.10}，momenta ~10 量级，
+        // 故误差 ~1e-11，与以前直接写 Å/fs 速度同一量级
+        let back = read_extxyz(&path).unwrap().frames.remove(0).velocities.unwrap();
+        for (a, b) in back.iter().zip(&v) {
+            assert!((a - b).norm() < 1e-9, "往返速度 {a:?} ≠ {b:?}");
+        }
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
+use ferro_core::units::ASE_FS;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
@@ -152,13 +153,19 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
             if let Some(c) = find("label") {
                 atom.label = Some(cols[c].to_string());
             }
+            let mass = atom.effective_mass();
             frame.add_atom(atom);
 
             if let Some(c) = find("forces").or_else(|| find("force")) {
                 all_forces.push(vec3("forces", c)?);
             }
-            if let Some(c) = find("velocities").or_else(|| find("momenta")) {
+            // 速度（审查 A-2）：velocities（ferro 旧写法）、vel（GPUMD）、velo（QUIP）都是 Å/fs。
+            // ASE 只认 momenta = m·v，时间单位是它自己的：除以质量（masses 列优先，同 ASE 的
+            // get_velocities）再换成 Å/fs。以前 momenta 直接当速度存，差 m/ASE_FS 倍
+            if let Some(c) = find("velocities").or_else(|| find("vel")).or_else(|| find("velo")) {
                 all_vels.push(vec3("velocities", c)?);
+            } else if let Some(c) = find("momenta") {
+                all_vels.push(vec3("momenta", c)? / mass * ASE_FS);
             }
         }
 
@@ -609,6 +616,45 @@ Si 0.0 0.0 0.0
         let msg = format!("{:#}", parse_extxyz(&format!("{good}{bad}")).unwrap_err());
         assert!(msg.contains("frame 1") && msg.contains("line 5") && msg.contains("unclosed"),
             "应点名帧号、行号与未闭合，实得：{msg}");
+    }
+
+    // 审查 A-2：GPUMD 写 vel、QUIP 写 velo，单位都是 Å/fs，以前整列静默丢
+    #[test]
+    fn test_vel_and_velo_columns_are_velocities() {
+        for name in ["vel", "velo", "velocities"] {
+            let text = format!("1\nProperties=species:S:1:pos:R:3:{name}:R:3\nO 0 0 0 0.1 -0.2 0.3\n");
+            let f = &parse_extxyz(&text).unwrap().frames[0];
+            let v = f.velocities.as_ref().unwrap_or_else(|| panic!("{name} 列应读成速度"))[0];
+            assert_eq!((v.x, v.y, v.z), (0.1, -0.2, 0.3), "{name}");
+        }
+    }
+
+    // ASE 的 momenta 是 m·v，时间单位是 ASE 自己的 Å·√(amu/eV)，以前直接当 Å/fs 的速度存。
+    // 锚点由 ASE 3.29 写出：set_velocities(v_fs / units.fs)，v_fs 即下面的期望值
+    #[test]
+    fn test_ase_momenta_become_velocities_in_ang_per_fs() {
+        let ase = "2\nLattice=\"10.0 0.0 0.0 0.0 10.0 0.0 0.0 0.0 10.0\" \
+                   Properties=species:S:1:pos:R:3:momenta:R:3 pbc=\"T T T\"\n\
+                   O 0.00000000 0.00000000 0.00000000 1.62877910 -3.25755820 4.88633731\n\
+                   H 0.96000000 0.00000000 0.00000000 1.02619497 2.05238994 -3.07858491\n";
+        let v = parse_extxyz(ase).unwrap().frames.remove(0).velocities.unwrap();
+        let want = [[0.01, -0.02, 0.03], [0.1, 0.2, -0.3]];
+        for (got, want) in v.iter().zip(want) {
+            for k in 0..3 {
+                assert!((got[k] - want[k]).abs() < 1e-8, "实得 {got:?}，应为 {want:?}");
+            }
+        }
+    }
+
+    // 有 masses 列时 momenta 按它换算（ASE 的 get_velocities 也用 arrays['masses']）
+    #[test]
+    fn test_momenta_use_the_masses_column() {
+        let text = "1\nProperties=species:S:1:pos:R:3:masses:R:1:momenta:R:3\n\
+                    O 0 0 0 2.0 0.098226947884640630 0 0\n";
+        let v = parse_extxyz(text).unwrap().frames.remove(0).velocities.unwrap()[0];
+        // p / m = 0.0491 Å/ase_t，乘 units.fs 得 Å/fs
+        let want = 0.098_226_947_884_640_63 / 2.0 * 0.098_226_947_884_640_63;
+        assert!((v.x - want).abs() < 1e-15, "实得 {}，应为 {want}", v.x);
     }
 
     #[test]

@@ -67,7 +67,9 @@ Velocities are used in the internal unit **Å/fs**:
 - LAMMPS dumps: `--units real|metal` is required, because a dump does not record its unit system.
   `real` velocities are already Å/fs; `metal` (Å/ps) are converted.  Giving the wrong one makes $C_v$
   off by $10^6$ — check $C_v(0)$ against $3k_BT/m$.
-- Extended XYZ: the `velocities` column is taken as it is, assumed Å/fs.
+- Extended XYZ: a `velocities`, `vel` (GPUMD) or `velo` (QUIP) column is taken as it is, assumed Å/fs.
+  ASE writes `momenta` instead — mass × velocity in ASE's own time unit — which is divided by the
+  `masses` column (or the element mass) and converted to Å/fs.
 
 Then $C_v$ is in Å²/fs² and `diffusion` in Å²/fs.
 

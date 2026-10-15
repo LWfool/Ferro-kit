@@ -12,6 +12,16 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Extended XYZ velocities: GPUMD and ASE files read correctly; written for ASE (breaking)
+
+Reading dropped the velocities of a GPUMD file (`vel`) or a QUIP file (`velo`) without notice,
+and took ASE's `momenta` — mass × velocity in ASE's time unit — as a velocity in Å/fs, off by
+the mass and a factor of about 10. `vel` and `velo` are now velocities in Å/fs, and `momenta`
+is divided by the `masses` column (or the element mass) and converted. Writing used a
+`velocities` column that neither ASE nor GPUMD recognises; velocities are now written as
+`momenta` with a `masses` column, so ASE's `get_velocities()` returns them, and ferro reads
+them back unchanged.
+
 ### Inputs whose names differ only in case no longer overwrite each other
 
 Two inputs named `Prod.lammpstrj` and `prod.lammpstrj` (in different directories) kept their

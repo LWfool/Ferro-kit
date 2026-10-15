@@ -58,6 +58,13 @@ pub const AMU_ANG3_TO_G_CM3: f64 = 1e24 / AVOGADRO;
 /// 故这个比值也是精确的。用于从离子动能反算瞬时温度：`T = 2·E_kin/(3N·k_B)`。
 pub const BOLTZMANN_EV_K: f64 = 8.617_333_262e-5;
 
+/// 1 fs 折合多少个 ASE 时间单位（Å·√(amu/eV)），即 `ase.units.fs`。
+///
+/// ASE 的速度是 Å/该单位、`momenta` 是 amu·Å/该单位，换成 Å/fs 要乘这个数。取 ASE 默认的
+/// CODATA 2014 下的值（ASE 3.29 实测），不用本文件的 2018 常数自己算 —— 要与 ASE 写出的
+/// `momenta` 逐位对上（两版差 1e-9 量级）
+pub const ASE_FS: f64 = 0.098_226_947_884_640_63;
+
 // ── 长度 ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
