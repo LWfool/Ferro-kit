@@ -52,7 +52,9 @@ $$S_C(m) = \frac{\#\{(\text{pair}, t):\ h = 1 \text{ at every frame of } [t,\ t+
 
 The fraction of bonds present at $t$ that stay present **without a break** through $t+m$ — Rapaport's
 (1983) continuous lifetime, and MDAnalysis' survival-probability `autocorrelation`.  It measures how long
-one uninterrupted bonding episode lasts, and is always $\le C_I$.
+one uninterrupted bonding episode lasts.  With `--intermittency 0` it is always $\le C_I$; with
+`--intermittency k > 0` only $S_C$ has its short breaks filled, so it can exceed $C_I$ (the series
+`1 1 0 1 1 0 1 1 1` with $k = 1$ gives $C_I \approx 0.6$ and $S_C = 1$ at every lag).
 
 Computed exactly from the lengths of the bonded stretches: a stretch of $L$ frames supplies $L - m$
 origins to lag $m$ (none when $L \le m$).
@@ -79,8 +81,9 @@ Hysteresis handles flicker in distance, intermittency handles flicker in time; t
 | water H-bond literature reports | both, usually side by side | |
 
 For bond formation and breaking between water and a glass surface, $C_I$ tells how long a given
-Si–O(water) pair persists; $S_C$ how long each bonding episode lasts; the gap between them is the amount
-of breaking and re-forming with the same partner.
+Si–O(water) pair persists; $S_C$ how long each bonding episode lasts; with `--intermittency 0` the gap
+between them is the amount of breaking and re-forming with the same partner.  With gaps filled the two
+are no longer on the same footing, and their difference should not be read that way.
 
 ## Lifetimes
 
