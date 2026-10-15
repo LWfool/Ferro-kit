@@ -133,6 +133,14 @@ cross-linked phosphate network, while the P in this glass carries on average onl
 
 **The total bridging-oxygen count is still available**: the `[inputs]` block gives `mean_n_bo` next to `mean_qn`.
 
+> **Si and B follow the same rule — and here it departs from the usual silicate / borate $Q^n$.**
+> For every element on the `--qn` list, $n$ counts homonuclear bridges only: Si–O–Si for Si, B–O–B
+> for B. In most silicate and borate work $Q^n$ means the total number of bridging oxygens on the
+> tetrahedron, whatever sits on the other side. The two agree only when the system has no other
+> network former; in an aluminosilicate or a borosilicate ferro's Si $n$ is smaller. To compare with
+> such a paper, add the heteronuclear connections: total $= n + \sum_X m_X$ from `qn_partner` (or
+> read `mean_n_bo` for the average). The default list is kept as it is (decision 2026-10-11).
+
 - `qn=1, m_Al=2` → $Q^1(2\mathrm{Al})$, three bridges in total
 - `qn` is the **marginal** of `qn_partner` over the `m_` columns (count and fraction close exactly)
 
