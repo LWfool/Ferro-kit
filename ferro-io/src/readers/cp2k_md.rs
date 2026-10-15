@@ -372,6 +372,19 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
             continue;
         }
         let natoms = heads[0].1;
+        // 第三个同构 xyz 块多半是 VELOCITIES 也打到了 __STD_OUT__（审查 A-17）。它若排在
+        // 力块之前，上面取到的「第二块」就是速度，当力存而不报错。认不出哪块是力，整份报错
+        while i < hi {
+            if block_head(&lines, i) == Some(natoms) {
+                bail!(
+                    "line {}: a third {natoms}-atom xyz block in the MD step at line {} — \
+                     probably VELOCITIES printed to __STD_OUT__; ferro cannot tell which \
+                     block holds the forces. Print velocities to their own file",
+                    i + 1, a + 1
+                );
+            }
+            i += 1;
+        }
 
         let Some((c_syms, coords)) = read_xyz_block(&lines, heads[0].0, natoms) else {
             stats.n_incomplete += 1;
@@ -390,13 +403,15 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
                 break;
             }
         }
+        // 读不到 cell 行单独计数（审查 A-17）：多半是没把 &CELL 打到 __STD_OUT__，
+        // 混进 incomplete 时报告说不出缺的是什么
         let Some(cell_fields) = cell_line.map(|l| l.split_whitespace().collect::<Vec<_>>()) else {
-            stats.n_incomplete += 1;
+            stats.n_no_cell += 1;
             continue;
         };
         // 末位是体积，它之前的九个是晶胞；从尾部取，前缀多一列少一列都无所谓
         if cell_fields.len() < 10 {
-            stats.n_incomplete += 1;
+            stats.n_no_cell += 1;
             continue;
         }
         let nine = &cell_fields[cell_fields.len() - 10..cell_fields.len() - 1];
@@ -412,7 +427,7 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
             }
         }
         if !ok {
-            stats.n_incomplete += 1;
+            stats.n_no_cell += 1;
             continue;
         }
 
@@ -504,10 +519,16 @@ fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
     }
 
     if frames.is_empty() {
+        let hint = if stats.n_no_cell > 0 {
+            "; frames without a cell line mean &MOTION/&PRINT/&CELL is not printed to __STD_OUT__"
+        } else {
+            ""
+        };
         bail!(
-            "no usable frame: {} step(s), {} dropped ({} SCF, {} incomplete, {} composition)",
+            "no usable frame: {} step(s), {} dropped ({} SCF, {} incomplete, {} no cell line, \
+             {} composition){hint}",
             stats.n_steps, stats.n_dropped(), stats.n_scf_failed,
-            stats.n_incomplete, stats.n_bad_composition
+            stats.n_incomplete, stats.n_no_cell, stats.n_bad_composition
         );
     }
 
@@ -680,6 +701,37 @@ mod tests {
                 "{name}: positions"
             );
         }
+    }
+
+    // 审查 A-17：手册模板曾漏了 &CELL，照它跑出的日志全部帧判 incomplete 且不说缺什么
+    #[test]
+    fn a_missing_cell_line_is_counted_on_its_own() {
+        let cell = concat!(
+            "       1       1.000       5.0000000000        0.0000000000        0.0000000000",
+            "        0.0000000000       5.0000000000        0.0000000000",
+            "        0.0000000000        0.0000000000       5.0000000000          125.0000000000\n",
+        );
+        assert_eq!(MINI.matches(cell).count(), 1);
+        // MINI 的第 2 帧 SCF 未收敛，去掉第 1 帧的 cell 后一帧不剩：报错须点名缺 cell 与 &CELL
+        let err = format!("{:#}", parse_cp2k_md(&MINI.replace(cell, "")).unwrap_err());
+        assert!(err.contains("1 no cell line") && err.contains("0 incomplete") && err.contains("&CELL"),
+                "缺 cell 行应单独计数并点名 &CELL：{err}");
+    }
+
+    // VELOCITIES 也打到 __STD_OUT__ 时多出一个同构 xyz 块；它若排在力块之前，
+    // 「第二个块」读到的是速度却当力存。认不出哪块是力，整份报错
+    #[test]
+    fn a_third_xyz_block_is_an_error() {
+        let coords = concat!(
+            "      2\n",
+            " i =        1, time =        1.000, E =       -10.5000000000\n",
+            " Si         0.0000000000        0.0000000000        0.0000000000\n",
+            "  O         1.0000000000        0.0000000000        0.0000000000\n",
+        );
+        assert_eq!(MINI.matches(coords).count(), 1);
+        let text = MINI.replace(coords, &format!("{coords}{coords}"));
+        let err = format!("{:#}", parse_cp2k_md(&text).unwrap_err());
+        assert!(err.contains("VELOCITIES"), "应点名 VELOCITIES：{err}");
     }
 
     #[test]

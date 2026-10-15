@@ -59,6 +59,10 @@ pub struct AimdStats {
     pub n_scf_failed: usize,
     pub n_incomplete: usize,
     pub n_bad_composition: usize,
+    /// CP2K MD frames with no cell line after the force block: the run did not print
+    /// `&MOTION/&PRINT/&CELL` to `__STD_OUT__`. Kept apart from `n_incomplete` so the
+    /// report can name the cause instead of calling every frame broken.
+    pub n_no_cell: usize,
     /// Frames whose block offsets differ from the first frame's.
     ///
     /// CP2K only — the VASP readers anchor every block by token and never
@@ -95,6 +99,7 @@ impl AimdStats {
             n_scf_failed: 0,
             n_incomplete: 0,
             n_bad_composition: 0,
+            n_no_cell: 0,
             n_layout_drift: 0,
             n_restarts: 0,
             steps: None,
@@ -104,7 +109,7 @@ impl AimdStats {
     }
 
     pub fn n_dropped(&self) -> usize {
-        self.n_scf_failed + self.n_incomplete + self.n_bad_composition
+        self.n_scf_failed + self.n_incomplete + self.n_bad_composition + self.n_no_cell
     }
 }
 

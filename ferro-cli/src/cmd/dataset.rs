@@ -988,9 +988,12 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frame
             // 所以把它一并打出来 —— 否则同一次运行换个来源、丢帧数不同会没人说得清
             println!("    convergence rule: {}", st.format.convergence_rule());
             println!(
-                "    SCF not converged {} | incomplete block {} | composition {}",
-                st.n_scf_failed, st.n_incomplete, st.n_bad_composition
+                "    SCF not converged {} | incomplete block {} | no cell line {} | composition {}",
+                st.n_scf_failed, st.n_incomplete, st.n_no_cell, st.n_bad_composition
             );
+            if st.n_no_cell > 0 {
+                println!("    (no cell line: print &MOTION/&PRINT/&CELL to __STD_OUT__, see `ferro doc dataset collect`)");
+            }
         }
         if st.n_restarts > 0 {
             println!("    {} restart(s) concatenated within this file", st.n_restarts);

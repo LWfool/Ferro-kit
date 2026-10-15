@@ -137,6 +137,12 @@ all going to `__STD_OUT__` rather than to sibling files:
     &FORCES
       FILENAME __STD_OUT__
     &END FORCES
+    &CELL
+      &EACH
+        MD 1
+      &END EACH
+      FILENAME __STD_OUT__
+    &END CELL
   &END PRINT
 &END MOTION
 
@@ -148,6 +154,12 @@ all going to `__STD_OUT__` rather than to sibling files:
   &END PRINT
 &END FORCE_EVAL
 ```
+
+Each frame is read as: coordinate block, force block, then the cell line. Without
+`&CELL` the frames are dropped and the report counts them under **no cell line**.
+Do not send `&VELOCITIES` to `__STD_OUT__`: it is a third block of the same shape,
+and since CP2K may print it before the forces, ferro cannot tell which block holds
+the forces — such a file is refused rather than read with velocities as forces.
 
 A restarted run whose logs were concatenated into one file is fine — restarts
 are detected and reported, and CP2K does not reprint the initial configuration

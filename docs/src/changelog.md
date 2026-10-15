@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `dataset collect` (CP2K MD): the manual's input template prints the cell; missing cells are named
+
+The CP2K MD template in the manual left out `&MOTION/&PRINT/&CELL`, so a run set up from it had
+every frame dropped as "incomplete" without saying what was missing. The template now prints the
+cell, and frames without a cell line are counted separately ("no cell line") with a pointer to
+the fix. A log that also prints `&VELOCITIES` to `__STD_OUT__` is refused: its third block of the
+same shape could be taken for the forces.
+
 ### `dataset filter`: a system without virial no longer fails at the default settings
 
 `-s` defaults to 10 GPa, so a dataset without `virial.npy` failed under the default
