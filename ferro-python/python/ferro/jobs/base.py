@@ -59,11 +59,13 @@ class JobOptions:
 
 
 class InputSet:
-    """一个任务目录：文件名 → 文本。``shared`` 里的文件批量时可在上层目录共用一份。"""
+    """一个任务目录：文件名 → 文本。``shared`` 里的文件批量时可在上层目录共用一份；
+    ``notes`` 是生成时要告诉用户的话（取了哪个多重度、哪些量沿用模板）。"""
 
-    def __init__(self, files, shared=()):
+    def __init__(self, files, shared=(), notes=()):
         self.files = dict(files)
         self.shared = set(shared)
+        self.notes = list(notes)
 
     def write(self, directory, links=None):
         """写进 ``directory``（须已存在）。``links`` 里的文件名写成指向给定目标的符号链接。"""
@@ -77,6 +79,39 @@ class InputSet:
                 path.symlink_to(links[name])
             else:
                 path.write_text(text, encoding="utf-8")
+
+
+def write_batch(jobs, out_dir):
+    """``[(子目录名, InputSet)]`` 写进 ``out_dir``（须已存在），返回各子目录的路径。
+
+    多个任务时 ``shared`` 的文件（POTCAR）在 ``out_dir`` 只放一份，子目录里是相对路径
+    的符号链接（``../POTCAR``）：整个目录挪走或 ``rsync -a`` 过去链接不断。各任务的共用
+    文件不一致（组成不同）就报错，让用户按组成分开生成，不在一个目录里放几份。
+    """
+    out_dir = Path(out_dir)
+    names = [name for name, _ in jobs]
+    duplicated = sorted({n for n in names if names.count(n) > 1})
+    if duplicated:
+        raise JobError(f"two inputs would both write {out_dir / duplicated[0]}; rename one of them")
+    shared = {}
+    if len(jobs) > 1:
+        for name, s in jobs:
+            for f in s.shared:
+                first = shared.setdefault(f, (name, s.files[f]))
+                if first[1] != s.files[f]:
+                    raise JobError(
+                        f"{name} needs a different {f} from {first[0]} (another composition or "
+                        f"element order); generate jobs of each composition into their own -o"
+                    )
+    for f, (_, text) in shared.items():
+        (out_dir / f).write_text(text, encoding="utf-8")
+    paths = []
+    for name, s in jobs:
+        d = out_dir / name
+        d.mkdir(exist_ok=True)
+        s.write(d, links={f: Path("..") / f for f in shared})
+        paths.append(d)
+    return paths
 
 
 def multiplicity(n_valence, charge, requested):

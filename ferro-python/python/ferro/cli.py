@@ -6,9 +6,11 @@ argparse 的参数一致（同 ``ferro-cli`` 的 ``help_sync``）。
 """
 
 import argparse
+import glob
 import sys
 from pathlib import Path
 
+import ferro
 from ferro import config
 
 OVERVIEW = """\
@@ -18,6 +20,7 @@ Usage:
   ferro-py <COMMAND> [OPTIONS]
 
 Commands:
+  job           Generate VASP / QE / CP2K inputs (sp, opt, aimd) from structures
   config init   Write a commented configuration template
 
 Run `ferro-py <COMMAND> -h` for the parameters of one command.
@@ -47,6 +50,54 @@ Examples:
   ferro-py config init -o ~/hpc.toml --mkdir     # then: export FERRO_CONFIG=~/hpc.toml
 
 Full documentation:  ferro doc python config"""
+
+
+JOB_HELP = """\
+ferro-py job — Generate calculation inputs from structures
+
+  Fills a template (a native input file of the program) with each structure and a
+  few quantities: charge, multiplicity, k-point mesh, the element list of the
+  pseudopotentials / basis sets, and for aimd the temperature, steps, time step and
+  ensemble. Everything else stays as the template has it. Periodic systems only.
+
+Parameters:
+  -s, --software S      vasp | qe | cp2k  (required)
+  -t, --task T          sp | opt | aimd  (required)
+  -i, --input FILE      Structure file(s), any format ferro reads; quoted globs allowed
+  -o, --output DIR      Directory receiving one sub-directory per job  (required)
+      --template FILE   Template instead of the configured / built-in one
+      --charge N        Total charge  [0]
+      --multiplicity M  2S+1, checked against the electron count  [1 if even, 2 if odd]
+      --kspacing K      k-point spacing in 1/Å, 2π included (as VASP KSPACING); a
+                        mesh written in the template is kept  [per program, see manual]
+      --temperature T   aimd: temperature in K  [the template's]
+      --steps N         aimd: number of MD steps  [the template's]
+      --timestep FS     aimd: time step in fs  [the template's]
+      --ensemble E      aimd: nvt | npt  [the template's]
+      --vary-cell       opt: relax the cell too  [cell fixed]
+      --start N         First frame to take  (0-based, inclusive)  [0]
+      --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
+      --stride N        Take every Nth frame within [start, end]  [1]
+      --number N        Take this many frames, spread evenly, both ends kept
+      --atom-style S    LAMMPS data input: atomic | charge | full  (required)
+      --units U         Dump vx/fx units: real | metal  (required if present)
+      --type-map M      Dump without element column: 1=Zr,2=O,...
+      --mkdir           Create -o without asking
+  -h, --help            This page
+
+Output:
+  DIR/<input name>/ for a single-structure file, DIR/<input name>_<frame>/ (frame
+  0-based, 4 digits) for each frame taken from a trajectory. File names are fixed:
+  INCAR KPOINTS POSCAR POTCAR (vasp), pw.in (qe), cp2k.inp (cp2k). With several
+  jobs the POTCAR is written once in DIR and linked as ../POTCAR; jobs that need
+  different POTCARs are an error. All frames by default.
+
+Examples:
+  ferro-py job -s vasp -t sp -i POSCAR -o sp/
+  ferro-py job -s cp2k -t aimd -i traj.lammpstrj --number 20 --temperature 1500 -o md/
+  ferro-py job -s qe -t opt -i 'cifs/*.cif' --vary-cell --template my_relax.in -o relax/
+
+Full documentation:  ferro doc python job"""
 
 
 class UsageError(Exception):
@@ -116,7 +167,107 @@ def run_config(argv):
     return 0
 
 
-COMMANDS = {"config": run_config}
+def job_parser():
+    p = new_parser("ferro-py job")
+    p.add_argument("-s", "--software", required=True)
+    p.add_argument("-t", "--task", required=True)
+    p.add_argument("-i", "--input", nargs="+", required=True)
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--template")
+    p.add_argument("--charge", type=int, default=0)
+    p.add_argument("--multiplicity", type=int)
+    p.add_argument("--kspacing", type=float)
+    p.add_argument("--temperature", type=float)
+    p.add_argument("--steps", type=int)
+    p.add_argument("--timestep", type=float)
+    p.add_argument("--ensemble")
+    p.add_argument("--vary-cell", action="store_true")
+    p.add_argument("--start", type=int)
+    p.add_argument("--end", type=int)
+    p.add_argument("--stride", type=int)
+    p.add_argument("--number", type=int)
+    p.add_argument("--atom-style")
+    p.add_argument("--units")
+    p.add_argument("--type-map")
+    p.add_argument("--mkdir", action="store_true")
+    return p
+
+
+def parse_type_map(text):
+    """``1=Zr,2=P`` → ``{1: "Zr", 2: "P"}``，语法同 CLI ``ferro`` 的 ``--type-map``。"""
+    mapping = {}
+    for item in text.split(","):
+        t, sep, element = item.partition("=")
+        if not sep:
+            raise UsageError(f"--type-map: '{item}' is not TYPE=ELEMENT (e.g. 1=Zr,2=O)")
+        try:
+            t = int(t)
+        except ValueError:
+            raise UsageError(f"--type-map: type '{t}' is not a number") from None
+        if t in mapping:
+            raise UsageError(f"--type-map: type {t} is given twice")
+        mapping[t] = element.strip()
+    return mapping
+
+
+def expand_inputs(patterns):
+    """带通配符的 -i 自己展开（加了引号，shell 没展开）；不带的原样，不存在留给读取时报错。"""
+    files = []
+    for pattern in patterns:
+        if any(c in pattern for c in "*?["):
+            found = sorted(glob.glob(pattern))
+            if not found:
+                raise UsageError(f"-i '{pattern}' matches no file")
+            files += found
+        else:
+            files.append(pattern)
+    return files
+
+
+def run_job(argv):
+    from ferro import jobs
+    from ferro.jobs.base import JobOptions, write_batch
+
+    if not argv:
+        print(JOB_HELP)
+        return 0
+    args = parse(job_parser(), JOB_HELP, argv)
+    # 参数错误在读第一个文件之前报
+    generator = jobs.GENERATORS.get(args.software)
+    if generator is None:
+        raise UsageError(f"unknown software '{args.software}'; one of {', '.join(jobs.GENERATORS)}")
+    options = JobOptions(
+        task=args.task, charge=args.charge, multiplicity=args.multiplicity,
+        kspacing=args.kspacing, temperature=args.temperature, steps=args.steps,
+        timestep=args.timestep, ensemble=args.ensemble, vary_cell=args.vary_cell,
+    )
+    options.check()
+    type_map = parse_type_map(args.type_map) if args.type_map else None
+    files = expand_inputs(args.input)
+    generator = generator(config.load())
+    ensure_dir(args.output, args.mkdir)
+
+    built = []
+    for f in files:
+        traj = ferro.read(f, units=args.units, atom_style=args.atom_style, type_map=type_map)
+        frames = traj.frame_indices(args.start, args.end, args.stride, args.number)
+        for i in frames:
+            name = Path(f).stem if len(traj) == 1 else f"{Path(f).stem}_{i:04d}"
+            try:
+                built.append((name, generator.generate(traj, i, options, args.template)))
+            except (ValueError, RuntimeError) as e:
+                raise UsageError(f"{f} frame {i}: {e}") from None
+    # 先全部生成、再写：一个失败就什么都不写，不留半截的批次
+    linked = len(built) > 1   # 同 write_batch：多个任务时 shared 文件才放上层共用
+    for (name, s), path in zip(built, write_batch(built, args.output)):
+        listing = " ".join(f"{f}->../{f}" if linked and f in s.shared else f for f in s.files)
+        print(f"Wrote: {path}/  {listing}")
+        for note in s.notes:
+            print(f"  {note}")
+    return 0
+
+
+COMMANDS = {"config": run_config, "job": run_job}
 
 
 def main(argv=None):
@@ -129,7 +280,7 @@ def main(argv=None):
         if command is None:
             raise UsageError(f"unknown command '{argv[0]}'; run `ferro-py -h` for the list")
         return command(argv[1:])
-    except (UsageError, config.ConfigError, RuntimeError, OSError) as e:
+    except (UsageError, ValueError, RuntimeError, OSError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
