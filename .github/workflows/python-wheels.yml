@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "ferro-*/**"
+      - "docs/src/python/**"   # ferro-py doc 的手册经 include_str! 编进 wheel
       - ".github/workflows/python-wheels.yml"
 
 jobs:
