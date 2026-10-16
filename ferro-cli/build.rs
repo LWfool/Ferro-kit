@@ -13,7 +13,7 @@ fn main() {
     // 跟踪它们不增加编译次数，却让日期与 commit 不至于停在上一次跑脚本的时刻。
     // 不存在的路径不登记 —— cargo 会把缺失的 rerun-if-changed 视为每次都脏
     let mut watched = vec!["Cargo.toml".to_string(), "Cargo.lock".to_string(), "ferro-cli/build.rs".to_string()];
-    for krate in ["ferro-core", "ferro-io", "ferro-structure", "ferro-analysis", "ferro-workflow", "ferro-cli"] {
+    for krate in ["ferro-core", "ferro-io", "ferro-structure", "ferro-analysis", "ferro-cli"] {
         watched.push(format!("{krate}/src"));
         watched.push(format!("{krate}/Cargo.toml"));
     }

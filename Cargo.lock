@@ -246,7 +246,6 @@ dependencies = [
  "ferro-io",
  "ferro-render",
  "ferro-structure",
- "ferro-workflow",
  "glob",
  "nalgebra",
  "rayon",
@@ -301,15 +300,6 @@ dependencies = [
  "nalgebra",
  "rand",
  "thiserror",
-]
-
-[[package]]
-name = "ferro-workflow"
-version = "0.3.6"
-dependencies = [
- "anyhow",
- "ferro-core",
- "nalgebra",
 ]
 
 [[package]]
