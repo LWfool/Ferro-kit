@@ -88,7 +88,38 @@ wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步�
 21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
 22. 手册 `docs/src/python/`
 23. 更新开发记录（版本号只在用户要求时动）
-下一批：QE 单点输出（能量 / 力 / 应力）reader + QE 截断能测试
+下一批：QE 单点输出（能量 / 力 / 应力）reader + QE 截断能测试（**ecutwfc 必须明确测**；
+ecutrho 易收敛，UPF 建议的最大值即可，用户定）
+
+**2026-10-16 ferro-python 审查**（Opus 子代理只读审查，19 条 + 6 条存疑；复现脚本未入库）。
+
+用户裁定（以后照此，不再重提）：
+- PREC 写全称不缩写 → 缩写报错；不同组成不得输出到同一 `-o`；**不支持 `GAPW_XC`**（配赝势时
+  力有错，用户有限差分验证过）；`--vary-cell` 不替用户定 ENCUT（1.3 × ENMAX 不够），模板未写即报错
+- VASP 流程：先固定 ENCUT 测细网格，再带定好的 `--fine-grid` 测 ENCUT（粗网格随之变）
+- r2SCAN 下 VASP 默认开 LASPH、LMIXTAU，不用写；CP2K 2025.2 不必写 `GAMMA_CENTERED`，`MONKHORST-PACK`
+  只在小胞时打开（现行为：1×1×1 不写 `&KPOINTS`），偶数网格不以 Γ 为中心不算问题
+- CP2K 基组与赝势须同 q 配对；GTH-PBE 可不写电荷，GTH-SCAN 必须写明（生成一律写 `-qN`）
+
+已修（各一提交，pytest 125 → 133）：P-1 `ffc5c9f`、P-2 `40535de`、P-3 `e23ba40`、P-5 `cec54a1`、
+P-6 `80f9646`、P-7 `511820b`（强制 `ibrav = 0`、删胞参数键）、P-9 `6d90a19`、P-10 `706cc64`、
+P-11 `a282757`。P-4（ecutrho）、P-8（CP2K 偶数网格偏离 Γ）按上面裁定不改。
+
+未修（低）：
+| 编号 | 位置 | 问题 |
+|---|---|---|
+| P-13 | `jobs/conv.py:97` | 浮点区间累加出 `2.9000000000000004`，目录名显示 2.9 但 `--ref 2.9` 被拒；改 `start + i*step` 再 round |
+| P-14 | `jobs/qe.py` K_POINTS | `mesh == [1,1,1]` 分支与 else 逐字相同，死分支 |
+| P-15 | `vasp.py` / `cp2k.py` `format_value` | 两份逐字相同；按 R6 两处不合，但缺互指注释 |
+| P-16 | `templates/qe/aimd/pw.in` | SVR `nraise` 以步计，改 dt 后热浴时间常数跟着变，无提示 |
+| P-17 | `jobs/cp2k.py` `data_entries` | `POTENTIAL_UZH` 镧系占位条目（下一行 `NA`）电子数记 0，应报错 |
+| P-18 | `conv.parse_scan` | 不拒非正值，`encut=-100` 照写 |
+| P-19 | QE / CP2K 生成器 | 缺「并行参数自己加」的提示（规格要求，只有 VASP 有） |
+| P-12 | 测试 | `conv.summary` 多帧「各帧取最大」无直接测试；QE 显式 `--multiplicity 1` + 模板 `nspin = 2` 组合无测试 |
+
+存疑（缺证据）：`RECOMMENDED_POTCAR` 个别条目（Fe、Er…）未对照 vasp.at 当前表；CP2K 2025.2 的
+k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满足阈值的档」，偏差不单调时可能
+报出其上仍有超阈值档的低档（判据选择，待定）。
 
 ### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
 
