@@ -39,9 +39,9 @@
 | 验收 | CP2K 本机用 cp2k-input-tools 离线校验；9 个算例在超算冒烟（CentOS 7，glibc 2.17 → manylinux2014 x86_64，GitHub Actions 编） |
 | 收尾 | 追平后删 ferro-workflow 与 `ferro job` |
 
-**当前状态（2026-10-16 晚）**：第 0–19 步已完成并推送（第 20 步提交 `74e7c14`，HEAD `903de96`，GitHub
-Actions 全绿）。**第 20 步冒烟第一轮 7/9 通过**，两处失败已修（`5c52ae8`、`c0f8731`，未推送），
-**等推送后用户只重跑这两个算例**（CP2K `SKIP=vasp,qe`、QE `SKIP=vasp,cp2k`），两份都 PASS 才做第 21 步。
+**当前状态（2026-10-16 晚）**：第 0–20 步已完成并推送（第 20 步提交 `74e7c14`；修复 `5c52ae8`、
+`c0f8731`，HEAD `44fbec0`，GitHub Actions 全绿）。**第 20 步冒烟第二轮 9/9 通过**（用 `44fbec0` 的
+wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步无 ABORT）。下一步是第 21 步。
 
 第一轮（2026-10-16，超算 CentOS 7，Python 3.12，结构 `exp_603719.cif` 6 原子 AlPO₄）：
 
@@ -83,9 +83,8 @@ Actions 全绿）。**第 20 步冒烟第一轮 7/9 通过**，两处失败已�
 15–17. ✅ VASP / CP2K / QE 生成器与模板；确认 D-M4、D-M6、D-M8、D-M9、D-M10、D-M12 不重犯
 18. ✅ Rust 向 Python 暴露输出 reader（能量、力、应力）与 `write_table`
 19. ✅ `ferro-py conv` 生成 + `analyze`
-20. 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF / finer-grid 各一组）：
-    脚本已写（`ferro-python/scripts/smoke_hpc.sh`，本机用假程序走通）；第一轮 7/9，
-    两处已修，**待重跑 CP2K opt 与 QE aimd**
+20. ✅ 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF / finer-grid 各一组）：
+    `ferro-python/scripts/smoke_hpc.sh`；第一轮 7/9，两处修复后第二轮 9/9（收敛测试只生成未跑）
 21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
 22. 手册 `docs/src/python/`
 23. 更新开发记录（版本号只在用户要求时动）
