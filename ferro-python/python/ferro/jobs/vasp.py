@@ -26,6 +26,7 @@ RECOMMENDED_POTCAR = {
 }
 
 PARALLEL_KEYS = ("NCORE", "NPAR", "KPAR")
+PREC_VALUES = ("Low", "Medium", "High", "Normal", "Single", "SingleN", "Accurate")
 
 
 class IncarError(ValueError):
@@ -212,6 +213,10 @@ class VaspGenerator(Generator):
         if options.task == "opt" and options.vary_cell and "ENCUT" not in incar:
             raise JobError("--vary-cell needs ENCUT in the template (Pulay stress): find it with "
                            "`ferro-py conv -s vasp --scan encut=...` and write it there")
+        # PREC 决定细网格的粗网格倍数；缩写（Acc、A）不猜，要求写全（用户定）
+        prec = incar.get("PREC", "Normal").strip()
+        if prec.upper() not in (p.upper() for p in PREC_VALUES):
+            raise JobError(f"PREC = {prec}: write PREC in full ({' | '.join(PREC_VALUES)})")
         elements = one.elements()   # sort_atoms 之后即 POSCAR 的元素顺序
         symbols = one.symbols(0)
         counts = [symbols.count(e) for e in elements]
@@ -235,11 +240,10 @@ class VaspGenerator(Generator):
         if options.fine_grid is not None or (metagga not in ("", "NONE", "--") and "NGXF" not in incar):
             factor = options.fine_grid if options.fine_grid is not None else 2
             encut = float(incar["ENCUT"]) if "ENCUT" in incar else enmax
-            prec = incar.get("PREC", "Normal")
             coarse, fine = fine_grid(one.cell(0), encut, factor, prec)
             for key, n in zip(("NGXF", "NGYF", "NGZF"), fine):
                 incar[key] = n
-            notes.append(f"fine grid {factor:g} x NG {coarse} (PREC {prec.strip()}) -> NGXF/NGYF/NGZF {fine}"
+            notes.append(f"fine grid {factor:g} x NG {coarse} (PREC {prec}) -> NGXF/NGYF/NGZF {fine}"
                          + (" (Zn present: a factor of 3 may be needed)" if "Zn" in elements and factor < 3 else ""))
             if metagga in ("", "NONE", "--"):
                 notes.append("no METAGGA: a GGA rarely needs an explicit fine grid")

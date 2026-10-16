@@ -77,6 +77,19 @@ def test_vary_cell(cfg, traj, tmp_path):
     assert str(fine) in note and incar["NGXF"] == str(fine[0]), "细网格按模板写的 ENCUT 算"
 
 
+def test_prec_in_full(cfg, traj, tmp_path):
+    tpl = tmp_path / "INCAR"
+    for short in ("Acc", "A"):
+        tpl.write_text(f"PREC = {short}\nMETAGGA = R2SCAN\n")
+        with pytest.raises(JobError, match="write PREC in full"):
+            VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
+    tpl.write_text("PREC = accurate  ! case does not matter\nMETAGGA = R2SCAN\n")
+    incar = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["INCAR"])
+    accurate, normal = (fine_grid(traj.cell(0), 412, 2, p)[1][0] for p in ("Accurate", "Normal"))
+    assert accurate != normal and incar["NGXF"] == str(accurate), \
+        "全称不分大小写，按 Accurate 取 2·G_cut 的粗网格（未写 ENCUT 取最大 ENMAX，Zn 412）"
+
+
 def test_template_values_are_kept(cfg, traj, tmp_path):
     tpl = tmp_path / "INCAR"
     tpl.write_text("KSPACING = 0.25  ! mine\nNCORE = 8\nTEBEG = 900\nIBRION = 0\nNSW = 5\n")
