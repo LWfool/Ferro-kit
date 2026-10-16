@@ -22,7 +22,10 @@
 | 位置 | ferro-python 的 maturin 混合布局：`import ferro`，`ferro.jobs`，命令 `ferro-py`（子命令 `job`，以后 `plot`） |
 | 依赖 | 运行时**只用标准库**，Python ≥ 3.11，abi3 wheel；pytest 只作开发依赖。ASE / pymatgen / cp2k-input-tools 均有 scipy、matplotlib、pydantic 等硬依赖，超算离线难装，不依赖 |
 | 分工 | 结构块（POSCAR、QE 三张卡片、CP2K `&CELL`/`&COORD`）由 Rust 写成字符串，格式规范只一份；参数块（INCAR、namelist、CP2K 节树）在 Python。QE namelist 解析由 Rust 暴露，全仓一份（同一语法、同一变化原因） |
-| 模板 | 模板即原生输入文件；内置 9 份，用户模板目录同名覆盖；未知键原样保留并提示 |
+| 模板 | 模板即原生输入文件；内置 9 份，用户模板目录同名覆盖；未知键原样保留（不提示：三个程序都没有可靠的全量键表）。2026-10-16 用户定的用法：`ferro-py job template -s … -t … -o DIR` 导出通用模板（头注释写明程序改写哪些键、哪些须自己加），用户改完以 `--template` 读回再合并结构；命令行显式给的量覆盖模板，没给的沿用模板 |
+| 默认值（2026-10-16 用户定） | 内置模板泛函 PBE-D3(BJ)；AIMD 1 fs × 2000 步；k 点 kspacing 0.5 Å⁻¹，VASP 写成 INCAR 的 `KSPACING`、不生成 KPOINTS，网格 1×1×1 时提示可用 vasp_gam；SCF 不收敛照跑（CP2K `IGNORE_CONVERGENCE_FAILURE`）只在 aimd；并行参数内置模板不写，模板头注释与生成时提示用户自己加。其余默认值在模板导出后由用户对着模板审 |
+| 系综 | VASP、QE 只做 NVT（QE `vc-md` 不支持热浴；npt 报错）；CP2K 支持 NVT / NPT_I / NPT_F，`--ensemble nvt\|npt_i\|npt_f`，NPT_F 的 `VIRIAL` 不开放（默认全部方向，要单方向改模板），NPT 写 `STRESS_TENSOR ANALYTICAL`（D-M4） |
+| 收敛测试（2026-10-16 新增） | `ferro-py conv` 生成一组单点（每档一个子目录），`ferro-py conv analyze DIR` 读回输出，以最高档（或 `--ref`）为参考，报总能量偏差（meV/atom）、压力偏差、最大力偏差、逐原子力偏差的 RMS；支持多帧（选帧同 job），每帧每档一行 CSV，终端表取各帧最大。阈值只作提示，取值查惯例。VASP 先测细网格 NGXF/NGYF/NGZF 再测 ENCUT（r2SCAN 的经验，PBE 未定）；CP2K 测 CUTOFF 与 XC 细网格；QE 的单点能量 / 力 / 应力提取与截断能测试放下一批。读输出与写表在 Rust（复用 OUTCAR / CP2K reader，暴露 `write_table`），偏差算术在 Python |
 | 程序改动的量 | 结构、电荷、多重度（奇偶校验）、k 点（按 kspacing，模板写死的不动）、元素列表；AIMD 加温度/步数/时间步/系综；opt 加是否变胞 |
 | 自旋 | 默认按奇偶取 1 / 2；显式值与奇偶矛盾报错。未成对电子的方法未定，`guess_spin` 暂不暴露 |
 | 配置 | `~/.config/ferro/config.toml`（`FERRO_CONFIG` 覆盖）：POTCAR、CP2K data、QE 赝势、模板目录；运行时读 CP2K 自带数据文件，不迁 `cp2k_basis_db.rs` |
@@ -47,12 +50,16 @@
 10. 参数块解析 / 编辑 / 写回（INCAR、namelist、CP2K 节树）
 11. 生成器基类（InputFile / InputSet / Generator 三层）
 12. `ferro-py job` CLI（五段帮助、批量、POTCAR 链接）
-13. 查惯例 + 读用户脚本 → 默认值表，用户审
-14–16. VASP / CP2K / QE 模板；确认 D-M4、D-M6、D-M8、D-M9、D-M10、D-M12 不重犯
-17. 超算冒烟脚本，用户执行
-18. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 17 通过）
-19. 手册 `docs/src/python/`
-20. 更新开发记录（版本号只在用户要求时动）
+13. 查惯例 + 读用户脚本 → 默认值表，用户审（已读、已答 Q1–Q13，余下默认值对着导出的模板审）
+14. `ferro-py job template` 导出
+15–17. VASP / CP2K / QE 生成器与模板；确认 D-M4、D-M6、D-M8、D-M9、D-M10、D-M12 不重犯
+18. Rust 向 Python 暴露输出 reader（能量、力、应力）与 `write_table`
+19. `ferro-py conv` 生成 + `analyze`
+20. 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF 各一组），用户执行
+21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
+22. 手册 `docs/src/python/`
+23. 更新开发记录（版本号只在用户要求时动）
+下一批：QE 单点输出（能量 / 力 / 应力）reader + QE 截断能测试
 
 ### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
 
