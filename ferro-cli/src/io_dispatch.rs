@@ -47,7 +47,7 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
         Some("pdb")                      => Ok(read_pdb(path)?),
         Some("cif")                      => Ok(read_cif(path)?),
         Some("extxyz")                   => Ok(read_extxyz(path)?),
-        Some("vasp") | Some("pos")       => read_poscar(path),
+        Some("vasp") | Some("poscar") | Some("pos") => read_poscar(path),
         Some("lammps") | Some("data") | Some("lmp") => {
             let style = check_atom_style(path, opts.atom_style)?.expect("check_atom_style 已拒绝 None");
             Ok(read_lammps_data(path, style)?)
@@ -101,7 +101,7 @@ pub fn out_format(path: &Path) -> Result<OutFormat> {
         Some("pdb")                      => OutFormat::Pdb,
         Some("cif")                      => OutFormat::Cif,
         Some("extxyz")                   => OutFormat::Extxyz,
-        Some("vasp") | Some("pos")       => OutFormat::Poscar,
+        Some("vasp") | Some("poscar") | Some("pos") => OutFormat::Poscar,
         Some("lammps") | Some("data") | Some("lmp") => OutFormat::LammpsData,
         Some("dump") | Some("lammpstrj") => OutFormat::LammpsDump,
         // QE 输入只读：完整的 pw.x 输入由任务生成器写，convert 不写只有结构的骨架
@@ -146,7 +146,7 @@ pub fn holds_multiple_frames(path: &Path) -> bool {
     !matches!(
         path.extension().and_then(|e| e.to_str()),
         Some("lammps") | Some("data") | Some("lmp")
-            | Some("vasp") | Some("pos") | Some("cif")
+            | Some("vasp") | Some("poscar") | Some("pos") | Some("cif")
     )
 }
 
@@ -162,7 +162,7 @@ pub fn supported_formats() -> &'static str {
   PDB           .pdb                           y      y      all (MODEL records)
   LAMMPS dump   .dump  .lammpstrj              y      y      all
   CIF           .cif                           y      y      one per file
-  VASP          .vasp  .pos  POSCAR*/CONTCAR*  y      y      one per file
+  VASP          .vasp .poscar .pos POSCAR*     y      y      one per file
   LAMMPS data   .lammps  .data  .lmp           y      y      one per file
   QE (pw.x)     .in  .qe                       y      -      -
   CP2K input    .inp                           y      -      -
@@ -279,7 +279,7 @@ mod tests {
             ("t.dump", true), ("t.lammpstrj", true),
             ("POSCAR", false), ("CONTCAR", false), ("poscar", false),
             ("run1_POSCAR", true),   // 前缀匹配，不是包含匹配
-            ("t.vasp", false), ("t.pos", false), ("conf_0000.vasp", false),
+            ("t.vasp", false), ("t.poscar", false), ("t.pos", false), ("conf_0000.vasp", false),
             ("t.lmp", false), ("t.data", false), ("t.lammps", false),
         ] {
             assert_eq!(
@@ -297,7 +297,7 @@ mod tests {
     fn test_vasp_extensions_round_trip_like_poscar() {
         let traj = one_atom_traj();
         let dir = std::env::temp_dir();
-        for name in ["ferro_vasp_test.vasp", "ferro_vasp_test.pos"] {
+        for name in ["ferro_vasp_test.vasp", "ferro_vasp_test.poscar", "ferro_vasp_test.pos"] {
             let path = dir.join(name);
             write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap();
             let back = read_trajectory(&path, &ReadArgs::default()).unwrap();

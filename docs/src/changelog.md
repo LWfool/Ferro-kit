@@ -27,6 +27,11 @@ LAMMPS data file. Python now follows the command line: `.lammps` is read as data
 `atom_style`) and can be written as data. Likewise `.vasp` / `.pos` are now read and written as POSCAR, and
 a `CONTCAR*` name can be written (POSCAR content), as on the command line.
 
+### `.poscar` is a VASP structure
+
+Both the command line and Python now read and write `x.poscar` as POSCAR, alongside `.vasp`,
+`.pos` and the `POSCAR*` / `CONTCAR*` names.
+
 ### `--type-map` for LAMMPS dumps without an element column
 
 A dump with only `id type x y z` columns read its atoms as `X1`, `X2`, … with no way to name

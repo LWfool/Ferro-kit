@@ -142,7 +142,7 @@ ferro convert -i traj.lammpstrj -o cifs/ --format cif --units metal   # one CIF 
 | PDB | `.pdb` | y | y | all (MODEL records) |
 | LAMMPS dump | `.dump` `.lammpstrj` | y | y | all |
 | CIF | `.cif` | y | y | **one per file** |
-| VASP | `.vasp` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **one per file** |
+| VASP | `.vasp` `.poscar` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **one per file** |
 | LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **one per file** |
 | QE (pw.x) | `.in` `.qe` | y | — | — |
 | CP2K input | `.inp` | y | — | — |
@@ -189,7 +189,7 @@ Things that trip people up:
   every fractional coordinate are one atom (ASE's `symprec`); two different sites landing on the same
   position is an error rather than one silently winning.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
-  `CONTCAR`, `conf.vasp` and `conf.pos` all go through the same reader/writer pair.
+  `CONTCAR`, `conf.vasp`, `conf.poscar` and `conf.pos` all go through the same reader/writer pair.
 - **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot
   be read off the file: the `Atoms # full` comment is optional, and the column count is ambiguous
   (`charge` and `molecular` both have 6 columns).  Ferro guesses neither, and ignores the comment even
@@ -246,7 +246,7 @@ Three points of semantics to remember:
 | Target format | Output |
 |---|---|
 | holds a trajectory (`.xyz` `.extxyz` `.pdb` `.cif` `.dump`) | **one** multi-frame file |
-| holds a single structure (`POSCAR` `.vasp`/`.pos` `.lmp`/`.data` `.in`/`.qe`) | **one file per frame** |
+| holds a single structure (`POSCAR` `.vasp`/`.poscar`/`.pos` `.lmp`/`.data` `.in`/`.qe`) | **one file per frame** |
 
 Writing 20 frames as POSCAR can only ever be 20 files, so there is no switch for the user to remember.
 

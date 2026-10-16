@@ -23,7 +23,7 @@ def test_lammps_extension_is_data_file(tmp_path, ext):
         ferro.read(str(path), atom_style="full", type_map={1: "P"})
 
 
-@pytest.mark.parametrize("name", ["one.vasp", "one.pos", "POSCAR_1", "CONTCAR"])
+@pytest.mark.parametrize("name", ["one.vasp", "one.poscar", "one.pos", "POSCAR_1", "CONTCAR"])
 def test_vasp_names_are_poscar(tmp_path, name):
     t = ferro.read(str(NVT)).tail(1)
     path = tmp_path / name
