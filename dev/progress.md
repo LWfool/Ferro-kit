@@ -513,7 +513,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 测试：`ferro-python/tests/` **125 个 pytest**（2026-10-16 实数），本地用 maturin 编 wheel、
 `pip install --no-deps --target <scratch>` 后 `PYTHONPATH=<scratch> python -m pytest`。
 GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_64 与 macOS arm64
-wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `03f9c40` 全绿。
+wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `903de96` 全绿。
 CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它与 numpy 2 不兼容，运行时
 补 `numpy.cumproduct = numpy.cumprod` 再调；关键字表较旧，不认 `IGNORE_CONVERGENCE_FAILURE`
 与 `GAPW_ACCURATE_XCINT`）。三个程序的真实运行验收待超算冒烟（`plan.md`「`ferro.jobs`」第 20 步）。

@@ -39,7 +39,7 @@
 | 验收 | CP2K 本机用 cp2k-input-tools 离线校验；9 个算例在超算冒烟（CentOS 7，glibc 2.17 → manylinux2014 x86_64，GitHub Actions 编） |
 | 收尾 | 追平后删 ferro-workflow 与 `ferro job` |
 
-**当前状态（2026-10-16 收工时）**：第 0–20 步已完成并推送（最后一个提交 `03f9c40`，GitHub
+**当前状态（2026-10-16 收工时）**：第 0–20 步已完成并推送（第 20 步提交 `74e7c14`，HEAD `903de96`，GitHub
 Actions 全绿）；**等用户在超算上跑第 20 步的冒烟测试**（用户在准备 POTCAR 与 QE 赝势）。
 用户要做的：从 Actions 下载 `wheel-linux-x86_64` → `pip install --no-index ferro-*.whl` →
 `ferro-py config init` 填 `[vasp] potcar_dir`、`[qe] pseudo_dir`、`[cp2k] data_dir` →
