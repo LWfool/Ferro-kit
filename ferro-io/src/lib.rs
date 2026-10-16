@@ -15,7 +15,7 @@ pub use readers::{
     read_chgcar,
     read_cube_as_chg,
     is_extxyz, read_extxyz,
-    read_lammps_data, read_lammps_dump,
+    read_lammps_data, read_lammps_dump, apply_type_map,
     read_cp2k_inp, read_cp2k_restart,
     read_qe_input, parse_qe_input_parts, write_namelists, Namelist, QeInputParts,
     AtomStyle, LammpsUnits,

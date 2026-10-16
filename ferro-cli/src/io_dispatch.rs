@@ -26,6 +26,10 @@ pub fn check_atom_style(path: &Path, style: Option<AtomStyle>) -> Result<Option<
 }
 
 pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
+    let is_dump = matches!(path.extension().and_then(|e| e.to_str()), Some("dump") | Some("lammpstrj"));
+    if opts.type_map.is_some() && !is_dump {
+        bail!("--type-map applies to LAMMPS dump input only, not {}", path.display());
+    }
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
@@ -48,7 +52,13 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
             let style = check_atom_style(path, opts.atom_style)?.expect("check_atom_style 已拒绝 None");
             Ok(read_lammps_data(path, style)?)
         }
-        Some("dump") | Some("lammpstrj")             => Ok(read_lammps_dump(path, opts.units)?),
+        Some("dump") | Some("lammpstrj")             => {
+            let mut traj = read_lammps_dump(path, opts.units)?;
+            if let Some(map) = &opts.type_map {
+                apply_type_map(&mut traj, &map.0)?;
+            }
+            Ok(traj)
+        }
         Some("inp")                      => Ok(read_cp2k_inp(path)?),
         Some("restart")                  => Ok(read_cp2k_restart(path)?),
         Some("in") | Some("qe")          => Ok(read_qe_input(path)?),

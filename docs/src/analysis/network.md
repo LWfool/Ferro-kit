@@ -258,6 +258,7 @@ The element pair lives in the **parameter name**, which clap cannot model, so `m
 | `--last-n N` | all frames | use only the last N frames |
 | `--ncore N` | all cores | number of parallel threads |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  The statistics read neither, but a dump that carries them is refused without it; the values then reach `--export-traj extxyz` |
+| `--type-map <MAP>` | — | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
 | `--modifier E,E` | — | comma-separated elements that count towards coordination number only.  Their cutoffs must be given as well |
 | `--qn E,E` | `B,P,Si` | comma-separated network formers to report Qn for.  **Replaces** the default list rather than adding to it |
 | `--export-traj [FMT]` | — | also write a labelled trajectory, `lammpstrj` (default) or `extxyz` |

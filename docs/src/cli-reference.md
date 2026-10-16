@@ -46,6 +46,7 @@ Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`conv
 | `--last-n N` | use only the last N frames (skipping the equilibration stage) |
 | `--ncore N` | number of parallel threads (all cores by default) |
 | `--units <UNITS>` | `real` (velocity Å/fs, force kcal/mol/Å) or `metal` (velocity Å/ps, force eV/Å): the LAMMPS unit system of a dump's velocity/force columns.  **Required whenever a dump has `vx`/`fx`-type columns** — a dump does not record its `units`, and the two systems differ by $10^3$ in velocity and ~23 in force, so the value is never guessed (DeePMD runs in `metal`).  Coordinates and cells are Å under either system; a dump with positions only reads without it |
+| `--type-map <MAP>` | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
 | `--atom-style <STYLE>` | `atomic`, `charge` or `full`: the column layout of a LAMMPS data file's `Atoms` section.  **Required whenever an input is `.data` / `.lmp` / `.lammps`**, checked before the first file is read; see the format notes below |
 
 ### Batch processing
@@ -284,6 +285,7 @@ where it is a truncated final frame and is dropped with a warning.
 | `--format <EXT>` | — | treat `-o` as a directory and write this format into it (`cif`, `vasp`, `extxyz`, …): `DIR/frame_0000.cif` … for one-structure formats, `DIR/frame.extxyz` for trajectory formats.  Without it, an `-o` ending in `/` or naming an existing directory is an error |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
+| `--type-map <MAP>` | — | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
 
 ---
@@ -334,6 +336,7 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 |---|---|---|
 | `-i <file>` | (required) | input file; omit it to print this page |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  Required when they are present |
+| `--type-map <MAP>` | — | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
 
 ---
@@ -768,6 +771,7 @@ block; see [network analysis](analysis/network.md#automatic-cutoffs-auto) for ho
 | `--last-n N` | all | use only the last N frames |
 | `--ncore N` | all cores | number of threads |
 | `--units <UNITS>` | — | `real` or `metal`.  The statistics read neither velocities nor forces, but a dump that has them is refused without it |
+| `--type-map <MAP>` | — | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
 | `--modifier E,E` | — | elements that count towards **coordination number only**, taking no part in the bridge count or the ligand classification.  Their cutoffs must be given as well, otherwise ferro errors out |
 | `--qn E,E` | `B,P,Si` | network formers to report Qn for.  **Replaces** the default list rather than adding to it; naming a non-former, or an element already taken by `--modifier`, errors out |
 | `--export-traj [FMT]` | — | also write a labelled trajectory: `lammpstrj` (default) or `extxyz` |

@@ -19,6 +19,7 @@ Common options:
       --mkdir         Create -o's directory without asking
       --atom-style S  LAMMPS data input: atomic | charge | full (required)
       --units U       Dump vx/fx units: real | metal (required if present)
+      --type-map M    Dump without element column: 1=Zr,2=O,...
 
 Full documentation:  ferro doc job"#
     );
@@ -165,6 +166,7 @@ Parameters:
       --number N          Take this many frames, spread evenly, both ends kept
       --atom-style S      LAMMPS data input: atomic | charge | full (required)
       --units U           Dump vx/fx units: real | metal (required if present)
+      --type-map M        Dump without element column: 1=Zr,2=O,...
   -h, --help              Short parameter table (this page adds the formats)
  Formats -i / -o accept, recognised by file name:
 {}
@@ -198,6 +200,7 @@ Parameters:
   -i, --input  FILE       Input file (format from its name)
       --atom-style S      LAMMPS data input: atomic | charge | full (required)
       --units U           Dump vx/fx units: real | metal (required if present)
+      --type-map M        Dump without element column: 1=Zr,2=O,...
   -h, --help              Short parameter table
 
 Output:
@@ -331,6 +334,7 @@ Common options:
       --ncore  N        Parallel threads (default: all cores)
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
       --units U         Dump vx/fx units: real | metal (required if present)
+      --type-map M      Dump without element column: 1=Zr,2=O,...
 
 Selecting types (gr / angle only):
   -a -b -c by element (-a P -b O), -x -y -z by site label (-x P_2 -y O_b); the
@@ -364,6 +368,7 @@ Common options:
       --ncore  N        Parallel threads (default: all cores)
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
       --units U         Dump vx/fx units: real | metal (required if present)
+      --type-map M      Dump without element column: 1=Zr,2=O,...
 
 Output:
   One 3-D grid file per input, not a stacked table — nothing here stacks. The
@@ -397,6 +402,7 @@ Parameters:
   -s SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --units U               Dump vx/fx units: real | metal (required if present)
+  --type-map M            Dump without element column: 1=Zr,2=O,...
 
 Output:
   gr_<pair>[_<suffix>].csv, long format: file pair r g_r cn_r
@@ -432,6 +438,7 @@ Parameters:
   -s SUFFIX               Batch tag -> sq_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --units U               Dump vx/fx units: real | metal (required if present)
+  --type-map M            Dump without element column: 1=Zr,2=O,...
 
 Output:
   sq[_<suffix>].csv, WIDE format, one row per (file, q):
@@ -468,6 +475,7 @@ Parameters:
   -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
   --atom-style S        LAMMPS data input: atomic | charge | full (required)
   --units U             Dump vx/fx units: real | metal (required if present)
+  --type-map M          Dump without element column: 1=Zr,2=O,...
 
 Output:
   msd_<elements>[_<suffix>].csv, elements SORTED so one set has one name
@@ -509,6 +517,7 @@ Parameters:
   -s SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --units U               Dump vx/fx units: real | metal (required if present)
+  --type-map M            Dump without element column: 1=Zr,2=O,...
 
 Output:
   angle_<triplet>[_<suffix>].csv, long format: file triplet theta count p
@@ -544,6 +553,7 @@ Parameters:
   -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
   --atom-style S        LAMMPS data input: atomic | charge | full (required)
   --units U             Dump vx/fx units: real | metal (required if present)
+  --type-map M          Dump without element column: 1=Zr,2=O,...
 
 Output:
   vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
@@ -583,6 +593,7 @@ Parameters:
   -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
+  --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
   rotcorr_<centre>-<neighbour>[_<suffix>].csv — never falls back to "all",
@@ -619,6 +630,7 @@ Parameters:
   -s SUFFIX               Batch tag -> bondlife_<centre>-<neighbour>_<suffix>.csv
   --atom-style S          LAMMPS data input: atomic | charge | full (required)
   --units U               Dump vx/fx units: real | metal (required if present)
+  --type-map M            Dump without element column: 1=Zr,2=O,...
 
 Output:
   bondlife_<C>-<N>.csv          time, c_int, s_cont
@@ -653,6 +665,7 @@ Parameters:
   -s SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
   --atom-style S        LAMMPS data input: atomic | charge | full (required)
   --units U             Dump vx/fx units: real | metal (required if present)
+  --type-map M          Dump without element column: 1=Zr,2=O,...
 
 Output:
   vanhove_<elements>[_<suffix>].csv (columns r, p_r), elements sorted;
@@ -687,6 +700,7 @@ Parameters:
   -s SUFFIX           Batch tag -> density_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
+  --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
   <stem>.cube, one per input — a Gaussian cube VESTA and VMD read directly
@@ -716,6 +730,7 @@ Parameters:
   -s SUFFIX           Batch tag -> velocity_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
+  --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
   <stem>.cube, one per input
@@ -745,6 +760,7 @@ Parameters:
   -s SUFFIX           Batch tag -> force_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
+  --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
   <stem>.cube, one per input
@@ -777,6 +793,7 @@ Parameters:
   -s SUFFIX           Batch tag -> radius_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
+  --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
   <stem>.cube, one per input
@@ -814,6 +831,7 @@ Parameters:
   -s STEM             Output stem (no extension)              default: sdf
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
+  --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
   <stem>_<atom_type>.cube, or <stem>_fam<N>_<atom_type>.cube with more than

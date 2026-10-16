@@ -482,6 +482,7 @@ Parameters:
       --ncore N         Parallel threads                            [all cores]
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
       --units U         Dump vx/fx units: real | metal (required if present)
+      --type-map M      Dump without element column: 1=Zr,2=O,...
       --modifier E,E    Elements counted for coordination only: no bridging
                         count, no part in ligand classification. Give each a
                         cutoff too

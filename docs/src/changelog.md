@@ -20,6 +20,13 @@ source file name and `K_POINTS gamma` — a file that looked runnable but was no
 setup. QE input is now read-only, like CP2K input: `.in` / `.qe` is refused on write. Generate a
 pw.x input with `ferro job -s qe`.
 
+### `--type-map` for LAMMPS dumps without an element column
+
+A dump with only `id type x y z` columns read its atoms as `X1`, `X2`, … with no way to name
+them. `--type-map 1=Zr,2=P,3=O` (on every command that reads a structure) maps type numbers to
+elements. A type missing from the map, an unknown symbol, or a dump that already has an element
+column is an error.
+
 ### QE input read: one-line namelists, undeclared labels
 
 A namelist written on one line (`&SYSTEM ibrav=0, celldm(1)=10.26, nat=2, ntyp=1 /`, valid

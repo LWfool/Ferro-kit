@@ -35,6 +35,30 @@ pub struct ReadArgs {
             .map(|s| s.parse::<AtomStyle>().expect("取值已由 PossibleValuesParser 限定")),
     )]
     pub atom_style: Option<AtomStyle>,
+
+    /// LAMMPS dump without an element column: type number → element, e.g. 1=Zr,2=P,3=O
+    #[arg(long, value_name = "MAP", value_parser = parse_type_map)]
+    pub type_map: Option<TypeMap>,
+}
+
+/// `--type-map` 的值。包一层：clap 把 `Option<Vec<T>>` 字段当作「可给多个值的参数」，
+/// 解析器整体返回一个 Vec 会在取值时类型不符而 panic
+#[derive(Clone, Debug)]
+pub struct TypeMap(pub Vec<(u32, String)>);
+
+/// `1=Zr,2=P,3=O` → [(1, "Zr"), …]。元素符号是否认识由 ferro-io 查；这里只管语法与重复
+fn parse_type_map(s: &str) -> Result<TypeMap> {
+    let mut map: Vec<(u32, String)> = Vec::new();
+    for item in s.split(',') {
+        let (t, e) = item.split_once('=')
+            .ok_or_else(|| anyhow!("{item:?} is not TYPE=ELEMENT (e.g. 1=Zr,2=O)"))?;
+        let t: u32 = t.trim().parse().map_err(|_| anyhow!("type {t:?} is not a number"))?;
+        if map.iter().any(|(k, _)| *k == t) {
+            return Err(anyhow!("type {t} is given twice"));
+        }
+        map.push((t, e.trim().to_string()));
+    }
+    Ok(TypeMap(map))
 }
 
 /// Input/output and run-wide options carried by every analysis subcommand.
@@ -241,5 +265,19 @@ mod tests {
         let s = SelectArgs { label_x: Some("P_0".into()), label_y: Some("O_f".into()), ..Default::default() };
         let (mode, _) = s.resolve_pair().unwrap();
         assert!(matches!(mode, GroupBy::Label));
+    }
+
+    /// 经 clap 真取一次值：字段类型与解析器返回类型不符时 clap 在取值处 panic，
+    /// 帮助页防漂测试只比对参数名，抓不到
+    #[test]
+    fn test_type_map_through_clap() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct T { #[command(flatten)] read: ReadArgs }
+        let t = T::try_parse_from(["t", "--type-map", "1=Zr, 2=O"]).unwrap();
+        assert_eq!(t.read.type_map.unwrap().0, [(1, "Zr".to_string()), (2, "O".to_string())]);
+        for bad in ["1=Zr,1=O", "Zr", "a=Zr"] {
+            assert!(T::try_parse_from(["t", "--type-map", bad]).is_err(), "{bad} 应被拒");
+        }
     }
 }

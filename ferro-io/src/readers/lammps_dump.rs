@@ -44,6 +44,29 @@ pub fn read_lammps_dump(path: &Path, units: Option<LammpsUnits>) -> Result<Traje
     parse_lammps_dump(&content, units).with_context(|| format!("parsing {path_}"))
 }
 
+/// 无 element 列的 dump 读出的占位元素 `X<type>` 按 `map`（类型号 → 元素符号）换成元素。
+///
+/// 只认本 reader 自己生成的 `X<type>`：dump 已有 element 列时报错，不让两份来源互相
+/// 覆盖；映射缺某个出现了的类型、或给了不认识的元素符号，同样报错
+pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()> {
+    for (_, sym) in map {
+        anyhow::ensure!(ferro_core::data::elements::by_symbol(sym).is_some(),
+                        "--type-map: unknown element symbol {sym:?}");
+    }
+    for frame in &mut traj.frames {
+        for atom in &mut frame.atoms {
+            let tp: u32 = atom.element.strip_prefix('X').and_then(|n| n.parse().ok())
+                .with_context(|| format!(
+                    "--type-map given, but the dump already names elements ({:?}) in its element column",
+                    atom.element))?;
+            let (_, sym) = map.iter().find(|(t, _)| *t == tp)
+                .with_context(|| format!("atom type {tp} is missing from --type-map"))?;
+            atom.element = sym.clone();
+        }
+    }
+    Ok(())
+}
+
 fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<Trajectory> {
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
@@ -388,6 +411,29 @@ ITEM: ATOMS id type element x y z
 ";
 
     use crate::testutil::write_tmp as tmp;
+
+    #[test]
+    fn test_type_map_on_dump_without_element_column() {
+        let no_elem = DUMP_ORTHO.replace("id type element x y z", "id type x y z")
+            .replace(" 1 Fe ", " 1 ").replace("2 1 1.4", "2 2 1.4");
+        let read = || parse_lammps_dump(&no_elem, None).unwrap();
+        let t = read();
+        assert_eq!((t.frames[0].atom(0).element.as_str(), t.frames[0].atom(1).element.as_str()),
+                   ("X1", "X2"), "无映射时仍是占位符");
+
+        let mut t = read();
+        apply_type_map(&mut t, &[(1, "Zr".into()), (2, "O".into()), (3, "P".into())]).unwrap();
+        for f in &t.frames {
+            assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("Zr", "O"), "每帧都要换");
+        }
+
+        let err = |map: &[(u32, String)], t: &mut Trajectory| format!("{:#}", apply_type_map(t, map).unwrap_err());
+        assert!(err(&[(1, "Zr".into())], &mut read()).contains("type 2 is missing"));
+        assert!(err(&[(1, "Zr".into()), (2, "Xx".into())], &mut read()).contains("unknown element"));
+        let mut named = parse_lammps_dump(DUMP_ORTHO, None).unwrap();
+        assert!(err(&[(1, "Zr".into())], &mut named).contains("already names elements"),
+                "有 element 列时不应被映射覆盖");
+    }
 
     const DUMP_VEL: &str = "ITEM: TIMESTEP
 0
