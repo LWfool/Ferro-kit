@@ -5,8 +5,8 @@ you run them; `ferro-py conv analyze` reads the outputs back and compares each
 value with the most accurate one.
 
 ```bash
-ferro-py conv -s vasp --scan fine-grid=2,2.5,3,4 -i POSCAR --template r2scan/INCAR -o ng/
-ferro-py conv -s vasp --scan encut=500:900:100 --fine-grid 3 -i traj.lammpstrj --number 3 -o encut/
+ferro-py conv -s vasp --scan fine-grid=2,2.5,3,4 -i POSCAR --template r2scan.INCAR -o ng/
+ferro-py conv -s vasp --scan encut=500:900:100 --fine-grid 3 -i md.lammpstrj -o encut/
 ferro-py conv -s cp2k --scan cutoff=300:700:100 -i POSCAR -o cutoff/
 # … run every job …
 ferro-py conv analyze encut/
@@ -61,8 +61,8 @@ scan `accurate-xcint` as well.
 ## Output layout
 
 ```
-DIR/ferro-conv.json                 the parameter, the values and every job (read by analyze)
-DIR/POTCAR                          VASP: one copy, linked from every job
+DIR/ferro-conv.json        parameter, values and every job (read by analyze)
+DIR/POTCAR                 VASP: one copy, linked from every job
 DIR/encut_500/traj_0000/
 DIR/encut_500/traj_0004/
 DIR/encut_600/traj_0000/

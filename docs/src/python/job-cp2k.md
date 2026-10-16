@@ -3,7 +3,7 @@
 ```bash
 ferro-py job -s cp2k -t sp   -i POSCAR -o sp/
 ferro-py job -s cp2k -t opt  -i POSCAR --vary-cell -o relax/
-ferro-py job -s cp2k -t aimd -i traj.lammpstrj --number 20 --temperature 1500 --ensemble npt_i -o md/
+ferro-py job -s cp2k -t aimd -i md.lammpstrj --number 20 --ensemble npt_i -o md/
 ```
 
 Each job directory holds one `cp2k.inp`. What is common to the three programs —

@@ -10,7 +10,7 @@ configuration file:
 
 ```bash
 ferro-py config init                 # write a commented template there
-ferro-py config init -o cfg.toml     # somewhere else (then export FERRO_CONFIG=cfg.toml)
+ferro-py config init -o cfg.toml     # elsewhere; then export FERRO_CONFIG=cfg.toml
 ```
 
 `config init` never overwrites an existing file without `--force`; `--mkdir`
@@ -23,7 +23,8 @@ uses it, and the error then names the entry to add — a VASP job without
 `[vasp] potcar_dir` stops with
 
 ```
-[vasp] potcar_dir is not set in /home/me/.config/ferro/config.toml (create the file with `ferro-py config init`)
+[vasp] potcar_dir is not set in /home/me/.config/ferro/config.toml
+(create the file with `ferro-py config init`)
 ```
 
 A misspelt key (`potcar_dri`) or an unknown section is an error, not ignored:

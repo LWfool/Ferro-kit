@@ -14,7 +14,7 @@ GitHub Actions builds `manylinux2014` x86_64 (CentOS 7 and later) and macOS arm6
 wheels; download the artifact and
 
 ```bash
-pip install --no-index ferro-*.whl      # gives `import ferro` and the ferro-py command
+pip install --no-index ferro-*.whl      # `import ferro` and the ferro-py command
 ```
 
 To build one yourself:

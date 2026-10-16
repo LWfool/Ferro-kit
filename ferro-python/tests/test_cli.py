@@ -27,7 +27,7 @@ def parser_options(parser):
 # 每个子命令：(argparse 构造函数, 帮助页)
 PAGES = [(cli.config_parser, cli.CONFIG_INIT_HELP), (cli.job_parser, cli.JOB_HELP),
          (cli.job_template_parser, cli.JOB_TEMPLATE_HELP), (cli.conv_parser, cli.CONV_HELP),
-         (cli.conv_analyze_parser, cli.CONV_ANALYZE_HELP)]
+         (cli.conv_analyze_parser, cli.CONV_ANALYZE_HELP), (cli.doc_parser, cli.DOC_HELP)]
 
 
 @pytest.mark.parametrize("make_parser, text", PAGES)
@@ -44,6 +44,43 @@ def test_overview_and_unknown_command(capsys):
     assert "config init" in capsys.readouterr().out
     assert cli.main(["plott"]) == 1
     assert "unknown command 'plott'" in capsys.readouterr().err
+
+
+# ── ferro-py doc ─────────────────────────────────────────────────────────────
+
+MANUAL = Path(__file__).resolve().parents[2] / "docs" / "src"
+
+
+def test_every_help_page_points_at_a_manual_page():
+    # 同 ferro doc 的 PAGES 登记：帮助页末行的 `ferro-py doc X` 必须真有那一页
+    topics = {topic for topic, _, _ in ferro._ferro._doc_pages()}
+    for text in [cli.OVERVIEW] + [text for _, text in PAGES]:
+        asked = text.rsplit("Full documentation:  ferro-py doc", 1)[1].strip()
+        assert asked == "" or asked in topics, f"帮助页指向不存在的手册页 `{asked}`"
+
+
+def test_manual_pages_match_the_book():
+    pages = ferro._ferro._doc_pages()
+    assert len({t for t, _, _ in pages}) == len(pages), "主题不得重名"
+    summary = (MANUAL / "SUMMARY.md").read_text(encoding="utf-8")
+    for topic, source, text in pages:
+        assert text == (MANUAL / source).read_text(encoding="utf-8"), f"{topic}：编进去的不是当前源文件"
+        assert f"]({source})" in summary, f"{source} 不在 SUMMARY.md 里"
+    registered = {source for _, source, _ in pages}
+    for path in (MANUAL / "python").glob("*.md"):
+        assert f"python/{path.name}" in registered, f"{path.name} 没登记进 ferro-python/src/doc.rs 的 PAGES"
+
+
+def test_doc_list_page_and_unknown(capsys):
+    assert cli.main(["doc"]) == 0
+    out = capsys.readouterr().out
+    assert "job vasp" in out and "python/job-vasp.md" in out
+    assert cli.main(["doc", "Job", "VASP"]) == 0, "主题不分大小写"
+    assert capsys.readouterr().out == (MANUAL / "python" / "job-vasp.md").read_text(encoding="utf-8"), \
+        "非终端输出 markdown 原文"
+    assert cli.main(["doc", "jobs"]) == 1
+    err = capsys.readouterr().err
+    assert "no manual page for `jobs`" in err and "job cp2k" in err, "猜错时把列表给出来"
 
 
 def test_config_init(tmp_path, monkeypatch, capsys):

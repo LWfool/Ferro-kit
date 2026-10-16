@@ -14,6 +14,7 @@
 use pyo3::prelude::*;
 
 mod analysis;
+mod doc;
 mod io;
 mod jobs;
 mod structure;
@@ -31,6 +32,7 @@ fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     jobs::register(m)?;
     structure::register(m)?;
     analysis::register(m)?;
+    doc::register(m)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

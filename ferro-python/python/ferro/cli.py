@@ -27,10 +27,11 @@ Commands:
   conv          Generate a convergence test (VASP fine grid / ENCUT, CP2K cutoffs)
   conv analyze  Compare its single points: energy, pressure, forces
   config init   Write a commented configuration template
+  doc           Read the manual (`ferro-py doc job vasp`)
 
 Run `ferro-py <COMMAND> -h` for the parameters of one command.
 
-Full documentation:  ferro doc python"""
+Full documentation:  ferro-py doc"""
 
 CONFIG_INIT_HELP = """\
 ferro-py config init — Write a commented configuration template
@@ -54,7 +55,7 @@ Examples:
   ferro-py config init
   ferro-py config init -o ~/hpc.toml --mkdir     # then: export FERRO_CONFIG=~/hpc.toml
 
-Full documentation:  ferro doc python config"""
+Full documentation:  ferro-py doc config"""
 
 
 JOB_HELP = """\
@@ -108,7 +109,7 @@ Examples:
   ferro-py job -s cp2k -t aimd -i traj.lammpstrj --number 20 --temperature 1500 -o md/
   ferro-py job -s qe -t opt -i 'cifs/*.cif' --vary-cell --template my_relax.in -o relax/
 
-Full documentation:  ferro doc python job"""
+Full documentation:  ferro-py doc job"""
 
 
 JOB_TEMPLATE_HELP = """\
@@ -133,7 +134,7 @@ Examples:
   ferro-py job template -s vasp -t aimd -o my_aimd/
   ferro-py job -s vasp -t aimd -i POSCAR --template my_aimd/INCAR -o md/
 
-Full documentation:  ferro doc python job"""
+Full documentation:  ferro-py doc job"""
 
 
 class UsageError(Exception):
@@ -392,7 +393,7 @@ Examples:
   ferro-py conv -s vasp --scan encut=500:900:100 -i traj.lammpstrj --number 3 -o encut/
   ferro-py conv -s cp2k --scan finer-grid -i POSCAR -o fg/
 
-Full documentation:  ferro doc python conv"""
+Full documentation:  ferro-py doc conv"""
 
 CONV_ANALYZE_HELP = """\
 ferro-py conv analyze — Compare the single points of a convergence test
@@ -422,7 +423,7 @@ Examples:
   ferro-py conv analyze encut/
   ferro-py conv analyze ng/ --ref 4 --df-rms 2
 
-Full documentation:  ferro doc python conv"""
+Full documentation:  ferro-py doc conv"""
 
 
 def conv_parser():
@@ -542,7 +543,72 @@ def run_conv_analyze(argv):
     return 1 if failed else 0
 
 
-COMMANDS = {"config": run_config, "job": run_job, "conv": run_conv}
+DOC_HELP = """\
+ferro-py doc — Read the manual of ferro-py
+
+  The manual pages of the ferro-py commands and the Python API, compiled into the
+  package, so they are at hand on a cluster without the sources or the ferro
+  binary. On a terminal the page is laid out for it and shown through $PAGER.
+
+Parameters:
+  TOPIC...              The page to read, named after the command (`job vasp`)
+                        [none: list the pages]
+  -h, --help            This page
+
+Output:
+  The page on stdout, through $PAGER (default `less -R`) on a terminal. Piped or
+  redirected, the markdown source as written: `ferro-py doc job > job.md`.
+  NO_COLOR=1 turns colours off. An unknown topic prints the list and exits 1.
+
+Examples:
+  ferro-py doc
+  ferro-py doc job cp2k
+  ferro-py doc conv > conv.md
+
+Full documentation:  ferro-py doc"""
+
+
+def doc_parser():
+    p = new_parser("ferro-py doc")
+    p.add_argument("topic", nargs="*")
+    return p
+
+
+def run_doc(argv):
+    import subprocess
+
+    from ferro._ferro import _doc_pages, _render_markdown
+
+    # 主题解析、列表、分页器与 ferro-cli/src/doc.rs 两处相似，一边 Rust、一边 Python，
+    # 按 R6 不合并（理由见 ferro-python/src/doc.rs 文件头）
+    args = parse(doc_parser(), DOC_HELP, argv)
+    pages = _doc_pages()
+    width = max(len(topic) for topic, _, _ in pages)
+    listing = "ferro-py doc — the manual of ferro-py\n\nTopics:\n" + "".join(
+        f"  {topic:<{width}}  {source}\n" for topic, source, _ in pages) + "\nRead one with:\n  ferro-py doc job vasp\n"
+    if not args.topic:
+        print(listing, end="")
+        return 0
+    asked = " ".join(args.topic).lower()
+    text = next((text for topic, _, text in pages if topic == asked), None)
+    if text is None:
+        # 猜错的主题名不该只说「没有」—— 列表就在手边，直接给出来
+        print(f"no manual page for `{asked}`\n\n{listing}", end="", file=sys.stderr)
+        return 1
+    if not sys.stdout.isatty():
+        sys.stdout.write(text)
+        return 0
+    rendered = _render_markdown(text)
+    pager = os.environ.get("PAGER", "less -R").split()
+    try:
+        # 用户在读到末尾前按 q，communicate 自己吞掉 EPIPE
+        subprocess.run(pager, input=rendered, text=True, check=False)
+    except (OSError, IndexError):   # 分页器不存在，或 PAGER 为空
+        sys.stdout.write(rendered)
+    return 0
+
+
+COMMANDS = {"config": run_config, "job": run_job, "conv": run_conv, "doc": run_doc}
 
 
 def main(argv=None):
