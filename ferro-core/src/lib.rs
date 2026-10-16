@@ -21,7 +21,6 @@ pub mod units;
 pub mod error;
 pub mod network_type;
 pub mod cluster;
-pub mod spin;
 
 // top-level re-exports for downstream crates
 pub use array_order::{matrix3_from_row_major, matrix3_row_major};
@@ -33,10 +32,6 @@ pub use trajectory::{select_range, spread_range, Trajectory, TrajectoryMetadata}
 pub use cube_data::CubeData;
 pub use table::{Column, Table};
 pub use error::{ChemError, Result};
-pub use spin::{
-    assign_oxidation_states, guess_spin, parity_min_multiplicity,
-    total_electron_count, SpinGuess, SpinMethod,
-};
 pub use network_type::{
     AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame, classify_frame_detailed,
 };
