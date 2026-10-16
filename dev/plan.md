@@ -25,7 +25,9 @@
 | 模板 | 模板即原生输入文件；内置 9 份，用户模板目录同名覆盖；未知键原样保留（不提示：三个程序都没有可靠的全量键表）。2026-10-16 用户定的用法：`ferro-py job template -s … -t … -o DIR` 导出通用模板（头注释写明程序改写哪些键、哪些须自己加），用户改完以 `--template` 读回再合并结构；命令行显式给的量覆盖模板，没给的沿用模板 |
 | 默认值（2026-10-16 用户定） | 内置模板泛函 PBE-D3(BJ)；AIMD 1 fs × 2000 步；k 点 kspacing 0.5 Å⁻¹，VASP 写成 INCAR 的 `KSPACING`、不生成 KPOINTS，网格 1×1×1 时提示可用 vasp_gam；SCF 不收敛照跑（CP2K `IGNORE_CONVERGENCE_FAILURE`）只在 aimd；并行参数内置模板不写，模板头注释与生成时提示用户自己加。其余默认值在模板导出后由用户对着模板审 |
 | 系综 | VASP、QE 只做 NVT（QE `vc-md` 不支持热浴；npt 报错）；CP2K 支持 NVT / NPT_I / NPT_F，`--ensemble nvt\|npt_i\|npt_f`，NPT_F 的 `VIRIAL` 不开放（默认全部方向，要单方向改模板），NPT 写 `STRESS_TENSOR ANALYTICAL`（D-M4） |
-| 收敛测试（2026-10-16 新增） | `ferro-py conv` 生成一组单点（每档一个子目录），`ferro-py conv analyze DIR` 读回输出，以最高档（或 `--ref`）为参考，报总能量偏差（meV/atom）、压力偏差、最大力偏差、逐原子力偏差的 RMS；支持多帧（选帧同 job），每帧每档一行 CSV，终端表取各帧最大。阈值只作提示，取值查惯例。VASP 先测细网格 NGXF/NGYF/NGZF 再测 ENCUT（r2SCAN 的经验，PBE 未定）；CP2K 测 CUTOFF 与 XC 细网格；QE 的单点能量 / 力 / 应力提取与截断能测试放下一批。读输出与写表在 Rust（复用 OUTCAR / CP2K reader，暴露 `write_table`），偏差算术在 Python |
+| VASP meta-GGA（2026-10-16 用户定） | 模板写了 METAGGA 时 ALGO = All + ISEARCH = 1，并显式写 NGXF/NGYF/NGZF = `--fine-grid` × 粗网格（默认 2；含 Zn 可能要 3，只提示）；MAGMOM 等结构相关数组键不检查（氧化物玻璃用不到） |
+| CP2K 方法（2026-10-16 用户定） | GPW（GTH）与 GAPW 全电子都支持，由模板的 `&QS METHOD` 决定；全电子基组 pob-TZVP-rev2 系列（不涉及四五周期以后的元素）、`POTENTIAL ALL`；用户发现 GTH-SCAN 部分元素有问题（已报开发者），全电子更安全；`GAPW_ACCURATE_XCINT` 写进模板、默认注释掉。用户用 CP2K 2025.2 与 2026.2 |
+| 收敛测试（2026-10-16 新增） | `ferro-py conv` 生成一组单点（每档一个子目录），`ferro-py conv analyze DIR` 读回输出，以最高档（或 `--ref`）为参考，报总能量偏差（meV/atom）、压力偏差、最大力偏差、逐原子力偏差的 RMS；支持多帧（选帧同 job），每帧每档一行 CSV，终端表取各帧最大。阈值只作提示，取值查惯例。VASP 先测细网格 NGXF/NGYF/NGZF 再测 ENCUT（r2SCAN 的经验，PBE 未定）；CP2K 测 CUTOFF、REL_CUTOFF 与 `USE_FINER_GRID` 开 / 关（不扫 FINE_GRID_FACTOR；开细网格后 CUTOFF 可能不必那么高，但不一定所有元素都要细网格），GAPW 时加 `GAPW_ACCURATE_XCINT` 开 / 关；QE 的单点能量 / 力 / 应力提取与截断能测试放下一批。读输出与写表在 Rust（复用 OUTCAR / CP2K reader，暴露 `write_table`），偏差算术在 Python |
 | 程序改动的量 | 结构、电荷、多重度（奇偶校验）、k 点（按 kspacing，模板写死的不动）、元素列表；AIMD 加温度/步数/时间步/系综；opt 加是否变胞 |
 | 自旋 | 默认按奇偶取 1 / 2；显式值与奇偶矛盾报错。未成对电子的方法未定，`guess_spin` 暂不暴露 |
 | 配置 | `~/.config/ferro/config.toml`（`FERRO_CONFIG` 覆盖）：POTCAR、CP2K data、QE 赝势、模板目录；运行时读 CP2K 自带数据文件，不迁 `cp2k_basis_db.rs` |
