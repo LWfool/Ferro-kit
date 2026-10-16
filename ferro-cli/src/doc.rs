@@ -176,6 +176,14 @@ const PAGES: &[Page] = &[
         text: include_str!("../../docs/src/workflow/spin.md"),
         section: None,
     },
+    // ferro-python 的概览（构成、依赖、职责、架构）。它的用法手册 docs/src/python/ 只由
+    // `ferro-py doc` 收录，这里不收 —— 两处收录同一份手册迟早走样
+    Page {
+        topic: "python",
+        source: "python.md",
+        text: include_str!("../../docs/src/python.md"),
+        section: None,
+    },
     Page {
         topic: "convert",
         source: "cli-reference.md § ferro convert",
