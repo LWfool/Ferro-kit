@@ -95,6 +95,8 @@ def test_fine_grid_rule():
     assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 2) == ([96, 96, 96], [192, 192, 192])
     assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 3)[1] == [288, 288, 288]
     assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 2.5)[1] == [240, 240, 240], "非整数倍向上取到 good size"
+    # PREC = Normal：3·G_cut·L/2π = 69.2 → 70
+    assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 2, "Normal") == ([70, 70, 70], [140, 140, 140])
 
 
 def test_metagga_writes_fine_grid(cfg, traj, tmp_path):
@@ -110,11 +112,13 @@ def test_metagga_writes_fine_grid(cfg, traj, tmp_path):
     tpl.write_text(r2scan + "NGXF = 100\nNGYF = 100\nNGZF = 100\n")
     kept = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["INCAR"])
     assert kept["NGXF"] == "100", "模板写了且未给 --fine-grid 就沿用"
-    tpl.write_text(r2scan.replace("PREC = Accurate", "PREC = Normal"))
-    with pytest.raises(JobError, match="PREC = Accurate"):
-        VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
-    with pytest.raises(JobError, match="meta-GGA"):
-        VaspGenerator(cfg).generate(traj, 0, JobOptions("sp", fine_grid=2))
+    tpl.write_text(r2scan.replace("PREC = Accurate", "PREC = Normal") + "ENCUT = 800\n")
+    normal = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["INCAR"])
+    assert [int(normal[k]) for k in ("NGXF", "NGYF", "NGZF")] == fine_grid(cell, 800, 2, "Normal")[1], \
+        "PREC 不是 Accurate 也照算，粗网格换 3/2·G_cut"
+    s = VaspGenerator(cfg).generate(traj, 0, JobOptions("sp", fine_grid=2))
+    assert "NGXF" in Incar.from_str(s.files["INCAR"]), "GGA 显式给了 --fine-grid 也照写"
+    assert any("rarely needs" in n for n in s.notes), "并提示多半用不着"
 
 
 def test_potcar_choice(cfg, traj, tmp_path):

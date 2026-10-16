@@ -35,7 +35,7 @@ class JobOptions:
     timestep: float | None = None     # fs
     ensemble: str | None = None
     vary_cell: bool = False           # 只用于 opt
-    fine_grid: float | None = None    # VASP meta-GGA: NGXF = fine_grid x NGX
+    fine_grid: float | None = None    # VASP：NGXF = fine_grid × NGX；CP2K：USE_FINER_GRID
 
     def check(self):
         if self.task not in TASKS:
@@ -158,7 +158,6 @@ class Generator:
 
     program = None
     template_name = None
-    extra_options = ()   # 只有这个程序认的 JobOptions 字段；别的程序给了就报错
 
     def __init__(self, config):
         self.config = config
@@ -188,9 +187,6 @@ class Generator:
     def generate(self, traj, frame, options, template=None):
         """``traj`` 的第 ``frame`` 帧 → InputSet。原子按 (Z, 符号) 排序，同 ``ferro convert``。"""
         options.check()
-        for name in ("fine_grid",):
-            if getattr(options, name) is not None and name not in self.extra_options:
-                raise JobError(f"{name} does not apply to {self.program} jobs")
         one = ferro.sort_atoms(traj.subset([frame]))
         if one.cell(0) is None or not all(one.pbc(0)):
             raise JobError("only periodic systems (a cell, periodic along a, b and c) are supported")

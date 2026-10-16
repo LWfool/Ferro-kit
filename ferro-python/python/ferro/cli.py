@@ -76,7 +76,8 @@ Parameters:
       --timestep FS     aimd: time step in fs  [the template's]
       --ensemble E      aimd: nvt | npt_i | npt_f (npt_* CP2K only)  [the template's]
       --vary-cell       opt: relax the cell too  [cell fixed]
-      --fine-grid F     vasp, METAGGA set: NGXF/NGYF/NGZF = F x NGX/NGY/NGZ  [2]
+      --fine-grid F     vasp: NGXF/NGYF/NGZF = F x NGX/NGY/NGZ  [2 with METAGGA, else
+                        unset]; cp2k: USE_FINER_GRID on; qe: ignored (no separate grid)
       --start N         First frame to take  (0-based, inclusive)  [0]
       --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
       --stride N        Take every Nth frame within [start, end]  [1]

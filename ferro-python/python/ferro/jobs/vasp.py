@@ -166,13 +166,16 @@ def _good_size(m):
         m += 1
 
 
-def fine_grid(cell, encut, factor):
-    """PREC = Accurate 的粗网格 NGi = 4·G_cut·|a_i|/2π（取 good size），细网格 NGiF = factor·NGi。
+def fine_grid(cell, encut, factor, prec="Accurate"):
+    """粗网格 NGi（取 good size）与细网格 NGiF = factor·NGi。
 
-    与用户 ``make_vasp_label.py`` 同一规则（那里另加了细网格间距上限，这里只按倍数）。
+    粗网格覆盖半径 2·G_cut（PREC = Accurate / High）或 3/2·G_cut（其余）的球，即
+    NGi = 4（或 3）·G_cut·|a_i|/2π。Accurate 与用户 ``make_vasp_label.py`` 同一规则
+    （那里另加了细网格间距上限，这里只按倍数）。
     """
     gcut = math.sqrt(encut / HBAR2_2M)
-    coarse = [_good_size(round(4 * gcut * math.sqrt(sum(x * x for x in a)) / (2 * math.pi))) for a in cell]
+    k = 4 if prec.strip().upper() in ("ACCURATE", "HIGH") else 3
+    coarse = [_good_size(round(k * gcut * math.sqrt(sum(x * x for x in a)) / (2 * math.pi))) for a in cell]
     return coarse, [_good_size(math.ceil(factor * n)) for n in coarse]
 
 
@@ -187,7 +190,6 @@ def _potcar_field(text, name):
 class VaspGenerator(Generator):
     program = "vasp"
     template_name = "INCAR"
-    extra_options = ("fine_grid",)
 
     def potcar(self, element):
         """元素 → (POTCAR 文本, 所在路径)。变体：配置 > VASP 推荐 > 元素名本身。"""
@@ -223,20 +225,19 @@ class VaspGenerator(Generator):
                 incar["ALGO"] = "All"
                 incar["ISEARCH"] = 1
                 notes.append(f"METAGGA = {metagga}: ALGO = All, ISEARCH = 1")
-            # meta-GGA 的 egg-box 噪声对细网格敏感：显式写 NGXF/NGYF/NGZF。模板已写且未给
-            # --fine-grid 就沿用模板
-            if options.fine_grid is not None or "NGXF" not in incar:
-                if incar.get("PREC", "Normal").strip().upper() != "ACCURATE":
-                    raise JobError("the fine grid is computed for PREC = Accurate; set it in the template")
-                factor = options.fine_grid if options.fine_grid is not None else 2
-                encut = float(incar["ENCUT"]) if "ENCUT" in incar else enmax
-                coarse, fine = fine_grid(one.cell(0), encut, factor)
-                for key, n in zip(("NGXF", "NGYF", "NGZF"), fine):
-                    incar[key] = n
-                notes.append(f"fine grid {factor:g} x NG {coarse} -> NGXF/NGYF/NGZF {fine}"
-                             + (" (Zn present: a factor of 3 may be needed)" if "Zn" in elements and factor < 3 else ""))
-        elif options.fine_grid is not None:
-            raise JobError("--fine-grid applies to meta-GGA (METAGGA set in the INCAR) only")
+        # meta-GGA 的 egg-box 噪声对细网格敏感：显式写 NGXF/NGYF/NGZF（模板已写且未给
+        # --fine-grid 就沿用模板）。GGA 给了 --fine-grid 也照写，只提示多半用不着
+        if options.fine_grid is not None or (metagga not in ("", "NONE", "--") and "NGXF" not in incar):
+            factor = options.fine_grid if options.fine_grid is not None else 2
+            encut = float(incar["ENCUT"]) if "ENCUT" in incar else enmax
+            prec = incar.get("PREC", "Normal")
+            coarse, fine = fine_grid(one.cell(0), encut, factor, prec)
+            for key, n in zip(("NGXF", "NGYF", "NGZF"), fine):
+                incar[key] = n
+            notes.append(f"fine grid {factor:g} x NG {coarse} (PREC {prec.strip()}) -> NGXF/NGYF/NGZF {fine}"
+                         + (" (Zn present: a factor of 3 may be needed)" if "Zn" in elements and factor < 3 else ""))
+            if metagga in ("", "NONE", "--"):
+                notes.append("no METAGGA: a GGA rarely needs an explicit fine grid")
 
         n_valence = sum(c * z for c, z in zip(counts, zval))
         mult = multiplicity(n_valence, options.charge, options.multiplicity)

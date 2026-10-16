@@ -276,6 +276,15 @@ class Cp2kGenerator(Generator):
             kind.set("BASIS_SET", basis)
             kind.set("POTENTIAL", potential)
 
+        if options.fine_grid is not None:
+            # CP2K 只有开关（倍数是它自己的 FINE_GRID_FACTOR，2026.x 起才有、默认 4），
+            # --fine-grid 的数值在这里不用
+            dft.section("XC/XC_GRID", create=True).set("USE_FINER_GRID", "T")
+            xc = dft.section("XC/XC_FUNCTIONAL")
+            names = [xc.param] + [s.name for s in xc.items if isinstance(s, Section)] if xc else []
+            mgga = any(re.search(r"MGGA|SCAN|TPSS", n or "", re.I) for n in names)
+            notes.append("USE_FINER_GRID on (the --fine-grid factor is not used by CP2K)"
+                         + ("" if mgga else "; not a meta-GGA, the finer grid is probably unnecessary"))
         self._kpoints(one, options, dft, notes)
         self._motion(root, force_eval, options, notes)
         return InputSet({"cp2k.inp": root.to_str()}, notes=notes)
