@@ -25,6 +25,7 @@
   ibrav = 0
   vdw_corr = 'dft-d3'
   dftd3_version = 4
+  nosym = .true.  ! thermostat velocities break the initial symmetry (checkallsym aborts)
 /
 &ELECTRONS
   electron_maxstep = 200

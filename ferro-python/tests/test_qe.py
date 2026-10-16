@@ -77,6 +77,7 @@ def test_charge_spin_and_md(cfg, traj):
     assert (qe.get("system", "tot_charge"), qe.get("system", "nspin"), qe.get("system", "tot_magnetization")) == \
         ("1", "2", "1")
     assert (qe.get("ions", "tempw"), qe.get("control", "nstep"), qe.get("control", "dt")) == ("1500", "10", "41.3411")
+    assert qe.get("system", "nosym") == ".true.", "MD 不关对称性，热浴给的速度破坏对称后 checkallsym 中止"
     with pytest.raises(JobError, match="NVT only"):
         QeGenerator(cfg).generate(traj, 0, JobOptions("aimd", ensemble="npt_i"))
 
