@@ -68,6 +68,14 @@ def test_vasp_encut_scan_layout(vasp_cfg, tmp_path):
     assert (job / "POTCAR").read_text() == (out / "POTCAR").read_text()
 
 
+@pytest.mark.parametrize("software, scan", [("vasp", "fine-grid=2,3"), ("cp2k", "finer-grid")])
+def test_fine_grid_option_clashes_with_grid_scans(tmp_path, capsys, software, scan):
+    # cp2k 的 --fine-grid 会把 off 档也打开 USE_FINER_GRID，两档成了同一份输入
+    assert cli.main(["conv", "-s", software, "--scan", scan, "--fine-grid", "2",
+                     "-i", str(NVT), "-o", str(tmp_path)]) == 1
+    assert "both set the fine grid" in capsys.readouterr().err
+
+
 def test_cp2k_switch_scans(tmp_path):
     text = Cp2kGenerator.builtin_template("sp")
     apply = conv.SCANS["cp2k"]["finer-grid"][0]

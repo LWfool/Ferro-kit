@@ -363,7 +363,8 @@ Parameters:
       --charge N        Total charge  [0]
       --multiplicity M  2S+1, checked against the electron count  [1 if even, 2 if odd]
       --kspacing K      k-point spacing in 1/Å, 2π included  [per program]
-      --fine-grid F     vasp: NGXF = F x NGX at every value  [2 with METAGGA]
+      --fine-grid F     vasp: NGXF = F x NGX at every value  [2 with METAGGA]; cp2k:
+                        USE_FINER_GRID on. Not with --scan fine-grid / finer-grid
       --start N         First frame to take  (0-based, inclusive)  [0]
       --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
       --stride N        Take every Nth frame within [start, end]  [1]
@@ -464,8 +465,9 @@ def run_conv(argv):
     options = JobOptions(task="sp", charge=args.charge, multiplicity=args.multiplicity,
                          kspacing=args.kspacing, fine_grid=args.fine_grid)
     options.check()
-    if parameter == "fine-grid" and args.fine_grid is not None:
-        raise UsageError("--fine-grid and --scan fine-grid both set the fine grid; give one")
+    # cp2k 的 --fine-grid 无条件打开 USE_FINER_GRID，会把 finer-grid 扫描的 off 档也改成 on
+    if parameter in ("fine-grid", "finer-grid") and args.fine_grid is not None:
+        raise UsageError(f"--fine-grid and --scan {parameter} both set the fine grid; give one")
     type_map = parse_type_map(args.type_map) if args.type_map else None
     files = expand_inputs(args.input)
     generator = generator(config.load())
