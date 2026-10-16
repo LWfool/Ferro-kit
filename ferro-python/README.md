@@ -52,6 +52,8 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 |---|---|
 | `read(path, units=None, atom_style=None, type_map=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style`, a dump with velocities/forces needs `units`; a dump without an element column takes `type_map={1: "Zr", 2: "O"}` |
 | `write(traj, path, units=None)` | Write by extension; velocities/forces to a dump need `units`; QE input is read-only |
+| `read_output(path)` | VASP OUTCAR / vasprun.xml, CP2K single-point / MD output → `(Trajectory, stats)`; frames carry energy, forces, stress; dropped frames (SCF not converged…) are counted in `stats` |
+| `write_table(path, columns, meta=[])` | A CSV in ferro's table layout; `columns` = `[(name, numbers or strings)]` |
 | `sort_atoms(traj)` | Per frame, atoms in (Z, symbol) order — the order `ferro convert` writes |
 | `poscar_string(traj, frame_index=0, comment="ferro")` | POSCAR text of one frame |
 | `qe_structure_cards(traj, pseudos, frame_index=0)` | `ATOMIC_SPECIES` / `CELL_PARAMETERS` / `ATOMIC_POSITIONS`; `pseudos` maps every element to a file name |
@@ -66,7 +68,8 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 
 `Trajectory` methods: `n_frames()`, `n_atoms()`, `elements()`,
 `positions(frame)`, `symbols(frame)`, `cell(frame)`, `pbc(frame)`, `charge(frame)`,
-`multiplicity(frame)`, `tail(n)`, `subset(indices)`,
+`multiplicity(frame)`, `energy(frame)` [eV], `forces(frame)` [eV/Å], `stress(frame)` [eV/Å³, positive =
+compression], `tail(n)`, `subset(indices)`,
 `frame_indices(start=None, end=None, stride=None, number=None)` (the frame choice of
 `ferro convert`: 0-based, inclusive, all frames by default), `len()`, `repr()`.
 

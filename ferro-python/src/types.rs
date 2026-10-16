@@ -86,6 +86,25 @@ impl PyTrajectory {
         Ok(self.frame_ref(frame)?.multiplicity)
     }
 
+    /// 指定帧的总能量 \[eV\]；结构文件没有能量时为 `None`。
+    fn energy(&self, frame: usize) -> PyResult<Option<f64>> {
+        Ok(self.frame_ref(frame)?.energy)
+    }
+
+    /// 指定帧每个原子的力 \[eV/Å\]，顺序与 `positions` 一致；没有时为 `None`。
+    fn forces(&self, frame: usize) -> PyResult<Option<Vec<(f64, f64, f64)>>> {
+        Ok(self.frame_ref(frame)?.forces.as_ref()
+            .map(|fs| fs.iter().map(|f| (f.x, f.y, f.z)).collect()))
+    }
+
+    /// 指定帧的应力张量 \[eV/Å³\]，3×3 行优先，**正 = 压缩**（CP2K / VASP / QE 的符号）；
+    /// 没有时为 `None`。
+    fn stress(&self, frame: usize) -> PyResult<Option<Vec<Vec<f64>>>> {
+        Ok(self.frame_ref(frame)?.stress.as_ref().map(|s| {
+            (0..3).map(|i| (0..3).map(|j| s[(i, j)]).collect()).collect()
+        }))
+    }
+
     /// 指定帧三个方向的周期性 (x, y, z)。
     fn pbc(&self, frame: usize) -> PyResult<(bool, bool, bool)> {
         let [x, y, z] = self.frame_ref(frame)?.pbc;

@@ -6,8 +6,9 @@ use ferro_io::{
     apply_type_map, is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
     read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
     write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_xyz,
-    LammpsUnits,
+    LammpsUnits, read_aimd_with_stats, TableFormat,
 };
+use ferro_core::Table;
 use pyo3::prelude::*;
 
 use crate::pyerr;
@@ -116,8 +117,51 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
     }
 }
 
+/// 读计算输出（VASP OUTCAR / vasprun.xml、CP2K 单点与 MD 输出），按文件内容识别程序，
+/// 同 `ferro dataset collect`。返回 `(Trajectory, 统计)`：帧带能量、力、应力；SCF 未收敛等
+/// 被丢弃的帧不在轨迹里，个数在统计里（`scf_failed`、`incomplete`…），调用方据此报原因。
+#[pyfunction]
+fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
+    let (traj, s) = read_aimd_with_stats(Path::new(path)).map_err(pyerr)?;
+    Python::attach(|py| {
+        let mut stats = std::collections::BTreeMap::new();
+        let mut put = |k: &str, v: Py<PyAny>| { stats.insert(k.to_string(), v); };
+        put("format", s.format.name().into_pyobject(py)?.into_any().unbind());
+        for (k, v) in [("steps", s.n_steps), ("kept", s.n_kept), ("scf_failed", s.n_scf_failed),
+                       ("incomplete", s.n_incomplete), ("bad_composition", s.n_bad_composition),
+                       ("no_cell", s.n_no_cell)] {
+            put(k, v.into_pyobject(py)?.into_any().unbind());
+        }
+        put("version", s.version.into_pyobject(py)?.into_any().unbind());
+        Ok((PyTrajectory::new(traj), stats))
+    })
+}
+
+/// 写一张表，格式与 ferro 其他分析产物相同（`# ` 开头的元数据行、表头、数据；NaN 写成空格）。
+/// `columns` 为 `[(列名, 数值列表或字符串列表)]`，各列等长。
+#[pyfunction]
+#[pyo3(signature = (path, columns, meta = Vec::new()))]
+fn write_table(path: &str, columns: Vec<(String, Bound<'_, PyAny>)>, meta: Vec<String>) -> PyResult<()> {
+    let mut table = Table::new();
+    for line in meta {
+        table.meta_line(line);
+    }
+    for (name, values) in columns {
+        if let Ok(v) = values.extract::<Vec<f64>>() {
+            table.push_num(name, v);
+        } else if let Ok(v) = values.extract::<Vec<String>>() {
+            table.push_text(name, v);
+        } else {
+            return Err(pyerr(format!("column {name}: values must be all numbers or all strings")));
+        }
+    }
+    ferro_io::write_table(&table, Path::new(path), TableFormat::Csv).map_err(pyerr)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(read, m)?)?;
     m.add_function(wrap_pyfunction!(write, m)?)?;
+    m.add_function(wrap_pyfunction!(read_output, m)?)?;
+    m.add_function(wrap_pyfunction!(write_table, m)?)?;
     Ok(())
 }

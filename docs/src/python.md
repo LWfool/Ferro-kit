@@ -63,6 +63,9 @@ this type too).
 | `multiplicity(frame)` | `int` | Spin multiplicity 2S+1 |
 | `tail(n)` | `Trajectory` | New trajectory with the last `n` frames |
 | `pbc(frame)` | `(bool,bool,bool)` | Periodicity along a, b, c |
+| `energy(frame)` | `float \| None` | Total energy [eV]; None for structure files |
+| `forces(frame)` | `list[(float,float,float)] \| None` | Forces [eV/Å], same order as `positions` |
+| `stress(frame)` | `list[list[float]] \| None` | Stress tensor [eV/Å³], row-major, **positive = compression** (the sign CP2K, VASP and QE print) |
 | `subset(indices)` | `Trajectory` | New trajectory with the given frames, in the given order |
 | `frame_indices(start=None, end=None, stride=None, number=None)` | `list[int]` | The frame choice of `ferro convert`: 0-based, `end` inclusive, all frames by default |
 | `len(t)` | `int` | = `n_frames()` |
@@ -93,6 +96,19 @@ unknown symbol, or `type_map` on anything but a dump is an error.
 
 Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR*`/`CONTCAR*`/`vasp`/`poscar`/`pos` (POSCAR format),
 `data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
+
+### `read_output(path) -> (Trajectory, dict)`
+
+Reads a calculation output — VASP `OUTCAR` / `vasprun.xml`, CP2K single-point or MD output —
+recognised by its content, as `ferro dataset collect` does.  Frames carry energy, forces and
+stress.  Frames that were dropped (SCF not converged, incomplete) are not in the trajectory; the
+dict counts them (`scf_failed`, `incomplete`, …) next to `format`, `steps`, `kept` and `version`.
+
+### `write_table(path, columns, meta=[])`
+
+Writes a CSV in the layout of every other ferro product: `# `-prefixed `meta` lines, a header,
+the data; NaN becomes an empty field.  `columns` is a list of `(name, values)`, each column all
+numbers or all strings, all of the same length.
 
 ### Building blocks for input generation
 
