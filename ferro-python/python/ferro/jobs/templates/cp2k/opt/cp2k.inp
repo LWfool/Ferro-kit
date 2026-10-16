@@ -22,7 +22,7 @@
     MAX_FORCE 4.5E-4  # Hartree/bohr (CP2K default)
   &END GEO_OPT
   &CELL_OPT
-    TYPE DIRECT_CELL_OPT
+    # no TYPE: CP2K 2026.x removed it (DIRECT_CELL_OPT, the old default, is the only mode)
     OPTIMIZER BFGS
     MAX_ITER 200
     MAX_FORCE 4.5E-4

@@ -163,6 +163,8 @@ def test_md_ensembles(cfg, traj):
 def test_vary_cell_and_errors(cfg, traj, tmp_path):
     root = Section.from_str(Cp2kGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True)).files["cp2k.inp"])
     assert root.section("GLOBAL").get("RUN_TYPE") == "CELL_OPT"
+    assert root.section("MOTION/CELL_OPT").get("TYPE") is None, \
+        "CP2K 2026.2 删了 CELL_OPT/TYPE，写了即中止（不变胞的 GEO_OPT 也一样，因为节总在）"
     smear = Cp2kGenerator.builtin_template("sp").replace("      &OT\n", "      &SMEAR ON\n      &END SMEAR\n      &OT\n")
     tpl = tmp_path / "t.inp"
     tpl.write_text(smear)
