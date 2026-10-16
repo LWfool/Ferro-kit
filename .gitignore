@@ -51,5 +51,9 @@ cmp_out/
 # mdBook 构建产物（本地 mdbook build 生成）
 docs/book/
 
-# maturin develop �����混�����������������������模���
+# maturin develop 把扩展模块装进混合布局的包目录
 ferro-python/python/ferro/*.so
+
+# macOS / Finder 复制出的副本（「名字 2」「名字 2.rs」），曾把 target 2/ 误提交进历史
+* [0-9]
+* [0-9].*
