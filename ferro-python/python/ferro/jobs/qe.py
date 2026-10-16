@@ -5,7 +5,13 @@ namelist 的解析与写出调 Rust（``ferro.parse_qe_input_parts`` / ``ferro.w
 卡片部分按行原样保留（含注释），只有被替换的卡片才重写。
 """
 
+import re
+
 import ferro
+from ferro import config as _config
+from ferro.jobs.base import Generator, InputSet, JobError, kmesh, multiplicity
+
+RY_TIME_FS = 0.048378   # Rydberg 原子时间单位（INPUT_PW dt：1 a.u. = 4.8378e-17 s）
 
 # pw.x 的全部卡片名（INPUT_PW）。卡片在 Rust reader 里另有按名查找（readers/qe.rs
 # find_card），那里只为读结构定位三张卡片，这里为编辑切出全部卡片，用途不同，不合并
@@ -60,7 +66,7 @@ class QeInput:
 
     def __init__(self, namelists, head, cards):
         self.namelists = namelists  # {名小写: {键小写: 原文值}}，保持顺序
-        self._head = head
+        self.head = head            # 第一张卡片之前、namelist 之外的行（多为注释）
         self._cards = cards
 
     @classmethod
@@ -111,7 +117,136 @@ class QeInput:
 
     def to_str(self):
         out = ferro.write_namelists([(n, list(e.items())) for n, e in self.namelists.items()])
-        body = self._head + [line for c in self._cards for line in c[1:]]
+        body = self.head + [line for c in self._cards for line in c[1:]]
         while body and not body[0].strip():
             body.pop(0)
         return out + "\n" + "\n".join(body).rstrip("\n") + "\n"
+
+
+# ── 生成器 ───────────────────────────────────────────────────────────────────
+
+def _fortran_float(text):
+    """``6.000000000000000E+000`` / ``1.0d-8`` → float；空串为 0。"""
+    return float(text.strip().lower().replace("d", "e")) if text.strip() else 0.0
+
+
+def upf_header(path):
+    """UPF 头部 → (元素, 价电子数, wfc 建议截断, rho 建议截断)，截断单位 Ry，未给为 0。
+
+    UPF v2 是 ``<PP_HEADER element="O" z_valence="6.0" wfc_cutoff=… rho_cutoff=…/>``；
+    v1 是 ``<PP_HEADER>`` 块里按行的「值  说明」。只读文件开头，UPF 可达数 MB。
+    """
+    with open(path, encoding="utf-8", errors="replace") as f:
+        head = f.read(65536)
+    m = re.search(r"<PP_HEADER\b([^>]*)>", head, re.S)
+    if m and "=" in m.group(1):
+        attrs = {k: v.strip() for k, v in re.findall(r'(\w+)\s*=\s*"([^"]*)"', m.group(1))}
+        numbers = [_fortran_float(attrs.get(k, "")) for k in ("z_valence", "wfc_cutoff", "rho_cutoff")]
+        return attrs.get("element", ""), *numbers
+    block = head.split("<PP_HEADER>", 1)[1].split("</PP_HEADER>", 1)[0] if "<PP_HEADER>" in head else ""
+    element, z, wfc, rho = "", 0.0, 0.0, 0.0
+    for line in block.splitlines():
+        words = line.split()
+        text = line.lower()
+        if text.rstrip().endswith("element") and words:
+            element = words[0]
+        elif "z valence" in text and words:
+            z = _fortran_float(words[0])
+        elif "suggested cutoff" in text and len(words) >= 2:
+            wfc, rho = (_fortran_float(w) for w in words[:2])
+    return element, z, wfc, rho
+
+
+class QeGenerator(Generator):
+    program = "qe"
+    template_name = "pw.in"
+
+    def pseudos(self, elements):
+        """元素 → (文件名, 价电子数, wfc, rho)。索引 pseudo_dir 里全部 UPF，按头部的元素归类。"""
+        root = _config.require(self.config, "qe", "pseudo_dir")
+        if not root.is_dir():
+            raise JobError(f"[qe] pseudo_dir {root} is not a directory")
+        index = {}
+        for path in sorted(p for p in root.iterdir() if p.suffix.lower() == ".upf"):
+            element, z, wfc, rho = upf_header(path)
+            element = element or re.match(r"[A-Za-z][a-z]?", path.name).group(0).capitalize()
+            index.setdefault(element, []).append((path.name, z, wfc, rho))
+        chosen = {}
+        for e in elements:
+            wanted = self.config["qe"]["pseudos"].get(e)
+            found = index.get(e, [])
+            if wanted is not None:
+                match = [x for x in found if x[0] == wanted]
+                if not match:
+                    raise JobError(f"[qe.pseudos] {e} = {wanted}: no such UPF for {e} in {root}")
+                chosen[e] = match[0]
+            elif len(found) == 1:
+                chosen[e] = found[0]
+            else:
+                raise JobError(
+                    f"{len(found) or 'no'} UPF files for {e} in {root}"
+                    + (f" ({', '.join(x[0] for x in found)}): choose one in [qe.pseudos]" if found else ""))
+            if chosen[e][1] <= 0:
+                raise JobError(f"{chosen[e][0]}: no z_valence in its PP_HEADER")
+        return root, chosen
+
+    def build(self, one, options, template_text):
+        qe = QeInput.from_str(template_text)
+        qe.head = []   # 模板头注释是写给改模板的人看的，不带进生成的 pw.in
+        notes = []
+        elements = one.elements()
+        symbols = one.symbols(0)
+        root, chosen = self.pseudos(elements)
+        notes.append("UPF: " + ", ".join(f"{e} {p[0]}" for e, p in chosen.items()))
+
+        qe.set("control", "pseudo_dir", str(root) + "/")
+        qe.set("system", "nat", len(symbols))
+        qe.set("system", "ntyp", len(elements))
+        for key, i in (("ecutwfc", 2), ("ecutrho", 3)):
+            if qe.get("system", key) is None:
+                suggested = max(p[i] for p in chosen.values())
+                if suggested <= 0:
+                    raise JobError(f"the UPF headers suggest no {key}: write {key} in the template")
+                qe.set("system", key, suggested)
+                notes.append(f"{key} = {suggested:g} Ry (largest UPF suggestion)")
+
+        n_valence = sum(symbols.count(e) * chosen[e][1] for e in elements)
+        mult = multiplicity(n_valence, options.charge, options.multiplicity)
+        qe.set("system", "tot_charge", options.charge)
+        if mult > 1:
+            qe.set("system", "nspin", 2)
+            qe.set("system", "tot_magnetization", mult - 1)
+        notes.append(f"{n_valence - options.charge:g} electrons, multiplicity {mult}")
+
+        cards = ferro.qe_structure_cards(one, {e: p[0] for e, p in chosen.items()})
+        for block in cards.strip().split("\n\n"):
+            qe.set_card(block.split()[0], block)
+        if options.kspacing is not None or qe.card("K_POINTS") is None:
+            spacing = options.kspacing if options.kspacing is not None else 0.5
+            mesh = kmesh(one.cell(0), spacing)
+            if mesh == [1, 1, 1]:
+                qe.set_card("K_POINTS", "K_POINTS automatic\n  1 1 1  0 0 0")
+            else:
+                qe.set_card("K_POINTS", "K_POINTS automatic\n  " + " ".join(map(str, mesh)) + "  0 0 0")
+            notes.append(f"kspacing {spacing:g} -> mesh {' x '.join(map(str, mesh))}")
+        else:
+            notes.append("K_POINTS: kept as written in the template")
+        if options.fine_grid is not None:
+            notes.append("--fine-grid ignored: pw.x has no separate fine grid (the dense grid follows ecutrho)")
+
+        if options.task == "opt" and options.vary_cell:
+            qe.set("control", "calculation", "vc-relax")
+            if "cell" not in qe.namelists:
+                qe.set("cell", "cell_dynamics", "bfgs")
+                qe.set("cell", "press_conv_thr", 0.5)
+        if options.task == "aimd":
+            if options.ensemble not in (None, "nvt"):
+                raise JobError(f"QE jobs are NVT only (vc-md has no thermostat); --ensemble {options.ensemble} "
+                               "is a CP2K option")
+            if options.temperature is not None:
+                qe.set("ions", "tempw", options.temperature)
+            if options.steps is not None:
+                qe.set("control", "nstep", options.steps)
+            if options.timestep is not None:
+                qe.set("control", "dt", round(options.timestep / RY_TIME_FS, 4))
+        return InputSet({"pw.in": qe.to_str()}, notes=notes)

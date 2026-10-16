@@ -5,7 +5,8 @@
 """
 
 from ferro.jobs.cp2k import Cp2kGenerator
+from ferro.jobs.qe import QeGenerator
 from ferro.jobs.vasp import VaspGenerator
 
 # 程序名 → Generator 子类；ferro-py job 的 -s 取值即此表的键
-GENERATORS = {"vasp": VaspGenerator, "cp2k": Cp2kGenerator}
+GENERATORS = {"vasp": VaspGenerator, "qe": QeGenerator, "cp2k": Cp2kGenerator}

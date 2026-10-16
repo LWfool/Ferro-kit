@@ -61,6 +61,13 @@ def test_bad_entries_are_errors(tmp_path, text, message):
         config.load(path)
 
 
+def test_paths_are_absolute_with_a_relative_config(tmp_path, monkeypatch):
+    # pw.x 在任务目录里跑，写进 pseudo_dir 的相对路径会指错地方
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "c.toml").write_text('[qe]\npseudo_dir = "upf"\n')
+    assert config.load("c.toml")["qe"]["pseudo_dir"] == tmp_path.resolve() / "upf"
+
+
 def test_ferro_config_overrides_location(tmp_path, monkeypatch):
     monkeypatch.setenv("FERRO_CONFIG", str(tmp_path / "x.toml"))
     assert config.config_path() == tmp_path / "x.toml"

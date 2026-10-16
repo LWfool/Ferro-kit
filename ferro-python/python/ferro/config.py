@@ -13,7 +13,7 @@ from pathlib import Path
 # "elements" 是 元素 → 值 的表，值的类型在第三列
 SCHEMA = {
     "vasp": {"potcar_dir": "path", "potcar": ("elements", str)},
-    "qe": {"pseudo_dir": "path", "pseudo_table": "path", "pseudos": ("elements", str)},
+    "qe": {"pseudo_dir": "path", "pseudos": ("elements", str)},
     "cp2k": {
         "data_dir": "path",
         "basis_family": str,
@@ -41,13 +41,13 @@ TEMPLATE = """\
 # Li = "Li_sv"
 
 [qe]
-# Directory holding the UPF files; written into pw.x's pseudo_dir
-# pseudo_dir = "~/pp/qe/SSSP_1.3.0_PBE_precision"
-# SSSP-style JSON {element: {filename, cutoff_wfc, cutoff_rho}}: file names and cutoffs
-# pseudo_table = "~/pp/qe/SSSP_1.3.0_PBE_precision.json"
+# Directory holding the UPF files, written into pw.x's pseudo_dir. ferro-py reads every
+# *.upf in it and takes the element, valence and suggested cutoffs from each PP_HEADER;
+# an element with one file there needs nothing more
+# pseudo_dir = "~/pp/qe/pbe"
 
 [qe.pseudos]
-# Element -> UPF file name, overriding pseudo_table
+# Element -> UPF file name in pseudo_dir, for elements with several files there
 # O = "O.pbe-n-kjpaw_psl.0.1.UPF"
 
 [cp2k]
@@ -113,7 +113,7 @@ def _check(path, name, kind, value):
         if not isinstance(value, str):
             raise ConfigError(f"{path}: {name} must be a path string")
         p = Path(os.path.expandvars(os.path.expanduser(value)))
-        return p if p.is_absolute() else (path.parent / p)
+        return p if p.is_absolute() else (path.resolve().parent / p)
     if isinstance(kind, tuple):
         _, value_type = kind
         if not isinstance(value, dict):

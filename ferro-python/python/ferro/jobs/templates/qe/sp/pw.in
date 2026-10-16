@@ -1,0 +1,30 @@
+! ferro-py template: Quantum ESPRESSO pw.x single point (energy, forces, stress), PBE-D3(BJ)
+!
+! ferro-py writes ATOMIC_SPECIES / CELL_PARAMETERS / ATOMIC_POSITIONS from the structure
+! and sets nat, ntyp, pseudo_dir ([qe] pseudo_dir of the configuration), tot_charge,
+! nspin + tot_magnetization (when the multiplicity is above 1) and K_POINTS
+! (--kspacing; a K_POINTS card written here is kept when --kspacing is not given).
+! ecutwfc / ecutrho: when not written here, the largest suggestion in the UPF headers.
+! Everything else is used as written. The functional comes from the UPF files.
+! Comments inside the namelists are not carried into the generated pw.in.
+&CONTROL
+  calculation = 'scf'
+  restart_mode = 'from_scratch'
+  prefix = 'pw'
+  outdir = './tmp/'
+  tstress = .true.
+  tprnfor = .true.
+  verbosity = 'high'
+  disk_io = 'low'
+/
+&SYSTEM
+  ibrav = 0
+  vdw_corr = 'dft-d3'
+  dftd3_version = 4
+/
+&ELECTRONS
+  electron_maxstep = 200
+  diagonalization = 'david'
+  conv_thr = 1e-10
+  diago_thr_init = 1e-4
+/
