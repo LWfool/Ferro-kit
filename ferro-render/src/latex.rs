@@ -124,6 +124,9 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "approx" => "≈",
         "pm" => "±",
         "sum" => "Σ",
+        // 表格单元格里的 |x| 只能写成 \lvert x \rvert：裸的 | 会把 markdown 表格切开
+        "lvert" | "rvert" | "vert" => "|",
+        "hbar" => "ħ",
         "langle" => "⟨",
         "rangle" => "⟩",
         "ldots" | "dots" | "cdots" => "…",
@@ -235,6 +238,8 @@ mod tests {
             (r"\theta = \arccos\!\left(x\right)", "θ = arccos(x)"),
             (r"m \in [f_\min\, m_\max]", "m ∈ [fₘᵢₙ mₘₐₓ]"),
             (r"i_k = n \bmod n_k", "iₖ = n mod nₖ"),
+            (r"\max_i \lvert \mathbf F_i - \mathbf F_i^\mathrm{ref} \rvert", "maxᵢ | Fᵢ - Fᵢ^{ref} |"),
+            (r"\hbar^2/2m_e", "ħ²/2mₑ"),
             (r"\rho \mathrel{+}= x", "ρ += x"),
             (r"\hat{\mathbf{u}}", "u\u{302}"),
             (r"\bar\theta", "θ\u{304}"),
