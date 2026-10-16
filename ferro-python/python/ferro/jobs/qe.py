@@ -202,6 +202,12 @@ class QeGenerator(Generator):
         qe.set("control", "pseudo_dir", str(root) + "/")
         qe.set("system", "nat", len(symbols))
         qe.set("system", "ntyp", len(elements))
+        # 胞总由 CELL_PARAMETERS 给：ibrav ≠ 0 时 pw.x 不用这张卡片，模板的 ibrav / celldm
+        # 会静默定出另一个胞；结构属于程序改写的量
+        qe.set("system", "ibrav", 0)
+        for key in list(qe.namelists.get("system", {})):
+            if re.fullmatch(r"celldm\(\d\)|a|b|c|cosab|cosac|cosbc", key):
+                qe.delete("system", key)
         for key, i in (("ecutwfc", 2), ("ecutrho", 3)):
             if qe.get("system", key) is None:
                 suggested = max(p[i] for p in chosen.values())

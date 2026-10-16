@@ -99,6 +99,19 @@ def test_vary_cell_and_kpoints(cfg, traj, tmp_path):
     assert any("--fine-grid ignored" in n for n in s.notes)
 
 
+def test_cell_comes_from_cell_parameters(cfg, traj, tmp_path):
+    tpl = tmp_path / "pw.in"
+    tpl.write_text(QeGenerator.builtin_template("sp").replace(
+        "  ibrav = 0\n", "  ibrav = 2\n  celldm(1) = 10.2\n  A = 5.0\n  cosAB = 0.5\n"))
+    qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["pw.in"])
+    system = qe.namelists["system"]
+    assert system["ibrav"] == "0", "ibrav ≠ 0 时 pw.x 不用 CELL_PARAMETERS，胞会静默换成模板的"
+    assert not {"celldm(1)", "a", "cosab"} & set(system), "胞参数键一律删掉"
+    tpl.write_text(QeGenerator.builtin_template("sp").replace("  ibrav = 0\n", ""))
+    qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["pw.in"])
+    assert qe.get("system", "ibrav") == "0", "模板没写 ibrav（INPUT_PW 必填）也补上"
+
+
 def test_pseudo_choice(cfg, traj, tmp_path):
     pp = tmp_path / "upf"
     (pp / "O.pbe-rrkjus.UPF").write_text(upf_v2("O", 6, 40, 320))
