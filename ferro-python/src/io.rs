@@ -40,8 +40,8 @@ fn parse_units(units: Option<&str>) -> PyResult<Option<LammpsUnits>> {
 /// 读取结构 / 轨迹文件，按扩展名自动识别格式。
 ///
 /// 支持：xyz, extxyz, pdb, cif, POSCAR/CONTCAR, in/qe (Quantum ESPRESSO),
-/// inp/restart (CP2K), lammpstrj/dump/lammps (LAMMPS dump),
-/// data/lmp (LAMMPS data)。LAMMPS dump 含速度/力列时必须给 `units`（"real" /
+/// inp/restart (CP2K), lammpstrj/dump (LAMMPS dump),
+/// data/lmp/lammps (LAMMPS data)。LAMMPS dump 含速度/力列时必须给 `units`（"real" /
 /// "metal"），dump 不记录单位，不猜。LAMMPS data 必须给 `atom_style`（"atomic" / "charge" /
 /// "full"），不按注释或列数猜。无 element 列的 dump 用 `type_map`（`{1: "Zr", 2: "O"}`）
 /// 把类型号换成元素，与 CLI 的 `--type-map` 同一个函数。
@@ -56,7 +56,7 @@ fn read(
     let units = parse_units(units)?;
     let p = std::path::Path::new(path);
     let format = detect(path);
-    let is_dump = matches!(format.as_str(), "lammpstrj" | "dump" | "lammps");
+    let is_dump = matches!(format.as_str(), "lammpstrj" | "dump");
     if type_map.is_some() && !is_dump {
         return Err(pyerr(format!("type_map applies to LAMMPS dump input only, not {path}")));
     }
@@ -72,8 +72,8 @@ fn read(
         "in" | "qe" => read_qe_input(p).map_err(pyerr)?,
         "inp" => read_cp2k_inp(p).map_err(pyerr)?,
         "restart" => read_cp2k_restart(p).map_err(pyerr)?,
-        "lammpstrj" | "dump" | "lammps" => read_lammps_dump(p, units).map_err(pyerr)?,
-        "data" | "lmp" => {
+        "lammpstrj" | "dump" => read_lammps_dump(p, units).map_err(pyerr)?,
+        "data" | "lmp" | "lammps" => {
             let style = atom_style.ok_or_else(|| pyerr(format!(
                 "{path} is a LAMMPS data file: pass atom_style='atomic', 'charge' or 'full'"
             )))?;
@@ -94,7 +94,7 @@ fn read(
 
 /// 写出轨迹，按扩展名选择格式。
 ///
-/// 支持：xyz, extxyz, pdb, cif, POSCAR, data/lmp, lammpstrj/dump（QE 输入只读）。
+/// 支持：xyz, extxyz, pdb, cif, POSCAR, data/lmp/lammps, lammpstrj/dump（QE 输入只读）。
 /// 带速度/力的轨迹写 dump 时必须给 `units`（"real" / "metal"）。
 #[pyfunction]
 #[pyo3(signature = (traj, path, units = None))]
@@ -108,7 +108,7 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
         "pdb" => write_pdb(t, p).map_err(pyerr),
         "cif" => write_cif(t, p).map_err(pyerr),
         "poscar" => write_poscar(t, p).map_err(pyerr),
-        "data" | "lmp" => write_lammps_data(t, p).map_err(pyerr),
+        "data" | "lmp" | "lammps" => write_lammps_data(t, p).map_err(pyerr),
         "lammpstrj" | "dump" => write_lammps_dump(t, p, units).map_err(pyerr),
         other => Err(pyerr(format!(
             "unsupported output format '{other}' for path '{path}'"

@@ -62,13 +62,16 @@ this type too).
 | `charge(frame)` | `int` | Total charge |
 | `multiplicity(frame)` | `int` | Spin multiplicity 2S+1 |
 | `tail(n)` | `Trajectory` | New trajectory with the last `n` frames |
+| `pbc(frame)` | `(bool,bool,bool)` | Periodicity along a, b, c |
+| `subset(indices)` | `Trajectory` | New trajectory with the given frames, in the given order |
+| `frame_indices(start=None, end=None, stride=None, number=None)` | `list[int]` | The frame choice of `ferro convert`: 0-based, `end` inclusive, all frames by default |
 | `len(t)` | `int` | = `n_frames()` |
 
 Frame indices are 0-based; out-of-range raises `IndexError`.
 
 ## I/O
 
-### `read(path, units=None, atom_style=None) -> Trajectory`
+### `read(path, units=None, atom_style=None, type_map=None) -> Trajectory`
 
 Format auto-detected from the file name / extension:
 
@@ -79,13 +82,31 @@ Format auto-detected from the file name / extension:
 | `POSCAR*` / `CONTCAR*` | VASP |
 | `.in` / `.qe` | Quantum ESPRESSO input |
 | `.inp` / `.restart` | CP2K input / restart |
-| `.lammpstrj` / `.dump` / `.lammps` | LAMMPS dump; **`units` (`"real"` or `"metal"`) is required when it has velocity/force columns**, since a dump does not record its unit system |
-| `.data` / `.lmp` | LAMMPS data; **`atom_style` (`"atomic"`, `"charge"` or `"full"`) is required**, never guessed from the `Atoms` comment or the column count |
+| `.lammpstrj` / `.dump` | LAMMPS dump; **`units` (`"real"` or `"metal"`) is required when it has velocity/force columns**, since a dump does not record its unit system |
+| `.data` / `.lmp` / `.lammps` | LAMMPS data; **`atom_style` (`"atomic"`, `"charge"` or `"full"`) is required**, never guessed from the `Atoms` comment or the column count |
+
+A dump without an element column reads its atoms as `X1`, `X2`, …; `type_map={1: "Zr", 2: "O"}`
+names them, exactly as `--type-map` on the command line.  A type missing from the map, an
+unknown symbol, or `type_map` on anything but a dump is an error.
 
 ### `write(traj, path, units=None)`
 
 Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`,
-`data`/`lmp`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
+`data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
+
+### Building blocks for input generation
+
+These return text for a calculation input; atoms are written in the order they are in, so call
+`sort_atoms` first to get the (Z, symbol) order that `ferro convert` writes.
+
+| Function | Description |
+|---|---|
+| `sort_atoms(traj)` | Per frame, atoms in (Z, symbol) order → new `Trajectory` |
+| `poscar_string(traj, frame_index=0, comment="ferro")` | POSCAR text of one frame |
+| `qe_structure_cards(traj, pseudos, frame_index=0)` | pw.x `ATOMIC_SPECIES` / `CELL_PARAMETERS` / `ATOMIC_POSITIONS`; `pseudos` maps every element to a pseudopotential file name.  A frame without a cell is an error |
+| `cp2k_structure_sections(traj, frame_index=0)` | CP2K `&CELL` + `&COORD`; a frame without a cell is an error |
+| `parse_qe_input_parts(text)` | pw.x input → `([(namelist, [(key, raw value)])], cards text)`; the same parser `read` uses |
+| `write_namelists(namelists)` | The inverse: namelists back to text |
 
 ## Structure operations
 
