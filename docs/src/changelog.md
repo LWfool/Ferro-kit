@@ -20,11 +20,12 @@ source file name and `K_POINTS gamma` — a file that looked runnable but was no
 setup. QE input is now read-only, like CP2K input: `.in` / `.qe` is refused on write. Generate a
 pw.x input with `ferro job -s qe`.
 
-### Python: `.lammps` is a LAMMPS data file
+### Python: file names mean what they mean on the command line
 
 `ferro.read("x.lammps")` read the file as a dump, while the command line reads `.lammps` as a
 LAMMPS data file. Python now follows the command line: `.lammps` is read as data (and needs
-`atom_style`) and can be written as data.
+`atom_style`) and can be written as data. Likewise `.vasp` / `.pos` are now read and written as POSCAR, and
+a `CONTCAR*` name can be written (POSCAR content), as on the command line.
 
 ### `--type-map` for LAMMPS dumps without an element column
 

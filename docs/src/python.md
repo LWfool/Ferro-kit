@@ -79,7 +79,7 @@ Format auto-detected from the file name / extension:
 |---|---|
 | `.xyz` / `.extxyz` | XYZ / extended XYZ |
 | `.pdb` / `.cif` | PDB / CIF |
-| `POSCAR*` / `CONTCAR*` | VASP |
+| `POSCAR*` / `CONTCAR*` / `.vasp` / `.pos` | VASP |
 | `.in` / `.qe` | Quantum ESPRESSO input |
 | `.inp` / `.restart` | CP2K input / restart |
 | `.lammpstrj` / `.dump` | LAMMPS dump; **`units` (`"real"` or `"metal"`) is required when it has velocity/force columns**, since a dump does not record its unit system |
@@ -91,7 +91,7 @@ unknown symbol, or `type_map` on anything but a dump is an error.
 
 ### `write(traj, path, units=None)`
 
-Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`,
+Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR*`/`CONTCAR*`/`vasp`/`pos` (POSCAR format),
 `data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
 
 ### Building blocks for input generation

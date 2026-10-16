@@ -21,3 +21,12 @@ def test_lammps_extension_is_data_file(tmp_path, ext):
     assert back.symbols(0) == t.symbols(0), f".{ext} 应按 data 读回原元素"
     with pytest.raises(RuntimeError, match="LAMMPS dump input only"):
         ferro.read(str(path), atom_style="full", type_map={1: "P"})
+
+
+@pytest.mark.parametrize("name", ["one.vasp", "one.pos", "POSCAR_1", "CONTCAR"])
+def test_vasp_names_are_poscar(tmp_path, name):
+    t = ferro.read(str(NVT)).tail(1)
+    path = tmp_path / name
+    ferro.write(t, str(path))
+    assert path.read_text() == ferro.poscar_string(t), f"{name} 应写成 POSCAR"
+    assert ferro.read(str(path)).symbols(0) == t.symbols(0), f"{name} 应按 POSCAR 读回"
