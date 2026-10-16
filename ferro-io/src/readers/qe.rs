@@ -13,20 +13,23 @@ pub fn read_qe_input(path: &Path) -> Result<Trajectory> {
     parse_qe(&content).with_context(|| format!("parsing {path_}"))
 }
 
-fn parse_qe(content: &str) -> Result<Trajectory> {
-    let lines: Vec<&str> = content.lines().collect();
-
-    // Strip comments (`!` and `#`, as pw.x does)
-    let stripped: Vec<&str> = lines.iter()
+/// 逐行去注释（`!` 与 `#`，同 pw.x）并去首尾空白；行号与原文一一对应
+fn strip_comments(content: &str) -> Vec<&str> {
+    content.lines()
         .map(|l| {
             let t = l.trim();
             if let Some(p) = t.find(['!', '#']) { &t[..p] } else { t }
         })
-        .collect();
+        .collect()
+}
+
+fn parse_qe(content: &str) -> Result<Trajectory> {
+    let stripped = strip_comments(content);
 
     // ── &SYSTEM namelist ──────────────────────────────────────────────────────
     let namelists = parse_namelists(&stripped)?;
     let sys: HashMap<String, String> = namelists.iter()
+        .map(|(n, _)| n)
         .find(|n| n.name == "system")
         .context("&SYSTEM namelist not found")?
         .entries.iter()
@@ -174,21 +177,61 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/// 一个 namelist：名字小写；条目按出现顺序，键小写，值保持原样（含引号）
-struct Namelist {
-    name: String,
-    entries: Vec<(String, String)>,
+/// 一个 namelist：名字小写；条目按出现顺序，键小写（`celldm(1)` 这类带下标的键
+/// 原样作一个键），值保持原样（含引号，如 `'scf'`、`.true.`、`1.0d-8`）
+#[derive(Debug, Clone, PartialEq)]
+pub struct Namelist {
+    pub name: String,
+    pub entries: Vec<(String, String)>,
 }
 
-/// 全部 namelist。按 token 流收：`&name` 之后（同行剩余也算）到引号外的 `/`
-/// （或旧式 `&end`）为止，可跨行。以前按行收、要求 `&name` 独占一行，
-/// `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时
-/// 整段被忽略，celldm(1) 丢失、无选项的 CELL_PARAMETERS 回落 Bohr（审查 A-13）
-fn parse_namelists(lines: &[&str]) -> Result<Vec<Namelist>> {
+/// pw.x 输入拆成两部分：全部 namelist，与 namelist 之外的原文行（卡片，含注释）
+#[derive(Debug, Clone, PartialEq)]
+pub struct QeInputParts {
+    pub namelists: Vec<Namelist>,
+    pub cards: String,
+}
+
+/// 拆 pw.x 输入。供 `ferro.jobs` 编辑 QE 模板：改 namelist 条目、替换结构卡片，
+/// 其余卡片（K_POINTS 等）原样保留。namelist 语法只在本文件实现一份
+pub fn parse_qe_input_parts(content: &str) -> Result<QeInputParts> {
+    let original: Vec<&str> = content.lines().collect();
+    let found = parse_namelists(&strip_comments(content))?;
+    let inside = |i: usize| found.iter().any(|(_, span)| span.contains(&i));
+    let cards: Vec<&str> = original.iter().enumerate()
+        .filter(|&(i, _)| !inside(i))
+        .map(|(_, l)| *l)
+        .collect();
+    Ok(QeInputParts {
+        namelists: found.into_iter().map(|(n, _)| n).collect(),
+        cards: cards.join("\n"),
+    })
+}
+
+/// namelist 写回文本：名字大写、每条一行 `  key = value`，`/` 收尾。值原样写出，
+/// 引号由调用方负责
+pub fn write_namelists(namelists: &[Namelist]) -> String {
+    let mut s = String::new();
+    for n in namelists {
+        s.push_str(&format!("&{}\n", n.name.to_uppercase()));
+        for (k, v) in &n.entries {
+            s.push_str(&format!("  {k} = {v}\n"));
+        }
+        s.push_str("/\n");
+    }
+    s
+}
+
+/// 全部 namelist 及其所占行号区间（闭区间）。按 token 流收：`&name` 之后（同行剩余
+/// 也算）到引号外的 `/`（或旧式 `&end`）为止，可跨行。以前按行收、要求 `&name`
+/// 独占一行，`&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x
+/// 照收）时整段被忽略，celldm(1) 丢失、无选项的 CELL_PARAMETERS 回落 Bohr（审查 A-13）
+fn parse_namelists(lines: &[&str]) -> Result<Vec<(Namelist, std::ops::RangeInclusive<usize>)>> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let Some(rest) = lines[i].trim().strip_prefix('&') else { i += 1; continue };
+        let first_idx = i;
         let (name, first) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
         let first_line = i + 1;
         let mut body = first.to_string();
@@ -209,7 +252,7 @@ fn parse_namelists(lines: &[&str]) -> Result<Vec<Namelist>> {
                 (!k.is_empty()).then(|| (k.to_lowercase(), v.to_string()))
             })
             .collect();
-        out.push(Namelist { name: name.to_lowercase(), entries });
+        out.push((Namelist { name: name.to_lowercase(), entries }, first_idx..=i));
         i += 1;
     }
     Ok(out)
@@ -465,11 +508,31 @@ CELL_PARAMETERS {angstrom}
         assert!((m - m2).norm() < 1e-12, "跨行写法与一行写法结果应相同");
 
         let nl = parse_namelists(&["&control calculation='scf', pseudo_dir='./pp/' /"]).unwrap();
-        assert_eq!(nl[0].entries, [("calculation".into(), "'scf'".into()),
-                                   ("pseudo_dir".into(), "'./pp/'".into())],
+        assert_eq!(nl[0].0.entries, [("calculation".into(), "'scf'".into()),
+                                     ("pseudo_dir".into(), "'./pp/'".into())],
                    "引号内的 / 不应结束 namelist，值保持原样");
         let old = parse_namelists(&["&SYSTEM", "ibrav=0", "&END"]).unwrap();
-        assert_eq!(old[0].entries, [("ibrav".into(), "0".into())], "旧式 &END 结束");
+        assert_eq!(old[0].0.entries, [("ibrav".into(), "0".into())], "旧式 &END 结束");
+    }
+
+    #[test]
+    fn test_input_parts_round_trip() {
+        let parts = parse_qe_input_parts(WATER_QE).unwrap();
+        let names: Vec<&str> = parts.namelists.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(names, ["control", "system", "electrons"]);
+        assert_eq!(parts.namelists[0].entries[1], ("prefix".into(), "'water'".into()));
+        assert!(!parts.cards.contains('&') && !parts.cards.contains("ibrav"),
+                "卡片部分不应混入 namelist 行：{}", parts.cards);
+        assert!(parts.cards.contains("K_POINTS {gamma}") && parts.cards.contains("ATOMIC_SPECIES"));
+
+        // 写回再拆，namelist 逐条相同；拼回的整份输入读出的结构与原文相同
+        let text = format!("{}{}", write_namelists(&parts.namelists), parts.cards);
+        let again = parse_qe_input_parts(&text).unwrap();
+        assert_eq!(again, parts, "写回再拆应得到同一份");
+        let (a, b) = (parse_qe(WATER_QE).unwrap(), parse_qe(&text).unwrap());
+        let (a, b) = (a.first().unwrap(), b.first().unwrap());
+        assert_eq!(a.n_atoms(), b.n_atoms());
+        assert!((a.atom(2).position - b.atom(2).position).norm() < 1e-12);
     }
 
     #[test]
