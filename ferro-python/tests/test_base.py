@@ -6,7 +6,7 @@ import pytest
 
 import ferro
 from ferro import config
-from ferro.jobs.base import Generator, InputSet, JobError, JobOptions, kmesh, multiplicity
+from ferro.jobs.base import Generator, InputSet, JobError, JobOptions, kmesh, multiplicity, write_batch
 
 NVT = Path(__file__).resolve().parents[2] / "tests" / "70Z30P00A_NVT_5.lammpstrj"
 
@@ -112,3 +112,14 @@ def test_input_set_write_with_links(tmp_path):
     assert (tmp_path / "f0" / "POTCAR").is_symlink()
     assert (tmp_path / "f0" / "POTCAR").read_text() == "P\n", "相对链接指向上层的那一份"
     assert (tmp_path / "f0" / "INCAR").read_text() == "A\n"
+
+
+def test_write_batch_refuses_other_composition(tmp_path):
+    def batch(potcar):
+        s = InputSet({"INCAR": "A\n", "POTCAR": potcar}, shared={"POTCAR"})
+        return [("f0", s), ("f1", s)]
+    write_batch(batch("P\n"), tmp_path)
+    write_batch(batch("P\n"), tmp_path)   # 同一组成重写不报错
+    with pytest.raises(JobError, match="another composition"):
+        write_batch(batch("Q\n"), tmp_path)
+    assert (tmp_path / "POTCAR").read_text() == "P\n", "拒绝时不得改动已有的共用 POTCAR"

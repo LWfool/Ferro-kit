@@ -107,6 +107,12 @@ def write_batch(jobs, out_dir):
                         f"{name} needs a different {f} from {first[0]} (another composition or "
                         f"element order); generate jobs of each composition into their own -o"
                     )
+    # 先前一批留下的共用文件不同（另一组成）就拒绝：覆盖它会让那一批的 ../POTCAR 静默改指
+    for f, (_, text) in shared.items():
+        old = out_dir / f
+        if old.is_file() and old.read_text(encoding="utf-8") != text:
+            raise JobError(f"{old} already holds the {f} of another composition; "
+                           f"generate jobs of each composition into their own -o")
     for f, (_, text) in shared.items():
         (out_dir / f).write_text(text, encoding="utf-8")
     paths = []
