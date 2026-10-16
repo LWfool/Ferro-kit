@@ -264,8 +264,9 @@ mod tests {
                 Vector3::new(0.5, -0.25, 0.125),
                 Vector3::new(-0.5, 0.25, -0.125),
             ]);
+            // 故意不对称：对称矩阵测不出 virial 被转置
             f.stress = Some(Matrix3::from_row_slice(&[
-                1.0, 2.0, 3.0, 2.0, 4.0, 5.0, 3.0, 5.0, 6.0,
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0 + k as f64,
             ]));
             frames.push(f);
         }
@@ -299,6 +300,16 @@ mod tests {
             let (s, t) = (x.stress.unwrap(), y.stress.unwrap());
             assert!((s - t).abs().max() < 1e-12, "{s} vs {t}");
         }
+        // 往返一致还不够：读写两边同时转置也能往返。直接看盘上的布局 ——
+        // box 与 virial 都是行优先，第 0 帧第二个数是 [0][1]，不是 [1][0]
+        let set = d.join("set.000");
+        let boxes: Array2<f64> = read_npy(set.join("box.npy")).unwrap();
+        let virial: Array2<f64> = read_npy(set.join("virial.npy")).unwrap();
+        let cell = a.frames[0].cell.as_ref().unwrap();
+        assert_eq!(boxes[[0, 3]], cell.matrix[(1, 0)], "box.npy 应为行优先（第二行首个数是 b_x）");
+        let v = cell.volume();
+        assert!((virial[[0, 1]] - 2.0 * v).abs() < 1e-9, "virial.npy[0][1] 应为 σ_xy·V，不是 σ_yx·V");
+        assert!((virial[[0, 3]] - 4.0 * v).abs() < 1e-9, "virial.npy[0][3] 应为 σ_yx·V");
     }
 
     /// dpdata writes `box.npy` for a non-periodic system too; reading it back and

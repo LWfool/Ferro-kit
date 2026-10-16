@@ -1898,6 +1898,137 @@ mod tests {
         )
     }
 
+    // 逐帧、逐原子可反查身份的 system：帧号 g 编进能量、盒子、应力与坐标，原子号 id
+    // 编进力的 x 分量。原子按 `order` 给出的 id 顺序写，用来检验重排
+    const ID_ELEM: [&str; 3] = ["O", "Si", "O"];
+
+    fn id_base(id: usize) -> nalgebra::Vector3<f64> {
+        nalgebra::Vector3::repeat(1.0 + 2.0 * id as f64)
+    }
+
+    fn id_cell(g: usize) -> nalgebra::Matrix3<f64> {
+        // 三斜且非对称，转置或错帧都会变样
+        nalgebra::Matrix3::from_row_slice(&[
+            10.0 + 0.01 * g as f64, 0.1, 0.2, 0.3, 11.0, 0.4, 0.5, 0.6, 12.0,
+        ])
+    }
+
+    fn id_stress(g: usize) -> nalgebra::Matrix3<f64> {
+        let d = 1e-3 * g as f64;
+        nalgebra::Matrix3::from_row_slice(&[d, 1e-3, 2e-3, 3e-3, d, 4e-3, 5e-3, 6e-3, 7e-3])
+    }
+
+    fn id_system(keys: &[usize], order: &[usize]) -> Trajectory {
+        use ferro_core::{Atom, Cell, Frame};
+        let frames = keys
+            .iter()
+            .map(|&g| {
+                let mut f = Frame::with_cell(Cell::from_matrix(id_cell(g)), [true; 3]);
+                let shift = nalgebra::Vector3::new(0.001 * g as f64, 0.0, 0.0);
+                f.atoms = order.iter().map(|&id| Atom::new(ID_ELEM[id], id_base(id) + shift)).collect();
+                f.forces = Some(
+                    order.iter().map(|&id| nalgebra::Vector3::new(id as f64, 0.01 * g as f64, 0.5)).collect(),
+                );
+                f.energy = Some(-(g as f64) - 1.0);
+                f.stress = Some(id_stress(g));
+                f
+            })
+            .collect();
+        Trajectory { frames, metadata: Default::default() }
+    }
+
+    /// 读回 `root` 下全部 system，逐帧逐原子核对身份，返回帧号 g 的出现顺序
+    fn check_ids(root: &Path) -> Vec<usize> {
+        let mut seen = Vec::new();
+        for sys in find_systems(root).unwrap() {
+            let (traj, _) = read_deepmd_npy_with_warnings(&sys).unwrap();
+            for f in &traj.frames {
+                let g = (-f.energy.unwrap() - 1.0).round() as usize;
+                assert_eq!(f.cell.as_ref().unwrap().matrix, id_cell(g), "帧 {g} 的盒子错配");
+                let ds = (f.stress.unwrap() - id_stress(g)).abs().max();
+                assert!(ds < 1e-12, "帧 {g} 的应力错配（差 {ds}）");
+                let forces = f.forces.as_ref().unwrap();
+                let mut ids: Vec<usize> = Vec::new();
+                for (atom, fv) in f.atoms.iter().zip(forces) {
+                    let id = fv.x.round() as usize;
+                    ids.push(id);
+                    assert_eq!(atom.element, ID_ELEM[id], "帧 {g} 原子 {id} 的元素错配");
+                    let want = id_base(id) + nalgebra::Vector3::new(0.001 * g as f64, 0.0, 0.0);
+                    assert!((atom.position - want).norm() < 1e-9, "帧 {g} 原子 {id} 的坐标错配");
+                    assert!((fv.y - 0.01 * g as f64).abs() < 1e-12 && fv.z == 0.5, "帧 {g} 原子 {id} 的力错配");
+                }
+                ids.sort();
+                assert_eq!(ids, vec![0, 1, 2], "帧 {g} 的原子不是原来那三个");
+                seen.push(g);
+            }
+        }
+        seen
+    }
+
+    /// merge 打乱、重排原子、切 set 之后，每帧的能量、盒子、应力、坐标与力仍属同一帧同一原子
+    #[test]
+    fn merge_shuffle_keeps_every_label_with_its_frame_and_atom() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: MergeCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_merge_ids_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // 两个来源原子顺序不同：b 的 Si 在最前
+        ferro_io::write_deepmd_npy(&id_system(&[0, 1, 2, 3, 4], &[0, 1, 2]), &root.join("in/a")).unwrap();
+        ferro_io::write_deepmd_npy(&id_system(&[10, 11, 12, 13], &[1, 2, 0]), &root.join("in/b")).unwrap();
+        let (a, b, out) = (root.join("in/a"), root.join("in/b"), root.join("out"));
+        let argv = [
+            "merge", "-i", a.to_str().unwrap(), b.to_str().unwrap(), "-o", out.to_str().unwrap(),
+            "--mkdir", "--set-size", "3",
+        ];
+        let w = Wrap::try_parse_from(argv).unwrap();
+        assert_eq!(run_merge(&w.cmd).unwrap(), 0);
+
+        let got = check_ids(&out);
+        let input_order = vec![0, 1, 2, 3, 4, 10, 11, 12, 13];
+        assert_ne!(got, input_order, "默认 shuffle 却没有打乱");
+        let mut sorted = got.clone();
+        sorted.sort();
+        assert_eq!(sorted, input_order, "每帧应恰好出现一次");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// filter 删掉的正是坏帧；留下的帧打乱、切 set 之后各量仍属同一帧同一原子
+    #[test]
+    fn filter_drops_exactly_the_bad_frames_and_keeps_the_rest_intact() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_filter_ids_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut t = id_system(&[0, 1, 2, 3, 4, 5], &[1, 0, 2]);
+        // 帧 1、4 的力超过默认的 20 eV/Å
+        for g in [1, 4] {
+            for fv in t.frames[g].forces.as_mut().unwrap() {
+                fv.z = 50.0;
+            }
+        }
+        ferro_io::write_deepmd_npy(&t, &root.join("in/sys")).unwrap();
+        let (inp, out) = (root.join("in"), root.join("out"));
+        let argv = [
+            "filter", "-i", inp.to_str().unwrap(), "-o", out.to_str().unwrap(),
+            "--mkdir", "--shuffle", "--set-size", "2",
+        ];
+        let w = Wrap::try_parse_from(argv).unwrap();
+        assert_eq!(run_filter(&w.cmd).unwrap(), 0);
+
+        let mut got = check_ids(&out);
+        got.sort();
+        assert_eq!(got, vec![0, 2, 3, 5], "应恰好删掉帧 1 与 4");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Two files of one composition written in different atom orders are one system.
     ///
     /// CP2K writes the atoms in whatever order the input listed them, so two single
