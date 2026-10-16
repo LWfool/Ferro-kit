@@ -15,6 +15,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 
+[project.scripts]
+ferro-py = "ferro.cli:main"
+
 [tool.maturin]
 module-name = "ferro._ferro"
 python-source = "python"
