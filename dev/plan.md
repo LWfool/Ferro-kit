@@ -86,7 +86,9 @@ wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步�
 20. ✅ 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF / finer-grid 各一组）：
     `ferro-python/scripts/smoke_hpc.sh`；第一轮 7/9，两处修复后第二轮 9/9（收敛测试只生成未跑）
 21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
-22. 手册 `docs/src/python/`
+22. ✅ 手册 `docs/src/python/`（api / config / job / job vasp|qe|cp2k / conv 七页）+ `ferro-py doc`：
+    手册编进 wheel，与 `ferro doc` 同一渲染器；Rust 的 `ferro doc` 去掉 `python` 主题，不收这些页
+    （用户定：一份手册两处收录迟早走样）。`ferro-render` 加 `\lvert` `\rvert` `\hbar`
 23. 更新开发记录（版本号只在用户要求时动）
 下一批：QE 单点输出（能量 / 力 / 应力）reader + QE 截断能测试（**ecutwfc 必须明确测**；
 ecutrho 易收敛，UPF 建议的最大值即可，用户定）

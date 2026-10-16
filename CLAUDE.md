@@ -92,6 +92,10 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 - 加手册页后 **`ferro-cli/src/doc.rs` 的 `PAGES` 加一条**，否则帮助页末行的
   `ferro doc <topic>` 指向空
 
+**加 ferro-py 手册页** → `docs/src/python/` + `SUMMARY.md` + `ferro-python/src/doc.rs` 的
+`PAGES`（漏登记 pytest 会拦）。这些页**只由 `ferro-py doc` 收录**，Rust 的 `ferro doc`
+不收 —— 一份手册两处收录迟早走样（用户定）。
+
 **加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
 目前无 CLI 入口（`box_builder` 也是库级）。
 

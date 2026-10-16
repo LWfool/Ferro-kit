@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：843 个（全部通过，clippy 零警告；2026-10-16 实数）；另 ferro-python 133 个 pytest
+## 测试总数：843 个（全部通过，clippy 零警告；2026-10-16 实数）；另 ferro-python 137 个 pytest
 
 | Crate | 测试数 |
 |---|---|
@@ -503,14 +503,16 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `forces` / `stress`）、`io.rs`（`read` / `write` 按扩展名分派，与 CLI 的 `io_dispatch` 同口径：
   `.lammps` = data，`.vasp` / `.poscar` / `.pos` / `POSCAR*` / `CONTCAR*` = VASP；`read(type_map=)`；
   `read_output`、`write_table`）、`jobs.rs`（`sort_atoms`、`poscar_string`、`qe_structure_cards`、
-  `cp2k_structure_sections`、`parse_qe_input_parts`、`write_namelists`）、`structure.rs`、`analysis.rs`
+  `cp2k_structure_sections`、`parse_qe_input_parts`、`write_namelists`）、`structure.rs`、`analysis.rs`、
+  `doc.rs`（`docs/src/python/` 七页经 `include_str!` 编进扩展，`_doc_pages` / `_render_markdown`，
+  渲染用 `ferro-render`；2026-10-16）
 - Python 侧（运行时只用标准库）：`config.py`（`~/.config/ferro/config.toml`，`FERRO_CONFIG` 覆盖）、
-  `cli.py`（命令 `ferro-py`：`config init` / `job` / `job template` / `conv` / `conv analyze`，
-  帮助页五段）、`jobs/`：`base.py`（JobOptions、InputSet、Generator、write_batch、多重度奇偶、
+  `cli.py`（命令 `ferro-py`：`config init` / `job` / `job template` / `conv` / `conv analyze` /
+  `doc`，帮助页五段，末行指向 `ferro-py doc <主题>`）、`jobs/`：`base.py`（JobOptions、InputSet、Generator、write_batch、多重度奇偶、
   kmesh）、`vasp.py`（Incar + VaspGenerator）、`qe.py`（QeInput + QeGenerator）、`cp2k.py`
   （Section 节树 + Cp2kGenerator）、`conv.py`（收敛测试）、`templates/<程序>/<任务>/` 9 份内置模板
 
-测试：`ferro-python/tests/` **133 个 pytest**（2026-10-16 实数），本地用 maturin 编 wheel、
+测试：`ferro-python/tests/` **137 个 pytest**（2026-10-16 实数），本地用 maturin 编 wheel、
 `pip install --no-deps --target <scratch>` 后 `PYTHONPATH=<scratch> python -m pytest`。
 GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_64 与 macOS arm64
 wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `903de96` 全绿。
