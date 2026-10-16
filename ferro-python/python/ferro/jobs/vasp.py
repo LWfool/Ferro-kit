@@ -207,6 +207,11 @@ class VaspGenerator(Generator):
 
     def build(self, one, options, template_text):
         incar = Incar.from_str(template_text)
+        # 变胞下基组固定会带来 Pulay 应力，截断能须由收敛测试定，不替用户猜一个倍数
+        # （用户定：曾经的 1.3 × ENMAX 不够）
+        if options.task == "opt" and options.vary_cell and "ENCUT" not in incar:
+            raise JobError("--vary-cell needs ENCUT in the template (Pulay stress): find it with "
+                           "`ferro-py conv -s vasp --scan encut=...` and write it there")
         elements = one.elements()   # sort_atoms 之后即 POSCAR 的元素顺序
         symbols = one.symbols(0)
         counts = [symbols.count(e) for e in elements]
@@ -264,9 +269,6 @@ class VaspGenerator(Generator):
 
         if options.task == "opt" and options.vary_cell:
             incar["ISIF"] = 3
-            if "ENCUT" not in incar:
-                incar["ENCUT"] = math.ceil(1.3 * enmax)
-                notes.append(f"ENCUT {incar['ENCUT']} = 1.3 x ENMAX {enmax:g} (variable cell)")
         if options.task == "aimd":
             if options.ensemble not in (None, "nvt"):
                 raise JobError(f"VASP jobs are NVT only; --ensemble {options.ensemble} is a CP2K option")

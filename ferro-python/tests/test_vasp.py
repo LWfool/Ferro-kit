@@ -64,10 +64,17 @@ def test_charge_spin_and_md_options(cfg, traj):
         VaspGenerator(cfg).generate(traj, 0, JobOptions("aimd", ensemble="npt_i"))
 
 
-def test_vary_cell(cfg, traj):
-    incar = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True)).files["INCAR"])
-    assert incar["ISIF"] == "3"
-    assert incar["ENCUT"] == "536", "未写 ENCUT 时取 ⌈1.3 × 最大 ENMAX⌉（Zn 412 → 535.6）"
+def test_vary_cell(cfg, traj, tmp_path):
+    with pytest.raises(JobError, match="--vary-cell needs ENCUT"):
+        VaspGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True))
+    tpl = tmp_path / "INCAR"
+    tpl.write_text(VaspGenerator.builtin_template("opt") + "ENCUT = 700\nMETAGGA = R2SCAN\n")
+    s = VaspGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True), tpl)
+    incar = Incar.from_str(s.files["INCAR"])
+    assert (incar["ISIF"], incar["ENCUT"]) == ("3", "700")
+    note = next(n for n in s.notes if n.startswith("fine grid"))
+    coarse, fine = fine_grid(traj.cell(0), 700, 2)
+    assert str(fine) in note and incar["NGXF"] == str(fine[0]), "细网格按模板写的 ENCUT 算"
 
 
 def test_template_values_are_kept(cfg, traj, tmp_path):

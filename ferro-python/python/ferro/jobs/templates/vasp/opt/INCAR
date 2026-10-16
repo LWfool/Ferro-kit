@@ -3,8 +3,8 @@
 # ferro-py writes POSCAR and POTCAR from the structure and sets in this file:
 #   NELECT (only when --charge is not 0), ISPIN + NUPDOWN (when the multiplicity is
 #   above 1), KSPACING (--kspacing; a value written here is kept when --kspacing is
-#   not given); --vary-cell sets ISIF = 3, and ENCUT = 1.3 x the largest ENMAX when
-#   ENCUT is not set here (a fixed basis under a changing cell gives Pulay stress).
+#   not given); --vary-cell sets ISIF = 3 and needs ENCUT written here (a fixed basis
+#   under a changing cell gives Pulay stress; find ENCUT with ferro-py conv).
 #   With METAGGA set, ALGO = All, ISEARCH = 1 and
 #   NGXF/NGYF/NGZF = 2 x NGX/NGY/NGZ (--fine-grid; kept when written here).
 #   Everything else is used as written.
