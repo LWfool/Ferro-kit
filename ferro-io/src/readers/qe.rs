@@ -25,11 +25,17 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         .collect();
 
     // ── &SYSTEM namelist ──────────────────────────────────────────────────────
-    let sys = collect_namelist(&stripped, "system");
-    // 写了却解析不了要报错：以前回落 0，空白分隔切坏的值会让非零 ibrav 蒙混过关
-    let ibrav: i32 = sys.get("ibrav")
-        .map(|s| s.parse().with_context(|| format!("invalid ibrav = {s:?}")))
-        .transpose()?.unwrap_or(0);
+    let namelists = parse_namelists(&stripped)?;
+    let sys: HashMap<String, String> = namelists.iter()
+        .find(|n| n.name == "system")
+        .context("&SYSTEM namelist not found")?
+        .entries.iter()
+        .map(|(k, v)| (k.clone(), v.trim_matches('\'').trim_matches('"').to_string()))
+        .collect();
+    // 写了却解析不了要报错：以前回落 0，空白分隔切坏的值会让非零 ibrav 蒙混过关。
+    // 缺省也报错：INPUT_PW 标 ibrav 为 REQUIRED，回落 0 会把丢掉的 &SYSTEM 内容藏起来
+    let s = sys.get("ibrav").context("ibrav missing in &SYSTEM (pw.x requires it)")?;
+    let ibrav: i32 = s.parse().with_context(|| format!("invalid ibrav = {s:?}"))?;
     if ibrav != 0 {
         bail!("ibrav={ibrav} is not supported; use ibrav=0 with explicit CELL_PARAMETERS");
     }
@@ -143,13 +149,14 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         let label = parts[0].to_string();
         let v = fortran_vec3(&parts[1..].join(" "))
             .with_context(|| format!("invalid ATOMIC_POSITIONS line {l:?}"))?;
-        let (elem, tidx) = species.get(&label)
-            .cloned()
-            .unwrap_or_else(|| (extract_element(&label), 0));
+        // 未声明的标签 pw.x 拒收；以前按标签字母猜元素，磁矩也随之静默丢失
+        let (elem, tidx) = species.get(&label).cloned().with_context(|| {
+            format!("ATOMIC_POSITIONS label {label:?} is not declared in ATOMIC_SPECIES")
+        })?;
 
         let mut atom = Atom::new(elem, to_cart(v));
         atom.label = Some(label);
-        if tidx > 0 { atom.magmom = type_magmom.get(&tidx).copied(); }
+        atom.magmom = type_magmom.get(&tidx).copied();
         frame.add_atom(atom);
     }
     if let Some(nat) = sys.get("nat")
@@ -167,25 +174,60 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn collect_namelist(lines: &[&str], name: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    let target = format!("&{name}");
-    let start = match lines.iter().position(|l| l.to_lowercase().trim() == target) {
-        Some(p) => p + 1,
-        None => return map,
-    };
-    for l in &lines[start..] {
-        let l = l.trim();
-        if l == "/" || l.starts_with('&') { break; }
-        for item in namelist_items(l) {
-            if let Some((key, val)) = item.split_once('=') {
-                let key = key.to_lowercase();
-                let val = val.trim_matches('\'').trim_matches('"').to_string();
-                if !key.is_empty() { map.insert(key, val); }
-            }
+/// 一个 namelist：名字小写；条目按出现顺序，键小写，值保持原样（含引号）
+struct Namelist {
+    name: String,
+    entries: Vec<(String, String)>,
+}
+
+/// 全部 namelist。按 token 流收：`&name` 之后（同行剩余也算）到引号外的 `/`
+/// （或旧式 `&end`）为止，可跨行。以前按行收、要求 `&name` 独占一行，
+/// `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时
+/// 整段被忽略，celldm(1) 丢失、无选项的 CELL_PARAMETERS 回落 Bohr（审查 A-13）
+fn parse_namelists(lines: &[&str]) -> Result<Vec<Namelist>> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let Some(rest) = lines[i].trim().strip_prefix('&') else { i += 1; continue };
+        let (name, first) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+        let first_line = i + 1;
+        let mut body = first.to_string();
+        let end = loop {
+            if let Some(end) = namelist_end(&body) { break end; }
+            i += 1;
+            anyhow::ensure!(i < lines.len(), "namelist &{name} (line {first_line}) is not closed with /");
+            body.push('\n');
+            body.push_str(lines[i]);
+        };
+        anyhow::ensure!(
+            body[end..].starts_with('/') || body[end..].to_lowercase().starts_with("&end"),
+            "namelist &{name} (line {first_line}) is not closed with / before the next namelist"
+        );
+        let entries = namelist_items(&body[..end]).into_iter()
+            .filter_map(|item| {
+                let (k, v) = item.split_once('=')?;
+                (!k.is_empty()).then(|| (k.to_lowercase(), v.to_string()))
+            })
+            .collect();
+        out.push(Namelist { name: name.to_lowercase(), entries });
+        i += 1;
+    }
+    Ok(out)
+}
+
+/// namelist 正文里引号外第一个 `/` 或 `&` 的字节位置（`pseudo_dir='./pp/'` 里的
+/// `/` 不算）；`&` 是否为合法的 `&end` 由调用方判断
+fn namelist_end(body: &str) -> Option<usize> {
+    let mut quote = None;
+    for (p, c) in body.char_indices() {
+        match quote {
+            Some(q) => if c == q { quote = None },
+            None if c == '\'' || c == '"' => quote = Some(c),
+            None if c == '/' || c == '&' => return Some(p),
+            None => {}
         }
     }
-    map
+    None
 }
 
 /// namelist 一行 → `key=value` 项。Fortran namelist 里逗号与空白都是分隔符
@@ -403,6 +445,34 @@ CELL_PARAMETERS {angstrom}
     }
 
     #[test]
+    fn test_one_line_namelists() {
+        // 审查 A-13 的复现：&SYSTEM 写在一行，无选项的 CELL_PARAMETERS 须按 celldm(1) 取 alat。
+        // 修前 celldm(1) 丢失、胞回落 Bohr：a = 0.3742 Å
+        let text = "&CONTROL calculation='scf', pseudo_dir='./pp/' /\n\
+                    &SYSTEM ibrav=0, celldm(1)=10.26, nat=2, ntyp=1 /\n\
+                    &ELECTRONS /\n\
+                    ATOMIC_SPECIES\nSi 28.086 Si.upf\n\
+                    CELL_PARAMETERS\n{FCC_UNIT}\nATOMIC_POSITIONS crystal\n{P}\n"
+            .replace("{FCC_UNIT}", FCC_UNIT).replace("{P}", P);
+        let traj = parse_qe(&text).unwrap();
+        let m = traj.first().unwrap().cell.as_ref().unwrap().matrix;
+        assert!((m[(0, 1)] - 2.714679078854).abs() < 1e-6, "一行 namelist 的 celldm(1) 丢了：a1 = {:?}", m.row(0));
+
+        // 与上同义的多行跨行写法、`/` 与末项同行
+        let split = text.replace("&SYSTEM ibrav=0, celldm(1)=10.26, nat=2, ntyp=1 /",
+                                 "&SYSTEM\n ibrav=0,\n celldm(1)=10.26, nat=2,\n ntyp=1 /");
+        let m2 = parse_qe(&split).unwrap().first().unwrap().cell.as_ref().unwrap().matrix;
+        assert!((m - m2).norm() < 1e-12, "跨行写法与一行写法结果应相同");
+
+        let nl = parse_namelists(&["&control calculation='scf', pseudo_dir='./pp/' /"]).unwrap();
+        assert_eq!(nl[0].entries, [("calculation".into(), "'scf'".into()),
+                                   ("pseudo_dir".into(), "'./pp/'".into())],
+                   "引号内的 / 不应结束 namelist，值保持原样");
+        let old = parse_namelists(&["&SYSTEM", "ibrav=0", "&END"]).unwrap();
+        assert_eq!(old[0].entries, [("ibrav".into(), "0".into())], "旧式 &END 结束");
+    }
+
+    #[test]
     fn test_card_options_that_must_fail() {
         let cases = [
             ("celldm 与 bohr 同时给", si(", celldm(1)=10.26", "CELL_PARAMETERS bohr", FCC_BOHR,
@@ -414,6 +484,13 @@ CELL_PARAMETERS {angstrom}
                                "Si 0 0 0\nSi 0.25 x 0.25"), "ATOMIC_POSITIONS line"),
             ("原子数与 nat 不符", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal",
                                    "Si 0 0 0"), "nat = 2"),
+            ("未声明的标签", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal",
+                               "Si 0 0 0\nSi1 0.25 0.25 0.25"), "not declared"),
+            ("缺 ibrav", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal", P)
+                .replace("ibrav=0, ", ""), "ibrav missing"),
+            ("缺 &SYSTEM", "ATOMIC_SPECIES\nSi 28.086 Si.upf\n".into(), "&SYSTEM namelist not found"),
+            ("namelist 未闭合", si("", "CELL_PARAMETERS bohr", FCC_BOHR, "ATOMIC_POSITIONS crystal", P)
+                .replace("\n/\n", "\n"), "not closed"),
         ];
         for (what, text, needle) in cases {
             let err = parse_qe(&text).expect_err(what);

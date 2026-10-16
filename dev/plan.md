@@ -81,7 +81,7 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
 
 | # | 位置 | 问题 | 复现 | 修法 |
 |---|---|---|---|---|
-| A-13 **挂起：QC 专项** | `readers/qe.rs:191-211 collect_namelist`、`:96-97` | `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时整段被忽略，`celldm(1)` 丢失，无选项的 `CELL_PARAMETERS` 回落 Bohr | Si 原胞一行 namelist + `CELL_PARAMETERS` 无选项 + `ATOMIC_POSITIONS crystal` → `ferro info`：a=0.3742 Å、密度 2517.8 g/cm³，exit 0（应 a=3.84 Å） | namelist 按 token 流收：`&name` 后（同行剩余也算）到引号外的 `/`；缺 `&SYSTEM` 报错；`ibrav` 缺省报错（INPUT_PW 标 REQUIRED） |
+| ~~A-13~~ **已修**（2026-10-16，`ferro.jobs` 第 1 步：namelist 按 token 流收，缺 `&SYSTEM` / `ibrav` 报错）| `readers/qe.rs:191-211 collect_namelist`、`:96-97` | `&SYSTEM ibrav=0, celldm(1)=10.26, … /` 写在一行（Fortran 合法，pw.x 照收）时整段被忽略，`celldm(1)` 丢失，无选项的 `CELL_PARAMETERS` 回落 Bohr | Si 原胞一行 namelist + `CELL_PARAMETERS` 无选项 + `ATOMIC_POSITIONS crystal` → `ferro info`：a=0.3742 Å、密度 2517.8 g/cm³，exit 0（应 a=3.84 Å） | namelist 按 token 流收：`&name` 后（同行剩余也算）到引号外的 `/`；缺 `&SYSTEM` 报错；`ibrav` 缺省报错（INPUT_PW 标 REQUIRED） |
 | D-8 **挂起：Bader 重写** | `dft/bader_grid.rs:474`（refine_edge 内 `max_ongrid`）、`:439-449`（边缘只看 6 个面邻居） | **CLI 默认的 near-grid（`-r -1`）与 on-grid 逐位相同**：refine_edge 对边缘点跑 on-grid 上升，边缘判定也只看 6 邻（规格与 Henkelman 2009 为 26 邻、near-grid 时调 near-grid 上升）。即默认路径实际是 on-grid | 10 Å 立方胞两高斯（中心 (3.1,3.3,5.0) σ0.9 幅 1.0；(6.3,6.9,5.2) σ1.4 幅 0.6），N=60：on-grid 与 near-grid `-r -1` 均 11.91354，near-grid `-r 0` 11.88225；N=120 默认误差 0.024 e 且随加密几乎不降，`-r 0` 1e-4 | refine_edge 按方法分派，near-grid 调 `max_neargrid`（顺带解决「`max_neargrid` 被绕过」一节）；边缘判定改 26 邻；加收敛测试 |
 | D-9 **挂起：Bader 重写** | `dft/bader_grid.rs:658`（`grad_lat_1`）、`:736`（`start = [i+0.5, …]`） | off-grid 三线性插值的 $\partial\rho/\partial f_2$ 写成 x 向差分，起点偏半格 | 同 D-8 体系 `-m offgrid`：N=60 nvols **21918**（应 2）；N=30 3064；原子电荷误差 0.1–0.19 e | 改 `grad_lat_1`、起点 `[i,j,k]`；单测「线性密度 ρ=y 的梯度只有 y 分量」+ 收敛测试 |
 
@@ -108,7 +108,7 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
   （`readers/extxyz.rs:141`）；extxyz writer 定点 `{:.10}` 丢小数有效位（`writers/extxyz.rs:139-142`）；PDB 末个 MODEL
   缺 ENDMDL 整帧静默丢、`CRYST1 1 1 1 90 90 90` 当 1 Å 周期胞（`pdb.rs:35-62`）；CIF symop 认不出的项静默丢
   （`cif.rs:380-411`，A1 漏网）；cube writer 不在每条 z 列末换行（`writers/cube.rs:59-64`）；LAMMPS data 的 Masses 注释
-  直接当元素不校验（`lammps_data.rs:136-142`）；QE `ATOMIC_POSITIONS` 用了未声明的标签不报错（`qe.rs:152-154`）；QE
+  直接当元素不校验（`lammps_data.rs:136-142`）；~~QE `ATOMIC_POSITIONS` 用了未声明的标签不报错~~（2026-10-16 已修）；QE
   writer 把 `metadata.source` 原样写进 `prefix`（`writers/qe.rs:22,30`）；CP2K `.inp` 的 `MULTIPLE_UNIT_CELL` 静默忽略
   （`cp2k.rs:139-210`）；xyz / extxyz 末帧截断整份报错，与 dump「丢末帧 + 告警」不一且不点名帧号（`xyz.rs:41-45`、
   `extxyz.rs:113-115`）；手册 `data-model.md:89`、`cli-reference.md:305` 过时；DeePMD writer 文档写 `energy.npy (nframes,)`
@@ -167,7 +167,7 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
   随零调用清单定夺；若留，至少去掉两处 glob 再导出并改正文档
 
 
-**测试缺口**（2026-10-14 删去已随修复补上的项）：Bader near-grid / off-grid 对解析密度的收敛；QE 一行 namelist；
+**测试缺口**（2026-10-14 删去已随修复补上的项）：Bader near-grid / off-grid 对解析密度的收敛；
 带速度的 dump fixture（C 用合成数据验过 vacf，仓库里仍无）。
 
 ### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；严重 / 中两级 2026-10-09 处理完：39 条已修并归档，B-6、C-D2、C-D3 搁置，D-M4、D-M6–D-M12 挂起作 QC 专项；轻、口径、布局建议、测试缺口仍开着）
