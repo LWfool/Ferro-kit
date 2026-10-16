@@ -21,6 +21,7 @@ Usage:
 
 Commands:
   job           Generate VASP / QE / CP2K inputs (sp, opt, aimd) from structures
+  job template  Write a built-in template to edit and pass back with --template
   config init   Write a commented configuration template
 
 Run `ferro-py <COMMAND> -h` for the parameters of one command.
@@ -73,7 +74,7 @@ Parameters:
       --temperature T   aimd: temperature in K  [the template's]
       --steps N         aimd: number of MD steps  [the template's]
       --timestep FS     aimd: time step in fs  [the template's]
-      --ensemble E      aimd: nvt | npt  [the template's]
+      --ensemble E      aimd: nvt | npt_i | npt_f (npt_* CP2K only)  [the template's]
       --vary-cell       opt: relax the cell too  [cell fixed]
       --start N         First frame to take  (0-based, inclusive)  [0]
       --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
@@ -96,6 +97,31 @@ Examples:
   ferro-py job -s vasp -t sp -i POSCAR -o sp/
   ferro-py job -s cp2k -t aimd -i traj.lammpstrj --number 20 --temperature 1500 -o md/
   ferro-py job -s qe -t opt -i 'cifs/*.cif' --vary-cell --template my_relax.in -o relax/
+
+Full documentation:  ferro doc python job"""
+
+
+JOB_TEMPLATE_HELP = """\
+ferro-py job template — Write the built-in template of one job type, to edit
+
+  The template is a native input file of the program. Its header lists what
+  ferro-py rewrites in it and what it deliberately leaves out (parallel settings).
+  Edit it, then pass it back with `ferro-py job --template FILE`.
+
+Parameters:
+  -s, --software S      vasp | qe | cp2k  (required)
+  -t, --task T          sp | opt | aimd  (required)
+  -o, --output DIR      Directory to write the template into  (required)
+      --mkdir           Create -o without asking
+  -h, --help            This page
+
+Output:
+  DIR/INCAR (vasp), DIR/pw.in (qe) or DIR/cp2k.inp (cp2k). An existing file is
+  never overwritten.
+
+Examples:
+  ferro-py job template -s vasp -t aimd -o my_aimd/
+  ferro-py job -s vasp -t aimd -i POSCAR --template my_aimd/INCAR -o md/
 
 Full documentation:  ferro doc python job"""
 
@@ -224,18 +250,52 @@ def expand_inputs(patterns):
     return files
 
 
-def run_job(argv):
+def job_template_parser():
+    p = new_parser("ferro-py job template")
+    p.add_argument("-s", "--software", required=True)
+    p.add_argument("-t", "--task", required=True)
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--mkdir", action="store_true")
+    return p
+
+
+def find_generator(software):
     from ferro import jobs
+
+    generator = jobs.GENERATORS.get(software)
+    if generator is None:
+        raise UsageError(f"unknown software '{software}'; one of {', '.join(jobs.GENERATORS)}")
+    return generator
+
+
+def run_job_template(argv):
+    from ferro.jobs.base import JobOptions
+
+    args = parse(job_template_parser(), JOB_TEMPLATE_HELP, argv)
+    generator = find_generator(args.software)
+    JobOptions(task=args.task).check()
+    # 导出内置模板，不取用户模板目录里的：导出的是「通用设置」，用户在它上面改
+    text = generator.builtin_template(args.task)
+    ensure_dir(args.output, args.mkdir)
+    path = Path(args.output) / generator.template_name
+    if path.exists():
+        raise UsageError(f"{path} already exists; it is never overwritten")
+    path.write_text(text, encoding="utf-8")
+    print(f"Wrote: {path}")
+    return 0
+
+
+def run_job(argv):
     from ferro.jobs.base import JobOptions, write_batch
 
     if not argv:
         print(JOB_HELP)
         return 0
+    if argv[0] == "template":
+        return run_job_template(argv[1:])
     args = parse(job_parser(), JOB_HELP, argv)
     # 参数错误在读第一个文件之前报
-    generator = jobs.GENERATORS.get(args.software)
-    if generator is None:
-        raise UsageError(f"unknown software '{args.software}'; one of {', '.join(jobs.GENERATORS)}")
+    generator = find_generator(args.software)
     options = JobOptions(
         task=args.task, charge=args.charge, multiplicity=args.multiplicity,
         kspacing=args.kspacing, temperature=args.temperature, steps=args.steps,

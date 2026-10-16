@@ -25,7 +25,8 @@ def parser_options(parser):
 
 
 # 每个子命令：(argparse 构造函数, 帮助页)
-PAGES = [(cli.config_parser, cli.CONFIG_INIT_HELP), (cli.job_parser, cli.JOB_HELP)]
+PAGES = [(cli.config_parser, cli.CONFIG_INIT_HELP), (cli.job_parser, cli.JOB_HELP),
+         (cli.job_template_parser, cli.JOB_TEMPLATE_HELP)]
 
 
 @pytest.mark.parametrize("make_parser, text", PAGES)

@@ -1,0 +1,43 @@
+# ferro-py template: VASP AIMD (NVT, Nose-Hoover), PBE-D3(BJ)
+#
+# ferro-py writes POSCAR and POTCAR from the structure and sets in this file:
+#   NELECT (only when --charge is not 0), ISPIN + NUPDOWN (when the multiplicity is
+#   above 1), KSPACING (--kspacing; a value written here is kept when --kspacing is
+#   not given), TEBEG/TEEND (--temperature), NSW (--steps), POTIM (--timestep).
+#   Everything else is used as written. NpT is not offered for VASP.
+# Not set here on purpose: parallel settings (NCORE, NPAR, KPAR) -- add your machine's.
+# The initial velocities come from VASP at TEBEG.
+
+# Electronic
+ISTART = 0         ! start from scratch
+ICHARG = 2         ! superposition of atomic charges
+PREC = Accurate
+LREAL = Auto       ! real-space projection
+# ENCUT unset: VASP takes the largest ENMAX of the POTCARs
+ALGO = Normal
+NELM = 100
+EDIFF = 1E-04      ! eV
+ISMEAR = 0         ! Gaussian smearing
+SIGMA = 0.05       ! eV
+ISYM = 0
+
+# Functional
+GGA = PE           ! PBE
+IVDW = 12          ! DFT-D3(BJ)
+
+# k-points: Gamma-centred mesh N_i = ceil(|b_i| 2pi / KSPACING)
+KSPACING = 0.5     ! 1/A
+KGAMMA = .TRUE.
+
+# Output
+LWAVE = .TRUE.     ! for restarts
+LCHARG = .TRUE.
+
+# MD
+IBRION = 0
+MDALGO = 2         ! Nose-Hoover thermostat
+SMASS = 1          ! Nose mass
+ISIF = 2           ! fixed cell, stress still written
+NSW = 2000         ! steps
+POTIM = 1.0        ! fs
+TEBEG = 300        ! K

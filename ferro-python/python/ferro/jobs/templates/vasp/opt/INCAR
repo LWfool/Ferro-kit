@@ -1,0 +1,40 @@
+# ferro-py template: VASP geometry optimisation, PBE-D3(BJ)
+#
+# ferro-py writes POSCAR and POTCAR from the structure and sets in this file:
+#   NELECT (only when --charge is not 0), ISPIN + NUPDOWN (when the multiplicity is
+#   above 1), KSPACING (--kspacing; a value written here is kept when --kspacing is
+#   not given); --vary-cell sets ISIF = 3, and ENCUT = 1.3 x the largest ENMAX when
+#   ENCUT is not set here (a fixed basis under a changing cell gives Pulay stress).
+#   Everything else is used as written.
+# Not set here on purpose: parallel settings (NCORE, NPAR, KPAR) -- add your machine's.
+
+# Electronic
+ISTART = 0         ! start from scratch
+ICHARG = 2         ! superposition of atomic charges
+PREC = Accurate
+LREAL = Auto       ! real-space projection
+# ENCUT unset: VASP takes the largest ENMAX of the POTCARs
+ALGO = Normal
+NELM = 100
+EDIFF = 1E-05      ! eV
+ISMEAR = 0         ! Gaussian smearing
+SIGMA = 0.05       ! eV
+ISYM = 0
+
+# Functional
+GGA = PE           ! PBE
+IVDW = 12          ! DFT-D3(BJ)
+
+# k-points: Gamma-centred mesh N_i = ceil(|b_i| 2pi / KSPACING)
+KSPACING = 0.5     ! 1/A
+KGAMMA = .TRUE.
+
+# Output
+LWAVE = .FALSE.
+LCHARG = .FALSE.
+
+# Relaxation
+IBRION = 2         ! conjugate gradient
+NSW = 200
+ISIF = 2           ! atoms only; --vary-cell makes it 3
+EDIFFG = -0.02     ! stop when every force is below 0.02 eV/A

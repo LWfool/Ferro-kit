@@ -73,8 +73,10 @@ def test_template_lookup(tmp_path, user_templates):
     assert g.template("sp") == "user\n", "用户模板目录里同名的覆盖内置"
     (tmp_path / "mine.txt").write_text("explicit\n")
     assert g.template("sp", tmp_path / "mine.txt") == "explicit\n", "显式给的模板优先"
-    with pytest.raises(JobError, match="does not exist"):
+    with pytest.raises(JobError, match="no built-in echo template"):
         g.template("opt")
+    with pytest.raises(JobError, match="does not exist"):
+        g.template("sp", tmp_path / "missing.txt")
 
 
 def test_generate_sorts_and_checks(tmp_path, user_templates):

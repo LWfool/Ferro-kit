@@ -14,7 +14,7 @@ from pathlib import Path
 import ferro
 
 TASKS = ("sp", "opt", "aimd")
-ENSEMBLES = ("nvt", "npt")
+ENSEMBLES = ("nvt", "npt_i", "npt_f")
 BUILTIN_TEMPLATES = Path(__file__).parent / "templates"
 
 
@@ -167,10 +167,18 @@ class Generator:
             if candidate is not None and candidate.exists():
                 path = candidate
             else:
-                path = BUILTIN_TEMPLATES / self.program / task / self.template_name
+                return self.builtin_template(task)
         path = Path(path)
         if not path.is_file():
             raise JobError(f"template {path} does not exist")
+        return path.read_text(encoding="utf-8")
+
+    @classmethod
+    def builtin_template(cls, task):
+        """随包的通用模板（``ferro-py job template`` 导出的就是它）。"""
+        path = BUILTIN_TEMPLATES / cls.program / task / cls.template_name
+        if not path.is_file():
+            raise JobError(f"no built-in {cls.program} template for task '{task}'")
         return path.read_text(encoding="utf-8")
 
     def generate(self, traj, frame, options, template=None):
