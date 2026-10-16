@@ -516,7 +516,8 @@ GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_6
 wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `903de96` 全绿。
 CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它与 numpy 2 不兼容，运行时
 补 `numpy.cumproduct = numpy.cumprod` 再调；关键字表较旧，不认 `IGNORE_CONVERGENCE_FAILURE`
-与 `GAPW_ACCURATE_XCINT`）。三个程序的真实运行验收待超算冒烟（`plan.md`「`ferro.jobs`」第 20 步）。
+与 `GAPW_ACCURATE_XCINT`）。三个程序的真实运行验收：超算冒烟第一轮 7/9 通过（2026-10-16），失败的 CP2K opt、QE aimd
+已修待重跑（`plan.md`「`ferro.jobs`」第 20 步）。
 
 ---
 

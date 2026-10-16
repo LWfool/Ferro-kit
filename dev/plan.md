@@ -39,13 +39,29 @@
 | 验收 | CP2K 本机用 cp2k-input-tools 离线校验；9 个算例在超算冒烟（CentOS 7，glibc 2.17 → manylinux2014 x86_64，GitHub Actions 编） |
 | 收尾 | 追平后删 ferro-workflow 与 `ferro job` |
 
-**当前状态（2026-10-16 收工时）**：第 0–20 步已完成并推送（第 20 步提交 `74e7c14`，HEAD `903de96`，GitHub
-Actions 全绿）；**等用户在超算上跑第 20 步的冒烟测试**（用户在准备 POTCAR 与 QE 赝势）。
-用户要做的：从 Actions 下载 `wheel-linux-x86_64` → `pip install --no-index ferro-*.whl` →
-`ferro-py config init` 填 `[vasp] potcar_dir`、`[qe] pseudo_dir`、`[cp2k] data_dir` →
-`VASP_CMD=… PW_CMD=… CP2K_CMD=… [RUN_CONV=1] bash ferro-python/scripts/smoke_hpc.sh 小结构 work/`
-→ 把 `work/smoke_report.txt` 发回。另请用户顺手确认 CP2K 2025.2 是否认 `GAPW_ACCURATE_XCINT`。
-收到报告后：按失败项修（每处一提交），全部通过才做第 21 步（删 ferro-workflow）。
+**当前状态（2026-10-16 晚）**：第 0–19 步已完成并推送（第 20 步提交 `74e7c14`，HEAD `903de96`，GitHub
+Actions 全绿）。**第 20 步冒烟第一轮 7/9 通过**，两处失败已修（`5c52ae8`、`c0f8731`，未推送），
+**等推送后用户只重跑这两个算例**（CP2K `SKIP=vasp,qe`、QE `SKIP=vasp,cp2k`），两份都 PASS 才做第 21 步。
+
+第一轮（2026-10-16，超算 CentOS 7，Python 3.12，结构 `exp_603719.cif` 6 原子 AlPO₄）：
+
+| | sp | opt | aimd |
+|---|---|---|---|
+| VASP 6.5.1（intel + impi） | PASS | PASS | PASS |
+| QE 7.5（intel + impi） | PASS | PASS | **FAIL** |
+| CP2K **2026.2**（gcc + openmpi） | PASS | **FAIL** | PASS |
+
+- **CP2K opt**：2026.2 删了 `MOTION/CELL_OPT/TYPE`，写了即在读输入时 ABORT。`&CELL_OPT` 节总在
+  模板里，所以不变胞的 GEO_OPT 也中止。旧版默认值即 `DIRECT_CELL_OPT`（cp2k-input-tools 自带的
+  CP2K 9.0 关键字表核实），删掉对 2025.2 不变。**以后写 CP2K 模板不要写这个键。**
+- **QE aimd**：第 2 步 `checkallsym` 中止 —— SVR 热浴的随机速度破坏初始对称性；aimd 模板加
+  `nosym = .true.`。
+- 编译器冲突：VASP / QE 要 intel，CP2K 要 gcc + openmpi，同一作业脚本里装不下 → 拆两个作业，
+  用 `SKIP` 分程序、各用独立 WORKDIR（脚本开头会清空 `smoke_report.txt`）。脚本不用改。
+- VASP OUTCAR 有一条「KPOINTS 文件找不到，回退自动生成」警告 —— 设计如此（k 点走 INCAR 的
+  `KSPACING`），不是问题。收敛测试只生成未跑（未设 `RUN_CONV=1`）。
+- 仍未确认：CP2K **2025.2** 是否认 `GAPW_ACCURATE_XCINT`（本轮 CP2K 是 2026.2，且该键默认注释掉）。
+
 用户已审过并认可 VASP / CP2K / QE 的 9 份内置模板；push 每次都要先问。
 
 **步骤**（每步一提交；✅ = 已完成）：
@@ -68,7 +84,8 @@ Actions 全绿）；**等用户在超算上跑第 20 步的冒烟测试**（用�
 18. ✅ Rust 向 Python 暴露输出 reader（能量、力、应力）与 `write_table`
 19. ✅ `ferro-py conv` 生成 + `analyze`
 20. 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF / finer-grid 各一组）：
-    脚本已写（`ferro-python/scripts/smoke_hpc.sh`，本机用假程序走通），**待用户在超算执行**
+    脚本已写（`ferro-python/scripts/smoke_hpc.sh`，本机用假程序走通）；第一轮 7/9，
+    两处已修，**待重跑 CP2K opt 与 QE aimd**
 21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
 22. 手册 `docs/src/python/`
 23. 更新开发记录（版本号只在用户要求时动）
