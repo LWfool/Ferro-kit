@@ -8,28 +8,31 @@ than `cargo build`.
 
 ## Install
 
+The package is one wheel per platform (abi3: any CPython ≥ 3.11) with the Rust
+code compiled in and nothing else to install, so it runs on an offline cluster.
+GitHub Actions builds `manylinux2014` x86_64 (CentOS 7 and later) and macOS arm64
+wheels; download the artifact and
+
+```bash
+pip install --no-index ferro-*.whl      # gives `import ferro` and the ferro-py command
+```
+
+To build one yourself:
+
 ```bash
 pip install maturin
 cd ferro-python
-maturin develop                 # build + install into the active venv/conda env
-# or, without an active environment:
-maturin build --release --interpreter "$(which python)"
-pip install target/wheels/ferro-*.whl
+maturin build --release                 # -> target/wheels/ferro-*.whl
 ```
 
-> `cargo build` from the workspace root does **not** build this crate (and a
-> standalone `cargo build` fails at the macOS link step on undefined Python
-> symbols — that is expected; maturin supplies the correct link flags).
->
-> Because it is a separate workspace with its own lockfile, the root
-> `cargo build` / `test` / `clippy` skip it entirely — a break in the bindings is
-> not caught by the main test suite.  After changing any public API in
-> `ferro-core` or `ferro-analysis`, run `cd ferro-python && cargo check`.
->
-> **Status (0.3.1):** type-level checks pass cleanly (`cargo clean && cargo check`,
-> clippy zero warnings).  The pyo3 0.21 → 0.29 upgrade has **not** been verified at
-> runtime — this machine has no maturin, so module initialisation and the
-> `#[pyfunction]` signatures are unconfirmed in practice.
+> `cargo build` from the workspace root does **not** build this crate: it is a
+> separate workspace with its own lockfile, so the root `cargo build` / `test` /
+> `clippy` skip it, and a break in the bindings is not caught by the main test
+> suite. After changing a public API of `ferro-core`, `ferro-io` or
+> `ferro-analysis`, run `cd ferro-python && cargo check`.
+
+The command-line side — `ferro-py job`, `conv`, `config` — has its own pages:
+run `ferro-py doc` for the list.
 
 ## Quick start
 

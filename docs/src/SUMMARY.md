@@ -39,7 +39,13 @@
 
 # Python API
 
-- [Python Bindings](python.md)
+- [Python Bindings](python/api.md)
+- [ferro-py Configuration](python/config.md)
+- [ferro-py job: Calculation Inputs](python/job.md)
+  - [VASP](python/job-vasp.md)
+  - [Quantum ESPRESSO](python/job-qe.md)
+  - [CP2K](python/job-cp2k.md)
+- [ferro-py conv: Convergence Tests](python/conv.md)
 
 # Reference
 

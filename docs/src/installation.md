@@ -42,7 +42,7 @@ maturin build --release --interpreter "$(which python)"
 pip install target/wheels/ferro-*.whl
 ```
 
-See [Python Bindings](python.md) for the full API reference.
+See [Python Bindings](python/api.md) for the full API reference.
 
 ## Generating This Documentation
 

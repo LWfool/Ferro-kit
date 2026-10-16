@@ -8,7 +8,7 @@
 - **Charge analysis** — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF
 - **Input generation** — Gaussian, CP2K, and Quantum ESPRESSO input files with structure-based spin estimation and a precise CP2K basis/pseudopotential database
 - **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube
-- **Python bindings** — `import ferro`: read/write, supercell/vacuum/merge, g(r) & MSD ([details](python.md))
+- **Python bindings** — `import ferro`: read/write, supercell/vacuum/merge, g(r) & MSD ([details](python/api.md))
 
 ## Design Goals
 

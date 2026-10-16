@@ -227,7 +227,7 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])
 
 Currently exposed: `read` / `write` / `supercell` / `add_vacuum_layer` / `merge` /
 `gr_pair` / `gr_all` / `msd`, plus the `Trajectory` methods. Network analysis is not
-wrapped yet. See `docs/src/python.md`.
+wrapped yet. See `docs/src/python/api.md`; the `ferro-py` commands are read with `ferro-py doc`.
 
 ## Python scripts
 

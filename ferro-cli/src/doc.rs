@@ -177,12 +177,6 @@ const PAGES: &[Page] = &[
         section: None,
     },
     Page {
-        topic: "python",
-        source: "python.md",
-        text: include_str!("../../docs/src/python.md"),
-        section: None,
-    },
-    Page {
         topic: "convert",
         source: "cli-reference.md § ferro convert",
         text: include_str!("../../docs/src/cli-reference.md"),
