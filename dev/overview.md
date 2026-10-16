@@ -13,15 +13,14 @@ Rust 重写的计算化学后处理工具链，面向周期性体系（晶体、
 
 ```
 ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
-    ├── ferro-core              ← 纯数据结构 + 静态参考数据 + spin（未成对电子推断）
+    ├── ferro-core              ← 纯数据结构 + 静态参考数据
     │                             + Table（分析产物的中立载体）
     │                             + AtomType（网络分类结果，结构化而非字符串）
     ├── ferro-io       → core   ← 格式读写 + write_table（分析产物的唯一出口）
     ├── ferro-structure→ core   ← 超胞、真空层、合并、初始盒子
-    ├── ferro-analysis → core   ← 纯计算，不碰文件系统；结果暴露 to_tables()
-    │                             md/、network/、dft/（Bader、ChgSDF）、
-    │                             ml/（数据集筛选与合并）
-    └── ferro-workflow → core   ← QC 输入生成（Gaussian / CP2K / QE，含基组赝势库）
+    └── ferro-analysis → core   ← 纯计算，不碰文件系统；结果暴露 to_tables()
+                                  md/、network/、dft/（Bader、ChgSDF）、
+                                  ml/（数据集筛选与合并）
 ```
 
 中间层 crate 之间不允许互相依赖。**但共享类型可以下沉** —— 判据：一个类型该放

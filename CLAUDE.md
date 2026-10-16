@@ -33,7 +33,6 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
     ├── ferro-io        → core    格式读写；write_table 是分析产物的唯一出口
     ├── ferro-structure → core    超胞、真空层、合并、建盒
     ├── ferro-analysis  → core    纯计算，**不碰文件系统**
-    ├── ferro-workflow  → core    QC 输入生成
     └── ferro-render              `ferro doc` 的终端渲染（markdown + LaTeX），不依赖任何 ferro crate
 ```
 
@@ -75,7 +74,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 当前版本见 `dev/progress.md` 顶部，历次版本批次与破坏性改动（含走 patch 位的例外）见
 `dev/overview.md`。何时升版本号的细则见 `dev/memory.md`「版本号更新规则」。
 
-**`-o` 恒为路径**：写多个产物的命令指目录，`convert` / `job` 指文件；批次标记走
+**`-o` 恒为路径**：写多个产物的命令指目录，`convert` 指文件；批次标记走
 `-s/--suffix`。目录缺失时经 `outpath.rs` 询问，非交互环境须给 `--mkdir`。
 **`convert` 例外**：`--format EXT` 让 `-o` 成为目录；缺失目录直接建，没有 `--mkdir`。
 
@@ -100,8 +99,6 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 **加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
 目前无 CLI 入口（`box_builder` 也是库级）。
 
-**加 QC 目标**：`ferro-workflow/src/job_builder.rs` + `templates.rs` → `cmd/job.rs` 分支。
-
 **加数据集判据**：`ferro-analysis/src/ml/filter.rs` 的 `Criterion` 加变体（记得
 `ALL`、`name`、`bit`、`enabled` 四处）→ `FilterParams` 加参数 → `cmd/dataset.rs`
 接 CLI。判据一律表达成「符合条件则**删**」，四条同一语义交叉表才不用分裂。
@@ -110,7 +107,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 
 | 位置 | 内容 |
 |---|---|
-| `ferro-core/src/` | `atom/cell/frame/trajectory`、`table.rs`、`network_type.rs`（`AtomType`）、`cluster.rs`、`spin.rs`、`data/`（元素、化合物、Qn 名单） |
+| `ferro-core/src/` | `atom/cell/frame/trajectory`、`table.rs`、`network_type.rs`（`AtomType`）、`cluster.rs`、`data/`（元素、化合物、Qn 名单） |
 | `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `cube_density` `cube_radius` `cube_jump`（**无 CLI 入口**，见 `dev/plan.md`）`cube_sdf` `scattering_data` |
 | `ferro-analysis/src/network/` | 单文件 `mod.rs`，六张表的统计 |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |

@@ -39,17 +39,6 @@
 | `ferro-cli` 解构 `cli` | `let Some(x) = cli.field` 是部分移动，后续不能再借用 `cli` | 用 `let Cli { field1, field2, .. } = cli;` 一次性解构，再分别传参 |
 | `cluster.rs` Union-Find | `find()` 需要 `&mut Vec`，不能与 `local_cluster` 构建同时进行 | 先用 `(0..n).map(|li| find(...))` 收集，再组装 `Vec` |
 
-## spin / cp2k_basis_db / qe 编码陷阱
-
-| 位置 | 陷阱 | 正确做法 |
-|---|---|---|
-| `spin.rs` `assign_oxidation_states` | 单质（distinct 元素 < 2）氧化态法不适用 | 返回 `None`，由 `guess_spin` 回退奇偶下限 |
-| `spin.rs` 过渡金属 | 一律高自旋；低自旋 / 多中心磁耦合无法从结构推断 | 结果为初猜须 DFT 验证；附带 warnings |
-| `cp2k.rs` `auto_spin` | builder 默认 `auto_spin=true`，会覆盖 CLI 显式多重度 | job.rs 设 `auto_spin = args.multiplicity.is_none()` |
-| `cp2k_basis_db` `name_rank` | 同 q 多候选（`GTH-PBE` vs `GTH-NLCC-PBE`） | 精确等于 `GTH-PBE`/`GTH-SCAN` 优先（rank 0） |
-| `cp2k_basis_db` | 文件自动生成，标注「Do not edit by hand」 | 改逻辑须改生成脚本并重跑（数据源于 6 文件） |
-| `cp2k.rs` `gth_nval` | 兜底价电子数不能用 DB 内 `max(q)`（Zn 有 q2/q12/q20） | 复用 `cp2k_basis_db::basis()` 默认族解析，取惯用 q |
-
 ## cluster / 审计 编码陷阱
 
 | 位置 | 陷阱 | 正确做法 |

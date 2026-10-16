@@ -3,17 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：843 个（全部通过，clippy 零警告；2026-10-16 实数）；另 ferro-python 137 个 pytest
+## 测试总数：796 个（全部通过，clippy 零警告；2026-10-17 实数）；另 ferro-python 137 个 pytest
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 103 |
+| ferro-core | 84 |
 | ferro-io | 222（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
 | ferro-structure | 86 |
 | ferro-analysis | 256 |
-| ferro-workflow | 26 |
 | ferro-render | 30 |
-| ferro-cli（lib 109 + bin 3 + 集成 8） | 120 |
+| ferro-cli（lib 107 + bin 3 + 集成 8） | 118 |
 
 版本号 **0.3.6**（workspace 统一；ferro-python 已同步；**2026-10-15 发版，tag `v0.3.6`**）。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
@@ -110,10 +109,6 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   - **`interplanar_spacings()` / `minimum_image_cutoff()`**：dᵢ = 1/‖(Mᵀ)⁻¹.row(i)‖，
     最小镜像的正确几何上界（非正交晶胞 d < L，用边长会高估）；`calc_gr` 与
     `CellList::build` 共用同一份
-- **`spin.rs`**：`guess_spin`（magmom 求和 → 氧化态+Hund → 电子数奇偶下限，三级回退）、
-  `assign_oxidation_states`、`total_electron_count`、`parity_min_multiplicity`；3d 取高自旋、
-  4d/5d 取低自旋（d⁸ 平面四方为 0）、镧系按 4f 填 Hund 高自旋并告警；氧化态凑不平单独告警（2026-10-08）
-  - 验证：ZnP₂O₆→0（抗磁）、MnS→5（d⁵ 高自旋）、Fe₂O₃→10
 - **`cluster.rs`**：`build_network_graph`（former–ligand 邻接 + 配体分类 + 个人 Qn +
   连通分量）、`connected_components`（通用并查集）。供 `ferro-structure::find_clusters`
   与 `ferro-analysis::cube_sdf` 复用
@@ -354,20 +349,6 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - `chg_sdf.rs`：电荷密度团簇 SDF（Kabsch 对齐 + pull 插值旋转子格）
 - 算法规格与 Fortran 逆向结论见 `bader.md`
 
-### ferro-workflow
-
-- `GaussianJobBuilder`
-- `Cp2kJobBuilder`：energy/force/geo-opt/cell-opt/md/freq；PBE/BLYP/PBE0/B3LYP/SCAN/
-  r2SCAN/HSE06 等；DFT-D3(BJ)；对角化/OT；k 点、涂抹、cube/Molden 输出；
-  CSVR/NoseHoover/Langevin/NVE + NPT。2026-10-08：`--pressure P`（bar）取代 `--barostat`，
-  系综按恒温器 × 压强查表（langevin 走 `ENSEMBLE LANGEVIN`）、CSVR 写 `TIMECON`、HSE06 补
-  短程 `INTERACTION_POTENTIAL`。**CP2K / QE / Gaussian 输入仍有 8 条已知不可运行或静默错的
-  问题**（D-M4、D-M6–D-M12），挂起作 QC 专项，见 `plan.md`
-  - `auto_spin` 经 `ferro_core::guess_spin` 推断多重度 + UKS（CLI 显式 `--multiplicity` 时关闭）
-  - **`cp2k_basis_db`**：从 6 个 CP2K 文件解析的基组/赝势库（**2829 条**），覆盖
-    PBE/SCAN/全电子（pob、-ae）；`basis()`/`potential()` 按元素+族前缀+泛函精确匹配
-- `QeJobBuilder`：pw.x（scf/nscf/bands/relax/vc-relax/md/vc-md），复用 `guess_spin`
-
 ### ferro-cli
 
 单二进制 `ferro`，八个 `fe-*` 已删除。目录结构见 `CLAUDE.md`「代码导航」，
@@ -377,7 +358,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   旧 `fe-traj` 是 29 个字段的大结构体）。`CommonArgs` / `SelectArgs` 经
   `#[command(flatten)]` 接入
 - **`-o` 恒为路径**（2026-09-20 起，`--outdir` 已删）：写多个产物的命令（13 个分析
-  命令、`chg-sdf`、`bader`、`dataset`）指目录，只写一个文件的（`convert`、`job`）
+  命令、`chg-sdf`、`bader`、`dataset`）指目录，只写一个文件的（`convert`）
   指文件；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
   `[y/N]`，非交互环境报错并指明 `--mkdir`，询问都在读第一个输入之前
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
@@ -497,6 +478,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 
 ### ferro-python（PyO3 绑定 + `ferro.jobs`）
 
+计算输入只由这里生成：Rust 的 `ferro job`、`ferro-workflow` crate 与 `ferro-core` 的 `spin.rs`
+已于 2026-10-17 删除（`plan.md`「`ferro.jobs`」第 21 步）。
+
 独立 workspace（pyo3 0.29，**abi3-py311**），maturin 的 Rust/Python 混合布局：Rust 扩展是
 `ferro._ferro`，`python/ferro/__init__.py` 整体再导出，`import ferro` 用法不变。
 - Rust 侧：`types.rs`（`PyTrajectory`，含 `pbc` / `subset` / `frame_indices` / `energy` /
@@ -604,4 +588,3 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 - **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
   `io_dispatch.rs` 走。2026-10-16 已对齐（`.lammps` = data，`.vasp` / `.poscar` / `.pos` = VASP），
   但两处 match 分支仍分开维护，**会漂**——加格式时两边都要看一眼（`plan.md` 的 `enum Format` 待办）
-- `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋

@@ -37,11 +37,12 @@
 | convert | QE 只读不写（破坏性） |
 | 默认参数 | 以用户脚本（`private/` 下 `dp_makeAIMDin.py`、`make_NMR.py`、`make_vasp_label.py`，覆盖 VASP / CP2K 的 AIMD 与 SP）为准；opt 与 QE 无参考脚本，查惯例补齐，出入处商量着定 |
 | 验收 | CP2K 本机用 cp2k-input-tools 离线校验；9 个算例在超算冒烟（CentOS 7，glibc 2.17 → manylinux2014 x86_64，GitHub Actions 编） |
-| 收尾 | 追平后删 ferro-workflow 与 `ferro job` |
+| 收尾 | 追平后删 ferro-workflow 与 `ferro job`（✅ 2026-10-17） |
 
 **当前状态（2026-10-16 晚）**：第 0–20 步已完成并推送（第 20 步提交 `74e7c14`；修复 `5c52ae8`、
 `c0f8731`，HEAD `44fbec0`，GitHub Actions 全绿）。**第 20 步冒烟第二轮 9/9 通过**（用 `44fbec0` 的
-wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步无 ABORT）。下一步是第 21 步。
+wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步无 ABORT）。
+**2026-10-17**：第 21 步完成（`2527531` `e66a193` `cb2bcbc` `b7319fc`），版本定 **0.4.0**（用户定）。
 
 第一轮（2026-10-16，超算 CentOS 7，Python 3.12，结构 `exp_603719.cif` 6 原子 AlPO₄）：
 
@@ -85,7 +86,9 @@ wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步�
 19. ✅ `ferro-py conv` 生成 + `analyze`
 20. ✅ 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF / finer-grid 各一组）：
     `ferro-python/scripts/smoke_hpc.sh`；第一轮 7/9，两处修复后第二轮 9/9（收敛测试只生成未跑）
-21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
+21. ✅ 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等；`ferro-core/src/spin.rs` 一并删除（用户定）。
+    测试 843 → 796。随之失去、ferro-py 尚未覆盖的（用户接受，以后需要再在 ferro-py 补，功能类，低）：
+    Gaussian 输入、CP2K freq、QE nscf / bands、CP2K `--atom-charge` / `--cube` / `--molden`、多重度推断
 22. ✅ 手册 `docs/src/python/`（api / config / job / job vasp|qe|cp2k / conv 七页）+ `ferro-py doc`：
     手册编进 wheel，与 `ferro doc` 同一渲染器；Rust 的 `ferro doc` 不收这些页（用户定：一份手册
     两处收录迟早走样），`ferro doc python` 改为 ferro-python 概览（构成、依赖、职责、架构）。`ferro-render` 加 `\lvert` `\rvert` `\hbar`
@@ -160,7 +163,7 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
 |---|---|---|---|
 | B-3 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:614-627 build_reference_frame` | `map sdf` 参考结构多加一次 `(min+max)/2` 平移，与密度网格错位；现被 S-A 掩盖（实测仅 0.04 Å），S-A 修后显形 | 直接用 `pos`，删 `center`/`box_size` 参数；随 S-A 修，测试「参考原子落在各自密度峰上」 |
 | B-4 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:401-404` | 以锚原子最小镜像取局部坐标，跨度超过半盒或逾渗的团簇被折断，无告警（推断，未构造算例） | BFS 展开 + 逾渗检测；结果计数被跳过的团簇。随 B-6 / S-A 一并做 |
-| D-1 **挂起：QC 专项** | `ferro-core/src/spin.rs:162-171`（`max_by_key`） | 多解择优的键恒为常数，实际取枚举序最后一个解：FeTiO₃ 给 Fe³⁺/Ti³⁺ | 按明确判据择优（各元素常见氧化态次序等）；多解时告警 |
+| D-1 **作废**（2026-10-17 `spin.rs` 已删） | `ferro-core/src/spin.rs:162-171`（`max_by_key`） | 多解择优的键恒为常数，实际取枚举序最后一个解：FeTiO₃ 给 Fe³⁺/Ti³⁺ | 按明确判据择优（各元素常见氧化态次序等）；多解时告警 |
 | D-10 **挂起：Bader 重写** | `dft/bader_weight.rs:107-113`、`:146-148` | S-C 的补充：weight 在等密度平台上 `tsum = 0` → 0/0 = NaN，电荷成片丢（floor=0.2 时 208.6 e 剩 97.2 e） | 随 S-C / Bader 重写；回归测试 Σionchg + vacchg == 网格总量 |
 | D-11 **挂起：Bader 重写** | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³ | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
 
@@ -282,7 +285,7 @@ network / dft / ml / core（C）：
 
 入口 / 结构 / 工作流（D）：
 
-**QC 输入生成组**：D-M4、D-M6–D-M12（CP2K / QE / Gaussian 输入生成）**挂起作专项**（2026-10-08 用户定：大工程，先记录）。动手前须逐条对照 `examples/cp2k-2026.2/src` 与 QE、Gaussian 官方文档核实——D-M10 等几条只是推断；修完应能让生成的输入真跑过一次各软件的输入解析。
+**QC 输入生成组**（**2026-10-17 `ferro-workflow` 与 `cmd/job.rs` 已删，本组不再修**；保留作 ferro-py job 的不重犯清单，第 15–17 步已对照）：D-M4、D-M6–D-M12（CP2K / QE / Gaussian 输入生成）**挂起作专项**（2026-10-08 用户定：大工程，先记录）。动手前须逐条对照 `examples/cp2k-2026.2/src` 与 QE、Gaussian 官方文档核实——D-M10 等几条只是推断；修完应能让生成的输入真跑过一次各软件的输入解析。
 
 | # | 位置 | 问题 / 依据 | 修法 |
 |---|---|---|---|
@@ -308,8 +311,8 @@ network / dft / ml / core（C）：
   `P2` / 「of c2」（`traj.rs:661`、`rotcorr.rs:329`）；`sq.rs:346 to_tables` 参数 `gr` 未用、`Result`
   永不 Err；rotcorr Sum 模式串行暴力（`:171-189`，推断）；msd lag 0 输出 −1.7e-18
 - C：浮点 `rem_euclid` 可返回 L（`(-1e-17).rem_euclid(8.0)=8`）。**位置勘误（2026-10-11 审查 G-4）**：原记 `cell.rs:147-160`，但 `Cell::wrap_position` 生产零调用；真正的越界点是 `chg_sdf.rs:265-273 trilinear_interp_pbc` 自己的 `rem_euclid`（`x0 = n1` 读到下一行体素，`z0 = n3` 越界 panic），chg_sdf 三线性插值
-  由此越界（推断）→ 下标再 `% n`；`spin.rs:62-69` 未知元素 Z=255 计入电子数（元素表只到 Rn，
-  UO₂ 给双重态）；~~`dataset.rs:982,1003` `-f nan`、`--oo-min nan` 静默关判据、`--al6 nan` 删光
+  由此越界（推断）→ 下标再 `% n`；~~`spin.rs:62-69` 未知元素 Z=255 计入电子数（元素表只到 Rn，
+  UO₂ 给双重态）~~（随 `spin.rs` 删除）；~~`dataset.rs:982,1003` `-f nan`、`--oo-min nan` 静默关判据、`--al6 nan` 删光
   后才失败；`diagnostics.rs:101-104` 全非有限时 `len()-1` 下溢~~（随 C-D4 修）；`diagnostics.rs``:41` 实际可采
   2·max−1 帧；三处注释错位 / 过时（`dataset.rs:281-293` 两段 `///` 挂错、`group_by_directory`
   两条注释矛盾、`network_type.rs:21` 仍写「digit = bridging ligands」）
@@ -356,7 +359,7 @@ network / dft / ml / core（C）：
    （`vanhove.rs:105`、`cube_jump.rs:84`、`util.rs:63`）→ 下沉 `msd::unwrap_tor`；cube spacing
    矩阵三份（`cube_density.rs:222`、`cube_radius.rs:217`、`cube_jump.rs:208`），`voxel_idx` 顺带
 4. **搬移**：`cube_reference_frame`（在 cube_density，radius/jump 共用）与 `CellList`（在 angle，
-   gr 共用）下沉 `md/util.rs`；`spin.rs` 搬 ferro-workflow、`build_network_graph`/`NetworkGraph`/
+   gr 共用）下沉 `md/util.rs`；~~`spin.rs` 搬 ferro-workflow~~（已删）、`build_network_graph`/`NetworkGraph`/
    `LigandKind` 搬 ferro-analysis（下沉判据反向：只有一个中间层叫它的名字）
 5. **Bader weight 复用 grid**：`bader_weight.rs:236-262` 抄了 `assign_chg2atom` 与
    `calc_atomic_vol`，改传 `&volchg[1..=nvols]` 复用（R6），同时消掉 C-D2 那一族索引错误
@@ -369,8 +372,8 @@ network / dft / ml / core（C）：
    （R1 单调用 + R3；跳过无胞帧造成下标错位）；`args/cube.rs CubeCliMode`（从未被 clap 解析，
    三个变体从未构造）；`batch::Output::join_str` 零调用
 8. **拆分 / 改名**：`cmd/dataset.rs`（1921 行）拆 `cmd/dataset/{mod,collect,filter,merge,split}.rs`，
-   `cmd/inspect.rs` 搬入（R2a）；`ferro-workflow/src/job_builder.rs` → `gaussian.rs`，`lib.rs`
-   改显式导出；`job.rs` 约 10 处字符串 match 改 clap `ValueEnum`（同 D-M12）；`ml/geometry.rs`
+   `cmd/inspect.rs` 搬入（R2a）；~~`ferro-workflow/src/job_builder.rs` → `gaussian.rs`，`lib.rs`
+   改显式导出；`job.rs` 约 10 处字符串 match 改 clap `ValueEnum`（同 D-M12）~~（已删）；`ml/geometry.rs`
    的生产代码夹在两个测试模块之间，移到前面
 9. **性能**：`Cell::minimum_image` 每次调用 `try_inverse`，用在 network_type 三处、`cluster.rs`、
    Bader 归属的 O(N²) 循环里 → core 加预存逆的 MIC 辅助（与 `issues.md:658` 否决的「并入现有
@@ -468,7 +471,7 @@ M1 期间另见、未修（待定口径）：
 fixture；cube 往返只测零原点；cube_radius 无窗口超网格的用例。
 
 **审查未覆盖**：Bader 全套（已登记项之外）、`chg_sdf`、`cube_sdf` 聚类、`cube_jump`、
-`spin.rs`、`cp2k_basis_db`、workflow 模板、`cp2k_sp`、pdb / cif writer、doc 渲染器、
+`cp2k_sp`、pdb / cif writer、doc 渲染器、
 ferro-python 运行时。（`--metal-units` 全链路已随 2026-10-03 的 `--units` 改造走过一遍）
 
 ### 全仓规则合规扫描的遗留违规（2026-09-27 扫描）
@@ -639,12 +642,15 @@ on-grid `:213-232`、near-grid `:580-597`、off-grid `:763-770`）。`volchg.pus
   - 该改的时机：出现真要按类别分支的调用方（ferro-python 映射 `FileNotFoundError`、
     `collect` 区分「格式认不出」与「文件损坏」）。届时设计**真正带类型**的错误，
     不是套现在的 `ChemError`
-- **`ferro-workflow` 搁置**：三个文件只有 `use anyhow::Result`，唯一错误源是
+- ~~**`ferro-workflow` 搁置**~~（2026-10-17 crate 已删）：三个文件只有 `use anyhow::Result`，唯一错误源是
   `writeln!` 写进 `String` 的 `fmt::Error`（实际不会发生），迁不迁行为都不变。
   若要迁：`ChemError` 加 `From<std::fmt::Error>`、删依赖，`cmd/job.rs` 不用改
 - **未做**：`CLAUDE.md` 那条规则仍是「一律 `ChemError`」，尚未写明 io 例外
 
 ### `ferro job` 的自旋多重度：对照 CP2K 源码后的四处待定（2026-09-30）
+
+> **2026-10-17 作废**：`ferro job` 与 `spin.rs` 已删，ferro-py 只按奇偶取多重度（见「`ferro.jobs`」
+> 的「自旋」一行）。下面的源码核对与行业调研留作以后再做未成对电子推断时的参考。
 
 **CP2K 自己不推断多重度**（`examples/cp2k-2026.2`）。`qs_environment.F:2013` 在
 `MULTIPLICITY` 未给（=0）时只按价电子数奇偶取 1 / 2；`:2032` 奇数电子不开 UKS
@@ -708,7 +714,7 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 |---|---|---|
 | 整文件零引用 | `ferro-analysis/src/trajectory_analysis.rs`（文件头自称「旧接口，保持编译兼容」；4 个 `pub fn` 里 2 个连测试都没有，2 个只有自己的测试） | 113 |
 | 整文件零引用 | `ferro-analysis/src/geometry.rs`（`distance`/`angle`/`dihedral`/`radius_of_gyration`/`bounding_box`，3 个测试；`docs/src/` 零提及） | 104 |
-| 整文件零引用 | `ferro-workflow/src/templates.rs`（其中 `orca_sp_template` 是 Ferro 不支持的 ORCA） | 25 |
+| ~~整文件零引用~~ | ~~`ferro-workflow/src/templates.rs`（其中 `orca_sp_template` 是 Ferro 不支持的 ORCA）~~ 2026-10-17 随 crate 删除 | — |
 | 整文件零引用 | `ferro-cli/src/args/corr.rs`（`CorrMode`）· `args/traj.rs:5`（`TrajMode`），0.2.0 前 `--mode` 时代遗留 | 8 + 8 |
 | 单位转换链 | `ferro-core/src/units.rs` 的 `convert_length` / `convert_energy` / `convert_time` **生产零调用**（只有自己的测试），连带 6 个私有方法只服务它们。四个 `convert_*` 里只有 `convert_pressure` 活着（vasprun / vasp_outcar / cp2k_out / filter / dataset 共 5 处） | ~55 |
 | 被绕过的算法 | `ferro-analysis/src/dft/bader_grid.rs:375 max_neargrid` —— 见下一条 | 20 |
@@ -938,8 +944,6 @@ f64。数组命名与形状在实现时定。
 
 其余可参考项：晶胞数学在 `PBC.f90`；菜单 20 边界分子补全、22 原子折叠入胞、
 25 提取团簇、28 坐标轴互换。
-
-### ferro-workflow：VASP（POSCAR/INCAR/KPOINTS）
 
 ---
 
