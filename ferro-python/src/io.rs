@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use ferro_io::{
-    is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
+    apply_type_map, is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
     read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
     write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_xyz,
     LammpsUnits,
@@ -43,13 +43,24 @@ fn parse_units(units: Option<&str>) -> PyResult<Option<LammpsUnits>> {
 /// inp/restart (CP2K), lammpstrj/dump/lammps (LAMMPS dump),
 /// data/lmp (LAMMPS data)。LAMMPS dump 含速度/力列时必须给 `units`（"real" /
 /// "metal"），dump 不记录单位，不猜。LAMMPS data 必须给 `atom_style`（"atomic" / "charge" /
-/// "full"），不按注释或列数猜。
+/// "full"），不按注释或列数猜。无 element 列的 dump 用 `type_map`（`{1: "Zr", 2: "O"}`）
+/// 把类型号换成元素，与 CLI 的 `--type-map` 同一个函数。
 #[pyfunction]
-#[pyo3(signature = (path, units = None, atom_style = None))]
-fn read(path: &str, units: Option<&str>, atom_style: Option<&str>) -> PyResult<PyTrajectory> {
+#[pyo3(signature = (path, units = None, atom_style = None, type_map = None))]
+fn read(
+    path: &str,
+    units: Option<&str>,
+    atom_style: Option<&str>,
+    type_map: Option<std::collections::BTreeMap<u32, String>>,
+) -> PyResult<PyTrajectory> {
     let units = parse_units(units)?;
     let p = std::path::Path::new(path);
-    let traj = match detect(path).as_str() {
+    let format = detect(path);
+    let is_dump = matches!(format.as_str(), "lammpstrj" | "dump" | "lammps");
+    if type_map.is_some() && !is_dump {
+        return Err(pyerr(format!("type_map applies to LAMMPS dump input only, not {path}")));
+    }
+    let mut traj = match format.as_str() {
         // .xyz 也常装 extxyz（ASE、GPUMD），与 CLI 的 io_dispatch 同一个判据
         "xyz" if is_extxyz(p).map_err(pyerr)? => read_extxyz(p).map_err(pyerr)?,
         "xyz" => read_xyz(p).map_err(pyerr)?,
@@ -74,13 +85,17 @@ fn read(path: &str, units: Option<&str>, atom_style: Option<&str>) -> PyResult<P
             )))
         }
     };
+    if let Some(map) = type_map {
+        let map: Vec<(u32, String)> = map.into_iter().collect();
+        apply_type_map(&mut traj, &map).map_err(pyerr)?;
+    }
     Ok(PyTrajectory::new(traj))
 }
 
 /// 写出轨迹，按扩展名选择格式。
 ///
-/// 支持：xyz, extxyz, pdb, cif, POSCAR, in/qe, data/lmp,
-/// lammpstrj/dump。带速度/力的轨迹写 dump 时必须给 `units`（"real" / "metal"）。
+/// 支持：xyz, extxyz, pdb, cif, POSCAR, data/lmp, lammpstrj/dump（QE 输入只读）。
+/// 带速度/力的轨迹写 dump 时必须给 `units`（"real" / "metal"）。
 #[pyfunction]
 #[pyo3(signature = (traj, path, units = None))]
 fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {

@@ -50,8 +50,13 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 
 | Function | Description |
 |---|---|
-| `read(path, units=None, atom_style=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style`, a dump with velocities/forces needs `units` |
-| `write(traj, path, units=None)` | Write by extension; velocities/forces to a dump need `units` |
+| `read(path, units=None, atom_style=None, type_map=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style`, a dump with velocities/forces needs `units`; a dump without an element column takes `type_map={1: "Zr", 2: "O"}` |
+| `write(traj, path, units=None)` | Write by extension; velocities/forces to a dump need `units`; QE input is read-only |
+| `sort_atoms(traj)` | Per frame, atoms in (Z, symbol) order — the order `ferro convert` writes |
+| `poscar_string(traj, frame_index=0, comment="ferro")` | POSCAR text of one frame |
+| `qe_structure_cards(traj, pseudos, frame_index=0)` | `ATOMIC_SPECIES` / `CELL_PARAMETERS` / `ATOMIC_POSITIONS`; `pseudos` maps every element to a file name |
+| `cp2k_structure_sections(traj, frame_index=0)` | CP2K `&CELL` + `&COORD` |
+| `parse_qe_input_parts(text)` / `write_namelists(namelists)` | pw.x input → `([(name, [(key, raw value)])], cards text)`, and back |
 | `supercell(traj, nx, ny, nz)` | Per-frame supercell |
 | `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along `x`/`y`/`z` |
 | `merge(a, b, axis, gap)` | Merge the first frames of two systems |
@@ -60,8 +65,12 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 | `msd(traj, dt, max_lag=None, elements=None)` | MSD(t), time-origin averaged |
 
 `Trajectory` methods: `n_frames()`, `n_atoms()`, `elements()`,
-`positions(frame)`, `symbols(frame)`, `cell(frame)`, `charge(frame)`,
-`multiplicity(frame)`, `tail(n)`, `len()`, `repr()`.
+`positions(frame)`, `symbols(frame)`, `cell(frame)`, `pbc(frame)`, `charge(frame)`,
+`multiplicity(frame)`, `tail(n)`, `subset(indices)`,
+`frame_indices(start=None, end=None, stride=None, number=None)` (the frame choice of
+`ferro convert`: 0-based, inclusive, all frames by default), `len()`, `repr()`.
+
+Tests: `pytest ferro-python/tests` with the built wheel on the path.
 
 Analysis functions return `dict[str, list[float]]` (PyO3 auto-converts).
 `by="label"` groups by site label instead of element — valid on a single frame only,

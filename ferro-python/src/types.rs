@@ -6,6 +6,8 @@ use ferro_core::Trajectory;
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 
+use crate::pyerr;
+
 /// 轨迹对象（单帧文件也用此类型）。
 ///
 /// `skip_from_py_object`：所有绑定函数都按 `&PyTrajectory` 借用，没有按值提取的场景。
@@ -84,9 +86,61 @@ impl PyTrajectory {
         Ok(self.frame_ref(frame)?.multiplicity)
     }
 
+    /// 指定帧三个方向的周期性 (x, y, z)。
+    fn pbc(&self, frame: usize) -> PyResult<(bool, bool, bool)> {
+        let [x, y, z] = self.frame_ref(frame)?.pbc;
+        Ok((x, y, z))
+    }
+
     /// 仅保留尾部 `n` 帧的新轨迹。
     fn tail(&self, n: usize) -> PyTrajectory {
         PyTrajectory::new(self.inner.tail(n))
+    }
+
+    /// 选帧，语义同 `ferro convert` 的 `--start/--end/--stride/--number`：0 起、两端闭区间，
+    /// 默认全部帧；`number` 在区间内均匀取（两端都取），与 `stride` 互斥。返回原帧号。
+    ///
+    /// 参数校验与 `ferro-cli/src/cmd/convert.rs` 的 `run` 各写一份（两处、报错措辞
+    /// 一边是 CLI 旗标一边是 Python 参数名，按 R6 不合）；取帧本身都走 ferro-core
+    #[pyo3(signature = (start = None, end = None, stride = None, number = None))]
+    fn frame_indices(
+        &self,
+        start: Option<usize>,
+        end: Option<usize>,
+        stride: Option<usize>,
+        number: Option<usize>,
+    ) -> PyResult<Vec<usize>> {
+        let s = start.unwrap_or(0);
+        if let Some(e) = end {
+            if s > e {
+                return Err(pyerr(format!("start {s} is past end {e} (both 0-based and inclusive)")));
+            }
+        }
+        if stride.is_some() && number.is_some() {
+            return Err(pyerr("give stride or number, not both"));
+        }
+        if stride == Some(0) || number == Some(0) {
+            return Err(pyerr("stride and number must be at least 1"));
+        }
+        let idx = match number {
+            Some(n) => self.inner.spread_indices(s, end, n),
+            None => self.inner.select_indices(s, end, stride.unwrap_or(1)),
+        };
+        if idx.is_empty() {
+            return Err(pyerr(format!(
+                "no frames selected: the trajectory holds {} frame(s), start {s} selects none",
+                self.inner.n_frames()
+            )));
+        }
+        Ok(idx)
+    }
+
+    /// 按原帧号取出若干帧的新轨迹（越界报错，不静默跳过）。
+    fn subset(&self, indices: Vec<usize>) -> PyResult<PyTrajectory> {
+        for &i in &indices {
+            self.frame_ref(i)?;
+        }
+        Ok(PyTrajectory::new(self.inner.subset(&indices)))
     }
 
     fn __len__(&self) -> usize {

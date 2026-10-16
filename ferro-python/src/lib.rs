@@ -15,6 +15,7 @@ use pyo3::prelude::*;
 
 mod analysis;
 mod io;
+mod jobs;
 mod structure;
 mod types;
 
@@ -27,6 +28,7 @@ pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
 fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::PyTrajectory>()?;
     io::register(m)?;
+    jobs::register(m)?;
     structure::register(m)?;
     analysis::register(m)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

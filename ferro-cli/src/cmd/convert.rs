@@ -79,7 +79,8 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         }
     };
     // 参数级错误在读第一个文件之前失败：轨迹可能是几个 GB，读完再报「--start 比
-    // --end 大」是白等。跨参数的一致性能在这里查的都查掉
+    // --end 大」是白等。跨参数的一致性能在这里查的都查掉。
+    // ferro-python 的 `Trajectory.frame_indices` 有同义的一份（报错用 Python 参数名，按 R6 不合）
     let start = args.start.unwrap_or(0);
     if let (Some(s), Some(e)) = (args.start, args.end) {
         if s > e {
