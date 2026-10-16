@@ -1,152 +1,3 @@
-
-pub fn print_fe_job_overview() {
-    println!(
-        r#"ferro job — Generate QC software input files
-
-Usage:
-  ferro job -s <SOFTWARE> -i <FILE> [OPTIONS]
-  ferro job -s <SOFTWARE>              show software-specific parameters
-
-Supported software:
-  gaussian   Gaussian 16/09 input file (.gjf)
-  cp2k       CP2K input file (.inp)  — DFT/MD/GeoOpt/CellOpt
-  qe         Quantum ESPRESSO pw.x input (.in)  — scf/relax/md/bands
-
-Common options:
-  -i, --input  PATH   Input structure file (xyz, cif, pdb, POSCAR, …)
-  -o, --output PATH   Output file, or a directory written with a trailing / to
-                      hold the default name (job.gjf / job.inp / pw.in)
-      --mkdir         Create -o's directory without asking
-      --atom-style S  LAMMPS data input: atomic | charge | full (required)
-      --units U       Dump vx/fx units: real | metal (required if present)
-      --type-map M    Dump without element column: 1=Zr,2=O,...
-
-Full documentation:  ferro doc job"#
-    );
-}
-
-pub fn print_job_help(software: &str) {
-    match software.to_lowercase().as_str() {
-        "gaussian"                     => print_job_gaussian(),
-        "cp2k"                         => print_job_cp2k(),
-        "qe" | "espresso" | "pwscf"    => print_job_qe(),
-        other => println!("Unknown software: {other}  (supported: gaussian | cp2k | qe)"),
-    }
-}
-
-fn print_job_qe() {
-    println!(
-        r#"ferro job -s qe — Quantum ESPRESSO pw.x input file
-
-  ibrav = 0; cell taken from the structure (CELL_PARAMETERS angstrom).
-  Pseudopotentials are referenced as <Element>.UPF in --pseudo-dir.
-
-Parameters:
- Task and electronic structure
-  --qe-task STR      scf | nscf | bands | relax | vc-relax | md | vc-md  [scf]
-  --qe-functional STR pbe pbesol revpbe blyp scan r2scan pbe0 hse06       [pbe]
-  --ecutwfc F         Plane-wave cutoff [Ry]                               [50]
-  --smearing STR      none | gaussian | mp | mv | fd                      [none]
-                      (mp / mv are the ones to use for metals)
-  --kpoints K1 K2 K3  Monkhorst-Pack mesh (omit for Gamma)
-  --pseudo-dir PATH   Pseudopotential directory                      [./pseudo]
- Charge / spin (shared by all three targets)
-  --charge INT        Override total charge
-  --multiplicity INT  Override 2S+1 (-> nspin=2, tot_magnetization)
-  --auto-spin         Guess it from the structure; ON by default for qe
- MD (--qe-task md|vc-md)
-  --md-steps INT      Number of MD steps                               [10000]
-  --temperature F     Target temperature [K]                          [298.15]
-
-Output:
-  One pw.x input, the path -o names (pw.in by default). Only frame 0 is used.
-
-Examples:
-  ferro job -s qe -i crystal.cif
-  ferro job -s qe -i metal.cif --smearing mp --kpoints 8 8 8
-  ferro job -s qe -i slab.xyz --qe-task relax --qe-functional scan -o relax.in
-
-Full documentation:  ferro doc job"#
-    );
-}
-
-fn print_job_gaussian() {
-    println!(
-        r#"ferro job -s gaussian — Gaussian 16/09 input file
-
-Parameters:
-  -m, --method  STR   DFT functional           default: B3LYP
-  -b, --basis   STR   Basis set                default: 6-31G*
-  -o PATH             Output file              default: job.gjf
- Charge / spin (shared by all three targets)
-  --charge INT        Override total system charge
-  --multiplicity INT  Override spin multiplicity 2S+1 (highest priority)
-  --auto-spin         Guess multiplicity from the structure: magmom sum, then
-                      oxidation state + Hund, then the electron-parity floor
-
-Output:
-  One .gjf, the path -o names (job.gjf by default). Only frame 0 is used.
-
-Examples:
-  ferro job -s gaussian -i mol.xyz
-  ferro job -s gaussian -i mol.xyz -m PBE0 -b def2-TZVP -o sp.gjf
-  ferro job -s gaussian -i radical.xyz --charge 0 --multiplicity 2
-
-Full documentation:  ferro doc job"#
-    );
-}
-
-fn print_job_cp2k() {
-    println!(
-        r#"ferro job -s cp2k — CP2K input file (GPW/DFT, periodic systems)
-
-Parameters:
- Task and electronic structure
-  --task STR          energy | force | geo-opt | cell-opt | md | freq  [energy]
-  --functional STR    pbe blyp revpbe pbesol          (GGA)             [pbe]
-                      pbe0 b3lyp hse06                (hybrid, auto &HF block)
-                      scan r2scan                     (meta-GGA via LIBXC)
-  --cp2k-basis STR    dzvp-molopt-sr tzvp-molopt tzv2p-molopt   [dzvp-molopt-sr]
-                      dzvp-gth tzvp-gth               (older GTH style)
-                      pob-dzvp pob-tzvp               (all-electron, periodic)
-  --dispersion STR    none | d3 | d3bj                                  [none]
-  --scf STR           diag (metals, large systems) | ot (band-gap systems) [diag]
-  --cutoff INT        Plane-wave cutoff [Ry]                              [400]
-  --rel-cutoff INT    Relative cutoff [Ry]                                 [50]
-  --smear             Fermi-Dirac smearing (300 K)
-  --pbc STR           xyz | z | none                              (auto from cell)
-  --kpoints K1 K2 K3  Monkhorst-Pack mesh
- Charge / spin (shared by all three targets)
-  --charge INT        Override total system charge
-  --multiplicity INT  Override 2S+1 (highest priority; disables auto-spin)
-  --auto-spin         Guess it from the structure (see `ferro doc spin`)
- What CP2K prints
-  --atom-charge STR   none | mulliken | hirshfeld | hirshfeld-i         [none]
-  --cube STR          none | density | elf | hartree                    [none]
-  --molden            Export a Molden wavefunction file
-  --project STR       CP2K project name                                [ferro]
- MD (--task md)
-  --md-steps INT      Number of MD steps                               [10000]
-  --md-timestep F     Timestep [fs]                                       [1.0]
-  --temperature F     Temperature [K]                                  [298.15]
-  --thermostat STR    csvr | nose | langevin | none (NVE)                [csvr]
-  --traj-freq INT     Write the trajectory every N steps                  [100]
-  --pressure F        Pressure [bar]; switches to NPT, flexible cell      [NVT]
-
-Output:
-  One .inp, the path -o names (job.inp by default). Only frame 0 is used. The
-  per-element basis and pseudopotential names come from a 2829-entry database;
-  --cp2k-basis only picks the family.
-
-Examples:
-  ferro job -s cp2k -i glass.xyz
-  ferro job -s cp2k -i glass.xyz --task geo-opt --dispersion d3bj -o opt.inp
-  ferro job -s cp2k -i glass.xyz --task md --temperature 1500 --md-steps 50000
-
-Full documentation:  ferro doc job"#
-    );
-}
-
 /// `ferro convert` with no `-i`: the read/write format matrix.
 pub fn print_convert() {
     println!(
@@ -283,7 +134,6 @@ Topology & charges
 Structure I/O
   convert        Format conversion — run it bare for the read/write matrix
   info           Atoms, cell, volume, density (g/cm³) of a structure or trajectory
-  job            Quantum-chemistry input files (gaussian | cp2k | qe)
 
 Machine-learning datasets
   dataset collect   AIMD output -> DeePMD system directories (set.*/*.npy)
@@ -299,7 +149,7 @@ Conventions:
   analysed on its own and the results stack into ONE csv carrying a `file`
   column; a failed input is skipped and the exit code is 1.
   -o is a DIRECTORY for the commands that write several products, the output
-  FILE for `convert` (a directory with --format) and `job`. -s tags a batch:
+  FILE for `convert` (a directory with --format). -s tags a batch:
     <-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
   A command typed without -i prints its own page; -h gives the short table.
 

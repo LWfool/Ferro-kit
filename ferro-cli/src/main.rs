@@ -56,8 +56,6 @@ enum Command {
     Convert(cmd::convert::ConvertCmd),
     /// Print structure / trajectory information
     Info(cmd::info::InfoCmd),
-    /// Generate quantum-chemistry input files
-    Job(Box<cmd::job::JobCmd>),
     /// Build machine-learning training sets from AIMD output
     Dataset {
         #[command(subcommand)]
@@ -130,7 +128,6 @@ fn main() -> Result<()> {
             if cmd::info::wants_help(c) { help::print_info() } else { cmd::info::run(c)? }
             0
         }
-        Command::Job(c)     => { cmd::job::run(c)?; 0 }
         Command::Dataset { cmd: None } => {
             help::print_dataset_overview();
             0

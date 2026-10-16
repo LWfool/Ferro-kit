@@ -107,7 +107,7 @@ pub fn out_format(path: &Path) -> Result<OutFormat> {
         // QE 输入只读：完整的 pw.x 输入由任务生成器写，convert 不写只有结构的骨架
         Some(ext @ ("in" | "qe")) => bail!(
             "Unsupported output format: .{ext} (QE input is read-only here; \
-             generate a pw.x input with `ferro job -s qe`)"
+             generate a pw.x input with `ferro-py job -s qe`)"
         ),
         Some(ext) => bail!("Unsupported output format: .{ext}"),
         None      => bail!("Cannot determine format (no extension): {}", path.display()),
@@ -176,7 +176,7 @@ pub fn supported_formats() -> &'static str {
   Writing to a CONTCAR name emits POSCAR-format content.
 
   `-` under Write means read-only: a CP2K .inp or QE .in can be converted
-  FROM, not TO. To generate either input use `ferro job -s cp2k|qe`, which
+  FROM, not TO. To generate either input use `ferro-py job -s cp2k|qe`, which
   writes a full run setup rather than bare coordinates.
 
   `one per file` means the format holds one structure: 500 frames written
