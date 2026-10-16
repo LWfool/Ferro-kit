@@ -268,7 +268,7 @@ class VaspGenerator(Generator):
         except ValueError:
             raise JobError(f"KSPACING = {incar['KSPACING']} is not a number") from None
         mesh = kmesh(one.cell(0), spacing)
-        notes.append(f"KSPACING {spacing:g} -> mesh {' x '.join(map(str, mesh))}"
+        notes.append(f"PREC {prec}, KSPACING {spacing:g} -> mesh {' x '.join(map(str, mesh))}"
                      + (" (Gamma only: vasp_gam can run it)" if mesh == [1, 1, 1] else ""))
 
         if options.task == "opt" and options.vary_cell:

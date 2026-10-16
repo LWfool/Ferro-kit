@@ -47,7 +47,8 @@ def test_builtin_templates_generate(cfg, traj, task):
     order = [line.split()[1] for line in s.files["POTCAR"].splitlines() if "PAW_PBE" in line]
     assert order == one.elements(), "POTCAR 顺序与 POSCAR 元素行一致"
     assert any("parallel settings" in n for n in s.notes), "告诉用户并行参数要自己加"
-    assert any("mesh" in n for n in s.notes)
+    assert any(n.startswith("PREC Accurate, KSPACING 0.5 -> mesh") for n in s.notes), \
+        "每个任务都报精度等级与 k 点密度"
 
 
 def test_charge_spin_and_md_options(cfg, traj):

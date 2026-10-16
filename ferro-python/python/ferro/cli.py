@@ -79,7 +79,8 @@ Parameters:
       --steps N         aimd: number of MD steps  [the template's]
       --timestep FS     aimd: time step in fs  [the template's]
       --ensemble E      aimd: nvt | npt_i | npt_f (npt_* CP2K only)  [the template's]
-      --vary-cell       opt: relax the cell too; vasp needs ENCUT in the template  [cell fixed]
+      --vary-cell       opt: relax the cell too; vasp needs ENCUT written in the
+                        template  [cell fixed]
       --fine-grid F     vasp: NGXF/NGYF/NGZF = F x NGX/NGY/NGZ  [2 with METAGGA, else
                         unset]; cp2k: USE_FINER_GRID on; qe: ignored (no separate grid)
       --start N         First frame to take  (0-based, inclusive)  [0]
@@ -95,9 +96,12 @@ Parameters:
 Output:
   DIR/<input name>/ for a single-structure file, DIR/<input name>_<frame>/ (frame
   0-based, 4 digits) for each frame taken from a trajectory. File names are fixed:
-  INCAR KPOINTS POSCAR POTCAR (vasp), pw.in (qe), cp2k.inp (cp2k). With several
-  jobs the POTCAR is written once in DIR and linked as ../POTCAR; jobs that need
-  different POTCARs are an error. All frames by default.
+  INCAR POSCAR POTCAR (vasp: no KPOINTS, the mesh is INCAR's KSPACING, 0.5 1/Å
+  unless --kspacing or the template sets it; PREC is the template's, Accurate in
+  the built-in ones), pw.in (qe), cp2k.inp (cp2k). The lines printed under each
+  job give its k-point mesh (and PREC for vasp). With several jobs the POTCAR is
+  written once in DIR and linked as ../POTCAR; jobs that need different POTCARs
+  are an error. All frames by default.
 
 Examples:
   ferro-py job -s vasp -t sp -i POSCAR -o sp/
