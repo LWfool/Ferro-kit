@@ -55,16 +55,19 @@ fn cp2k_structure_sections(traj: &PyTrajectory, frame_index: usize) -> PyResult<
     ferro_io::cp2k_structure_sections(frame(traj, frame_index)?).map_err(pyerr)
 }
 
+/// Python 侧的一个 namelist：`(名, [(键, 值原文), …])`
+type PyNamelist = (String, Vec<(String, String)>);
+
 /// pw.x 输入 → `([(namelist 名, [(键, 值原文), …]), …], 其余卡片原文)`。
 #[pyfunction]
-fn parse_qe_input_parts(text: &str) -> PyResult<(Vec<(String, Vec<(String, String)>)>, String)> {
+fn parse_qe_input_parts(text: &str) -> PyResult<(Vec<PyNamelist>, String)> {
     let QeInputParts { namelists, cards } = ferro_io::parse_qe_input_parts(text).map_err(pyerr)?;
     Ok((namelists.into_iter().map(|n| (n.name, n.entries)).collect(), cards))
 }
 
 /// `parse_qe_input_parts` 第一项的逆：写回 namelist 文本（值原样写出）。
 #[pyfunction]
-fn write_namelists(namelists: Vec<(String, Vec<(String, String)>)>) -> String {
+fn write_namelists(namelists: Vec<PyNamelist>) -> String {
     let nl: Vec<Namelist> = namelists
         .into_iter()
         .map(|(name, entries)| Namelist { name, entries })
