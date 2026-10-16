@@ -10,6 +10,50 @@
 
 ## 优先级高
 
+### `ferro.jobs`：输入生成迁到 ferro-python（2026-10-16 定案，功能类，**用户提级**）
+
+生成输入不吃性能、改动最勤，Python 改完不用重编、用户也能直接改。2026-10-15–16 grilling
+定案（对照 ASE `calculators/cp2k.py`、cp2k-input-tools 0.9.1、pymatgen `io.core` 的设计与依赖）：
+
+| 方面 | 决定 |
+|---|---|
+| 定位 | 简易产生通用计算输入；复杂任务交给专业工具。留功能扩展点（固定原子、Gaussian、初始速度暂不做） |
+| 范围 | VASP / QE / CP2K × SP / opt / AIMD；只做周期体系，无胞报错 |
+| 位置 | ferro-python 的 maturin 混合布局：`import ferro`，`ferro.jobs`，命令 `ferro-py`（子命令 `job`，以后 `plot`） |
+| 依赖 | 运行时**只用标准库**，Python ≥ 3.11，abi3 wheel；pytest 只作开发依赖。ASE / pymatgen / cp2k-input-tools 均有 scipy、matplotlib、pydantic 等硬依赖，超算离线难装，不依赖 |
+| 分工 | 结构块（POSCAR、QE 三张卡片、CP2K `&CELL`/`&COORD`）由 Rust 写成字符串，格式规范只一份；参数块（INCAR、namelist、CP2K 节树）在 Python。QE namelist 解析由 Rust 暴露，全仓一份（同一语法、同一变化原因） |
+| 模板 | 模板即原生输入文件；内置 9 份，用户模板目录同名覆盖；未知键原样保留并提示 |
+| 程序改动的量 | 结构、电荷、多重度（奇偶校验）、k 点（按 kspacing，模板写死的不动）、元素列表；AIMD 加温度/步数/时间步/系综；opt 加是否变胞 |
+| 自旋 | 默认按奇偶取 1 / 2；显式值与奇偶矛盾报错。未成对电子的方法未定，`guess_spin` 暂不暴露 |
+| 配置 | `~/.config/ferro/config.toml`（`FERRO_CONFIG` 覆盖）：POTCAR、CP2K data、QE 赝势、模板目录；运行时读 CP2K 自带数据文件，不迁 `cp2k_basis_db.rs` |
+| 批量 | 选帧沿用 `convert`（默认全部帧）；`-o` 指目录，每帧一个子目录；同组成共用一份 POTCAR + 相对符号链接，组成不一致报错 |
+| LAMMPS | dump reader 加 `--type-map`；剩 `X*` 占位元素时生成任务报错 |
+| convert | QE 只读不写（破坏性） |
+| 默认参数 | 以用户脚本（`private/` 下 `dp_makeAIMDin.py`、`make_NMR.py`、`make_vasp_label.py`，覆盖 VASP / CP2K 的 AIMD 与 SP）为准；opt 与 QE 无参考脚本，查惯例补齐，出入处商量着定 |
+| 验收 | CP2K 本机用 cp2k-input-tools 离线校验；9 个算例在超算冒烟（CentOS 7，glibc 2.17 → manylinux2014 x86_64，GitHub Actions 编） |
+| 收尾 | 追平后删 ferro-workflow 与 `ferro job` |
+
+**步骤**（每步一提交）：
+0. 本节
+1. A-13：namelist 按 token 流收；缺 `&SYSTEM` / `ibrav` 报错；未声明标签报错
+2. namelist 公开接口（文本 ↔ 有序键值表）
+3. 结构块字符串接口（POSCAR / QE 卡片 / CP2K `&CELL` `&COORD`）
+4. convert 去掉 QE 写出 + changelog
+5. dump `--type-map`
+6. ferro-python：abi3-py311 + 混合布局 + 装 maturin（已批准）
+7. 暴露 jobs 所需接口
+8. GitHub Actions 编 wheel（push 前须再问）
+9. 配置文件 + `ferro-py config init`
+10. 参数块解析 / 编辑 / 写回（INCAR、namelist、CP2K 节树）
+11. 生成器基类（InputFile / InputSet / Generator 三层）
+12. `ferro-py job` CLI（五段帮助、批量、POTCAR 链接）
+13. 查惯例 + 读用户脚本 → 默认值表，用户审
+14–16. VASP / CP2K / QE 模板；确认 D-M4、D-M6、D-M8、D-M9、D-M10、D-M12 不重犯
+17. 超算冒烟脚本，用户执行
+18. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 17 通过）
+19. 手册 `docs/src/python/`
+20. 更新开发记录（版本号只在用户要求时动）
+
 ### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
 
 **2026-10-14 处置（用户定）**：B-1、中级 7 条静默错数据（A-12 B-2 A-10 E-10 E-12 A-2 E-9）、D-4、A-17、
