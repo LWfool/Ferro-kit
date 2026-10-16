@@ -928,7 +928,11 @@ vanhove 的归一化就不除 dr，与 GROMACS / pymatgen 相差 1/dr（手册�
 - 注意与「批处理输入」是两件事：这里是**命令**的批处理（一个脚本跑多条命令），
   那里是**输入文件**的批处理（一条命令跑多个轨迹）。两者可叠加但互不依赖
 
-### ferro-python：pyo3 0.29 运行时验证（2026-09-15 由中降低）
+### ~~ferro-python：pyo3 0.29 运行时验证~~（2026-09-15 由中降低；**2026-10-16 已完成**）
+
+**已完成**（`ferro.jobs` 第 6 步）：maturin 1.14.1 其实已装在 base 环境，只是不在 PATH 上，
+用 `python -m maturin`。abi3-py311 wheel 装到隔离目录后下列冒烟项全过；`msd` 在 NVT fixture 上
+报「帧间隔不均」是正当校验（该 fixture 步长 12000 / 13000 混杂），换 NPT fixture 通过。
 
 0.21 → 0.29 只做了类型层验证。本机无 maturin，`cargo build` 在 macOS link 阶段过不了
 （`extension-module` 需 `-undefined dynamic_lookup`）：

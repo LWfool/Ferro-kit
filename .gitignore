@@ -50,3 +50,6 @@ cmp_out/
 
 # mdBook æ„å»ºäº§ç‰©ï¼ˆæœ¬åœ° mdbook build ç”Ÿæˆï¼‰
 docs/book/
+
+# maturin develop ï¿½”ï¿½ï¿½›æ··ï¿½ˆï¿½ƒï¿½€ï¿½Œ…ï¿½›ï¿½ï¿½•ï¿½š„ï¿½‰ï¿½ï¿½•æ¨¡ï¿½—
+ferro-python/python/ferro/*.so

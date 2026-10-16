@@ -24,7 +24,7 @@ pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
 }
 
 #[pymodule]
-fn ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::PyTrajectory>()?;
     io::register(m)?;
     structure::register(m)?;

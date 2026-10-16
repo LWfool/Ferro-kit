@@ -21,6 +21,11 @@ maturin develop
 Pin the interpreter explicitly: without `--interpreter`, maturin may pick a stray
 `python3.9` and tag the wheel for the wrong version.
 
+The wheel is **abi3** (CPython ≥ 3.11): one wheel per platform serves every
+Python version from 3.11 on. The package mixes Rust and Python: the Rust
+extension is `ferro._ferro`, pure-Python modules live in `python/ferro/`, and
+`import ferro` re-exports the extension, so the usage below is unchanged.
+
 ## Usage
 
 ```python

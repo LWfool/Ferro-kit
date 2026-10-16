@@ -9,11 +9,12 @@ name = "ferro"
 dynamic = ["version"]
 description = "ferro — 计算化学 MD 轨迹后处理工具（Python 绑定）"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 
 [tool.maturin]
-module-name = "ferro"
+module-name = "ferro._ferro"
+python-source = "python"
