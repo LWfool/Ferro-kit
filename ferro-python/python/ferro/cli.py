@@ -7,6 +7,8 @@ argparse 的参数一致（同 ``ferro-cli`` 的 ``help_sync``）。
 
 import argparse
 import glob
+import math
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +24,8 @@ Usage:
 Commands:
   job           Generate VASP / QE / CP2K inputs (sp, opt, aimd) from structures
   job template  Write a built-in template to edit and pass back with --template
+  conv          Generate a convergence test (VASP fine grid / ENCUT, CP2K cutoffs)
+  conv analyze  Compare its single points: energy, pressure, forces
   config init   Write a commented configuration template
 
 Run `ferro-py <COMMAND> -h` for the parameters of one command.
@@ -312,26 +316,224 @@ def run_job(argv):
     ensure_dir(args.output, args.mkdir)
 
     built = []
-    for f in files:
-        traj = ferro.read(f, units=args.units, atom_style=args.atom_style, type_map=type_map)
-        frames = traj.frame_indices(args.start, args.end, args.stride, args.number)
-        for i in frames:
-            name = Path(f).stem if len(traj) == 1 else f"{Path(f).stem}_{i:04d}"
-            try:
-                built.append((name, generator.generate(traj, i, options, args.template)))
-            except (ValueError, RuntimeError) as e:
-                raise UsageError(f"{f} frame {i}: {e}") from None
+    for name, traj, i, f in read_structures(files, args, type_map):
+        try:
+            built.append((name, generator.generate(traj, i, options, args.template)))
+        except (ValueError, RuntimeError) as e:
+            raise UsageError(f"{f} frame {i}: {e}") from None
     # 先全部生成、再写：一个失败就什么都不写，不留半截的批次
-    linked = len(built) > 1   # 同 write_batch：多个任务时 shared 文件才放上层共用
-    for (name, s), path in zip(built, write_batch(built, args.output)):
-        listing = " ".join(f"{f}->../{f}" if linked and f in s.shared else f for f in s.files)
-        print(f"Wrote: {path}/  {listing}")
-        for note in s.notes:
-            print(f"  {note}")
+    report_batch(built, write_batch(built, args.output))
     return 0
 
 
-COMMANDS = {"config": run_config, "job": run_job}
+def read_structures(files, args, type_map):
+    """-i 的文件 × 选帧 → [(任务名, Trajectory, 帧号, 文件)]。单结构文件的任务名不带帧号。"""
+    out = []
+    for f in files:
+        traj = ferro.read(f, units=args.units, atom_style=args.atom_style, type_map=type_map)
+        for i in traj.frame_indices(args.start, args.end, args.stride, args.number):
+            out.append((Path(f).stem if len(traj) == 1 else f"{Path(f).stem}_{i:04d}", traj, i, f))
+    return out
+
+
+def report_batch(built, paths):
+    for (name, s), path in zip(built, paths):
+        listing = " ".join(f"{f}->{os.readlink(path / f)}" if (path / f).is_symlink() else f for f in s.files)
+        print(f"Wrote: {path}/  {listing}")
+        for note in s.notes:
+            print(f"  {note}")
+
+
+CONV_HELP = """\
+ferro-py conv — Generate a convergence test: one parameter, several values
+
+  Writes the same single points for every value of one parameter, the rest taken
+  from the sp template; `ferro-py conv analyze DIR` then compares them. For a
+  meta-GGA, test VASP's fine grid first and ENCUT after.
+
+Parameters:
+  -s, --software S      vasp | cp2k  (required)
+      --scan P[=VALUES] The parameter and its values, START:STOP:STEP or a,b,c  (required)
+                        vasp: encut [eV], fine-grid [x NG]
+                        cp2k: cutoff [Ry], rel-cutoff [Ry], finer-grid, accurate-xcint
+                        (the last two are switches: off and on, no values)
+  -i, --input FILE      Structure file(s), any format ferro reads; quoted globs allowed
+  -o, --output DIR      Directory receiving the test  (required)
+      --template FILE   sp template instead of the configured / built-in one
+      --charge N        Total charge  [0]
+      --multiplicity M  2S+1, checked against the electron count  [1 if even, 2 if odd]
+      --kspacing K      k-point spacing in 1/Å, 2π included  [per program]
+      --fine-grid F     vasp: NGXF = F x NGX at every value  [2 with METAGGA]
+      --start N         First frame to take  (0-based, inclusive)  [0]
+      --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
+      --stride N        Take every Nth frame within [start, end]  [1]
+      --number N        Take this many frames, spread evenly, both ends kept
+      --atom-style S    LAMMPS data input: atomic | charge | full  (required)
+      --units U         Dump vx/fx units: real | metal  (required if present)
+      --type-map M      Dump without element column: 1=Zr,2=O,...
+      --mkdir           Create -o without asking
+  -h, --help            This page
+
+Output:
+  DIR/<parameter>_<value>/<structure>/ per value and structure, laid out as
+  `ferro-py job` does (one POTCAR in DIR, linked), and DIR/ferro-conv.json listing
+  them for `conv analyze`.
+
+Examples:
+  ferro-py conv -s vasp --scan fine-grid=2,2.5,3,4 -i POSCAR --template r2scan/INCAR -o ng/
+  ferro-py conv -s vasp --scan encut=500:900:100 -i traj.lammpstrj --number 3 -o encut/
+  ferro-py conv -s cp2k --scan finer-grid -i POSCAR -o fg/
+
+Full documentation:  ferro doc python conv"""
+
+CONV_ANALYZE_HELP = """\
+ferro-py conv analyze — Compare the single points of a convergence test
+
+  Reads every job's output (VASP OUTCAR / vasprun.xml; CP2K cp2k.out, *.out or
+  *.log) and compares each value with the reference, frame by frame: energy per
+  atom, pressure, the largest per-atom force difference and the RMS over atoms of
+  |F_i - F_i(ref)|. The thresholds only mark rows; they decide nothing.
+
+Parameters:
+  DIR                   Directory written by `ferro-py conv`  (required)
+  -o, --output FILE     CSV to write  [DIR/conv_<parameter>.csv]
+      --ref VALUE       Reference value  [the highest; on for a switch]
+      --de X            Threshold |dE| in meV/atom  [1]
+      --dp X            Threshold |dP| in kbar  [1]
+      --df-rms X        Threshold force RMS in meV/Å  [5]
+      --df-max X        Threshold largest force difference in meV/Å  [10]
+  -h, --help            This page
+
+Output:
+  The CSV: one row per value and structure — value, structure, frame, status,
+  n_atoms, energy_eV, dE_meV_atom, pressure_kbar, dP_kbar, dF_max_meV_A,
+  dF_rms_meV_A, within (yes / no against the thresholds). The terminal shows the
+  worst frame of each value and the first value within every threshold.
+
+Examples:
+  ferro-py conv analyze encut/
+  ferro-py conv analyze ng/ --ref 4 --df-rms 2
+
+Full documentation:  ferro doc python conv"""
+
+
+def conv_parser():
+    p = new_parser("ferro-py conv")
+    p.add_argument("-s", "--software", required=True)
+    p.add_argument("--scan", required=True)
+    p.add_argument("-i", "--input", nargs="+", required=True)
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--template")
+    p.add_argument("--charge", type=int, default=0)
+    p.add_argument("--multiplicity", type=int)
+    p.add_argument("--kspacing", type=float)
+    p.add_argument("--fine-grid", type=float)
+    for name in ("--start", "--end", "--stride", "--number"):
+        p.add_argument(name, type=int)
+    p.add_argument("--atom-style")
+    p.add_argument("--units")
+    p.add_argument("--type-map")
+    p.add_argument("--mkdir", action="store_true")
+    return p
+
+
+def conv_analyze_parser():
+    p = new_parser("ferro-py conv analyze")
+    p.add_argument("dir")
+    p.add_argument("-o", "--output")
+    p.add_argument("--ref")
+    for name in ("--de", "--dp", "--df-rms", "--df-max"):
+        p.add_argument(name, type=float)
+    return p
+
+
+def run_conv(argv):
+    import json
+
+    from ferro.jobs import conv
+    from ferro.jobs.base import JobOptions, write_batch
+
+    if not argv:
+        print(CONV_HELP)
+        return 0
+    if argv[0] == "analyze":
+        return run_conv_analyze(argv[1:])
+    args = parse(conv_parser(), CONV_HELP, argv)
+    parameter, values = conv.parse_scan(args.software, args.scan)
+    generator = find_generator(args.software)
+    options = JobOptions(task="sp", charge=args.charge, multiplicity=args.multiplicity,
+                         kspacing=args.kspacing, fine_grid=args.fine_grid)
+    options.check()
+    if parameter == "fine-grid" and args.fine_grid is not None:
+        raise UsageError("--fine-grid and --scan fine-grid both set the fine grid; give one")
+    type_map = parse_type_map(args.type_map) if args.type_map else None
+    files = expand_inputs(args.input)
+    generator = generator(config.load())
+    ensure_dir(args.output, args.mkdir)
+    structures = [(name, traj, i) for name, traj, i, _ in read_structures(files, args, type_map)]
+    try:
+        built, manifest = conv.build(generator, args.software, parameter, values, structures, options,
+                                     args.template)
+    except (ValueError, RuntimeError) as e:
+        raise UsageError(str(e)) from None
+    report_batch(built, write_batch(built, args.output))
+    path = Path(args.output) / conv.MANIFEST
+    path.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
+    print(f"Wrote: {path}  ({len(values)} values x {len(structures)} structures)")
+    return 0
+
+
+def _fixed(x, digits):
+    return "" if math.isnan(x) else f"{x:.{digits}f}"
+
+
+def run_conv_analyze(argv):
+    import json
+
+    from ferro.jobs import conv
+
+    args = parse(conv_analyze_parser(), CONV_ANALYZE_HELP, argv)
+    path = Path(args.dir) / conv.MANIFEST
+    if not path.is_file():
+        raise UsageError(f"{path} does not exist: DIR must be a directory written by `ferro-py conv`")
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    ref = args.ref
+    if ref is not None and conv.SCANS[manifest["software"]][manifest["parameter"]][1] is float:
+        try:
+            ref = float(ref)
+        except ValueError:
+            raise UsageError(f"--ref {ref} is not a number") from None
+    thresholds = {k: v for k, v in (("de", args.de), ("dp", args.dp), ("df_rms", args.df_rms),
+                                    ("df_max", args.df_max)) if v is not None}
+    rows, ref = conv.compare(manifest, args.dir, ref, thresholds)
+    limits = {**conv.THRESHOLDS, **thresholds}
+    out = Path(args.output) if args.output else Path(args.dir) / f"conv_{manifest['parameter']}.csv"
+    columns = list(rows[0])
+    meta = [f"ferro-py conv analyze: {manifest['software']} {manifest['parameter']}"
+            + (f" [{manifest['unit']}]" if manifest["unit"] else ""),
+            f"reference: {conv.label(ref)}",
+            f"thresholds (hints): |dE| <= {limits['de']:g} meV/atom, |dP| <= {limits['dp']:g} kbar, "
+            f"dF_rms <= {limits['df_rms']:g} meV/A, dF_max <= {limits['df_max']:g} meV/A"]
+    ferro.write_table(str(out), [(c, [r[c] for r in rows]) if isinstance(rows[0][c], str)
+                                 else (c, [float(r[c]) for r in rows]) for c in columns], meta)
+
+    print(f"{manifest['parameter']} (reference {conv.label(ref)}), worst frame of each value:")
+    print(f"  {'value':>10} {'frames':>7} {'dE meV/at':>10} {'dP kbar':>9} {'dF_max':>8} {'dF_rms':>8}  within")
+    table = conv.summary(rows, manifest["values"])
+    for s in table:
+        print(f"  {s['value']:>10} {s['frames']:>7} {_fixed(s['dE'], 3):>10} {_fixed(s['dP'], 2):>9} "
+              f"{_fixed(s['dF_max'], 1):>8} {_fixed(s['dF_rms'], 1):>8}  {'yes' if s['within'] else 'no'}")
+    first = next((s["value"] for s in table if s["within"] and s["value"] != conv.label(ref)), None)
+    print(f"First value within every threshold: {first}" if first else
+          "No value below the reference is within every threshold")
+    failed = [r for r in rows if r["status"] != "ok"]
+    for r in failed:
+        print(f"  {r['value']} {r['structure']}: {r['status']}")
+    print(f"Wrote: {out}")
+    return 1 if failed else 0
+
+
+COMMANDS = {"config": run_config, "job": run_job, "conv": run_conv}
 
 
 def main(argv=None):

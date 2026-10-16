@@ -7,6 +7,7 @@
 """
 
 import math
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,8 +112,8 @@ def write_batch(jobs, out_dir):
     paths = []
     for name, s in jobs:
         d = out_dir / name
-        d.mkdir(exist_ok=True)
-        s.write(d, links={f: Path("..") / f for f in shared})
+        d.mkdir(parents=True, exist_ok=True)
+        s.write(d, links={f: Path(os.path.relpath(out_dir / f, d)) for f in shared})
         paths.append(d)
     return paths
 
@@ -184,7 +185,7 @@ class Generator:
             raise JobError(f"no built-in {cls.program} template for task '{task}'")
         return path.read_text(encoding="utf-8")
 
-    def generate(self, traj, frame, options, template=None):
+    def generate(self, traj, frame, options, template=None, template_text=None):
         """``traj`` 的第 ``frame`` 帧 → InputSet。原子按 (Z, 符号) 排序，同 ``ferro convert``。"""
         options.check()
         one = ferro.sort_atoms(traj.subset([frame]))
@@ -196,7 +197,9 @@ class Generator:
                 f"atoms {', '.join(placeholders)} have no element: a dump without an element "
                 "column needs --type-map (e.g. 1=Zr,2=O)"
             )
-        return self.build(one, options, self.template(options.task, template))
+        if template_text is None:
+            template_text = self.template(options.task, template)
+        return self.build(one, options, template_text)
 
     def build(self, one, options, template_text):
         raise NotImplementedError
