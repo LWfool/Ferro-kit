@@ -26,8 +26,7 @@ ferro-cli / ferro-python        ← only layer combining multiple crates
     ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
     ├── ferro-io        → core    ← format readers / writers
     ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
-    ├── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
-    └── ferro-workflow  → core    ← QC input builders (Gaussian / CP2K / QE)
+    └── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
 ```
 
 ## Internal Units

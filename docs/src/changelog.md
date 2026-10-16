@@ -12,13 +12,21 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro job` is removed; use `ferro-py job`
+
+`ferro job` and the `ferro-workflow` crate behind it are gone. Calculation inputs come from
+`ferro-py job` (VASP, Quantum ESPRESSO and CP2K; single point, optimisation, AIMD), see
+`ferro-py doc job`. What `ferro job` did and `ferro-py job` does not: Gaussian input, CP2K
+`--task freq`, QE `nscf` / `bands`, CP2K `--atom-charge` / `--cube` / `--molden`, and the
+multiplicity guess (`--auto-spin`). `ferro doc job` and `ferro doc spin` are gone with them.
+
 ### `convert` no longer writes QE input
 
 `ferro convert -o x.in` (and `.qe`, and `ferro.write(traj, "x.in")` in Python) wrote a pw.x
 input with placeholder `&CONTROL` / `&SYSTEM` / `&ELECTRONS`, a `prefix` copied from the
 source file name and `K_POINTS gamma` — a file that looked runnable but was not a calculation
 setup. QE input is now read-only, like CP2K input: `.in` / `.qe` is refused on write. Generate a
-pw.x input with `ferro job -s qe`.
+pw.x input with `ferro-py job -s qe`.
 
 ### Python: file names mean what they mean on the command line
 

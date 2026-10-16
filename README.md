@@ -16,11 +16,10 @@ they produce.
 
 ```
 ferro/
-├── ferro-core/       # Data structures, static data, Table, AtomType, spin
+├── ferro-core/       # Data structures, static data, Table, AtomType
 ├── ferro-io/         # Format readers/writers; write_table is the one exit for analysis output
 ├── ferro-structure/  # Supercells, vacuum layers, merging, box building, typing, clustering
 ├── ferro-analysis/   # Pure computation — never touches the filesystem
-├── ferro-workflow/   # QC input generation (Gaussian / CP2K / Quantum ESPRESSO)
 ├── ferro-cli/        # The single `ferro` binary
 └── ferro-python/     # PyO3 bindings (its own workspace, built with maturin)
 ```
@@ -33,8 +32,7 @@ ferro-cli / ferro-python        ← the only layer allowed to combine crates
     ├── ferro-core
     ├── ferro-io        → core
     ├── ferro-structure → core
-    ├── ferro-analysis  → core
-    └── ferro-workflow  → core
+    └── ferro-analysis  → core
 ```
 
 Shared types sink into `ferro-core` rather than crossing sideways: a type belongs there
@@ -90,8 +88,8 @@ ferro bader -i CHGCAR -m neargrid
 ferro convert -i traj.lammpstrj -o traj.extxyz
 ferro info -i NaCl.cif
 
-# quantum-chemistry input files
-ferro job -s cp2k -i slab.cif --task geo-opt --functional pbe
+# calculation inputs (VASP / QE / CP2K) come from the Python package
+ferro-py job -s cp2k -t opt -i slab.cif -o opt/
 ```
 
 ### Batch input and output naming
@@ -107,7 +105,7 @@ exit code 1; argument errors fail before the first file is read.
 ```
 
 `-o` is where products go — a path, for every command: the output **directory** for the
-runs that write several products, the output **file** for `convert` and `job`. A missing
+runs that write several products, the output **file** for `convert`. A missing
 directory is created after a `[y/N]` prompt, or straight away with `--mkdir` (which
 scripts and CI must pass, having no terminal to answer). `-s` tags the batch. The label segment
 says what was analysed, so `traj gr -a P -b O` writes `gr_P-O.csv` and an unfiltered run
@@ -255,7 +253,7 @@ anything.
   `map` mode; splitting it needs an intermediate format carrying sample counts first
 - `bader` writes `ACF.dat` / `BCF.dat` / `AVF.dat` into the current directory under fixed
   names — running two systems in a row overwrites them
-- `convert` and `job` still take a full path in `-o`, opposite to the other 11 commands
+- `convert` still takes a full path in `-o`, opposite to the other 11 commands
 - Selecting by site label (`-x` / `-y`) only works on a single frame: g(r) requires a
   fixed particle count per type, and labels change as the run evolves
 - The pyo3 0.29 bindings compile but have not been verified at runtime

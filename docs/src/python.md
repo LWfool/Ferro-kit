@@ -35,8 +35,8 @@ each carry their own manual, so neither can drift from a copy in the other.
 | Build | `maturin` ≥ 1.0, < 2.0 | builds the mixed Rust / Python wheel |
 | Tests | `pytest` | development only, not a dependency of the wheel |
 
-`ferro-workflow` is not a dependency: input generation was rewritten in Python
-(below) and the Rust `ferro job` is to be removed.
+Input generation lives only in Python (below): the Rust `ferro job` and its
+`ferro-workflow` crate were removed in 0.4.0.
 
 ## Responsibilities
 

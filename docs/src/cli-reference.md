@@ -18,7 +18,7 @@ ferro doc   <topic>                                            → the manual (c
 The leaf commands `convert` / `info` / `bader` work the same way: without `-i` they print their own page.
 
 Two kinds of help coexist and each has its use: **the bare command** gives the rich page (format lists,
-output structure, warning notes), **`-h`** gives clap's short parameter table.  `job` is the only exception — it takes over `-h` itself.
+output structure, warning notes), **`-h`** gives clap's short parameter table.
 
 | Old command (before 0.2.0) | New command |
 |---|---|
@@ -28,14 +28,15 @@ output structure, warning notes), **`-h`** gives clap's short parameter table.  
 | `fe-cube -m chg_sdf` | `ferro map chg-sdf` |
 | `fe-network -m Qn` | `ferro net` |
 | `fe-network -m type` | `ferro net --export-traj` |
-| `fe-bader` / `fe-convert` / `fe-info` / `fe-job` | `ferro bader` / `convert` / `info` / `job` |
+| `fe-bader` / `fe-convert` / `fe-info` | `ferro bader` / `convert` / `info` |
+| `fe-job` | removed in 0.4.0; use `ferro-py job` |
 
 ---
 
 ## Common Flags
 
 Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`convert` / `info` /
-`job` / `bader` / `dataset` do **not** take it; each has its own parameters):
+`bader` / `dataset` do **not** take it; each has its own parameters):
 
 | Flag | Description |
 |---|---|
@@ -156,7 +157,7 @@ Things that trip people up:
   and forces, velocities and bonds move with their atoms.  The LAMMPS atom ids and type numbers
   follow the new order (`O` becomes type 1).  There is no switch to keep the input order.
 - **The two CP2K input formats and QE input are read-only.**  To generate either input use
-  `ferro job -s cp2k|qe`, which writes a complete calculation setup rather than bare coordinates.
+  `ferro-py job -s cp2k|qe`, which writes a complete calculation setup rather than bare coordinates.
 - **"One per file" splits the trajectory**: 500 frames written to `conf.cif` give `conf_0000.cif` …
   `conf_0499.cif`, the index being the original frame number.  CIF is split too, although the format
   allows several `data_` blocks in one file: VESTA and Materials Studio show only the first block.
@@ -338,116 +339,6 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  Required when they are present |
 | `--type-map <MAP>` | — | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
-
----
-
-## `ferro job`
-
-Generates input files for **Gaussian**, **CP2K** and **Quantum ESPRESSO**.  Without `-s` it prints an
-overview; with `-s <software>` but no `-i` it prints that software's own help.  For a guided tour see
-[Job Builders](workflow/job-builders.md).
-
-```bash
-ferro job                                    # overview
-ferro job -s cp2k                            # CP2K-specific help
-ferro job -i input.xyz -s gaussian -m B3LYP -b 6-31G* -o job.gjf
-ferro job -i input.xyz -s cp2k --task geo-opt --functional pbe --dispersion d3bj
-ferro job -i Fe2O3.cif -s qe --auto-spin --kpoints 4 4 4 -o pw.in
-```
-
-**Only frame 0 of the input is used** (one structure per input file).  Handing it a multi-frame trajectory
-prints three `[warn]` lines (the frame count, how many frames were ignored, and a frame-selection command
-to copy), but still generates the input for frame 0 only — and frame 0 is often the least relaxed configuration.  To pick a particular frame, or to generate a batch, extract them with `ferro convert` first:
-
-```bash
-ferro convert -i traj.dump -o conf.vasp --number 20       # extract 20 configurations
-for f in conf_*.vasp; do
-  ferro job -i "$f" -s cp2k --task energy -o "${f%.vasp}.inp"
-done
-```
-
-### Charge / Spin (shared by all three targets)
-
-| Flag | Default | Description |
-|---|---|---|
-| `--charge` | (from file) | override the total charge of the system (applied before the spin is inferred) |
-| `--multiplicity` | (from file) | force the multiplicity 2S+1; highest priority, and it turns auto-spin off |
-| `--auto-spin` | off (on by default for cp2k/qe) | infer the multiplicity from the structure |
-
-The inference chain (magmom → oxidation states + Hund's rule → parity bound on the electron count) is
-described in [Spin Estimation](workflow/spin.md).
-
-### Gaussian
-
-| Flag | Default | Description |
-|---|---|---|
-| `-m <method>` | (required) | DFT method, e.g. `B3LYP`, `PBE0` |
-| `-b <basis>` | (required) | basis set, e.g. `6-31G*`, `def2-TZVP` |
-| `-o <file>` | `job.gjf` | output file |
-
-### CP2K
-
-#### Task and electronic structure
-
-| Flag | Default | Candidates |
-|---|---|---|
-| `--task` | `energy` | `energy`, `force`, `geo-opt`, `cell-opt`, `md`, `freq` |
-| `--functional` | `pbe` | `pbe`, `blyp`, `pbe0`, `b3lyp`, `revpbe`, `pbesol`, `scan`, `r2scan`, `hse06` |
-| `--cp2k-basis` | `dzvp-molopt-sr` | `dzvp-molopt-sr`, `tzvp-molopt`, `tzv2p-molopt`, `dzvp-gth`, `tzvp-gth`, `pob-dzvp`, `pob-tzvp` (all-electron), or any custom string |
-| `--dispersion` | `none` | `none`, `d3`, `d3bj` |
-| `--scf` | `diag` | `diag` (metals / large systems), `ot` (insulators) |
-| `--pbc` | (auto) | `xyz`, `z`, `none`; inferred from the cell when omitted |
-| `--kpoints` | (none) | three integers, e.g. `--kpoints 2 2 2` |
-| `--cutoff` | `400` | plane-wave cutoff [Ry] |
-| `--rel-cutoff` | `50` | relative cutoff [Ry] |
-| `--smear` | off | enable Fermi–Dirac smearing |
-
-#### Output
-
-| Flag | Default | Candidates |
-|---|---|---|
-| `--atom-charge` | `none` | `none`, `mulliken`, `hirshfeld`, `hirshfeld-i` |
-| `--cube` | `none` | `none`, `density`, `elf`, `hartree` |
-| `--molden` | off | export a Molden orbital file |
-| `--project` | `ferro` | CP2K project name |
-
-#### MD (`--task md` only)
-
-| Flag | Default | Description |
-|---|---|---|
-| `--md-steps` | `10000` | number of MD steps |
-| `--md-timestep` | `1.0` | time step [fs] |
-| `--temperature` | `298.15` | temperature [K] |
-| `--thermostat` | `csvr` | `csvr`, `nose`, `langevin`, `none` (NVE; NPE with `--pressure`). `langevin` is CP2K's LANGEVIN ensemble and cannot take `--pressure` |
-| `--traj-freq` | `100` | trajectory output frequency [steps] |
-| `--pressure` | none (NVT) | pressure [bar]; giving it switches to NPT with a flexible cell (CP2K `NPT_F`). 1 atm = `1.01325` |
-
-> Basis-set and pseudopotential names are resolved **per element** from a 2829-entry database (PBE / SCAN /
-> all-electron, with a consistent valence-electron count `q`).  `--cp2k-basis` picks the family and the
-> element-specific names are filled in automatically.  See [Job Builders](workflow/job-builders.md#precise-basis--pseudopotential-matching).
-
-### Quantum ESPRESSO
-
-```bash
-ferro job -i crystal.cif -s qe
-ferro job -i metal.cif -s qe --smearing mp --kpoints 8 8 8
-ferro job -i slab.xyz -s qe --qe-task relax --qe-functional scan -o pw.in
-```
-
-| Flag | Default | Candidates / Description |
-|---|---|---|
-| `--qe-task` | `scf` | `scf`, `nscf`, `bands`, `relax`, `vc-relax`, `md`, `vc-md` |
-| `--qe-functional` | `pbe` | `pbe`, `pbesol`, `revpbe`, `blyp`, `scan`, `r2scan`, `pbe0`, `hse06` |
-| `--ecutwfc` | `50` | plane-wave cutoff [Ry] |
-| `--smearing` | `none` | `none`, `gaussian`, `mp`, `mv`, `fd` (mp/mv for metals) |
-| `--kpoints` | (Gamma) | three integers → a Monkhorst-Pack grid |
-| `--pseudo-dir` | `./pseudo` | pseudopotential directory (`<El>.UPF`) |
-| `--md-steps` | `10000` | number of MD steps (`--qe-task md`/`vc-md`) |
-| `--temperature` | `298.15` | target MD temperature [K] |
-| `-o <file>` | `pw.in` | output file |
-
-`ibrav = 0`; the cell is written from the structure as `CELL_PARAMETERS angstrom`.  The spin goes through
-the shared inference chain → `nspin` / `tot_magnetization`.
 
 ---
 

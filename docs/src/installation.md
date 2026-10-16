@@ -23,7 +23,7 @@ eight `fe-*` binaries; they are gone, with no compatibility shims — see
 | `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | 3-D spatial maps | one `.cube` per input |
 | `ferro net` | Glass network topology | six stacked CSVs + optional labelled trajectory |
 | `ferro bader` | Bader charge partitioning | ACF/BCF/AVF |
-| `ferro convert` / `info` / `job` | Structure I/O, info, QC input files | files / stdout |
+| `ferro convert` / `info` | Structure I/O, info | files / stdout |
 
 Run `ferro` with no arguments for the overview, `ferro <group>` for that group's
 commands, and `ferro <group> <command>` without `-i` for its parameters.

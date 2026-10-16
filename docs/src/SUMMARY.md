@@ -32,11 +32,6 @@
 - [Filtering a Dataset](dataset/filter.md)
 - [Merging Datasets](dataset/merge.md)
 
-# Input Generation
-
-- [Job Builders](workflow/job-builders.md)
-- [Spin / Unpaired-Electron Estimation](workflow/spin.md)
-
 # Python API
 
 - [ferro-python Overview](python.md)
