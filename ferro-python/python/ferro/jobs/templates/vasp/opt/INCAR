@@ -5,7 +5,7 @@
 #   above 1), KSPACING (--kspacing; a value written here is kept when --kspacing is
 #   not given); --vary-cell sets ISIF = 3, and ENCUT = 1.3 x the largest ENMAX when
 #   ENCUT is not set here (a fixed basis under a changing cell gives Pulay stress).
-#   Everything else is used as written.
+#   With METAGGA set, ALGO = All and ISEARCH = 1. Everything else is used as written.
 # Not set here on purpose: parallel settings (NCORE, NPAR, KPAR) -- add your machine's.
 
 # Electronic
@@ -24,6 +24,8 @@ ISYM = 0
 # Functional
 GGA = PE           ! PBE
 IVDW = 12          ! DFT-D3(BJ)
+# r2SCAN: replace GGA by METAGGA = R2SCAN (keep IVDW = 12 but add the r2SCAN
+# VDW_S8 / VDW_A1 / VDW_A2); ferro-py then sets ALGO = All and ISEARCH = 1
 
 # k-points: Gamma-centred mesh N_i = ceil(|b_i| 2pi / KSPACING)
 KSPACING = 0.5     ! 1/A

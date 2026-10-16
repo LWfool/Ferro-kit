@@ -4,7 +4,8 @@
 #   NELECT (only when --charge is not 0), ISPIN + NUPDOWN (when the multiplicity is
 #   above 1), KSPACING (--kspacing; a value written here is kept when --kspacing is
 #   not given), TEBEG/TEEND (--temperature), NSW (--steps), POTIM (--timestep).
-#   Everything else is used as written. NpT is not offered for VASP.
+#   With METAGGA set, ALGO = All and ISEARCH = 1. Everything else is used as written.
+#   NpT is not offered for VASP.
 # Not set here on purpose: parallel settings (NCORE, NPAR, KPAR) -- add your machine's.
 # The initial velocities come from VASP at TEBEG.
 
@@ -24,6 +25,8 @@ ISYM = 0
 # Functional
 GGA = PE           ! PBE
 IVDW = 12          ! DFT-D3(BJ)
+# r2SCAN: replace GGA by METAGGA = R2SCAN (keep IVDW = 12 but add the r2SCAN
+# VDW_S8 / VDW_A1 / VDW_A2); ferro-py then sets ALGO = All and ISEARCH = 1
 
 # k-points: Gamma-centred mesh N_i = ceil(|b_i| 2pi / KSPACING)
 KSPACING = 0.5     ! 1/A

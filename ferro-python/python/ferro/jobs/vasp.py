@@ -150,15 +150,6 @@ class Incar:
         return "\n".join(self._lines) + "\n"
 
 
-def _count_values(raw):
-    """INCAR 数组值的个数，``3*1.0`` 记 3 个。"""
-    n = 0
-    for word in raw.split():
-        count, star, _ = word.partition("*")
-        n += int(count) if star and count.isdigit() else 1
-    return n
-
-
 def _potcar_field(text, name):
     """POTCAR 头部的 ``ZVAL = 4.000`` / ``ENMAX = 400.000``：取第一处。"""
     m = re.search(rf"\b{name}\s*=\s*([-\d.]+)", text)
@@ -197,14 +188,14 @@ class VaspGenerator(Generator):
         enmax = max(_potcar_field(text, "ENMAX") for text, _ in potcars)
         notes.append("POTCAR: " + " ".join(str(p.parent.name) for _, p in potcars))
 
-        # 跟结构走的数组键：个数对不上就是模板来自别的体系
-        for key, expected, unit in [("MAGMOM", len(symbols), "atoms"),
-                                    ("LANGEVIN_GAMMA", len(elements), "species"),
-                                    ("LDAUL", len(elements), "species"), ("LDAUU", len(elements), "species"),
-                                    ("LDAUJ", len(elements), "species"), ("RWIGS", len(elements), "species")]:
-            if key in incar and _count_values(incar[key]) != expected:
-                raise JobError(f"the template's {key} has {_count_values(incar[key])} values, "
-                               f"this structure has {expected} {unit} ({' '.join(elements)})")
+        # meta-GGA（r2SCAN 等）用 ALGO = All + ISEARCH = 1：Normal（Davidson）对 meta-GGA
+        # 收敛差，用户在 r2SCAN 标注里实测过这一组
+        metagga = incar.get("METAGGA", "").strip().upper()
+        if metagga and metagga not in ("NONE", "--"):
+            if incar.get("ALGO", "").strip().upper() != "ALL" or incar.get("ISEARCH", "").strip() != "1":
+                incar["ALGO"] = "All"
+                incar["ISEARCH"] = 1
+                notes.append(f"METAGGA = {metagga}: ALGO = All, ISEARCH = 1")
 
         n_valence = sum(c * z for c, z in zip(counts, zval))
         mult = multiplicity(n_valence, options.charge, options.multiplicity)

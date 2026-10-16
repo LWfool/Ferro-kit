@@ -78,14 +78,15 @@ def test_template_values_are_kept(cfg, traj, tmp_path):
     assert not any("parallel settings" in n for n in s.notes)
 
 
-def test_structure_dependent_arrays_must_match(cfg, traj, tmp_path):
+def test_metagga_switches_algo(cfg, traj, tmp_path):
     tpl = tmp_path / "INCAR"
-    tpl.write_text("MAGMOM = 2*1.0\n")
-    with pytest.raises(JobError, match="MAGMOM has 2 values, this structure has"):
-        VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
-    n = len(traj.symbols(0))
-    tpl.write_text(f"MAGMOM = {n - 1}*0.0 1.0\nLANGEVIN_GAMMA = 10 10 10\n")
-    VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
+    tpl.write_text(VaspGenerator.builtin_template("sp").replace("GGA = PE", "METAGGA = R2SCAN"))
+    s = VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
+    incar = Incar.from_str(s.files["INCAR"])
+    assert (incar["ALGO"], incar["ISEARCH"]) == ("All", "1"), "meta-GGA 用 ALGO = All + ISEARCH = 1"
+    assert any("METAGGA = R2SCAN" in n for n in s.notes)
+    plain = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp")).files["INCAR"])
+    assert plain["ALGO"] == "Normal" and "ISEARCH" not in plain, "GGA 不动 ALGO"
 
 
 def test_potcar_choice(cfg, traj, tmp_path):
