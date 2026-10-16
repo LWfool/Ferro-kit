@@ -1,13 +1,18 @@
+use std::fmt::Write as _;
 use std::path::Path;
-use ferro_core::Trajectory;
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use ferro_core::{Frame, Trajectory};
 use anyhow::{bail, Context, Result};
 
 /// 写 VASP5 POSCAR 格式，坐标使用 Direct（分数坐标），原子按元素分组。
 pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
-    let path_ = path.display();
     let frame = trajectory.first().context("trajectory is empty")?;
+    let text = poscar_string(frame, trajectory.metadata.source.as_deref().unwrap_or("ferro"))?;
+    std::fs::write(path, text).with_context(|| format!("cannot create {}", path.display()))
+}
+
+/// 单帧的 POSCAR 全文（`comment` 为首行）。`ferro.jobs` 生成 VASP 任务用它，
+/// 与 `write_poscar` 同一份格式
+pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
     let cell = frame.cell.as_ref().context("frame has no cell (POSCAR requires periodic frame)")?;
 
     if let Some(vels) = &frame.velocities {
@@ -16,11 +21,10 @@ pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
         }
     }
 
-    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
-    let mut w = BufWriter::new(file);
+    let mut w = String::new();
 
     // Comment
-    writeln!(w, "{}", trajectory.metadata.source.as_deref().unwrap_or("ferro"))?;
+    writeln!(w, "{comment}")?;
     // Scale
     writeln!(w, "  1.00000000000000")?;
     // Lattice vectors (row = lattice vector)
@@ -63,8 +67,7 @@ pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
         }
     }
 
-    w.flush()?;
-    Ok(())
+    Ok(w)
 }
 
 #[cfg(test)]
