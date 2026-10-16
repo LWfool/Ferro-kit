@@ -53,7 +53,7 @@ def _cp2k_needs_gapw(apply):
     def check(text, value, options):
         qs = Section.from_str(text).section("FORCE_EVAL/DFT/QS")
         method = (qs.get("METHOD", "GPW") if qs else "GPW").split()[0].upper()
-        if method not in ("GAPW", "GAPW_XC"):
+        if method != "GAPW":
             raise JobError("GAPW_ACCURATE_XCINT only acts with &QS METHOD GAPW (all-electron)")
         return apply(text, value, options)
     return check

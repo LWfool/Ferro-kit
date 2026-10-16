@@ -87,6 +87,9 @@ def test_cp2k_switch_scans(tmp_path):
     assert Section.from_str(cut).section("FORCE_EVAL/DFT/MGRID").get("CUTOFF") == "600"
     with pytest.raises(JobError, match="only acts with &QS METHOD GAPW"):
         conv.SCANS["cp2k"]["accurate-xcint"][0](text, "on", JobOptions("sp"))
+    with pytest.raises(JobError, match="only acts with &QS METHOD GAPW"):   # GAPW_XC 不是全电子
+        conv.SCANS["cp2k"]["accurate-xcint"][0](text.replace("METHOD GPW", "METHOD GAPW_XC"), "on",
+                                                JobOptions("sp"))
 
 
 def fake_test(tmp_path, values=(400.0, 500.0, 600.0)):

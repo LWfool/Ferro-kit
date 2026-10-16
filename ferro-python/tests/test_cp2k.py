@@ -72,6 +72,13 @@ def gapw(task):
             .replace("POTENTIAL_FILE_NAME GTH_POTENTIALS", "POTENTIAL_FILE_NAME ALL_POTENTIALS"))
 
 
+def test_gapw_xc_is_refused(cfg, traj, tmp_path):
+    tpl = tmp_path / "t.inp"
+    tpl.write_text(Cp2kGenerator.builtin_template("sp").replace("METHOD GPW", "METHOD GAPW_XC"))
+    with pytest.raises(JobError, match="GAPW_XC is not supported"):
+        Cp2kGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
+
+
 def test_data_entries(tmp_path):
     (tmp_path / "P").write_text(GTH_POTENTIALS)
     assert data_entries(tmp_path / "P")["Zn"] == [(["GTH-PBE-q12", "GTH-PBE"], [2, 0, 10])]
