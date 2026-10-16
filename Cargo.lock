@@ -237,7 +237,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "ferro"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-analysis"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "chacha20",
  "ferro-core",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-core"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "nalgebra",
  "thiserror",
@@ -274,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "ferro-io"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "ferro-core",
@@ -287,14 +287,14 @@ dependencies = [
 
 [[package]]
 name = "ferro-render"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "ferro-structure"
-version = "0.3.6"
+version = "0.4.0"
 dependencies = [
  "ferro-core",
  "nalgebra",

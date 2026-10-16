@@ -745,7 +745,7 @@ golden master 的差异失去唯一解释。
 | `collect` 的成分比较 | 先拼接再 `sort_atoms` | **逐文件各自排完再拼**。置换取自第 0 帧再套到全部帧，先拼后排会拿第一个文件的原子顺序去重排第二个文件的原子 —— 产物看着完全正常，数值全错 |
 | 成分不符的报错 | 比较逐原子序列、却按计数渲染两个化学式 | 两边打出来会一模一样（`Al2O303P100Zn50 vs Al2O303P100Zn50`），消息无法自证。比较规范序列之后，剩下的差异必然是计数差异，点名到元素 |
 | 「重排原子」的实现 | 只置换 `forces` | `Frame` 上有**三个**逐原子旁路数组：`forces`、`velocities`、`bonds`（后者存的是原子编号，要反向映射 old→new）。dpdata 的 `sort_atom_types` 遍历 `DTYPES` 表、凡带 NATOMS 轴的一律置换，漏不掉；ferro 是手写的三个字段，只能靠测试钉住 |
-| `convert` 的原子重排 | 整条轨迹调一次 `sort_atoms` | **逐帧**各调一次。`sort_atoms` 取第 0 帧的置换套全部帧，只对帧间原子顺序恒定的轨迹成立；LAMMPS dump 读侧按 id 排过，但 xyz / extxyz 没有 id，帧间顺序可变。逐帧排对顺序本就恒定的轨迹结果相同（稳定排序） |
+| `convert` 的原子重排 | 整条轨迹调一次 `sort_atoms` | **逐帧**各调一次（2026-10-17 起 `sort_atoms` 本身逐帧取置换，此条与上一条只剩历史意义）。`sort_atoms` 取第 0 帧的置换套全部帧，只对帧间原子顺序恒定的轨迹成立；LAMMPS dump 读侧按 id 排过，但 xyz / extxyz 没有 id，帧间顺序可变。逐帧排对顺序本就恒定的轨迹结果相同（稳定排序） |
 | 磁盘上的原子顺序 | 以为会影响训练 | **不影响**：DeePMD-kit 加载时自己按类型稳定排序（`deepmd/utils/data.py:1026`，默认 `sort_atoms=True`，文档写明非 mixed type 的 descriptor 要求如此）。但 **mixed type 是例外**，那条路上不排序，将来做 mixed type 时不能无脑套用 |
 | `--format` 与嗅探 | 给了 `--format` 就不嗅探了 | 嗅探照跑。它换来两样东西：不一致时的一行 `NOTE:`（静默服从会让**手滑写错**与**有意覆盖**长得一样，而前者的下一个症状是解析器在一份好文件上报锚点缺失），以及那条「同目录 OUTCAR + vasprun.xml」守卫的比较对象 |
 | 那条守卫 | 继续比较 `stats.format` | `--format` 一给，`stats.format` 就恒等于它，守卫**恒不触发**。改为比较嗅探结果。守卫挡的错误没有任何其他症状：数据集看着完全正常，只是每帧躺了两遍 |
@@ -755,6 +755,15 @@ golden master 的差异失去唯一解释。
 | 帮助页的小节名 | 随手起 | `job -s cp2k` 原本有一个叫 `Output:` 的**参数分组**（`--cube`/`--molden`），加产物段时撞名。一页里两个同名小节，读者无从分辨 |
 | `println!` 里的花括号 | 直接写 `{coord,box}.npy` | 会被当成格式占位符，编译报 "python's numeric grouping" 这种毫不相干的错。改写成 `coord|box` 或转义 `{{}}` |
 | 统计帮助页行数 | `ferro <cmd> | wc -l` | 本机这个管道给出的数不对（实测 38 行的页报 7）。用 `ferro <cmd> > f` 再 `wc -l < f`，或直接按源码数 |
+
+## dataset 审查编码陷阱（2026-10-17）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `writers/deepmd.rs` 的 `nopbc` | 按「帧有没有 cell」决定写不写 | dpdata 的非周期 system **照写 `box.npy`**，读进来有 cell、pbc 全 false。按「无胞或三向非周期」决定；writer 还会删掉旧标记，判错就静默把团簇写成周期体系 |
+| deepmd 往返测试 | 往返一致就当布局对 | 读写两边**同时**转置照样往返一致。另读盘上 npy 查 `[0][1]`；应力要非对称 |
+| 拿 dpdata 对比 nopbc system 的盒子 | 以为 `cells` 是 `box.npy` 原值 | dpdata 读 nopbc system 时把 `cells` 置零；比盒子直接读 npy |
+| 「同一 AIMD 文件帧间原子顺序变化」 | 想在 collect 层造端到端用例 | 四种 AIMD 格式的元素列表都是逐文件的，造不出来；逐帧情形只能在 `sort_atoms` 层测 |
 
 ## 同一份数据两条路都错、往返测试照样绿（第三例，2026-09-22）
 

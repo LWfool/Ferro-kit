@@ -92,7 +92,7 @@ wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步�
 22. ✅ 手册 `docs/src/python/`（api / config / job / job vasp|qe|cp2k / conv 七页）+ `ferro-py doc`：
     手册编进 wheel，与 `ferro doc` 同一渲染器；Rust 的 `ferro doc` 不收这些页（用户定：一份手册
     两处收录迟早走样），`ferro doc python` 改为 ferro-python 概览（构成、依赖、职责、架构）。`ferro-render` 加 `\lvert` `\rvert` `\hbar`
-23. 更新开发记录（版本号只在用户要求时动）
+23. ✅ 更新开发记录（版本号只在用户要求时动）
 下一批：QE 单点输出（能量 / 力 / 应力）reader + QE 截断能测试（**ecutwfc 必须明确测**；
 ecutrho 易收敛，UPF 建议的最大值即可，用户定）
 
@@ -125,6 +125,23 @@ P-11 `a282757`。P-4（ecutrho）、P-8（CP2K 偶数网格偏离 Γ）按上面
 存疑（缺证据）：`RECOMMENDED_POTCAR` 个别条目（Fe、Er…）未对照 vasp.at 当前表；CP2K 2025.2 的
 k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满足阈值的档」，偏差不单调时可能
 报出其上仍有超阈值档的低档（判据选择，待定）。
+
+**2026-10-17 `ferro dataset` 审查**（子代理只读审查：原子重排后力、坐标、盒子、能量、应力是否逐帧
+逐原子对应；对照 dpdata 1.0.2 环境，构造可反查身份的数据跑 collect / filter / merge / convert）。
+结论：**无逐帧、逐原子错配**。编号只在本节内有效：
+
+| 编号 | 级别 | 问题 | 处置 |
+|---|---|---|---|
+| D-1 | 高 | dpdata 的 nopbc system（有 `box.npy`）经 filter / merge 丢 `nopbc`，团簇变周期 | ✅ `cfb228d` |
+| D-2 | 中 | collect 用第 0 帧置换套全部帧 | ✅ `7f5fa81`（`sort_atoms` 逐帧；实际格式触发不了） |
+| D-3 | 低 | filter 保留帧号、`--shuffle` 置换不落盘，产物无法追溯回原始帧 | **用户定不做** |
+| D-4 | 低 | `fparam` / `aparam` / `spin` 等额外 npy 只告警即丢 | **用户定不做** |
+| D-5 | 低 | filter 不重排原子（collect / merge 会） | 未做，可写进手册 |
+| D-6 | 低 | extxyz 无 `masses` 列时 momenta → 速度用 ferro 质量表（P 相对误差 7.7e-6） | 可忽略 |
+| D-7 | 低 | 超过 1000 个 set 时目录按字典序 | 未做 |
+
+测试缺口已补（`673d732`）：非对称 virial 的盘上布局、merge 打乱与 filter 筛帧的逐帧逐原子对应。
+仍存疑：左手系晶胞；CP2K MD 的 virial 未与 dpdata 交叉核对。
 
 ### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
 
@@ -546,6 +563,8 @@ mixed type 布局（**先核对 DeePMD-kit 文档与 dpdata 的 `deepmd/npy/mixe
 ---
 
 ### ferro job 从轨迹抽帧（2026-08-22 提出，告警已于 2026-08-24 补上）
+
+> **2026-10-17 作废**：`ferro job` 已删；`ferro-py job` 选帧沿用 `convert`，默认全部帧。
 
 `job` 现在无条件取第 0 帧（`cmd/job.rs:186`）。多帧输入会告警（见下），但**仍然只
 生成第 0 帧的输入**——喂一条 500 帧轨迹得到的还是最没平衡那个构型，只是这次用户

@@ -3,18 +3,19 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：796 个（全部通过，clippy 零警告；2026-10-17 实数）；另 ferro-python 137 个 pytest
+## 测试总数：800 个（全部通过，clippy 零警告；2026-10-17 实数）；另 ferro-python 137 个 pytest
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 84 |
-| ferro-io | 222（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
+| ferro-io | 223（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
 | ferro-structure | 86 |
-| ferro-analysis | 256 |
+| ferro-analysis | 257 |
 | ferro-render | 30 |
-| ferro-cli（lib 107 + bin 3 + 集成 8） | 118 |
+| ferro-cli（lib 109 + bin 3 + 集成 8） | 120 |
 
-版本号 **0.3.6**（workspace 统一；ferro-python 已同步；**2026-10-15 发版，tag `v0.3.6`**）。
+版本号 **0.4.0**（workspace 统一；ferro-python 已同步；2026-10-17 升，**未发版**；上一个发版是
+2026-10-15 的 `v0.3.6`）。0.4.0 这批的破坏性改动见 `overview.md`。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
 与 2026-10-11 全库审查的 15 条修复一起随 `v0.3.6` 发出，两批都含破坏性改动，清单见 `overview.md`。
 `rust-version = 1.89` 自 0.3.6 起声明（依赖树最高要求，nalgebra 0.35）。

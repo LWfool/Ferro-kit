@@ -135,6 +135,19 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 
 `v0.3.1` 是纯新增，故升 patch 位。
 
+## 2026-10-17 的一批（版本号 **0.4.0**，未发版）
+
+输入生成迁到 ferro-python 收尾（`plan.md`「`ferro.jobs`」第 21 步）与 dataset 审查的修复。删了一个
+子命令，用户定升次版本位 0.4.0。破坏性的：
+
+- **删除 `ferro job`**（及 `ferro doc job` / `ferro doc spin`）：输入生成只走 `ferro-py job`。Gaussian、
+  CP2K freq、QE nscf / bands、CP2K `--atom-charge` / `--cube` / `--molden`、多重度推断随之失去（用户接受）
+- **删除 `ferro-workflow` crate** 与 `ferro_core::spin`（`guess_spin` 等），以及只为它而设的
+  `elements::{group_number, valence_electrons, is_transition_metal}`
+- **DeePMD 写出**：无一帧周期（无胞，或三向 pbc 皆 false）即写 `nopbc`，`box.npy` 照写；周期与非周期
+  帧混在一个 system 报错。此前 filter / merge 会把 dpdata 产出的团簇静默变成周期体系
+- **库 API**：`merge::sort_atoms` 逐帧各取置换（此前取第 0 帧的置换套全部帧）
+
 ## `v0.3.6`（2026-10-15 打 tag，发版）
 
 **一次发出两批**：从未单独发版的 `0.3.5`（2026-10-03 四路审查严重 / 中两级的修复，见文末
