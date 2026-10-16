@@ -84,8 +84,8 @@ Format auto-detected from the file name / extension:
 
 ### `write(traj, path, units=None)`
 
-Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`, `in`/`qe`,
-`data`/`lmp`, `lammpstrj`/`dump`.  Writing velocities or forces to a dump requires `units`.
+Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR`,
+`data`/`lmp`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
 
 ## Structure operations
 

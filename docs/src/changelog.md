@@ -10,6 +10,26 @@ command line alike; regenerate it rather than migrating it.
 
 ---
 
+## Unreleased
+
+### `convert` no longer writes QE input
+
+`ferro convert -o x.in` (and `.qe`, and `ferro.write(traj, "x.in")` in Python) wrote a pw.x
+input with placeholder `&CONTROL` / `&SYSTEM` / `&ELECTRONS`, a `prefix` copied from the
+source file name and `K_POINTS gamma` — a file that looked runnable but was not a calculation
+setup. QE input is now read-only, like CP2K input: `.in` / `.qe` is refused on write. Generate a
+pw.x input with `ferro job -s qe`.
+
+### QE input read: one-line namelists, undeclared labels
+
+A namelist written on one line (`&SYSTEM ibrav=0, celldm(1)=10.26, nat=2, ntyp=1 /`, valid
+Fortran that pw.x accepts) was ignored as a whole: `celldm(1)` was lost and a `CELL_PARAMETERS`
+without an option fell back to Bohr, giving a cell over 10× too small with exit code 0. It is now
+read. A missing `&SYSTEM` or `ibrav`, and an `ATOMIC_POSITIONS` label not declared in
+`ATOMIC_SPECIES`, are errors.
+
+---
+
 ## `v0.3.6` — 2026-10-15
 
 ### CIF symmetry expansion: duplicates judged as in ASE

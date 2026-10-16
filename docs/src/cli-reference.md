@@ -143,7 +143,7 @@ ferro convert -i traj.lammpstrj -o cifs/ --format cif --units metal   # one CIF 
 | CIF | `.cif` | y | y | **one per file** |
 | VASP | `.vasp` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **one per file** |
 | LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **one per file** |
-| QE (pw.x) | `.in` `.qe` | y | y | **one per file** |
+| QE (pw.x) | `.in` `.qe` | y | — | — |
 | CP2K input | `.inp` | y | — | — |
 | CP2K restart | `.restart` | y | — | — |
 
@@ -154,8 +154,8 @@ Things that trip people up:
   from any program comes out in the same order.  Atoms of one element keep their relative order,
   and forces, velocities and bonds move with their atoms.  The LAMMPS atom ids and type numbers
   follow the new order (`O` becomes type 1).  There is no switch to keep the input order.
-- **The two CP2K input formats are read-only.**  To generate a CP2K input use `ferro job -s cp2k`,
-  which writes a complete calculation setup rather than bare coordinates.
+- **The two CP2K input formats and QE input are read-only.**  To generate either input use
+  `ferro job -s cp2k|qe`, which writes a complete calculation setup rather than bare coordinates.
 - **"One per file" splits the trajectory**: 500 frames written to `conf.cif` give `conf_0000.cif` …
   `conf_0499.cif`, the index being the original frame number.  CIF is split too, although the format
   allows several `data_` blocks in one file: VESTA and Materials Studio show only the first block.

@@ -74,7 +74,7 @@ pub fn read_trajectory_tail(
 }
 
 /// Write-side format, resolved from the file name alone.
-pub enum OutFormat { Poscar, Xyz, Pdb, Cif, Extxyz, LammpsData, LammpsDump, Qe }
+pub enum OutFormat { Poscar, Xyz, Pdb, Cif, Extxyz, LammpsData, LammpsDump }
 
 /// Resolves the write format without touching the disk, so a caller can reject a bad
 /// `-o` before reading a multi-GB input (`convert`); `write_trajectory` goes through it.
@@ -94,7 +94,11 @@ pub fn out_format(path: &Path) -> Result<OutFormat> {
         Some("vasp") | Some("pos")       => OutFormat::Poscar,
         Some("lammps") | Some("data") | Some("lmp") => OutFormat::LammpsData,
         Some("dump") | Some("lammpstrj") => OutFormat::LammpsDump,
-        Some("in") | Some("qe")          => OutFormat::Qe,
+        // QE 输入只读：完整的 pw.x 输入由任务生成器写，convert 不写只有结构的骨架
+        Some(ext @ ("in" | "qe")) => bail!(
+            "Unsupported output format: .{ext} (QE input is read-only here; \
+             generate a pw.x input with `ferro job -s qe`)"
+        ),
         Some(ext) => bail!("Unsupported output format: .{ext}"),
         None      => bail!("Cannot determine format (no extension): {}", path.display()),
     })
@@ -109,15 +113,14 @@ pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: Option<Lam
         OutFormat::Extxyz     => Ok(write_extxyz(traj, path)?),
         OutFormat::LammpsData => Ok(write_lammps_data(traj, path)?),
         OutFormat::LammpsDump => Ok(write_lammps_dump(traj, path, lammps_units)?),
-        OutFormat::Qe         => Ok(write_qe_input(traj, path)?),
     }
 }
 
 /// Whether the format named by `path` can hold more than one frame on write.
 ///
 /// The `Frames on write` column of [`supported_formats`] in code form: XYZ, extxyz,
-/// PDB and LAMMPS dump carry a whole trajectory, while POSCAR, CIF, LAMMPS data and
-/// QE input hold a single structure. CIF can technically carry several `data_` blocks,
+/// PDB and LAMMPS dump carry a whole trajectory, while POSCAR, CIF and LAMMPS data
+/// hold a single structure. CIF can technically carry several `data_` blocks,
 /// but VESTA / Materials Studio show only the first, so it is split like POSCAR. Callers
 /// writing several frames use this to decide between one file and one file per frame.
 ///
@@ -132,14 +135,14 @@ pub fn holds_multiple_frames(path: &Path) -> bool {
     }
     !matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("lammps") | Some("data") | Some("lmp") | Some("in") | Some("qe")
+        Some("lammps") | Some("data") | Some("lmp")
             | Some("vasp") | Some("pos") | Some("cif")
     )
 }
 
 /// Returns a human-readable read/write matrix of the supported formats.
 ///
-/// Read and write are NOT symmetric — the CP2K inputs are read-only — so the two
+/// Read and write are NOT symmetric — the CP2K and QE inputs are read-only — so the two
 /// directions get their own column rather than one flat list.
 pub fn supported_formats() -> &'static str {
     "  Format        Detected by                    Read   Write  Frames on write
@@ -151,7 +154,7 @@ pub fn supported_formats() -> &'static str {
   CIF           .cif                           y      y      one per file
   VASP          .vasp  .pos  POSCAR*/CONTCAR*  y      y      one per file
   LAMMPS data   .lammps  .data  .lmp           y      y      one per file
-  QE (pw.x)     .in  .qe                       y      y      one per file
+  QE (pw.x)     .in  .qe                       y      -      -
   CP2K input    .inp                           y      -      -
   CP2K restart  .restart                       y      -      -
 
@@ -162,9 +165,9 @@ pub fn supported_formats() -> &'static str {
   .xyz still gives plain XYZ; use .extxyz to keep the cell.
   Writing to a CONTCAR name emits POSCAR-format content.
 
-  `-` under Write means read-only: a CP2K .inp can be converted FROM, not TO.
-  To generate CP2K input use `ferro job -s cp2k`, which writes a full run
-  setup rather than bare coordinates.
+  `-` under Write means read-only: a CP2K .inp or QE .in can be converted
+  FROM, not TO. To generate either input use `ferro job -s cp2k|qe`, which
+  writes a full run setup rather than bare coordinates.
 
   `one per file` means the format holds one structure: 500 frames written
   to conf.cif give conf_0000.cif ... conf_0499.cif. Use --stride / --number
@@ -224,13 +227,13 @@ mod tests {
         assert!(t.frames[0].cell.is_none());
     }
 
-    /// `supported_formats()` 的 Write 列写着 `-` 的两个格式，dispatch 必须真的拒绝。
+    /// `supported_formats()` 的 Write 列写着 `-` 的格式，dispatch 必须真的拒绝。
     /// 表与 match 分支是两处手写的事实，漂了就是文档在说谎。
     #[test]
     fn test_read_only_formats_are_rejected_on_write() {
         let traj = one_atom_traj();
         let dir = std::env::temp_dir();
-        for ext in ["inp", "restart"] {
+        for ext in ["inp", "restart", "in", "qe"] {
             let path = dir.join(format!("ferro_dispatch_test.{ext}"));
             let err = write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap_err();
             assert!(
@@ -242,15 +245,20 @@ mod tests {
     }
 
     #[test]
-    fn test_format_table_marks_cp2k_read_only() {
+    fn test_format_table_marks_cp2k_and_qe_read_only() {
         let table = supported_formats();
+        let mut seen = 0;
         for line in table.lines() {
-            let Some(rest) = line.trim().strip_prefix("CP2K") else { continue };
-            // 该行形如 `CP2K input    .inp    y    -    -`
-            let cols: Vec<&str> = rest.split_whitespace().collect();
-            assert_eq!(cols[2], "y", "CP2K 应可读: {line}");
-            assert_eq!(cols[3], "-", "CP2K 应不可写: {line}");
+            let t = line.trim();
+            if !(t.starts_with("CP2K") || t.starts_with("QE")) { continue }
+            // 该行形如 `CP2K input    .inp    y    -    -`：倒数第三、二列是 Read / Write
+            let cols: Vec<&str> = t.split_whitespace().collect();
+            let n = cols.len();
+            assert_eq!(cols[n - 3], "y", "应可读: {line}");
+            assert_eq!(cols[n - 2], "-", "应不可写: {line}");
+            seen += 1;
         }
+        assert_eq!(seen, 3, "表里应有 CP2K input、CP2K restart、QE 三行");
     }
 
     /// `holds_multiple_frames` 与格式表的 `Frames on write` 列是两处手写的同一事实
@@ -263,7 +271,6 @@ mod tests {
             ("run1_POSCAR", true),   // 前缀匹配，不是包含匹配
             ("t.vasp", false), ("t.pos", false), ("conf_0000.vasp", false),
             ("t.lmp", false), ("t.data", false), ("t.lammps", false),
-            ("t.in", false), ("t.qe", false),
         ] {
             assert_eq!(
                 holds_multiple_frames(Path::new(name)),

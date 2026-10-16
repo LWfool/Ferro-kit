@@ -20,7 +20,7 @@ pub use vasp::{write_poscar, poscar_string};
 pub use extxyz::{write_extxyz, write_extxyz_with, StressKey};
 pub use lammps_data::write_lammps_data;
 pub use lammps_dump::write_lammps_dump;
-pub use qe::{write_qe_input, qe_structure_cards};
+pub use qe::qe_structure_cards;
 pub use cp2k::cp2k_structure_sections;
 pub use cube::write_cube;
 pub use table::{write_table, TableFormat};

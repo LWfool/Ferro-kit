@@ -171,7 +171,7 @@ Parameters:
 
 Output:
   One file when the target format holds a trajectory (Frames column above),
-  one file PER FRAME when it holds a single structure (CIF, POSCAR, data, QE):
+  one file PER FRAME when it holds a single structure (CIF, POSCAR, data):
   POSCAR_0000, conf_0002.cif — the index is the ORIGINAL frame number.
   With --format the stem is `frame`: DIR/frame_0000.cif, DIR/frame.extxyz
 

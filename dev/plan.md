@@ -108,8 +108,8 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
   （`readers/extxyz.rs:141`）；extxyz writer 定点 `{:.10}` 丢小数有效位（`writers/extxyz.rs:139-142`）；PDB 末个 MODEL
   缺 ENDMDL 整帧静默丢、`CRYST1 1 1 1 90 90 90` 当 1 Å 周期胞（`pdb.rs:35-62`）；CIF symop 认不出的项静默丢
   （`cif.rs:380-411`，A1 漏网）；cube writer 不在每条 z 列末换行（`writers/cube.rs:59-64`）；LAMMPS data 的 Masses 注释
-  直接当元素不校验（`lammps_data.rs:136-142`）；~~QE `ATOMIC_POSITIONS` 用了未声明的标签不报错~~（2026-10-16 已修）；QE
-  writer 把 `metadata.source` 原样写进 `prefix`（`writers/qe.rs:22,30`）；CP2K `.inp` 的 `MULTIPLE_UNIT_CELL` 静默忽略
+  直接当元素不校验（`lammps_data.rs:136-142`）；~~QE `ATOMIC_POSITIONS` 用了未声明的标签不报错~~（2026-10-16 已修）；~~QE
+  writer 把 `metadata.source` 原样写进 `prefix`~~（2026-10-16 整文件 writer 已删）；CP2K `.inp` 的 `MULTIPLE_UNIT_CELL` 静默忽略
   （`cp2k.rs:139-210`）；xyz / extxyz 末帧截断整份报错，与 dump「丢末帧 + 告警」不一且不点名帧号（`xyz.rs:41-45`、
   `extxyz.rs:113-115`）；手册 `data-model.md:89`、`cli-reference.md:305` 过时；DeePMD writer 文档写 `energy.npy (nframes,)`
   实为 `(nframes,1)`，部分周期（slab）静默写成全周期（`writers/deepmd.rs:12,130-136`）

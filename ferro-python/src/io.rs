@@ -5,7 +5,7 @@ use std::path::Path;
 use ferro_io::{
     is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
     read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
-    write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_qe_input, write_xyz,
+    write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_xyz,
     LammpsUnits,
 };
 use pyo3::prelude::*;
@@ -93,7 +93,6 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
         "pdb" => write_pdb(t, p).map_err(pyerr),
         "cif" => write_cif(t, p).map_err(pyerr),
         "poscar" => write_poscar(t, p).map_err(pyerr),
-        "in" | "qe" => write_qe_input(t, p).map_err(pyerr),
         "data" | "lmp" => write_lammps_data(t, p).map_err(pyerr),
         "lammpstrj" | "dump" => write_lammps_dump(t, p, units).map_err(pyerr),
         other => Err(pyerr(format!(

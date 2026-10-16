@@ -26,7 +26,7 @@ pub use writers::{
     write_poscar, poscar_string,
     write_extxyz, write_extxyz_with, StressKey,
     write_lammps_data, write_lammps_dump,
-    write_qe_input, qe_structure_cards, cp2k_structure_sections,
+    qe_structure_cards, cp2k_structure_sections,
     write_cube,
     write_table, TableFormat,
 };

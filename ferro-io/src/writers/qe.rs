@@ -1,68 +1,6 @@
-use std::path::Path;
-use ferro_core::{Frame, Trajectory};
 use std::fmt::Write as _;
-use std::fs::File;
-use std::io::{BufWriter, Write};
+use ferro_core::Frame;
 use anyhow::{Context, Result};
-
-/// 写 Quantum ESPRESSO pw.x 输入文件（ibrav=0，ATOMIC_POSITIONS angstrom）。
-///
-/// 这是 **格式转换** 用途（`fe-convert`，与 [`crate::readers::qe::read_qe_input`]
-/// 往返）：只写结构骨架 + 占位 `&CONTROL/&SYSTEM/&ELECTRONS`。需要完整计算
-/// 设置（任务/泛函/k 点/自旋等）请用 `ferro_workflow::QeJobBuilder`（`fe-job -s qe`）。
-pub fn write_qe_input(trajectory: &Trajectory, path: &Path) -> Result<()> {
-    let path_ = path.display();
-    let frame = trajectory.first().context("trajectory is empty")?;
-
-    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
-    let mut w = BufWriter::new(file);
-
-    let prefix = trajectory.metadata.source.as_deref().unwrap_or("ferro");
-
-    // Unique element labels in first-appearance order
-    let elem_order = frame.unique_elements();
-    let ntyp = elem_order.len();
-    let nat = frame.n_atoms();
-
-    // &CONTROL
-    writeln!(w, "&CONTROL")?;
-    writeln!(w, "  calculation = 'scf',")?;
-    writeln!(w, "  prefix = '{prefix}',")?;
-    writeln!(w, "/")?;
-    writeln!(w)?;
-
-    // &SYSTEM
-    writeln!(w, "&SYSTEM")?;
-    writeln!(w, "  ibrav = 0,")?;
-    writeln!(w, "  nat = {nat},")?;
-    writeln!(w, "  ntyp = {ntyp},")?;
-    let charge = frame.charge;
-    if charge != 0 {
-        writeln!(w, "  tot_charge = {charge},")?;
-    }
-    let mult = frame.multiplicity;
-    if mult != 1 {
-        writeln!(w, "  tot_magnetization = {},", mult - 1)?;
-    }
-    writeln!(w, "/")?;
-    writeln!(w)?;
-
-    // &ELECTRONS (empty placeholder)
-    writeln!(w, "&ELECTRONS")?;
-    writeln!(w, "/")?;
-    writeln!(w)?;
-
-    let pseudos: Vec<(String, String)> = elem_order.iter()
-        .map(|e| (e.clone(), format!("{e}.UPF")))
-        .collect();
-    write!(w, "{}", qe_structure_cards(frame, &pseudos)?)?;
-
-    // K_POINTS gamma (placeholder)
-    writeln!(w, "K_POINTS {{gamma}}")?;
-
-    w.flush()?;
-    Ok(())
-}
 
 /// 单帧的三张结构卡片：ATOMIC_SPECIES（质量 + 赝势文件名）、CELL_PARAMETERS 与
 /// ATOMIC_POSITIONS（均为 angstrom），每张后跟一空行。`pseudos` 为 元素 → 赝势文件名，
@@ -101,41 +39,41 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
     Ok(w)
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::readers::qe::read_qe_input;
-    use ferro_core::{Atom, Cell, Frame, Trajectory};
+    use crate::readers::qe::parse_qe_input_parts;
+    use crate::readers::read_qe_input;
+    use crate::testutil::write_tmp as tmp;
+    use ferro_core::{Atom, Cell};
     use nalgebra::Vector3;
 
-    fn bcc_traj() -> Trajectory {
+    fn bcc() -> Frame {
         let cell = Cell::from_lengths_angles(2.87, 2.87, 2.87, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
-        Trajectory::from_frame(frame)
+        frame
     }
 
     #[test]
-    fn test_roundtrip() {
-        let path = std::env::temp_dir().join("bcc_rt.qe");
-        let p = &path;
-        let orig = bcc_traj();
-        write_qe_input(&orig, p).unwrap();
-
-        let loaded = read_qe_input(p).unwrap();
-        let f = loaded.first().unwrap();
+    fn test_cards_round_trip() {
+        let cards = qe_structure_cards(&bcc(), &[("Fe".into(), "Fe.pbe.UPF".into())]).unwrap();
+        assert!(cards.contains("  Fe  55.8450  Fe.pbe.UPF"), "{cards}");
+        let text = format!("&SYSTEM\n  ibrav = 0, nat = 2, ntyp = 1\n/\n{cards}");
+        let f = read_qe_input(&tmp("bcc_cards.qe", &text)).unwrap().frames.remove(0);
         assert_eq!(f.n_atoms(), 2);
-        assert_eq!(f.atom(0).element, "Fe");
-        assert!((f.atom(1).position.x - 1.435).abs() < 1e-6);
+        assert!((f.atom(1).position - Vector3::repeat(1.435)).norm() < 1e-9);
         let [a, ..] = f.cell.as_ref().unwrap().lengths();
-        assert!((a - 2.87).abs() < 1e-4);
+        assert!((a - 2.87).abs() < 1e-9);
+        // 卡片部分不含 namelist，拆分后原样落在 cards 里
+        assert_eq!(parse_qe_input_parts(&text).unwrap().cards.trim_end(), cards.trim_end());
     }
 
     #[test]
     fn test_structure_cards_refuse_incomplete_input() {
-        let f = bcc_traj().frames.remove(0);
-        let e = qe_structure_cards(&f, &[]).unwrap_err();
+        let e = qe_structure_cards(&bcc(), &[]).unwrap_err();
         assert!(format!("{e:#}").contains("no pseudopotential given for Fe"), "{e:#}");
         let mut mol = Frame::new();
         mol.add_atom(Atom::new("O", Vector3::zeros()));
