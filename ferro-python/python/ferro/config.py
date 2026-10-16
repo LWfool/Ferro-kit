@@ -18,6 +18,7 @@ SCHEMA = {
         "data_dir": "path",
         "basis_family": str,
         "potential_family": str,
+        "ae_basis_family": str,
         "kinds": ("elements", dict),
     },
     "templates": {"dir": "path"},
@@ -52,8 +53,12 @@ TEMPLATE = """\
 [cp2k]
 # Directory holding BASIS_MOLOPT, POTENTIAL, ... (CP2K's data/)
 # data_dir = "~/cp2k/data"
+# Pseudopotential runs (&QS METHOD GPW): basis set family + GTH family; the -qN of
+# the basis picks the matching GTH-<functional>-qN
 # basis_family = "DZVP-MOLOPT-SR-GTH"
 # potential_family = "GTH-PBE"
+# All-electron runs (&QS METHOD GAPW): basis set family, POTENTIAL ALL
+# ae_basis_family = "pob-TZVP-rev2"
 
 [cp2k.kinds]
 # Per-element override of the basis set and/or the pseudopotential

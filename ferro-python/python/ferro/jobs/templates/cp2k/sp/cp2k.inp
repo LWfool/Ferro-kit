@@ -1,0 +1,84 @@
+# ferro-py template: CP2K single point (energy, forces, stress), PBE-D3(BJ)
+#
+# ferro-py writes &SUBSYS (&CELL, &COORD, one &KIND per element) from the structure and
+# sets CHARGE, MULTIPLICITY (+ UKS above 1) and &KPOINTS (--kspacing; none for a
+# 1x1x1 mesh, and then OT is kept; a larger mesh switches &SCF to diagonalisation).
+# The &KIND basis sets and potentials come from the files named below, searched in
+# [cp2k] data_dir of the configuration. Everything else is used as written.
+#
+# All-electron instead of GTH pseudopotentials: set &QS METHOD GAPW, use
+#   BASIS_SET_FILE_NAME BASIS_pob and POTENTIAL_FILE_NAME ALL_POTENTIALS, and
+#   uncomment GAPW_ACCURATE_XCINT (CP2K 2026.x); the basis family is ae_basis_family.
+&GLOBAL
+  PROJECT cp2k
+  PRINT_LEVEL MEDIUM
+  RUN_TYPE ENERGY_FORCE
+&END GLOBAL
+&FORCE_EVAL
+  METHOD Quickstep
+  STRESS_TENSOR ANALYTICAL
+  &DFT
+    BASIS_SET_FILE_NAME BASIS_MOLOPT
+    POTENTIAL_FILE_NAME GTH_POTENTIALS
+    CHARGE 0
+    MULTIPLICITY 1
+    &QS
+      METHOD GPW
+      EPS_DEFAULT 5.0E-11
+#     GAPW_ACCURATE_XCINT  # all-electron (METHOD GAPW) only; CP2K 2026.x
+    &END QS
+    &POISSON
+      PERIODIC XYZ
+      PSOLVER PERIODIC
+    &END POISSON
+    &MGRID
+      CUTOFF 400  # Ry
+      REL_CUTOFF 60  # Ry
+    &END MGRID
+    &XC
+      &XC_FUNCTIONAL PBE
+      &END XC_FUNCTIONAL
+      &VDW_POTENTIAL
+        POTENTIAL_TYPE PAIR_POTENTIAL
+        &PAIR_POTENTIAL
+          PARAMETER_FILE_NAME dftd3.dat
+          TYPE DFTD3(BJ)
+          REFERENCE_FUNCTIONAL PBE
+        &END PAIR_POTENTIAL
+      &END VDW_POTENTIAL
+#     &XC_GRID  # finer grid for the XC integration (meta-GGA)
+#       USE_FINER_GRID
+#     &END XC_GRID
+    &END XC
+    &SCF
+      MAX_SCF 25
+      EPS_SCF 5.0E-06
+      &OT
+        PRECONDITIONER FULL_ALL
+        MINIMIZER DIIS
+        LINESEARCH 2PNT
+        ALGORITHM IRAC
+      &END OT
+      &OUTER_SCF
+        MAX_SCF 5
+        EPS_SCF 5.0E-06
+      &END OUTER_SCF
+    &END SCF
+    &PRINT
+      &HIRSHFELD OFF
+      &END HIRSHFELD
+      &MULLIKEN OFF
+      &END MULLIKEN
+    &END PRINT
+  &END DFT
+  &PRINT
+    &FORCES ON
+    &END FORCES
+    &STRESS_TENSOR ON
+    &END STRESS_TENSOR
+    &GRID_INFORMATION OFF
+    &END GRID_INFORMATION
+  &END PRINT
+  &SUBSYS
+  &END SUBSYS
+&END FORCE_EVAL
