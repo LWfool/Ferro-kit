@@ -210,6 +210,7 @@ class Cp2kGenerator(Generator):
         for e in elements:
             override = cfg["kinds"].get(e, {})
             names = [n for names, _ in basis_db.get(e, []) for n in names]
+            potentials = {n: numbers for names_, numbers in potential_db.get(e, []) for n in names_}
             basis = override.get("basis")
             if basis is None:
                 if all_electron:
@@ -221,13 +222,24 @@ class Cp2kGenerator(Generator):
                     elif entries:
                         raise JobError(f"{family} for {e} is an ECP basis, not all-electron")
                 else:
-                    basis = next((n for n in names if re.fullmatch(rf"{re.escape(family)}-q\d+", n)), None)
+                    candidates = list(dict.fromkeys(
+                        n for n in names if re.fullmatch(rf"{re.escape(family)}-q\d+", n)))
+                    if len(candidates) > 1:
+                        # 同族多个 -qN（如 Rh 的 q9 与 q17）：基组与势须同 q 配对，只留势族里
+                        # 有同 q 势的；仍不止一个或一个不剩就报错，不按文件顺序默取第一个
+                        paired = [n for n in candidates
+                                  if f"{potential_family}-q{n.rsplit('-q', 1)[1]}" in potentials]
+                        if len(paired) != 1:
+                            raise JobError(f"{e}: {family} comes as {', '.join(candidates)}, of which "
+                                           f"{len(paired)} pair with a {potential_family}-qN potential; "
+                                           f"name basis and potential in [cp2k.kinds]")
+                        candidates = paired
+                    basis = candidates[0] if candidates else None
                 if basis is None:
                     raise JobError(f"no {family} basis for {e} in {', '.join(basis_files)}; "
                                    f"available: {', '.join(sorted(set(names))) or 'none'}")
             elif basis not in names:
                 raise JobError(f"[cp2k.kinds] {e}: basis {basis} is not in {', '.join(basis_files)}")
-            potentials = {n: numbers for names_, numbers in potential_db.get(e, []) for n in names_}
             potential = override.get("potential")
             if potential is None:
                 if all_electron:

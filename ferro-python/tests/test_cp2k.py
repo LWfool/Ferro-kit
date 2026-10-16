@@ -72,6 +72,20 @@ def gapw(task):
             .replace("POTENTIAL_FILE_NAME GTH_POTENTIALS", "POTENTIAL_FILE_NAME ALL_POTENTIALS"))
 
 
+def test_several_q_pair_basis_with_potential(cfg, traj, tmp_path):
+    # 同族两个 -qN（真实例子：Rh 的 q9 与 q17）：只有一个配得上同 q 的势就用它
+    data = tmp_path / "data"
+    (data / "BASIS_MOLOPT").write_text(BASIS_MOLOPT + " Zn DZVP-MOLOPT-SR-GTH-q20\n 1\n")
+    s = Cp2kGenerator(cfg).generate(traj, 0, JobOptions("sp"))
+    zn = [k for k in Section.from_str(s.files["cp2k.inp"]).section("FORCE_EVAL/SUBSYS").sections("KIND")
+          if k.param == "Zn"][0]
+    assert (zn.get("BASIS_SET"), zn.get("POTENTIAL")) == ("DZVP-MOLOPT-SR-GTH-q12", "GTH-PBE-q12"), \
+        "q20 没有同 q 的 GTH-PBE 势，不选"
+    (data / "GTH_POTENTIALS").write_text(GTH_POTENTIALS + "Zn GTH-PBE-q20\n    4    6   10\n")
+    with pytest.raises(JobError, match=r"q12, DZVP-MOLOPT-SR-GTH-q20, of which 2 pair.*\[cp2k.kinds\]"):
+        Cp2kGenerator(cfg).generate(traj, 0, JobOptions("sp"))
+
+
 def test_gapw_xc_is_refused(cfg, traj, tmp_path):
     tpl = tmp_path / "t.inp"
     tpl.write_text(Cp2kGenerator.builtin_template("sp").replace("METHOD GPW", "METHOD GAPW_XC"))
