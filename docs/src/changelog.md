@@ -12,6 +12,13 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `dataset filter` / `merge` kept non-periodic systems periodic
+
+A non-periodic DeePMD system (a `nopbc` marker) that also carries `box.npy` — dpdata writes one
+for every cluster — lost its `nopbc` marker when `filter` or `merge` wrote it back, so DeePMD-kit
+trained it as a periodic system in that box. The marker is now written whenever no frame is
+periodic. Regenerate filtered or merged cluster datasets.
+
 ### `ferro job` is removed; use `ferro-py job`
 
 `ferro job` and the `ferro-workflow` crate behind it are gone. Calculation inputs come from

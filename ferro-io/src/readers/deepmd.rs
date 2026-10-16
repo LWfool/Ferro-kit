@@ -301,6 +301,23 @@ mod tests {
         }
     }
 
+    /// dpdata writes `box.npy` for a non-periodic system too; reading it back and
+    /// writing it out again must keep the `nopbc` marker.
+    #[test]
+    fn nopbc_with_a_box_survives_a_round_trip() {
+        let (a, b) = (scratch("ferro_dp_nopbc_rt_a"), scratch("ferro_dp_nopbc_rt_b"));
+        write_deepmd_npy(&demo(), &a).unwrap();
+        // 补上 nopbc 标记，即 dpdata 产出的团簇 system：有 box.npy，也有 nopbc
+        std::fs::write(a.join("nopbc"), "").unwrap();
+        let t = read_deepmd_npy(&a).unwrap();
+        assert!(t.frames.iter().all(|f| f.pbc == [false; 3]), "读入的 nopbc 体系应三向非周期");
+        write_deepmd_npy(&t, &b).unwrap();
+        assert!(b.join("nopbc").exists(), "写回后 nopbc 标记丢失，团簇变成了周期体系");
+        assert!(b.join("set.000/box.npy").exists(), "box.npy 应照原样保留");
+        let u = read_deepmd_npy(&b).unwrap();
+        assert!(u.frames.iter().all(|f| f.pbc == [false; 3]), "再读回应仍为非周期");
+    }
+
     /// dpdata writes float32; the reader must widen rather than refuse.
     #[test]
     fn float32_arrays_are_accepted() {

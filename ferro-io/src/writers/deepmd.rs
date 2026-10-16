@@ -6,7 +6,8 @@
 //! <dir>/
 //!   type.raw        one integer per atom, 0-based, indexing type_map.raw
 //!   type_map.raw    one element symbol per line
-//!   nopbc           empty marker file, only when the frames carry no cell
+//!   nopbc           empty marker file, when no frame is periodic (no cell, or
+//!                   pbc off on all three axes; box.npy is still written, as dpdata does)
 //!   set.000/
 //!     coord.npy     (nframes, natoms*3)  Angstrom
 //!     box.npy       (nframes, 9)         Angstrom, row-major lattice vectors
@@ -109,6 +110,10 @@ pub fn write_deepmd_npy_bounds(
     if !has_cell && frames.iter().any(|f| f.cell.is_some()) {
         bail!("some frames carry a cell and some do not; a DeePMD system is either periodic or not");
     }
+    let nopbc_frames = frames.iter().filter(|f| f.cell.is_none() || f.pbc == [false; 3]).count();
+    if nopbc_frames != 0 && nopbc_frames != frames.len() {
+        bail!("some frames are periodic and some are not; a DeePMD system is either periodic or not");
+    }
 
     fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     // 重写时先清掉旧的 set.*，否则帧数变少会留下上一次的尾巴
@@ -127,7 +132,7 @@ pub fn write_deepmd_npy_bounds(
     fs::write(dir.join("type_map.raw"), map_raw)?;
 
     let nopbc = dir.join("nopbc");
-    if has_cell {
+    if nopbc_frames == 0 {
         let _ = fs::remove_file(&nopbc);
     } else {
         fs::write(&nopbc, "")?;
