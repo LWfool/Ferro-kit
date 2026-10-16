@@ -46,27 +46,28 @@ pub fn canonical_order(elements: &[String]) -> Vec<usize> {
 
 /// Reorders every frame's atoms — and the per-atom arrays — into canonical order.
 ///
-/// The permutation comes from frame 0 and is applied to every frame, so this is
-/// only correct for a trajectory whose atom order is constant. Files that were
-/// written independently must each be sorted on their own, *before* being
-/// concatenated.
+/// Each frame takes its own permutation: xyz and other formats do not promise a
+/// constant atom order, and files written independently disagree. Consecutive
+/// frames with the same element sequence reuse the previous permutation.
 pub fn sort_atoms(traj: &Trajectory) -> Trajectory {
-    let Some(first) = traj.frames.first() else {
-        return traj.clone();
-    };
-    let elements: Vec<String> = first.atoms.iter().map(|a| a.element.clone()).collect();
-    let order = canonical_order(&elements);
-    if order.iter().enumerate().all(|(i, &j)| i == j) {
-        return traj.clone();
-    }
-    // bonds 存的是原子编号，跟着置换走要的是反向映射：old -> new
-    let mut new_of = vec![0usize; order.len()];
-    for (new, &old) in order.iter().enumerate() {
-        new_of[old] = new;
-    }
-
     let mut out = traj.clone();
+    // (元素序列, 置换, 反向映射)；帧间元素序列不变时复用，不必每帧重排
+    let mut cached: Option<(Vec<String>, Vec<usize>, Vec<usize>)> = None;
     for f in &mut out.frames {
+        let elements: Vec<String> = f.atoms.iter().map(|a| a.element.clone()).collect();
+        if cached.as_ref().is_none_or(|(e, _, _)| *e != elements) {
+            let order = canonical_order(&elements);
+            // bonds 存的是原子编号，跟着置换走要的是反向映射：old -> new
+            let mut new_of = vec![0usize; order.len()];
+            for (new, &old) in order.iter().enumerate() {
+                new_of[old] = new;
+            }
+            cached = Some((elements, order, new_of));
+        }
+        let (_, order, new_of) = cached.as_ref().expect("cached above");
+        if order.iter().enumerate().all(|(i, &j)| i == j) {
+            continue;
+        }
         let atoms: Vec<_> = order.iter().map(|&i| f.atoms[i].clone()).collect();
         f.atoms = atoms;
         // 逐原子的旁路数组必须跟着同一个置换走；能量/盒子/应力与原子编号无关。
@@ -197,6 +198,27 @@ mod tests {
         // 键连的是原子，不是位置：两端都要重编号。端点的先后不动 —— 规范成
         // a < b 是另一件事，这里只做重编号
         assert_eq!(f.bonds.clone().unwrap(), vec![(2, 0), (0, 1)]);
+    }
+
+    /// Each frame takes its own permutation: one file may list the atoms in a
+    /// different order from frame to frame.
+    #[test]
+    fn a_frame_with_its_own_atom_order_gets_its_own_permutation() {
+        let mut t = traj_of(&["Zn", "O"]);
+        let mut f1 = traj_of(&["O", "Zn"]).frames.remove(0);
+        // 第 1 帧同一构型、原子倒序：O 在 0.1，Zn 在 0.0，力各随其原子
+        f1.atoms[0].position.x = 1.0;
+        f1.atoms[1].position.x = 0.0;
+        f1.forces = Some(vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)]);
+        t.frames.push(f1);
+
+        let s = sort_atoms(&t);
+        for (k, f) in s.frames.iter().enumerate() {
+            let elems: Vec<&str> = f.atoms.iter().map(|a| a.element.as_str()).collect();
+            assert_eq!(elems, vec!["O", "Zn"], "第 {k} 帧未排成规范序");
+            assert_eq!(f.atoms[0].position.x, 1.0, "第 {k} 帧 O 的坐标没跟过来");
+            assert!((f.forces.as_ref().unwrap()[0].x - 0.1).abs() < 1e-12, "第 {k} 帧 O 的力没跟过来");
+        }
     }
 
     #[test]

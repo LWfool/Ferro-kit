@@ -119,15 +119,12 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     }
 
     // 所有产物一律按 (Z, 符号) 重排原子，像 POSCAR 那样同元素成块、块按周期表序，
-    // 同一体系无论来自哪个程序，写出的原子顺序都一致。逐帧各自取置换：sort_atoms
-    // 用第 0 帧的置换套全部帧，而 xyz 等格式不保证帧间原子顺序不变
-    let picked = Trajectory {
-        frames: indices
-            .iter()
-            .map(|&i| sort_atoms(&Trajectory::from_frame(traj.frames[i].clone())).frames.remove(0))
-            .collect(),
+    // 同一体系无论来自哪个程序，写出的原子顺序都一致。sort_atoms 逐帧各取置换 ——
+    // xyz 等格式不保证帧间原子顺序不变
+    let picked = sort_atoms(&Trajectory {
+        frames: indices.iter().map(|&i| traj.frames[i].clone()).collect(),
         metadata: traj.metadata.clone(),
-    };
+    });
 
     // 目标格式装得下多帧就写一个文件，装不下就一帧一个 —— 往 POSCAR 写 20 帧
     // 本来就只能是 20 个文件，不必再要用户记一个开关

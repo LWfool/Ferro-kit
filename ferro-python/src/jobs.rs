@@ -19,14 +19,7 @@ fn frame(traj: &PyTrajectory, index: usize) -> PyResult<&ferro_core::Frame> {
 /// 与 `ferro convert` 对所有产物的排法相同。逐帧各取各的置换。
 #[pyfunction]
 fn sort_atoms(traj: &PyTrajectory) -> PyTrajectory {
-    let mut out = traj.inner.clone();
-    out.frames = traj
-        .inner
-        .frames
-        .iter()
-        .map(|f| merge::sort_atoms(&ferro_core::Trajectory::from_frame(f.clone())).frames.remove(0))
-        .collect();
-    PyTrajectory::new(out)
+    PyTrajectory::new(merge::sort_atoms(&traj.inner))
 }
 
 /// 指定帧的 POSCAR 全文（`comment` 为首行）。
