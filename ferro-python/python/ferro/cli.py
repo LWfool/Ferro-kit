@@ -76,6 +76,7 @@ Parameters:
       --timestep FS     aimd: time step in fs  [the template's]
       --ensemble E      aimd: nvt | npt_i | npt_f (npt_* CP2K only)  [the template's]
       --vary-cell       opt: relax the cell too  [cell fixed]
+      --fine-grid F     vasp, METAGGA set: NGXF/NGYF/NGZF = F x NGX/NGY/NGZ  [2]
       --start N         First frame to take  (0-based, inclusive)  [0]
       --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
       --stride N        Take every Nth frame within [start, end]  [1]
@@ -208,6 +209,7 @@ def job_parser():
     p.add_argument("--timestep", type=float)
     p.add_argument("--ensemble")
     p.add_argument("--vary-cell", action="store_true")
+    p.add_argument("--fine-grid", type=float)
     p.add_argument("--start", type=int)
     p.add_argument("--end", type=int)
     p.add_argument("--stride", type=int)
@@ -300,6 +302,7 @@ def run_job(argv):
         task=args.task, charge=args.charge, multiplicity=args.multiplicity,
         kspacing=args.kspacing, temperature=args.temperature, steps=args.steps,
         timestep=args.timestep, ensemble=args.ensemble, vary_cell=args.vary_cell,
+        fine_grid=args.fine_grid,
     )
     options.check()
     type_map = parse_type_map(args.type_map) if args.type_map else None

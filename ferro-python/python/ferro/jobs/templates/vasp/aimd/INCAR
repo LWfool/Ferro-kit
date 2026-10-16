@@ -4,7 +4,9 @@
 #   NELECT (only when --charge is not 0), ISPIN + NUPDOWN (when the multiplicity is
 #   above 1), KSPACING (--kspacing; a value written here is kept when --kspacing is
 #   not given), TEBEG/TEEND (--temperature), NSW (--steps), POTIM (--timestep).
-#   With METAGGA set, ALGO = All and ISEARCH = 1. Everything else is used as written.
+#   With METAGGA set, ALGO = All, ISEARCH = 1 and
+#   NGXF/NGYF/NGZF = 2 x NGX/NGY/NGZ (--fine-grid; kept when written here).
+#   Everything else is used as written.
 #   NpT is not offered for VASP.
 # Not set here on purpose: parallel settings (NCORE, NPAR, KPAR) -- add your machine's.
 # The initial velocities come from VASP at TEBEG.

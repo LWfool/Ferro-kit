@@ -7,7 +7,7 @@ import pytest
 import ferro
 from ferro import cli, config
 from ferro.jobs.base import JobError, JobOptions
-from ferro.jobs.vasp import Incar, VaspGenerator
+from ferro.jobs.vasp import Incar, VaspGenerator, fine_grid
 
 NVT = Path(__file__).resolve().parents[2] / "tests" / "70Z30P00A_NVT_5.lammpstrj"
 # 假 POTCAR：头部只有生成器要读的两项（价电子数取真实 PBE 值：O 6、P 5、Zn 12）
@@ -87,6 +87,34 @@ def test_metagga_switches_algo(cfg, traj, tmp_path):
     assert any("METAGGA = R2SCAN" in n for n in s.notes)
     plain = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp")).files["INCAR"])
     assert plain["ALGO"] == "Normal" and "ISEARCH" not in plain, "GGA 不动 ALGO"
+    assert "NGXF" not in plain, "GGA 不写细网格"
+
+
+def test_fine_grid_rule():
+    # 与 make_vasp_label.py 同一规则：ENCUT 800、10 Å 立方 → 4·G_cut·L/2π = 92.25 → 96，2 倍 192
+    assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 2) == ([96, 96, 96], [192, 192, 192])
+    assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 3)[1] == [288, 288, 288]
+    assert fine_grid([[10, 0, 0], [0, 10, 0], [0, 0, 10]], 800, 2.5)[1] == [240, 240, 240], "非整数倍向上取到 good size"
+
+
+def test_metagga_writes_fine_grid(cfg, traj, tmp_path):
+    tpl = tmp_path / "INCAR"
+    r2scan = VaspGenerator.builtin_template("sp").replace("GGA = PE", "METAGGA = R2SCAN")
+    tpl.write_text(r2scan + "ENCUT = 800\n")
+    cell = ferro.sort_atoms(traj.subset([0])).cell(0)
+    for factor, expected in [(None, 2), (3, 3)]:
+        s = VaspGenerator(cfg).generate(traj, 0, JobOptions("sp", fine_grid=factor), tpl)
+        incar = Incar.from_str(s.files["INCAR"])
+        assert [int(incar[k]) for k in ("NGXF", "NGYF", "NGZF")] == fine_grid(cell, 800, expected)[1]
+    assert any("Zn present" in n for n in VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).notes)
+    tpl.write_text(r2scan + "NGXF = 100\nNGYF = 100\nNGZF = 100\n")
+    kept = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["INCAR"])
+    assert kept["NGXF"] == "100", "模板写了且未给 --fine-grid 就沿用"
+    tpl.write_text(r2scan.replace("PREC = Accurate", "PREC = Normal"))
+    with pytest.raises(JobError, match="PREC = Accurate"):
+        VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
+    with pytest.raises(JobError, match="meta-GGA"):
+        VaspGenerator(cfg).generate(traj, 0, JobOptions("sp", fine_grid=2))
 
 
 def test_potcar_choice(cfg, traj, tmp_path):

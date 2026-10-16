@@ -150,6 +150,32 @@ class Incar:
         return "\n".join(self._lines) + "\n"
 
 
+HBAR2_2M = 3.80998   # ħ²/2mₑ，eV·Å²
+
+
+def _good_size(m):
+    """不小于 m 的最小偶数、且只含 2/3/5/7 因子（VASP 自己取的 FFT 尺寸）。"""
+    while True:
+        if m % 2 == 0:
+            r = m
+            for p in (2, 3, 5, 7):
+                while r % p == 0:
+                    r //= p
+            if r == 1:
+                return m
+        m += 1
+
+
+def fine_grid(cell, encut, factor):
+    """PREC = Accurate 的粗网格 NGi = 4·G_cut·|a_i|/2π（取 good size），细网格 NGiF = factor·NGi。
+
+    与用户 ``make_vasp_label.py`` 同一规则（那里另加了细网格间距上限，这里只按倍数）。
+    """
+    gcut = math.sqrt(encut / HBAR2_2M)
+    coarse = [_good_size(round(4 * gcut * math.sqrt(sum(x * x for x in a)) / (2 * math.pi))) for a in cell]
+    return coarse, [_good_size(math.ceil(factor * n)) for n in coarse]
+
+
 def _potcar_field(text, name):
     """POTCAR 头部的 ``ZVAL = 4.000`` / ``ENMAX = 400.000``：取第一处。"""
     m = re.search(rf"\b{name}\s*=\s*([-\d.]+)", text)
@@ -161,6 +187,7 @@ def _potcar_field(text, name):
 class VaspGenerator(Generator):
     program = "vasp"
     template_name = "INCAR"
+    extra_options = ("fine_grid",)
 
     def potcar(self, element):
         """元素 → (POTCAR 文本, 所在路径)。变体：配置 > VASP 推荐 > 元素名本身。"""
@@ -196,6 +223,20 @@ class VaspGenerator(Generator):
                 incar["ALGO"] = "All"
                 incar["ISEARCH"] = 1
                 notes.append(f"METAGGA = {metagga}: ALGO = All, ISEARCH = 1")
+            # meta-GGA 的 egg-box 噪声对细网格敏感：显式写 NGXF/NGYF/NGZF。模板已写且未给
+            # --fine-grid 就沿用模板
+            if options.fine_grid is not None or "NGXF" not in incar:
+                if incar.get("PREC", "Normal").strip().upper() != "ACCURATE":
+                    raise JobError("the fine grid is computed for PREC = Accurate; set it in the template")
+                factor = options.fine_grid if options.fine_grid is not None else 2
+                encut = float(incar["ENCUT"]) if "ENCUT" in incar else enmax
+                coarse, fine = fine_grid(one.cell(0), encut, factor)
+                for key, n in zip(("NGXF", "NGYF", "NGZF"), fine):
+                    incar[key] = n
+                notes.append(f"fine grid {factor:g} x NG {coarse} -> NGXF/NGYF/NGZF {fine}"
+                             + (" (Zn present: a factor of 3 may be needed)" if "Zn" in elements and factor < 3 else ""))
+        elif options.fine_grid is not None:
+            raise JobError("--fine-grid applies to meta-GGA (METAGGA set in the INCAR) only")
 
         n_valence = sum(c * z for c, z in zip(counts, zval))
         mult = multiplicity(n_valence, options.charge, options.multiplicity)
