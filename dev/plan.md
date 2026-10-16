@@ -39,26 +39,36 @@
 | 验收 | CP2K 本机用 cp2k-input-tools 离线校验；9 个算例在超算冒烟（CentOS 7，glibc 2.17 → manylinux2014 x86_64，GitHub Actions 编） |
 | 收尾 | 追平后删 ferro-workflow 与 `ferro job` |
 
-**步骤**（每步一提交）：
-0. 本节
-1. A-13：namelist 按 token 流收；缺 `&SYSTEM` / `ibrav` 报错；未声明标签报错
-2. namelist 公开接口（文本 ↔ 有序键值表）
-3. 结构块字符串接口（POSCAR / QE 卡片 / CP2K `&CELL` `&COORD`）
-4. convert 去掉 QE 写出 + changelog
-5. dump `--type-map`
-6. ferro-python：abi3-py311 + 混合布局 + 装 maturin（已批准）
-7. 暴露 jobs 所需接口
-8. GitHub Actions 编 wheel（push 前须再问）
-9. 配置文件 + `ferro-py config init`
-10. 参数块解析 / 编辑 / 写回（INCAR、namelist、CP2K 节树）
-11. 生成器基类（InputFile / InputSet / Generator 三层）
-12. `ferro-py job` CLI（五段帮助、批量、POTCAR 链接）
-13. 查惯例 + 读用户脚本 → 默认值表，用户审（已读、已答 Q1–Q13，余下默认值对着导出的模板审）
-14. `ferro-py job template` 导出
-15–17. VASP / CP2K / QE 生成器与模板；确认 D-M4、D-M6、D-M8、D-M9、D-M10、D-M12 不重犯
-18. Rust 向 Python 暴露输出 reader（能量、力、应力）与 `write_table`
-19. `ferro-py conv` 生成 + `analyze`
-20. 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF 各一组），用户执行
+**当前状态（2026-10-16 收工时）**：第 0–20 步已完成并推送（最后一个提交 `03f9c40`，GitHub
+Actions 全绿）；**等用户在超算上跑第 20 步的冒烟测试**（用户在准备 POTCAR 与 QE 赝势）。
+用户要做的：从 Actions 下载 `wheel-linux-x86_64` → `pip install --no-index ferro-*.whl` →
+`ferro-py config init` 填 `[vasp] potcar_dir`、`[qe] pseudo_dir`、`[cp2k] data_dir` →
+`VASP_CMD=… PW_CMD=… CP2K_CMD=… [RUN_CONV=1] bash ferro-python/scripts/smoke_hpc.sh 小结构 work/`
+→ 把 `work/smoke_report.txt` 发回。另请用户顺手确认 CP2K 2025.2 是否认 `GAPW_ACCURATE_XCINT`。
+收到报告后：按失败项修（每处一提交），全部通过才做第 21 步（删 ferro-workflow）。
+用户已审过并认可 VASP / CP2K / QE 的 9 份内置模板；push 每次都要先问。
+
+**步骤**（每步一提交；✅ = 已完成）：
+0. ✅ 本节
+1. ✅ A-13：namelist 按 token 流收；缺 `&SYSTEM` / `ibrav` 报错；未声明标签报错
+2. ✅ namelist 公开接口（文本 ↔ 有序键值表）
+3. ✅ 结构块字符串接口（POSCAR / QE 卡片 / CP2K `&CELL` `&COORD`）
+4. ✅ convert 去掉 QE 写出 + changelog
+5. ✅ dump `--type-map`
+6. ✅ ferro-python：abi3-py311 + 混合布局 + 装 maturin（已批准）
+7. ✅ 暴露 jobs 所需接口
+8. ✅ GitHub Actions 编 wheel（push 前须再问）
+9. ✅ 配置文件 + `ferro-py config init`
+10. ✅ 参数块解析 / 编辑 / 写回（INCAR、namelist、CP2K 节树）
+11. ✅ 生成器基类（InputFile / InputSet / Generator 三层）
+12. ✅ `ferro-py job` CLI（五段帮助、批量、POTCAR 链接）
+13. ✅ 查惯例 + 读用户脚本 → 默认值表，用户审（已读、已答 Q1–Q13，余下默认值对着导出的模板审）
+14. ✅ `ferro-py job template` 导出
+15–17. ✅ VASP / CP2K / QE 生成器与模板；确认 D-M4、D-M6、D-M8、D-M9、D-M10、D-M12 不重犯
+18. ✅ Rust 向 Python 暴露输出 reader（能量、力、应力）与 `write_table`
+19. ✅ `ferro-py conv` 生成 + `analyze`
+20. 超算冒烟脚本（9 个算例 + VASP 细网格 / ENCUT、CP2K CUTOFF / finer-grid 各一组）：
+    脚本已写（`ferro-python/scripts/smoke_hpc.sh`，本机用假程序走通），**待用户在超算执行**
 21. 删 ferro-workflow、`cmd/job.rs`、`docs/src/workflow/` 等（须 20 通过）
 22. 手册 `docs/src/python/`
 23. 更新开发记录（版本号只在用户要求时动）

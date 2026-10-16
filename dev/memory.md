@@ -34,6 +34,19 @@
 
 **How to apply:** 代码修改完成后，不要自动递增版本号。用户要求"更新开发记录/进度"时：默认一并 bump 版本 + 更新 dev/{progress,plan,issues}.md；但若用户在同一指令中明确表示暂不改版本，则只改 dev 记录内容，Cargo.toml 版本与 progress.md 版本号行均不动。
 
+## 中文不要经 Bash 的 heredoc / 命令行参数传
+
+本机 Bash 工具把 heredoc 或命令行参数里的中文偶尔弄成乱码：`git commit -m "中文"` 写出过
+乱码提交信息，`python - <<EOF` 里含中文的脚本报 `Non-UTF-8 code`，或把乱码写进文件。
+
+**Why:** 2026-10-16 `ferro.jobs` 一轮里出现了五六次，一次乱码提交信息已 amend 掉；其余在
+提交前发现。纯 ASCII 的 heredoc 不受影响。
+
+**How to apply:** 提交信息先用 Write 写到 scratchpad 文件再 `git commit -F`；改含中文的源码、
+文档用 Edit / Write，不用 heredoc 里的 Python 替换；Bash 里 grep 中文也会报
+`illegal byte sequence`，改用 Python 读文件查。改完用
+`python -c "open(p, encoding='utf-8').read()"` 验一遍。
+
 ## 提交直接在 main
 
 用户要求本项目的代码提交**直接在 main 分支进行**，不要先开特性分支再合并/PR。

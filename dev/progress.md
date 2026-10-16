@@ -3,17 +3,17 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：836 个（全部通过，clippy 零警告；2026-10-15 实数）
+## 测试总数：843 个（全部通过，clippy 零警告；2026-10-16 实数）；另 ferro-python 125 个 pytest
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 103 |
-| ferro-io | 216（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
+| ferro-io | 222（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
 | ferro-structure | 86 |
 | ferro-analysis | 256 |
 | ferro-workflow | 26 |
 | ferro-render | 30 |
-| ferro-cli（lib 108 + bin 3 + 集成 8） | 119 |
+| ferro-cli（lib 109 + bin 3 + 集成 8） | 120 |
 
 版本号 **0.3.6**（workspace 统一；ferro-python 已同步；**2026-10-15 发版，tag `v0.3.6`**）。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
@@ -495,14 +495,28 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **不留兼容层**：输出格式同期变更，留着 `fe-traj` 会让旧脚本「跑成功」却吐出自己
   解析不了的 csv —— 静默坏数据比命令消失难查
 
-### ferro-python（PyO3 绑定）
+### ferro-python（PyO3 绑定 + `ferro.jobs`）
 
-独立 workspace（pyo3 0.29 extension-module），用 maturin 构建。
-`lib.rs` / `types.rs`（`PyTrajectory`）/ `io.rs`（11 格式按扩展名分派）/ `structure.rs` /
-`analysis.rs`（`gr_pair` / `gr_all` / `msd` → `dict[str, list[float]]`）。`msd` 的 `dt` 必填并先查
-帧间隔（2026-10-09，与 CLI 同一口径）；`merge` 走重写后的 `merge_frames`。
+独立 workspace（pyo3 0.29，**abi3-py311**），maturin 的 Rust/Python 混合布局：Rust 扩展是
+`ferro._ferro`，`python/ferro/__init__.py` 整体再导出，`import ferro` 用法不变。
+- Rust 侧：`types.rs`（`PyTrajectory`，含 `pbc` / `subset` / `frame_indices` / `energy` /
+  `forces` / `stress`）、`io.rs`（`read` / `write` 按扩展名分派，与 CLI 的 `io_dispatch` 同口径：
+  `.lammps` = data，`.vasp` / `.poscar` / `.pos` / `POSCAR*` / `CONTCAR*` = VASP；`read(type_map=)`；
+  `read_output`、`write_table`）、`jobs.rs`（`sort_atoms`、`poscar_string`、`qe_structure_cards`、
+  `cp2k_structure_sections`、`parse_qe_input_parts`、`write_namelists`）、`structure.rs`、`analysis.rs`
+- Python 侧（运行时只用标准库）：`config.py`（`~/.config/ferro/config.toml`，`FERRO_CONFIG` 覆盖）、
+  `cli.py`（命令 `ferro-py`：`config init` / `job` / `job template` / `conv` / `conv analyze`，
+  帮助页五段）、`jobs/`：`base.py`（JobOptions、InputSet、Generator、write_batch、多重度奇偶、
+  kmesh）、`vasp.py`（Incar + VaspGenerator）、`qe.py`（QeInput + QeGenerator）、`cp2k.py`
+  （Section 节树 + Cp2kGenerator）、`conv.py`（收敛测试）、`templates/<程序>/<任务>/` 9 份内置模板
 
-本 crate 无 `cargo test`（cdylib 绑定层），经 maturin + Python 冒烟测试验证。
+测试：`ferro-python/tests/` **125 个 pytest**（2026-10-16 实数），本地用 maturin 编 wheel、
+`pip install --no-deps --target <scratch>` 后 `PYTHONPATH=<scratch> python -m pytest`。
+GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_64 与 macOS arm64
+wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `03f9c40` 全绿。
+CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它与 numpy 2 不兼容，运行时
+补 `numpy.cumproduct = numpy.cumprod` 再调；关键字表较旧，不认 `IGNORE_CONVERGENCE_FAILURE`
+与 `GAPW_ACCURATE_XCINT`）。三个程序的真实运行验收待超算冒烟（`plan.md`「`ferro.jobs`」第 20 步）。
 
 ---
 
@@ -519,7 +533,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 `issues.md` |
 | `quick-xml` | 0.38 | ferro-io | vasprun.xml；净新增 1 个 crate，零传递依赖 |
 | `clap` | 4.5 | ferro-cli | derive |
-| `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；**运行时未验证** |
+| `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；2026-10-16 运行时已验证（abi3-py311 wheel + pytest） |
 
 `cargo update` 在主 workspace 与 ferro-python 均已无可更新项。
 
@@ -527,11 +541,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 
 ## 已知限制
 
-- **`ferro-python` 能编译**（2026-09-20 复核：`-o` 那轮改了它的 io 分派层，
-  `cargo check` 干净通过；运行时仍未验证）。
-  真问题是它作为独立 workspace 被主 workspace 的 `cargo build/test/clippy` 全部跳过，
-  断裂不会被自动发现；改公共 API 后须手动补跑。待办是 **pyo3 0.29 的运行时验证**
-  （本机无 maturin），优先级低
+- **`ferro-python` 是独立 workspace**，被主 workspace 的 `cargo build/test/clippy` 全部跳过：
+  改公共 API 后须在 `ferro-python/` 里补跑 `cargo clippy` 与 pytest（2026-10-16 就漏过一次
+  clippy 警告）。pyo3 0.29 运行时已验证（2026-10-16，见上节）
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入；
   无 CLI / Python 入口，只能作为库函数调用
 - `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化为静态表
@@ -587,7 +599,6 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   非 mixed type 的 descriptor 要求如此）。ferro 排完之后 `type.raw` 单调不减，
   那个 lexsort 成为恒等置换
 - **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
-  `io_dispatch.rs` 走。2026-08 加的 `.vasp`/`.pos` 扩展名只有 CLI 认，Python 侧仍只认
-  `POSCAR`/`CONTCAR` 前缀。两处 match 分支本就是分开维护，改一处不会波及另一处，
-  但也意味着**会漂**——加格式时两边都要看一眼
+  `io_dispatch.rs` 走。2026-10-16 已对齐（`.lammps` = data，`.vasp` / `.poscar` / `.pos` = VASP），
+  但两处 match 分支仍分开维护，**会漂**——加格式时两边都要看一眼（`plan.md` 的 `enum Format` 待办）
 - `spin.rs`：纯共价分子（如 O₂ 三重态）回退奇偶下限，无法给出 MO 简并导致的自旋
