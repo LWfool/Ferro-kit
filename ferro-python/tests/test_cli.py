@@ -128,6 +128,7 @@ def test_job_mixed_compositions_write_nothing(tmp_path, job, capsys):
     (["--temperature", "300"], "only apply to an aimd task"),
     (["--type-map", "1:Zr"], "is not TYPE=ELEMENT"),
     (["-s", "gaussian"], "unknown software 'gaussian'"),
+    (["-t", "aimd", "--ensemble", "npt_i"], "NVT only"),
 ])
 def test_job_parameter_errors_come_first(tmp_path, job, capsys, extra, message):
     # 输入文件不存在，也应先报参数错
