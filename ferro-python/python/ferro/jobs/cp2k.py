@@ -32,6 +32,7 @@ def _split_comment(line):
     return line.rstrip(), ""
 
 
+# 与 vasp.py 的 format_value 逐字相同，按 R6 两处不合：INCAR 与 CP2K 输入的值语法各自演化
 def format_value(value):
     if isinstance(value, bool):
         return ".TRUE." if value else ".FALSE."
