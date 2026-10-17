@@ -129,17 +129,17 @@ ecutrho 易收敛，UPF 建议的最大值即可，用户定）
 P-6 `80f9646`、P-7 `511820b`（强制 `ibrav = 0`、删胞参数键）、P-9 `6d90a19`、P-10 `706cc64`、
 P-11 `a282757`。P-4（ecutrho）、P-8（CP2K 偶数网格偏离 Γ）按上面裁定不改。
 
-未修（低）：
-| 编号 | 位置 | 问题 |
-|---|---|---|
-| P-13 | `jobs/conv.py:97` | 浮点区间累加出 `2.9000000000000004`，目录名显示 2.9 但 `--ref 2.9` 被拒；改 `start + i*step` 再 round |
-| P-14 | `jobs/qe.py` K_POINTS | `mesh == [1,1,1]` 分支与 else 逐字相同，死分支 |
-| P-15 | `vasp.py` / `cp2k.py` `format_value` | 两份逐字相同；按 R6 两处不合，但缺互指注释 |
-| P-16 | `templates/qe/aimd/pw.in` | SVR `nraise` 以步计，改 dt 后热浴时间常数跟着变，无提示 |
-| P-17 | `jobs/cp2k.py` `data_entries` | `POTENTIAL_UZH` 镧系占位条目（下一行 `NA`）电子数记 0，应报错 |
-| P-18 | `conv.parse_scan` | 不拒非正值，`encut=-100` 照写 |
-| P-19 | QE / CP2K 生成器 | 缺「并行参数自己加」的提示（规格要求，只有 VASP 有） |
-| P-12 | 测试 | `conv.summary` 多帧「各帧取最大」无直接测试；QE 显式 `--multiplicity 1` + 模板 `nspin = 2` 组合无测试 |
+低级（2026-10-17 全部修完，pytest 145 → 152）：
+| 编号 | 位置 | 问题 | 处置 |
+|---|---|---|---|
+| P-13 | `jobs/conv.py:97` | 浮点区间累加出 `2.9000000000000004`，目录名显示 2.9 但 `--ref 2.9` 被拒；改 `start + i*step` 再 round | ✅ `5214d3a`（round 到 10 位） |
+| P-14 | `jobs/qe.py` K_POINTS | `mesh == [1,1,1]` 分支与 else 逐字相同，死分支 | ✅ `f0a0482` |
+| P-15 | `vasp.py` / `cp2k.py` `format_value` | 两份逐字相同；按 R6 两处不合，但缺互指注释 | ✅ `9c4fba2`（QE 的那份语义不同，不算第三处） |
+| P-16 | `templates/qe/aimd/pw.in` | SVR `nraise` 以步计，改 dt 后热浴时间常数跟着变，无提示 | ✅ `389414f`（给 `--timestep` 且 SVR 时提示折合的 fs） |
+| P-17 | `jobs/cp2k.py` `data_entries` | `POTENTIAL_UZH` 镧系占位条目（下一行 `NA`）电子数记 0，应报错 | ✅ `3cb0eba`（测试注释乱码由 `1cad05b` 修） |
+| P-18 | `conv.parse_scan` | 不拒非正值，`encut=-100` 照写 | ✅ `5214d3a`（有限且 > 0） |
+| P-19 | QE / CP2K 生成器 | 缺「并行参数自己加」的提示（规格要求，只有 VASP 有） | ✅ `1af7bcd`（模板头注释 + 生成提示，两者输入里都没有并行键，提示无条件给） |
+| P-12 | 测试 | `conv.summary` 多帧「各帧取最大」无直接测试；QE 显式 `--multiplicity 1` + 模板 `nspin = 2` 组合无测试 | ✅ `27a75fd`。后者原行为是留 `nspin = 2` 不写 `tot_magnetization`（磁矩放开）；**用户定改为写 `tot_magnetization = 0`**，不给 `--multiplicity` 时照旧放开 |
 
 存疑（缺证据）：`RECOMMENDED_POTCAR` 个别条目（Fe、Er…）未对照 vasp.at 当前表；CP2K 2025.2 的
 k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满足阈值的档」，偏差不单调时可能
