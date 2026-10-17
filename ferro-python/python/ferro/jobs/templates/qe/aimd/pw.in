@@ -2,7 +2,8 @@
 !
 ! ferro-py writes ATOMIC_SPECIES / CELL_PARAMETERS / ATOMIC_POSITIONS from the structure
 ! and sets nat, ntyp, pseudo_dir ([qe] pseudo_dir of the configuration), tot_charge,
-! nspin + tot_magnetization (when the multiplicity is above 1) and K_POINTS
+! nspin + tot_magnetization (when the multiplicity is above 1; tot_magnetization = 0
+! when --multiplicity 1 is given and nspin = 2 is written here) and K_POINTS
 ! (--kspacing; a K_POINTS card written here is kept when --kspacing is not given).
 ! ecutwfc / ecutrho: when not written here, the largest suggestion in the UPF headers.
 ! --temperature sets tempw, --steps nstep, --timestep dt (converted from fs to Rydberg

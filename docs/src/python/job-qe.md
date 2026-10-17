@@ -38,6 +38,7 @@ The functional is the one of the UPF files: the template does not set
 | `&SYSTEM` | `ecutwfc`, `ecutrho` | the template does not set it | the largest suggestion among the UPF files, each key on its own; `ecutrho` at least 4 × `ecutwfc` |
 | `&SYSTEM` | `tot_charge` | always | `--charge` |
 | `&SYSTEM` | `nspin`, `tot_magnetization` | multiplicity above 1 | 2, multiplicity − 1 |
+| `&SYSTEM` | `tot_magnetization` | `--multiplicity 1` given and the template has `nspin = 2` | 0 |
 | cards | `ATOMIC_SPECIES` | always | element, mass, UPF file |
 | cards | `CELL_PARAMETERS {angstrom}` | always | the cell |
 | cards | `ATOMIC_POSITIONS {angstrom}` | always | Cartesian positions |
@@ -55,7 +56,9 @@ card, so a template with `ibrav = 2` would silently compute a different cell.
 A `K_POINTS` card written in the template (`gamma`, an explicit list, a shifted
 mesh) is kept unless `--kspacing` is given.
 
-With multiplicity 1, `nspin` stays as the template has it.
+With multiplicity 1, `nspin` stays as the template has it. A template with
+`nspin = 2` and no `--multiplicity` keeps the magnetisation free (an
+antiferromagnet, say); an explicit `--multiplicity 1` fixes it at 0.
 
 ## Cutoffs: test `ecutwfc`
 

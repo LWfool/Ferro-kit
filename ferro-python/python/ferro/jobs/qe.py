@@ -235,6 +235,10 @@ class QeGenerator(Generator):
         if mult > 1:
             qe.set("system", "nspin", 2)
             qe.set("system", "tot_magnetization", mult - 1)
+        elif options.multiplicity is not None and qe.get("system", "nspin") == "2":
+            # 模板要自旋极化、命令行要单重态：固定总磁矩为 0，两个意图都保住
+            qe.set("system", "tot_magnetization", 0)
+            notes.append("nspin = 2 kept from the template, tot_magnetization = 0 for --multiplicity 1")
         notes.append(f"{n_valence - options.charge:g} electrons, multiplicity {mult}")
 
         cards = ferro.qe_structure_cards(one, {e: p[0] for e, p in chosen.items()})

@@ -133,6 +133,24 @@ def fake_test(tmp_path, values=(400.0, 500.0, 600.0)):
     return manifest
 
 
+def test_summary_takes_the_worst_frame():
+    # 两帧两档：每档取各帧偏差绝对值的最大，NaN 不参与；within 要求该档全部帧都在阈值内
+    nan = math.nan
+
+    def row(value, de, dp, df_max, df_rms, within, status="ok"):
+        return {"value": value, "status": status, "dE_meV_atom": de, "dP_kbar": dp,
+                "dF_max_meV_A": df_max, "dF_rms_meV_A": df_rms, "within": within}
+
+    rows = [row("400", -3.0, 1.0, 50.0, 20.0, "no"), row("400", 1.0, -4.0, 80.0, 10.0, "no"),
+            row("500", 0.5, nan, 5.0, 2.0, "yes"), row("500", nan, nan, nan, nan, "", status="unreadable (x)")]
+    s = conv.summary(rows, [400.0, 500.0])
+    assert [(r["dE"], r["dP"], r["dF_max"], r["dF_rms"]) for r in s][0] == (3.0, 4.0, 80.0, 20.0), \
+        "各帧取绝对值最大，不同量可以来自不同帧"
+    assert s[1]["dE"] == 0.5 and math.isnan(s[1]["dP"]), "NaN 跳过；全是 NaN 的量仍是 NaN"
+    assert [(r["frames"], r["within"]) for r in s] == [("2/2", False), ("1/2", False)], \
+        "有一帧读不出，该档就不算全部在阈值内"
+
+
 def test_compare_matches_an_independent_calculation(tmp_path):
     manifest = fake_test(tmp_path)
     rows, ref = conv.compare(manifest, tmp_path)

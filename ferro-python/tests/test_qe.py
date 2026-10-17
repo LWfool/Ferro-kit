@@ -85,6 +85,17 @@ def test_charge_spin_and_md(cfg, traj):
         QeGenerator(cfg).generate(traj, 0, JobOptions("aimd", ensemble="npt_i"))
 
 
+def test_explicit_singlet_with_spin_polarised_template(cfg, traj, tmp_path):
+    # 模板 nspin = 2：显式 --multiplicity 1 固定总磁矩为 0；不给则磁矩照模板放开
+    tpl = tmp_path / "pw.in"
+    tpl.write_text(QeGenerator.builtin_template("sp").replace("  ibrav = 0\n", "  ibrav = 0\n  nspin = 2\n"))
+    s = QeGenerator(cfg).generate(traj, 0, JobOptions("sp", multiplicity=1), tpl)
+    qe = QeInput.from_str(s.files["pw.in"])
+    assert (qe.get("system", "nspin"), qe.get("system", "tot_magnetization")) == ("2", "0")
+    free = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["pw.in"])
+    assert (free.get("system", "nspin"), free.get("system", "tot_magnetization")) == ("2", None)
+
+
 def test_vary_cell_and_kpoints(cfg, traj, tmp_path):
     qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True)).files["pw.in"])
     assert qe.get("control", "calculation") == "'vc-relax'" and qe.get("cell", "cell_dynamics") == "'bfgs'"
