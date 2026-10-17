@@ -10,7 +10,7 @@ command line alike; regenerate it rather than migrating it.
 
 ---
 
-## Unreleased
+## `v0.4.0` — 2026-10-17
 
 ### `dataset filter` / `merge` kept non-periodic systems periodic
 
