@@ -106,11 +106,15 @@ def parse_scan(software, text):
             start, stop, step = (float(x) for x in values.split(":"))
             if step <= 0 or stop < start:
                 raise ValueError
-            out = [start + i * step for i in range(int(math.floor((stop - start) / step + 1e-9)) + 1)]
+            # round：浮点累积误差会给出 2.9000000000000004，目录名显示 2.9 而 --ref 2.9 对不上
+            out = [round(start + i * step, 10)
+                   for i in range(int(math.floor((stop - start) / step + 1e-9)) + 1)]
         else:
             out = [float(x) for x in values.split(",")]
     except ValueError:
         raise JobError(f"--scan {text}: values are START:STOP:STEP or a comma list of numbers") from None
+    if not all(math.isfinite(v) and v > 0 for v in out):
+        raise JobError(f"--scan {text}: values must be positive")
     if len(out) < 2 or len(set(out)) != len(out):
         raise JobError(f"--scan {text}: needs at least two distinct values")
     return name, sorted(out)

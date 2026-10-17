@@ -27,6 +27,8 @@ SP = [FIXTURES / "vasp651_sp" / f"frame_{n}" / "OUTCAR" for n in ("0011", "0161"
     ("cp2k", "finer-grid", ("finer-grid", ["off", "on"])),
     ("cp2k", "rel-cutoff=40:80:20", ("rel-cutoff", [40.0, 60.0, 80.0])),
     ("qe", "ecutwfc=40:60:10", ("ecutwfc", [40.0, 50.0, 60.0])),
+    # 未取整时是 1.2000000000000002、1.4000000000000001（--ref 1.2 对不上）
+    ("vasp", "fine-grid=1.1:1.4:0.1", ("fine-grid", [1.1, 1.2, 1.3, 1.4])),
 ])
 def test_parse_scan(software, text, expected):
     assert conv.parse_scan(software, text) == expected
@@ -39,6 +41,9 @@ def test_parse_scan(software, text, expected):
     ("vasp", "encut=400", "at least two distinct"),
     ("vasp", "encut=a:b:c", "START:STOP:STEP"),
     ("cp2k", "finer-grid=on", "is a switch"),
+    ("vasp", "encut=-100,400", "must be positive"),
+    ("vasp", "encut=0:500:100", "must be positive"),
+    ("vasp", "encut=400,nan", "must be positive"),
 ])
 def test_parse_scan_errors(software, text, message):
     with pytest.raises(JobError, match=message):
