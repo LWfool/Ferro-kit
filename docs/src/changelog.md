@@ -20,8 +20,8 @@ frames without forces are dropped, as for CP2K.
 
 ### `ferro-py conv -s qe --scan ecutwfc=…`
 
-QE convergence tests scan `ecutwfc` (`ferro-py doc conv`). `conv analyze` cannot read
-pw.x output yet.
+QE convergence tests scan `ecutwfc` (`ferro-py doc conv`); `conv analyze` reads the
+pw.x outputs.
 
 ### `ferro-py job -s qe`: `ecutrho` is at least 4 × `ecutwfc`
 

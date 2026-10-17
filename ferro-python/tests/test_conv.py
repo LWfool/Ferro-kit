@@ -157,6 +157,24 @@ def test_read_result_finds_outputs(tmp_path):
     assert conv.read_result(tmp_path, "vasp")[3].startswith("unreadable"), "读不了的输出说明原因"
 
 
+def test_qe_outputs_are_read_back(tmp_path):
+    # 真实 pw.out 当作三档：没收敛的那份读不出帧，状态里说出原因
+    manifest = {"software": "qe", "parameter": "ecutwfc", "unit": "Ry", "values": [40.0, 50.0, 60.0], "jobs": []}
+    for value, name in zip(manifest["values"], ["qe75_sp_noconv.out", "qe75_sp_spin.out", "qe75_sp.out"]):
+        d = tmp_path / f"ecutwfc_{value:g}" / "s"
+        d.mkdir(parents=True)
+        shutil.copy(FIXTURES / name, d / "pw.out")
+        manifest["jobs"].append({"dir": f"ecutwfc_{value:g}/s", "value": value, "structure": "s", "frame": 0})
+    rows, ref = conv.compare(manifest, tmp_path)
+    assert ref == 60.0 and rows[2]["dE_meV_atom"] == 0
+    assert rows[0]["status"].startswith("unreadable") and "SCF not converged" in rows[0]["status"]
+    sp, spin = (ferro.read_output(str(FIXTURES / n))[0] for n in ("qe75_sp.out", "qe75_sp_spin.out"))
+    assert rows[1]["dE_meV_atom"] == pytest.approx((spin.energy(0) - sp.energy(0)) / 6 * 1000)
+    p = sum(sp.stress(0)[i][i] for i in range(3)) / 3 * conv.EV_A3_TO_KBAR
+    assert rows[2]["pressure_kbar"] == pytest.approx(-15.51, abs=0.01), "与 pw.out 打印的 P 一致：不翻号"
+    assert rows[2]["pressure_kbar"] == pytest.approx(p)
+
+
 def test_analyze_cli(tmp_path, capsys):
     fake_test(tmp_path)
     shutil.rmtree(tmp_path / "encut_500" / "s")

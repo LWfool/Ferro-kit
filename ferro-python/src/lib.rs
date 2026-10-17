@@ -22,7 +22,8 @@ mod types;
 
 /// 把任意可显示错误（anyhow::Error / ferro_core::ChemError 等）转为 Python 异常。
 pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
-    pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+    // `{:#}` 带出 anyhow 的整条 context 链；to_string() 只剩最外层的「parsing FILE」，原因丢了
+    pyo3::exceptions::PyRuntimeError::new_err(format!("{e:#}"))
 }
 
 #[pymodule]

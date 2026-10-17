@@ -41,7 +41,6 @@ the same thing.
 For QE only `ecutwfc` is scanned. `ecutrho` stays as the template writes it, or
 is the largest UPF suggestion; at a value where the suggestion is below
 4 × `ecutwfc`, that value gets 4 × `ecutwfc` instead (`ferro-py doc job qe`).
-`conv analyze` cannot read pw.x output yet: compare the QE jobs by hand.
 
 ## In which order
 
@@ -95,6 +94,7 @@ output of every job:
 |---|---|
 | VASP | `OUTCAR`, `vasprun.xml` |
 | CP2K | `cp2k.out`, then any `*.out`, `*.log` |
+| QE | `pw.out`, then any `*.out` |
 
 The **reference** is the highest value (`on` for a switch), or `--ref VALUE`.
 For each structure and value, against the same structure at the reference:
