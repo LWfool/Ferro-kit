@@ -265,4 +265,9 @@ class QeGenerator(Generator):
                 qe.set("control", "nstep", options.steps)
             if options.timestep is not None:
                 qe.set("control", "dt", round(options.timestep / RY_TIME_FS, 4))
+                # SVR 的时间常数 nraise 以步计，改 dt 热浴跟着变快或变慢
+                if qe.get("ions", "ion_temperature", "").strip("'\"").lower() == "svr":
+                    nraise = int(qe.get("ions", "nraise", "1"))
+                    notes.append(f"SVR time constant nraise = {nraise} steps = {nraise * options.timestep:g} fs "
+                                 "at this timestep (nraise counts steps, not time)")
         return InputSet({"pw.in": qe.to_str()}, notes=notes)
