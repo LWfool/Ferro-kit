@@ -1,4 +1,4 @@
-//! Shared plumbing for AIMD output readers (CP2K, VASP).
+//! Shared plumbing for AIMD output readers (CP2K, VASP, Quantum ESPRESSO).
 //!
 //! The three formats print different things, but a caller collecting frames
 //! into a dataset asks the same questions of all of them: how many steps did
@@ -17,6 +17,7 @@ pub enum AimdFormat {
     Cp2kSp,
     VaspOutcar,
     VaspXml,
+    QeOut,
 }
 
 impl AimdFormat {
@@ -27,6 +28,7 @@ impl AimdFormat {
             Self::Cp2kSp => "CP2K single-point output",
             Self::VaspOutcar => "VASP OUTCAR",
             Self::VaspXml => "VASP vasprun.xml",
+            Self::QeOut => "Quantum ESPRESSO pw.x output",
         }
     }
 
@@ -40,6 +42,7 @@ impl AimdFormat {
             Self::Cp2kSp => "SCF run converged",
             Self::VaspOutcar => "EDIFF reached",
             Self::VaspXml => "SCF steps < NELM",
+            Self::QeOut => "no `convergence NOT achieved`",
         }
     }
 }
@@ -168,10 +171,23 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
             ),
         };
     }
+    if head.contains("Program PWSCF") {
+        return Ok(AimdFormat::QeOut);
+    }
+    // QE 的其他程序（GIPAW、pp.x……）横幅格式相同，点名说出来，别让人以为是没认出 QE
+    if let Some(program) = head.lines()
+        .find_map(|l| l.trim_start().strip_prefix("Program ")?.split_whitespace().next())
+        .filter(|_| head.contains("Quantum ESPRESSO") || head.contains("quantum-espresso"))
+    {
+        bail!(
+            "{}: a Quantum ESPRESSO `{program}` output; ferro reads pw.x (`Program PWSCF`) output only",
+            path.display()
+        );
+    }
     bail!(
         "{}: cannot tell which program wrote this. Recognised: VASP OUTCAR \
-         (a `vasp.X.Y` banner), VASP vasprun.xml (an `<?xml` declaration) and \
-         CP2K output (a `CP2K|` banner)",
+         (a `vasp.X.Y` banner), VASP vasprun.xml (an `<?xml` declaration), \
+         CP2K output (a `CP2K|` banner) and pw.x output (a `Program PWSCF` banner)",
         path.display()
     )
 }
@@ -186,6 +202,7 @@ pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdSta
         AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp_with_stats(path),
         AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
         AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
+        AimdFormat::QeOut => super::qe_out::read_qe_out_with_stats(path),
     }
 }
 

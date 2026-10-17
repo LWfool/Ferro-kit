@@ -346,7 +346,7 @@ fn is_card_or_namelist(l: &str) -> bool {
     ) || up.trim().starts_with('&')
 }
 
-fn extract_element(label: &str) -> String {
+pub(super) fn extract_element(label: &str) -> String {
     let alpha: String = label.chars().take_while(|c| c.is_alphabetic()).collect();
     if alpha.is_empty() { return "X".to_string(); }
     let mut it = alpha.chars();
