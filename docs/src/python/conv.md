@@ -22,7 +22,7 @@ ferro-py conv analyze encut/
 | CP2K | `cutoff=…` | Ry | `&MGRID CUTOFF` |
 | CP2K | `rel-cutoff=…` | Ry | `&MGRID REL_CUTOFF` |
 | CP2K | `finer-grid` | off, on | `&XC_GRID USE_FINER_GRID` |
-| CP2K | `accurate-xcint` | off, on | `&QS GAPW_ACCURATE_XCINT` (`METHOD GAPW` only) |
+| CP2K | `accurate-xcint` | off, on | `&QS GAPW_ACCURATE_XCINT` (`METHOD GAPW` only; CP2K 2026.x, absent in 2025.2) |
 | QE | `ecutwfc=…` | Ry | `&SYSTEM ecutwfc` |
 
 Values are `START:STOP:STEP` (both ends included) or a list `a,b,c`; at least two

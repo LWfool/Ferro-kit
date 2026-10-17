@@ -61,7 +61,8 @@ wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步�
   用 `SKIP` 分程序、各用独立 WORKDIR（脚本开头会清空 `smoke_report.txt`）。脚本不用改。
 - VASP OUTCAR 有一条「KPOINTS 文件找不到，回退自动生成」警告 —— 设计如此（k 点走 INCAR 的
   `KSPACING`），不是问题。收敛测试只生成未跑（未设 `RUN_CONV=1`）。
-- 仍未确认：CP2K **2025.2** 是否认 `GAPW_ACCURATE_XCINT`（本轮 CP2K 是 2026.2，且该键默认注释掉）。
+- 已确认（2026-10-17，用户查 2025.2 手册）：CP2K **2025.2 没有** `GAPW_ACCURATE_XCINT`，只 2026.x 有。
+  模板与 `job-cp2k.md` 本已注明 2026.x；`conv.md` 的 `accurate-xcint` 一行补注。
 
 用户已审过并认可 VASP / CP2K / QE 的 9 份内置模板；push 每次都要先问。
 
@@ -141,7 +142,8 @@ P-11 `a282757`。P-4（ecutrho）、P-8（CP2K 偶数网格偏离 Γ）按上面
 | P-19 | QE / CP2K 生成器 | 缺「并行参数自己加」的提示（规格要求，只有 VASP 有） | ✅ `1af7bcd`（模板头注释 + 生成提示，两者输入里都没有并行键，提示无条件给） |
 | P-12 | 测试 | `conv.summary` 多帧「各帧取最大」无直接测试；QE 显式 `--multiplicity 1` + 模板 `nspin = 2` 组合无测试 | ✅ `27a75fd`。后者原行为是留 `nspin = 2` 不写 `tot_magnetization`（磁矩放开）；**用户定改为写 `tot_magnetization = 0`**，不给 `--multiplicity` 时照旧放开 |
 
-存疑（缺证据）：`RECOMMENDED_POTCAR` 个别条目（Fe、Er…）未对照 vasp.at 当前表；CP2K 2025.2 的
+`RECOMMENDED_POTCAR` 个别条目（Fe、Er…）未对照 vasp.at 当前表：**用户定不核对**（2026-10-17）。
+存疑（缺证据）：CP2K 2025.2 的
 k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满足阈值的档」，偏差不单调时可能
 报出其上仍有超阈值档的低档（判据选择，待定）。
 
@@ -160,7 +162,7 @@ k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满�
 | D-7 | 低 | 超过 1000 个 set 时目录按字典序 | 未做 |
 
 测试缺口已补（`673d732`）：非对称 virial 的盘上布局、merge 打乱与 filter 筛帧的逐帧逐原子对应。
-仍存疑：左手系晶胞；CP2K MD 的 virial 未与 dpdata 交叉核对。
+仍存疑：左手系晶胞。CP2K MD 的 virial 已核对（2026-10-17，见 `progress.md`「`cp2k_md.rs`」）。
 
 ### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
 
@@ -637,6 +639,15 @@ O-O 间距与 Al6 配位用 `ferro_core::classify_frame` 出的
 ---
 
 ## 优先级中
+
+### `dataset collect`：输入是当前目录下的裸文件名时，产物位置错（2026-10-17 发现，未修）
+
+`Path::new("a.out").parent()` 是 `Some("")` 而非 `None`，`canonicalize("")` 失败，分组键成了空路径
+（`cmd/dataset.rs` 的 `group_by_directory` / `collect_dest`）。两种后果，均已在 scratchpad 复现：
+- 带 `-o` 且另有子目录输入：`-i a.out sub/b.out -o out` 时公共祖先被拉成 `""`，`sub` 组的 `rel`
+  成了绝对路径，`out.join(绝对路径)` 甩开 `-o`，写到 `sub.db`（输入旁）；`a.out` 一组写进 `out.db`
+- 不带 `-o`：`-i a.out` 写出 `./system.db`，手册说的是 `../<当前目录名>.db`
+取 parent 时把空路径当 `.` 即可；另需定：多组时 `rel` 为空的那组（输入就在公共祖先里）放哪。
 
 ### 2026-10-02 物理审查的三条严重问题（用户定为中，功能后续会改写，届时一并修）
 

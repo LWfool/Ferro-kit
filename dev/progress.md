@@ -180,6 +180,12 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   2026-09-22 补两处老版本的块：`energy (a.u.):` 的圆括号写法（此前整份 bail 在
   `unknown energy unit []`）、无 `STRESS|` 前缀的 ` STRESS TENSOR [GPa]`（此前帧
   照读、stress 恒 None、数据集少一个 virial.npy，全程无错误）
+  **virial 与 cp2kdata 对拍**（2026-10-17，CP2K 2025.2 NVT，`examples/cp2k/md/` 的 `total.out` 2000 帧
+  与 `01_glass` 1110 帧；01_glass 下四份 `.out` 逐字节相同，实为一份）：参考值取 cp2kdata 的
+  `parse_stress_tensor_list` × `CELL| Volume` ÷ dpdata 的 GPa 常数（即它的 dpdata 插件口径，不变号），
+  按能量逐帧对齐。virial 相对差 ≤ 2.1e-10，符号一致。体积须取 `CELL| Volume`：`CELL| Vector` 只印
+  3 位小数，三斜胞下按它算体积差 ~1e-4。ferro 不收的力计算只有第 0 步、重启重复的那一步，与
+  「MD run terminated by external request」前只算了力、未成步的最后一次（SCF 也未收敛）
 - **`cp2k_sp.rs`**（2026-09-22）：CP2K 单点（`ENERGY` / `ENERGY_FORCE`）。与
   `cp2k_md.rs` **不共用任何单位或抽取函数**，两者无一处布局相同。帧锚点是
   `ENERGY| Total FORCE_EVAL`：坐标与胞向前找、力与应力向后找，两侧由相邻锚点
