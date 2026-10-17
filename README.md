@@ -124,7 +124,7 @@ below (see `docs/src/plotting.md`).
 | Network topology | composition, Qⁿ speciation, partner decomposition Qⁿ_m, ligand types, coordination numbers, bridge linkage |
 | Charges | Bader partitioning — on-grid, near-grid, off-grid, Yu-Trinkle weight (ACF/BCF/AVF output) |
 | Structure | supercells, vacuum layers, merging, formula-driven box building, type labelling, cluster detection |
-| Input generation | Gaussian, CP2K (with a 2829-entry basis/pseudopotential database), Quantum ESPRESSO pw.x |
+| Input generation | VASP, CP2K, Quantum ESPRESSO pw.x — single point, optimisation, AIMD, convergence tests; in the Python package (`ferro-py job`, `ferro-py conv`) |
 
 Everything is normalised per frame before time-averaging, which matters under NPT; the
 derivation is in `dev/issues.md`.
@@ -149,7 +149,7 @@ third quantity again — a tricluster is one oxygen but two connections. Results
 | LAMMPS data | ✓ | ✓ |
 | LAMMPS dump | ✓ | ✓ |
 | CP2K `.inp` / `.restart` | ✓ | — |
-| Quantum ESPRESSO `.in` | ✓ | ✓ |
+| Quantum ESPRESSO `.in` | ✓ | — |
 | Gaussian cube | ✓ | ✓ |
 | VASP CHGCAR | ✓ | — |
 

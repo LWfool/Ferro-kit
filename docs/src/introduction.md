@@ -6,8 +6,8 @@
 - **Dynamical analysis** — MSD, VACF, van Hove correlation, rotational correlation
 - **Spatial maps** — 3-D density/velocity/force grids, jump-distance maps, hard-sphere occupancy, cluster SDF
 - **Charge analysis** — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF
-- **Input generation** — Gaussian, CP2K, and Quantum ESPRESSO input files with structure-based spin estimation and a precise CP2K basis/pseudopotential database
-- **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, QE, CP2K, Gaussian cube
+- **Input generation** — VASP, CP2K and Quantum ESPRESSO inputs (single point, optimisation, AIMD) and convergence tests, in the Python package (`ferro-py job`, `ferro-py conv`)
+- **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, Gaussian cube; CP2K and QE inputs read-only; CP2K, VASP and QE AIMD output into DeePMD datasets
 - **Python bindings** — `import ferro`: read/write, supercell/vacuum/merge, g(r) & MSD ([details](python/api.md))
 
 ## Design Goals
