@@ -751,9 +751,10 @@ pub fn print_dataset_collect() {
     println!(
         r#"ferro dataset collect — AIMD output -> DeePMD system directories
 
-  Reads CP2K or VASP output and writes one DeePMD system per input DIRECTORY —
-  the files of one directory are the restart segments of one run. The format
-  comes from each file's own banner; --format overrides that.
+  Reads CP2K, VASP or Quantum ESPRESSO (pw.x) output and writes one DeePMD
+  system per input DIRECTORY — the files of one directory are the restart
+  segments of one run. The format comes from each file's own banner; --format
+  overrides that.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed. PJM job
@@ -761,7 +762,7 @@ Parameters:
   -o, --output DIR        Output root; default is beside each input
       --format FMT        Read the inputs as this format instead of trusting
                           the banner. cp2k/md | cp2k/sp | vasp/outcar |
-                          vasp/xml                            [from banner]
+                          vasp/xml | qe/pw                    [from banner]
       --type   WHAT       deepmd (DeePMD system) | inspect (diagnostics only)
                                                                     [deepmd]
       --mkdir             Create -o without asking (needed with no terminal)

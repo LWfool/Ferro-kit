@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro dataset collect` reads Quantum ESPRESSO pw.x output
+
+`scf`, `md` and `vc-md` outputs are recognised by their `Program PWSCF` banner, or
+named with `--format qe/pw` (`ferro doc collect`). An scf needs `tprnfor = .true.`:
+frames without forces are dropped, as for CP2K.
+
 ### `ferro-py conv -s qe --scan ecutwfc=…`
 
 QE convergence tests scan `ecutwfc` (`ferro-py doc conv`). `conv analyze` cannot read

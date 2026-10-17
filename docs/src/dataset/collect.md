@@ -9,14 +9,16 @@ ferro dataset collect -i 'run*/*.out' -o data      # -> data/run1/, data/run2/
 ferro dataset collect -i '*.out' -o sys            # -> sys/   (one directory in)
 ```
 
-Four sources are read: **CP2K MD output**, **CP2K single-point output**
-(`ENERGY` / `ENERGY_FORCE`), **VASP `OUTCAR`** and **VASP `vasprun.xml`**.
-Quantum ESPRESSO is still planned.
+Five sources are read: **CP2K MD output**, **CP2K single-point output**
+(`ENERGY` / `ENERGY_FORCE`), **VASP `OUTCAR`**, **VASP `vasprun.xml`** and
+**Quantum ESPRESSO pw.x output** (`scf`, `md`, `vc-md`; see
+[Quantum ESPRESSO output](#quantum-espresso-output)).
 
 ### Which reader gets the file
 
 By **content**, not by name. The first lines of the file carry an unambiguous
-banner — `CP2K|`, `vasp.6.4.2`, or an `<?xml` declaration — and naming cannot
+banner — `CP2K|`, `vasp.6.4.2`, `Program PWSCF`, or an `<?xml` declaration —
+and naming cannot
 be trusted to do this job: VASP writes `OUTCAR` with no extension at all,
 people rename it to `run.outcar`, and `.out` is too generic to belong to any
 one program. An unrecognised file is an error that names what *is* recognised.
@@ -44,6 +46,7 @@ ferro dataset collect -i 'sp/*.log' --format cp2k/sp
 | `cp2k/sp` | CP2K single point (`ENERGY` / `ENERGY_FORCE`) |
 | `vasp/outcar` | VASP `OUTCAR` |
 | `vasp/xml` | VASP `vasprun.xml` |
+| `qe/pw` | Quantum ESPRESSO pw.x output (`scf`, `md`, `vc-md`) |
 
 VASP is two values rather than one `vasp/md`: the two files record the same
 frames but [decide convergence differently](#cp2k-vs-vasp-what-differs), so
@@ -236,6 +239,61 @@ kind names kept as labels, type_map uses the element: Fe1 -> Fe (6)  Fe2 -> Fe (
 > *kind* names into `atom_names`), so a dataset built there and one built here
 > can differ in their type map from the same output. If you need the kinds split
 > into separate types, say so and it can become a flag.
+
+## Quantum ESPRESSO output
+
+One reader takes pw.x output from `calculation = 'scf'`, `'md'` and `'vc-md'`;
+a directory of scf outputs collects like CP2K single points, one frame per
+file. Other Quantum ESPRESSO programs (GIPAW, `pp.x`, …) print the same kind
+of banner and are refused by name. So are `relax` / `vc-relax` outputs, and a
+file holding several runs (two `Program PWSCF` banners): split it, one run per
+file.
+
+Every ionic step opens with `Self-consistent Calculation`. A step's energy,
+forces and stress follow inside it; its **structure does not**: step 0 uses the
+cell and positions of the output header, every later step the
+`CELL_PARAMETERS` / `ATOMIC_POSITIONS` cards printed at the end of the step
+before. The cards printed after the last step describe a step that never ran
+and are ignored, so an N-step run gives N frames.
+
+**Forces.** With `verbosity = 'high'`, the total forces are followed by seven
+component groups (non-local, ionic, local, core correction, Hubbard, SCF
+correction, DFT-D3) in exactly the same layout. Only the first group after
+`Forces acting on atoms` is read.
+
+### What a pw.x run must print
+
+```
+&CONTROL
+  tprnfor = .true.    ! forces: required (an scf prints none without it)
+  tstress = .true.    ! optional, no stress just means no virial
+/
+```
+
+md and vc-md print forces by themselves. A step without forces is dropped, as
+in CP2K; a file that never prints them gives no frame, and the message says
+`set tprnfor = .true.`.
+
+### Units, precision and checks
+
+Ry, Ry/bohr and Ry/bohr³ become eV, eV/Å and eV/Å³ with pw.x's own CODATA 2018
+constants. The stress is read from the Ry/bohr³ columns (eight decimals), not
+the kbar ones (two), and keeps pw.x's sign — positive = compression, so
+`virial = stress × V` as for CP2K.
+
+The header prints the cell and positions of step 0 with six and seven decimals
+in units of `celldm(1)`: frame 0 is good to a few µÅ, later frames to the nine
+or ten decimals of the cards.
+
+Checked on five QE 7.5 runs (a 6-atom $AlPO_4$ cell; scf, spin-polarised scf,
+an unconverged scf, 5-step md and 5-step vc-md):
+
+- energy and forces agree with dpdata's `qe/pw/scf` to $10^{-10}$; its virial
+  differs by $10^{-4}$ eV only because dpdata reads the kbar columns;
+- every frame of md and vc-md agrees with ASE's `read_espresso_out` in cell,
+  positions, forces and stress (sign flipped, as ASE stores tension positive)
+  to $10^{-7}$. ASE's energies are $1.2 \times 10^{-6}$ low in relative terms:
+  its reader converts with CODATA 2006, while pw.x 7.5 prints CODATA 2018 Ry.
 
 ## Output layout
 

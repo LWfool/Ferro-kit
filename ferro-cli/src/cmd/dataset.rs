@@ -501,7 +501,7 @@ pub struct CollectCmd {
 
 /// The AIMD layout a file is to be read as, when the user names it.
 ///
-/// The four values mirror [`AimdFormat`] one for one. VASP is two values rather
+/// The five values mirror [`AimdFormat`] one for one. VASP is two values rather
 /// than one `vasp/md`: OUTCAR and vasprun.xml record the same frames but decide
 /// convergence differently, so they drop a different number of them.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -514,6 +514,8 @@ pub enum InputFormat {
     VaspOutcar,
     #[value(name = "vasp/xml")]
     VaspXml,
+    #[value(name = "qe/pw")]
+    QePw,
 }
 
 impl From<InputFormat> for AimdFormat {
@@ -523,6 +525,7 @@ impl From<InputFormat> for AimdFormat {
             InputFormat::Cp2kSp => AimdFormat::Cp2kSp,
             InputFormat::VaspOutcar => AimdFormat::VaspOutcar,
             InputFormat::VaspXml => AimdFormat::VaspXml,
+            InputFormat::QePw => AimdFormat::QeOut,
         }
     }
 }
@@ -972,7 +975,7 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frame
         let span = match (st.steps, st.format) {
             (Some((a, b)), _) => format!("steps {a}-{b}"),
             // 单点没有步号,"steps ?" 会被读成"步号丢了",而其实是没有步号这回事
-            (None, AimdFormat::Cp2kSp) => format!("{} single point(s)", st.n_steps),
+            (None, AimdFormat::Cp2kSp | AimdFormat::QeOut) => format!("{} single point(s)", st.n_steps),
             (None, _) => "steps ?".to_string(),
         };
         println!(
@@ -2074,6 +2077,60 @@ mod tests {
         assert!(f0.forces.as_ref().unwrap()[0].x < 0.0, "O 受 -x");
         assert!(f0.forces.as_ref().unwrap()[1].x > 0.0, "Si 受 +x");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn collect_dir(name: &str, files: &[(&str, String)]) -> (PathBuf, Result<Trajectory>) {
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (file, text) in files {
+            std::fs::write(dir.join(file), text).unwrap();
+        }
+        let group = Group {
+            dir: dir.clone(),
+            rel: PathBuf::new(),
+            files: files.iter().map(|(f, _)| dir.join(f)).collect(),
+        };
+        let dest = dir.join("out.db");
+        let mut skipped = Vec::new();
+        let read = collect_group(&group, &dest, false, false, None, &mut skipped)
+            .and_then(|_| Ok(read_deepmd_npy_with_warnings(&dest)?.0));
+        (dir, read)
+    }
+
+    /// 一批单点里有一个没收敛：reader 对「一帧不剩」报错，collect 把这份文件 SKIP 掉，
+    /// 不能让它以空组成去和别的文件比、使整个目录失败。排在第一个的就是它时也一样
+    #[test]
+    fn a_file_whose_frames_were_all_dropped_does_not_fail_the_directory() {
+        let failed = sp_text(true).replace("SCF run converged", "SCF run NOT converged");
+        let (dir, read) = collect_dir("ferro_collect_all_dropped",
+            &[("a.out", failed), ("b.out", sp_text(true)), ("c.out", sp_text(false))]);
+        assert_eq!(read.unwrap().n_frames(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// QE pw.x 实算输出：单点按文件成帧（没收敛的那份被 SKIP），md 逐步成帧，
+    /// virial = 应力 × 体积（同号，正 = 受压）
+    #[test]
+    fn quantum_espresso_outputs_collect() {
+        let fixture = |n: &str| std::fs::read_to_string(format!("../tests/{n}")).unwrap();
+        let (dir, read) = collect_dir("ferro_collect_qe_sp",
+            &[("a.out", fixture("qe75_sp_noconv.out")), ("b.out", fixture("qe75_sp.out"))]);
+        let sp = read.unwrap();
+        assert_eq!(sp.n_frames(), 1);
+        assert!((sp.frames[0].energy.unwrap() - -3567.569297968025).abs() < 1e-8);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (dir, read) = collect_dir("ferro_collect_qe_md", &[("pw.out", fixture("qe75_md.out"))]);
+        let md = read.unwrap();
+        assert_eq!(md.n_frames(), 5);
+        let direct = ferro_io::read_qe_out(Path::new("../tests/qe75_md.out")).unwrap();
+        for (a, b) in md.frames.iter().zip(&direct.frames) {
+            assert!((a.energy.unwrap() - b.energy.unwrap()).abs() < 1e-9);
+            let ds = (a.stress.unwrap() - b.stress.unwrap()).abs().max();
+            assert!(ds < 1e-12, "virial.npy 读回的应力与 reader 一致（差 {ds}）");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

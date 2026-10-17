@@ -35,10 +35,11 @@
 //! # What is dropped
 //!
 //! Steps whose SCF did not converge (`convergence NOT achieved`), and steps
-//! that stop short: no `!` energy, or no forces / stress although other steps of
-//! the file print them (a run cut off mid-step). A file that never prints
-//! forces (`tprnfor` off on an scf) or stress (`tstress` off) gives frames
-//! without them rather than nothing.
+//! that stop short: no `!` energy, no forces, or no stress although other steps
+//! of the file print it (a run cut off mid-step). Forces are required, as in
+//! the CP2K readers: a frame without them cannot enter a DeePMD system, so an
+//! scf run with `tprnfor` off gives no frame and the error says so. Stress is
+//! optional: a file that never prints it (`tstress` off) gives frames without.
 //!
 //! Optimisations (`relax`, `vc-relax`) are refused: they print a final SCF at
 //! the relaxed structure whose step layout ferro has no fixture for.
@@ -262,7 +263,8 @@ fn parse_qe_out(content: &str) -> Result<(Trajectory, AimdStats)> {
     }
     // md 是 `Entering Dynamics:`，vc-md 是 `Entering Dynamics;`
     let is_md = lines.iter().any(|l| l.trim_start().starts_with("Entering Dynamics"));
-    // 别的步打印了而这一步没有，就是这一步没写完；整份文件都没有则是没开 tprnfor / tstress
+    // 应力：别的步打印了而这一步没有，就是这一步没写完；整份文件都没有则是没开 tstress。
+    // 力恒为必需（同 cp2k_sp），has_forces 只用于报错时点名 tprnfor
     let has_forces = lines.iter().any(|l| starts_with_tokens(l, &["Forces", "acting", "on", "atoms"]));
     let has_stress = lines.iter().any(|l| starts_with_tokens(l, &["total", "stress"]));
 
@@ -307,7 +309,7 @@ fn parse_qe_out(content: &str) -> Result<(Trajectory, AimdStats)> {
         let stress = window.clone()
             .find(|&i| starts_with_tokens(lines[i], &["total", "stress"]))
             .and_then(|s| read_stress(&lines, s));
-        if (has_forces && forces.is_none()) || (has_stress && stress.is_none()) {
+        if forces.is_none() || (has_stress && stress.is_none()) {
             stats.n_incomplete += 1;
             continue;
         }
@@ -331,7 +333,22 @@ fn parse_qe_out(content: &str) -> Result<(Trajectory, AimdStats)> {
         stats.n_kept += 1;
     }
 
-    Ok((Trajectory { frames, metadata: Default::default() }, stats))
+    // 同 cp2k_sp：一帧不剩就报错，collect 据此 SKIP 这份文件并说出原因，
+    // 而不是拿一条空轨迹去和同目录的其他文件比组成
+    if frames.is_empty() {
+        bail!(
+            "no usable frame: {} SCF step(s), {} dropped ({} SCF not converged, {} incomplete){}",
+            stats.n_steps, stats.n_dropped(), stats.n_scf_failed, stats.n_incomplete,
+            // 没收敛就停的那份也一行力都没有，那里提 tprnfor 是误导
+            if !has_forces && stats.n_incomplete > 0 { "; no forces printed at all: set tprnfor = .true." } else { "" }
+        );
+    }
+    let mut traj = Trajectory { frames, metadata: Default::default() };
+    traj.metadata.source = Some(match &stats.version {
+        Some(v) => format!("Quantum ESPRESSO {v} pw.x"),
+        None => "Quantum ESPRESSO pw.x".to_string(),
+    });
+    Ok((traj, stats))
 }
 
 
@@ -426,8 +443,18 @@ mod tests {
 
     #[test]
     fn an_unconverged_scf_is_counted_and_dropped() {
-        let (traj, st) = parse_qe_out(&fixture("qe75_sp_noconv.out")).unwrap();
-        assert_eq!((traj.frames.len(), st.n_steps, st.n_scf_failed), (0, 1, 1));
+        // 唯一的一步没收敛：一帧不剩，报错并说出原因（同 cp2k_sp）
+        let err = format!("{:#}", parse_qe_out(&fixture("qe75_sp_noconv.out")).unwrap_err());
+        assert!(err.contains("no usable frame") && err.contains("1 SCF not converged"), "{err}");
+        assert!(!err.contains("tprnfor"), "没收敛不是没开 tprnfor：{err}");
+    }
+
+    #[test]
+    fn a_file_without_forces_gives_no_frame_and_names_tprnfor() {
+        // 力是必需的（同 cp2k_sp）：没力的帧进不了 DeePMD system
+        let text = fixture("qe75_sp.out").replace("Forces acting on atoms", "Forces gone");
+        let err = format!("{:#}", parse_qe_out(&text).unwrap_err());
+        assert!(err.contains("1 incomplete") && err.contains("tprnfor = .true."), "{err}");
     }
 
     /// The file is cut inside the last step's force block: that step is incomplete,
@@ -480,18 +507,18 @@ mod tests {
         assert!(err.contains("`GIPAW` output") && err.contains("pw.x"), "{err}");
     }
 
-    /// A 396-atom scf with tprnfor / tstress off (QE 7.3.1): energy only.
+    /// A 396-atom scf with tprnfor / tstress off (QE 7.3.1): no frame, and the
+    /// header still parses (alat, axes, 396 positions) up to that point.
     #[test]
     #[ignore = "reads examples/qe/, which is not in git"]
     fn an_energy_only_scf_from_another_release() {
-        let (traj, st) = read_qe_out_with_stats(Path::new("../examples/qe/5Zn-J17_scf.out")).unwrap();
-        assert_eq!((st.n_kept, st.version.as_deref()), (1, Some("7.3.1")));
-        let f = &traj.frames[0];
-        assert_eq!(f.n_atoms(), 396);
-        assert!(close(f.energy.unwrap() / RY_TO_EV, -26626.87516966, 1e-8));
-        assert!(f.forces.is_none() && f.stress.is_none());
-        let a = f.cell.as_ref().unwrap().matrix;
-        assert!(close(a[(0, 0)], 17.623106396720, 2e-5), "{a}");
+        let text = std::fs::read_to_string("../examples/qe/5Zn-J17_scf.out").unwrap();
+        let err = format!("{:#}", parse_qe_out(&text).unwrap_err());
+        assert!(err.contains("tprnfor = .true."), "{err}");
+        let lines: Vec<&str> = text.lines().collect();
+        let (nat, _, cell, atoms) = read_header(&lines).unwrap();
+        assert_eq!((nat, atoms.len()), (396, 396));
+        assert!(close(cell[(0, 0)], 17.623106396720, 2e-5), "{cell}");
         for name in ["5Zn-J17_nmr.out", "pp.out"] {
             let err = super::super::aimd::sniff(Path::new(&format!("../examples/qe/{name}"))).unwrap_err();
             assert!(err.to_string().contains("ferro reads pw.x"), "{name}: {err}");
