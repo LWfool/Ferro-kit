@@ -60,6 +60,7 @@
 | `pyproject.toml` | `readme="README.md"` 缺文件 → maturin 失败；失效 `python-source` | 必须有 README.md；无 python 覆盖层时删 `python-source` |
 | `pyproject.toml` 的版本号 | 手动同步 `[project] version` | **已漂移过一次**：0.3.0 发版时发现它还停在 `0.1.7`，落后四个版本，而 maturin 打 wheel 用的正是这个值——装出来的包会自称 0.1.7。已改用 `dynamic = ["version"]` 让 maturin 从 Cargo.toml 取，`[project]` 下不再写 `version`。**本机无 maturin，此改动未经构建验证**，首次 `maturin build` 时留意 |
 | `maturin develop` | 无激活 venv/conda 时报错 | 用 `maturin build` + `pip install <wheel>`，或先激活环境 |
+| `lib.rs` 的 `pyerr` | `e.to_string()` 转 anyhow 错误 | 只剩最外层 context：`conv analyze` 的状态只写 `unreadable (parsing FILE)`，原因（`1 SCF not converged`）丢了。用 `format!("{e:#}")` 带出整条链（2026-10-17 修） |
 
 ## 依赖升级陷阱（2026-08-08）
 
@@ -755,6 +756,20 @@ golden master 的差异失去唯一解释。
 | 帮助页的小节名 | 随手起 | `job -s cp2k` 原本有一个叫 `Output:` 的**参数分组**（`--cube`/`--molden`），加产物段时撞名。一页里两个同名小节，读者无从分辨 |
 | `println!` 里的花括号 | 直接写 `{coord,box}.npy` | 会被当成格式占位符，编译报 "python's numeric grouping" 这种毫不相干的错。改写成 `coord|box` 或转义 `{{}}` |
 | 统计帮助页行数 | `ferro <cmd> | wc -l` | 本机这个管道给出的数不对（实测 38 行的页报 7）。用 `ferro <cmd> > f` 再 `wc -l < f`，或直接按源码数 |
+
+## QE pw.x 输出编码陷阱（2026-10-17）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 力块 | 找到 `atom … force =` 就读 | `verbosity = 'high'` 时总力后跟七组**同格式**分量（非局域、离子、局域、核修正、Hubbard、SCF 修正、DFT-D3），总力只是 `Forces acting on atoms` 下第一组 nat 行 |
+| md / vc-md 的帧配对 | 把 `Entering Dynamics` 之后的 `ATOMIC_POSITIONS` 当作这一步的结构 | 那是**下一步**的结构：第 k 步的结构印在第 k−1 步末尾，第 0 步取输出头；最后一步之后的卡片丢弃。错一位时能量、力配着错的坐标，没有任何报错 |
+| `Entering Dynamics` 的识别 | 按 token `Dynamics` 匹配 | md 写 `Dynamics:`、vc-md 写 `Dynamics;`，token 都带标点 |
+| 输出头的晶胞 | 取 `lattice parameter (alat)` | 只有四位小数；`celldm(1)` 六位 |
+| 应力 | 取 kbar 列（dpdata 如此） | kbar 只两位小数，Ry/bohr³ 列八位；dpdata 的 virial 因此与 ferro 差约 1e-4 eV |
+| 拿 ASE 核对能量 | ASE 的值当真 | ASE 的 espresso reader 写死 `create_units('2006')`，而 QE 7.5 `constants.f90` 用 CODATA 2018：ASE 的能量相对偏低 1.2e-6（262 Ry 处 3.1e-4 eV）。能量对 dpdata（scipy 2018） |
+| 没开 tprnfor 的 scf | 帧照收，只是没力 | collect 会写出没有 `force.npy` 的 system。力必需，同 cp2k_sp；报错点名 `tprnfor` |
+| 没收敛的单点 | 返回空轨迹 | collect 拿空组成和同目录别的文件比，整个目录报「组成不同」。一帧不剩就报错，collect 据此 SKIP（同 cp2k_sp） |
+| GIPAW / pp.x 输出 | 只认 `Program PWSCF`，别的报「认不出」 | 它们横幅格式相同，点名「这是 QE 的 GIPAW 输出，只读 pw.x」 |
 
 ## dataset 审查编码陷阱（2026-10-17）
 

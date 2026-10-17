@@ -107,10 +107,13 @@ ecutrho 易收敛，UPF 建议的最大值即可，用户定）
   `JOB DONE`，放在 `examples/qe/pwx/{sp,sp_spin,sp_noconv,md,vcmd}/`（pw.in + pw.out；vcmd 另有
   pw.x 自己写的逐步文件 `pw.avec` 等，可核对逐步晶胞），作业脚本与日志在 `job/`。首跑全部
   GENERATION FAILED：作业脚本的 `conda activate` 前缺 `conda init`（用户修好重跑）
-- 待 fixture：pw.x 输出 reader（`readers/qe_out.rs`，单点 + md + vc-md；总力只取第一组，D3 等分量块不读；
-  应力符号与 dpdata 交叉核对）→ `aimd.rs` 嗅探 `Program PWSCF`（GIPAW、pp.x 输出须拒收，
-  `examples/qe/` 有现成反例）→ collect 手册与帮助页 → `read_output` / `conv analyze` 读 QE。
-  `examples/qe/5Zn-J17_scf.out`（396 原子，未开 tstress / tprnfor）可作「只有能量」的 #[ignore] 用例
+- ✅ pw.x 输出 reader `readers/qe_out.rs`（`04e95a0`）+ `aimd.rs` 嗅探；collect `--format qe/pw`
+  （`49befab`）；`read_output` / `conv analyze` 读 QE、`pyerr` 带出原因链（`9d9c8bc`）。核对：能量、力
+  与 dpdata 一致到 1e-10，其余与 ASE 一致到 1e-7（ASE 能量的 1.2e-6 相对偏差是它写死 CODATA 2006）；
+  collect 产物经 dpdata 读回逐帧对上。变异验证三项（读第二组力、应力翻号、MD 帧错一位）都被抓到。
+  **与原计划的两处出入**：① 原计划「没开 tprnfor 的帧照收」，实测 collect 会写出没有 `force.npy`
+  的 system，改为力必需（同 cp2k_sp）；② 不读 md 每步的温度 —— pw.x 打印的温度属于哪一帧
+  有歧义，宁缺勿错。没做 relax / vc-relax（报错），也没有它们的样例
 
 **2026-10-16 ferro-python 审查**（Opus 子代理只读审查，19 条 + 6 条存疑；复现脚本未入库）。
 

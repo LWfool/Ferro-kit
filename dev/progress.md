@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：800 个（全部通过，clippy 零警告；2026-10-17 实数）；另 ferro-python 137 个 pytest
+## 测试总数：814 个（全部通过，clippy 零警告；2026-10-17 实数）；另 ferro-python 145 个 pytest
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 84 |
-| ferro-io | 223（另有 2 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍，需 `-- --ignored`；2026-10-15 复跑通过） |
+| ferro-io | 235（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
 | ferro-structure | 86 |
 | ferro-analysis | 257 |
 | ferro-render | 30 |
-| ferro-cli（lib 109 + bin 3 + 集成 8） | 120 |
+| ferro-cli（lib 111 + bin 3 + 集成 8） | 122 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。0.4.0 这批的破坏性改动见 `overview.md`。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
@@ -57,6 +57,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | **`5Al_0003_1500K_f394.out`**（2026-09-22，用户提供） | 真实 CP2K 2025.2 单点，457 原子 | 新布局：`FORCES|`、`STRESS| … [bar]`、`CELL_TOP|` 干扰项 |
 | **`cp2k_sp_v61.out`**（2026-09-22） | cp2kdata 的 `test_energy_force/v6.1/normal/output`，MIT，107 KB 整份照抄 | 老布局三个块一次到齐：`energy (a.u.):`、`ATOMIC FORCES in [a.u.]`、无前缀的 ` STRESS TENSOR [GPa]`；外加 gamma=120 的三斜胞与 `Fe1`/`Fe2` 两个 kind。断言数值全取自 cp2kdata 自己的 `answer/`，是跟独立实现对表 |
 | **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见 |
+| **`qe75_{sp,sp_spin,sp_noconv,md,vcmd}.out`**（2026-10-17，超算实算） | QE 7.5 pw.x，6 原子 $AlPO_4$，PBE-D3，`verbosity = 'high'`，共 410 KB；`ferro-python/scripts/qe_fixtures_hpc.sh` 生成，输入与作业脚本在 `examples/qe/pwx/` | 总力后跟七组力分量；`nspin = 2`；`electron_maxstep = 3` 不收敛；5 步 SVR md 与 5 步 vc-md。能量、力与 dpdata 一致到 1e-10，其余与 ASE 一致到 1e-7 |
 | **`vasp651_sp/frame_{0011,0161,0194}/`**（2026-10-13，用户提供） | VASP 6.5.1 单点（r2SCAN-D3，302 原子）200 帧中挑 3 帧，`OUTCAR` + `vasprun.xml` 原样，1.3 MB | 单点布局。全部 200 帧当时与 dpdata 1.0.2 逐帧对拍（两条路），box / coord / energy / force 逐位相同，virial 差 1.4e-6 eV（换算常数 160.2176634 vs 160.2176621）。原数据随后由用户删除，测试钉住 3 帧的 dpdata 参考值。0011 的 xml 应力非对称最大，读侧取对称部分（见 `plan.md` 归档「vasprun 的非对称应力」） |
 
 ## scripts/
@@ -188,6 +189,12 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   缺应力不丢帧（没有 virial 而已），缺力必丢（`force.npy` 不是可选项）。
   明确实现 **2023–2024** 与 **2025–2026** 两代，后者静默、前者每文件打一行
   `NOTE:` 后照常提取
+- **`qe_out.rs`**（2026-10-17）：QE pw.x 输出，`scf` / `md` / `vc-md` 一个 reader。步锚点
+  `Self-consistent Calculation`；能量、力、应力在本步内，**结构印在上一步末尾**（第 0 步取
+  输出头：`celldm(1)` × `crystal axes`、alat 单位坐标，精度约 1e-6 Å），最后一步之后的卡片
+  丢弃。力只取 `Forces acting on atoms` 下第一组（verbosity high 还印七组同格式分量）；应力取
+  Ry/bohr³ 列（kbar 列只两位小数），不变号。力必需、应力可缺、一帧不剩报错（同 cp2k_sp）；
+  relax / vc-relax 与多横幅拼接报错。换算用 CODATA 2018（= QE 7.5 `constants.f90`）
 - **`writers/deepmd.rs`**（2026-08-25）：DeePMD system 目录（`type.raw` +
   `type_map.raw` + `set.NNN/*.npy`）。磁盘上一律二维 `float64`；
   `virial = stress × V` 不变号；半有半无的属性直接报错。`write_deepmd_npy_sets`
@@ -211,7 +218,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `read_aimd_with_stats`。2026-09-22 拆成两个：调用方在自己更清楚格式时
   （`collect --format`）绕开嗅探。同日 `sniff` 的 CP2K 分支改为**读不到
   `GLOBAL| Run type` 就报错**并点名 `--format` —— 此前默认按 MD 走，
-  一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关
+  一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关。
+  2026-10-17 加 `QeOut`：认 `Program PWSCF`；GIPAW、pp.x 等其他 QE 程序点名拒收
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
 - **2026-10-03 审查 A 组的修复**（判据见 `plan.md` 归档与 `issues.md`）：CIF 无 symop 时按
   空间群符号展开（`spacegroup.rs` + spglib 生成的 530 条 Hall 设置表）、跳过无 `_atom_site_`
@@ -377,7 +385,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   **每个文件读完当场 `sort_atoms`**（2026-09-22）：CP2K 按输入列原子的顺序写
   坐标表，同一体系的两次单点常常顺序不同，此前被当成两个体系拒绝。排完再比
   成分，于是剩下的差异必然是计数差异，报错点名到元素。
-  **`--format`**（2026-09-22）：`cp2k/md`/`cp2k/sp`/`vasp/outcar`/`vasp/xml`，
+  **`--format`**（2026-09-22）：`cp2k/md`/`cp2k/sp`/`vasp/outcar`/`vasp/xml`/`qe/pw`（2026-10-17），
   压过嗅探。嗅探仍跑，降为两件事的依据 —— 不一致时的一行 `NOTE:`，以及
   「同目录 OUTCAR + vasprun.xml」那条守卫的比较对象（`--format` 一给，
   `stats.format` 就恒等于它，守卫会失效）。
@@ -486,7 +494,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - Rust 侧：`types.rs`（`PyTrajectory`，含 `pbc` / `subset` / `frame_indices` / `energy` /
   `forces` / `stress`）、`io.rs`（`read` / `write` 按扩展名分派，与 CLI 的 `io_dispatch` 同口径：
   `.lammps` = data，`.vasp` / `.poscar` / `.pos` / `POSCAR*` / `CONTCAR*` = VASP；`read(type_map=)`；
-  `read_output`、`write_table`）、`jobs.rs`（`sort_atoms`、`poscar_string`、`qe_structure_cards`、
+  `read_output`（经 aimd 嗅探，CP2K / VASP / QE 都认）、`write_table`）、`jobs.rs`（`sort_atoms`、`poscar_string`、`qe_structure_cards`、
   `cp2k_structure_sections`、`parse_qe_input_parts`、`write_namelists`）、`structure.rs`、`analysis.rs`、
   `doc.rs`（`docs/src/python/` 七页经 `include_str!` 编进扩展，`_doc_pages` / `_render_markdown`，
   渲染用 `ferro-render`；2026-10-16）
@@ -496,7 +504,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   kmesh）、`vasp.py`（Incar + VaspGenerator）、`qe.py`（QeInput + QeGenerator）、`cp2k.py`
   （Section 节树 + Cp2kGenerator）、`conv.py`（收敛测试）、`templates/<程序>/<任务>/` 9 份内置模板
 
-测试：`ferro-python/tests/` **137 个 pytest**（2026-10-16 实数），本地用 maturin 编 wheel、
+测试：`ferro-python/tests/` **145 个 pytest**（2026-10-17 实数），本地用 maturin 编 wheel、
 `pip install --no-deps --target <scratch>` 后 `PYTHONPATH=<scratch> python -m pytest`。
 GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_64 与 macOS arm64
 wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `903de96` 全绿。
@@ -558,7 +566,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
   `effective_mass()` 里回退 1 amu，会把密度拉低 —— 该情形有逐符号告警，但**告警只在
   info 里有**，其他用到质量的地方（msd 的权重、vacf）没有同类提示
 - `ferro-python` 仍只暴露 gr/msd，未包 net
-- **`ferro dataset collect` 读 CP2K / VASP OUTCAR / vasprun.xml**，QE 待扩；三者
+- **`ferro dataset collect` 读 CP2K / VASP OUTCAR / vasprun.xml / QE pw.x**；四者
   **都未**注册进 `io_dispatch`（`.out` 太通用、`OUTCAR` 根本没有扩展名），故
   `ferro convert -i OUTCAR` 仍不认识它们。2026-09-21 加 `--type inspect` 时
   **有意绕开了**这条待办：LAMMPS 导出挂在 collect 上而不是 convert 上，于是
