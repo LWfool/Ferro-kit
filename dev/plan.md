@@ -96,6 +96,20 @@ wheel 全部重跑；qe aimd 3 步 MD 到 `JOB DONE`，cp2k opt 进入优化步�
 下一批：QE 单点输出（能量 / 力 / 应力）reader + QE 截断能测试（**ecutwfc 必须明确测**；
 ecutrho 易收敛，UPF 建议的最大值即可，用户定）
 
+**2026-10-17 QE 这一批**（用户定：`ferro dataset collect` 也收 QE 的单点与 AIMD 输出；QE 的 AIMD / SP
+主力仍是 VASP、CP2K，本地只有 GIPAW 流程的产物，无带力的 pw.x 输出）：
+
+- ✅ `ferro-py conv -s qe --scan ecutwfc=…`；ecutrho 来自 UPF 建议且低于 4 × ecutwfc 时提到 4 倍并提示，
+  模板写的照用只提示，≤ ecutwfc 报错（判据查 QE 7.3.1 `PW/src/input.f90` `set_cutoff`：dual ≤ 1 才
+  errore，< 4 只 infomsg）。`conv analyze` 读 QE 等 reader
+- ⏳ **超算算 fixture**（2026-10-17 用户已提交）：`ferro-python/scripts/qe_fixtures_hpc.sh`，结构
+  `exp_603719.cif`（6 原子 AlPO₄）；五个算例 sp / sp_spin / sp_noconv / md / vcmd。结果
+  `qe_fixtures.tar.gz` 拷回 `examples/qe/`。vc-md 输入只在本地用假 pw.x 试过，没经 pw.x 解析
+- 待 fixture：pw.x 输出 reader（`readers/qe_out.rs`，单点 + md + vc-md；总力只取第一组，D3 等分量块不读；
+  应力符号与 dpdata 交叉核对）→ `aimd.rs` 嗅探 `Program PWSCF`（GIPAW、pp.x 输出须拒收，
+  `examples/qe/` 有现成反例）→ collect 手册与帮助页 → `read_output` / `conv analyze` 读 QE。
+  `examples/qe/5Zn-J17_scf.out`（396 原子，未开 tstress / tprnfor）可作「只有能量」的 #[ignore] 用例
+
 **2026-10-16 ferro-python 审查**（Opus 子代理只读审查，19 条 + 6 条存疑；复现脚本未入库）。
 
 用户裁定（以后照此，不再重提）：

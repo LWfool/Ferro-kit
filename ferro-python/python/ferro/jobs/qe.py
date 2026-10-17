@@ -208,6 +208,7 @@ class QeGenerator(Generator):
         for key in list(qe.namelists.get("system", {})):
             if re.fullmatch(r"celldm\(\d\)|a|b|c|cosab|cosac|cosbc", key):
                 qe.delete("system", key)
+        rho_written = qe.get("system", "ecutrho") is not None
         for key, i in (("ecutwfc", 2), ("ecutrho", 3)):
             if qe.get("system", key) is None:
                 suggested = max(p[i] for p in chosen.values())
@@ -215,6 +216,18 @@ class QeGenerator(Generator):
                     raise JobError(f"the UPF headers suggest no {key}: write {key} in the template")
                 qe.set("system", key, suggested)
                 notes.append(f"{key} = {suggested:g} Ry (largest UPF suggestion)")
+        # pw.x set_cutoff（7.3.1）：ecutrho ≤ ecutwfc 才 errore，< 4 × ecutwfc 只 infomsg 照跑，
+        # 但密度 |ψ|² 需要 4 倍截断。UPF 建议值不够就提到 4 倍（同 pw.x 不写 ecutrho 时的默认）；
+        # 模板写的照用，只提示
+        wfc, rho = (_fortran_float(qe.get("system", k)) for k in ("ecutwfc", "ecutrho"))
+        if rho <= wfc:
+            raise JobError(f"ecutrho must exceed ecutwfc (pw.x stops): {rho:g} <= {wfc:g} Ry")
+        if rho < 4 * wfc:
+            if rho_written:
+                notes.append(f"ecutrho {rho:g} Ry is below 4 x ecutwfc = {4 * wfc:g} Ry (pw.x only warns)")
+            else:
+                qe.set("system", "ecutrho", 4 * wfc)
+                notes[-1] = f"ecutrho = {4 * wfc:g} Ry (4 x ecutwfc; the largest UPF suggestion is {rho:g})"
 
         n_valence = sum(symbols.count(e) * chosen[e][1] for e in elements)
         mult = multiplicity(n_valence, options.charge, options.multiplicity)

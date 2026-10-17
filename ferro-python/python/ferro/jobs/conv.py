@@ -11,6 +11,7 @@ from pathlib import Path
 import ferro
 from ferro.jobs.base import JobError, JobOptions
 from ferro.jobs.cp2k import Section
+from ferro.jobs.qe import QeInput
 from ferro.jobs.vasp import Incar
 
 MANIFEST = "ferro-conv.json"
@@ -49,6 +50,14 @@ def _cp2k_set(path, key, switch=False):
     return apply
 
 
+def _qe_set(key):
+    def apply(text, value, options):
+        qe = QeInput.from_str(text)
+        qe.set("system", key, value)
+        return qe.to_str(), options
+    return apply
+
+
 def _cp2k_needs_gapw(apply):
     def check(text, value, options):
         qs = Section.from_str(text).section("FORCE_EVAL/DFT/QS")
@@ -71,6 +80,9 @@ SCANS = {
         "finer-grid": (_cp2k_set("FORCE_EVAL/DFT/XC/XC_GRID", "USE_FINER_GRID", switch=True), SWITCH, ""),
         "accurate-xcint": (_cp2k_needs_gapw(_cp2k_set("FORCE_EVAL/DFT/QS", "GAPW_ACCURATE_XCINT", switch=True)),
                            SWITCH, ""),
+    },
+    "qe": {
+        "ecutwfc": (_qe_set("ecutwfc"), float, "Ry"),
     },
 }
 
@@ -127,7 +139,8 @@ def build(generator, software, parameter, values, structures, options, template=
 
 # ── 分析 ─────────────────────────────────────────────────────────────────────
 
-OUTPUT_NAMES = {"vasp": ("OUTCAR", "vasprun.xml"), "cp2k": ("cp2k.out", "*.out", "*.log")}
+OUTPUT_NAMES = {"vasp": ("OUTCAR", "vasprun.xml"), "cp2k": ("cp2k.out", "*.out", "*.log"),
+                "qe": ("pw.out", "*.out")}
 # 提示用的阈值（2026-10-16 查惯例：能量 1 meV/atom 为常用判据，SSSP 结合能 2 meV/atom；
 # 压力 1 kbar 取自 SSSP 对 vc-relax 的提醒；力无权威标准，取常见势函数力误差的约 1/10）
 THRESHOLDS = {"de": 1.0, "dp": 1.0, "df_rms": 5.0, "df_max": 10.0}

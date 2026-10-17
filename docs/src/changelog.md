@@ -10,6 +10,19 @@ command line alike; regenerate it rather than migrating it.
 
 ---
 
+## Unreleased
+
+### `ferro-py conv -s qe --scan ecutwfc=…`
+
+QE convergence tests scan `ecutwfc` (`ferro-py doc conv`). `conv analyze` cannot read
+pw.x output yet.
+
+### `ferro-py job -s qe`: `ecutrho` is at least 4 × `ecutwfc`
+
+When `ecutrho` comes from the UPF suggestions and that is below 4 × `ecutwfc`, the job now
+writes 4 × `ecutwfc`. Regenerate QE inputs whose template sets a high `ecutwfc` but no
+`ecutrho`. An `ecutrho` at or below `ecutwfc` in the template is now an error.
+
 ## `v0.4.0` — 2026-10-17
 
 ### `dataset filter` / `merge` kept non-periodic systems periodic

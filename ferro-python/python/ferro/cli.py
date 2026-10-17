@@ -360,10 +360,11 @@ ferro-py conv — Generate a convergence test: one parameter, several values
   meta-GGA, test VASP's fine grid first and ENCUT after.
 
 Parameters:
-  -s, --software S      vasp | cp2k  (required)
+  -s, --software S      vasp | cp2k | qe  (required)
       --scan P[=VALUES] The parameter and its values, START:STOP:STEP or a,b,c  (required)
                         vasp: encut [eV], fine-grid [x NG]
                         cp2k: cutoff [Ry], rel-cutoff [Ry], finer-grid, accurate-xcint
+                        qe: ecutwfc [Ry]
                         (the last two are switches: off and on, no values)
   -i, --input FILE      Structure file(s), any format ferro reads; quoted globs allowed
   -o, --output DIR      Directory receiving the test  (required)
@@ -392,6 +393,7 @@ Examples:
   ferro-py conv -s vasp --scan fine-grid=2,2.5,3,4 -i POSCAR --template r2scan/INCAR -o ng/
   ferro-py conv -s vasp --scan encut=500:900:100 -i traj.lammpstrj --number 3 -o encut/
   ferro-py conv -s cp2k --scan finer-grid -i POSCAR -o fg/
+  ferro-py conv -s qe --scan ecutwfc=40:100:10 -i POSCAR -o ecut/
 
 Full documentation:  ferro-py doc conv"""
 

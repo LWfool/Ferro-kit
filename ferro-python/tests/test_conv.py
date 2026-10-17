@@ -12,6 +12,7 @@ from ferro import cli, config, jobs
 from ferro.jobs import conv
 from ferro.jobs.base import JobError, JobOptions
 from ferro.jobs.cp2k import Cp2kGenerator, Section
+from ferro.jobs.qe import QeInput
 from ferro.jobs.vasp import Incar, VaspGenerator
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests"
@@ -25,13 +26,15 @@ SP = [FIXTURES / "vasp651_sp" / f"frame_{n}" / "OUTCAR" for n in ("0011", "0161"
     ("vasp", "fine-grid=2,3", ("fine-grid", [2.0, 3.0])),
     ("cp2k", "finer-grid", ("finer-grid", ["off", "on"])),
     ("cp2k", "rel-cutoff=40:80:20", ("rel-cutoff", [40.0, 60.0, 80.0])),
+    ("qe", "ecutwfc=40:60:10", ("ecutwfc", [40.0, 50.0, 60.0])),
 ])
 def test_parse_scan(software, text, expected):
     assert conv.parse_scan(software, text) == expected
 
 
 @pytest.mark.parametrize("software, text, message", [
-    ("qe", "ecutwfc=30,40", "offered for vasp, cp2k"),
+    ("gaussian", "x=1,2", "offered for vasp, cp2k, qe"),
+    ("qe", "ecutrho=300,400", "qe scans ecutwfc"),
     ("vasp", "cutoff=300,400", "vasp scans encut, fine-grid"),
     ("vasp", "encut=400", "at least two distinct"),
     ("vasp", "encut=a:b:c", "START:STOP:STEP"),
@@ -66,6 +69,27 @@ def test_vasp_encut_scan_layout(vasp_cfg, tmp_path):
     assert (job / "POTCAR").is_symlink() and str((job / "POTCAR").readlink()) == "../../POTCAR", \
         "嵌套两层时链接仍是相对路径"
     assert (job / "POTCAR").read_text() == (out / "POTCAR").read_text()
+
+
+def test_qe_ecutwfc_scan_keeps_ecutrho_at_least_four_times(tmp_path, monkeypatch, capsys):
+    pp = tmp_path / "upf"
+    pp.mkdir()
+    for name, z in [("O", 6), ("P", 5), ("Zn", 12)]:
+        (pp / f"{name}.UPF").write_text(f'<UPF version="2.0.1">\n<PP_HEADER element="{name}" z_valence="{z}"'
+                                        f' wfc_cutoff="50" rho_cutoff="400"/>\n</UPF>\n')
+    (tmp_path / "c.toml").write_text(f'[qe]\npseudo_dir = "{pp}"\n')
+    monkeypatch.setenv("FERRO_CONFIG", str(tmp_path / "c.toml"))
+    out = tmp_path / "ecut"
+    assert cli.main(["conv", "-s", "qe", "--scan", "ecutwfc=80,120", "-i", str(NVT), "--number", "1",
+                     "-o", str(out), "--mkdir"]) == 0
+    cut = {}
+    for value in ("80", "120"):
+        qe = QeInput.from_str((out / f"ecutwfc_{value}" / "70Z30P00A_NVT_5_0000" / "pw.in").read_text())
+        cut[value] = (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho"))
+        assert qe.get("control", "calculation") == "'scf'", "收敛测试用 sp 模板"
+    assert cut == {"80": ("80.0", "400.0"), "120": ("120.0", "480.0")}, "UPF 建议的 ecutrho 低于 4 × ecutwfc 的档提上去"
+    assert "ecutrho = 480 Ry (4 x ecutwfc" in capsys.readouterr().out
+    assert json.loads((out / conv.MANIFEST).read_text())["unit"] == "Ry"
 
 
 @pytest.mark.parametrize("software, scan", [("vasp", "fine-grid=2,3"), ("cp2k", "finer-grid")])

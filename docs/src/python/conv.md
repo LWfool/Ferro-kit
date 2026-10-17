@@ -8,6 +8,7 @@ value with the most accurate one.
 ferro-py conv -s vasp --scan fine-grid=2,2.5,3,4 -i POSCAR --template r2scan.INCAR -o ng/
 ferro-py conv -s vasp --scan encut=500:900:100 --fine-grid 3 -i md.lammpstrj -o encut/
 ferro-py conv -s cp2k --scan cutoff=300:700:100 -i POSCAR -o cutoff/
+ferro-py conv -s qe --scan ecutwfc=40:100:10 -i POSCAR -o ecut/
 # … run every job …
 ferro-py conv analyze encut/
 ```
@@ -22,6 +23,7 @@ ferro-py conv analyze encut/
 | CP2K | `rel-cutoff=…` | Ry | `&MGRID REL_CUTOFF` |
 | CP2K | `finer-grid` | off, on | `&XC_GRID USE_FINER_GRID` |
 | CP2K | `accurate-xcint` | off, on | `&QS GAPW_ACCURATE_XCINT` (`METHOD GAPW` only) |
+| QE | `ecutwfc=…` | Ry | `&SYSTEM ecutwfc` |
 
 Values are `START:STOP:STEP` (both ends included) or a list `a,b,c`; at least two
 distinct values, used in increasing order. The two CP2K switches take no values.
@@ -36,7 +38,10 @@ several frames of a trajectory (`--number 3`) is safer than on one structure.
 It cannot be combined with `--scan fine-grid` or `--scan finer-grid`, which set
 the same thing.
 
-QE is not offered yet. For QE, test `ecutwfc` by hand (`ferro-py doc job qe`).
+For QE only `ecutwfc` is scanned. `ecutrho` stays as the template writes it, or
+is the largest UPF suggestion; at a value where the suggestion is below
+4 × `ecutwfc`, that value gets 4 × `ecutwfc` instead (`ferro-py doc job qe`).
+`conv analyze` cannot read pw.x output yet: compare the QE jobs by hand.
 
 ## In which order
 
@@ -57,6 +62,9 @@ tested `ENCUT` in its template (`ferro-py doc job vasp`).
 `finer-grid` (for a meta-GGA). With the finer grid switched on, a lower `CUTOFF`
 may be enough, though not necessarily for every element. For `METHOD GAPW`,
 scan `accurate-xcint` as well.
+
+**QE.** Scan `ecutwfc`. `ecutrho` converges easily; the largest UPF suggestion
+(or 4 × `ecutwfc`, whichever is larger) is normally enough.
 
 ## Output layout
 

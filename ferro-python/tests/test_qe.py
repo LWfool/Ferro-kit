@@ -134,3 +134,28 @@ def test_cutoffs_needed(cfg, traj, tmp_path):
     tpl.write_text(QeGenerator.builtin_template("sp").replace("  ibrav = 0\n", "  ibrav = 0\n  ecutwfc = 60\n  ecutrho = 480\n"))
     qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["pw.in"])
     assert qe.get("system", "ecutwfc") == "60", "模板写了截断就沿用"
+
+
+@pytest.mark.parametrize("written, rho, note", [
+    ("  ecutwfc = 120\n", "480.0", "ecutrho = 480 Ry (4 x ecutwfc"),     # UPF 建议 400 < 4 × 120
+    ("  ecutwfc = 120\n  ecutrho = 300\n", "300", "ecutrho 300 Ry is below 4 x ecutwfc"),
+    ("  ecutwfc = 80\n", "400.0", None),                                     # 400 ≥ 4 × 80，不动
+])
+def test_ecutrho_against_four_times_ecutwfc(cfg, traj, tmp_path, written, rho, note):
+    tpl = tmp_path / "pw.in"
+    tpl.write_text(QeGenerator.builtin_template("sp").replace("  ibrav = 0\n", "  ibrav = 0\n" + written))
+    s = QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
+    assert QeInput.from_str(s.files["pw.in"]).get("system", "ecutrho") == rho
+    if note is None:
+        assert not any("4 x ecutwfc" in n for n in s.notes)
+    else:
+        assert any(note in n for n in s.notes), f"该有提示 {note!r}: {s.notes}"
+
+
+def test_ecutrho_not_above_ecutwfc_is_refused(cfg, traj, tmp_path):
+    # pw.x 的 set_cutoff：dual ≤ 1 才 errore；dual < 4 只 infomsg
+    tpl = tmp_path / "pw.in"
+    tpl.write_text(QeGenerator.builtin_template("sp").replace(
+        "  ibrav = 0\n", "  ibrav = 0\n  ecutwfc = 60\n  ecutrho = 60\n"))
+    with pytest.raises(JobError, match="ecutrho must exceed ecutwfc"):
+        QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
