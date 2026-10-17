@@ -422,8 +422,9 @@ network / dft / ml / core（C）：
     rayon `build_global` 两处；io 与 workflow 两份 QE writer（分层所限不能合，先修平 nspin 漂移）。
     ferro-structure 4 处手写完整 `Frame { … }` 字面量**有意不合**：新增字段时编译器逼每个构造点表态
 11. **库 crate 错误类型**：`Table::validate`、`concat_union` 返回 `Result<_, String>`（轻）
-12. **注释语言**：`cp2k.rs` 12 处、`qe.rs` 9 处、`box_builder.rs` 6 处英文 `//`；断言消息
-    `batch.rs:512`、`supercell.rs:322`、`box_builder.rs:531`、`dataset.rs:1854` 为英文
+12. ~~**注释语言**：`cp2k.rs` 12 处、`qe.rs` 9 处、`box_builder.rs` 6 处英文 `//`；断言消息
+    `batch.rs:512`、`supercell.rs:322`、`box_builder.rs:531`、`dataset.rs:1854` 为英文~~ ——
+    **作废**：2026-10-17 规则改为注释与断言一律英文，这些正合规
 13. **过时注释**：`map.rs drive` 文档仍提 `--outdir`；`traj.rs` 模块文档「seven analyses … PNG」；
     两份 `qe.rs` 写 `fe-job`/`fe-convert`；`net.rs fmt_means` 的文档挂到 `warn_edge_sharing`；
     `cube_density.rs:12-16,41-44` 写 `--grid`/`--mode`；`util.rs:1` 自称「三处以上共用」而
