@@ -243,10 +243,7 @@ class QeGenerator(Generator):
         if options.kspacing is not None or qe.card("K_POINTS") is None:
             spacing = options.kspacing if options.kspacing is not None else 0.5
             mesh = kmesh(one.cell(0), spacing)
-            if mesh == [1, 1, 1]:
-                qe.set_card("K_POINTS", "K_POINTS automatic\n  1 1 1  0 0 0")
-            else:
-                qe.set_card("K_POINTS", "K_POINTS automatic\n  " + " ".join(map(str, mesh)) + "  0 0 0")
+            qe.set_card("K_POINTS", "K_POINTS automatic\n  " + " ".join(map(str, mesh)) + "  0 0 0")
             notes.append(f"kspacing {spacing:g} -> mesh {' x '.join(map(str, mesh))}")
         else:
             notes.append("K_POINTS: kept as written in the template")
