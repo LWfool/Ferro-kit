@@ -195,3 +195,10 @@ def test_vary_cell_and_errors(cfg, traj, tmp_path):
     grid = Section.from_str(s.files["cp2k.inp"]).section("FORCE_EVAL/DFT/XC/XC_GRID")
     assert grid.get("USE_FINER_GRID") == "T", "CP2K çš„ --fine-grid æ‰“å¼€ USE_FINER_GRID"
     assert any("probably unnecessary" in n for n in s.notes), "PBE ä¸æ˜¯ meta-GGAï¼Œæç¤ºå¤šåŠç”¨ä¸ç€"
+
+
+def test_placeholder_potential_is_refused(cfg, traj, tmp_path):
+    # POTENTIAL_UZH ï¿½š„ï¿½•ï¿½ç³»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½›ï¿½ï¿½ˆï¿½‹ï¿½€ï¿½Œ NAï¿½‰ï¿½šï¿½”ï¿½ï¿½­ï¿½•ï¿½ï¿½ï¿½ƒï¿½è®°ï¿½ˆ 0
+    (tmp_path / "data" / "GTH_POTENTIALS").write_text(GTH_POTENTIALS.replace("    2    0   10", " NA"))
+    with pytest.raises(JobError, match="GTH-PBE-q12 of Zn .* no electron counts"):
+        Cp2kGenerator(cfg).generate(traj, 0, JobOptions("sp"))

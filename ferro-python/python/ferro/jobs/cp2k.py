@@ -253,7 +253,11 @@ class Cp2kGenerator(Generator):
             if potential not in potentials:
                 raise JobError(f"no potential {potential} for {e} in {', '.join(potential_files)}; "
                                f"available: {', '.join(sorted(potentials)) or 'none'}")
-            out[e] = (basis, potential, sum(potentials[potential]))
+            if not potentials[potential]:
+                # POTENTIAL_UZH 的镧系占位条目下一行是 NA，没有电子数；求和得 0 会静默写错电荷
+                raise JobError(f"potential {potential} of {e} in {', '.join(potential_files)} lists no "
+                               "electron counts (a placeholder entry); name another in [cp2k.kinds]")
+            out[e] =(basis, potential, sum(potentials[potential]))
         return out
 
     def build(self, one, options, template_text):
