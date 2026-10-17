@@ -102,9 +102,11 @@ ecutrho 易收敛，UPF 建议的最大值即可，用户定）
 - ✅ `ferro-py conv -s qe --scan ecutwfc=…`；ecutrho 来自 UPF 建议且低于 4 × ecutwfc 时提到 4 倍并提示，
   模板写的照用只提示，≤ ecutwfc 报错（判据查 QE 7.3.1 `PW/src/input.f90` `set_cutoff`：dual ≤ 1 才
   errore，< 4 只 infomsg）。`conv analyze` 读 QE 等 reader
-- ⏳ **超算算 fixture**（2026-10-17 用户已提交）：`ferro-python/scripts/qe_fixtures_hpc.sh`，结构
-  `exp_603719.cif`（6 原子 AlPO₄）；五个算例 sp / sp_spin / sp_noconv / md / vcmd。结果
-  `qe_fixtures.tar.gz` 拷回 `examples/qe/`。vc-md 输入只在本地用假 pw.x 试过，没经 pw.x 解析
+- ✅ **超算算 fixture**（2026-10-17，QE 7.5，intel 2025.1.3 + impi，16 进程）：
+  `ferro-python/scripts/qe_fixtures_hpc.sh`，结构 `exp_603719.cif`（6 原子 AlPO₄），五个算例全部
+  `JOB DONE`，放在 `examples/qe/pwx/{sp,sp_spin,sp_noconv,md,vcmd}/`（pw.in + pw.out；vcmd 另有
+  pw.x 自己写的逐步文件 `pw.avec` 等，可核对逐步晶胞），作业脚本与日志在 `job/`。首跑全部
+  GENERATION FAILED：作业脚本的 `conda activate` 前缺 `conda init`（用户修好重跑）
 - 待 fixture：pw.x 输出 reader（`readers/qe_out.rs`，单点 + md + vc-md；总力只取第一组，D3 等分量块不读；
   应力符号与 dpdata 交叉核对）→ `aimd.rs` 嗅探 `Program PWSCF`（GIPAW、pp.x 输出须拒收，
   `examples/qe/` 有现成反例）→ collect 手册与帮助页 → `read_output` / `conv analyze` 读 QE。
