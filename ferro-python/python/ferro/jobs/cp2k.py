@@ -309,6 +309,7 @@ class Cp2kGenerator(Generator):
                          + ("" if mgga else "; not a meta-GGA, the finer grid is probably unnecessary"))
         self._kpoints(one, options, dft, notes)
         self._motion(root, force_eval, options, notes)
+        notes.append("parallel settings are not in cp2k.inp: set MPI ranks and OMP_NUM_THREADS in the run command")
         return InputSet({"cp2k.inp": root.to_str()}, notes=notes)
 
     def _kpoints(self, one, options, dft, notes):

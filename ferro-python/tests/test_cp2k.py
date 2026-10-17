@@ -116,6 +116,8 @@ def test_builtin_templates_generate(cfg, traj, task, tmp_path):
     assert back.symbols(0) == one.symbols(0), "写出的 &COORD 可被读回"
     ignore = root.section("FORCE_EVAL/DFT/SCF").get("IGNORE_CONVERGENCE_FAILURE")
     assert (ignore is not None) == (task == "aimd"), "不收敛照跑只在 aimd"
+    assert any("parallel settings" in n for n in s.notes), "并行参数模板不写，生成时提示用户自己加"
+    assert "parallelisation" in Cp2kGenerator.builtin_template(task), "模板头注释也写明"
 
 
 def test_all_electron(cfg, traj, tmp_path):

@@ -9,6 +9,9 @@
 # All-electron instead of GTH pseudopotentials: set &QS METHOD GAPW, use
 #   BASIS_SET_FILE_NAME BASIS_pob and POTENTIAL_FILE_NAME ALL_POTENTIALS, and
 #   uncomment GAPW_ACCURATE_XCINT (CP2K 2026.x); the basis family is ae_basis_family.
+#
+# Not set here on purpose: parallelisation -- CP2K takes it from the MPI ranks and
+# OMP_NUM_THREADS of the run command; add your machine's.
 &GLOBAL
   PROJECT cp2k
   PRINT_LEVEL MEDIUM

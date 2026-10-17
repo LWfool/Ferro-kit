@@ -69,6 +69,8 @@ def test_builtin_templates_generate(cfg, traj, task, tmp_path):
     path = tmp_path / "pw.in"
     path.write_text(s.files["pw.in"])
     assert ferro.read(str(path)).symbols(0) == one.symbols(0), "生成的 pw.in 能被 ferro 读回"
+    assert any("parallel settings" in n for n in s.notes), "并行参数模板不写，生成时提示用户自己加"
+    assert "parallelisation" in QeGenerator.builtin_template(task), "模板头注释也写明"
 
 
 def test_charge_spin_and_md(cfg, traj):

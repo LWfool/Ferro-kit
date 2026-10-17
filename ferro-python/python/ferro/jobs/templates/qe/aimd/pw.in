@@ -9,6 +9,9 @@
 ! atomic units, 1 fs = 20.67). NpT is not offered for QE (vc-md has no thermostat).
 ! Everything else is used as written. The functional comes from the UPF files.
 ! Comments inside the namelists are not carried into the generated pw.in.
+!
+! Not set here on purpose: parallelisation -- pw.x takes it from the command line
+! (mpirun -np N pw.x -nk POOLS -nd DIAG); add your machine's.
 &CONTROL
   calculation = 'md'
   restart_mode = 'from_scratch'

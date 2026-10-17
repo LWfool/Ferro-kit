@@ -270,4 +270,5 @@ class QeGenerator(Generator):
                     nraise = int(qe.get("ions", "nraise", "1"))
                     notes.append(f"SVR time constant nraise = {nraise} steps = {nraise * options.timestep:g} fs "
                                  "at this timestep (nraise counts steps, not time)")
+        notes.append("parallel settings are not in pw.in: add your machine's to the run command (-nk, -nd)")
         return InputSet({"pw.in": qe.to_str()}, notes=notes)

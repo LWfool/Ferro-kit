@@ -7,6 +7,9 @@
 ! ecutwfc / ecutrho: when not written here, the largest suggestion in the UPF headers.
 ! Everything else is used as written. The functional comes from the UPF files.
 ! Comments inside the namelists are not carried into the generated pw.in.
+!
+! Not set here on purpose: parallelisation -- pw.x takes it from the command line
+! (mpirun -np N pw.x -nk POOLS -nd DIAG); add your machine's.
 &CONTROL
   calculation = 'scf'
   restart_mode = 'from_scratch'
