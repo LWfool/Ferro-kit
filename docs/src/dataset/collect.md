@@ -328,11 +328,17 @@ stripping it is exactly what tells the systems apart:
 | `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`, `sets/b/md.db/` |
 | `*.out -o sys` (one directory) | `sys.db/` itself |
 | `a/total.out b/md/total.out -o sets` | `sets/a.db/`, `sets/b/md.db/` |
+| `md/x.out md/sub/y.out -o sets` | `sets/md.db/`, `sets/md/sub.db/` |
+| `total.out run1/a.out -o sets`, run in `md/` | `sets/md.db/`, `sets/md/run1.db/` |
 
 The file stem never enters the name — `total.out` and `PZA.out` in the same
 directory produce the same system. With only one input directory the shared
 ancestor is the whole path, `<name>` is empty, and the system is written into
-`-o` itself: there is nothing to tell apart.
+`-o` itself: there is nothing to tell apart. With several, an input directory
+that *is* the shared ancestor would get an empty name and land in `sets.db/`,
+outside the `sets/` holding its siblings; the ancestor is taken one level up
+instead, so every system keeps a name and all of them nest under `-o`. A bare
+file name such as `total.out` belongs to the current directory.
 
 `-o` is **optional**. Without it the system lands **beside** the AIMD directory
 it came from, which keeps a collected dataset next to the run that produced it.
