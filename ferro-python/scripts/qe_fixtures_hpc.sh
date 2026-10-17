@@ -30,9 +30,10 @@ STEM=$(basename "$STRUCTURE"); STEM=${STEM%.*}
 gen() {
     local name=$1 task=$2; shift 2
     rm -rf "$WORK/$name"
+    # stderr 单独存：stdout 有缓冲、退出时才落盘，合在一起时末行是 Created: 而不是报错
     if ! ferro-py job -s qe -t "$task" -i "$STRUCTURE" -o "$WORK/$name" --mkdir "$@" \
-            > "$WORK/$name.gen.log" 2>&1; then
-        echo "$name: GENERATION FAILED  $(tail -1 "$WORK/$name.gen.log")" >&2
+            > "$WORK/$name.gen.log" 2> "$WORK/$name.gen.err"; then
+        echo "$name: GENERATION FAILED  $(tail -1 "$WORK/$name.gen.err")" >&2
         return 1
     fi
     echo "$WORK/$name/$STEM"
@@ -81,6 +82,7 @@ s = re.sub(r"(?is)(&IONS.*?\n\s*/\s*\n)", r"\1&CELL\n  cell_dynamics = '"'"'pr'"
 ' && { echo "vcmd: $(run "$d")"; dirs+=("$d"); }
 fi
 
+[ ${#dirs[@]} -eq 0 ] && { echo "nothing to pack: no case was generated" >&2; exit 1; }
 cd "$WORK" && tar czf qe_fixtures.tar.gz $(for d in "${dirs[@]}"; do
     r=${d#"$WORK"/}; for f in pw.in pw.out run.log; do [ -f "$d/$f" ] && echo "$r/$f"; done
 done)
