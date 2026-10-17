@@ -715,9 +715,16 @@ struct Group {
 fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
     // 分组键取规范化路径，`a/x.out` 与 `./a/y.out` 才落进同一组；
     // 显示与命名仍用规范化后的路径，两者一致
+    // A bare `a.out` has parent `Some("")`, which canonicalize rejects: read it as `.`.
+    let dir_of = |p: &Path| -> PathBuf {
+        match p.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d.to_path_buf(),
+            _ => PathBuf::from("."),
+        }
+    };
     let key_of = |p: &Path| -> PathBuf {
-        let dir = p.parent().unwrap_or(Path::new("."));
-        std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())
+        let dir = dir_of(p);
+        std::fs::canonicalize(&dir).unwrap_or(dir)
     };
 
     let mut order: Vec<PathBuf> = Vec::new();
@@ -728,7 +735,7 @@ fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
             order.push(k.clone());
         }
         // 显示路径取用户写下的那一个（规范化后是绝对路径，刷屏且认不出）
-        let as_written = p.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let as_written = dir_of(p);
         by_dir
             .entry(k)
             .or_insert_with(|| (as_written, Vec::new()))
@@ -737,7 +744,15 @@ fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
     }
     order.sort();
 
-    let ancestor = common_ancestor(&order);
+    let mut ancestor = common_ancestor(&order);
+    // A group sitting at the ancestor itself would get an empty name and land in
+    // `<-o>.db`, beside the `<-o>/` holding its siblings. One level up, every
+    // group keeps a name and all of them nest under `-o`.
+    if order.len() > 1 && order.contains(&ancestor) {
+        if let Some(up) = ancestor.parent() {
+            ancestor = up.to_path_buf();
+        }
+    }
     order
         .into_iter()
         .map(|key| {
@@ -2184,6 +2199,23 @@ mod tests {
     fn uneven_depth_is_kept_as_given() {
         // 输入本来就不齐，产物忠实反映；find_systems 与 merge 都是递归的
         assert_eq!(rels(&["/s/a/total.out", "/s/b/md/total.out"]), vec!["a", "b/md"]);
+    }
+
+    #[test]
+    fn a_group_sitting_at_the_ancestor_is_named_by_its_directory() {
+        // Otherwise its rel is empty and it lands in `<-o>.db`, outside the
+        // `<-o>/` that holds its sibling groups.
+        assert_eq!(rels(&["/s/md/x.out", "/s/md/sub/y.out"]), vec!["md", "md/sub"]);
+    }
+
+    #[test]
+    fn a_bare_file_name_groups_under_the_current_directory() {
+        // `Path::new("a.out").parent()` is `Some("")`, not `None`. cargo runs
+        // tests from the crate directory, so `.` canonicalises to `ferro-cli`.
+        assert_eq!(rels(&["a.out", "src/b.out"]), vec!["ferro-cli", "ferro-cli/src"]);
+        let groups = group_by_directory(&[PathBuf::from("a.out")]);
+        let dest = collect_dest(None, &groups[0]);
+        assert_eq!(dest.file_name().unwrap(), "ferro-cli.db", "got {}", dest.display());
     }
 
     #[test]
