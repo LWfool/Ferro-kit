@@ -11,7 +11,7 @@ than `cargo build`.
 The package is one wheel per platform (abi3: any CPython ≥ 3.11) with the Rust
 code compiled in and nothing else to install, so it runs on an offline cluster.
 GitHub Actions builds `manylinux2014` x86_64 (CentOS 7 and later) and macOS arm64
-wheels; download the artifact and
+wheels on `v*` tags or a manual run (artifacts kept 7 days); download the artifact and
 
 ```bash
 pip install --no-index ferro-*.whl      # `import ferro` and the ferro-py command

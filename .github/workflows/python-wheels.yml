@@ -5,12 +5,15 @@ name: python-wheels
 
 on:
   workflow_dispatch:
+  # Build only on release tags (and manual runs); ordinary pushes build nothing.
+  # Path filters would be ignored for tag pushes, so none are set.
   push:
-    branches: [main]
-    paths:
-      - "ferro-*/**"
-      - "docs/src/python/**"   # ferro-py doc 的手册经 include_str! 编进 wheel
-      - ".github/workflows/python-wheels.yml"
+    tags: ["v*"]
+
+# A newer run for the same ref cancels the one still in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   linux:
@@ -26,6 +29,7 @@ jobs:
         with:
           name: wheel-linux-x86_64
           path: dist/*.whl
+          retention-days: 7
 
   macos:
     runs-on: macos-14
@@ -39,6 +43,7 @@ jobs:
         with:
           name: wheel-macos-arm64
           path: dist/*.whl
+          retention-days: 7
 
   # 用编好的 manylinux wheel 跑 pytest：装的是要发到超算的同一个文件
   test-linux:

@@ -508,6 +508,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 `pip install --no-deps --target <scratch>` 后 `PYTHONPATH=<scratch> python -m pytest`。
 GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_64 与 macOS arm64
 wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `903de96` 全绿。
+**2026-10-17 起只在推 `v*` tag 或手动触发时跑**（用户定：平时推送构建没有意义）；同一 ref 的新一轮
+取消进行中的旧一轮；artifacts 保留 7 天。
 CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它与 numpy 2 不兼容，运行时
 补 `numpy.cumproduct = numpy.cumprod` 再调；关键字表较旧，不认 `IGNORE_CONVERGENCE_FAILURE`
 与 `GAPW_ACCURATE_XCINT`）。三个程序的真实运行验收：超算冒烟 9/9 通过（2026-10-16 第二轮；VASP 6.5.1、QE 7.5、CP2K 2026.2；
