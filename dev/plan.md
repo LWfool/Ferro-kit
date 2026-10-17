@@ -154,7 +154,7 @@ D-M6–D-M12 同组）；B-3、B-4 随 cube_sdf 改写（与 B-6、S-A 同组）
 rotcorr/vanhove/bondlife）· D network/dft/ml/core · E cli 驱动/render/structure · G 横切（R1–R6、
 死代码、手册一致性、scripts/、dev/ 漂移）。`ferro-python`、`ferro-workflow`、`cmd/job.rs` 按用户
 要求**不在范围内**。对照 deepmd 环境的 ase 3.29 / dpdata 1.0.2 / MDAnalysis / pymatgen 源码与
-`examples/cp2k-2026.2/src`，可联网查文献。复现 fixture 是一次性的（会话 scratch），未进仓；复现
+`examples/external/cp2k-2026.2/src`，可联网查文献。复现 fixture 是一次性的（会话 scratch），未进仓；复现
 写到可重做的程度。A-18 与 G-6 是同一条，合并。四条登记勘误（G-2、G-3、G-4、G-15）已直接改在
 `plan.md` / `progress.md` / `issues.md` 的原条目里，G-3 并入零调用清单的判断。
 
@@ -263,7 +263,7 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
-dpdata 1.0.2、MDAnalysis 2.10、pymatgen 2026.7.16），CP2K 口径对照 `examples/cp2k-2026.2/src`。
+dpdata 1.0.2、MDAnalysis 2.10、pymatgen 2026.7.16），CP2K 口径对照 `examples/external/cp2k-2026.2/src`。
 复现 fixture 是一次性的（会话 scratch），未进仓；复现写到可重做的程度。
 **「严重」级 21 条主会话已用 debug 版 `ferro` 逐条复现**（B-2 只复现了 sq 一路）；
 中 / 轻级与布局建议是子代理实测或读码的结论，标「推断」的未实测。
@@ -302,7 +302,7 @@ network / dft / ml / core（C）：
 
 入口 / 结构 / 工作流（D）：
 
-**QC 输入生成组**（**2026-10-17 `ferro-workflow` 与 `cmd/job.rs` 已删，本组不再修**；保留作 ferro-py job 的不重犯清单，第 15–17 步已对照）：D-M4、D-M6–D-M12（CP2K / QE / Gaussian 输入生成）**挂起作专项**（2026-10-08 用户定：大工程，先记录）。动手前须逐条对照 `examples/cp2k-2026.2/src` 与 QE、Gaussian 官方文档核实——D-M10 等几条只是推断；修完应能让生成的输入真跑过一次各软件的输入解析。
+**QC 输入生成组**（**2026-10-17 `ferro-workflow` 与 `cmd/job.rs` 已删，本组不再修**；保留作 ferro-py job 的不重犯清单，第 15–17 步已对照）：D-M4、D-M6–D-M12（CP2K / QE / Gaussian 输入生成）**挂起作专项**（2026-10-08 用户定：大工程，先记录）。动手前须逐条对照 `examples/external/cp2k-2026.2/src` 与 QE、Gaussian 官方文档核实——D-M10 等几条只是推断；修完应能让生成的输入真跑过一次各软件的输入解析。
 
 | # | 位置 | 问题 / 依据 | 修法 |
 |---|---|---|---|
@@ -671,7 +671,7 @@ on-grid `:213-232`、near-grid `:580-597`、off-grid `:763-770`）。`volchg.pus
 > **2026-10-17 作废**：`ferro job` 与 `spin.rs` 已删，ferro-py 只按奇偶取多重度（见「`ferro.jobs`」
 > 的「自旋」一行）。下面的源码核对与行业调研留作以后再做未成对电子推断时的参考。
 
-**CP2K 自己不推断多重度**（`examples/cp2k-2026.2`）。`qs_environment.F:2013` 在
+**CP2K 自己不推断多重度**（`examples/external/cp2k-2026.2`）。`qs_environment.F:2013` 在
 `MULTIPLICITY` 未给（=0）时只按价电子数奇偶取 1 / 2；`:2032` 奇数电子不开 UKS
 直接 abort（有 smear 时例外）；`:2090` 按 $N_\alpha = (N+M-1)/2$、
 $N_\beta = (N-M+1)/2$ 切分，$N+M-1$ 为奇数报「try a different multiplicity」。

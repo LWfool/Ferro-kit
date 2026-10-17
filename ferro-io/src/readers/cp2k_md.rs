@@ -796,7 +796,7 @@ mod tests {
         assert_eq!(st.n_scf_failed, 1);
     }
 
-    /// End-to-end against a real CP2K MD log, cut from `examples/total.out`.
+    /// End-to-end against a real CP2K MD log, cut from `examples/cp2k/md/total.out`.
     ///
     /// The temperature line carries the instantaneous value and the running
     /// average; this fixture was chosen because the two differ from frame 2 on
@@ -832,7 +832,7 @@ mod tests {
     #[test]
     #[ignore]
     fn reads_the_reference_output() {
-        let (traj, st) = read_cp2k_md_with_stats(Path::new("../examples/total.out")).unwrap();
+        let (traj, st) = read_cp2k_md_with_stats(Path::new("../examples/cp2k/md/total.out")).unwrap();
         println!("{st:?}");
         println!("frames={} atoms={:?}", traj.n_frames(), traj.n_atoms());
         let f = &traj.frames[0];

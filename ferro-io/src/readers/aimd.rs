@@ -263,13 +263,13 @@ mod tests {
     #[ignore = "reads the multi-hundred-MB files under examples/"]
     fn the_full_files_agree_with_dpdata() {
         let (o, os) = read_aimd_with_stats(
-            std::path::Path::new("../examples/50Z50P_0.970_3000K.outcar")).unwrap();
+            std::path::Path::new("../examples/vasp/50Z50P_0.970_3000K.outcar")).unwrap();
         assert_eq!(o.n_frames(), 2000, "dpdata reads 2000 frames");
         assert_eq!(os.n_restarts, 1, "1..1575 then 1..425");
         assert_eq!(os.n_incomplete, 1, "step 1576 was cut off mid-run");
 
         let (x, xs) = read_aimd_with_stats(
-            std::path::Path::new("../examples/vasprun.xml")).unwrap();
+            std::path::Path::new("../examples/vasp/vasprun.xml")).unwrap();
         assert_eq!(x.n_frames(), 425);
         assert_eq!(xs.n_dropped(), 0);
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """把 `ferro traj sq` 与 dump2sq 算出的 S(q) 和实验数据画在一起。
 
-轨迹默认用 70ZnO-30P2O5（无 Al）的 NVT 轨迹：优先 examples/70Z30P00A_NVT.lammpstrj
+轨迹默认用 70ZnO-30P2O5（无 Al）的 NVT 轨迹：优先 examples/lammps/70Z30P00A_NVT.lammpstrj
 （50 帧，8 MB，未入库），缺席时退到 tests/70Z30P00A_NVT_5.lammpstrj（5 帧，已入库）。
 实验数据取 tests/Experiment.xlsx 的 Sheet1 —— 该表的四列
 nq_70 / SQn_70 / xq_70 / SQx_70 正是同一组分的中子与 X 射线总结构因子。
@@ -55,7 +55,7 @@ DEFAULT_XLSX = REPO / "tests" / "Experiment.xlsx"
 # 两者结论一致：50 帧 rms(fe−exp)=0.0194/0.0277，5 帧 0.0197/0.0282，
 # fe 与 dump2sq 的一致性同样在 1e-3 量级，FSDP 峰位相同。
 TRAJ_CANDIDATES = [
-    REPO / "examples" / "70Z30P00A_NVT.lammpstrj",
+    REPO / "examples" / "lammps" / "70Z30P00A_NVT.lammpstrj",
     REPO / "tests" / "70Z30P00A_NVT_5.lammpstrj",
 ]
 

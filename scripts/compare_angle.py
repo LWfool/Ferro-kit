@@ -61,7 +61,7 @@ TRIPLETS = [("O", "P", "O"), ("O", "Al", "O")]
 SUFFIX = "cmp"  # -o 的批次标记；三元组由文件名的 label 段区分，不必再进后缀
 
 REPO = Path(__file__).resolve().parent.parent
-DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
+DEFAULT_TRAJ = REPO / "examples" / "lammps" / "43Z43P15A_NPT.lammpstrj"
 
 # ferro 的 `[statistics]` 块：`O-P-O  : mean=109.320  std= 6.072  count=25740`
 FE_STATS_RE = re.compile(

@@ -73,7 +73,7 @@ ferro traj angle -a O -b P -c O -i traj.dump \
         --angle-min 0.05 --angle-max 180.05 --d-angle 0.1
 ```
 
-Verified on `examples/43Z43P15A_NPT.lammpstrj`: after accounting for the ×2 counting
+Verified on `examples/lammps/43Z43P15A_NPT.lammpstrj`: after accounting for the ×2 counting
 convention, all 1800 bins of both O–P–O and O–Al–O match `dump2analysis` as **exact
 integers** (zero differing bins). See `scripts/compare_angle.py --align-binning`.
 

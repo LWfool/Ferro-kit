@@ -8,10 +8,10 @@ type_new**。于是原子类型是按**数组下标**而非实际元素归类的
 `dump_modify sort id` 时，原子书写顺序随 domain decomposition 变化，第 1 帧起
 partial 归类即失效。
 
-实测（examples/43Z43P15A_NPT.lammpstrj，帧间同位置同 id 仅 210/2004）：
+实测（examples/lammps/43Z43P15A_NPT.lammpstrj，帧间同位置同 id 仅 210/2004）：
 10 条 partial 相互相关系数 0.959，XRD 与中子总曲线相关 0.9986 —— 加权被完全冲掉，
 两条总曲线都退化成总 g(r) 的傅里叶变换（与 FT[自身 total g(r)] 相关 0.9987/0.9999）。
-换一条按 id 排序的轨迹（examples/70Z30P00A_NVT.lammpstrj，5003/5003），
+换一条按 id 排序的轨迹（examples/lammps/70Z30P00A_NVT.lammpstrj，5003/5003），
 ferro 与 dump2sq 的总曲线 max|Δ| 降到 8e-4 ~ 2.7e-3。
 
 `dump2analysis` 每帧按元素重新选原子，不受影响。

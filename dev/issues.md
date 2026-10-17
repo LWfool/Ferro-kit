@@ -95,7 +95,7 @@
 - `angle.rs` `neighbors_of` 每对被枚举两次后靠 `j<=i` 丢一半，**2× 计算浪费但不影响
   正确性 —— 决定不处理**
 - `sq.rs` 的 Faber-Ziman 权重曾全 n² 遍历 + `factor=2.0`，异种对被加两次。实测
-  `examples/70Z30P00A_NVT.lammpstrj` 大 q 处 `total_xrd` 旧/新 = **1.588**、
+  `examples/lammps/70Z30P00A_NVT.lammpstrj` 大 q 处 `total_xrd` 旧/新 = **1.588**、
   `total_neutron` = 1.524，修后尾部收敛到 1.007。改权重公式后**必须验大 q 是否趋于 1**
 
 ## NPT 逐帧体积归一化（2026-08-08 已修，0.1.13）
@@ -203,7 +203,7 @@ type_new**。于是原子类型按数组下标而非实际元素归类。LAMMPS 
 
 | 轨迹 | 帧间同位置同 id | partial 平均互相关 (q>2) | XRD vs ND 相关 | fe 与 d2sq 的 max\|Δ\| |
 |---|---|---|---|---|
-| `examples/43Z43P15A_NPT.lammpstrj`（未排序） | 210/2004 | **0.959** | 0.9986 | 0.31 / 0.14 |
+| `examples/lammps/43Z43P15A_NPT.lammpstrj`（未排序） | 210/2004 | **0.959** | 0.9986 | 0.31 / 0.14 |
 | `tests/70Z30P00A_NVT.lammpstrj`（已排序） | 5003/5003 | −0.118 | 0.4280 | **0.0008 / 0.0027** |
 
 决定性验证：`.gr` 的 `Total` 列不经过 `type_new`，是全文件唯一干净的一列。拿它自己做

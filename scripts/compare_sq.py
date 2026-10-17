@@ -69,7 +69,7 @@ DQ = 0.05
 SQ_SHIFT_REF = 1.0
 
 REPO = Path(__file__).resolve().parent.parent
-DEFAULT_TRAJ = REPO / "examples" / "43Z43P15A_NPT.lammpstrj"
+DEFAULT_TRAJ = REPO / "examples" / "lammps" / "43Z43P15A_NPT.lammpstrj"
 
 
 def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
