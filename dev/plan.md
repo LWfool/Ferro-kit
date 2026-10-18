@@ -10,6 +10,180 @@
 
 ## 优先级高
 
+### 2026-10-17 全盘架构审查（六路并行，只读；HEAD `5498e30`；全部未修）
+
+六个子代理按领域审：A 分层与依赖 · B ferro-core 数据模型 · C ferro-io · D ferro-analysis · E ferro-cli ·
+F ferro-python。已登记的条目不重报，延伸处注明原编号。复现 fixture 是一次性的（会话 scratch），未进仓。
+**主会话亲自复现 / 读码确认**：A-7（pbc，见下）、C-6、C-3、A-11。
+
+**总体结论**：分层健全，不推倒。中间层无横向依赖（Cargo.toml 与 `use` 都核对过）；analysis / structure /
+render 不碰文件系统，**没有功能模块绕过 core 直接调 io**；CLI 内无格式解析、几乎无物理计算；Python 与主体库
+分工基本守住，绑定层是薄封装。问题集中在：core 收了不该收的算法、同一事实散在入口层、告警与格式识别
+各有多套、内存模型。**不重写**：`batch.rs` 的泛型形状、`md/correlate.rs`、gr 的 NPT 逐帧归一、`ml/merge`、
+vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py` 三层。
+
+**用户定（2026-10-18）**：
+- 全部登记；按下面的执行顺序逐步做，**每一步的执行计划先交用户审核**，批准后才动手
+- **`Atom` 存储方式一并改**（不止记方向）
+- **电荷保留**。来源只有：LAMMPS data 的 `full` / `charge` 类型、lammpstrj 的 `q` 列（逐原子 `Atom.charge`），
+  以及 Bader 分析产出的电荷。supercell / merge 没有 CLI 入口（只经 Python 的 structure 绑定）。
+  `Frame.charge`（整数总电荷）的具体形态在第 5 步的执行计划里定
+- **删 `Frame.multiplicity`、`Frame.bonds`、`TrajectoryMetadata.timestep`**（无生产者）
+- 降级一条：E2-2「`filter -s 5` 静默当 5 GPa」—— 帮助页本来写的是 `-s, --s-max <GPA>`，属与全仓
+  「`-s` 是批次后缀」的约定撞名，不是静默出错，归第 6 步的命名统一
+
+**执行顺序**（每步单独出计划给用户审）：
+
+| 步 | 内容 | 条目 |
+|---|---|---|
+| 1 | 零散的静默错数据 / 越界写（修法明确、代价小） | C-6、C-3、A-11、C-10 / A-10、C-7、E2-9、E2-10、B7、B8、C-5 |
+| 2 | **周期几何原语下沉 core**（按轴 pbc、预存逆矩阵、cell list、构造时拒奇异 / NaN、构造处查最小镜像上界）；非三维周期体系的 gr / sq 归一化口径另定 | A-7 / B1、D-A2、B10、B6、D-P2、D-A5；延伸布局建议 4、9，bondlife cell list，rotcorr Sum |
+| 3 | 告警通道 + `Result` 统一 + `Format` 表（名字优先、内容兜底，并入 sniff 与多帧能力） | C-4 / E2-1 / A-8 / D-A1、D-A3、C-2、C-3（余下部分）、C-7 契约、C-9、C-8 / D-1 |
+| 4 | 内存：map 系列改 fold → reader 流式 → **`Atom` 存储改为拓扑 / 坐标分离** | D-P1、C-1、B15、B5 |
+| 5 | 职责归位与数据模型清理 | A-1、A-2 / B5、A-5 / D-A4、E2-4、A-4 / B2 / B3（按上面的用户定）、B4、B14、B9、B11–B13、A-6、A-9、A-12 |
+| 6 | CLI 命名与驱动 | E2-2、E2 R-2（产物命名统一，破坏性）、E2-3 / E2-6 / E2-7 / E2-8、E2-5、E2-11、E2-12、msd 的 D 换算 |
+| 7 | ferro-python | F 全部 |
+| 8 | 剩余轻级与文档漂移 | 各组「轻」 |
+
+Bader 与 cube_sdf 两个改写组仍各自挂起，D 组给出的新结构记在下面「D 组」R-2 / R-3。
+第 2 步与第 4 步都要改 `Frame` 的几何读取路径：第 2 步的原语接口按「坐标切片 + 胞 + pbc」设计，
+第 4 步改 `Atom` 时不必再改一遍调用点。
+
+#### A 组：分层与依赖
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| A-1 | 中 | `ferro-core/src/network_type.rs`（699 行）、`cluster.rs`（272 行） | 网络分类是**算法**却在 core。根因：structure 里两个属于分析的函数要叫它们 —— `find_clusters`（`ferro-structure/src/cluster.rs:39`，生产零调用）、`classify_trajectory`（`typing.rs:15`，唯一调用者 `cmd/net.rs:254`）。移走后 `classify_frame` / `AtomType` / `NetworkGraph` / `CutoffTable` 只剩 analysis 用。布局建议 4 范围不够；M1 待定第 5 条「`find_clusters` 够不着 `within_minimum_image`」也出自这里。`ferro-analysis/src/lib.rs:14` 再导出 core 类型是补丁痕迹 | 整体搬进 `ferro-analysis/src/network/`（含 `data/qn_elements.rs`）；`find_clusters` 搬或删；`classify_trajectory` 内联进 net.rs。CLAUDE.md / overview 的架构图与「AtomType 在 core」措辞要改 |
+| A-2 | 中 | `ferro-analysis/src/ml/merge.rs:52 sort_atoms` | Frame 原子置换放在 analysis，`convert.rs:124`、`dataset.rs:838,1570`、`ferro-python/src/jobs.rs:21` 为重排原子依赖分析库；新增逐原子字段时要记得去 ml/merge 改 | 置换本体下沉 `Frame::permute(&order)`，`canonical_order` 留原处 |
+| A-3 | 轻 | `dft/bader.rs:165,194,217` | ACF / BCF / AVF 文本在 analysis 里拼，不走 `write_table` | 随 Bader 重写：改 `to_tables()`，或承认是外部格式搬 `ferro-io/src/writers/bader.rs` |
+| A-4 | 中 | `frame.rs:27,29` | `Frame.charge` / `multiplicity` 无 reader 写入，supercell（`:152` 乘复制数、多重度置 1）/ merge（`:155` 求和、置 1）/ vacuum（透传）各算各的；Python `types.rs:80-87` 当恒 0 / 1 的事实暴露 | 按用户定：charge 保留并接上来源，multiplicity 删（第 5 步） |
+| A-5 | 中 | `md/util.rs:89 check_frame_spacing` | 不在五个时间相关 `calc_*` 里，由 `cmd/traj.rs:457,590,635,677,718` 与 `ferro-python/src/analysis.rs:109` 各自调；`validate()` / `check_same_atoms()` 却在库内 | 移进 `calc_msd/vacf/rotcorr/bondlife/vanhove` 开头，删 6 个外部调用（= D-A4） |
+| A-6 | 轻 | `cmd/net.rs:106,108,254` | `net --export-traj` 对同一轨迹分类两遍，两条路对无胞帧处理不同 | 随 A-1：`NetworkResult` 带回逐帧 `AtomType` |
+| A-7 | **中，主会话复现** | `cell.rs:175 minimum_image`；分析层 78 处 `cell.is_some()` 判周期 | **有胞但 pbc 非全 T 的帧被当三维周期体系**：`grep '\.pbc' ferro-analysis/src` 零引用（除 `pbc_i`）。产出这种帧的 reader：deepmd nopbc（`deepmd.rs:148`）、extxyz `pbc="F F F"`、CP2K `PERIODIC NONE/XY`。主会话复现：3 Å 盒、`pbc="F F F"`、两 O 实距 2.0 Å，`traj gr` 在 1.0 Å 给出近邻（CN=1），退出码 0。已登记的「filter 几何判据不读 pbc」（本文件 2026-10-03 节）与「DeePMD writer slab 写成全周期」是它的症状 | 第 2 步周期几何原语；先定非三维周期体系的入口口径（报错 / 告警 / 真按轴支持） |
+| A-8 | 轻 | `lammps_dump.rs:92,369-379`、`vasp.rs:117`、`sq.rs:278` 等 | 库直接 `eprintln!`；`lammps_dump.rs:373` 还印出 CLI 选项名 `-a/-b/-c`；同 crate 已有 `read_deepmd_npy_with_warnings` 反例 | 第 3 步告警通道 |
+| A-9 | 建议 | `cmd/dataset.rs:1471 set_spans` vs `writers/deepmd.rs:219 set_bounds` | 逐字两份。issues.md「全库简化审计」判「不到三处不合」，但这里抽象已存在于 io，是复用已有函数 | `set_bounds` 改 `pub`，CLI 调它；是否改由用户定 |
+| A-10 | 轻（实测） | `ferro-structure/src/typing.rs:47 fold_labels` vs `readers/lammps_dump.rs:300` | 标签「折」与「拆」是一对往返契约，分在两个 crate；dump writer（`writers/lammps_dump.rs:113`）只写 element，`convert x.extxyz -o y.lammpstrj` 静默丢标签 | `fold_labels` 移进 dump writer（= C-10） |
+| A-11 | **轻，主会话确认** | `ferro-python/src/analysis.rs:20,51` vs `md/gr.rs:119` | g(r) 默认值三处手写，Python `dr=0.01, r_min=0.005` ≠ 库 / CLI `0.002 / 0.001`，默认值下 bin 网格不同 | CLI 用 `default_value_t = GrParams::default().dr`；Python 取库默认或在 api.md 写明 |
+| A-12 | 轻 | `dft/mod.rs:8-9`、`md/mod.rs:10-41`、`lib.rs:17-27`、`readers/mod.rs:3-20` | 公开面不收口：`GrParams` 有三条可达路径，内部模块全 `pub`，dead_code 检查因此失效（零调用清单靠 grep） | 子模块改 `pub(crate)`，只留一层再导出（延伸 G-3） |
+
+#### B 组：ferro-core 数据模型
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| B1 | 中（实测） | `cell.rs:175-183` | 同 A-7（10 Å 盒、实距 9 Å 复现 CN=1） | 第 2 步 |
+| B2 | 中 | `frame.rs:27-33` | `charge` / `multiplicity` / `bonds` 无生产者；`bonds` 无 writer 消费，`issues.md` 两次「重排漏了 bonds」都是为它付的税 | 按用户定 |
+| B3 | 轻 | `trajectory.rs:163-164,220` | `TrajectoryMetadata.timestep` 无 reader 赋值，`time_at` 已在零调用清单 | 按用户定删 |
+| B4 | 轻 | `metadata.source` | 一字段两种语义：POSCAR / xyz / cif / pdb / lammps_data 存标题，cp2k / qe_out / deepmd 存来源软件；`inspect.rs:140` 拿它做字符串相等判断（已登记的 vasprun 温度说明是其症状） | 拆 `title: Option<String>` 与 `source: Option<SourceKind>` |
+| B5 | 轻 | `atom.rs:10-23` vs `frame.rs:39,50` | 逐原子数据一半在 `Atom`（mass / charge / magmom / label）一半在 `Frame`（forces / velocities），长度无类型约束，各 reader 口径不一（`extxyz.rs:172` 静默丢、`vasprun.rs:244` 报错） | 第 4 步拓扑 / 坐标分离时一并定 |
+| B6 | 轻 | `network_type.rs:275,280`、`cluster.rs:69-75` | `classify_frame(frame, cell, …)` 冗余的 `cell` 参数，允许与 `frame.cell` 不一致（推断，未逐个核对调用点） | 内部取 `frame.cell`，无胞返回 Err |
+| B7 | 中（实测） | `charge_grid.rs:54-55` | `ChargeGrid::new` 对退化胞 `expect` panic：第三晶格矢量为 0 的 CHGCAR 让 `ferro bader` 退出码 134。B-1 / D-M17 修了分析侧，漏了 core 构造器 | 返回 `Result` |
+| B8 | 轻（实测） | `readers/chgcar.rs:103-107` | CHGCAR 网格维数为 0 时 bader 输出 0 e、退出码 0（cube reader 已有此检查） | 「维数 ≥ 1」放进 `ChargeGrid::new`，一处守住两个 reader |
+| B9 | 轻 | `trajectory.rs:120-121` vs `gr.rs:279-290` | `check_same_atoms` 的 doc 说 gr 允许原子数变化，gr 实际报错 | 改 core 的 doc |
+| B10 | 轻 | `cell.rs:39` | `from_lengths_angles` 放行 NaN（`a <= 0.0` 对 NaN 为假），角度不查 | `!(a > 0.0)`，角度查有限 |
+| B11 | 建议 | `writers/deepmd.rs:86-97` | 重写了一遍 `check_same_atoms`；「有胞 / 无胞一致」也三处各写 | 复用；core 加 `check_same_periodicity()` |
+| B12 | 建议 | `gr.rs:67`、`writers/deepmd.rs:102`、`ml/merge.rs:36-44` | `(Z, 符号)` 规范元素序三份，`issues.md` 要求三者一致，跨 io 与 analysis | 下沉 `ferro_core::data::elements::canonical_cmp` |
+| B13 | 建议 | `readers/deepmd.rs:138`、`readers/extxyz.rs:300`、`writers/extxyz.rs:93`、`writers/deepmd.rs:188` | stress↔virial 四处各写，零体积守卫口径漂开，deepmd writer 不查 | core 加 `Frame::virial()` / `stress_from_virial`；不做则写互指注释 |
+| B14 | 轻 | `data/compounds.rs`、`elements.rs:136-203,9-14`、`error.rs:7-35` | 只一个中间层用的项：`compounds` 只 structure 用、`split_element_label` 只 io 用；`ElementData` 的氧化态 / 电负性 / 名称已无读者；`ChemError` 7 个变体里 5 个从未构造 | 搬到使用方或删 |
+| B15 | 中（实测） | `atom.rs:10-23` | 每帧每原子一个带 `String` 的 `Atom`：500 帧 × 5003 原子峰值 483 MB，边际 ~193 B/原子（纯坐标 24 B）；外推 5000 原子 × 1 万帧 9–10 GB（推断）；`select` / `subset` 再整帧 clone | 第 4 步（用户定一并改） |
+| — | 建议 | 根目录 | 行优先约定只靠文档与一个测试 | `clippy.toml` 加 `disallowed-methods = ["nalgebra::base::Matrix::as_slice"]` |
+
+B 组重设计：R-1 周期几何原语（= 第 2 步）；R-2 拓扑与坐标分离
+`Trajectory { topology: Vec<Site{element,label,mass,charge,magmom}>, frames: Vec<FrameData{positions,cell,pbc,forces,velocities,energy,stress,…}> }`，
+允许逐帧覆盖 topology（GCMC / DeePMD mixed type 天然对应），`check_same_atoms` 变成构造期不变量（= 第 4 步）；
+低成本缓解是 dump 流式读 + 元素 interned。**不建议**：`Frame.stress` 强类型化；合并 `CubeData` 与 `ChargeGrid`
+（两者分别对齐 cube 与 CHGCAR 文件序，合并会搞乱 Bader 下标；建议 doc 互指）。
+
+#### C 组：ferro-io
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| C-1 | 中（实测） | `lammps_dump.rs:42,71`、`cp2k_md.rs:164,269`、`cp2k_sp.rs:347`、`qe_out.rs:237`、`extxyz.rs:10`、`lammps_data.rs:47` | 只有 OUTCAR / vasprun 流式，其余 `read_to_string` + `Vec<&str>`。327 MB、2000 帧 dump：`ferro info` 峰值 2.08 GB（6.4×）。大头在 core `Atom`（B15）。「VASP 输出几百 MB 所以流式」的理由对 CP2K `.out` 与 dump 同样成立 | 第 4 步：帧流式 `FrameReader`（parse 与 IO 分离的缝要保住） |
+| C-2 | 中 | `io_dispatch.rs:43-67` vs `readers/aimd.rs:136-193 sniff` | 两套格式识别不互通：`ferro info -i vasprun.xml` 报 `Unsupported .xml`；CP2K / QE `.out`、DeePMD 目录、cube 进不了 convert / info / traj（延伸「ML_FF 与 io_dispatch 注册」、布局建议 1） | 第 3 步 `Format` 表 |
+| C-3 | **中，主会话读码确认** | `writers/vasp.rs:8`、`writers/lammps_data.rs:17` | 单帧格式 writer 收整条轨迹却 `first()`，其余帧不报错；Python `ferro.write` 没有 CLI 的 `holds_multiple_frames` 拆帧，100 帧写 `.vasp` 只落第 0 帧返回成功。CIF writer 反而把全部帧写进一个文件，与 CLI 格式表「one per file」相反 | 多帧传单帧 writer 时报错；拆帧下沉进 `Format`（第 3 步） |
+| C-4 | 中 | `lammps_dump.rs:92,369-377`、`vasp.rs:117`；`aimd.rs:57-94`；`deepmd.rs:47` | 三种告警通道并存；Python `read_output`（`ferro-python/src/io.rs:125-137`）丢了 `version_note`、`n_layout_drift`、`n_restarts`、`steps`，「版本只提示不拒绝」在 Python 路上完全静默 | 统一 `ReadReport { warnings, .. }`（第 3 步） |
+| C-5 | 轻（实测） | `extxyz.rs:131-140` | 缺 `pos` 列坐标全 0、无 `species` 时 `Z` 列不认（元素全 X），退出码 0 | 缺 `pos` 报错；`Z` 列按原子序数转元素 |
+| C-6 | **中，主会话读码确认** | `lammps_data.rs:134-147,200-207` | Masses 数值只用来猜元素，不写 `atom.mass`；D₂O 密度 0.0299（应 0.0333），convert 写回 D 成 1.0080。dump reader 读 mass 列进 `atom.mass`，两 reader 口径相反。与已登记的「Masses 注释直接当元素不校验」不是同一条 | `atom.mass = Some(mass)`（可只在与元素表差 > 1e-3 时存） |
+| C-7 | 中（实测） | `cp2k_md.rs:521`、`qe_out.rs:338` vs `vasp_outcar.rs:257`、`vasprun.rs:224`；`dataset.rs:837-843` | 零帧契约不一：CP2K / QE 报错，VASP 返回空轨迹 Ok。同目录一个全丢帧 OUTCAR + 一个好 OUTCAR → collect 报「different compositions ( vs O198P66Zn33)」，**好文件一起丢**、原因错（延伸 10-03 轻 A「空文件读成 0 帧返回 Ok」） | 「至少一帧」写进 `read_aimd_as` 的契约（`aimd.rs:199` 统一查），五个 reader 删各自那份 |
+| C-8 | 轻（实测） | 全部文本 reader | 一个非 UTF-8 字节即整份拒收，无行号；打开成功时文案仍说「cannot open」。`2>&1` 混进 MPI 输出很常见（推断） | `from_utf8_lossy`，或报首个坏字节的行号 |
+| C-9 | 轻 | `aimd.rs:144` | sniff 只看头 96 行（魔数），CP2K `GLOBAL| Run type` 在 fixture 已到第 46 行；超出时报错不静默 | 读到 `GLOBAL| Run type` 或首个锚点为止 |
+| C-10 | 中（实测） | `lammps_dump.rs:284-300` vs `writers/lammps_dump.rs:112-113` | dump→dump `convert` 静默丢位点标签（`P_4`、`O_b`），退出码 0；写 extxyz 则保留 | = A-10 |
+| C-11 | 轻（推断） | `cp2k_md.rs:322-325` vs `cp2k_sp.rs:398` | 「没有 SCF 行」两 reader 判定相反：md 当收敛、sp 当未收敛；FIST 等非 SCF 单点会被全部丢掉 | 口径对齐（不要求合并代码） |
+| D-1 | 建议 | 13 处 `read_to_string` 样板 | 只在修 C-8 时成为同一变化原因 | 修 C-8 时抽 `util::read_text` |
+| D-2 | 建议 | `cp2k_md.rs:143`、`cp2k_sp.rs:101`、`qe_out.rs:78`、`aimd.rs:123` | token 前缀匹配 4 份逐字相同（词法工具，不属单位 / 数据抽取）。2026-09-22 用户定 cp2k_md / sp 不共用代码 —— **动之前先问用户** | 并进 `readers/util.rs` |
+| D-3 | 建议 | `vasp.rs:18-90` vs `chgcar.rs:21-98` | CHGCAR 头部按 VASP 规格就是 POSCAR，不是碰巧相同；建议重议布局建议 10 的「不合」 | 抽 `parse_poscar_header` |
+| D-4 | — | `qe_out.rs:218 version_note` | 判的是 QE 版本，与 CP2K 两份不是同一变化原因，维持不合 | 三处补互指注释 |
+
+C 组重设计：R-1 `ferro_io::format`（`enum Format` 每变体带 `can_read / can_write / multi_frame / exts`，
+`Format::detect`：目录 → DeePMD，扩展名大小写不敏感，`.xyz` / `.out` / `.xml` / 无扩展名走内容嗅探；
+`read(path, &opts) -> (Trajectory, ReadReport)`；`supported_formats()` 由表生成，`add-format` 的「两处都要加检测」
+硬约束随之消失）；R-2 `ReadReport`；R-3 流式；R-4 读侧出口统一做元素规范化 `normalize_element`
+（消掉 C-5、C-6 与已登记的 xyz `"8"`、VASP4 `X1`、G-5 一族）。
+
+#### D 组：ferro-analysis
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| D-P1 | 中（实测） | `cube_density.rs:184-197`、`cube_radius.rs:193-206`、`cube_jump.rs:172-219` | map density / velocity / force / radius 先把每帧整张网格收进 Vec 再累加：5003 原子、100³ 网格，`map radius` 200 帧 1.82 GB，`map density` 200 帧 2.83 GB；几千帧外推几十 GB | 改 `fold(…).reduce(…)`（同 gr / angle），第 4 步第一项 |
+| D-C1 | 中（实测） | `cube_sdf.rs:383,161-166,634-638,169-174`；`chg_sdf.rs:382-390` | 形成子硬编码「P」：`--former Si` 时族名仍 `P1`、cube 头里 Si 写 Z=15；`--modifier Pb` 时 Pb 写 Z=15，Q1 下 Pb 被 `p_indices` 当骨架参加 n! 置换（Pb 版 2 分 19 秒未完）；`--ligand` 非 O 时元素仍写 O | 并入 cube_sdf 改写组（下面 R-2 的结构化 `Site`） |
+| D-A1 | 轻（实测） | `cube_sdf.rs:210-216`、`chg_sdf.rs:139-145`、`sq.rs:272-284` | 每个超阈团簇一行 stderr（一次 1743 行）；sq 绕过 `[inputs]` | 第 3 步 |
+| D-A2 | 中（架构） | 7 处 MIC / 近邻实现 | 只有 gr / angle 用 cell list；network 分类、`build_network_graph`、bondlife、rotcorr Sum、filter、cube_sdf 修饰子是 O(N²)，`Cell::minimum_image` 每次求逆。数值一致（强三斜胞对 ASE 3.29 `neighbor_list` 逐项相同） | 第 2 步 `PeriodicFrame` + `NeighborList` 进 core（structure 的 `box_builder` 也有 CellList，两个中间层都用） |
+| D-P2 | 建议 | `network_type.rs:344-368,382-410`、`cluster.rs:103-110` | 每个形成子–配体对算两遍，core 还有第三份邻接 | `classify_formers` 反查 `build_nf_map` 结果 |
+| D-A3 | 中 | 各 `calc_*` | 返回类型四种：`Result`、`Option`（cube_density / cube_jump / chg_sdf，丢失败原因；`cube_jump.rs:136` 把 `check_same_atoms` 的错误 `.ok()?` 吞掉）、`Result<Option>`（cube_sdf）、不可失败（Bader；`BaderParams` 无 `validate`，`bader_grid.rs:722` 无胞帧 `unwrap` panic） | 统一 `Result<T>`，结果带 warnings（第 3 步） |
+| D-A4 | 轻 | 同 A-5 | — | — |
+| D-A5 | 轻（推断） | `ml/diagnostics.rs:32,76` | 截断扫描 rcut ± 0.3 Å 越过只对 rcut 查过的最小镜像上界 | 第 2 步原语在构造处查 |
+
+D 组改写组的新结构（只给结构，条目见原组）：
+- **cube_sdf / chg_sdf（R-2）**：① 逐帧并行提取团簇，沿键 BFS 展开、检测逾渗（B-4）；位点用结构化枚举
+  `enum Site { Former{elem,qn}, Ligand{elem,kind}, Modifier{elem} }`（消 D-C1）② 按签名分族，族内确定性选参考
+  ③ 独立 `align.rs`，Kabsch 写对（S-A），置换限组内、组大时匈牙利 + Kabsch 迭代（B-6）④ 网格以参考结构为中心、
+  以 Å 定界（B-3），归一化定为「每团簇每 Å³ 数密度」（B-10）⑤ 告警进结果
+- **Bader（R-3）**：① 一个驱动 + 三种上升策略，真空先于上升标记（S-B），`refine_edge` 按方法分派、看 26 邻（D-8、
+  `max_neargrid`）② 体积编号用 `enum Basin { Unassigned, Vacuum, Vol(u32) }`，去掉 0 / nvols+1 / 负数三种哨兵 ——
+  C-D2、S-C、refine 撞真空哨兵三条都出在这里 ③ 四种方法共用一份后处理，守恒性断言 `Σionchg + vacchg == 网格总量`
+  ④ `BaderParams::validate`，`run()` 返回 `Result` ⑤ **`dev/bader.md` 写的参考实现 `examples/bader/` 本地不存在**，
+  重写前须把 Henkelman 源码或二进制放回作对拍基准
+
+#### E 组：ferro-cli
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| E2-1 | 中（实测） | ~16 处 `eprintln!` | `map sdf --qn 1` 5 帧刷 666 行同一句中文警告（汇总行已给出计数）；与 `dataset.rs:1024-1026` 注释的原则相反 | 第 3 步 |
+| E2-2 | 轻（主会话降级） | `dataset.rs:412-414`、`:374-376` | `filter -s` 是 `--s-max`（GPa），`merge --suffix` 是目录后缀，与全仓「`-s` 是批次标记」撞名 | `--s-max` 去掉短名；merge 的 `--suffix` 改名（破坏性，进 changelog） |
+| E2-3 | 轻 | `traj.rs:323-340`、`map.rs:209-228`、`net.rs:93-114` | 批驱动前半段三份（R6 第三处、同一变化原因） | `traj::drive` 搬进 `batch.rs`，net 直接调，map 留薄包装 |
+| E2-4 | 建议 | `cmd/dataset.rs` | 纯计算应下沉 `ferro-analysis::ml`：`Split`（`:123-207`）、`set_spans`、collect 的重启分段拼接与成分检查（`:845-904`）、`formula_of` / `composition_diff`、截断扫描策略（`:1445`）、`inspect.rs:69-155` 逐帧标量表。Python 目前调不到。生产代码 1730 → ~1100 行（延伸布局建议 8） | 第 5 步 |
+| E2-5 | 建议 | `help.rs`、`main.rs:171-360` | CommonArgs 7 行在帮助页手抄 12–22 次（~110 行），已漂开（`--ncore` 默认值四种写法）；help_sync 只查参数名。**不建议**改成生成（分组排版、`--P-O=`、格式矩阵会变形） | 页面改 `const` + `concat!` 拼公共块；help_sync 加「`[x]` 默认值 = clap 默认值」「总览页列出每个子命令」两条断言 |
+| E2-6 | 轻 | `map.rs:227` | 全部输入失败时 map 不报 `every input failed`（退出码对） | 随 E2-3 |
+| E2-7 | 轻（实测） | `traj.rs:359-369` | `[inputs]` 里失败项总排最后，与屏幕 `[k/N]` 对不上 | Summary 按输入序 |
+| E2-8 | 轻 | `batch.rs:170` vs `dataset.rs:590,831,…` | 批内失败提示 traj / map / net 走 stdout，dataset 走 stderr | 统一 stderr |
+| E2-9 | 轻（实测） | `dataset.rs:1599` | `merge --suffix /../../../escaped` 把产物写到 `-o` 之外，并建出空的中间目录（延伸 D-M13「未覆盖」） | 校验 `.` 开头 + `label_char_ok`（第 1 步） |
+| E2-10 | 轻（实测） | `convert.rs:57` | 同文件守卫只比字面路径：`-i same.extxyz -o ./same.extxyz` 覆盖输入，加 `--number 1` 时输入被截成 1 帧 | 比 `canonicalize(parent) + file_name`（第 1 步） |
+| E2-11 | 轻 | `dataset.rs:797` vs `:219-232` | `collect_group` 手抄同文件的 `ensure_writable`，少了「dest 是普通文件」分支 | 复用 |
+| E2-12 | 轻 | `info.rs:57-69` vs `inspect.rs:89` | inspect 的密度遇未知元素静默按 1 amu，info 会告警 | 口径一致，两处互指 |
+| — | 轻 | `traj.rs:486-491`、`msd.rs:96,412`、`vacf.rs:204` | 扩散系数换算手写 `* 0.1`、`* 1e-5`，`units.rs` 无扩散系数单位 | 加 `DiffusionUnit` 或常量 |
+
+E 组重设计：R-2 产物命名统一 —— 现有四种排列（traj `<mode>_<label>_<suffix>.csv`；map `<mode>_<suffix>_<input>.cube`，
+实测 `density_x_prod.cube`；net 导出 / bader `<input>_…_<suffix>`；sdf 单输入时 `-s` 直接替换前缀，实测 `x_Ob.cube`），
+建议定一条 `<mode>[_<表>][_<选择>][_<输入>]_<suffix>.<ext>`，map 恒带输入名（延伸合规扫描 2、10-03 D 轻）。
+破坏性，`scripts/ferrocmp.py product_name()` 与手册同步。R-6（低）：`bader -i` 改收多文件走 `map_inputs`。
+
+#### F 组：ferro-python
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| F-1 | 中 | `cli.py:342`、`types.rs:125-155`、`io.rs:57,81`、`cli.py:324` | 选帧参数错误（stride + number、start > end、stride 0）、坏的 `--units` / `--atom-style` 要等第一条轨迹读完才报；`ensure_dir` 先于读与生成，`--mkdir` 下任何失败留下空 `-o`，与手册 `job.md:133`「leaves DIR untouched」不符 | 纯校验拆成读前调用的函数；`ensure_dir` 挪到 `write_batch` 前 |
+| F-2 | 轻 | `readers/cp2k.rs:29` vs `jobs/cp2k.py:21-32` | CP2K 输入语法两份且已漂开（`!` 优先、不认引号 vs 取最早、认引号），与 QE「语法只留一份」的理由不一致；定案不重议 | 至少两处互指注释 |
+| F-3 | 轻 | `qe.py:245`、`cp2k.py:291` | 按 `"\n\n"` 切 Rust 返回的 QE 卡片，Rust 少一个空行三卡静默并成一卡 | 绑定返回 `[(卡片名, 文本)]` |
+| F-4 | 轻 | `base.py:149-160`、`conv.py:18`、`vasp.py:155`、`qe.py:14`、`base.py:200` | Python 另写一份几何与常数：`kmesh` 与 `Cell::interplanar_spacings` 重复；`EV_A3_TO_KBAR` 用 CODATA 2014（`units.rs` 是 2018）；`HBAR2_2M`、`RY_TIME_FS` 无 Rust 对应；`X\d+` 复述 dump reader 约定 | 暴露 `interplanar_spacings`；常数集中 |
+| F-5 | 轻 | `vasp.py:266`、`qe.py:248`、`cp2k.py:309` | 默认 kspacing 0.5 三处（R6 第三处） | `base.DEFAULT_KSPACING` |
+| F-6 | 建议 | `lib.rs:24-27` | `pyerr` 一律 `RuntimeError`，Python 侧到处宽捕获；`api.md` 称会有 ValueError，实际只两处 | `create_exception!(ferro, FerroError, PyRuntimeError)`，向后兼容 |
+| F-7 | 建议 | `analysis.rs:91,111`、`io.rs:64-88` | 计算全程持 GIL | `py.detach` |
+| F-8 | 建议 | `ferro-python/Cargo.toml:9` | 版本号手动同步无自动核对 | pytest 比对根 `Cargo.toml` |
+| F-9 | 轻（桩模块实测） | `qe.py:172` | pseudo_dir 里一个文件名不以字母开头且头部无 element 的 UPF 即 `AttributeError` traceback（与要生成的元素无关，`cli.main` 不捕获） | 跳过该文件或报 JobError 点名 |
+| F-10 | 轻（推断） | `qe.py:274` | `int(nraise)` 遇 `10.0` / `1d1` 报错不点名键 | 点名 |
+| F-11 | 轻 | `io.rs:111-112` | `ferro.write` 多帧写 POSCAR / LAMMPS data 只写首帧，api.md 未写 | = C-3 |
+| F-12 | 轻 | `cli.py:368,403-404,27,1`、`io.rs:120-122`、`lib.rs:10`、`api.md`、`types.rs:108` | QE 进 conv 后文档没跟上：「the last two are switches」指错、conv analyze 帮助 / OVERVIEW / `read_output` / api.md 漏 QE；`lib.rs:10` 示例用了不存在的 `ferro.gr`；api.md msd 链接指向不存在的页；pbc 写 x,y,z vs a,b,c | 逐条改 |
+| F-13 | 轻 | `cli.py:207-231` vs `:431-448` | `job_parser` / `conv_parser` 重复 12 个参数（两处，按 R6 不合，缺互指注释）；加 `plot` 时即第三处 | 互指注释；第三处时抽 `add_input_options` |
+
 ### `ferro.jobs`：输入生成迁到 ferro-python（2026-10-16 定案，功能类，**用户提级**）
 
 生成输入不吃性能、改动最勤，Python 改完不用重编、用户也能直接改。2026-10-15–16 grilling
@@ -474,9 +648,8 @@ CLI 集成测试只有 bader 与 npt；gr 三斜数值（可用 27 镜像暴力�
 
 M1 期间另见、未修（待定口径）：
 
-- **`.lammps` 扩展名两处口径相反**：CLI `io_dispatch` 当 LAMMPS data，Python
-  `ferro.read` 当 LAMMPS dump（`ferro-python/src/io.rs` 的 `"lammpstrj" | "dump" | "lammps"`）。
-  同一个文件两个入口读出两种东西
+- ~~**`.lammps` 扩展名两处口径相反**~~：**已不成立**（2026-10-17 审查 A 核对：CLI `io_dispatch.rs:51` 与
+  Python `io.rs:77` 现在都当 LAMMPS data）。格式分派的其余漂移归「2026-10-17 全盘架构审查」第 3 步的 `Format` 表
 - **dump 的 `typelabel` 与 `ix iy iz` 未接**（M2 时按 LAMMPS 手册逐列过了一遍）：`typelabel`
   要先定它与 `element` 谁优先；`ix iy iz` 对 msd 无影响（msd 自己按最小像展开）。其余列
   （`mol`、`mu*`、`c_*`/`f_*`/`v_*` 等）Ferro 数据模型无对应字段，忽略是对的
