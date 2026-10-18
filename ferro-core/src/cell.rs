@@ -36,9 +36,17 @@ impl Cell {
         a: f64, b: f64, c: f64,
         alpha: f64, beta: f64, gamma: f64,
     ) -> Result<Self> {
-        if a <= 0.0 || b <= 0.0 || c <= 0.0 {
+        // Written as "valid or reject" so NaN, which fails every comparison, is rejected
+        let length_ok = |v: f64| v > 0.0 && v.is_finite();
+        if !(length_ok(a) && length_ok(b) && length_ok(c)) {
             return Err(ChemError::ValidationError(
-                "Lattice constants must be positive".into(),
+                "Lattice constants must be finite and positive".into(),
+            ));
+        }
+        let angle_ok = |v: f64| v > 0.0 && v < 180.0;
+        if !(angle_ok(alpha) && angle_ok(beta) && angle_ok(gamma)) {
+            return Err(ChemError::ValidationError(
+                "Lattice angles must lie strictly between 0 and 180 degrees".into(),
             ));
         }
         let (al, be, ga) = (
@@ -292,6 +300,17 @@ mod tests {
         assert!(frac2.x >= -1e-10 && frac2.x < 1.0 + 1e-10);
         assert!(frac2.y >= -1e-10 && frac2.y < 1.0 + 1e-10);
         assert!(frac2.z >= -1e-10 && frac2.z < 1.0 + 1e-10);
+    }
+
+    #[test]
+    fn nan_and_out_of_range_lattice_parameters_are_rejected() {
+        let ok = |a: f64, al: f64| Cell::from_lengths_angles(a, 5.0, 5.0, al, 90.0, 90.0).is_ok();
+        assert!(ok(5.0, 90.0));
+        assert!(!ok(f64::NAN, 90.0));
+        assert!(!ok(f64::INFINITY, 90.0));
+        assert!(!ok(5.0, f64::NAN));
+        assert!(!ok(5.0, 0.0));
+        assert!(!ok(5.0, 180.0));
     }
 
     #[test]

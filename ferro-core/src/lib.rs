@@ -11,6 +11,7 @@
 pub mod array_order;
 pub mod atom;
 pub mod cell;
+pub mod periodic;
 pub mod charge_grid;
 pub mod frame;
 pub mod trajectory;
@@ -26,6 +27,7 @@ pub mod cluster;
 pub use array_order::{matrix3_from_row_major, matrix3_row_major};
 pub use atom::Atom;
 pub use cell::Cell;
+pub use periodic::{NeighborList, PeriodicCell};
 pub use charge_grid::ChargeGrid;
 pub use frame::Frame;
 pub use trajectory::{select_range, spread_range, Trajectory, TrajectoryMetadata};
