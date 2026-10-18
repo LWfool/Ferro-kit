@@ -1,13 +1,13 @@
+//! The CLI side of reading: the format itself is recognised by `ferro_io::Format`;
+//! this file adds what is particular to the command line — errors that name the
+//! flags, the reader warnings printed to stderr, and the help-page format matrix.
+
 use std::path::Path;
 use anyhow::{bail, Result};
 use ferro_core::Trajectory;
-use ferro_io::{self, LammpsUnits, *};
+use ferro_io::{AtomStyle, Format, ReadOptions};
 
 use crate::args::common::ReadArgs;
-
-fn is_lammps_data(path: &Path) -> bool {
-    matches!(path.extension().and_then(|e| e.to_str()), Some("lammps") | Some("data") | Some("lmp"))
-}
 
 /// Fails when `path` is a LAMMPS data file and no `--atom-style` was given.
 ///
@@ -15,7 +15,7 @@ fn is_lammps_data(path: &Path) -> bool {
 /// optional and charge/molecular share a column count, so it is never guessed.
 /// Batch commands call this on every input before reading the first one.
 pub fn check_atom_style(path: &Path, style: Option<AtomStyle>) -> Result<Option<AtomStyle>> {
-    if style.is_none() && is_lammps_data(path) {
+    if style.is_none() && Format::from_name(path) == Some(Format::LammpsData) {
         bail!(
             "{} is a LAMMPS data file: give its atom style with --atom-style atomic|charge|full \
              (Ferro never guesses it from the Atoms comment or the column count)",
@@ -25,55 +25,25 @@ pub fn check_atom_style(path: &Path, style: Option<AtomStyle>) -> Result<Option<
     Ok(style)
 }
 
-/// Prints what a reader noticed, one `[ferro] ` prefix per line, so a library
-/// warning looks the same as before the readers stopped printing.
-fn print_warnings((traj, warnings): (Trajectory, Vec<String>)) -> Trajectory {
-    for w in &warnings {
+/// Reads any supported file or DeePMD directory, printing what the reader noticed.
+pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
+    if opts.type_map.is_some() && Format::from_name(path) != Some(Format::LammpsDump) {
+        bail!("--type-map applies to LAMMPS dump input only, not {}", path.display());
+    }
+    check_atom_style(path, opts.atom_style)?;
+    let options = ReadOptions {
+        units: opts.units,
+        atom_style: opts.atom_style,
+        type_map: opts.type_map.as_ref().map(|m| m.0.clone()),
+    };
+    let (traj, report) = ferro_io::read(path, &options)?;
+    // One `[ferro] ` prefix per line, as the readers printed it before they stopped printing
+    for w in &report.warnings {
         for line in w.lines() {
             eprintln!("[ferro] {line}");
         }
     }
-    traj
-}
-
-pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
-    let is_dump = matches!(path.extension().and_then(|e| e.to_str()), Some("dump") | Some("lammpstrj"));
-    if opts.type_map.is_some() && !is_dump {
-        bail!("--type-map applies to LAMMPS dump input only, not {}", path.display());
-    }
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    let upper = name.to_uppercase();
-
-    if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
-        return Ok(print_warnings(read_poscar_with_warnings(path)?));
-    }
-
-    match path.extension().and_then(|e| e.to_str()) {
-        // .xyz 也常装 extxyz（ASE、GPUMD、本仓 dataset --type nep），按第 2 行判
-        Some("xyz") if is_extxyz(path)?  => Ok(read_extxyz(path)?),
-        Some("xyz")                      => Ok(read_xyz(path)?),
-        Some("pdb")                      => Ok(read_pdb(path)?),
-        Some("cif")                      => Ok(read_cif(path)?),
-        Some("extxyz")                   => Ok(read_extxyz(path)?),
-        Some("vasp") | Some("poscar") | Some("pos") => Ok(print_warnings(read_poscar_with_warnings(path)?)),
-        Some("lammps") | Some("data") | Some("lmp") => {
-            let style = check_atom_style(path, opts.atom_style)?.expect("check_atom_style 已拒绝 None");
-            Ok(read_lammps_data(path, style)?)
-        }
-        Some("dump") | Some("lammpstrj")             => {
-            let mut traj = print_warnings(read_lammps_dump_with_warnings(path, opts.units)?);
-
-            if let Some(map) = &opts.type_map {
-                apply_type_map(&mut traj, &map.0)?;
-            }
-            Ok(traj)
-        }
-        Some("inp")                      => Ok(read_cp2k_inp(path)?),
-        Some("restart")                  => Ok(read_cp2k_restart(path)?),
-        Some("in") | Some("qe")          => Ok(read_qe_input(path)?),
-        Some(ext) => bail!("Unsupported input format: .{ext}"),
-        None      => bail!("Cannot determine format (no extension): {}", path.display()),
-    }
+    Ok(traj)
 }
 
 /// Reads a trajectory and keeps only its last `n` frames when `last_n` is given.
@@ -92,259 +62,76 @@ pub fn read_trajectory_tail(
     Ok(traj)
 }
 
-/// Write-side format, resolved from the file name alone.
-pub enum OutFormat { Poscar, Xyz, Pdb, Cif, Extxyz, LammpsData, LammpsDump }
-
-/// Resolves the write format without touching the disk, so a caller can reject a bad
-/// `-o` before reading a multi-GB input (`convert`); `write_trajectory` goes through it.
-pub fn out_format(path: &Path) -> Result<OutFormat> {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    let upper = name.to_uppercase();
-
-    if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
-        return Ok(OutFormat::Poscar);
-    }
-
-    Ok(match path.extension().and_then(|e| e.to_str()) {
-        Some("xyz")                      => OutFormat::Xyz,
-        Some("pdb")                      => OutFormat::Pdb,
-        Some("cif")                      => OutFormat::Cif,
-        Some("extxyz")                   => OutFormat::Extxyz,
-        Some("vasp") | Some("poscar") | Some("pos") => OutFormat::Poscar,
-        Some("lammps") | Some("data") | Some("lmp") => OutFormat::LammpsData,
-        Some("dump") | Some("lammpstrj") => OutFormat::LammpsDump,
-        // QE 输入只读：完整的 pw.x 输入由任务生成器写，convert 不写只有结构的骨架
-        Some(ext @ ("in" | "qe")) => bail!(
-            "Unsupported output format: .{ext} (QE input is read-only here; \
-             generate a pw.x input with `ferro-py job -s qe`)"
-        ),
-        Some(ext) => bail!("Unsupported output format: .{ext}"),
-        None      => bail!("Cannot determine format (no extension): {}", path.display()),
-    })
-}
-
-pub fn write_trajectory(traj: &Trajectory, path: &Path, lammps_units: Option<LammpsUnits>) -> Result<()> {
-    match out_format(path)? {
-        OutFormat::Poscar     => write_poscar(traj, path),
-        OutFormat::Xyz        => Ok(write_xyz(traj, path)?),
-        OutFormat::Pdb        => Ok(write_pdb(traj, path)?),
-        OutFormat::Cif        => Ok(write_cif(traj, path)?),
-        OutFormat::Extxyz     => Ok(write_extxyz(traj, path)?),
-        OutFormat::LammpsData => Ok(write_lammps_data(traj, path)?),
-        OutFormat::LammpsDump => Ok(write_lammps_dump(traj, path, lammps_units)?),
-    }
-}
-
-/// Whether the format named by `path` can hold more than one frame on write.
-///
-/// The `Frames on write` column of [`supported_formats`] in code form: XYZ, extxyz,
-/// PDB and LAMMPS dump carry a whole trajectory, while POSCAR, CIF and LAMMPS data
-/// hold a single structure. CIF can technically carry several `data_` blocks,
-/// but VESTA / Materials Studio show only the first, so it is split like POSCAR. Callers
-/// writing several frames use this to decide between one file and one file per frame.
-///
-/// Unknown extensions answer `true` so the write itself produces the "Unsupported
-/// output format" error, rather than this function turning it into a pile of
-/// per-frame failures.
-pub fn holds_multiple_frames(path: &Path) -> bool {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    let upper = name.to_uppercase();
-    if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
-        return false;
-    }
-    !matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("lammps") | Some("data") | Some("lmp")
-            | Some("vasp") | Some("poscar") | Some("pos") | Some("cif")
-    )
-}
-
 /// Returns a human-readable read/write matrix of the supported formats.
 ///
-/// Read and write are NOT symmetric — the CP2K and QE inputs are read-only — so the two
-/// directions get their own column rather than one flat list.
-pub fn supported_formats() -> &'static str {
-    "  Format        Detected by                    Read   Write  Frames on write
+/// The rows come from `Format::ALL`, so the matrix cannot drift from what is read
+/// and written. Read and write are NOT symmetric — the inputs and the program
+/// outputs are read-only — so the two directions get their own column.
+pub fn supported_formats() -> String {
+    let mut rows = String::new();
+    for f in Format::ALL {
+        let frames = match f {
+            _ if !f.can_write() => "-",
+            Format::Pdb => "all (MODEL records)",
+            _ if f.multi_frame() => "all",
+            _ => "one per file",
+        };
+        let write = if f.can_write() { "y" } else { "-" };
+        rows.push_str(&format!("  {:<14}{:<31}{:<7}{:<7}{frames}\n", f.name(), f.detected_by(), "y", write));
+    }
+    format!(
+        "  Format        Detected by                    Read   Write  Frames on write
   ------------------------------------------------------------------
-  XYZ           .xyz                           y      y      all
-  extended XYZ  .extxyz  .xyz*                 y      y      all
-  PDB           .pdb                           y      y      all (MODEL records)
-  LAMMPS dump   .dump  .lammpstrj              y      y      all
-  CIF           .cif                           y      y      one per file
-  VASP          .vasp .poscar .pos POSCAR*     y      y      one per file
-  LAMMPS data   .lammps  .data  .lmp           y      y      one per file
-  QE (pw.x)     .in  .qe                       y      -      -
-  CP2K input    .inp                           y      -      -
-  CP2K restart  .restart                       y      -      -
+{rows}
+  Format is taken from the file NAME first: an extension (any case), or a
+  POSCAR/CONTCAR prefix for VASP files that have none.
+  * A .xyz whose comment line (line 2) declares Lattice= or Properties= is
+  read as extended XYZ, as ASE and GPUMD write it. Writing .xyz still gives
+  plain XYZ; use .extxyz to keep the cell.
+  A name that says nothing (OUTCAR, vasprun.xml, a .out log) is read by its
+  program banner. Frames whose SCF did not converge are dropped and counted,
+  as `ferro dataset collect` does. A directory holding type.raw is a DeePMD
+  system. Writing to a CONTCAR name emits POSCAR-format content.
 
-  Format is taken from the file NAME, never from a flag: an extension, or a
-  POSCAR/CONTCAR prefix (case-insensitive) for VASP files that have none.
-  * The one look inside: a .xyz whose comment line (line 2) declares Lattice=
-  or Properties= is read as extended XYZ, as ASE and GPUMD write it. Writing
-  .xyz still gives plain XYZ; use .extxyz to keep the cell.
-  Writing to a CONTCAR name emits POSCAR-format content.
-
-  `-` under Write means read-only: a CP2K .inp or QE .in can be converted
-  FROM, not TO. To generate either input use `ferro-py job -s cp2k|qe`, which
-  writes a full run setup rather than bare coordinates.
+  `-` under Write means read-only: an input or a program output can be
+  converted FROM, not TO. To generate a CP2K or QE input use
+  `ferro-py job -s cp2k|qe`, which writes a full run setup rather than bare
+  coordinates.
 
   `one per file` means the format holds one structure: 500 frames written
   to conf.cif give conf_0000.cif ... conf_0499.cif. Use --stride / --number
   to thin them out."
+    )
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferro_core::{Atom, Cell, Frame};
-    use nalgebra::Vector3;
 
-    fn one_atom_traj() -> Trajectory {
-        let mut frame = Frame::new();
-        frame.cell = Some(Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap());
-        frame.pbc = [true; 3];
-        frame.atoms.push(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
-        Trajectory { frames: vec![frame], metadata: Default::default() }
-    }
-
-    /// `.xyz` 里装的 extxyz 必须走 extxyz reader，否则胞、能量、力、速度全部静默丢掉。
+    /// The reading rules the format table does not own: flag-named errors that fail
+    /// before any file is read. Format recognition itself is tested in `ferro_io::format`.
     #[test]
-    fn test_xyz_extension_holding_extxyz() {
-        let dir = std::env::temp_dir();
-        let read = |name: &str, text: &str| {
-            let p = dir.join(name);
-            std::fs::write(&p, text).unwrap();
-            read_trajectory(&p, &ReadArgs::default()).unwrap()
-        };
-
-        // ASE 写法：Lattice + Properties，带力、速度、能量
-        let t = read("dispatch_ase.xyz", "1\nLattice=\"5 0 0 0 5 0 0 0 5\" \
-            Properties=species:S:1:pos:R:3:forces:R:3:velocities:R:3 energy=-1.5 pbc=\"T T T\"\n\
-            Si 0 0 0 0.1 0.2 0.3 0.01 0.02 0.03\n");
-        let f = &t.frames[0];
-        assert!(f.cell.is_some(), "Lattice 应被读成晶胞");
-        assert!(f.forces.is_some() && f.velocities.is_some(), "力与速度不应丢");
-        assert_eq!(f.energy, Some(-1.5));
-
-        // GPUMD 的 train.xyz 常写小写键
-        let t = read("dispatch_gpumd.xyz", "1\nlattice=\"5 0 0 0 5 0 0 0 5\" \
-            properties=species:S:1:pos:R:3:force:R:3 energy=-2.0\nSi 0 0 0 0.1 0.2 0.3\n");
-        assert!(t.frames[0].cell.is_some() && t.frames[0].forces.is_some(), "小写键同样是 extxyz");
-
-        // ferro 自己 dataset --type nep 写出的 .xyz：自产自读必须无损
-        let p = dir.join("dispatch_self.xyz");
-        let mut src = one_atom_traj();
-        src.frames[0].forces = Some(vec![Vector3::new(0.1, -0.2, 0.3)]);
-        ferro_io::write_extxyz(&src, &p).unwrap();
-        let back = read_trajectory(&p, &ReadArgs::default()).unwrap();
-        assert!(back.frames[0].cell.is_some() && back.frames[0].forces.is_some(), "自产 extxyz 读回应无损");
-
-        // 纯 XYZ（含 CP2K 轨迹那种带 = 的注释）仍走 xyz reader
-        let t = read("dispatch_plain.xyz", "2\ni = 0, time = 0.000, E = -1.0\nO 0 0 0\nH 0 0 1\n");
-        assert_eq!(t.frames[0].n_atoms(), 2);
-        assert!(t.frames[0].cell.is_none());
-    }
-
-    /// `supported_formats()` 的 Write 列写着 `-` 的格式，dispatch 必须真的拒绝。
-    /// 表与 match 分支是两处手写的事实，漂了就是文档在说谎。
-    #[test]
-    fn test_read_only_formats_are_rejected_on_write() {
-        let traj = one_atom_traj();
-        let dir = std::env::temp_dir();
-        for ext in ["inp", "restart", "in", "qe"] {
-            let path = dir.join(format!("ferro_dispatch_test.{ext}"));
-            let err = write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap_err();
-            assert!(
-                err.to_string().contains("Unsupported output format"),
-                ".{ext} should be read-only, got: {err}"
-            );
-            assert!(!path.exists(), "拒绝写的格式不该留下空文件");
-        }
-    }
-
-    #[test]
-    fn test_format_table_marks_cp2k_and_qe_read_only() {
-        let table = supported_formats();
-        let mut seen = 0;
-        for line in table.lines() {
-            let t = line.trim();
-            if !(t.starts_with("CP2K") || t.starts_with("QE")) { continue }
-            // 该行形如 `CP2K input    .inp    y    -    -`：倒数第三、二列是 Read / Write
-            let cols: Vec<&str> = t.split_whitespace().collect();
-            let n = cols.len();
-            assert_eq!(cols[n - 3], "y", "应可读: {line}");
-            assert_eq!(cols[n - 2], "-", "应不可写: {line}");
-            seen += 1;
-        }
-        assert_eq!(seen, 3, "表里应有 CP2K input、CP2K restart、QE 三行");
-    }
-
-    /// `holds_multiple_frames` 与格式表的 `Frames on write` 列是两处手写的同一事实
-    #[test]
-    fn test_multi_frame_capability_agrees_with_the_table() {
-        for (name, expected) in [
-            ("t.xyz", true), ("t.extxyz", true), ("t.pdb", true), ("t.cif", false),
-            ("t.dump", true), ("t.lammpstrj", true),
-            ("POSCAR", false), ("CONTCAR", false), ("poscar", false),
-            ("run1_POSCAR", true),   // 前缀匹配，不是包含匹配
-            ("t.vasp", false), ("t.poscar", false), ("t.pos", false), ("conf_0000.vasp", false),
-            ("t.lmp", false), ("t.data", false), ("t.lammps", false),
-        ] {
-            assert_eq!(
-                holds_multiple_frames(Path::new(name)),
-                expected,
-                "{name} 与 supported_formats() 的 Frames 列不一致"
-            );
-        }
-    }
-
-    /// 未知扩展名答 true，好让 write_trajectory 报一次「不支持的格式」，
-    /// 而不是被拆成 N 次逐帧失败
-    /// `.vasp` / `.pos` 与 POSCAR 前缀走同一对 reader/writer
-    #[test]
-    fn test_vasp_extensions_round_trip_like_poscar() {
-        let traj = one_atom_traj();
-        let dir = std::env::temp_dir();
-        for name in ["ferro_vasp_test.vasp", "ferro_vasp_test.poscar", "ferro_vasp_test.pos"] {
-            let path = dir.join(name);
-            write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap();
-            let back = read_trajectory(&path, &ReadArgs::default()).unwrap();
-            assert_eq!(back.n_frames(), 1, "{name}");
-            assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
-            std::fs::remove_file(&path).ok();
-        }
-    }
-
-    #[test]
-    fn test_unknown_extension_defers_to_the_writer_error() {
-        assert!(holds_multiple_frames(Path::new("t.nosuchfmt")));
-    }
-
-    #[test]
-    fn test_unknown_extension_is_rejected_both_ways() {
-        let traj = one_atom_traj();
-        let path = std::env::temp_dir().join("ferro_dispatch_test.nosuchfmt");
-        assert!(write_trajectory(&traj, &path, Some(LammpsUnits::Real)).is_err());
-        assert!(read_trajectory(&path, &ReadArgs::default()).is_err());
-    }
-
-    /// LAMMPS data 没给 --atom-style 就报错（三种扩展名都算），给了才读；
-    /// 别的格式不受影响
-    #[test]
-    fn test_lammps_data_needs_an_explicit_atom_style() {
-        let traj = one_atom_traj();
-        for name in ["ferro_style_test.data", "ferro_style_test.lmp", "ferro_style_test.lammps"] {
-            let path = std::env::temp_dir().join(name);
-            write_trajectory(&traj, &path, Some(LammpsUnits::Real)).unwrap();
-            let err = read_trajectory(&path, &ReadArgs::default()).unwrap_err().to_string();
-            assert!(err.contains("--atom-style"), "{name}：{err}");
-            let full = ReadArgs { atom_style: Some(AtomStyle::Full), ..ReadArgs::default() };
-            let back = read_trajectory(&path, &full).unwrap();
-            assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
-            std::fs::remove_file(&path).ok();
+    fn flag_errors_name_the_flag() {
+        for name in ["t.data", "t.lmp", "T.LAMMPS"] {
+            let err = check_atom_style(Path::new(name), None).unwrap_err().to_string();
+            assert!(err.contains("--atom-style"), "{name}: {err}");
         }
         assert!(check_atom_style(Path::new("t.lammpstrj"), None).is_ok());
         assert!(check_atom_style(Path::new("t.xyz"), None).is_ok());
+
+        let opts = ReadArgs { type_map: Some(crate::args::common::TypeMap(vec![(1, "P".into())])), ..Default::default() };
+        let err = read_trajectory(Path::new("t.extxyz"), &opts).unwrap_err().to_string();
+        assert!(err.contains("--type-map applies to LAMMPS dump input only"), "{err}");
+    }
+
+    #[test]
+    fn the_matrix_lists_every_format_once() {
+        let table = supported_formats();
+        for f in Format::ALL {
+            let rows = table.lines().filter(|l| l.trim_start().starts_with(f.name())
+                && l.contains(f.detected_by())).count();
+            assert_eq!(rows, 1, "{f:?}\n{table}");
+        }
     }
 }

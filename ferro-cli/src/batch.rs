@@ -88,6 +88,14 @@ pub fn expand_inputs(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {
     expand_with(patterns, |p| p.is_file(), "FILE", "file")
 }
 
+/// [`expand_inputs`] for the commands that read trajectories (`traj`, `map`, `net`):
+/// a DeePMD system directory is one trajectory there, read like any file
+/// (`ferro_io::Format::Deepmd`). `dataset collect` keeps to files, where a
+/// directory is not an input.
+pub fn expand_trajectories(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    expand_with(patterns, |p| p.is_file() || ferro_io::is_deepmd_system(p), "FILE", "file")
+}
+
 /// The directory form of [`expand_inputs`], for commands whose input is a
 /// directory rather than a file — a DeePMD system is a directory, not a file.
 pub fn expand_dirs(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {

@@ -127,6 +127,9 @@ fn run_type(head: &str) -> Option<String> {
         .map(|v| v.to_string())
 }
 
+/// How far [`sniff`] reads looking for CP2K's run type.
+const SNIFF_MAX_LINES: usize = 5000;
+
 /// Identifies an AIMD output file by its content, not by its name.
 ///
 /// Naming cannot carry this: VASP writes `OUTCAR` with no extension at all,
@@ -140,17 +143,25 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
         .with_context(|| format!("cannot open {}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut head = String::new();
-    // CP2K 的 `GLOBAL| Run type` 在第 40~50 行之间,比横幅还靠后一点
-    for _ in 0..96 {
+    // Every banner is in the first few lines, but CP2K's `GLOBAL| Run type` comes
+    // after its input echo and the build information, which grow with the input
+    // (line 46 in a fixture). So: 96 lines, and past that keep going only while a
+    // CP2K banner waits for its run type, up to a cap that bounds a non-matching file.
+    for n in 0.. {
         let mut line = String::new();
         if reader.read_line(&mut line)? == 0 {
             break;
         }
+        let found_run_type = line.contains("GLOBAL| Run type");
         head.push_str(&line);
+        let cp2k = head.contains("CP2K|");
+        if found_run_type || (n >= 96 && !cp2k) || n >= SNIFF_MAX_LINES {
+            break;
+        }
     }
 
-    // vasprun 的 <?xml 恒在第一行;OUTCAR 的 " vasp.6.4.2 ..." 也在最前面几行。
-    // CP2K 的横幅稍靠后,但仍在头 64 行内
+    // vasprun's <?xml is always line 1, and OUTCAR's " vasp.6.4.2 ..." is in the first
+    // few lines. CP2K's banner comes a little later, but within the first 64 lines
     if head.contains("<?xml") || head.contains("<modeling>") {
         return Ok(AimdFormat::VaspXml);
     }
@@ -165,8 +176,8 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
             Some("ENERGY") | Some("ENERGY_FORCE") => Ok(AimdFormat::Cp2kSp),
             Some(_) => Ok(AimdFormat::Cp2kMd),
             None => bail!(
-                "{}: a CP2K banner but no `GLOBAL| Run type` line, so the layout \
-                 cannot be told apart. Pass --format cp2k/md or --format cp2k/sp",
+                "{}: a CP2K banner but no `GLOBAL| Run type` line, so the MD and \
+                 single-point layouts cannot be told apart",
                 path.display()
             ),
         };
@@ -272,12 +283,23 @@ mod tests {
     /// Defaulting to MD used to hide this: a truncated single-point log became
     /// "MD| Step number not found", an error about the wrong thing entirely.
     #[test]
-    fn a_cp2k_file_without_a_run_type_asks_for_format() {
+    fn a_cp2k_file_without_a_run_type_says_so() {
         let f = std::env::temp_dir().join("ferro_no_run_type.out");
         std::fs::write(&f, " CP2K| version string: CP2K version 2025.2\n hello\n").unwrap();
         let msg = format!("{:#}", sniff(&f).unwrap_err());
-        assert!(msg.contains("--format cp2k/md"), "{msg}");
         assert!(msg.contains("Run type"), "{msg}");
+        let _ = std::fs::remove_file(&f);
+    }
+
+    /// A long input echo pushes `GLOBAL| Run type` past the first 96 lines; the
+    /// banner is still read as CP2K and the run type still found (review C-9).
+    #[test]
+    fn a_late_cp2k_run_type_is_still_found() {
+        let f = std::env::temp_dir().join("ferro_late_run_type.out");
+        let echo: String = (0..300).map(|i| format!(" ECHO| line {i}\n")).collect();
+        let text = format!(" CP2K| version string: CP2K version 2025.2\n{echo} GLOBAL| Run type    ENERGY_FORCE\n");
+        std::fs::write(&f, text).unwrap();
+        assert_eq!(sniff(&f).unwrap(), AimdFormat::Cp2kSp);
         let _ = std::fs::remove_file(&f);
     }
 

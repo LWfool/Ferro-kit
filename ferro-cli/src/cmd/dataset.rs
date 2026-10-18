@@ -828,7 +828,8 @@ fn collect_group(
             (None, _) => match banner {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("SKIP {}: {e:#}", path.display());
+                    // The banner check is ferro-io's, and knows nothing of this flag
+                    eprintln!("SKIP {}: {e:#} (--format reads it as a given program)", path.display());
                     skipped.push(path.clone());
                     continue;
                 }

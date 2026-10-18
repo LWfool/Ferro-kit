@@ -1,8 +1,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Args;
 use crate::args::common::ReadArgs;
-use crate::io_dispatch::{holds_multiple_frames, read_trajectory, write_trajectory};
-use ferro_io::{index_width, indexed_path};
+use crate::io_dispatch::read_trajectory;
 use ferro_analysis::ml::merge::sort_atoms;
 use ferro_core::Trajectory;
 use std::path::{Path, PathBuf};
@@ -104,7 +103,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("--number must be at least 1");
     }
     // 目标格式也是参数：认不出就别建目录、别读输入（审查 D-M15）
-    crate::io_dispatch::out_format(output).with_context(|| match &args.format {
+    ferro_io::Format::for_output(output).with_context(|| match &args.format {
         Some(ext) => format!("--format {ext}"),
         None => "-o names the output FILE; to write into a directory, add --format EXT".into(),
     })?;
@@ -136,10 +135,11 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         metadata: traj.metadata.clone(),
     });
 
-    // 目标格式装得下多帧就写一个文件，装不下就一帧一个 —— 往 POSCAR 写 20 帧
-    // 本来就只能是 20 个文件，不必再要用户记一个开关
-    if holds_multiple_frames(output) || picked.n_frames() == 1 {
-        write_trajectory(&picked, output, args.read.units)?;
+    // One file when the format holds several frames, one per frame when it does not:
+    // 20 frames to POSCAR can only be 20 files, so there is no switch to remember.
+    // The per-frame files are numbered by the frame they came from in the input
+    let written = ferro_io::write_numbered(&picked, output, args.read.units, &indices)?;
+    if written.len() == 1 {
         println!(
             "Converted {} -> {}  ({} of {n_read} frame{} in 1 file)",
             input.display(),
@@ -148,13 +148,6 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
             if n_read == 1 { "" } else { "s" },
         );
     } else {
-        let width = index_width(*indices.last().unwrap_or(&0));
-        for (&frame_idx, frame) in indices.iter().zip(&picked.frames) {
-            let path = indexed_path(output, frame_idx, width);
-            let single = Trajectory::from_frame(frame.clone());
-            write_trajectory(&single, &path, args.read.units)
-                .with_context(|| format!("writing frame {frame_idx} to {}", path.display()))?;
-        }
         println!(
             "Converted {} -> {} files  ({} of {n_read} frames, {} holds one structure each)",
             input.display(),
@@ -167,8 +160,8 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         );
         println!(
             "  {}  ...  {}",
-            indexed_path(output, indices[0], width).display(),
-            indexed_path(output, *indices.last().unwrap(), width).display(),
+            written[0].display(),
+            written[written.len() - 1].display(),
         );
     }
     Ok(())
@@ -358,7 +351,7 @@ mod tests {
             frames: vec![frame_of(&["Zn", "Al", "P", "O"]), frame_of(&["O", "P", "Zn", "Al"])],
             metadata: Default::default(),
         };
-        write_trajectory(&t, &input, None).unwrap();
+        ferro_io::write(&t, &input, None).unwrap();
 
         let output = dir.join("out.extxyz");
         run(&cmd(input.to_str(), output.to_str())).unwrap();

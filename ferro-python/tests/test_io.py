@@ -65,3 +65,14 @@ def test_reader_warnings_are_python_warnings(tmp_path):
     with pytest.warns(UserWarning, match="last frame"):
         t = ferro.read(str(path))
     assert len(t) == len(starts) - 1
+
+
+def test_read_uses_the_same_format_table_as_convert(tmp_path):
+    # A program output is recognised by its banner, as `ferro convert -i OUTCAR` does
+    fixtures = NVT.parent
+    t = ferro.read(str(fixtures / "vasp651_sp" / "frame_0011" / "vasprun.xml"))
+    assert len(t) == 1 and t.energy(0) is not None
+    # An upper-case extension is the same format
+    path = tmp_path / "ONE.XYZ"
+    ferro.write(ferro.read(str(NVT)).tail(1), str(path))
+    assert len(ferro.read(str(path))) == 1
