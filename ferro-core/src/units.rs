@@ -52,6 +52,11 @@ pub const AVOGADRO: f64 = 6.022_140_76e23;
 /// 1 amu = 1/N_A g 且 1 Å³ = 1e-24 cm³，两者之比即 `1e24 / AVOGADRO`。
 pub const AMU_ANG3_TO_G_CM3: f64 = 1e24 / AVOGADRO;
 
+/// Diffusion coefficient: Å²/fs → cm²/s (1 Å² = 1e-16 cm², 1 fs = 1e-15 s).
+pub const ANG2_FS_TO_CM2_S: f64 = 0.1;
+/// Diffusion coefficient: Å²/fs → m²/s (1 Å² = 1e-20 m², 1 fs = 1e-15 s).
+pub const ANG2_FS_TO_M2_S: f64 = 1e-5;
+
 /// Boltzmann 常数（eV/K）。
 ///
 /// CODATA 2018 下 k_B = 1.380649e-23 J/K 与 e = 1.602176634e-19 C 都是精确值，

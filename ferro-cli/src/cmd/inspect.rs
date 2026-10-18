@@ -68,7 +68,10 @@ pub fn write_all(
 /// Decided by the reader the frames came through, not by a metadata string, which
 /// no reader ever set to "vasprun.xml" (review B4).
 fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String]) -> Table {
-    let mut t = frame_table(traj, sources);
+    let (mut t, warnings) = frame_table(traj, sources);
+    for w in &warnings {
+        eprintln!("WARNING: {w}");
+    }
     if format == AimdFormat::VaspXml && traj.frames.iter().any(|f| f.temperature.is_some()) {
         t.meta_line(
             "note: temperature is derived from the ionic kinetic energy \

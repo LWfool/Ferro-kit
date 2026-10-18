@@ -692,9 +692,11 @@ fn collect_group(
     format: Option<AimdFormat>,
     skipped: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    // inspect 那条路自己查，因为它的目录是 ferro_inspect/ 而不是 system 目录
-    if !inspect && !overwrite && dest.exists() && std::fs::read_dir(dest)?.next().is_some() {
-        bail!("{} exists and is not empty (pass --overwrite)", dest.display());
+    // inspect 那条路自己查，因为它的目录是 ferro_inspect/ 而不是 system 目录。
+    // 复用 ensure_writable 而不是手抄（审查 E2-11）：手抄的那份漏了「dest 是普通文件」，
+    // 报出来的是 read_dir 的 io 错误
+    if !inspect {
+        ensure_writable(dest, overwrite)?;
     }
 
     // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致。
@@ -1825,6 +1827,22 @@ mod tests {
         got.sort();
         assert_eq!(got, vec![0, 2, 3, 5], "应恰好删掉帧 1 与 4");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A plain file where the system directory should go is refused by name, not with
+    /// the raw io error of listing it (review E2-11).
+    #[test]
+    fn a_file_in_the_way_of_the_system_directory_is_refused() {
+        let dir = std::env::temp_dir().join("ferro_collect_file_in_the_way");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.out"), sp_text(true)).unwrap();
+        let dest = dir.join("out.db");
+        std::fs::write(&dest, "occupied").unwrap();
+        let group = Group { dir: dir.clone(), rel: PathBuf::new(), files: vec![dir.join("a.out")] };
+        let err = collect_group(&group, &dest, false, false, None, &mut Vec::new()).unwrap_err();
+        assert!(format!("{err:#}").contains("--overwrite"), "{err:#}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Two files of one composition written in different atom orders are one system.

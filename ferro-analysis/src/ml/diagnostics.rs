@@ -11,6 +11,7 @@
 use std::collections::BTreeMap;
 
 use crate::network::TypeParams;
+use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::{Cell, Table, Trajectory};
 
@@ -245,7 +246,10 @@ pub fn filter_diagnostics(
 /// comment block rather than in a second file: `pandas.read_csv(..., comment="#")`
 /// gets the table, and a human reading the head of the file gets the summary.
 /// `sources` names the file of each frame, one entry per frame.
-pub fn frame_table(traj: &Trajectory, sources: &[String]) -> Table {
+///
+/// The second value holds the warnings, already written into the `#` block too, for
+/// the caller to show on screen.
+pub fn frame_table(traj: &Trajectory, sources: &[String]) -> (Table, Vec<String>) {
     let n = traj.n_frames();
     let mut frame_idx = Vec::with_capacity(n);
     let mut steps = Vec::with_capacity(n);
@@ -274,9 +278,33 @@ pub fn frame_table(traj: &Trajectory, sources: &[String]) -> Table {
         densities.push(d);
     }
 
+    // Atom::effective_mass counts an element missing from the table as 1 amu, which
+    // drags the density down with no other sign. `ferro info` counts the same
+    // fallback (cmd/info.rs, frame_mass_amu); two places, not merged (R6, review E2-12)
+    let mut warnings = Vec::new();
+    if let Some(first) = traj.first() {
+        let mut unknown: BTreeMap<&str, usize> = BTreeMap::new();
+        for a in first.atoms() {
+            if a.mass.is_none() && by_symbol(a.element).is_none() {
+                *unknown.entry(a.element).or_insert(0) += 1;
+            }
+        }
+        if !unknown.is_empty() {
+            let n: usize = unknown.values().sum();
+            let listed: Vec<String> = unknown.iter().map(|(e, k)| format!("{e}x{k}")).collect();
+            warnings.push(format!(
+                "{n} atom(s) not in the element table ({}) counted as 1 amu; the density is too low",
+                listed.join(", ")
+            ));
+        }
+    }
+
     let mut t = Table::new();
     for line in summary_lines(traj, &temps, &densities) {
         t.meta_line(line);
+    }
+    for w in &warnings {
+        t.meta_line(format!("warning: {w}"));
     }
     t.push_num("frame", frame_idx);
     t.push_num("step", steps);
@@ -285,7 +313,7 @@ pub fn frame_table(traj: &Trajectory, sources: &[String]) -> Table {
     t.push_num("volume", volumes);
     t.push_num("density", densities);
     t.push_text("source", sources.to_vec());
-    t
+    (t, warnings)
 }
 
 /// The `#` block: what this run is, and the two quantities worth a glance.
@@ -361,7 +389,7 @@ mod tests {
     #[test]
     fn a_missing_scalar_is_empty_not_zero() {
         let traj = run_of(&[Some(300.0), None], &[Some(1), None]);
-        let table = frame_table(&traj, &["a.out".into(), "a.out".into()]);
+        let (table, _) = frame_table(&traj, &["a.out".into(), "a.out".into()]);
         let step = table.column("step").unwrap();
         assert_eq!(step.cell(0), "1.000000e0");
         assert_eq!(step.cell(1), "", "a missing step must be an empty field, not 0");
@@ -373,12 +401,25 @@ mod tests {
     #[test]
     fn the_summary_omits_a_quantity_that_is_absent_everywhere() {
         let traj = run_of(&[None, None], &[Some(1), Some(2)]);
-        let table = frame_table(&traj, &["a.out".into(), "a.out".into()]);
+        let (table, warnings) = frame_table(&traj, &["a.out".into(), "a.out".into()]);
+        assert!(warnings.is_empty(), "{warnings:?}");
         let meta = table.meta.join("\n");
         assert!(meta.contains("atoms = 2"), "{meta}");
         assert!(meta.contains("frames = 2"), "{meta}");
         assert!(!meta.contains("temperature ="), "no temperature, so no made-up mean: {meta}");
         assert!(meta.contains("density ="), "{meta}");
+    }
+
+    /// An element the table does not know is counted as 1 amu; the density must say
+    /// so, as `ferro info` does (review E2-12).
+    #[test]
+    fn an_unknown_element_is_flagged_in_the_density() {
+        let mut traj = run_of(&[Some(300.0)], &[Some(1)]);
+        traj.frames[0].add_atom(ferro_core::Atom::new("Xx", nalgebra::Vector3::zeros()));
+        let (table, warnings) = frame_table(&traj, &["a.out".into()]);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("Xxx1"), "{}", warnings[0]);
+        assert!(table.meta.iter().any(|l| l.starts_with("warning: ") && l.contains("1 amu")));
     }
 
     #[test]

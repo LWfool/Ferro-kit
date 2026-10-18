@@ -53,7 +53,9 @@ pub fn run(args: &InfoCmd) -> Result<()> {
 ///
 /// `Atom::effective_mass` falls back to 1 amu for an unknown symbol, which drags
 /// the density down with no other visible sign — so the fallbacks are counted per
-/// symbol here and reported next to the density.
+/// symbol here and reported next to the density. `collect --type inspect` counts the
+/// same fallback in `ferro_analysis::ml::diagnostics::frame_table`; two places, not
+/// merged (R6, review E2-12).
 fn frame_mass_amu(frame: &Frame) -> (f64, BTreeMap<&str, usize>) {
     let mut fallbacks: BTreeMap<&str, usize> = BTreeMap::new();
     let mut total = 0.0;

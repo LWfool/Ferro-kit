@@ -17,6 +17,8 @@ use ferro_analysis::{
     RotCorrResult, SqParams, SqResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
 
+use ferro_core::units::{ANG2_FS_TO_CM2_S, ANG2_FS_TO_M2_S};
+
 use crate::args::common::{CommonArgs, SelectArgs};
 use crate::args::traj::{RotVectorCli, SqWeightingCli};
 use crate::batch::{self, Summary};
@@ -453,8 +455,8 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
                 input.label.clone(),
                 f.d_ang2_per_fs,
                 f.d_err,
-                f.d_ang2_per_fs * 0.1,
-                f.d_ang2_per_fs * 1e-5,
+                f.d_ang2_per_fs * ANG2_FS_TO_CM2_S,
+                f.d_ang2_per_fs * ANG2_FS_TO_M2_S,
                 f.r2
             );
         }
