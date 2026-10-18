@@ -5,7 +5,8 @@
 //! half the smallest interplanar spacing. The callers check that bound and say
 //! so rather than returning a quietly wrong number.
 
-use ferro_core::{AtomType, Frame, PeriodicCell, TypeParams};
+use crate::network::{classify_frame, AtomType, TypeParams};
+use ferro_core::{Frame, PeriodicCell};
 
 /// Smallest distance between two atoms of the given elements, minimum image.
 ///
@@ -45,7 +46,7 @@ fn idx_of(frame: &Frame, elem: &str) -> Vec<usize> {
 
 /// How many atoms of `elem` have exactly `cn` neighbours, via the network classifier.
 ///
-/// Goes through [`ferro_core::classify_frame`] rather than counting distances
+/// Goes through [`classify_frame`] rather than counting distances
 /// here, so the answer is the same number `ferro net` reports — one definition
 /// of coordination for the whole project. The coordination is read from the
 /// `cn` FIELD of [`AtomType::Former`]; never parse it back out of `label()`.
@@ -55,7 +56,7 @@ pub fn count_with_coordination(
     elem: &str,
     cn: u32,
 ) -> ferro_core::Result<usize> {
-    Ok(ferro_core::classify_frame(frame, params)?
+    Ok(classify_frame(frame, params)?
         .iter()
         .filter(|t| matches!(t, AtomType::Former { elem: e, cn: c, .. } if e == elem && *c == cn))
         .count())
@@ -72,7 +73,7 @@ pub fn coordination_histogram(
     elem: &str,
 ) -> ferro_core::Result<Vec<(u32, usize)>> {
     let mut hist: std::collections::BTreeMap<u32, usize> = Default::default();
-    for t in ferro_core::classify_frame(frame, params)? {
+    for t in classify_frame(frame, params)? {
         if let AtomType::Former { elem: e, cn, .. } = t {
             if e == elem {
                 *hist.entry(cn).or_default() += 1;

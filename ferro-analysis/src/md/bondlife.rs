@@ -19,7 +19,8 @@
 
 use crate::check;
 use rayon::prelude::*;
-use ferro_core::{NeighborList, Table, Trajectory};
+use crate::neighbor::NeighborList;
+use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 
 use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};

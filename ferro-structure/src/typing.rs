@@ -1,22 +1,9 @@
-//! Single-frame atom type classification for structural export and downstream use.
+//! Applying per-atom type labels to a `Frame`, so it can be written out with them.
 //!
-//! Wraps `ferro_core::classify_frame` and adds helpers for applying labels to
-//! a `Frame` (so it can be written out with type labels in place of element symbols).
+//! The labels come from the network classification in `ferro-analysis`; this crate
+//! only puts them on the atoms.
 
-use ferro_core::error::Result;
-use ferro_core::{classify_frame, AtomType, Frame, Trajectory, TypeParams};
-
-/// Classify every atom in every frame of a trajectory.
-///
-/// Returns `Vec<Vec<AtomType>>` — outer index = frame, inner index = atom.
-/// Frames without a cell are skipped, so the outer index is not a frame index
-/// when the trajectory mixes periodic and non-periodic frames. A singular cell
-/// is an error.
-pub fn classify_trajectory(traj: &Trajectory, params: &TypeParams) -> Result<Vec<Vec<AtomType>>> {
-    traj.frames.iter().filter_map(|f| {
-        f.cell.as_ref().map(|_| classify_frame(f, params))
-    }).collect()
-}
+use ferro_core::Frame;
 
 /// Return a copy of `frame` with the type labels written to `Atom::label`.
 ///

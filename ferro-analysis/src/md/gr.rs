@@ -14,7 +14,8 @@
 
 use crate::check;
 use ferro_core::data::elements::canonical_cmp;
-use ferro_core::{NeighborList, Table, Trajectory};
+use crate::neighbor::NeighborList;
+use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 use std::collections::BTreeMap;
 use super::util::par_map_in_order;

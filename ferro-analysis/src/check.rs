@@ -220,7 +220,8 @@ mod tests {
     #[test]
     fn test_cutoffs_past_the_minimum_image_bound_are_rejected() {
         use crate::md::*;
-        use ferro_core::{Atom, Cell, CutoffTable, Frame, TypeParams};
+        use crate::network::{CutoffTable, TypeParams};
+        use ferro_core::{Atom, Cell, Frame};
         use nalgebra::Vector3;
         let frame = |l: f64| {
             let cell = Cell::from_lengths_angles(l, l, l, 90.0, 90.0, 90.0).unwrap();
@@ -271,7 +272,8 @@ mod tests {
     fn frames_that_are_not_3d_periodic_are_refused() {
         use crate::md::*;
         use crate::ml::filter::{filter_frames, FilterParams};
-        use ferro_core::{Atom, Cell, CutoffTable, Frame, TypeParams};
+        use crate::network::{CutoffTable, TypeParams};
+        use ferro_core::{Atom, Cell, Frame};
         use nalgebra::Vector3;
         for pbc in [[false; 3], [true, true, false]] {
             let mut traj = Trajectory::new();

@@ -7,7 +7,7 @@
 //! Listing Al here would produce a `Q^n` column that no aluminophosphate paper quotes.
 //!
 //! This is a **convention**, not a property of the atom, so it lives in its own table
-//! rather than as a field on [`crate::data::elements`] — nothing about boron's mass or
+//! rather than as a field on [`ferro_core::data::elements`] — nothing about boron's mass or
 //! electron configuration implies it gets a Qn.
 //!
 //! The list is a *default*.  `ferro net --qn <ELEM,…>` replaces it wholesale, because
@@ -29,7 +29,7 @@ pub fn has_qn(elem: &str) -> bool {
     QN_ELEMENTS.contains(&elem)
 }
 
-/// [`QN_ELEMENTS`] as an owned set, for use as a [`crate::TypeParams`] default.
+/// [`QN_ELEMENTS`] as an owned set, for use as a [`super::TypeParams`] default.
 pub fn default_qn_set() -> BTreeSet<String> {
     QN_ELEMENTS.iter().map(|s| s.to_string()).collect()
 }

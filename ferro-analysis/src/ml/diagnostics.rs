@@ -10,7 +10,8 @@
 
 use std::collections::BTreeMap;
 
-use ferro_core::{Cell, Table, Trajectory, TypeParams};
+use crate::network::TypeParams;
+use ferro_core::{Cell, Table, Trajectory};
 
 use super::geometry::coordination_histogram;
 use crate::check;

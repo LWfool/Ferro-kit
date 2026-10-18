@@ -1,6 +1,7 @@
 //! ferro-analysis — 后处理分析模块
 
 mod check;
+mod neighbor;
 pub mod geometry;
 pub mod trajectory_analysis;
 pub mod md;
@@ -10,8 +11,7 @@ pub mod ml;
 
 pub use geometry::*;
 pub use trajectory_analysis::*;
-pub use network::{NetworkResult, calc_network};
-pub use ferro_core::{AtomType, CutoffTable, TypeParams};
+pub use network::{NetworkResult, calc_network, calc_network_typed, AtomType, CutoffTable, TypeParams};
 pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult,
               ChgSdfParams, ChgSdfResult, ChgSdfFamily, ChgRmsdStats, calc_chg_sdf};
 pub use md::{

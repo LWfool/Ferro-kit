@@ -30,7 +30,8 @@
 use std::collections::BTreeMap;
 
 use ferro_core::error::ChemError;
-use ferro_core::{select_range, spread_range, Table, Trajectory, TypeParams};
+use crate::network::TypeParams;
+use ferro_core::{select_range, spread_range, Table, Trajectory};
 use rayon::prelude::*;
 
 use super::geometry::{count_with_coordination, min_pair_distance};

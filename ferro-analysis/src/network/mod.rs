@@ -25,11 +25,18 @@
 //! let result = calc_network(&traj, &params).unwrap();
 //! ```
 
-pub use ferro_core::{AtomType, CutoffTable, TypeParams};
+mod classify;
+mod graph;
+pub mod qn_elements;
+
+pub use classify::{
+    AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame, classify_frame_detailed,
+};
+pub use graph::{build_network_graph, connected_components, LigandKind, NetworkGraph};
 
 use crate::check;
 use ferro_core::error::ChemError;
-use ferro_core::{classify_frame_detailed, Frame, Table, Trajectory};
+use ferro_core::{Frame, Table, Trajectory};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 
@@ -668,41 +675,70 @@ struct FrameData {
 
 // ─── 顶层入口 ─────────────────────────────────────────────────────────────────
 
-/// 对整条轨迹执行网络统计分析。要求每帧有 Cell（PBC）。
+/// Network statistics over a whole trajectory. Every frame needs a 3-D periodic cell.
 ///
-/// 轨迹为空、没有形成子截断、所有帧都缺 Cell、或截断超过最小镜像上界时报错。
+/// An error for an empty trajectory, no former-ligand cutoff, a frame without a
+/// cell, or a cutoff past the minimum-image bound.
 pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Result<NetworkResult> {
+    Ok(network(traj, params, false)?.0)
+}
+
+/// [`calc_network`], also returning every frame's atom types in frame order — what
+/// `ferro net --export-traj` writes, taken from the same classification as the
+/// statistics rather than a second pass (review A-6).
+pub fn calc_network_typed(
+    traj: &Trajectory,
+    params: &TypeParams,
+) -> ferro_core::Result<(NetworkResult, Vec<Vec<AtomType>>)> {
+    network(traj, params, true)
+}
+
+fn network(
+    traj: &Trajectory,
+    params: &TypeParams,
+    keep_types: bool,
+) -> ferro_core::Result<(NetworkResult, Vec<Vec<AtomType>>)> {
     let invalid = |msg: &str| Err(ChemError::ValidationError(msg.into()));
     if traj.frames.is_empty() { return invalid("trajectory is empty"); }
     if params.cutoffs.is_empty() { return invalid("no former-ligand cutoff given"); }
 
-    let usable: Vec<&Frame> = traj.frames.iter().filter(|frame| frame.cell.is_some()).collect();
-    if usable.is_empty() {
-        return invalid("no usable frame (every frame is missing a cell; PBC required)");
-    }
-    // 配位判定取最小镜像：最大的那个截断超过上界时更远镜像里的配体被漏掉
+    // Coordination goes by the minimum image: past the bound of the largest cutoff,
+    // ligands in farther images are missed. A frame without a cell is an error, as
+    // in every other analysis, not skipped (review A-6)
     let ((a, b), rcut) = params.cutoffs.iter().chain(&params.modifier_cutoffs)
         .max_by(|x, y| x.1.total_cmp(y.1))
-        .expect("cutoffs 非空");
-    check::periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
+        .expect("cutoffs are not empty");
+    check::all_periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
 
-    let n_frames = usable.len();
-    let n_atoms = usable[0].n_atoms();
+    let n_frames = traj.frames.len();
+    let n_atoms = traj.frames[0].n_atoms();
 
-    let acc = usable
+    type Kept = Vec<(usize, Vec<AtomType>)>;
+    let (acc, mut kept) = traj.frames
         .par_iter()
-        .filter_map(|frame| compute_frame(frame, params))
-        .fold(Accumulator::default, |mut acc, fd| { acc.push(&fd); acc })
-        .reduce(Accumulator::default, |mut a, b| { a.merge(b); a });
+        .enumerate()
+        .map(|(k, frame)| {
+            let ft = classify_frame_detailed(frame, params)
+                .expect("checked at the entry by check::all_periodic_cells");
+            let fd = compute_frame(&ft, frame, params);
+            (fd, keep_types.then_some((k, ft.types)))
+        })
+        .fold(
+            || (Accumulator::default(), Kept::new()),
+            |(mut acc, mut kept), (fd, types)| { acc.push(&fd); kept.extend(types); (acc, kept) },
+        )
+        .reduce(
+            || (Accumulator::default(), Kept::new()),
+            |(mut a, mut ka), (b, kb)| { a.merge(b); ka.extend(kb); (a, ka) },
+        );
+    kept.sort_unstable_by_key(|(k, _)| *k);
 
-    Ok(acc.finalize(n_frames, n_atoms, params.clone()))
+    Ok((acc.finalize(n_frames, n_atoms, params.clone()), kept.into_iter().map(|(_, t)| t).collect()))
 }
 
 // ─── 单帧计算 ─────────────────────────────────────────────────────────────────
 
-fn compute_frame(frame: &Frame, params: &TypeParams) -> Option<FrameData> {
-    let ft = classify_frame_detailed(frame, params)
-        .expect("checked at the entry by check::periodic_cells");
+fn compute_frame(ft: &FrameTypes, frame: &Frame, params: &TypeParams) -> FrameData {
     let types = &ft.types;
 
     let mut bridge: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
@@ -796,8 +832,8 @@ fn compute_frame(frame: &Frame, params: &TypeParams) -> Option<FrameData> {
     }
     let n_edge_sharing = shared.values().filter(|&&c| c >= 2).count();
 
-    Some(FrameData { qn: bridge, qn_partner: partner, cn, oxy, ligand,
-                     n_bo: n_bo_hist, n_edge_sharing, linkage, n_links })
+    FrameData { qn: bridge, qn_partner: partner, cn, oxy, ligand,
+                n_bo: n_bo_hist, n_edge_sharing, linkage, n_links }
 }
 
 // ─── 跨帧累加器 ───────────────────────────────────────────────────────────────
@@ -981,7 +1017,7 @@ impl Accumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferro_core::{Atom, Cell, Frame, Trajectory, TypeParams};
+    use ferro_core::{Atom, Cell, Frame, Trajectory};
     use nalgebra::{Matrix3, Vector3};
     use std::collections::BTreeMap;
 
@@ -1037,6 +1073,31 @@ mod tests {
         let oxy = oxy_counts(&res);
         assert_eq!(oxy["O_b"], 1);
         assert_eq!(oxy["O_n"], 2);
+    }
+
+    /// The types `calc_network_typed` returns are the ones classifying each frame on
+    /// its own gives, in frame order (review A-6), and the statistics are unchanged.
+    #[test]
+    fn typed_returns_each_frames_own_types_in_order() {
+        let a = cube(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0), atom("P", 3.2, 0.0, 0.0)]);
+        let b = cube(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0), atom("P", 9.0, 0.0, 0.0)]);
+        let traj = traj_of(vec![a.clone(), b.clone(), a.clone(), b.clone(), a]);
+        let p = make_params(2.3);
+        let (res, types) = calc_network_typed(&traj, &p).unwrap();
+        assert_eq!(types.len(), 5);
+        for (k, (f, t)) in traj.frames.iter().zip(&types).enumerate() {
+            assert_eq!(t, &classify_frame(f, &p).unwrap(), "frame {k}");
+        }
+        assert_eq!(oxy_counts(&res), oxy_counts(&calc_network(&traj, &p).unwrap()));
+    }
+
+    /// A frame without a cell is an error, not silently left out of the statistics.
+    #[test]
+    fn a_frame_without_a_cell_is_an_error() {
+        let a = cube(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)]);
+        let mut b = a.clone();
+        b.cell = None;
+        assert!(calc_network(&traj_of(vec![a, b]), &make_params(2.3)).is_err());
     }
 
     /// 孤立 PO4（Q0）

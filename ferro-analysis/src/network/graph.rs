@@ -1,12 +1,12 @@
-//! 网络连通性原语：形成子–配体邻接图 + 连通分量。
+//! Network connectivity: the former-ligand adjacency graph and its connected components.
 //!
-//! 玻璃 / 网络体系中，「形成子」（network former，如 P/Si）通过「桥联配体」
-//! （bridging ligand，如连接 ≥2 个形成子的 O）相互连接成团簇。本模块提供
-//! 计算该图的共享原语，供 `ferro-structure::find_clusters` 与
-//! `ferro-analysis::cube_sdf` 等复用，避免重复实现连通分量逻辑。
+//! In a glass or network system the formers (P, Si…) are linked into clusters through
+//! bridging ligands (an O bonded to two or more formers). `cube_sdf` builds its
+//! clusters from this graph.
 
-use crate::error::Result;
-use crate::{Frame, NeighborList, PeriodicCell};
+use crate::neighbor::NeighborList;
+use ferro_core::error::Result;
+use ferro_core::{Frame, PeriodicCell};
 
 
 /// 配体按所连形成子数量分类。
@@ -207,7 +207,7 @@ fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Atom, Cell, Frame};
+    use ferro_core::{Atom, Cell, Frame};
     use nalgebra::{Matrix3, Vector3};
 
     fn atom(el: &str, x: f64, y: f64, z: f64) -> Atom {

@@ -32,8 +32,9 @@ use crate::check;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ferro_core::{
-    build_network_graph, Atom, Cell, CubeData, Frame, LigandKind, NetworkGraph, Trajectory,
+    Atom, Cell, CubeData, Frame, Trajectory,
 };
+use crate::network::{build_network_graph, LigandKind, NetworkGraph};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 

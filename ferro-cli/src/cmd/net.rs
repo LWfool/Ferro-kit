@@ -17,10 +17,10 @@
 use anyhow::{anyhow, bail, Result};
 use clap::{Args, ValueEnum};
 use ferro_analysis::md::{first_shell_cutoffs, ShellCutoff};
-use ferro_analysis::{calc_network, NetworkResult};
-use ferro_core::{Trajectory, TypeParams};
+use ferro_analysis::{calc_network, calc_network_typed, AtomType, NetworkResult, TypeParams};
+use ferro_core::Trajectory;
 use ferro_io::{dump_name, write_extxyz, write_lammps_dump, LammpsUnits};
-use ferro_structure::{apply_type_labels, classify_trajectory};
+use ferro_structure::apply_type_labels;
 use std::collections::BTreeMap;
 
 use crate::args::common::CommonArgs;
@@ -103,10 +103,15 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     let (results, failures) = batch::map_inputs(&inputs, |inp| {
         let traj = cmd.common.load(&inp.path)?;
         let (params, shells) = resolve_auto(&params, &auto, &traj)?;
-        let result = calc_network(&traj, &params)?;
-        if let Some(fmt) = cmd.export_traj {
-            export_labelled(&traj, &params, &inp.label, &out, fmt, cmd.common.read.units)?;
-        }
+        let result = match cmd.export_traj {
+            // One classification feeds both the statistics and the labelled trajectory
+            Some(fmt) => {
+                let (result, per_frame) = calc_network_typed(&traj, &params)?;
+                export_labelled(&traj, &per_frame, &inp.label, &out, fmt, cmd.common.read.units)?;
+                result
+            }
+            None => calc_network(&traj, &params)?,
+        };
         Ok((result, shells))
     });
     if results.is_empty() {
@@ -245,23 +250,15 @@ fn fmt_means<T>(
 /// clean element symbols.
 fn export_labelled(
     traj: &Trajectory,
-    params: &TypeParams,
+    per_frame: &[Vec<AtomType>],
     label: &str,
     out: &batch::Output,
     fmt: ExportFormat,
     units: Option<LammpsUnits>,
 ) -> Result<()> {
-    let per_frame = classify_trajectory(traj, params)?;
-    if per_frame.len() != traj.frames.len() {
-        bail!(
-            "cannot export: {} of {} frames have no cell",
-            traj.frames.len() - per_frame.len(),
-            traj.frames.len()
-        );
-    }
 
     let mut skipped = 0usize;
-    let frames = traj.frames.iter().zip(&per_frame)
+    let frames = traj.frames.iter().zip(per_frame)
         .map(|(frame, types)| {
             let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
             let labelled = apply_type_labels(frame, &labels);
@@ -629,14 +626,15 @@ mod tests {
         let dir = std::env::temp_dir().join("ferro_net_export_units");
         let out = batch::Output { dir: Some(dir.clone()), label: None, suffix: None, mkdir: true };
         out.prepare().unwrap();
+        let (_, types) = calc_network_typed(&traj, &p).unwrap();
 
-        export_labelled(&traj, &p, "box", &out, ExportFormat::Lammpstrj, Some(LammpsUnits::Metal)).unwrap();
+        export_labelled(&traj, &types, "box", &out, ExportFormat::Lammpstrj, Some(LammpsUnits::Metal)).unwrap();
         let path = dir.join("box_types.lammpstrj");
         let back = ferro_io::read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap();
         let got = back.frames[0].velocities().unwrap()[0];
         assert!((got - v).norm() < 1e-12, "按 metal 写出再按 metal 读回应不变，得到 {got:?}");
 
-        let err = export_labelled(&traj, &p, "box", &out, ExportFormat::Lammpstrj, None).unwrap_err();
+        let err = export_labelled(&traj, &types, "box", &out, ExportFormat::Lammpstrj, None).unwrap_err();
         assert!(format!("{err:#}").contains("--units"), "没给 --units 且有速度应报错：{err:#}");
     }
 

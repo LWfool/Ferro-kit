@@ -21,7 +21,7 @@
 
 use crate::check;
 use ferro_core::error::ChemError;
-use ferro_core::NeighborList;
+use crate::neighbor::NeighborList;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use ferro_core::{Table, Trajectory};

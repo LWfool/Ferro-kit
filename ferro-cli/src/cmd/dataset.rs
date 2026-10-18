@@ -1436,7 +1436,7 @@ fn diagnostic_tables(
 
     let mut cut = std::collections::BTreeMap::new();
     cut.insert(("Al".to_string(), "O".to_string()), rcut);
-    let tp = ferro_core::TypeParams::new(cut, Default::default());
+    let tp = ferro_analysis::TypeParams::new(cut, Default::default());
     let hist = pooled_coordination(traj, &tp, "Al")?;
     if !hist.is_empty() {
         // 所用截断逐 system 不同（--al6 不带值时），记在 [inputs] 的 al6_rcut 列

@@ -20,23 +20,15 @@ pub mod table;
 pub mod data;
 pub mod units;
 pub mod error;
-pub mod network_type;
-pub mod cluster;
 
 // top-level re-exports for downstream crates
 pub use array_order::{matrix3_from_row_major, matrix3_row_major};
 pub use atom::{Atom, AtomRef, Site};
 pub use cell::Cell;
-pub use periodic::{NeighborList, PeriodicCell};
+pub use periodic::PeriodicCell;
 pub use charge_grid::ChargeGrid;
 pub use frame::Frame;
 pub use trajectory::{select_range, spread_range, Trajectory, TrajectoryMetadata};
 pub use cube_data::CubeData;
 pub use table::{Column, Table};
 pub use error::{ChemError, Result};
-pub use network_type::{
-    AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame, classify_frame_detailed,
-};
-pub use cluster::{
-    build_network_graph, connected_components, LigandKind, NetworkGraph,
-};

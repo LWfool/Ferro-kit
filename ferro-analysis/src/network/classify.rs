@@ -1,7 +1,7 @@
 //! Network atom type classification: per-frame labeling for glass network analysis.
 //!
-//! Shared by `ferro-structure` (single-frame typing / cluster finding) and
-//! `ferro-analysis` (trajectory statistics) without creating cross-crate dependencies.
+//! Used by `ferro net` (statistics and the labelled trajectory) and by the dataset
+//! filter's coordination criteria.
 //!
 //! # What classification produces
 //!
@@ -28,7 +28,7 @@
 //! | Other atoms | element symbol unchanged |
 //!
 //! **A former's digit is not always the same quantity.**  Qn is a tetrahedral-former
-//! convention, so it is shown only for the elements in [`crate::data::qn_elements`];
+//! convention, so it is shown only for the elements in [`super::qn_elements`];
 //! every other former shows its coordination number, which is what the literature
 //! quotes for it (`Al[4]`/`Al[5]`/`Al[6]`).  The two coincide for a former with no
 //! non-bridging ligand — true of Al in aluminophosphates — so a system where they
@@ -45,9 +45,10 @@
 //! the reference trajectory), so it carried no resolving power.  Modifiers are now
 //! described by their coordination number instead.
 
-use crate::data::qn_elements;
-use crate::error::Result;
-use crate::{Frame, NeighborList, PeriodicCell};
+use super::qn_elements;
+use crate::neighbor::NeighborList;
+use ferro_core::error::Result;
+use ferro_core::{Frame, PeriodicCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Cutoff table: `(element_A, element_B)` → distance [Å]
@@ -61,7 +62,7 @@ pub struct TypeParams {
     /// `(modifier_elem, ligand_elem)` → cutoff [Å].  Empty → no modifier classification.
     pub modifier_cutoffs: CutoffTable,
     /// Formers described by a Qn speciation; everything else is described by its
-    /// coordination number.  See [`crate::data::qn_elements`].
+    /// coordination number.  See [`super::qn_elements`].
     ///
     /// Held here rather than looked up from the static table at render time because
     /// `--qn` overrides it per run: a classification must carry the convention it was
@@ -244,7 +245,7 @@ impl AtomType {
     ///
     /// Not a connectivity test.  A tricluster joins three formers and is the most
     /// strongly connected node in the network, yet it is `false` here — use
-    /// `partners.len() >= 2` (equivalently [`crate::LigandKind::Bridging`]) when the
+    /// `partners.len() >= 2` (equivalently [`super::LigandKind::Bridging`]) when the
     /// question is whether the ligand links formers at all.  Reach for this method
     /// only when a true two-ended bridge is what is meant, such as separating the
     /// pairwise `linkage` rows from the tricluster ones.
@@ -496,7 +497,7 @@ fn unique_keys_right(table: &CutoffTable) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Cell;
+    use ferro_core::Cell;
 
     /// Qn former: the label digit is the bridging count.
     fn former(elem: &str, n_bo: u32, cn: u32) -> AtomType {
@@ -610,7 +611,7 @@ mod tests {
 
     /// A frame in a 20 Å cubic box; positions in Å.
     fn frame_of(atoms: &[(&str, f64, f64, f64)]) -> Frame {
-        use crate::Atom;
+        use ferro_core::Atom;
         use nalgebra::Vector3;
         let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
         let mut f = Frame::new();

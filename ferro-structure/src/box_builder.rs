@@ -263,7 +263,7 @@ pub fn build_box(
 
 /// Cell list for the packing relaxation: space split into bins to speed up the neighbour search.
 ///
-/// Deliberately not `ferro_core::NeighborList`: this one serves a cubic box only, is rebuilt
+/// Deliberately not `ferro_analysis`'s `NeighborList`: this one serves a cubic box only, is rebuilt
 /// every relaxation step while the atoms move, and the force sums depend on its visiting order;
 /// that list validates a general cell once per frame. They change for different reasons.
 struct CellList {
