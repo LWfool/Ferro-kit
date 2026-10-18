@@ -20,6 +20,12 @@ It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
 `ferro convert` does. Library callers of `write_cif` / `write_poscar` /
 `write_lammps_data` get an error for several frames instead.
 
+### `dataset merge --suffix` must look like `.train`
+
+The suffix is appended to the output directory names, and one containing `/` or `..`
+wrote outside `-o`. It must now be `.` followed by letters, digits, `_`, `+` or `-`;
+anything else is refused before any input is read.
+
 ### `dataset collect`: a VASP output with no usable frame is skipped, not joined
 
 An OUTCAR or vasprun.xml whose every step was dropped (an unfinished first step,

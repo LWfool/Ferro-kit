@@ -209,7 +209,7 @@ pub fn stack<T>(
 
 /// Characters allowed in a file-name label. Everything a chemical symbol or a site
 /// label can legitimately contain, and nothing that can redirect a path.
-fn label_char_ok(c: char) -> bool {
+pub(crate) fn label_char_ok(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '-')
 }
 

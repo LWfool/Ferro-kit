@@ -1513,6 +1513,16 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
              nowhere to put (it has no sets). Use --mode shuffle, or --type deepmd"
         );
     }
+    // The suffix is glued onto a directory name: `/` or `..` in it would leave `-o`
+    if let Some(s) = &args.suffix {
+        let ok = s.strip_prefix('.').is_some_and(|rest| !rest.is_empty() && rest.chars().all(crate::batch::label_char_ok));
+        if !ok {
+            bail!(
+                "invalid --suffix {s:?}: it is appended to a directory name, so it must start \
+                 with '.' followed by letters, digits, '_', '+' or '-' (e.g. .train)"
+            );
+        }
+    }
     let roots = crate::batch::expand_dirs(&args.input)?;
     let mut systems: Vec<PathBuf> = Vec::new();
     for root in &roots {
@@ -1984,6 +1994,30 @@ mod tests {
     }
 
     /// merge 打乱、重排原子、切 set 之后，每帧的能量、盒子、应力、坐标与力仍属同一帧同一原子
+    /// `--suffix` is glued onto a directory name: one with `/` or `..` used to write
+    /// outside `-o`. Refused before any input is read or any directory created.
+    #[test]
+    fn a_merge_suffix_that_could_leave_the_output_is_refused_up_front() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: MergeCmd,
+        }
+        use clap::Parser;
+        let out = std::env::temp_dir().join(format!("ferro_merge_suffix_{}", std::process::id()));
+        for bad in ["/../../escaped", ".a/b", "train", "."] {
+            let argv = ["merge", "-i", "no/such/dir", "-o", out.to_str().unwrap(), "--mkdir", "--suffix", bad];
+            let err = run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap_err().to_string();
+            assert!(err.contains("--suffix"), "{bad}: {err}");
+        }
+        assert!(!out.exists(), "nothing may be created for a refused suffix");
+        for good in [".train", ".valid", ".run_2"] {
+            let argv = ["merge", "-i", "no/such/dir", "-o", out.to_str().unwrap(), "--mkdir", "--suffix", good];
+            let err = run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap_err().to_string();
+            assert!(!err.contains("--suffix"), "{good} is a valid suffix: {err}");
+        }
+    }
+
     #[test]
     fn merge_shuffle_keeps_every_label_with_its_frame_and_atom() {
         #[derive(clap::Parser)]

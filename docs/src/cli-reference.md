@@ -937,7 +937,7 @@ directories, so a later `merge -i clean/*` filters the flat csv files out by its
 | `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
 | `--seed <N>` | 666 | the seed for `shuffle`; unused by `by-source` |
 | `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
-| `--suffix <EXT>` | see right | force the output directory suffix.  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
+| `--suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
 | `--overwrite` | | allow writing into an existing non-empty directory |
 
 **Grouping does not look at directory names** — `init.011` says nothing about what is inside.  Grouping is
