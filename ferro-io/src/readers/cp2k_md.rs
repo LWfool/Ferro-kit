@@ -161,8 +161,7 @@ pub fn read_cp2k_md(path: &Path) -> Result<Trajectory> {
 /// Reads a CP2K MD output file and reports what was dropped.
 pub fn read_cp2k_md_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
-    let content = super::util::read_text(path)?;
-    parse_cp2k_md(&content).with_context(|| format!("parsing {path_}"))
+    parse_cp2k_md_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {path_}"))
 }
 
 // 方括号里的单位标注: "ENERGY| ... [hartree]  -2059.5" -> "hartree"
@@ -264,257 +263,295 @@ fn read_xyz_block(lines: &[&str], head: usize, n: usize) -> Option<(Vec<String>,
     Some((syms, vecs))
 }
 
-fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
-    let lines: Vec<&str> = content.lines().collect();
+/// What the steps parsed so far establish for the ones after them.
+#[derive(Default)]
+struct StepAcc {
+    frames: Vec<Frame>,
+    ref_comp: Option<Vec<String>>,
+    ref_offsets: Option<(usize, usize)>,
+}
 
+/// Parses one MD step from `lines`, the window from the previous step's anchor (or
+/// the start of the file) up to the next anchor (or the end), with this step's
+/// anchor at `a`. `base` is the window's first line in the file, for messages.
+fn parse_step(
+    lines: &[&str],
+    a: usize,
+    base: usize,
+    converged: bool,
+    stats: &mut AimdStats,
+    acc: &mut StepAcc,
+) -> Result<()> {
+    if !converged {
+        stats.n_scf_failed += 1;
+        return Ok(());
+    }
+
+    // 帧的前半在锚点之前，下界是上一个锚点（窗口的第 0 行），避免越界抓到别帧的量
+    let lo = 0;
+    let mut energy = None;
+    let mut stress_at = None;
+    for i in (lo..a).rev() {
+        let l = lines[i];
+        if energy.is_none() && line_matches(l, tag::ENERGY) {
+            energy = Some(energy_to_ev(l)?);
+        } else if stress_at.is_none() && line_matches(l, tag::STRESS) {
+            stress_at = Some(i);
+        }
+        if energy.is_some() && stress_at.is_some() {
+            break;
+        }
+    }
+
+    // 帧的后半在锚点之后，上界是下一个锚点（窗口的末尾）
+    let hi = lines.len();
+    // 温度在锚点之后、坐标块之前。MD_INI| 的那一行在第一个锚点之前，
+    // 按锚点定位天然排除，不必像参考脚本那样另做一次掩码
+    let mut temperature = None;
+    for l in lines.iter().take(hi).skip(a) {
+        if line_matches(l, tag::TEMPERATURE) {
+            // 两个数：瞬时、累计平均。取第一个 —— 取第二个不会报错，
+            // 只会得到一条越来越平的曲线
+            temperature = l.split_whitespace().find_map(|t| t.parse::<f64>().ok());
+            break;
+        }
+    }
+
+    let mut heads: Vec<(usize, usize)> = Vec::new(); // (行号, 原子数)
+    let mut i = a;
+    while i < hi && heads.len() < 2 {
+        if let Some(n) = block_head(lines, i) {
+            heads.push((i, n));
+            i += n + 2;
+        } else {
+            i += 1;
+        }
+    }
+    if heads.len() < 2 || heads[0].1 != heads[1].1 {
+        stats.n_incomplete += 1;
+        return Ok(());
+    }
+    let natoms = heads[0].1;
+    // 第三个同构 xyz 块多半是 VELOCITIES 也打到了 __STD_OUT__（审查 A-17）。它若排在
+    // 力块之前，上面取到的「第二块」就是速度，当力存而不报错。认不出哪块是力，整份报错
+    while i < hi {
+        if block_head(lines, i) == Some(natoms) {
+            bail!(
+                "line {}: a third {natoms}-atom xyz block in the MD step at line {} — \
+                 probably VELOCITIES printed to __STD_OUT__; ferro cannot tell which \
+                 block holds the forces. Print velocities to their own file",
+                base + i + 1, base + a + 1
+            );
+        }
+        i += 1;
+    }
+
+    let Some((c_syms, coords)) = read_xyz_block(lines, heads[0].0, natoms) else {
+        stats.n_incomplete += 1;
+        return Ok(());
+    };
+    let Some((f_syms, forces)) = read_xyz_block(lines, heads[1].0, natoms) else {
+        stats.n_incomplete += 1;
+        return Ok(());
+    };
+
+    // 力块之后第一行非空行是 cell 行: step time + 9 分量 + 体积
+    let mut cell_line = None;
+    for l in lines.iter().take(hi).skip(heads[1].0 + 2 + natoms) {
+        if !l.trim().is_empty() {
+            cell_line = Some(*l);
+            break;
+        }
+    }
+    // 读不到 cell 行单独计数（审查 A-17）：多半是没把 &CELL 打到 __STD_OUT__，
+    // 混进 incomplete 时报告说不出缺的是什么
+    let Some(cell_fields) = cell_line.map(|l| l.split_whitespace().collect::<Vec<_>>()) else {
+        stats.n_no_cell += 1;
+        return Ok(());
+    };
+    // 末位是体积，它之前的九个是晶胞；从尾部取，前缀多一列少一列都无所谓
+    if cell_fields.len() < 10 {
+        stats.n_no_cell += 1;
+        return Ok(());
+    }
+    let nine = &cell_fields[cell_fields.len() - 10..cell_fields.len() - 1];
+    let mut m = [0.0_f64; 9];
+    let mut ok = true;
+    for (slot, s) in m.iter_mut().zip(nine) {
+        match s.parse::<f64>() {
+            Ok(v) => *slot = v,
+            Err(_) => {
+                ok = false;
+                break;
+            }
+        }
+    }
+    if !ok {
+        stats.n_no_cell += 1;
+        return Ok(());
+    }
+
+    // 组成必须与首帧一致；不一致多半是块错位而非体系真变了
+    let mut comp: Vec<String> = c_syms.clone();
+    comp.sort();
+    let mut fcomp: Vec<String> = f_syms.clone();
+    fcomp.sort();
+    match &acc.ref_comp {
+        None => acc.ref_comp = Some(comp.clone()),
+        Some(r) => {
+            if &comp != r || &fcomp != r {
+                stats.n_bad_composition += 1;
+                return Ok(());
+            }
+        }
+    }
+
+    // 块相对锚点的偏移在同一 ensemble 下是固定的；漂移说明有额外输出插入
+    let offsets = (heads[0].0 - a, heads[1].0 - a);
+    match acc.ref_offsets {
+        None => acc.ref_offsets = Some(offsets),
+        Some(r) if r != offsets => stats.n_layout_drift += 1,
+        Some(_) => {}
+    }
+
+    let stress = match stress_at {
+        Some(s) => {
+            let unit = stress_unit(lines[s])?;
+            // 表头行（`STRESS| x y z`）与摘要行（`1/3 Trace`、`Determinant`）
+            // 都解析不出三个浮点，于是自动被跳过 —— 不必知道块里有几行表头
+            let mut t = Matrix3::zeros();
+            let mut row = 0usize;
+            for l in &lines[s + 1..(s + 12).min(lines.len())] {
+                if row == 3 {
+                    break;
+                }
+                // 新格式行首是 `STRESS|`,<=7.1 行首直接是行标 X/Y/Z。
+                // 两种都收,但仍要求行首是这两者之一 —— 否则块后面的
+                // 特征向量行(三列浮点)会被当成矩阵行读进来
+                let row_label = l
+                    .split_whitespace()
+                    .next()
+                    .is_some_and(|t| matches!(t, "X" | "Y" | "Z" | "x" | "y" | "z"));
+                if !line_matches(l, tag::STRESS_ROW) && !row_label {
+                    continue;
+                }
+                let f: Vec<&str> = l.split_whitespace().collect();
+                if f.len() < 4 {
+                    continue;
+                }
+                // 取末尾三个：前面是 `STRESS|` 加行标，列数变了也不影响
+                let vals: Option<Vec<f64>> = f[f.len() - 3..]
+                    .iter()
+                    .map(|x| x.parse::<f64>().ok())
+                    .collect();
+                if let Some(v) = vals {
+                    for (col, x) in v.iter().enumerate() {
+                        t[(row, col)] = convert_pressure(*x, unit, PressureUnit::EVPerAng3);
+                    }
+                    row += 1;
+                }
+            }
+            if row == 3 { Some(t) } else { None }
+        }
+        None => None,
+    };
+
+    let force_factor = HARTREE_TO_EV / BOHR_TO_ANG;
+    let atoms: Vec<Atom> = c_syms
+        .iter()
+        .zip(&coords)
+        .map(|(s, p)| Atom::new(s.as_str(), *p))
+        .collect();
+    // pbc is the header's, filled in once the whole file is read
+    let mut frame = Frame::with_cell(Cell::from_matrix(Matrix3::from_row_slice(&m)), [true; 3]);
+    frame.atoms = atoms;
+    frame.energy = energy;
+    frame.temperature = temperature;
+    // 直接从锚点行取,不用上面那个并行的 steps —— 某个锚点的步号解析不出时
+    // 那个 Vec 会整体错位一位,而错位读到的是别帧的步号,不报错
+    frame.step = lines[a].split_whitespace().last().and_then(|t| t.parse::<i64>().ok());
+    frame.forces = Some(forces.iter().map(|f| f * force_factor).collect());
+    frame.stress = stress;
+    acc.frames.push(frame);
+    stats.n_kept += 1;
+    Ok(())
+}
+
+#[cfg(test)]
+fn parse_cp2k_md(content: &str) -> Result<(Trajectory, AimdStats)> {
+    parse_cp2k_md_lines(content.lines().map(|l| Ok(l.to_string())))
+}
+
+/// Parses a CP2K MD log holding two steps' worth of lines at a time, never the whole
+/// file (review C-1: an MD `.out` runs to hundreds of MB of SCF iterations).
+///
+/// A step needs the lines between the previous anchor and the next one, so it is
+/// parsed when the next anchor arrives (or at the end of the file). The SCF verdict
+/// is the last one seen before the anchor; the header's periodicity, version and
+/// restart count are file-wide and applied once everything is read.
+fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, AimdStats)> {
     let mut stats = AimdStats::new(AimdFormat::Cp2kMd);
-    let mut anchors: Vec<usize> = Vec::new();
-    let mut steps: Vec<i64> = Vec::new();
-    let mut scf: Vec<(usize, bool)> = Vec::new();
+    let mut first_last: Option<(i64, i64)> = None;
+    let mut last_scf: Option<bool> = None;
     let mut version: Option<String> = None;
     // 头部 ` CELL| Periodicity  XYZ`（CELL_TOP / CELL_REF / POISSON 是别的段，不取）；缺省 XYZ
     let mut pbc: Option<[bool; 3]> = None;
-    for (i, l) in lines.iter().enumerate() {
+    let mut acc = StepAcc::default();
+    // Lines from the previous anchor (or the start of the file) on; `base` is the
+    // file line number of window[0]. `pending` is the anchor (index in the window,
+    // SCF verdict) whose step still waits for the next anchor
+    let mut window: Vec<String> = Vec::new();
+    let mut base = 0usize;
+    let mut pending: Option<(usize, bool)> = None;
+    for l in lines {
+        let l = l?;
         if pbc.is_none() {
             let f: Vec<&str> = l.split_whitespace().collect();
             if f.len() >= 3 && f[0] == "CELL|" && f[1] == "Periodicity" {
                 pbc = super::cp2k::cp2k_periodic(f[2]);
             }
         }
-        if line_matches(l, tag::FRAME) {
-            anchors.push(i);
+        if line_matches(&l, tag::FRAME) {
+            if let Some((a, converged)) = pending.take() {
+                let view: Vec<&str> = window.iter().map(|l| l.as_str()).collect();
+                parse_step(&view, a, base, converged, &mut stats, &mut acc)?;
+                // The next step's window starts at this step's anchor
+                window.drain(..a);
+                base += a;
+            }
+            stats.n_steps += 1;
             // 行末是步号本身；解析不出就不记，锚点本身仍然有效
             if let Some(n) = l.split_whitespace().last().and_then(|t| t.parse::<i64>().ok()) {
-                steps.push(n);
+                first_last = Some((first_last.map_or(n, |(f, _)| f), n));
             }
-        } else if line_matches(l, tag::SCF) {
+            // SCF 收敛与否：锚点上方最近的那一行；没有 SCF 行可依时不因此丢帧
+            pending = Some((window.len(), last_scf.unwrap_or(true)));
+        } else if line_matches(&l, tag::SCF) {
             // 收敛与否看有没有 NOT 这个词，而不是整句措辞
-            let not_converged = l.split_whitespace().any(|t| t == "NOT");
-            scf.push((i, !not_converged));
-        } else if line_matches(l, tag::RESTART) {
+            last_scf = Some(!l.split_whitespace().any(|t| t == "NOT"));
+        } else if line_matches(&l, tag::RESTART) {
             stats.n_restarts += 1;
-        } else if version.is_none() && line_matches(l, tag::VERSION) {
+        } else if version.is_none() && line_matches(&l, tag::VERSION) {
             // 行尾是版本号本身（`CP2K| version string: CP2K version 2024.1`）
             version = l.split_whitespace().last().map(|v| v.to_string());
         }
+        window.push(l);
     }
     stats.version_note = version_note(version.as_deref());
     stats.version = version.clone();
-    stats.n_steps = anchors.len();
-    stats.steps = match (steps.first(), steps.last()) {
-        (Some(&a), Some(&b)) => Some((a, b)),
-        _ => None,
-    };
-    if anchors.is_empty() {
+    stats.steps = first_last;
+    if stats.n_steps == 0 {
         bail!("no `MD| Step number` line found; this is not a CP2K MD output");
     }
     // 重启段数比初始化次数少一（第一次不是重启）
     stats.n_restarts = stats.n_restarts.saturating_sub(1);
-
-    let mut frames: Vec<Frame> = Vec::with_capacity(anchors.len());
-    let mut ref_comp: Option<Vec<String>> = None;
-    let mut ref_offsets: Option<(usize, usize)> = None;
-
-    for (k, &a) in anchors.iter().enumerate() {
-        // SCF 收敛与否: 锚点上方最近的那一行
-        let converged = match scf.partition_point(|&(pos, _)| pos < a) {
-            0 => true, // 没有 SCF 行可依，不因此丢帧
-            j => scf[j - 1].1,
-        };
-        if !converged {
-            stats.n_scf_failed += 1;
-            continue;
-        }
-
-        // 帧的前半在锚点之前，下界是上一个锚点，避免越界抓到别帧的量
-        let lo = if k == 0 { 0 } else { anchors[k - 1] };
-        let mut energy = None;
-        let mut stress_at = None;
-        for i in (lo..a).rev() {
-            let l = lines[i];
-            if energy.is_none() && line_matches(l, tag::ENERGY) {
-                energy = Some(energy_to_ev(l)?);
-            } else if stress_at.is_none() && line_matches(l, tag::STRESS) {
-                stress_at = Some(i);
-            }
-            if energy.is_some() && stress_at.is_some() {
-                break;
-            }
-        }
-
-        // 帧的后半在锚点之后，上界是下一个锚点
-        let hi = anchors.get(k + 1).copied().unwrap_or(lines.len());
-        // 温度在锚点之后、坐标块之前。MD_INI| 的那一行在第一个锚点之前，
-        // 按锚点定位天然排除，不必像参考脚本那样另做一次掩码
-        let mut temperature = None;
-        for l in lines.iter().take(hi).skip(a) {
-            if line_matches(l, tag::TEMPERATURE) {
-                // 两个数：瞬时、累计平均。取第一个 —— 取第二个不会报错，
-                // 只会得到一条越来越平的曲线
-                temperature = l.split_whitespace().find_map(|t| t.parse::<f64>().ok());
-                break;
-            }
-        }
-
-        let mut heads: Vec<(usize, usize)> = Vec::new(); // (行号, 原子数)
-        let mut i = a;
-        while i < hi && heads.len() < 2 {
-            if let Some(n) = block_head(&lines, i) {
-                heads.push((i, n));
-                i += n + 2;
-            } else {
-                i += 1;
-            }
-        }
-        if heads.len() < 2 || heads[0].1 != heads[1].1 {
-            stats.n_incomplete += 1;
-            continue;
-        }
-        let natoms = heads[0].1;
-        // 第三个同构 xyz 块多半是 VELOCITIES 也打到了 __STD_OUT__（审查 A-17）。它若排在
-        // 力块之前，上面取到的「第二块」就是速度，当力存而不报错。认不出哪块是力，整份报错
-        while i < hi {
-            if block_head(&lines, i) == Some(natoms) {
-                bail!(
-                    "line {}: a third {natoms}-atom xyz block in the MD step at line {} — \
-                     probably VELOCITIES printed to __STD_OUT__; ferro cannot tell which \
-                     block holds the forces. Print velocities to their own file",
-                    i + 1, a + 1
-                );
-            }
-            i += 1;
-        }
-
-        let Some((c_syms, coords)) = read_xyz_block(&lines, heads[0].0, natoms) else {
-            stats.n_incomplete += 1;
-            continue;
-        };
-        let Some((f_syms, forces)) = read_xyz_block(&lines, heads[1].0, natoms) else {
-            stats.n_incomplete += 1;
-            continue;
-        };
-
-        // 力块之后第一行非空行是 cell 行: step time + 9 分量 + 体积
-        let mut cell_line = None;
-        for l in lines.iter().take(hi).skip(heads[1].0 + 2 + natoms) {
-            if !l.trim().is_empty() {
-                cell_line = Some(*l);
-                break;
-            }
-        }
-        // 读不到 cell 行单独计数（审查 A-17）：多半是没把 &CELL 打到 __STD_OUT__，
-        // 混进 incomplete 时报告说不出缺的是什么
-        let Some(cell_fields) = cell_line.map(|l| l.split_whitespace().collect::<Vec<_>>()) else {
-            stats.n_no_cell += 1;
-            continue;
-        };
-        // 末位是体积，它之前的九个是晶胞；从尾部取，前缀多一列少一列都无所谓
-        if cell_fields.len() < 10 {
-            stats.n_no_cell += 1;
-            continue;
-        }
-        let nine = &cell_fields[cell_fields.len() - 10..cell_fields.len() - 1];
-        let mut m = [0.0_f64; 9];
-        let mut ok = true;
-        for (slot, s) in m.iter_mut().zip(nine) {
-            match s.parse::<f64>() {
-                Ok(v) => *slot = v,
-                Err(_) => {
-                    ok = false;
-                    break;
-                }
-            }
-        }
-        if !ok {
-            stats.n_no_cell += 1;
-            continue;
-        }
-
-        // 组成必须与首帧一致；不一致多半是块错位而非体系真变了
-        let mut comp: Vec<String> = c_syms.clone();
-        comp.sort();
-        let mut fcomp: Vec<String> = f_syms.clone();
-        fcomp.sort();
-        match &ref_comp {
-            None => ref_comp = Some(comp.clone()),
-            Some(r) => {
-                if &comp != r || &fcomp != r {
-                    stats.n_bad_composition += 1;
-                    continue;
-                }
-            }
-        }
-
-        // 块相对锚点的偏移在同一 ensemble 下是固定的；漂移说明有额外输出插入
-        let offsets = (heads[0].0 - a, heads[1].0 - a);
-        match ref_offsets {
-            None => ref_offsets = Some(offsets),
-            Some(r) if r != offsets => stats.n_layout_drift += 1,
-            Some(_) => {}
-        }
-
-        let stress = match stress_at {
-            Some(s) => {
-                let unit = stress_unit(lines[s])?;
-                // 表头行（`STRESS| x y z`）与摘要行（`1/3 Trace`、`Determinant`）
-                // 都解析不出三个浮点，于是自动被跳过 —— 不必知道块里有几行表头
-                let mut t = Matrix3::zeros();
-                let mut row = 0usize;
-                for l in &lines[s + 1..(s + 12).min(lines.len())] {
-                    if row == 3 {
-                        break;
-                    }
-                    // 新格式行首是 `STRESS|`,<=7.1 行首直接是行标 X/Y/Z。
-                    // 两种都收,但仍要求行首是这两者之一 —— 否则块后面的
-                    // 特征向量行(三列浮点)会被当成矩阵行读进来
-                    let row_label = l
-                        .split_whitespace()
-                        .next()
-                        .is_some_and(|t| matches!(t, "X" | "Y" | "Z" | "x" | "y" | "z"));
-                    if !line_matches(l, tag::STRESS_ROW) && !row_label {
-                        continue;
-                    }
-                    let f: Vec<&str> = l.split_whitespace().collect();
-                    if f.len() < 4 {
-                        continue;
-                    }
-                    // 取末尾三个：前面是 `STRESS|` 加行标，列数变了也不影响
-                    let vals: Option<Vec<f64>> = f[f.len() - 3..]
-                        .iter()
-                        .map(|x| x.parse::<f64>().ok())
-                        .collect();
-                    if let Some(v) = vals {
-                        for (col, x) in v.iter().enumerate() {
-                            t[(row, col)] = convert_pressure(*x, unit, PressureUnit::EVPerAng3);
-                        }
-                        row += 1;
-                    }
-                }
-                if row == 3 { Some(t) } else { None }
-            }
-            None => None,
-        };
-
-        let force_factor = HARTREE_TO_EV / BOHR_TO_ANG;
-        let atoms: Vec<Atom> = c_syms
-            .iter()
-            .zip(&coords)
-            .map(|(s, p)| Atom::new(s.as_str(), *p))
-            .collect();
-        let mut frame = Frame::with_cell(
-            Cell::from_matrix(Matrix3::from_row_slice(&m)),
-            pbc.unwrap_or([true; 3]),
-        );
-        frame.atoms = atoms;
-        frame.energy = energy;
-        frame.temperature = temperature;
-        // 直接从锚点行取,不用上面那个并行的 steps —— 某个锚点的步号解析不出时
-        // 那个 Vec 会整体错位一位,而错位读到的是别帧的步号,不报错
-        frame.step = lines[a].split_whitespace().last().and_then(|t| t.parse::<i64>().ok());
-        frame.forces = Some(forces.iter().map(|f| f * force_factor).collect());
-        frame.stress = stress;
-        frames.push(frame);
-        stats.n_kept += 1;
+    if let Some((a, converged)) = pending {
+        let view: Vec<&str> = window.iter().map(|l| l.as_str()).collect();
+        parse_step(&view, a, base, converged, &mut stats, &mut acc)?;
+    }
+    let mut frames = acc.frames;
+    for f in &mut frames {
+        f.pbc = pbc.unwrap_or([true; 3]);
     }
 
     if frames.is_empty() {

@@ -7,8 +7,7 @@ use anyhow::{bail, Context, Result};
 
 pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
     let path_ = path.display();
-    let content = super::util::read_text(path)?;
-    parse_extxyz(&content).with_context(|| format!("parsing {path_}"))
+    parse_extxyz_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {path_}"))
 }
 
 /// Whether a `.xyz` file is really extended XYZ: its first comment line (line 2)
@@ -28,9 +27,32 @@ pub fn is_extxyz(path: &Path) -> Result<bool> {
     }))
 }
 
+#[cfg(test)]
 fn parse_extxyz(content: &str) -> Result<Trajectory> {
+    parse_extxyz_lines(content.lines().map(|l| Ok(l.to_string())))
+}
+
+/// Parses extended XYZ from its lines, one frame at a time (review C-1: the whole
+/// file is never held as text).
+///
+/// A read error ends the line stream and is reported in place of whatever the parse
+/// made of the shortened file — a "missing atom line" would name the wrong problem.
+fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<Trajectory> {
+    let read_error = std::cell::RefCell::new(None);
+    let lines = lines.map_while(|l| match l {
+        Ok(l) => Some(l),
+        Err(e) => { *read_error.borrow_mut() = Some(e); None }
+    });
+    let parsed = parse_frames(lines);
+    match read_error.into_inner() {
+        Some(e) => Err(e),
+        None => parsed,
+    }
+}
+
+fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
     // 带上行号（从 1 起），解析失败时点名是文件哪一行
-    let mut lines = content.lines().enumerate().map(|(i, l)| (i + 1, l)).peekable();
+    let mut lines = lines.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
 
     loop {
@@ -40,8 +62,9 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
         }
         let count_line = match lines.next() {
             None => break,
-            Some((_, l)) => l.trim(),
+            Some((_, l)) => l,
         };
+        let count_line = count_line.trim();
         if count_line.is_empty() { break; }
 
         let n: usize = count_line.parse()
@@ -49,7 +72,7 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 
         let (comment_no, comment) = lines.next().context("missing comment line")?;
         let frame_no = traj.n_frames();
-        let kv = parse_comment(comment)
+        let kv = parse_comment(&comment)
             .with_context(|| format!("frame {frame_no} (line {comment_no}): bad comment line"))?;
 
         // Cell and pbc

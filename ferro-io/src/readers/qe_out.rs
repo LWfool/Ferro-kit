@@ -112,27 +112,29 @@ fn card_unit(line: &str) -> (String, Option<f64>) {
     }
 }
 
-/// A `CELL_PARAMETERS` card at line `i`: rows are lattice vectors, in Å.
-fn read_cell_card(lines: &[&str], i: usize, alat_ang: f64) -> Result<Matrix3<f64>> {
+/// A `CELL_PARAMETERS` card at line `i`: rows are lattice vectors, in Å. `base` is
+/// the file line number of `lines[0]`, for messages.
+fn read_cell_card(lines: &[&str], i: usize, base: usize, alat_ang: f64) -> Result<Matrix3<f64>> {
     let (unit, alat) = card_unit(lines[i]);
     let scale = match unit.as_str() {
         "angstrom" => 1.0,
         "bohr" => BOHR_TO_ANG,
         "alat" => alat.map_or(alat_ang, |a| a * BOHR_TO_ANG),
-        other => bail!("line {}: CELL_PARAMETERS in unit `{other}` is not supported", i + 1),
+        other => bail!("line {}: CELL_PARAMETERS in unit `{other}` is not supported", base + i + 1),
     };
     let mut m = Matrix3::zeros();
     for row in 0..3 {
         let v = lines.get(i + 1 + row).and_then(|l| three_numbers(l.split_whitespace()))
-            .with_context(|| format!("line {}: CELL_PARAMETERS needs three rows of three numbers", i + 1))?;
+            .with_context(|| format!("line {}: CELL_PARAMETERS needs three rows of three numbers", base + i + 1))?;
         m.set_row(row, &(v * scale).transpose());
     }
     Ok(m)
 }
 
 /// An `ATOMIC_POSITIONS` card at line `i`: (label, Cartesian Å) for `nat` atoms.
+/// `base` is the file line number of `lines[0]`, for messages.
 fn read_positions_card(
-    lines: &[&str], i: usize, nat: usize, cell: &Matrix3<f64>, alat_ang: f64,
+    lines: &[&str], i: usize, base: usize, nat: usize, cell: &Matrix3<f64>, alat_ang: f64,
 ) -> Result<Sites> {
     let (unit, _) = card_unit(lines[i]);
     let mut out = Vec::with_capacity(nat);
@@ -140,7 +142,7 @@ fn read_positions_card(
         let line = lines.get(i + 1 + k).copied().unwrap_or("");
         let mut it = line.split_whitespace();
         let (Some(label), Some(v)) = (it.next(), three_numbers(&mut it)) else {
-            bail!("line {}: ATOMIC_POSITIONS has fewer than {nat} atoms", i + 2 + k);
+            bail!("line {}: ATOMIC_POSITIONS has fewer than {nat} atoms", base + i + 2 + k);
         };
         let pos = match unit.as_str() {
             "angstrom" => v,
@@ -148,7 +150,7 @@ fn read_positions_card(
             "alat" => v * alat_ang,
             // 行向量是晶格矢量：r = s · M
             "crystal" => (v.transpose() * cell).transpose(),
-            other => bail!("line {}: ATOMIC_POSITIONS in unit `{other}` is not supported", i + 1),
+            other => bail!("line {}: ATOMIC_POSITIONS in unit `{other}` is not supported", base + i + 1),
         };
         out.push((label.to_string(), pos));
     }
@@ -234,104 +236,93 @@ pub fn read_qe_out(path: &Path) -> Result<Trajectory> {
 /// Reads a pw.x output file and reports what was dropped.
 pub fn read_qe_out_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
-    let content = super::util::read_text(path)?;
-    parse_qe_out(&content).with_context(|| format!("parsing {path_}"))
+    parse_qe_out_lines(|| super::util::text_lines(path)).with_context(|| format!("parsing {path_}"))
 }
 
+#[cfg(test)]
 fn parse_qe_out(content: &str) -> Result<(Trajectory, AimdStats)> {
-    let lines: Vec<&str> = content.lines().collect();
+    parse_qe_out_lines(|| Ok(content.lines().map(|l| Ok(l.to_string()))))
+}
+
+/// Parses a pw.x output in two passes over its lines, never holding the whole file
+/// (review C-1).
+///
+/// The first pass keeps no text: it finds the facts every step's verdict depends on
+/// and that may be printed after the step — one `Program PWSCF` banner, no BFGS,
+/// md or not, whether any step printed forces / stress. The second holds two steps'
+/// worth of lines: a step's structure is printed at the end of the step before it,
+/// so a step is parsed when the next `Self-consistent Calculation` arrives.
+fn parse_qe_out_lines<I: Iterator<Item = Result<String>>>(
+    open: impl Fn() -> Result<I>,
+) -> Result<(Trajectory, AimdStats)> {
     let mut stats = AimdStats::new(AimdFormat::QeOut);
 
-    let banners: Vec<&str> = lines.iter().copied().filter(|l| l.contains("Program PWSCF")).collect();
-    match banners.len() {
-        0 => bail!("no `Program PWSCF` banner; this is not a pw.x output"),
-        1 => {}
-        n => bail!("{n} `Program PWSCF` banners: several pw.x runs in one file. Split it, one run per file"),
+    let mut banner: Option<String> = None;
+    let mut n_banners = 0usize;
+    let (mut bfgs, mut is_md, mut has_forces, mut has_stress) = (false, false, false, false);
+    for l in open()? {
+        let l = l?;
+        if l.contains("Program PWSCF") {
+            n_banners += 1;
+            banner.get_or_insert(l.clone());
+        }
+        bfgs |= l.contains("BFGS Geometry Optimization");
+        // md 是 `Entering Dynamics:`，vc-md 是 `Entering Dynamics;`
+        is_md |= l.trim_start().starts_with("Entering Dynamics");
+        // 应力：别的步打印了而这一步没有，就是这一步没写完；整份文件都没有则是没开 tstress。
+        // 力恒为必需（同 cp2k_sp），has_forces 只用于报错时点名 tprnfor
+        has_forces |= starts_with_tokens(&l, &["Forces", "acting", "on", "atoms"]);
+        has_stress |= starts_with_tokens(&l, &["total", "stress"]);
     }
-    if lines.iter().any(|l| l.contains("BFGS Geometry Optimization")) {
+    let banner = match (n_banners, banner) {
+        (1, Some(b)) => b,
+        (0, _) | (_, None) => bail!("no `Program PWSCF` banner; this is not a pw.x output"),
+        (n, _) => bail!("{n} `Program PWSCF` banners: several pw.x runs in one file. Split it, one run per file"),
+    };
+    if bfgs {
         bail!("a relax / vc-relax output; ferro reads pw.x scf, md and vc-md");
     }
-    stats.version = banners[0].split_whitespace()
+    stats.version = banner.split_whitespace()
         .find_map(|t| t.strip_prefix("v.")).map(|v| v.to_string());
     stats.version_note = version_note(stats.version.as_deref());
 
-    let (nat, alat, mut cell, header_atoms) = read_header(&lines)?;
-    let anchors: Vec<usize> = (0..lines.len())
-        .filter(|&i| lines[i].trim() == "Self-consistent Calculation").collect();
-    if anchors.is_empty() {
+    let is_anchor = |l: &str| l.trim() == "Self-consistent Calculation";
+    let mut steps = Steps { frames: Vec::new(), header: None, k: 0, is_md, has_stress };
+    // Lines from the previous step's anchor (or the start of the file) on; `base` is
+    // the file line number of window[0], `pending` the anchor whose step waits
+    let mut window: Vec<String> = Vec::new();
+    let mut base = 0usize;
+    let mut pending: Option<usize> = None;
+    for l in open()? {
+        let l = l?;
+        if is_anchor(&l) {
+            let view: Vec<&str> = window.iter().map(|l| l.as_str()).collect();
+            if steps.header.is_none() {
+                steps.header = Some(read_header(&view)?);
+            }
+            if let Some(a) = pending.take() {
+                steps.parse(&view, a, base, &mut stats)?;
+                window.drain(..a);
+                base += a;
+            }
+            pending = Some(window.len());
+        }
+        window.push(l);
+    }
+    if steps.header.is_none() {
+        let view: Vec<&str> = window.iter().map(|l| l.as_str()).collect();
+        read_header(&view)?;
         bail!("no `Self-consistent Calculation`: the run stopped before its first SCF");
     }
-    // md 是 `Entering Dynamics:`，vc-md 是 `Entering Dynamics;`
-    let is_md = lines.iter().any(|l| l.trim_start().starts_with("Entering Dynamics"));
-    // 应力：别的步打印了而这一步没有，就是这一步没写完；整份文件都没有则是没开 tstress。
-    // 力恒为必需（同 cp2k_sp），has_forces 只用于报错时点名 tprnfor
-    let has_forces = lines.iter().any(|l| starts_with_tokens(l, &["Forces", "acting", "on", "atoms"]));
-    let has_stress = lines.iter().any(|l| starts_with_tokens(l, &["total", "stress"]));
-
-    stats.n_steps = anchors.len();
+    if let Some(a) = pending {
+        let view: Vec<&str> = window.iter().map(|l| l.as_str()).collect();
+        steps.parse(&view, a, base, &mut stats)?;
+    }
+    stats.n_steps = steps.k;
     if is_md {
-        stats.steps = Some((0, anchors.len() as i64 - 1));
+        stats.steps = Some((0, steps.k as i64 - 1));
     }
-    let mut frames = Vec::with_capacity(anchors.len());
-    let mut atoms = header_atoms;
-    for (k, &a) in anchors.iter().enumerate() {
-        let hi = anchors.get(k + 1).copied().unwrap_or(lines.len());
-        // 这一步的结构印在上一步的末尾（第 0 步用输出头）；先更新，后面丢帧也不影响下一步
-        if k > 0 {
-            let prev = anchors[k - 1]..a;
-            if let Some(c) = prev.clone().rev().find(|&i| lines[i].starts_with("CELL_PARAMETERS")) {
-                cell = read_cell_card(&lines, c, alat)?;
-            }
-            match prev.rev().find(|&i| lines[i].starts_with("ATOMIC_POSITIONS")) {
-                Some(p) => atoms = read_positions_card(&lines, p, nat, &cell, alat)?,
-                None => {
-                    stats.n_incomplete += 1;
-                    continue;
-                }
-            }
-        }
-        let window = a..hi;
-        if window.clone().any(|i| lines[i].contains("convergence NOT achieved")) {
-            stats.n_scf_failed += 1;
-            continue;
-        }
-        let Some(energy) = window.clone()
-            .find(|&i| lines[i].starts_with('!') && lines[i].contains("total energy"))
-            .and_then(|i| lines[i].split('=').nth(1)?.split_whitespace().next()?.parse::<f64>().ok())
-        else {
-            stats.n_incomplete += 1;
-            continue;
-        };
-        let forces = match window.clone().find(|&i| starts_with_tokens(lines[i], &["Forces", "acting", "on", "atoms"])) {
-            Some(f) => read_forces(&lines, f, hi, nat),
-            None => None,
-        };
-        let stress = window.clone()
-            .find(|&i| starts_with_tokens(lines[i], &["total", "stress"]))
-            .and_then(|s| read_stress(&lines, s));
-        if forces.is_none() || (has_stress && stress.is_none()) {
-            stats.n_incomplete += 1;
-            continue;
-        }
-
-        let mut frame = Frame::with_cell(Cell::from_matrix(cell), [true; 3]);
-        frame.atoms = atoms.iter().map(|(label, pos)| {
-            let mut atom = Atom::new(extract_element(label), *pos);
-            // 物种名与元素相同时不填 label（同 cp2k_sp）
-            if atom.element != *label {
-                atom.label = Some(label.clone());
-            }
-            atom
-        }).collect();
-        frame.energy = Some(energy * RY_TO_EV);
-        frame.forces = forces;
-        frame.stress = stress;
-        if is_md {
-            frame.step = Some(k as i64);
-        }
-        frames.push(frame);
-        stats.n_kept += 1;
-    }
+    let frames = steps.frames;
 
     // 同 cp2k_sp：一帧不剩就报错，collect 据此 SKIP 这份文件并说出原因，
     // 而不是拿一条空轨迹去和同目录的其他文件比组成
@@ -349,6 +340,86 @@ fn parse_qe_out(content: &str) -> Result<(Trajectory, AimdStats)> {
         None => "Quantum ESPRESSO pw.x".to_string(),
     });
     Ok((traj, stats))
+}
+
+/// The steps parsed so far, and what the next one inherits from them.
+struct Steps {
+    frames: Vec<Frame>,
+    /// `(nat, alat, cell, sites)`: the header's, then each step's own cell and sites
+    header: Option<(usize, f64, Matrix3<f64>, Sites)>,
+    /// Index of the next step
+    k: usize,
+    is_md: bool,
+    has_stress: bool,
+}
+
+impl Steps {
+    /// Parses step `self.k` from `lines`, the window from the previous anchor (or the
+    /// start of the file) to the next one (or the end), with this step's anchor at `a`.
+    /// `base` is the window's first line in the file, for messages.
+    fn parse(&mut self, lines: &[&str], a: usize, base: usize, stats: &mut AimdStats) -> Result<()> {
+        let k = self.k;
+        self.k += 1;
+        let (nat, alat, cell, atoms) = self.header.as_mut().expect("the header is read at the first anchor");
+        let (nat, alat) = (*nat, *alat);
+        let hi = lines.len();
+        // 这一步的结构印在上一步的末尾（第 0 步用输出头）；先更新，后面丢帧也不影响下一步
+        if k > 0 {
+            let prev = 0..a;
+            if let Some(c) = prev.clone().rev().find(|&i| lines[i].starts_with("CELL_PARAMETERS")) {
+                *cell = read_cell_card(lines, c, base, alat)?;
+            }
+            match prev.rev().find(|&i| lines[i].starts_with("ATOMIC_POSITIONS")) {
+                Some(p) => *atoms = read_positions_card(lines, p, base, nat, cell, alat)?,
+                None => {
+                    stats.n_incomplete += 1;
+                    return Ok(());
+                }
+            }
+        }
+        let window = a..hi;
+        if window.clone().any(|i| lines[i].contains("convergence NOT achieved")) {
+            stats.n_scf_failed += 1;
+            return Ok(());
+        }
+        let Some(energy) = window.clone()
+            .find(|&i| lines[i].starts_with('!') && lines[i].contains("total energy"))
+            .and_then(|i| lines[i].split('=').nth(1)?.split_whitespace().next()?.parse::<f64>().ok())
+        else {
+            stats.n_incomplete += 1;
+            return Ok(());
+        };
+        let forces = match window.clone().find(|&i| starts_with_tokens(lines[i], &["Forces", "acting", "on", "atoms"])) {
+            Some(f) => read_forces(lines, f, hi, nat),
+            None => None,
+        };
+        let stress = window.clone()
+            .find(|&i| starts_with_tokens(lines[i], &["total", "stress"]))
+            .and_then(|s| read_stress(lines, s));
+        if forces.is_none() || (self.has_stress && stress.is_none()) {
+            stats.n_incomplete += 1;
+            return Ok(());
+        }
+
+        let mut frame = Frame::with_cell(Cell::from_matrix(*cell), [true; 3]);
+        frame.atoms = atoms.iter().map(|(label, pos)| {
+            let mut atom = Atom::new(extract_element(label), *pos);
+            // 物种名与元素相同时不填 label（同 cp2k_sp）
+            if atom.element != *label {
+                atom.label = Some(label.clone());
+            }
+            atom
+        }).collect();
+        frame.energy = Some(energy * RY_TO_EV);
+        frame.forces = forces;
+        frame.stress = stress;
+        if self.is_md {
+            frame.step = Some(k as i64);
+        }
+        self.frames.push(frame);
+        stats.n_kept += 1;
+        Ok(())
+    }
 }
 
 
@@ -489,12 +560,12 @@ mod tests {
     fn cards_in_crystal_bohr_and_alat_units() {
         let cell = Matrix3::new(4.0, 0.0, 0.0, 1.0, 4.0, 0.0, 0.0, 0.0, 5.0);
         let card = ["ATOMIC_POSITIONS (crystal)", "O 0.5 0.5 0.5", "P 0 0 1.0"];
-        let at = read_positions_card(&card, 0, 2, &cell, 1.0).unwrap();
+        let at = read_positions_card(&card, 0, 0, 2, &cell, 1.0).unwrap();
         assert_eq!(at[0].1, Vector3::new(2.5, 2.0, 2.5), "r = s·M（行 = 晶格矢量）");
         let card = ["ATOMIC_POSITIONS (bohr)", "O 1 0 0"];
-        assert!(close(read_positions_card(&card, 0, 1, &cell, 1.0).unwrap()[0].1.x, BOHR_TO_ANG, 1e-15));
+        assert!(close(read_positions_card(&card, 0, 0, 1, &cell, 1.0).unwrap()[0].1.x, BOHR_TO_ANG, 1e-15));
         let card = ["CELL_PARAMETERS (alat= 2.00000000)", "1 0 0", "0 1 0", "0 0 1"];
-        assert!(close(read_cell_card(&card, 0, 99.0).unwrap()[(2, 2)], 2.0 * BOHR_TO_ANG, 1e-15),
+        assert!(close(read_cell_card(&card, 0, 0, 99.0).unwrap()[(2, 2)], 2.0 * BOHR_TO_ANG, 1e-15),
             "卡片自带的 alat 优先于输出头的");
     }
 

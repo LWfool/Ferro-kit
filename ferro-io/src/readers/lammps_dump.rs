@@ -50,8 +50,7 @@ pub fn read_lammps_dump_with_warnings(
     units: Option<LammpsUnits>,
 ) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
-    let content = super::util::read_text(path)?;
-    parse_lammps_dump(&content, units).with_context(|| format!("parsing {path_}"))
+    parse_dump_lines(super::util::text_lines(path)?, units).with_context(|| format!("parsing {path_}"))
 }
 
 /// 无 element 列的 dump 读出的占位元素 `X<type>` 按 `map`（类型号 → 元素符号）换成元素。
@@ -77,27 +76,58 @@ pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()
     Ok(())
 }
 
+#[cfg(test)]
 fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<(Trajectory, Vec<String>)> {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut i = 0;
+    parse_dump_lines(content.lines().map(|l| Ok(l.to_string())), units)
+}
+
+/// Parses a dump one frame at a time: only the current frame's lines are held, never
+/// the whole file (review C-1 — a 327 MB dump used to cost its size twice over in
+/// text before a single atom was built).
+///
+/// A frame runs from its `ITEM: TIMESTEP` line to the line before the next one, and
+/// [`parse_frame`] sees exactly that slice, so "is another frame after this one"
+/// becomes "did this frame end at a TIMESTEP line rather than at the end of the file".
+fn parse_dump_lines(
+    mut lines: impl Iterator<Item = Result<String>>,
+    units: Option<LammpsUnits>,
+) -> Result<(Trajectory, Vec<String>)> {
+    let is_step = |l: &str| l.trim().starts_with("ITEM: TIMESTEP");
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
     // element 列原始串 → 拆分后的元素符号；仅用于读取结束时打印一次映射表
     let mut site_map: BTreeMap<String, String> = BTreeMap::new();
     let mut unknown_prefixes: BTreeSet<String> = BTreeSet::new();
 
-    while i < lines.len() {
-        // Find ITEM: TIMESTEP
-        if !lines[i].trim().starts_with("ITEM: TIMESTEP") { i += 1; continue; }
-        let start = i;
-        match parse_frame(&lines, &mut i, units, &mut site_map, &mut unknown_prefixes) {
+    // Skip to the first frame; `start` is the 0-based line number of its TIMESTEP line
+    let mut start = 0usize;
+    let mut next = loop {
+        match lines.next().transpose()? {
+            None => return Ok((traj, warnings)),
+            Some(l) if is_step(&l) => break Some(l),
+            Some(_) => start += 1,
+        }
+    };
+
+    while let Some(head) = next.take() {
+        let mut frame_lines = vec![head];
+        for l in lines.by_ref() {
+            let l = l?;
+            if is_step(&l) {
+                next = Some(l);
+                break;
+            }
+            frame_lines.push(l);
+        }
+        let view: Vec<&str> = frame_lines.iter().map(|l| l.as_str()).collect();
+        match parse_frame(&view, &mut 0, next.is_none(), units, &mut site_map, &mut unknown_prefixes) {
             Ok(frame) => traj.add_frame(frame),
             Err(FrameError::Invalid(why)) => bail!("frame {} (line {}): {why}", traj.n_frames(), start + 1),
             Err(FrameError::Incomplete(why)) => {
                 let k = traj.n_frames();
                 // 不完整的帧后面还有帧 = 文件中间坏了，报错；只有末帧不完整才是
                 // MD 被中断的常态（dump 写到一半），丢掉它，前面的帧照常可用
-                if lines[start + 1..].iter().any(|l| l.trim().starts_with("ITEM: TIMESTEP")) {
+                if next.is_some() {
                     bail!("frame {k} (line {}) is incomplete: {why}", start + 1);
                 }
                 warnings.push(format!(
@@ -108,6 +138,7 @@ fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<(Traje
                 break;
             }
         }
+        start += frame_lines.len();
     }
 
     warnings.extend(site_map_warnings(&site_map, &unknown_prefixes));
@@ -136,6 +167,7 @@ impl From<&str> for FrameError {
 fn parse_frame(
     lines: &[&str],
     i: &mut usize,
+    last_in_file: bool,
     units: Option<LammpsUnits>,
     site_map: &mut BTreeMap<String, String>,
     unknown_prefixes: &mut BTreeSet<String>,
@@ -271,7 +303,7 @@ fn parse_frame(
             .ok_or_else(|| format!("only {k} of {n} atom lines"))?;
         let parts: Vec<&str> = line.split_whitespace().collect();
         // 截断只会切在文件最后一行（常切在数字中间）；别处的列数不足或坏字段是文件写错了
-        let at_eof = ah + 1 + k == lines.len() - 1;
+        let at_eof = last_in_file && ah + 1 + k == lines.len() - 1;
         let fail = |msg: String| if at_eof { FrameError::Incomplete(msg) } else { FrameError::Invalid(msg) };
         if parts.len() < col_names.len() {
             return Err(fail(format!(

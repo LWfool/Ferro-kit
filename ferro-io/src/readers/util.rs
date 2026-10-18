@@ -41,26 +41,30 @@ pub(crate) fn read_text(path: &Path) -> Result<String> {
 /// [`read_text`], so the streaming readers report the same position.
 pub(crate) fn text_lines(path: &Path) -> Result<TextLines> {
     let file = std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
-    Ok(TextLines { reader: BufReader::new(file), path: path.to_path_buf(), n: 0 })
+    Ok(TextLines { reader: BufReader::with_capacity(1 << 16, file), path: path.to_path_buf(), n: 0, width: 0 })
 }
 
 pub(crate) struct TextLines {
     reader: BufReader<std::fs::File>,
     path: PathBuf,
     n: usize,
+    /// Length of the previous line: sizing the next buffer from it saves the
+    /// reallocations that dominate reading many short lines
+    width: usize,
 }
 
 impl Iterator for TextLines {
     type Item = Result<String>;
 
     fn next(&mut self) -> Option<Result<String>> {
-        let mut buf = Vec::new();
+        let mut buf = Vec::with_capacity(self.width + 8);
         match self.reader.read_until(b'\n', &mut buf) {
             Ok(0) => return None,
             Ok(_) => {}
             Err(e) => return Some(Err(anyhow::Error::new(e).context(format!("reading {}", self.path.display())))),
         }
         self.n += 1;
+        self.width = buf.len();
         if buf.last() == Some(&b'\n') {
             buf.pop();
             if buf.last() == Some(&b'\r') {
