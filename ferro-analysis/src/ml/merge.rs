@@ -9,7 +9,9 @@
 //!
 //! Systems of one composition may still list their atoms in different orders
 //! and carry different `type_map` orders. Merging sorts every system's atoms
-//! into one canonical order and permutes the per-atom arrays along with them.
+//! into one canonical order ([`Trajectory::canonically_sorted`], in `ferro-core`
+//! because `convert` and the Python jobs sort too) and permutes the per-atom
+//! arrays along with them.
 //! A DP model is invariant under atom renumbering, so this changes notation
 //! rather than physics — the same thing dpdata does with `sort_atom_names` plus
 //! `sort_atom_types`.
@@ -21,56 +23,13 @@
 
 use std::collections::BTreeMap;
 
-use ferro_core::data::elements::symbol_to_z;
+use ferro_core::data::elements::canonical_order;
 use ferro_core::Trajectory;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
 /// Default shuffle seed, so a run without `--seed` is still reproducible.
 pub const DEFAULT_SEED: u64 = 666;
-
-/// The permutation putting a frame's atoms into canonical (Z, symbol) order.
-///
-/// Stable: atoms of one element keep their relative order, so a system already
-/// in canonical order is left untouched rather than reshuffled.
-pub fn canonical_order(elements: &[String]) -> Vec<usize> {
-    let mut idx: Vec<usize> = (0..elements.len()).collect();
-    idx.sort_by(|&a, &b| {
-        let (za, zb) = (symbol_to_z(&elements[a]), symbol_to_z(&elements[b]));
-        za.cmp(&zb)
-            .then_with(|| elements[a].cmp(&elements[b]))
-            .then_with(|| a.cmp(&b))
-    });
-    idx
-}
-
-/// Reorders every frame's atoms — and the per-atom arrays — into canonical order.
-///
-/// Each frame takes its own permutation: xyz and other formats do not promise a
-/// constant atom order, and files written independently disagree. Consecutive
-/// frames with the same element sequence reuse the previous permutation.
-pub fn sort_atoms(traj: &Trajectory) -> Trajectory {
-    let mut out = traj.clone();
-    // (element sequence, permutation), reused while consecutive frames keep the sequence
-    let mut cached: Option<(Vec<String>, Vec<usize>)> = None;
-    for f in &mut out.frames {
-        let elements: Vec<String> = f.atoms().map(|a| a.element.to_string()).collect();
-        if cached.as_ref().is_none_or(|(e, _)| *e != elements) {
-            let order = canonical_order(&elements);
-            cached = Some((elements, order));
-        }
-        let (_, order) = cached.as_ref().expect("cached above");
-        if order.iter().enumerate().all(|(i, &j)| i == j) {
-            continue;
-        }
-        // Frame::permuted moves forces, velocities, charges and bonds with the atoms;
-        // energy, cell and stress do not depend on atom numbering
-        *f = f.permuted(order);
-    }
-    // Each permuted frame got a site table of its own; equal ones are shared again
-    out.share_sites();
-    out
-}
 
 /// The key two systems must share to be merged: their sorted element sequence.
 pub fn composition_key(traj: &Trajectory) -> Vec<String> {
@@ -147,69 +106,6 @@ mod tests {
         // O(8) < Al(13) < Zn(30)
         let t = traj_of(&["Zn", "Al", "O", "Al"]);
         assert_eq!(composition_key(&t), vec!["O", "Al", "Al", "Zn"]);
-    }
-
-    #[test]
-    fn sorting_carries_the_per_atom_arrays_along() {
-        let t = traj_of(&["Zn", "O"]);
-        let s = sort_atoms(&t);
-        let f = &s.frames[0];
-        assert_eq!(f.element(0), "O");
-        // O 原来在索引 1，位置与力都必须跟过来
-        assert_eq!(f.positions()[0].x, 1.0);
-        assert!((f.forces().unwrap()[0].x - 0.1).abs() < 1e-12);
-        assert_eq!(f.element(1), "Zn");
-        assert_eq!(f.positions()[1].x, 0.0);
-    }
-
-    /// Velocities are per-atom too, and were once left behind.
-    ///
-    /// A DeePMD system carries none, so `merge` never showed the bug; the
-    /// diagnostics `collect` exports (a dump with velocities) do.
-    #[test]
-    fn sorting_carries_velocities_too() {
-        let mut t = traj_of(&["Zn", "O", "Al"]);
-        let f = &mut t.frames[0];
-        f.set_velocities(Some(
-            (0..3).map(|i| Vector3::new(i as f64 * 10.0, 0.0, 0.0)).collect(),
-        )).unwrap();
-
-        let s = sort_atoms(&t);
-        let f = &s.frames[0];
-        let v = f.velocities().unwrap();
-        assert_eq!(f.element(0), "O");
-        assert!((v[0].x - 10.0).abs() < 1e-12, "the velocity of O must move with it");
-        assert!((v[2].x - 0.0).abs() < 1e-12, "and so must that of Zn");
-    }
-
-    /// Each frame takes its own permutation: one file may list the atoms in a
-    /// different order from frame to frame.
-    #[test]
-    fn a_frame_with_its_own_atom_order_gets_its_own_permutation() {
-        let mut t = traj_of(&["Zn", "O"]);
-        let mut f1 = traj_of(&["O", "Zn"]).frames.remove(0);
-        // 第 1 帧同一构型、原子倒序：O 在 0.1，Zn 在 0.0，力各随其原子
-        f1.positions_mut()[0].x = 1.0;
-        f1.positions_mut()[1].x = 0.0;
-        f1.set_forces(Some(vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)])).unwrap();
-        t.frames.push(f1);
-
-        let s = sort_atoms(&t);
-        for (k, f) in s.frames.iter().enumerate() {
-            let elems: Vec<&str> = f.atoms().map(|a| a.element).collect();
-            assert_eq!(elems, vec!["O", "Zn"], "第 {k} 帧未排成规范序");
-            assert_eq!(f.positions()[0].x, 1.0, "第 {k} 帧 O 的坐标没跟过来");
-            assert!((f.forces().unwrap()[0].x - 0.1).abs() < 1e-12, "第 {k} 帧 O 的力没跟过来");
-        }
-    }
-
-    #[test]
-    fn an_already_sorted_system_is_untouched() {
-        let t = traj_of(&["O", "O", "Al"]);
-        let s = sort_atoms(&t);
-        let before: Vec<f64> = t.frames[0].atoms().map(|a| a.position.x).collect();
-        let after: Vec<f64> = s.frames[0].atoms().map(|a| a.position.x).collect();
-        assert_eq!(before, after);
     }
 
     /// Different atom orders of one composition must land in the same group.

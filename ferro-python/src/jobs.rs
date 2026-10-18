@@ -1,7 +1,6 @@
 //! `ferro.jobs`（纯 Python 的输入生成）要用的 Rust 侧接口：结构块字符串、
 //! QE namelist 的拆分与写回、原子排序。格式规范只在 ferro-io 一份，这里只做转换。
 
-use ferro_analysis::ml::merge;
 use ferro_io::{Namelist, QeInputParts};
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
@@ -19,7 +18,7 @@ fn frame(traj: &PyTrajectory, index: usize) -> PyResult<&ferro_core::Frame> {
 /// 与 `ferro convert` 对所有产物的排法相同。逐帧各取各的置换。
 #[pyfunction]
 fn sort_atoms(traj: &PyTrajectory) -> PyTrajectory {
-    PyTrajectory::new(merge::sort_atoms(&traj.inner))
+    PyTrajectory::new(traj.inner.canonically_sorted())
 }
 
 /// 指定帧的 POSCAR 全文（`comment` 为首行）。

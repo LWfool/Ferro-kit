@@ -216,7 +216,7 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
 pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
     params.validate()?;
     let n_frames = traj.n_frames();
-    traj.check_same_atoms()?;
+    check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     // 按第一帧筛选元素
     let ref_frame = &traj.frames[0];

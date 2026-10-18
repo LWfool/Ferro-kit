@@ -1,113 +1,106 @@
-//! 元素静态数据表
-//!
-//! 包含原子序数 1-86 (H 到 Rn) 的基本属性。
-//! 内部单位：质量 amu，电负性 Pauling 标度。
+//! Static element table: atomic number, symbol and atomic mass (amu) of
+//! elements 1-86 (H to Rn).
 
 pub struct ElementData {
     pub atomic_number: u8,
     pub symbol: &'static str,
-    pub name: &'static str,
     pub atomic_mass: f64,
-    /// 常见氧化态（从小到大排列）
-    pub common_oxidation_states: &'static [i8],
-    /// Pauling 电负性，稀有气体为 None
-    pub electronegativity: Option<f64>,
 }
 
 /// 元素表，下标 0 = H（atomic_number - 1 = 数组下标）
 pub static ELEMENTS: &[ElementData] = &[
     // 第一周期
-    ElementData { atomic_number: 1,  symbol: "H",  name: "Hydrogen",     atomic_mass: 1.008,    common_oxidation_states: &[-1, 1],                 electronegativity: Some(2.20) },
-    ElementData { atomic_number: 2,  symbol: "He", name: "Helium",       atomic_mass: 4.0026,   common_oxidation_states: &[0],                     electronegativity: None },
+    ElementData { atomic_number: 1,  symbol: "H",     atomic_mass: 1.008 },
+    ElementData { atomic_number: 2,  symbol: "He",       atomic_mass: 4.0026 },
     // 第二周期
-    ElementData { atomic_number: 3,  symbol: "Li", name: "Lithium",      atomic_mass: 6.941,    common_oxidation_states: &[1],                     electronegativity: Some(0.98) },
-    ElementData { atomic_number: 4,  symbol: "Be", name: "Beryllium",    atomic_mass: 9.0122,   common_oxidation_states: &[2],                     electronegativity: Some(1.57) },
-    ElementData { atomic_number: 5,  symbol: "B",  name: "Boron",        atomic_mass: 10.811,   common_oxidation_states: &[3],                     electronegativity: Some(2.04) },
-    ElementData { atomic_number: 6,  symbol: "C",  name: "Carbon",       atomic_mass: 12.011,   common_oxidation_states: &[-4, -3, -2, -1, 0, 1, 2, 3, 4], electronegativity: Some(2.55) },
-    ElementData { atomic_number: 7,  symbol: "N",  name: "Nitrogen",     atomic_mass: 14.007,   common_oxidation_states: &[-3, -2, -1, 1, 2, 3, 4, 5], electronegativity: Some(3.04) },
-    ElementData { atomic_number: 8,  symbol: "O",  name: "Oxygen",       atomic_mass: 15.999,   common_oxidation_states: &[-2, -1, 0, 1, 2],       electronegativity: Some(3.44) },
-    ElementData { atomic_number: 9,  symbol: "F",  name: "Fluorine",     atomic_mass: 18.998,   common_oxidation_states: &[-1],                    electronegativity: Some(3.98) },
-    ElementData { atomic_number: 10, symbol: "Ne", name: "Neon",         atomic_mass: 20.180,   common_oxidation_states: &[0],                     electronegativity: None },
+    ElementData { atomic_number: 3,  symbol: "Li",      atomic_mass: 6.941 },
+    ElementData { atomic_number: 4,  symbol: "Be",    atomic_mass: 9.0122 },
+    ElementData { atomic_number: 5,  symbol: "B",        atomic_mass: 10.811 },
+    ElementData { atomic_number: 6,  symbol: "C",       atomic_mass: 12.011 },
+    ElementData { atomic_number: 7,  symbol: "N",     atomic_mass: 14.007 },
+    ElementData { atomic_number: 8,  symbol: "O",       atomic_mass: 15.999 },
+    ElementData { atomic_number: 9,  symbol: "F",     atomic_mass: 18.998 },
+    ElementData { atomic_number: 10, symbol: "Ne",         atomic_mass: 20.180 },
     // 第三周期
-    ElementData { atomic_number: 11, symbol: "Na", name: "Sodium",       atomic_mass: 22.990,   common_oxidation_states: &[1],                     electronegativity: Some(0.93) },
-    ElementData { atomic_number: 12, symbol: "Mg", name: "Magnesium",    atomic_mass: 24.305,   common_oxidation_states: &[2],                     electronegativity: Some(1.31) },
-    ElementData { atomic_number: 13, symbol: "Al", name: "Aluminum",     atomic_mass: 26.982,   common_oxidation_states: &[3],                     electronegativity: Some(1.61) },
-    ElementData { atomic_number: 14, symbol: "Si", name: "Silicon",      atomic_mass: 28.086,   common_oxidation_states: &[-4, 4],                 electronegativity: Some(1.90) },
-    ElementData { atomic_number: 15, symbol: "P",  name: "Phosphorus",   atomic_mass: 30.974,   common_oxidation_states: &[-3, 3, 5],              electronegativity: Some(2.19) },
-    ElementData { atomic_number: 16, symbol: "S",  name: "Sulfur",       atomic_mass: 32.060,   common_oxidation_states: &[-2, 2, 4, 6],           electronegativity: Some(2.58) },
-    ElementData { atomic_number: 17, symbol: "Cl", name: "Chlorine",     atomic_mass: 35.450,   common_oxidation_states: &[-1, 1, 3, 5, 7],        electronegativity: Some(3.16) },
-    ElementData { atomic_number: 18, symbol: "Ar", name: "Argon",        atomic_mass: 39.948,   common_oxidation_states: &[0],                     electronegativity: None },
+    ElementData { atomic_number: 11, symbol: "Na",       atomic_mass: 22.990 },
+    ElementData { atomic_number: 12, symbol: "Mg",    atomic_mass: 24.305 },
+    ElementData { atomic_number: 13, symbol: "Al",     atomic_mass: 26.982 },
+    ElementData { atomic_number: 14, symbol: "Si",      atomic_mass: 28.086 },
+    ElementData { atomic_number: 15, symbol: "P",   atomic_mass: 30.974 },
+    ElementData { atomic_number: 16, symbol: "S",       atomic_mass: 32.060 },
+    ElementData { atomic_number: 17, symbol: "Cl",     atomic_mass: 35.450 },
+    ElementData { atomic_number: 18, symbol: "Ar",        atomic_mass: 39.948 },
     // 第四周期
-    ElementData { atomic_number: 19, symbol: "K",  name: "Potassium",    atomic_mass: 39.098,   common_oxidation_states: &[1],                     electronegativity: Some(0.82) },
-    ElementData { atomic_number: 20, symbol: "Ca", name: "Calcium",      atomic_mass: 40.078,   common_oxidation_states: &[2],                     electronegativity: Some(1.00) },
-    ElementData { atomic_number: 21, symbol: "Sc", name: "Scandium",     atomic_mass: 44.956,   common_oxidation_states: &[3],                     electronegativity: Some(1.36) },
-    ElementData { atomic_number: 22, symbol: "Ti", name: "Titanium",     atomic_mass: 47.867,   common_oxidation_states: &[2, 3, 4],               electronegativity: Some(1.54) },
-    ElementData { atomic_number: 23, symbol: "V",  name: "Vanadium",     atomic_mass: 50.942,   common_oxidation_states: &[2, 3, 4, 5],            electronegativity: Some(1.63) },
-    ElementData { atomic_number: 24, symbol: "Cr", name: "Chromium",     atomic_mass: 51.996,   common_oxidation_states: &[2, 3, 6],               electronegativity: Some(1.66) },
-    ElementData { atomic_number: 25, symbol: "Mn", name: "Manganese",    atomic_mass: 54.938,   common_oxidation_states: &[2, 3, 4, 6, 7],         electronegativity: Some(1.55) },
-    ElementData { atomic_number: 26, symbol: "Fe", name: "Iron",         atomic_mass: 55.845,   common_oxidation_states: &[2, 3],                  electronegativity: Some(1.83) },
-    ElementData { atomic_number: 27, symbol: "Co", name: "Cobalt",       atomic_mass: 58.933,   common_oxidation_states: &[2, 3],                  electronegativity: Some(1.88) },
-    ElementData { atomic_number: 28, symbol: "Ni", name: "Nickel",       atomic_mass: 58.693,   common_oxidation_states: &[2, 3],                  electronegativity: Some(1.91) },
-    ElementData { atomic_number: 29, symbol: "Cu", name: "Copper",       atomic_mass: 63.546,   common_oxidation_states: &[1, 2],                  electronegativity: Some(1.90) },
-    ElementData { atomic_number: 30, symbol: "Zn", name: "Zinc",         atomic_mass: 65.380,   common_oxidation_states: &[2],                     electronegativity: Some(1.65) },
-    ElementData { atomic_number: 31, symbol: "Ga", name: "Gallium",      atomic_mass: 69.723,   common_oxidation_states: &[3],                     electronegativity: Some(1.81) },
-    ElementData { atomic_number: 32, symbol: "Ge", name: "Germanium",    atomic_mass: 72.630,   common_oxidation_states: &[-4, 2, 4],              electronegativity: Some(2.01) },
-    ElementData { atomic_number: 33, symbol: "As", name: "Arsenic",      atomic_mass: 74.922,   common_oxidation_states: &[-3, 3, 5],              electronegativity: Some(2.18) },
-    ElementData { atomic_number: 34, symbol: "Se", name: "Selenium",     atomic_mass: 78.971,   common_oxidation_states: &[-2, 2, 4, 6],           electronegativity: Some(2.55) },
-    ElementData { atomic_number: 35, symbol: "Br", name: "Bromine",      atomic_mass: 79.904,   common_oxidation_states: &[-1, 1, 3, 5],           electronegativity: Some(2.96) },
-    ElementData { atomic_number: 36, symbol: "Kr", name: "Krypton",      atomic_mass: 83.798,   common_oxidation_states: &[0],                     electronegativity: None },
+    ElementData { atomic_number: 19, symbol: "K",    atomic_mass: 39.098 },
+    ElementData { atomic_number: 20, symbol: "Ca",      atomic_mass: 40.078 },
+    ElementData { atomic_number: 21, symbol: "Sc",     atomic_mass: 44.956 },
+    ElementData { atomic_number: 22, symbol: "Ti",     atomic_mass: 47.867 },
+    ElementData { atomic_number: 23, symbol: "V",     atomic_mass: 50.942 },
+    ElementData { atomic_number: 24, symbol: "Cr",     atomic_mass: 51.996 },
+    ElementData { atomic_number: 25, symbol: "Mn",    atomic_mass: 54.938 },
+    ElementData { atomic_number: 26, symbol: "Fe",         atomic_mass: 55.845 },
+    ElementData { atomic_number: 27, symbol: "Co",       atomic_mass: 58.933 },
+    ElementData { atomic_number: 28, symbol: "Ni",       atomic_mass: 58.693 },
+    ElementData { atomic_number: 29, symbol: "Cu",       atomic_mass: 63.546 },
+    ElementData { atomic_number: 30, symbol: "Zn",         atomic_mass: 65.380 },
+    ElementData { atomic_number: 31, symbol: "Ga",      atomic_mass: 69.723 },
+    ElementData { atomic_number: 32, symbol: "Ge",    atomic_mass: 72.630 },
+    ElementData { atomic_number: 33, symbol: "As",      atomic_mass: 74.922 },
+    ElementData { atomic_number: 34, symbol: "Se",     atomic_mass: 78.971 },
+    ElementData { atomic_number: 35, symbol: "Br",      atomic_mass: 79.904 },
+    ElementData { atomic_number: 36, symbol: "Kr",      atomic_mass: 83.798 },
     // 第五周期
-    ElementData { atomic_number: 37, symbol: "Rb", name: "Rubidium",     atomic_mass: 85.468,   common_oxidation_states: &[1],                     electronegativity: Some(0.82) },
-    ElementData { atomic_number: 38, symbol: "Sr", name: "Strontium",    atomic_mass: 87.620,   common_oxidation_states: &[2],                     electronegativity: Some(0.95) },
-    ElementData { atomic_number: 39, symbol: "Y",  name: "Yttrium",      atomic_mass: 88.906,   common_oxidation_states: &[3],                     electronegativity: Some(1.22) },
-    ElementData { atomic_number: 40, symbol: "Zr", name: "Zirconium",    atomic_mass: 91.224,   common_oxidation_states: &[4],                     electronegativity: Some(1.33) },
-    ElementData { atomic_number: 41, symbol: "Nb", name: "Niobium",      atomic_mass: 92.906,   common_oxidation_states: &[3, 5],                  electronegativity: Some(1.60) },
-    ElementData { atomic_number: 42, symbol: "Mo", name: "Molybdenum",   atomic_mass: 95.950,   common_oxidation_states: &[2, 3, 4, 6],            electronegativity: Some(2.16) },
-    ElementData { atomic_number: 43, symbol: "Tc", name: "Technetium",   atomic_mass: 98.000,   common_oxidation_states: &[4, 7],                  electronegativity: Some(1.90) },
-    ElementData { atomic_number: 44, symbol: "Ru", name: "Ruthenium",    atomic_mass: 101.07,   common_oxidation_states: &[2, 3, 4, 8],            electronegativity: Some(2.20) },
-    ElementData { atomic_number: 45, symbol: "Rh", name: "Rhodium",      atomic_mass: 102.91,   common_oxidation_states: &[3],                     electronegativity: Some(2.28) },
-    ElementData { atomic_number: 46, symbol: "Pd", name: "Palladium",    atomic_mass: 106.42,   common_oxidation_states: &[2, 4],                  electronegativity: Some(2.20) },
-    ElementData { atomic_number: 47, symbol: "Ag", name: "Silver",       atomic_mass: 107.87,   common_oxidation_states: &[1],                     electronegativity: Some(1.93) },
-    ElementData { atomic_number: 48, symbol: "Cd", name: "Cadmium",      atomic_mass: 112.41,   common_oxidation_states: &[2],                     electronegativity: Some(1.69) },
-    ElementData { atomic_number: 49, symbol: "In", name: "Indium",       atomic_mass: 114.82,   common_oxidation_states: &[3],                     electronegativity: Some(1.78) },
-    ElementData { atomic_number: 50, symbol: "Sn", name: "Tin",          atomic_mass: 118.71,   common_oxidation_states: &[2, 4],                  electronegativity: Some(1.96) },
-    ElementData { atomic_number: 51, symbol: "Sb", name: "Antimony",     atomic_mass: 121.76,   common_oxidation_states: &[-3, 3, 5],              electronegativity: Some(2.05) },
-    ElementData { atomic_number: 52, symbol: "Te", name: "Tellurium",    atomic_mass: 127.60,   common_oxidation_states: &[-2, 2, 4, 6],           electronegativity: Some(2.10) },
-    ElementData { atomic_number: 53, symbol: "I",  name: "Iodine",       atomic_mass: 126.90,   common_oxidation_states: &[-1, 1, 3, 5, 7],        electronegativity: Some(2.66) },
-    ElementData { atomic_number: 54, symbol: "Xe", name: "Xenon",        atomic_mass: 131.29,   common_oxidation_states: &[0],                     electronegativity: None },
+    ElementData { atomic_number: 37, symbol: "Rb",     atomic_mass: 85.468 },
+    ElementData { atomic_number: 38, symbol: "Sr",    atomic_mass: 87.620 },
+    ElementData { atomic_number: 39, symbol: "Y",      atomic_mass: 88.906 },
+    ElementData { atomic_number: 40, symbol: "Zr",    atomic_mass: 91.224 },
+    ElementData { atomic_number: 41, symbol: "Nb",      atomic_mass: 92.906 },
+    ElementData { atomic_number: 42, symbol: "Mo",   atomic_mass: 95.950 },
+    ElementData { atomic_number: 43, symbol: "Tc",   atomic_mass: 98.000 },
+    ElementData { atomic_number: 44, symbol: "Ru",    atomic_mass: 101.07 },
+    ElementData { atomic_number: 45, symbol: "Rh",      atomic_mass: 102.91 },
+    ElementData { atomic_number: 46, symbol: "Pd",    atomic_mass: 106.42 },
+    ElementData { atomic_number: 47, symbol: "Ag",       atomic_mass: 107.87 },
+    ElementData { atomic_number: 48, symbol: "Cd",      atomic_mass: 112.41 },
+    ElementData { atomic_number: 49, symbol: "In",       atomic_mass: 114.82 },
+    ElementData { atomic_number: 50, symbol: "Sn",          atomic_mass: 118.71 },
+    ElementData { atomic_number: 51, symbol: "Sb",     atomic_mass: 121.76 },
+    ElementData { atomic_number: 52, symbol: "Te",    atomic_mass: 127.60 },
+    ElementData { atomic_number: 53, symbol: "I",       atomic_mass: 126.90 },
+    ElementData { atomic_number: 54, symbol: "Xe",        atomic_mass: 131.29 },
     // 第六周期
-    ElementData { atomic_number: 55, symbol: "Cs", name: "Cesium",       atomic_mass: 132.91,   common_oxidation_states: &[1],                     electronegativity: Some(0.79) },
-    ElementData { atomic_number: 56, symbol: "Ba", name: "Barium",       atomic_mass: 137.33,   common_oxidation_states: &[2],                     electronegativity: Some(0.89) },
-    ElementData { atomic_number: 57, symbol: "La", name: "Lanthanum",    atomic_mass: 138.91,   common_oxidation_states: &[3],                     electronegativity: Some(1.10) },
-    ElementData { atomic_number: 58, symbol: "Ce", name: "Cerium",       atomic_mass: 140.12,   common_oxidation_states: &[3, 4],                  electronegativity: Some(1.12) },
-    ElementData { atomic_number: 59, symbol: "Pr", name: "Praseodymium", atomic_mass: 140.91,   common_oxidation_states: &[3, 4],                  electronegativity: Some(1.13) },
-    ElementData { atomic_number: 60, symbol: "Nd", name: "Neodymium",    atomic_mass: 144.24,   common_oxidation_states: &[3],                     electronegativity: Some(1.14) },
-    ElementData { atomic_number: 61, symbol: "Pm", name: "Promethium",   atomic_mass: 145.00,   common_oxidation_states: &[3],                     electronegativity: Some(1.13) },
-    ElementData { atomic_number: 62, symbol: "Sm", name: "Samarium",     atomic_mass: 150.36,   common_oxidation_states: &[2, 3],                  electronegativity: Some(1.17) },
-    ElementData { atomic_number: 63, symbol: "Eu", name: "Europium",     atomic_mass: 151.96,   common_oxidation_states: &[2, 3],                  electronegativity: Some(1.20) },
-    ElementData { atomic_number: 64, symbol: "Gd", name: "Gadolinium",   atomic_mass: 157.25,   common_oxidation_states: &[3],                     electronegativity: Some(1.20) },
-    ElementData { atomic_number: 65, symbol: "Tb", name: "Terbium",      atomic_mass: 158.93,   common_oxidation_states: &[3, 4],                  electronegativity: Some(1.10) },
-    ElementData { atomic_number: 66, symbol: "Dy", name: "Dysprosium",   atomic_mass: 162.50,   common_oxidation_states: &[3],                     electronegativity: Some(1.22) },
-    ElementData { atomic_number: 67, symbol: "Ho", name: "Holmium",      atomic_mass: 164.93,   common_oxidation_states: &[3],                     electronegativity: Some(1.23) },
-    ElementData { atomic_number: 68, symbol: "Er", name: "Erbium",       atomic_mass: 167.26,   common_oxidation_states: &[3],                     electronegativity: Some(1.24) },
-    ElementData { atomic_number: 69, symbol: "Tm", name: "Thulium",      atomic_mass: 168.93,   common_oxidation_states: &[3],                     electronegativity: Some(1.25) },
-    ElementData { atomic_number: 70, symbol: "Yb", name: "Ytterbium",    atomic_mass: 173.04,   common_oxidation_states: &[2, 3],                  electronegativity: Some(1.10) },
-    ElementData { atomic_number: 71, symbol: "Lu", name: "Lutetium",     atomic_mass: 174.97,   common_oxidation_states: &[3],                     electronegativity: Some(1.27) },
-    ElementData { atomic_number: 72, symbol: "Hf", name: "Hafnium",      atomic_mass: 178.49,   common_oxidation_states: &[4],                     electronegativity: Some(1.30) },
-    ElementData { atomic_number: 73, symbol: "Ta", name: "Tantalum",     atomic_mass: 180.95,   common_oxidation_states: &[5],                     electronegativity: Some(1.50) },
-    ElementData { atomic_number: 74, symbol: "W",  name: "Tungsten",     atomic_mass: 183.84,   common_oxidation_states: &[4, 6],                  electronegativity: Some(2.36) },
-    ElementData { atomic_number: 75, symbol: "Re", name: "Rhenium",      atomic_mass: 186.21,   common_oxidation_states: &[4, 7],                  electronegativity: Some(1.90) },
-    ElementData { atomic_number: 76, symbol: "Os", name: "Osmium",       atomic_mass: 190.23,   common_oxidation_states: &[4, 8],                  electronegativity: Some(2.20) },
-    ElementData { atomic_number: 77, symbol: "Ir", name: "Iridium",      atomic_mass: 192.22,   common_oxidation_states: &[3, 4],                  electronegativity: Some(2.20) },
-    ElementData { atomic_number: 78, symbol: "Pt", name: "Platinum",     atomic_mass: 195.08,   common_oxidation_states: &[2, 4],                  electronegativity: Some(2.28) },
-    ElementData { atomic_number: 79, symbol: "Au", name: "Gold",         atomic_mass: 196.97,   common_oxidation_states: &[1, 3],                  electronegativity: Some(2.54) },
-    ElementData { atomic_number: 80, symbol: "Hg", name: "Mercury",      atomic_mass: 200.59,   common_oxidation_states: &[1, 2],                  electronegativity: Some(2.00) },
-    ElementData { atomic_number: 81, symbol: "Tl", name: "Thallium",     atomic_mass: 204.38,   common_oxidation_states: &[1, 3],                  electronegativity: Some(1.62) },
-    ElementData { atomic_number: 82, symbol: "Pb", name: "Lead",         atomic_mass: 207.20,   common_oxidation_states: &[2, 4],                  electronegativity: Some(2.33) },
-    ElementData { atomic_number: 83, symbol: "Bi", name: "Bismuth",      atomic_mass: 208.98,   common_oxidation_states: &[3, 5],                  electronegativity: Some(2.02) },
-    ElementData { atomic_number: 84, symbol: "Po", name: "Polonium",     atomic_mass: 209.00,   common_oxidation_states: &[2, 4],                  electronegativity: Some(2.00) },
-    ElementData { atomic_number: 85, symbol: "At", name: "Astatine",     atomic_mass: 210.00,   common_oxidation_states: &[-1, 1],                 electronegativity: Some(2.20) },
-    ElementData { atomic_number: 86, symbol: "Rn", name: "Radon",        atomic_mass: 222.00,   common_oxidation_states: &[0],                     electronegativity: None },
+    ElementData { atomic_number: 55, symbol: "Cs",       atomic_mass: 132.91 },
+    ElementData { atomic_number: 56, symbol: "Ba",       atomic_mass: 137.33 },
+    ElementData { atomic_number: 57, symbol: "La",    atomic_mass: 138.91 },
+    ElementData { atomic_number: 58, symbol: "Ce",       atomic_mass: 140.12 },
+    ElementData { atomic_number: 59, symbol: "Pr", atomic_mass: 140.91 },
+    ElementData { atomic_number: 60, symbol: "Nd",    atomic_mass: 144.24 },
+    ElementData { atomic_number: 61, symbol: "Pm",   atomic_mass: 145.00 },
+    ElementData { atomic_number: 62, symbol: "Sm",     atomic_mass: 150.36 },
+    ElementData { atomic_number: 63, symbol: "Eu",     atomic_mass: 151.96 },
+    ElementData { atomic_number: 64, symbol: "Gd",   atomic_mass: 157.25 },
+    ElementData { atomic_number: 65, symbol: "Tb",      atomic_mass: 158.93 },
+    ElementData { atomic_number: 66, symbol: "Dy",   atomic_mass: 162.50 },
+    ElementData { atomic_number: 67, symbol: "Ho",      atomic_mass: 164.93 },
+    ElementData { atomic_number: 68, symbol: "Er",       atomic_mass: 167.26 },
+    ElementData { atomic_number: 69, symbol: "Tm",      atomic_mass: 168.93 },
+    ElementData { atomic_number: 70, symbol: "Yb",    atomic_mass: 173.04 },
+    ElementData { atomic_number: 71, symbol: "Lu",     atomic_mass: 174.97 },
+    ElementData { atomic_number: 72, symbol: "Hf",      atomic_mass: 178.49 },
+    ElementData { atomic_number: 73, symbol: "Ta",     atomic_mass: 180.95 },
+    ElementData { atomic_number: 74, symbol: "W",     atomic_mass: 183.84 },
+    ElementData { atomic_number: 75, symbol: "Re",      atomic_mass: 186.21 },
+    ElementData { atomic_number: 76, symbol: "Os",       atomic_mass: 190.23 },
+    ElementData { atomic_number: 77, symbol: "Ir",      atomic_mass: 192.22 },
+    ElementData { atomic_number: 78, symbol: "Pt",     atomic_mass: 195.08 },
+    ElementData { atomic_number: 79, symbol: "Au",         atomic_mass: 196.97 },
+    ElementData { atomic_number: 80, symbol: "Hg",      atomic_mass: 200.59 },
+    ElementData { atomic_number: 81, symbol: "Tl",     atomic_mass: 204.38 },
+    ElementData { atomic_number: 82, symbol: "Pb",         atomic_mass: 207.20 },
+    ElementData { atomic_number: 83, symbol: "Bi",      atomic_mass: 208.98 },
+    ElementData { atomic_number: 84, symbol: "Po",     atomic_mass: 209.00 },
+    ElementData { atomic_number: 85, symbol: "At",     atomic_mass: 210.00 },
+    ElementData { atomic_number: 86, symbol: "Rn",        atomic_mass: 222.00 },
 ];
 
 /// 按元素符号查找，O(n)
@@ -121,6 +114,27 @@ pub fn by_number(n: u8) -> Option<&'static ElementData> {
         return None;
     }
     Some(&ELEMENTS[(n - 1) as usize])
+}
+
+/// The canonical element order: by atomic number, then by the string.
+///
+/// The one rule behind the DeePMD `type_map` (`ferro-io`), the partial g(r)
+/// column order and the atom order `merge` sorts into (review B12): a dataset
+/// written by `collect` and one sorted by `merge` must agree on it, so it lives
+/// in one place. The string tiebreak orders site labels sharing an element
+/// (`P_3` < `P_4`) and keeps unknown symbols (Z = 255) deterministic.
+pub fn canonical_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    (symbol_to_z(a), a).cmp(&(symbol_to_z(b), b))
+}
+
+/// The permutation putting `elements` into canonical order ([`canonical_cmp`]).
+///
+/// Stable: atoms of one element keep their relative order, so a system already
+/// in canonical order is left untouched rather than reshuffled.
+pub fn canonical_order(elements: &[String]) -> Vec<usize> {
+    let mut idx: Vec<usize> = (0..elements.len()).collect();
+    idx.sort_by(|&a, &b| canonical_cmp(&elements[a], &elements[b]).then_with(|| a.cmp(&b)));
+    idx
 }
 
 /// Look up the atomic number for a symbol, with pseudo-element label fallback.
@@ -142,101 +156,9 @@ pub fn symbol_to_z(symbol: &str) -> u8 {
     255
 }
 
-/// Result of splitting a site string into a chemical element and an optional type label.
-///
-/// See [`split_element_label`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LabelSplit<'a> {
-    /// No underscore — the whole string is the element symbol.
-    Plain(&'a str),
-    /// Underscore present and the prefix is a real element symbol.
-    Split { element: &'a str, label: &'a str },
-    /// Underscore present but the prefix is not a known element symbol.
-    ///
-    /// The caller should warn and fall back to treating the whole string as the element.
-    Unknown(&'a str),
-}
-
-/// Split a site string into `(element, label)` at the **first** underscore.
-///
-/// Convention for pseudo-element / site-type labels: `<Element>_<suffix>`, where the
-/// suffix may itself contain underscores (`O_b_P_P` → element `O`, label `O_b_P_P`).
-///
-/// ```text
-/// "O"          → Plain("O")                                   element O, no label
-/// "Zn_f"       → Split { element: "Zn", label: "Zn_f" }        element Zn, label Zn_f
-/// "O_b_P_P"    → Split { element: "O",  label: "O_b_P_P" }     element O,  label O_b_P_P
-/// "foo_bar"    → Unknown("foo_bar")                            warn; treat whole as element
-/// ```
-///
-/// Splitting on an explicit separator — rather than greedily matching the longest
-/// element prefix — avoids silently reading `Pb` as lead(82) when "P bridging" was
-/// meant. Plain trajectories (`O`, `P`, `Zn`) are unaffected.
-///
-/// Note this is deliberately *not* the rule used by the CIF / CP2K / QE readers, whose
-/// native site names (`Fe1`, `O2`) carry no separator and are correctly handled by an
-/// alphabetic-prefix rule instead.
-pub fn split_element_label(s: &str) -> LabelSplit<'_> {
-    match s.split_once('_') {
-        None => LabelSplit::Plain(s),
-        Some((prefix, _)) if by_symbol(prefix).is_some() => {
-            LabelSplit::Split { element: prefix, label: s }
-        }
-        Some(_) => LabelSplit::Unknown(s),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_split_element_label_plain_passthrough() {
-        // 普通轨迹（无下划线）零影响
-        for s in ["O", "P", "Zn", "Fe", "Al"] {
-            assert_eq!(split_element_label(s), LabelSplit::Plain(s), "{s}");
-        }
-    }
-
-    #[test]
-    fn test_split_element_label_underscore_forms() {
-        assert_eq!(
-            split_element_label("Zn_f"),
-            LabelSplit::Split { element: "Zn", label: "Zn_f" }
-        );
-        assert_eq!(
-            split_element_label("P_0"),
-            LabelSplit::Split { element: "P", label: "P_0" }
-        );
-        // 后缀内含下划线：只在第一个下划线处拆
-        assert_eq!(
-            split_element_label("O_b_P_P"),
-            LabelSplit::Split { element: "O", label: "O_b_P_P" }
-        );
-        assert_eq!(
-            split_element_label("O_n_P"),
-            LabelSplit::Split { element: "O", label: "O_n_P" }
-        );
-    }
-
-    #[test]
-    fn test_split_element_label_unknown_prefix() {
-        // 前缀不是合法元素 → 调用方应告警并按整串当元素
-        assert_eq!(split_element_label("foo_bar"), LabelSplit::Unknown("foo_bar"));
-        assert_eq!(split_element_label("On_P"), LabelSplit::Unknown("On_P"));
-        assert_eq!(split_element_label("_x"), LabelSplit::Unknown("_x"));
-    }
-
-    #[test]
-    fn test_split_element_label_no_greedy_misread() {
-        // 分隔符规则的要点：不会把 "P bridging" 之类的意图误读成真元素
-        assert_eq!(split_element_label("Pb"), LabelSplit::Plain("Pb"));   // 铅，不拆
-        assert_eq!(split_element_label("Po"), LabelSplit::Plain("Po"));   // 钋，不拆
-        assert_eq!(
-            split_element_label("P_b"),
-            LabelSplit::Split { element: "P", label: "P_b" }
-        );
-    }
 
     #[test]
     fn test_by_symbol() {

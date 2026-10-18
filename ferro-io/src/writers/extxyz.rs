@@ -86,15 +86,16 @@ pub fn write_extxyz_with(
             let (key, t) = match stress_key {
                 StressKey::Stress => ("stress", -s),
                 StressKey::Virial => {
-                    let cell = frame.cell.as_ref().with_context(|| format!(
-                        "frame {fi} has a stress but no cell; virial= is eV and needs \
-                         the volume. Write stress= instead"
-                    ))?;
-                    let vol = cell.volume();
-                    if vol.abs() < 1e-12 {
-                        bail!("cannot write virial= for a zero-volume cell");
+                    if frame.cell.is_none() {
+                        bail!(
+                            "frame {fi} has a stress but no cell; virial= is eV and needs \
+                             the volume. Write stress= instead"
+                        );
                     }
-                    ("virial", s * vol)
+                    let v = frame.virial()
+                        .with_context(|| format!("frame {fi}: cannot write virial="))?
+                        .expect("the frame has a stress");
+                    ("virial", v)
                 }
             };
             parts.push(format!(

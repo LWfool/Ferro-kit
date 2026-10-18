@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use ferro_core::data::elements::{LabelSplit, split_element_label};
+use ferro_core::data::elements::by_symbol;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
@@ -403,6 +403,50 @@ fn parse_frame(
 ///
 /// Empty for ordinary trajectories where every element column entry is already
 /// a plain chemical symbol.
+/// Result of splitting a site string into a chemical element and an optional type label.
+///
+/// See [`split_element_label`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelSplit<'a> {
+    /// No underscore — the whole string is the element symbol.
+    Plain(&'a str),
+    /// Underscore present and the prefix is a real element symbol.
+    Split { element: &'a str, label: &'a str },
+    /// Underscore present but the prefix is not a known element symbol.
+    ///
+    /// The caller should warn and fall back to treating the whole string as the element.
+    Unknown(&'a str),
+}
+
+/// Split a site string into `(element, label)` at the **first** underscore.
+///
+/// Convention for pseudo-element / site-type labels: `<Element>_<suffix>`, where the
+/// suffix may itself contain underscores (`O_b_P_P` → element `O`, label `O_b_P_P`).
+///
+/// ```text
+/// "O"          → Plain("O")                                   element O, no label
+/// "Zn_f"       → Split { element: "Zn", label: "Zn_f" }        element Zn, label Zn_f
+/// "O_b_P_P"    → Split { element: "O",  label: "O_b_P_P" }     element O,  label O_b_P_P
+/// "foo_bar"    → Unknown("foo_bar")                            warn; treat whole as element
+/// ```
+///
+/// Splitting on an explicit separator — rather than greedily matching the longest
+/// element prefix — avoids silently reading `Pb` as lead(82) when "P bridging" was
+/// meant. Plain trajectories (`O`, `P`, `Zn`) are unaffected.
+///
+/// Note this is deliberately *not* the rule used by the CIF / CP2K / QE readers, whose
+/// native site names (`Fe1`, `O2`) carry no separator and are correctly handled by an
+/// alphabetic-prefix rule instead.
+fn split_element_label(s: &str) -> LabelSplit<'_> {
+    match s.split_once('_') {
+        None => LabelSplit::Plain(s),
+        Some((prefix, _)) if by_symbol(prefix).is_some() => {
+            LabelSplit::Split { element: prefix, label: s }
+        }
+        Some(_) => LabelSplit::Unknown(s),
+    }
+}
+
 fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) -> Vec<String> {
     let mut out = Vec::new();
     let split: Vec<(&String, &String)> = site_map.iter()
@@ -429,6 +473,54 @@ fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_split_element_label_plain_passthrough() {
+        // a plain trajectory (no underscore) is unaffected
+        for s in ["O", "P", "Zn", "Fe", "Al"] {
+            assert_eq!(split_element_label(s), LabelSplit::Plain(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn test_split_element_label_underscore_forms() {
+        assert_eq!(
+            split_element_label("Zn_f"),
+            LabelSplit::Split { element: "Zn", label: "Zn_f" }
+        );
+        assert_eq!(
+            split_element_label("P_0"),
+            LabelSplit::Split { element: "P", label: "P_0" }
+        );
+        // an underscore inside the suffix: split at the first one only
+        assert_eq!(
+            split_element_label("O_b_P_P"),
+            LabelSplit::Split { element: "O", label: "O_b_P_P" }
+        );
+        assert_eq!(
+            split_element_label("O_n_P"),
+            LabelSplit::Split { element: "O", label: "O_n_P" }
+        );
+    }
+
+    #[test]
+    fn test_split_element_label_unknown_prefix() {
+        // the prefix is no element: the caller warns and takes the whole string
+        assert_eq!(split_element_label("foo_bar"), LabelSplit::Unknown("foo_bar"));
+        assert_eq!(split_element_label("On_P"), LabelSplit::Unknown("On_P"));
+        assert_eq!(split_element_label("_x"), LabelSplit::Unknown("_x"));
+    }
+
+    #[test]
+    fn test_split_element_label_no_greedy_misread() {
+        // the point of the separator rule: "P bridging" is never misread as a real element
+        assert_eq!(split_element_label("Pb"), LabelSplit::Plain("Pb"));   // lead, not split
+        assert_eq!(split_element_label("Po"), LabelSplit::Plain("Po"));   // polonium, not split
+        assert_eq!(
+            split_element_label("P_b"),
+            LabelSplit::Split { element: "P", label: "P_b" }
+        );
+    }
 
     const DUMP_ORTHO: &str = "ITEM: TIMESTEP
 0

@@ -138,7 +138,7 @@ pub fn calc_cube_jump(
             "{n_frames} frame(s), but tau = {} needs at least {}", params.tau, params.tau + 1
         )));
     }
-    traj.check_same_atoms()?;
+    check::same_atoms(traj)?;
     let cells = check::periodic_cells(traj, None)?;
 
     let no_cell = || ChemError::ValidationError("no frame has a periodic cell".into());

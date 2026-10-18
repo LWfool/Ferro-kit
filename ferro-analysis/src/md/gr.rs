@@ -13,6 +13,7 @@
 //!     `"A-B"` and `"B-A"` generally differ
 
 use crate::check;
+use ferro_core::data::elements::canonical_cmp;
 use ferro_core::{NeighborList, Table, Trajectory};
 use ferro_core::error::ChemError;
 use std::collections::BTreeMap;
@@ -63,7 +64,7 @@ pub(super) fn sorted_types(frame: &ferro_core::Frame, by: GroupBy) -> Vec<String
         set.insert(group_key(a, by).to_string());
     }
     let mut types: Vec<String> = set.into_iter().collect();
-    types.sort_by(|a, b| (elem_z(a), a.as_str()).cmp(&(elem_z(b), b.as_str())));
+    types.sort_by(|a, b| canonical_cmp(a, b));
     types
 }
 
@@ -80,8 +81,7 @@ pub fn sorted_keys(map: &BTreeMap<String, Vec<f64>>) -> Vec<String> {
     keys.sort_by(|ka, kb| {
         let (a1, b1) = split_pair(ka);
         let (a2, b2) = split_pair(kb);
-        (elem_z(a1), a1, elem_z(b1), b1)
-            .cmp(&(elem_z(a2), a2, elem_z(b2), b2))
+        canonical_cmp(a1, a2).then_with(|| canonical_cmp(b1, b2))
     });
     keys
 }

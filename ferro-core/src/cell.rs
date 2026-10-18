@@ -110,6 +110,28 @@ impl Cell {
         self.matrix.determinant().abs()
     }
 
+    /// The volume, or an error for a zero-volume cell — the guard of the stress /
+    /// virial conversion, which divides or multiplies by it.
+    pub(crate) fn nonzero_volume(&self) -> Result<f64> {
+        let v = self.volume();
+        if v > 1e-12 {
+            Ok(v)
+        } else {
+            Err(ChemError::ValidationError(format!(
+                "the cell volume is {v}: no conversion between stress and virial"
+            )))
+        }
+    }
+
+    /// The stress (eV/Å³) a virial (eV) stands for in this cell: `virial / V`, no
+    /// sign change (see [`crate::Frame::stress`]).
+    ///
+    /// With [`crate::Frame::virial`] the one place the two are converted (review
+    /// B13); a zero-volume cell is an error rather than an infinity.
+    pub fn stress_from_virial(&self, virial: &Matrix3<f64>) -> Result<Matrix3<f64>> {
+        Ok(virial / self.nonzero_volume()?)
+    }
+
     /// Interplanar spacings d₁, d₂, d₃ \[Å\] — the perpendicular distances between
     /// the pairs of cell faces normal to each reciprocal-lattice direction.
     ///

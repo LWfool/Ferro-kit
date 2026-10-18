@@ -130,13 +130,9 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
                 let nine: [f64; 9] = b[k * 9..k * 9 + 9].try_into().expect("9 values");
                 let cell = Cell::from_matrix(matrix3_from_row_major(&nine));
                 if let Some(v) = &virial {
-                    let vol = cell.volume();
-                    if vol <= 0.0 {
-                        bail!("{}: frame {k} has a degenerate cell (volume {vol})", set.display());
-                    }
                     let nine: [f64; 9] = v[k * 9..k * 9 + 9].try_into().expect("9 values");
-                    let mut m = matrix3_from_row_major(&nine);
-                    m /= vol;
+                    let m = cell.stress_from_virial(&matrix3_from_row_major(&nine))
+                        .with_context(|| format!("{}: frame {k}", set.display()))?;
                     frame.stress = Some(m);
                 }
                 frame.cell = Some(cell);

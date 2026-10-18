@@ -301,6 +301,17 @@ impl Frame {
         }
     }
 
+    /// The virial (eV): `stress * V`, no sign change (see [`Frame::stress`]); `None`
+    /// without a stress. A stress without a cell, or with a zero-volume one, has no
+    /// virial and is an error. The inverse is [`Cell::stress_from_virial`].
+    pub fn virial(&self) -> Result<Option<Matrix3<f64>>> {
+        let Some(s) = &self.stress else { return Ok(None) };
+        let cell = self.cell.as_ref().ok_or_else(|| ChemError::ValidationError(
+            "a stress without a cell has no virial: the virial needs the volume".into(),
+        ))?;
+        Ok(Some(s * cell.nonzero_volume()?))
+    }
+
     /// Element symbols of all atoms, in index order.
     pub fn symbols(&self) -> Vec<&str> {
         self.sites.iter().map(|s| s.element.as_str()).collect()
@@ -445,6 +456,26 @@ mod tests {
         assert_eq!(g.atom(0).charge, None);
         assert_eq!(g.forces().unwrap()[0].x, 2.0);
         assert_eq!(g.positions()[1].x, 0.0);
+    }
+
+    /// Stress and virial convert into each other, and a zero volume is refused both ways.
+    #[test]
+    fn virial_and_stress_round_trip_and_refuse_a_zero_volume() {
+        let cell = Cell::from_lengths_angles(2.0, 3.0, 4.0, 90.0, 90.0, 90.0).unwrap();
+        let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+        assert_eq!(f.virial().unwrap(), None);
+        let s = Matrix3::new(1.0, 0.5, 0.0, 0.5, -2.0, 0.0, 0.0, 0.0, 3.0);
+        f.stress = Some(s);
+        let v = f.virial().unwrap().unwrap();
+        assert_eq!(v, s * 24.0);
+        assert_eq!(cell.stress_from_virial(&v).unwrap(), s);
+
+        let flat = Cell::from_matrix(Matrix3::new(2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0));
+        assert!(flat.stress_from_virial(&v).unwrap_err().to_string().contains("volume is 0"));
+        f.cell = Some(flat);
+        assert!(f.virial().is_err());
+        f.cell = None;
+        assert!(f.virial().unwrap_err().to_string().contains("without a cell"));
     }
 
     /// Equal site tables are shared, and changing one frame's sites leaves the other's.

@@ -329,9 +329,7 @@ fn read_stress(
         Some(v) => {
             let cell = cell.context(
                 "virial= without a Lattice — no cell volume to divide by")?;
-            let vol = cell.volume();
-            anyhow::ensure!(vol.abs() > 1e-12, "virial= with a zero-volume cell");
-            Some(v / vol)
+            Some(cell.stress_from_virial(&v).context("virial=")?)
         }
     };
     let from_stress = stress.map(|s| -s);

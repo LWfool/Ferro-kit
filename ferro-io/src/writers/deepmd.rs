@@ -42,7 +42,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use ferro_core::data::elements::symbol_to_z;
+use ferro_core::data::elements::canonical_cmp;
 use ferro_core::{matrix3_row_major, Trajectory};
 use ndarray::ArrayView2;
 use ndarray_npy::write_npy;
@@ -82,24 +82,16 @@ pub fn write_deepmd_npy_bounds(
         bail!("cannot write a DeePMD system with zero atoms");
     }
 
-    // 一个 system 内 type.raw 只写一次，故各帧的类型序列必须逐项相同
+    // A system writes type.raw once, so every frame must have the same type sequence
+    traj.check_same_atoms().map_err(|e| anyhow::anyhow!(
+        "{e}; one DeePMD system holds one composition, so split the trajectory into one system per composition"
+    ))?;
     let elements: Vec<&str> = frames[0].atoms().map(|a| a.element).collect();
-    for (i, f) in frames.iter().enumerate() {
-        if f.n_atoms() != natoms {
-            bail!(
-                "frame {i} has {} atoms but frame 0 has {natoms}; split the trajectory into one system per composition",
-                f.n_atoms()
-            );
-        }
-        if f.atoms().zip(&elements).any(|(a, e)| a.element != *e) {
-            bail!("frame {i} has a different type sequence than frame 0; one DeePMD system holds one composition");
-        }
-    }
 
     // type_map 按 (Z, 符号) 排序 —— 与 gr 的分组排序同一条规则，保证不同
     // system 之间的 type_map 可对齐（merge 依赖这一点）
     let mut species: Vec<&str> = elements.clone();
-    species.sort_by_key(|s| (symbol_to_z(s), *s));
+    species.sort_by(|a, b| canonical_cmp(a, b));
     species.dedup();
     let type_index: Vec<usize> = elements
         .iter()
@@ -179,16 +171,16 @@ pub fn write_deepmd_npy_bounds(
         }
         arrays.push(("force".into(), force, natoms * 3));
     }
-    if let Some(stresses) = all_or_none(frames.iter().map(|f| f.stress), "stress")? {
+    if all_or_none(frames.iter().map(|f| f.stress), "stress")?.is_some() {
         if !has_cell {
             bail!("stress is present but the frames have no cell; the virial needs a volume");
         }
         let mut virial = Vec::with_capacity(nf * 9);
-        for (f, s) in frames.iter().zip(stresses) {
-            let v = f.cell.as_ref().unwrap().volume();
-            for x in matrix3_row_major(&s) {
-                virial.push(x * v);
-            }
+        for (i, f) in frames.iter().enumerate() {
+            let v = f.virial()
+                .with_context(|| format!("frame {i}"))?
+                .expect("all_or_none: every frame has a stress");
+            virial.extend(matrix3_row_major(&v));
         }
         arrays.push(("virial".into(), virial, 9));
     }
@@ -310,7 +302,20 @@ mod tests {
     fn rejects_a_changing_composition() {
         let mut t = demo_traj();
         t.frames[1].sites_mut()[0].element = "N".to_string();
-        assert!(write_deepmd_npy(&t, &out_dir("ferro_dp_comp")).is_err());
+        let err = write_deepmd_npy(&t, &out_dir("ferro_dp_comp")).unwrap_err().to_string();
+        assert!(err.contains("atom 0 is N in frame 1") && err.contains("one composition"), "{err}");
+    }
+
+    /// The virial is stress times volume; a flat cell has none (review B13: this
+    /// writer used to multiply by zero and write it).
+    #[test]
+    fn rejects_a_stress_in_a_zero_volume_cell() {
+        let mut t = demo_traj();
+        t.frames[1].cell = Some(Cell::from_matrix(Matrix3::from_row_slice(&[
+            5.0, 0.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0, 0.0,
+        ])));
+        let err = format!("{:#}", write_deepmd_npy(&t, &out_dir("ferro_dp_flat")).unwrap_err());
+        assert!(err.contains("frame 1") && err.contains("volume is 0"), "{err}");
     }
 
     #[test]

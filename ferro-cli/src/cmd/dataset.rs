@@ -26,7 +26,7 @@ use ferro_analysis::ml::diagnostics::{
     scan_table,
 };
 use ferro_analysis::ml::merge::{
-    composition_key, group_name, shuffle_order, sort_atoms, DEFAULT_SEED,
+    composition_key, group_name, shuffle_order, DEFAULT_SEED,
 };
 use ferro_analysis::md::first_shell_cutoffs;
 use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
@@ -800,8 +800,9 @@ fn collect_group(
 
     // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致。
     //
-    // 每个文件读完当场排进规范序（sort_atoms 逐帧各取置换）：两个独立写出的文件本就
-    // 各有各的原子顺序，同一文件里帧间也不保证不变
+    // Each file goes into canonical order as soon as it is read (a permutation per
+    // frame): two files written independently have their own atom orders, and one
+    // file does not promise a constant order from frame to frame either
     let mut parts: Vec<(PathBuf, Trajectory, AimdStats)> = Vec::new();
     // 嗅探结果单独留一份：--format 一给，stats.format 就恒等于它，下面那条
     // 「同目录两种格式」的守卫会失去比较的对象。嗅探本来就要跑（它出告警），
@@ -836,7 +837,7 @@ fn collect_group(
             },
         };
         match read_aimd_as(path, fmt) {
-            Ok((traj, stats)) => parts.push((path.clone(), sort_atoms(&traj), stats)),
+            Ok((traj, stats)) => parts.push((path.clone(), traj.canonically_sorted(), stats)),
             Err(e) => {
                 eprintln!("SKIP {}: {e:#}", path.display());
                 skipped.push(path.clone());
@@ -1578,7 +1579,7 @@ fn merge_group(
     // 逐原子数据跟着同一个置换走。DP 对原子编号置换不变，改的是记法不是物理
     let sorted: Vec<(PathBuf, ferro_core::Trajectory)> = members
         .iter()
-        .map(|(p, t)| (p.clone(), sort_atoms(t)))
+        .map(|(p, t)| (p.clone(), t.canonically_sorted()))
         .collect();
 
     let name = group_name(&sorted[0].1);

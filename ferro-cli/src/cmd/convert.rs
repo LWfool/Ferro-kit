@@ -2,7 +2,6 @@ use anyhow::{bail, Context, Result};
 use clap::Args;
 use crate::args::common::ReadArgs;
 use crate::io_dispatch::read_trajectory;
-use ferro_analysis::ml::merge::sort_atoms;
 use ferro_core::Trajectory;
 use std::path::{Path, PathBuf};
 
@@ -127,13 +126,15 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         );
     }
 
-    // 所有产物一律按 (Z, 符号) 重排原子，像 POSCAR 那样同元素成块、块按周期表序，
-    // 同一体系无论来自哪个程序，写出的原子顺序都一致。sort_atoms 逐帧各取置换 ——
-    // xyz 等格式不保证帧间原子顺序不变
-    let picked = sort_atoms(&Trajectory {
+    // Every product has its atoms in (Z, symbol) order, one block per element in
+    // periodic-table order as in a POSCAR, so one system is written in the same atom
+    // order whichever program it came from. The sort takes a permutation per frame:
+    // xyz and the like do not promise a constant atom order
+    let picked = Trajectory {
         frames: indices.iter().map(|&i| traj.frames[i].clone()).collect(),
         metadata: traj.metadata.clone(),
-    });
+    }
+    .canonically_sorted();
 
     // One file when the format holds several frames, one per frame when it does not:
     // 20 frames to POSCAR can only be 20 files, so there is no switch to remember.

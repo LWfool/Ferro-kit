@@ -1,4 +1,5 @@
 pub mod box_builder;
+pub mod compounds;
 pub mod cluster;
 pub mod merge;
 pub mod supercell;

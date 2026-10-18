@@ -164,7 +164,7 @@ pub fn lifetimes(c: &[f64], dt: f64) -> (f64, f64) {
 pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::Result<BondLifeResult> {
     params.validate()?;
     let n_frames = traj.n_frames();
-    traj.check_same_atoms()?;
+    check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     let r_bond = params.r_bond;
     // 0 < r_bond <= r_break 已由 validate 查过

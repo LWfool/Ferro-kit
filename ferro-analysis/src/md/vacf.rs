@@ -93,7 +93,7 @@ pub struct VacfResult {
 pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<VacfResult> {
     params.validate()?;
     let n_frames = traj.n_frames();
-    traj.check_same_atoms()?;
+    check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     if let Some(k) = traj.frames.iter().position(|f| f.velocities().is_none()) {
         return Err(ChemError::ValidationError(format!(

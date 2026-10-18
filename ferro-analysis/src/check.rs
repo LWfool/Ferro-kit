@@ -13,6 +13,16 @@ fn fail(msg: String) -> Check {
     Err(ChemError::ValidationError(msg))
 }
 
+/// [`Trajectory::check_same_atoms`], saying why a time-correlation analysis needs it.
+pub(crate) fn same_atoms(traj: &Trajectory) -> Check {
+    traj.check_same_atoms().map_err(|e| match e {
+        ChemError::ValidationError(m) => ChemError::ValidationError(format!(
+            "{m}; this analysis follows atoms by index and needs the same atoms in every frame"
+        )),
+        e => e,
+    })
+}
+
 /// 步长、截断、时间步：有限且 > 0（`inf` 的步长会得到 0 个 bin）
 pub(crate) fn positive(name: &str, v: f64) -> Check {
     if v > 0.0 && v.is_finite() { return Ok(()); }

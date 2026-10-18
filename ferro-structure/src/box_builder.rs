@@ -7,7 +7,8 @@ use rand::RngExt;
 
 use ferro_core::atom::Atom;
 use ferro_core::cell::Cell;
-use ferro_core::data::{compounds, elements};
+use crate::compounds;
+use ferro_core::data::elements;
 use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
 

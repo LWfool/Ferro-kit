@@ -1,6 +1,7 @@
 //! Trajectory data structure.
 
 
+use crate::data::elements::canonical_order;
 use crate::error::{ChemError, Result};
 use crate::frame::Frame;
 
@@ -132,20 +133,22 @@ impl Trajectory {
     }
 
     /// Check that every frame has the same atoms as frame 0: same count, same element
-    /// at every index.
+    /// at every index. The error states which frame differs; the caller adds why that
+    /// matters to it.
     ///
     /// Time-correlation analyses (MSD, VACF, rotcorr, bond lifetimes, van Hove, jump
     /// maps) follow atom `i` across frames by its index, so a frame with a different
-    /// atom list makes them index out of bounds or silently pair different atoms.
-    /// Per-frame statistics (g(r), angles, networks, density maps) do not need this:
-    /// a varying atom count is legitimate for them (GCMC, reactive MD).
+    /// atom list makes them index out of bounds or silently pair different atoms; a
+    /// DeePMD system writes one `type.raw` for all its frames. g(r) and S(q) need a
+    /// fixed count of each type but not a fixed order, and check that themselves.
+    /// Angles, networks and density maps need neither: a varying atom count is
+    /// legitimate for them (GCMC, reactive MD).
     pub fn check_same_atoms(&self) -> Result<()> {
         let Some(first) = self.frames.first() else { return Ok(()) };
         for (k, frame) in self.frames.iter().enumerate().skip(1) {
             if frame.n_atoms() != first.n_atoms() {
                 return Err(ChemError::ValidationError(format!(
-                    "frame {k} has {} atoms but frame 0 has {}; this analysis follows atoms \
-                     by index and needs the same atoms in every frame",
+                    "frame {k} has {} atoms but frame 0 has {}",
                     frame.n_atoms(), first.n_atoms()
                 )));
             }
@@ -158,8 +161,7 @@ impl Trajectory {
                 .find(|&j| frame.element(j) != first.element(j))
             {
                 return Err(ChemError::ValidationError(format!(
-                    "atom {j} is {} in frame {k} but {} in frame 0; this analysis follows \
-                     atoms by index and needs the same atoms in every frame",
+                    "atom {j} is {} in frame {k} but {} in frame 0",
                     frame.element(j), first.element(j)
                 )));
             }
@@ -237,6 +239,35 @@ impl Trajectory {
     pub fn iter_frames(&self) -> impl Iterator<Item = &Frame> {
         self.frames.iter()
     }
+
+    /// The trajectory with every frame's atoms — and the per-atom arrays — in
+    /// canonical (Z, symbol) order ([`crate::data::elements::canonical_cmp`]).
+    ///
+    /// Each frame takes its own permutation: xyz and other formats do not promise a
+    /// constant atom order, and files written independently disagree. Consecutive
+    /// frames with the same element sequence reuse the previous permutation.
+    pub fn canonically_sorted(&self) -> Trajectory {
+        let mut out = self.clone();
+        // (element sequence, permutation), reused while consecutive frames keep the sequence
+        let mut cached: Option<(Vec<String>, Vec<usize>)> = None;
+        for f in &mut out.frames {
+            let elements: Vec<String> = f.symbols().into_iter().map(str::to_string).collect();
+            if cached.as_ref().is_none_or(|(e, _)| *e != elements) {
+                let order = canonical_order(&elements);
+                cached = Some((elements, order));
+            }
+            let (_, order) = cached.as_ref().expect("cached above");
+            if order.iter().enumerate().all(|(i, &j)| i == j) {
+                continue;
+            }
+            // Frame::permuted moves forces, velocities and charges with the atoms;
+            // energy, cell and stress do not depend on atom numbering
+            *f = f.permuted(order);
+        }
+        // Each permuted frame got a site table of its own; equal ones are shared again
+        out.share_sites();
+        out
+    }
 }
 
 impl Default for Trajectory {
@@ -250,6 +281,72 @@ mod tests {
     use super::*;
     use crate::atom::Atom;
     use nalgebra::Vector3;
+
+    /// One frame of `elements` at x = 0, 1, 2…, with forces 0.0, 0.1, 0.2… along x.
+    fn sort_input(elements: &[&str]) -> Trajectory {
+        let mut f = Frame::new();
+        f.set_atoms(elements.iter().enumerate().map(|(i, e)| Atom::new(*e, Vector3::new(i as f64, 0.0, 0.0))));
+        f.set_forces(Some((0..elements.len()).map(|i| Vector3::new(i as f64 * 0.1, 0.0, 0.0)).collect()))
+            .unwrap();
+        Trajectory::from_frame(f)
+    }
+
+    #[test]
+    fn sorting_carries_the_per_atom_arrays_along() {
+        let s = sort_input(&["Zn", "O"]).canonically_sorted();
+        let f = &s.frames[0];
+        assert_eq!(f.element(0), "O");
+        // O was atom 1: its position and its force must come along
+        assert_eq!(f.positions()[0].x, 1.0);
+        assert!((f.forces().unwrap()[0].x - 0.1).abs() < 1e-12);
+        assert_eq!(f.element(1), "Zn");
+        assert_eq!(f.positions()[1].x, 0.0);
+    }
+
+    /// Velocities are per-atom too, and were once left behind.
+    ///
+    /// A DeePMD system carries none, so `merge` never showed the bug; the
+    /// diagnostics `collect` exports (a dump with velocities) do.
+    #[test]
+    fn sorting_carries_velocities_too() {
+        let mut t = sort_input(&["Zn", "O", "Al"]);
+        t.frames[0].set_velocities(Some(
+            (0..3).map(|i| Vector3::new(i as f64 * 10.0, 0.0, 0.0)).collect(),
+        )).unwrap();
+        let s = t.canonically_sorted();
+        let f = &s.frames[0];
+        let v = f.velocities().unwrap();
+        assert_eq!(f.element(0), "O");
+        assert!((v[0].x - 10.0).abs() < 1e-12, "the velocity of O must move with it");
+        assert!((v[2].x - 0.0).abs() < 1e-12, "and so must that of Zn");
+    }
+
+    /// Each frame takes its own permutation: one file may list the atoms in a
+    /// different order from frame to frame.
+    #[test]
+    fn a_frame_with_its_own_atom_order_gets_its_own_permutation() {
+        let mut t = sort_input(&["Zn", "O"]);
+        let mut f1 = sort_input(&["O", "Zn"]).frames.remove(0);
+        // frame 1: the same configuration with the atoms reversed, forces following them
+        f1.positions_mut()[0].x = 1.0;
+        f1.positions_mut()[1].x = 0.0;
+        f1.set_forces(Some(vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)])).unwrap();
+        t.frames.push(f1);
+
+        let s = t.canonically_sorted();
+        for (k, f) in s.frames.iter().enumerate() {
+            assert_eq!(f.symbols(), vec!["O", "Zn"], "frame {k} is not in canonical order");
+            assert_eq!(f.positions()[0].x, 1.0, "frame {k}: the position of O did not come along");
+            assert!((f.forces().unwrap()[0].x - 0.1).abs() < 1e-12, "frame {k}: the force of O did not come along");
+        }
+    }
+
+    #[test]
+    fn an_already_sorted_system_is_untouched() {
+        let t = sort_input(&["O", "O", "Al"]);
+        let s = t.canonically_sorted();
+        assert_eq!(t.frames[0].positions(), s.frames[0].positions());
+    }
 
     fn make_frame(x: f64) -> Frame {
         let mut f = Frame::new();

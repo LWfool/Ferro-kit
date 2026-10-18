@@ -157,7 +157,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     if n_steps < 2 {
         return Err(ChemError::ValidationError(format!("trajectory requires at least 2 frames, got {n_steps}")));
     }
-    traj.check_same_atoms()?;
+    check::same_atoms(traj)?;
     let cells = check::periodic_cells(traj, None)?;
 
     // 按第一帧筛选参与计算的原子下标

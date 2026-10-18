@@ -10,5 +10,5 @@ pub mod geometry;
 pub mod merge;
 
 pub use filter::{filter_frames, Criterion, FilterParams, FilterResult, FrameVerdict};
-pub use merge::{canonical_order, composition_key, group_name, shuffle_order, sort_atoms};
+pub use merge::{composition_key, group_name, shuffle_order};
 pub use geometry::{coordination_histogram, count_with_coordination, min_pair_distance};
