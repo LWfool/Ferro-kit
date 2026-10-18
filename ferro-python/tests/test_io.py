@@ -30,3 +30,26 @@ def test_vasp_names_are_poscar(tmp_path, name):
     ferro.write(t, str(path))
     assert path.read_text() == ferro.poscar_string(t), f"{name} 应写成 POSCAR"
     assert ferro.read(str(path)).symbols(0) == t.symbols(0), f"{name} 应按 POSCAR 读回"
+
+
+@pytest.mark.parametrize("name, made", [
+    ("conf.cif", ["conf_0000.cif", "conf_0002.cif"]),
+    ("conf.vasp", ["conf_0000.vasp", "conf_0002.vasp"]),
+    ("POSCAR", ["POSCAR_0000", "POSCAR_0002"]),
+    ("conf.data", ["conf_0000.data", "conf_0002.data"]),
+])
+def test_single_structure_formats_write_one_file_per_frame(tmp_path, name, made):
+    t = ferro.read(str(NVT)).tail(3)
+    ferro.write(t, str(tmp_path / name))
+    assert not (tmp_path / name).exists(), "the unindexed name must not be written"
+    files = sorted(p.name for p in tmp_path.iterdir())
+    assert len(files) == 3 and files[0] == made[0] and files[-1] == made[1], files
+    if name.endswith(".cif"):
+        assert (tmp_path / made[0]).read_text().count("data_") == 1
+
+
+def test_trajectory_formats_write_one_file(tmp_path):
+    t = ferro.read(str(NVT)).tail(3)
+    ferro.write(t, str(tmp_path / "all.extxyz"))
+    assert [p.name for p in tmp_path.iterdir()] == ["all.extxyz"]
+    assert ferro.read(str(tmp_path / "all.extxyz")).n_frames() == 3

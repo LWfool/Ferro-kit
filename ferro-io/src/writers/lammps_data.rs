@@ -14,7 +14,7 @@ const CELLLESS_PAD: f64 = 1.0;
 /// 周期性帧写晶格信息；非周期性帧写最小包围盒。
 pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let path_ = path.display();
-    let frame = trajectory.first().context("trajectory is empty")?;
+    let frame = super::single_frame(trajectory, "LAMMPS data")?;
 
     let n = frame.n_atoms();
 

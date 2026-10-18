@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::Args;
 use crate::args::common::ReadArgs;
 use crate::io_dispatch::{holds_multiple_frames, read_trajectory, write_trajectory};
+use ferro_io::{index_width, indexed_path};
 use ferro_analysis::ml::merge::sort_atoms;
 use ferro_core::Trajectory;
 use std::path::{Path, PathBuf};
@@ -174,28 +175,6 @@ fn ends_with_separator(p: &Path) -> bool {
     s.ends_with(std::path::MAIN_SEPARATOR) || s.ends_with('/')
 }
 
-/// Zero-padded width for frame indices, at least 4 so `ls` sorts the products in
-/// frame order.
-fn index_width(max_index: usize) -> usize {
-    max_index.to_string().len().max(4)
-}
-
-/// Inserts `_<frame index>` before the extension: `out.vasp` -> `out_0010.vasp`,
-/// and `POSCAR` -> `POSCAR_0010`.
-///
-/// The number goes before the extension so the product keeps the extension its
-/// format is detected by; extension-less VASP names keep their POSCAR prefix, which
-/// is what detects them.
-fn indexed_path(base: &Path, frame_idx: usize, width: usize) -> PathBuf {
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("frame");
-    let mut name = format!("{stem}_{frame_idx:0width$}");
-    if let Some(ext) = base.extension().and_then(|e| e.to_str()) {
-        name.push('.');
-        name.push_str(ext);
-    }
-    base.with_file_name(name)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,29 +260,6 @@ mod tests {
 
     fn fixture() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/43Z43P15A_NPT_5.lammpstrj")
-    }
-
-    #[test]
-    fn test_indexed_path_keeps_the_name_its_format_is_detected_by() {
-        // 扩展名格式：序号插在扩展名之前，扩展名必须留住
-        assert_eq!(indexed_path(Path::new("out.lmp"), 10, 4), PathBuf::from("out_0010.lmp"));
-        // POSCAR 没有扩展名，靠前缀识别 —— 序号追加在后面，前缀仍在
-        assert_eq!(indexed_path(Path::new("POSCAR"), 2, 4), PathBuf::from("POSCAR_0002"));
-        // 目录部分原样保留
-        assert_eq!(
-            indexed_path(Path::new("runs/700K/conf.lmp"), 7, 4),
-            PathBuf::from("runs/700K/conf_0007.lmp")
-        );
-    }
-
-    /// 序号补零到至少 4 位，否则 `ls` 会把 frame 10 排在 frame 2 前面
-    #[test]
-    fn test_index_width_pads_for_ls_ordering() {
-        assert_eq!(index_width(9), 4);
-        assert_eq!(index_width(9999), 4);
-        assert_eq!(index_width(10000), 5);
-        let w = index_width(12345);
-        assert_eq!(indexed_path(Path::new("a.xyz"), 7, w), PathBuf::from("a_00007.xyz"));
     }
 
     #[test]

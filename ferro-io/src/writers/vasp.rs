@@ -5,7 +5,7 @@ use anyhow::{bail, Context, Result};
 
 /// 写 VASP5 POSCAR 格式，坐标使用 Direct（分数坐标），原子按元素分组。
 pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
-    let frame = trajectory.first().context("trajectory is empty")?;
+    let frame = super::single_frame(trajectory, "POSCAR")?;
     let text = poscar_string(frame, trajectory.metadata.source.as_deref().unwrap_or("ferro"))?;
     std::fs::write(path, text).with_context(|| format!("cannot create {}", path.display()))
 }

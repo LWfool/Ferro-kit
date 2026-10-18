@@ -12,6 +12,21 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Python `write`: CIF, POSCAR and LAMMPS data get one file per frame
+
+`ferro.write` of a trajectory with several frames to a CIF, POSCAR or LAMMPS data
+path used to write only the first frame (POSCAR, data) or all frames into one CIF.
+It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
+`ferro convert` does. Library callers of `write_cif` / `write_poscar` /
+`write_lammps_data` get an error for several frames instead.
+
+### LAMMPS data keeps the masses of its `Masses` section
+
+The mass given for each atom type is now the atoms' mass, not only a hint for the
+element: isotopes and coarse-grained masses survive (`ferro info` densities, a
+`convert` back to data). Writing a data file whose atoms of one element carry
+different masses is an error, since a type has one mass.
+
 ### `ferro dataset collect` reads Quantum ESPRESSO pw.x output
 
 `scf`, `md` and `vc-md` outputs are recognised by their `Program PWSCF` banner, or

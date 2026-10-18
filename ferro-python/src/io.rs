@@ -6,6 +6,7 @@ use ferro_io::{
     apply_type_map, is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
     read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
     write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_xyz,
+    index_width, indexed_path,
     LammpsUnits, read_aimd_with_stats, TableFormat,
 };
 use ferro_core::Table;
@@ -103,18 +104,29 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
     let units = parse_units(units)?;
     let t = &traj.inner;
     let p = std::path::Path::new(path);
-    match detect(path).as_str() {
-        "xyz" => write_xyz(t, p).map_err(pyerr),
-        "extxyz" => write_extxyz(t, p).map_err(pyerr),
-        "pdb" => write_pdb(t, p).map_err(pyerr),
-        "cif" => write_cif(t, p).map_err(pyerr),
-        "poscar" | "contcar" | "vasp" | "pos" => write_poscar(t, p).map_err(pyerr),
-        "data" | "lmp" | "lammps" => write_lammps_data(t, p).map_err(pyerr),
-        "lammpstrj" | "dump" => write_lammps_dump(t, p, units).map_err(pyerr),
-        other => Err(pyerr(format!(
+    // POSCAR, CIF and LAMMPS data hold one structure: several frames go to one file
+    // each, named as `ferro convert` names them (`conf.cif` -> `conf_0000.cif`, ...)
+    let single: fn(&ferro_core::Trajectory, &Path) -> PyResult<()> = match detect(path).as_str() {
+        "xyz" => return write_xyz(t, p).map_err(pyerr),
+        "extxyz" => return write_extxyz(t, p).map_err(pyerr),
+        "pdb" => return write_pdb(t, p).map_err(pyerr),
+        "lammpstrj" | "dump" => return write_lammps_dump(t, p, units).map_err(pyerr),
+        "cif" => |t, p| write_cif(t, p).map_err(pyerr),
+        "poscar" | "contcar" | "vasp" | "pos" => |t, p| write_poscar(t, p).map_err(pyerr),
+        "data" | "lmp" | "lammps" => |t, p| write_lammps_data(t, p).map_err(pyerr),
+        other => return Err(pyerr(format!(
             "unsupported output format '{other}' for path '{path}'"
         ))),
+    };
+    if t.n_frames() <= 1 {
+        return single(t, p);
     }
+    let width = index_width(t.n_frames() - 1);
+    for (i, frame) in t.frames.iter().enumerate() {
+        let one = ferro_core::Trajectory { frames: vec![frame.clone()], metadata: t.metadata.clone() };
+        single(&one, &indexed_path(p, i, width))?;
+    }
+    Ok(())
 }
 
 /// 读计算输出（VASP OUTCAR / vasprun.xml、CP2K 单点与 MD 输出），按文件内容识别程序，

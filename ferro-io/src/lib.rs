@@ -30,4 +30,5 @@ pub use writers::{
     qe_structure_cards, cp2k_structure_sections,
     write_cube,
     write_table, TableFormat,
+    index_width, indexed_path,
 };

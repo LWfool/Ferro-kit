@@ -100,6 +100,11 @@ unknown symbol, or `type_map` on anything but a dump is an error.
 Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR*`/`CONTCAR*`/`vasp`/`poscar`/`pos` (POSCAR format),
 `data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
 
+`xyz`, `extxyz`, `pdb` and the dump hold a whole trajectory in one file. CIF, POSCAR and
+LAMMPS data hold one structure: a trajectory of several frames is written one file per frame,
+named as `ferro convert` names them — `conf.cif` gives `conf_0000.cif`, `conf_0001.cif`, …,
+and `POSCAR` gives `POSCAR_0000`, … (indices padded to at least four digits).
+
 ### `read_output(path) -> (Trajectory, dict)`
 
 Reads a calculation output — VASP `OUTCAR` / `vasprun.xml`, CP2K single-point or MD output —
