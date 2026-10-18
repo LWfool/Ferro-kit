@@ -100,8 +100,8 @@ pub struct ClusterSdfParams {
 
 One Gaussian cube file per atom type per family:
 
-- Single family: `<stem>_<label>.cube` (e.g. `sdf_P3.cube`, `sdf_Ob.cube`)
-- Multiple families: `<stem>_fam0_<label>.cube`, `<stem>_fam1_<label>.cube`, …
+- Single family: `sdf_<label>_<input>[_<suffix>].cube` (e.g. `sdf_P3_prod.cube`, `sdf_Ob_prod.cube`)
+- Multiple families: `sdf_fam0_<label>_<input>.cube`, `sdf_fam1_<label>_<input>.cube`, …
 
 All cube files within a family share the same grid origin and spacing, enabling direct overlay in VESTA or VMD.
 Positions are binned into voxels starting at the lower corner of the padded box; the header origin is that

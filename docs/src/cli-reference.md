@@ -92,7 +92,7 @@ label comes before the suffix, so `ls gr_P-O_*` lists the results for one pair a
 | `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv` (both are required, so `all` is never reached) |
 | `traj bondlife` | `--center`-`--neighbor` | `bondlife_Si-O.csv` and `bondlife_events_Si-O.csv` |
 | `traj sq` | none (see below) | `sq.csv` |
-| `ferro net`, `ferro map` | none | `network_qn.csv`, `density.cube` |
+| `ferro net`, `ferro map` | none | `network_qn.csv`, `density_<input>.cube` |
 
 Two rules that are easily confused:
 
@@ -538,9 +538,10 @@ ferro writes csv only; figures are made in Python. See [Plotting](plotting.md).
 ## `ferro map`
 
 3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table.
-A single input writes `density.cube`; with several, each name carries its input's label (`density_<label>.cube`)
-so that none overwrites another.  `-s TAG` is appended after the command name: `density_TAG.cube`, or
-`density_TAG_<label>.cube` with several inputs.
+Every name carries its input's label, a single input included (`density_<label>.cube`), so that none
+overwrites another and the name does not depend on how many files a glob matched.  `-s TAG` comes last:
+`density_<label>_TAG.cube`.  All products follow one rule,
+`<mode>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.
 
 ```bash
 ferro map <command> -i traj.lammpstrj [flags] [-o DIR] [-s SUFFIX]
@@ -605,7 +606,7 @@ ferro map sdf -i traj.lammpstrj --qn 3 --former P --ligand O --cutoff-fl 2.4 \
 | `--padding` | 3.0 | grid boundary margin [Å] |
 | `--rmsd-warn` | 0.5 | RMSD warning threshold [Å] |
 
-Output: one `<stem>_<label>.cube` per atom type (`<stem>_fam<N>_<label>.cube` when there are several families).
+Output: one `sdf_<type>_<input>.cube` per atom type (`sdf_fam<N>_<type>_<input>.cube` when there are several families).
 
 ### `chg-sdf` — charge-density SDF
 
@@ -629,7 +630,8 @@ ferro map chg-sdf --cubes frame_000.cube frame_001.cube frame_002.cube \
 | `--chg-padding` | `6.0` | sub-grid boundary margin [Å] |
 | `--rmsd-warn` | `0.5` | alignment RMSD warning threshold [Å] |
 
-Output: `<stem>_Q<n>.cube` (one file per signature family).  For the algorithm see
+Output: `chg_sdf_Q<n>[_<suffix>].cube`, or `chg_sdf_fam<N>_Q<n>.cube` with several signature families; no
+input segment, since one result comes from all the cubes.  For the algorithm see
 [Averaged Charge-Density SDF](analysis/chg-sdf.md).
 
 > `--cubes` is the only mode in `ferro map` that aggregates several inputs into **one** SDF, the opposite
@@ -707,7 +709,7 @@ use the **atom** vocabulary `P_2` / `Al_4`, because a linkage joins atoms and a 
 splittable back into an element.  For non-Qn network formers the two coincide (`Al_4`, where the number is
 the **coordination number**).  Ligands are `O_f` / `O_n` / `O_b` / `O_t`, modifiers are bare element symbols.  The table is printed once per run for the parameters actually given.  **Downstream `-x/-y` use the atom vocabulary.**
 
-`--export-traj` writes `<input stem>_types[_<suffix>].<ext>` per input.
+`--export-traj` writes `network_types_<input stem>[_<suffix>].<ext>` per input.
 
 For the details (the statements behind the numbers, what `sd` means, pandas examples, how the two export
 formats differ, and the single-frame restriction on selecting by label) see [Glass Network Analysis](analysis/network.md).
@@ -750,20 +752,20 @@ ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 
 ### Output files
 
-Three `.dat` files in Henkelman format, **named after the stem of the input file**:
+Three `.dat` files in Henkelman format, `bader_<kind>_<input stem>[_<suffix>].dat`:
 
 | File | Content |
 |---|---|
-| `<input stem>_ACF.dat` | Atomic Charges File — the Bader charge, volume and minimum distance to the surface, per atom |
-| `<input stem>_BCF.dat` | Bader Charge File — the charge, volume and coordinates of each Bader volume |
-| `<input stem>_AVF.dat` | Atomic Volume File — the atom → Bader volume index mapping |
+| `bader_ACF_<input stem>.dat` | Atomic Charges File — the Bader charge, volume and minimum distance to the surface, per atom |
+| `bader_BCF_<input stem>.dat` | Bader Charge File — the charge, volume and coordinates of each Bader volume |
+| `bader_AVF_<input stem>.dat` | Atomic Volume File — the atom → Bader volume index mapping |
 
 These three follow the bader format of the Henkelman group and are parsed by external tools, which is why they did not move to csv with the rest of the outputs.
 
 The three reports are **written next to the input file by default** (`-i run1/CHGCAR` →
-`run1/CHGCAR_ACF.dat`), which makes this the only command in the repository that does not default to the
+`run1/bader_ACF_CHGCAR.dat`), which makes this the only command in the repository that does not default to the
 current directory.  VASP charge densities are all called `CHGCAR`, and only landing next to the input, in
-their own run directories, do they avoid overwriting each other.  `-o <DIR>` collects them elsewhere, and `-s <SUFFIX>` tells two runs with different parameters on the same input apart (`<stem>_ACF_<suffix>.dat`).
+their own run directories, do they avoid overwriting each other.  `-o <DIR>` collects them elsewhere, and `-s <SUFFIX>` tells two runs with different parameters on the same input apart (`bader_ACF_<stem>_<suffix>.dat`).
 
 ---
 

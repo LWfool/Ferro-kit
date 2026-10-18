@@ -85,13 +85,14 @@ Parameters:
   -r, --refine INT        Edge refinement: -1 auto, -2 single pass, N passes [-1]
   -v, --vacval FLOAT      Vacuum density threshold [e/Å³]             [1e-3]
   -o, --output DIR        Where the reports go    [the input's own directory]
-  -s, --suffix SUFFIX     Tag -> <stem>_ACF_<suffix>.dat
+  -s, --suffix SUFFIX     Tag -> bader_ACF_<stem>_<suffix>.dat
       --mkdir             Create -o without asking (needed with no terminal)
   -h, --help              Short parameter table
 
 Output:
-  <stem>_ACF.dat  <stem>_BCF.dat  <stem>_AVF.dat (Henkelman's layout), written
-  NEXT TO THE INPUT, not in the current directory; -o collects them elsewhere
+  bader_ACF_<stem>.dat  bader_BCF_<stem>.dat  bader_AVF_<stem>.dat (Henkelman's
+  layout), written NEXT TO THE INPUT, not in the current directory; -o collects
+  them elsewhere
 
 Examples:
   ferro bader -i CHGCAR --method weight
@@ -213,7 +214,7 @@ Commands:
 Common options:
   -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
   -o, --output DIR      Write the cubes here; --mkdir creates it unasked
-  -s, --suffix SUFFIX   Batch tag appended to each cube name (density_<suffix>.cube)
+  -s, --suffix SUFFIX   Batch tag appended to each cube name (density_<stem>_<suffix>.cube)
       --last-n N        Use only the last N frames
       --ncore  N        Parallel threads (default: all cores)
       --atom-style S    LAMMPS data input: atomic | charge | full (required)
@@ -222,8 +223,8 @@ Common options:
 
 Output:
   One 3-D grid file per input, not a stacked table — nothing here stacks. The
-  name carries the input stem (density_<stem>.cube) so inputs cannot overwrite
-  one another. No summary table."#
+  name always carries the input stem (density_<stem>.cube), even for a single
+  input, so inputs cannot overwrite one another. No summary table."#
     );
 }
 
@@ -547,13 +548,14 @@ Parameters:
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> density_<suffix>.cube
+  -s SUFFIX           Batch tag -> density_<stem>_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
   --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
-  <stem>.cube, one per input — a Gaussian cube VESTA and VMD read directly
+  density_<stem>.cube, one per input — a Gaussian cube VESTA and VMD read
+  directly
 
 Examples:
   ferro map density -i traj.dump
@@ -577,13 +579,13 @@ Parameters:
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> velocity_<suffix>.cube
+  -s SUFFIX           Batch tag -> velocity_<stem>_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
   --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
-  <stem>.cube, one per input
+  velocity_<stem>.cube, one per input
 
 Examples:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80
@@ -607,13 +609,13 @@ Parameters:
   --last-n   INT      Use only the last N frames
   --ncore    INT      Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> force_<suffix>.cube
+  -s SUFFIX           Batch tag -> force_<stem>_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
   --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
-  <stem>.cube, one per input
+  force_<stem>.cube, one per input
 
 Examples:
   ferro map force -i traj.dump --elements O
@@ -640,13 +642,13 @@ Parameters:
   --last-n  INT       Use only the last N frames
   --ncore   INT       Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> radius_<suffix>.cube
+  -s SUFFIX           Batch tag -> radius_<stem>_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
   --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
-  <stem>.cube, one per input
+  radius_<stem>.cube, one per input
 
 Examples:
   ferro map radius -i traj.dump --elements Li --radius 0.7
@@ -678,19 +680,19 @@ Parameters:
   --last-n     INT    Use only the last N frames
   --ncore      INT    Parallel threads
   -o DIR              Output directory; --mkdir creates it unasked
-  -s STEM             Output stem (no extension)              default: sdf
+  -s SUFFIX           Batch tag -> sdf_<type>_<stem>_<suffix>.cube
   --atom-style S      LAMMPS data input: atomic | charge | full (required)
   --units U           Dump vx/fx units: real | metal (required if present)
   --type-map M        Dump without element column: 1=Zr,2=O,...
 
 Output:
-  <stem>_<atom_type>.cube, or <stem>_fam<N>_<atom_type>.cube with more than
-  one family. Types are P0..P3 (former Qn), Of/On/Ob (free / non-bridging /
-  bridging ligand) and the element symbol for a modifier.
+  sdf_<type>_<stem>.cube per atom type, or sdf_fam<N>_<type>_<stem>.cube with
+  more than one family. Types are P0..P3 (former Qn), Of/On/Ob (free /
+  non-bridging / bridging ligand) and the element symbol for a modifier.
 
 Examples:
   ferro map sdf -i traj.dump --qn 3
-  ferro map sdf -i traj.dump --qn 2 --modifier Zn --cutoff-ml 2.8 -o q2_sdf
+  ferro map sdf -i traj.dump --qn 2 --modifier Zn --cutoff-ml 2.8 -s zn
   ferro map sdf -i traj.dump --qn 1 --grid-res 0.05 --sigma 2.0 --last-n 500
 
 Full documentation:  ferro doc map sdf"#
@@ -717,14 +719,15 @@ Parameters:
   --rmsd-warn  FLOAT    RMSD warning threshold [Å]             default: 0.5
   --ncore      INT      Parallel threads
   -o DIR                Output directory; --mkdir creates it unasked
-  -s STEM               Output stem (no extension)             default: chg_sdf
+  -s SUFFIX             Batch tag -> chg_sdf_Q<n>_<suffix>.cube
 
 Output:
-  <stem>.cube — ONE cube from all the inputs together, unlike the rest of
-  `map`. Values follow the ChargeGrid convention (rho_phys * V_cell).
+  chg_sdf_Q<n>.cube (chg_sdf_fam<N>_Q<n>.cube with more than one family) —
+  ONE cube from all the inputs together, unlike the rest of `map`, so the name
+  has no input stem. Values follow the ChargeGrid convention (rho_phys * V_cell).
 
 Examples:
-  ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -o Q2_avg
+  ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -s avg
   ferro map chg-sdf --cubes f1.cube f2.cube --qn 0 --chg-padding 5.0
 
 Full documentation:  ferro doc map chg-sdf"#

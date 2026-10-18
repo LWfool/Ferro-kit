@@ -100,16 +100,16 @@ The cube format is directly accepted by VESTA, VMD, Ovito, and most electronic-s
 
 ```bash
 # Number density of all atoms
-ferro map density -i traj.dump --nx 80 --ny 80 --nz 80 -o density.cube
+ferro map density -i traj.dump --nx 80 --ny 80 --nz 80      # -> density_traj.cube
 
 # Li-only density
-ferro map density -i traj.dump --elements Li -o li_density.cube
+ferro map density -i traj.dump --elements Li -s li           # -> density_traj_li.cube
 
 # Time-averaged velocity magnitude
-ferro map velocity -i traj.dump --units metal -o velocity.cube
+ferro map velocity -i traj.dump --units metal                # -> velocity_traj.cube
 
 # Time-averaged force magnitude
-ferro map force -i traj.dump -o force.cube
+ferro map force -i traj.dump                                 # -> force_traj.cube
 ```
 
 ```rust

@@ -81,7 +81,7 @@ def run_ferro(ferro_bin, argv, outdir, product):
 
 # ── 产物文件名 ───────────────────────────────────────────────────────────────
 #
-# 命名规则在 ferro-cli 的 `batch::out_path` / `batch::file_label`，这里是它的镜像。
+# 命名规则在 ferro-cli 的 `batch::product_name` / `batch::file_label`，这里是它的镜像。
 # 手写产物名的代价已经付过一次：2026-08-13 给 traj 产物加 label 段，三个脚本同时
 # 断掉。规则再变时只改这一处。
 
@@ -117,19 +117,21 @@ def set_label(parts=None):
     return file_label(*sorted(set(str(p) for p in parts)))
 
 
-def product_name(mode, label=None, suffix=None, table=None):
-    """ferro 的产物文件名：`<mode>[_<table>][_<label>][_<suffix>].csv`。
+def product_name(mode, label=None, suffix=None, table=None, input=None, ext="csv"):
+    """ferro 的产物文件名：`<mode>[_<table>][_<label>][_<input>][_<suffix>].<ext>`。
 
     * `table` 与 `mode` 同名时省略（gr / angle / sq 这类单表模式）；
       net 的六张表要显式传（`product_name("network", table="qn", ...)`）。
     * `label` 是**该模式有没有类型选择**：sq 没有，传 `None`；gr / angle 有，
       即使没筛选也得传 `file_label()` 拿到的 `"all"`。两者的区别就是差一段。
+    * `input` 是逐输入产物（map 的 cube、net 导出、bader）的输入标签，单输入也带；
+      traj / net 的堆叠表没有这一段。
     """
     stem = mode if table in (None, mode) else f"{mode}_{table}"
-    for seg in (label, suffix):
+    for seg in (label, input, suffix):
         if seg:
             stem += f"_{seg}"
-    return f"{stem}.csv"
+    return f"{stem}.{ext}"
 
 
 # ── ferro csv 读取 ───────────────────────────────────────────────────────────

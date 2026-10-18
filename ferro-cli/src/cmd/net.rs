@@ -42,7 +42,7 @@ pub struct NetCmd {
     pub qn: Option<String>,
 
     /// Also write the classified trajectory, one file per input:
-    /// <input stem>_types[_<suffix>].<ext>. Defaults to lammpstrj
+    /// network_types_<input stem>[_<suffix>].<ext>. Defaults to lammpstrj
     #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "lammpstrj")]
     pub export_traj: Option<ExportFormat>,
 }
@@ -239,7 +239,7 @@ fn fmt_means<T>(
 
 // ─── 标注轨迹导出 ─────────────────────────────────────────────────────────────
 
-/// Writes the classified trajectory as `<input stem>_types[_<suffix>].<ext>`.
+/// Writes the classified trajectory as `network_types_<input stem>[_<suffix>].<ext>`.
 ///
 /// The name carries the input stem because this is a **one product per input**
 /// product, like `ferro map`'s cubes — a fixed output path would make the second
@@ -274,13 +274,7 @@ fn export_labelled(
         .collect();
     let out_traj = Trajectory { frames, metadata: traj.metadata.clone() };
 
-    let stem = label;
-    let ext = fmt.ext();
-    let name = match out.suffix.as_deref().filter(|s| !s.is_empty()) {
-        Some(s) => format!("{stem}_types_{s}.{ext}"),
-        None => format!("{stem}_types.{ext}"),
-    };
-    let path = out.join(&name);
+    let path = out.join(&batch::product_name(&["network", "types", label], out.suffix.as_deref(), fmt.ext()));
     match fmt {
         // 同 convert：沿用读入时的 --units；没给而帧里有速度 / 力时由 writer 报错要求给出
         ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, units)?,
@@ -488,7 +482,7 @@ Parameters:
                         by its coordination number
       --export-traj [FMT]
                         Also write the classified trajectory, one file per
-                        input: <input stem>_types[_<suffix>].<ext>
+                        input: network_types_<input stem>[_<suffix>].<ext>
                         FMT is lammpstrj (default) or extxyz
 
 Output:
@@ -629,7 +623,7 @@ mod tests {
         let (_, types) = calc_network_typed(&traj, &p).unwrap();
 
         export_labelled(&traj, &types, "box", &out, ExportFormat::Lammpstrj, Some(LammpsUnits::Metal)).unwrap();
-        let path = dir.join("box_types.lammpstrj");
+        let path = dir.join("network_types_box.lammpstrj");
         let back = ferro_io::read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap();
         let got = back.frames[0].velocities().unwrap()[0];
         assert!((got - v).norm() < 1e-12, "按 metal 写出再按 metal 读回应不变，得到 {got:?}");

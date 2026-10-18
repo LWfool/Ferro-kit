@@ -321,24 +321,30 @@ impl Output {
     }
 }
 
-/// Output file name: `<-o dir>/<mode>[_<table>][_<label>]_<suffix>.csv`.
+/// The one naming rule for every product:
+/// `<mode>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.
+///
+/// `segments` are mode, table, selection and input in that order; empty ones are
+/// skipped. The `-s` tag always comes last, so `ls *_<tag>.*` lists one batch, and
+/// the selection precedes the input, so `ls gr_P-O_*` lists one pair across batches.
+/// A per-input product (`map`, `net --export-traj`, `bader`) always carries its input
+/// label, even for a single input: whether a name has that segment must not depend on
+/// how many files a glob matched (user decision 2026-10-18).
+pub fn product_name(segments: &[&str], suffix: Option<&str>, ext: &str) -> String {
+    let mut parts: Vec<&str> = segments.iter().copied().filter(|s| !s.is_empty()).collect();
+    if let Some(s) = suffix.filter(|s| !s.is_empty()) {
+        parts.push(s);
+    }
+    format!("{}.{ext}", parts.join("_"))
+}
+
+/// A stacked table's path: `<-o dir>/<mode>[_<table>][_<label>][_<suffix>].csv`.
 ///
 /// The table name is dropped when it merely repeats the mode (the single-table case).
-/// `label` says what was analysed and `suffix` (`-s`) tags the batch; label comes first
-/// so `ls gr_P-O_*` lists one pair across every batch.
 pub fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
-    let mut stem =
-        if table == mode { mode.to_string() } else { format!("{mode}_{table}") };
-    if let Some(l) = out.label.as_deref().filter(|l| !l.is_empty()) {
-        stem.push('_');
-        stem.push_str(l);
-    }
-    if let Some(s) = out.suffix.as_deref().filter(|s| !s.is_empty()) {
-        stem.push('_');
-        stem.push_str(s);
-    }
-    stem.push_str(".csv");
-    out.join(&stem)
+    let table = if table == mode { "" } else { table };
+    let label = out.label.as_deref().unwrap_or("");
+    out.join(&product_name(&[mode, table, label], out.suffix.as_deref(), "csv"))
 }
 
 /// Builds the `#` comment block written above the data.
@@ -601,6 +607,17 @@ mod tests {
             suffix: suffix.map(str::to_string),
             mkdir: false,
         }
+    }
+
+    /// One rule for every product; the `-s` tag is always last and empty segments
+    /// leave no stray `_`.
+    #[test]
+    fn test_product_name_order() {
+        assert_eq!(product_name(&["density", "prod"], None, "cube"), "density_prod.cube");
+        assert_eq!(product_name(&["density", "prod"], Some("700K"), "cube"), "density_prod_700K.cube");
+        assert_eq!(product_name(&["sdf", "", "Ob", "prod"], Some(""), "cube"), "sdf_Ob_prod.cube");
+        assert_eq!(product_name(&["sdf", "fam1", "Ob", "prod"], Some("x"), "cube"), "sdf_fam1_Ob_prod_x.cube");
+        assert_eq!(product_name(&["bader", "ACF", "CHGCAR"], None, "dat"), "bader_ACF_CHGCAR.dat");
     }
 
     #[test]

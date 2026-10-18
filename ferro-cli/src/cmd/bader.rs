@@ -27,7 +27,7 @@ pub struct BaderCmd {
     #[arg(short, long, value_name = "DIR")]
     pub output: Option<PathBuf>,
 
-    /// Tag appended to the report names: <stem>_ACF_<suffix>.dat
+    /// Tag appended to the report names: bader_ACF_<stem>_<suffix>.dat
     #[arg(short, long, value_name = "SUFFIX")]
     pub suffix: Option<String>,
 
@@ -42,7 +42,7 @@ pub fn wants_help(args: &BaderCmd) -> bool {
     args.input.is_none()
 }
 
-/// Where the three reports go: `<-o dir>/<input stem>_ACF[_<suffix>].dat`.
+/// Where the three reports go: `<-o dir>/bader_ACF_<input stem>[_<suffix>].dat`.
 ///
 /// `-o` defaults to the **input's own directory**, the one exception to "default is the
 /// current directory". VASP names every charge density `CHGCAR`, so running `run1/CHGCAR`
@@ -50,15 +50,12 @@ pub fn wants_help(args: &BaderCmd) -> bool {
 /// silently over the first. Next to the input, each run keeps its own reports.
 fn report_paths(args: &BaderCmd, input: &Path) -> [PathBuf; 3] {
     let stem = input.file_stem().and_then(|s| s.to_str()).unwrap_or("bader");
-    let tag = match args.suffix.as_deref().filter(|s| !s.is_empty()) {
-        Some(s) => format!("_{s}"),
-        None => String::new(),
-    };
     let dir = args
         .output
         .clone()
         .unwrap_or_else(|| input.parent().unwrap_or(Path::new("")).to_path_buf());
-    ["ACF", "BCF", "AVF"].map(|kind| dir.join(format!("{stem}_{kind}{tag}.dat")))
+    ["ACF", "BCF", "AVF"]
+        .map(|kind| dir.join(crate::batch::product_name(&["bader", kind, stem], args.suffix.as_deref(), "dat")))
 }
 
 pub fn run(args: &BaderCmd) -> Result<()> {
@@ -150,9 +147,9 @@ mod tests {
     fn test_reports_land_next_to_the_input() {
         let c = cmd(Some("run1/CHGCAR"));
         let [acf, bcf, avf] = report_paths(&c, Path::new("run1/CHGCAR"));
-        assert_eq!(acf, PathBuf::from("run1/CHGCAR_ACF.dat"));
-        assert_eq!(bcf, PathBuf::from("run1/CHGCAR_BCF.dat"));
-        assert_eq!(avf, PathBuf::from("run1/CHGCAR_AVF.dat"));
+        assert_eq!(acf, PathBuf::from("run1/bader_ACF_CHGCAR.dat"));
+        assert_eq!(bcf, PathBuf::from("run1/bader_BCF_CHGCAR.dat"));
+        assert_eq!(avf, PathBuf::from("run1/bader_AVF_CHGCAR.dat"));
     }
 
     /// -o 覆盖目录,-s 追加标记 —— 同一个输入跑两套参数时用得上。
@@ -162,7 +159,7 @@ mod tests {
         c.output = Some(PathBuf::from("reports"));
         c.suffix = Some("weight".into());
         let [acf, ..] = report_paths(&c, Path::new("run1/CHGCAR"));
-        assert_eq!(acf, PathBuf::from("reports/CHGCAR_ACF_weight.dat"));
+        assert_eq!(acf, PathBuf::from("reports/bader_ACF_CHGCAR_weight.dat"));
     }
 
     /// 方法名在读文件**之前**校验：拿错方法名跑一个 GB 级 CHGCAR 再报错是白等

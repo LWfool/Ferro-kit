@@ -24,8 +24,7 @@ Charge-density cube files must be produced by QE `pp.x` (or any program that out
 # Basic: average charge density around Q2 clusters (P–O system)
 ferro map chg-sdf \
     --cubes frame_000.cube frame_001.cube frame_002.cube \
-    --qn 2 --former P --ligand O --cutoff-fl 2.4 \
-    -o chg_sdf
+    --qn 2 --former P --ligand O --cutoff-fl 2.4
 
 # With modifier cation (e.g. Zn2+ in Zn-phosphate glass)
 ferro map chg-sdf \
@@ -33,7 +32,7 @@ ferro map chg-sdf \
     --qn 2 --former P --ligand O --cutoff-fl 2.4 \
     --modifier Zn --cutoff-ml 2.8 \
     --chg-padding 6.0 \
-    -o chg_sdf_Q2
+    -s zn
 
 # Tighter sub-grid / multiple threads
 ferro map chg-sdf \
@@ -41,7 +40,7 @@ ferro map chg-sdf \
     --qn 3 --former P --ligand O \
     --chg-padding 5.0 --rmsd-warn 0.3 \
     --ncore 8 \
-    -o q3_density
+    -o q3 --mkdir
 ```
 
 ---
@@ -60,7 +59,8 @@ ferro map chg-sdf \
 | `--chg-padding` | `6.0` | Sub-grid margin around the cluster anchor [Å] |
 | `--rmsd-warn` | `0.5` | RMSD threshold for alignment quality warnings [Å] |
 | `--ncore` | all | Parallel threads |
-| `-o` | `chg_sdf` | Output file stem |
+| `-o` | current directory | Output directory (`--mkdir` creates it unasked) |
+| `-s` | (none) | Batch tag, the last segment of the name |
 
 > **Note**: `--chg-padding` controls the sub-grid size, not the atom SDF grid.  Larger values capture more surrounding density but increase memory and runtime.
 
@@ -68,7 +68,7 @@ ferro map chg-sdf \
 
 ## Output
 
-For a single signature family:
+For a single signature family (`-s TAG` appends `_TAG`):
 ```
 chg_sdf_Q2.cube
 ```

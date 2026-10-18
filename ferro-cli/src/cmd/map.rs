@@ -129,7 +129,7 @@ pub struct ChgSdfCmd {
     #[arg(short, long, value_name = "DIR")]
     pub output: Option<PathBuf>,
 
-    /// Batch tag appended to the product name: chg_sdf[_<suffix>]_Q<n>.cube
+    /// Batch tag appended to the product name: chg_sdf_Q<n>[_<suffix>].cube
     #[arg(short, long, value_name = "SUFFIX")]
     pub suffix: Option<String>,
 
@@ -177,20 +177,6 @@ pub fn run(cmd: &MapCmd) -> Result<usize> {
     }
 }
 
-/// Output stem: `<-s 后缀>[_<输入标签>]`.
-///
-/// 单输入时保持简洁名字；多输入时必须掺入标签，否则第二个文件会盖掉第一个。标签由
-/// `batch::unique_labels` 保证批内唯一（同名输入改 `_2`）
-fn stem_for(output: Option<&str>, label: &str, multi: bool) -> String {
-    let base = output.unwrap_or("");
-    let base = if base.is_empty() { String::new() } else { format!("{base}_") };
-    if multi {
-        format!("{base}{label}")
-    } else {
-        base.trim_end_matches('_').to_string()
-    }
-}
-
 fn mode_name(m: &CubeCliMode) -> &'static str {
     match m {
         CubeCliMode::Density  => "density",
@@ -204,8 +190,8 @@ fn mode_name(m: &CubeCliMode) -> &'static str {
 
 /// Shared driver: traverse inputs, skip failures, one grid file each.
 ///
-/// `map` has no type selection, so its `Output` carries no label — only `--outdir` and
-/// the `-o` stem, the latter already folded into `stem_for`.
+/// `map` has no type selection, so its `Output` carries no label; `body` gets the
+/// input's label for the file name.
 fn drive(
     common: &CommonArgs,
     body: impl Fn(&Trajectory, &str, &batch::Output) -> Result<()>,
@@ -218,11 +204,9 @@ fn drive(
     common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
 
-    let multi = inputs.len() > 1;
     let (_ok, failures) = batch::map_inputs(&inputs, |inp| {
         let traj = common.load(&inp.path)?;
-        let stem = stem_for(common.suffix(), &inp.label, multi);
-        body(&traj, &stem, &out)
+        body(&traj, &inp.label, &out)
     });
     Ok(failures.len())
 }
@@ -237,12 +221,11 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
-    drive(&c.common, |traj, stem, out| {
+    drive(&c.common, |traj, input, out| {
         let result = calc_cube_density(traj, &params)?;
 
         let name = mode_name(&mode);
-        let file = if stem.is_empty() { format!("{name}.cube") } else { format!("{name}_{stem}.cube") };
-        let path = out.join(&file);
+        let path = out.join(&batch::product_name(&[name, input], out.suffix.as_deref(), "cube"));
         write_cube(&result.cube, &path)?;
         println!(
             "Cube ({name}) -> {}  [{} frames, {} atoms]",
@@ -262,11 +245,10 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
-    drive(&c.common, |traj, stem, out| {
+    drive(&c.common, |traj, input, out| {
         let result = calc_cube_radius(traj, &params)?;
 
-        let file = if stem.is_empty() { "radius.cube".to_string() } else { format!("radius_{stem}.cube") };
-        let path = out.join(&file);
+        let path = out.join(&batch::product_name(&["radius", input], out.suffix.as_deref(), "cube"));
         write_cube(&result.cube, &path)?;
         println!(
             "Cube (radius={:.3}Å) -> {}  [{} frames, {} atoms]",
@@ -291,11 +273,10 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
-    drive(&c.common, |traj, stem, out| {
+    drive(&c.common, |traj, input, out| {
         let result = calc_cluster_sdf(traj, &params)?
             .ok_or_else(|| anyhow!("No Q{} clusters found in trajectory", c.cluster.qn))?;
 
-        let stem = if stem.is_empty() { "sdf" } else { stem };
         let multi_family = result.families.len() > 1;
 
         // 按签名排序,保证文件命名可复现
@@ -304,25 +285,23 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
 
         let mut total_files = 0usize;
         for (fam_idx, family) in families.iter().enumerate() {
-            let fam_prefix = if multi_family {
-                format!("{stem}_fam{fam_idx}")
-            } else {
-                stem.to_string()
-            };
+            let fam = if multi_family { format!("fam{fam_idx}") } else { String::new() };
             let mut labels: Vec<_> = family.grids.keys().collect();
             labels.sort();
             for label in &labels {
-                write_cube(&family.grids[*label], &out.join(&format!("{fam_prefix}_{label}.cube")))?;
+                let name = batch::product_name(&["sdf", &fam, label, input], out.suffix.as_deref(), "cube");
+                write_cube(&family.grids[*label], &out.join(&name))?;
                 total_files += 1;
             }
             println!(
-                "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {}_*.cube",
+                "Family {:?}  ({} clusters, RMSD mean={:.3} max={:.3} Å, {} warnings)  → {}",
                 family.signature,
                 family.n_clusters,
                 family.rmsd_stats.mean,
                 family.rmsd_stats.max,
                 family.rmsd_stats.n_warned,
-                out.join(&fam_prefix).display(),
+                out.join(&batch::product_name(&["sdf", &fam, "*", input], out.suffix.as_deref(), "cube"))
+                    .display(),
             );
         }
         println!(
@@ -375,18 +354,16 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     let result = calc_chg_sdf(&pairs, &params)
         .ok_or_else(|| anyhow!("未找到 Q{} 团簇，请检查参数", c.cluster.qn))?;
 
-    let stem = match c.suffix.as_deref().filter(|s| !s.is_empty()) {
-        Some(tag) => format!("chg_sdf_{tag}"),
-        None => "chg_sdf".to_string(),
-    };
     let multi_family = result.families.len() > 1;
     let mut families: Vec<_> = result.families.values().collect();
     families.sort_by(|a, b| a.signature.cmp(&b.signature));
 
     let mut total_files = 0usize;
     for (fam_idx, family) in families.iter().enumerate() {
-        let fam_stem = if multi_family { format!("{stem}_fam{fam_idx}") } else { stem.clone() };
-        let path = out.join(&format!("{}_Q{}.cube", fam_stem, c.cluster.qn));
+        // 一个结果由全部 --cubes 合成，故没有输入段
+        let fam = if multi_family { format!("fam{fam_idx}") } else { String::new() };
+        let qn = format!("Q{}", c.cluster.qn);
+        let path = out.join(&batch::product_name(&["chg_sdf", &fam, &qn], out.suffix.as_deref(), "cube"));
         write_cube(&family.cube, &path)?;
         total_files += 1;
         println!(

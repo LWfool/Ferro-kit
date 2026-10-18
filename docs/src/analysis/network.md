@@ -421,7 +421,7 @@ d.groupby("ligand")["count"].sum()
 
 ## Labelled trajectory (`--export-traj`)
 
-One file per input: `<input stem>_types[_<suffix>].<ext>`.  The input stem has to be part of the name,
+One file per input: `network_types_<input stem>[_<suffix>].<ext>`.  The input stem has to be part of the name,
 otherwise in batch mode the second input would overwrite the first (the same reason as for the cubes of `ferro map`).
 
 ### Labels
@@ -481,13 +481,13 @@ writes clean element symbols whatever the labels are.  The fold also has a guard
 
 ```bash
 # select by element — works with any number of frames
-ferro traj gr -i run_types.lammpstrj -a P -b O
+ferro traj gr -i network_types_run.lammpstrj -a P -b O
 
 # select by label — requires a single frame
-ferro traj gr -i run_types.lammpstrj -x P_3 -y O_b --last-n 1
+ferro traj gr -i network_types_run.lammpstrj -x P_3 -y O_b --last-n 1
 
 # bridging oxygens around five-coordinate Al — the entry point for locating Al-O-Al
-ferro traj gr -i run_types.lammpstrj -x Al_5 -y O_b --last-n 1
+ferro traj gr -i network_types_run.lammpstrj -x Al_5 -y O_b --last-n 1
 ```
 
 > **Selecting by label only holds for a single frame.** `g(r)` requires the per-type particle count to be

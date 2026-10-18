@@ -116,10 +116,6 @@ impl CommonArgs {
         read_trajectory_tail(path, &self.read, self.last_n)
     }
 
-    pub fn suffix(&self) -> Option<&str> {
-        self.suffix.as_deref()
-    }
-
     /// Builds the naming/placement bundle for this run.
     ///
     /// `label` says what was analysed and lands in the file name; pass `None` for the
