@@ -168,10 +168,17 @@ class QeGenerator(Generator):
         root = _config.require(self.config, "qe", "pseudo_dir")
         if not root.is_dir():
             raise JobError(f"[qe] pseudo_dir {root} is not a directory")
-        index = {}
+        index, unknown = {}, []
         for path in sorted(p for p in root.iterdir() if p.suffix.lower() == ".upf"):
             element, z, wfc, rho = upf_header(path)
-            element = element or re.match(r"[A-Za-z][a-z]?", path.name).group(0).capitalize()
+            if not element:
+                name = re.match(r"[A-Za-z][a-z]?", path.name)
+                if name is None:
+                    # Neither the header nor the name gives the element: no element can use the file,
+                    # and it must not stop the jobs of the others. Named if an element finds none
+                    unknown.append(path.name)
+                    continue
+                element = name.group(0).capitalize()
             index.setdefault(element, []).append((path.name, z, wfc, rho))
         chosen = {}
         for e in elements:
@@ -187,7 +194,8 @@ class QeGenerator(Generator):
             else:
                 raise JobError(
                     f"{len(found) or 'no'} UPF files for {e} in {root}"
-                    + (f" ({', '.join(x[0] for x in found)}): choose one in [qe.pseudos]" if found else ""))
+                    + (f" ({', '.join(x[0] for x in found)}): choose one in [qe.pseudos]" if found else "")
+                    + (f"; skipped, element unknown: {', '.join(unknown)}" if unknown and not found else ""))
             if chosen[e][1] <= 0:
                 raise JobError(f"{chosen[e][0]}: no z_valence in its PP_HEADER")
         return root, chosen
@@ -272,7 +280,11 @@ class QeGenerator(Generator):
                 qe.set("control", "dt", round(options.timestep / RY_TIME_FS, 4))
                 # SVR 的时间常数 nraise 以步计，改 dt 热浴跟着变快或变慢
                 if qe.get("ions", "ion_temperature", "").strip("'\"").lower() == "svr":
-                    nraise = int(qe.get("ions", "nraise", "1"))
+                    raw = qe.get("ions", "nraise", "1")
+                    try:
+                        nraise = int(raw)
+                    except ValueError:
+                        raise JobError(f"&IONS nraise = {raw} in the template is not a whole number of steps") from None
                     notes.append(f"SVR time constant nraise = {nraise} steps = {nraise * options.timestep:g} fs "
                                  "at this timestep (nraise counts steps, not time)")
         notes.append("parallel settings are not in pw.in: add your machine's to the run command (-nk, -nd)")

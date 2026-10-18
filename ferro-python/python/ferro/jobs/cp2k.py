@@ -19,7 +19,11 @@ class Cp2kInputError(ValueError):
 
 
 def _split_comment(line):
-    """引号外第一个 ``#`` 或 ``!`` 起是注释；返回 (代码, 注释)，注释含起始符。"""
+    """引号外第一个 ``#`` 或 ``!`` 起是注释；返回 (代码, 注释)，注释含起始符。
+
+    ferro-io's CP2K reader (readers/cp2k.rs `parse_cp2k`) strips comments its own way: `!` before
+    `#`, quotes ignored. Not merged, the reason is written there.
+    """
     quote = None
     for i, c in enumerate(line):
         if quote:

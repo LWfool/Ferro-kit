@@ -139,6 +139,21 @@ def test_pseudo_choice(cfg, traj, tmp_path):
         QeGenerator(config.load(tmp_path / "c.toml")).generate(traj, 0, JobOptions("sp"))
 
 
+def test_upf_without_element_is_skipped(cfg, traj, tmp_path):
+    pp = tmp_path / "upf"
+    (pp / "1_unknown.UPF").write_text('<UPF version="2.0.1">\n<PP_HEADER z_valence="1.0"/>\n</UPF>\n')
+    QeGenerator(cfg).generate(traj, 0, JobOptions("sp"))
+    (pp / "P.pbe-n-rrkjus_psl.1.0.0.UPF").unlink()
+    with pytest.raises(JobError, match="no UPF files for P.*skipped, element unknown: 1_unknown.UPF"):
+        QeGenerator(cfg).generate(traj, 0, JobOptions("sp"))
+
+
+def test_nraise_must_be_whole(cfg, traj):
+    template = QeGenerator.builtin_template("aimd").replace("nraise = 150", "nraise = 10.0")
+    with pytest.raises(JobError, match="nraise = 10.0 in the template"):
+        QeGenerator(cfg).generate(traj, 0, JobOptions("aimd", timestep=2.0), template_text=template)
+
+
 def test_cutoffs_needed(cfg, traj, tmp_path):
     (tmp_path / "upf" / "O.pbe-n-kjpaw_psl.0.1.UPF").write_text(upf_v2("O", 6, 0, 0))
     (tmp_path / "upf" / "P.pbe-n-rrkjus_psl.1.0.0.UPF").write_text(upf_v2("P", 5, 0, 0))

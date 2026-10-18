@@ -24,6 +24,10 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         .map(|l| {
             let l = l.trim();
             // CP2K comments start with ! or #
+            // ferro-python/python/ferro/jobs/cp2k.py `_split_comment` strips them too, but cuts at the
+            // first of the two outside quotes; this one cuts at `!` before `#` and ignores quotes. Not
+            // merged: one reads coordinates out of an input, the other rewrites a template and must
+            // keep the comment, and a Rust helper would have to cross the FFI for one line
             // 剥完再 trim：段名按整行比较，`&CELL ! 注释` 剩下的行尾空格会让它失配
             if let Some(p) = l.find('!').or_else(|| l.find('#')) { l[..p].trim_end() } else { l }
         })

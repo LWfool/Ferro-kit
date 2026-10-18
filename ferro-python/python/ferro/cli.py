@@ -205,6 +205,8 @@ def run_config(argv):
 
 
 def job_parser():
+    # The input options (-i ... --mkdir) repeat in conv_parser. Two places, not merged (R6);
+    # a third (`plot`) is the time to pull them into one add_input_options
     p = new_parser("ferro-py job")
     p.add_argument("-s", "--software", required=True)
     p.add_argument("-t", "--task", required=True)
@@ -437,6 +439,7 @@ Full documentation:  ferro-py doc conv"""
 
 
 def conv_parser():
+    # The input options repeat job_parser's; see there
     p = new_parser("ferro-py conv")
     p.add_argument("-s", "--software", required=True)
     p.add_argument("--scan", required=True)
