@@ -899,7 +899,7 @@ this is the head of the pipeline and everything downstream reads it, so precisio
 | `-i <DIR>...` | | system directories, or a directory containing them (`type.raw` is searched for recursively) |
 | `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i`; **omitting it means read-only** |
 | `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
-| `-s, --s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
+| `--s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
 | `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this |
 | `--al6 [<RCUT>]` | off / automatic when bare | keep only frames containing a 6-coordinate Al; given bare, the cutoff is the outer edge of the first Al–O RDF shell |
 | `--start <N>` | 0 | start of the range (the index among the **surviving frames**, 0-based and inclusive) |
@@ -955,7 +955,7 @@ directories, so a later `merge -i clean/*` filters the flat csv files out by its
 | `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
 | `--seed <N>` | 666 | the seed for `shuffle`; unused by `by-source` |
 | `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
-| `--suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
+| `--dir-suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
 | `--overwrite` | | allow writing into an existing non-empty directory |
 
 **Grouping does not look at directory names** — `init.011` says nothing about what is inside.  Grouping is

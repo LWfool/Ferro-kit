@@ -271,8 +271,9 @@ pub struct MergeCmd {
     pub set_size: usize,
 
     /// Force this suffix on output directories; default inherits a shared one
-    #[arg(long, value_name = "EXT")]
-    pub suffix: Option<String>,
+    // 不叫 --suffix：全仓 -s / --suffix 是产物名末段的批次标记，这里是目录名后缀（审查 E2-2）
+    #[arg(long = "dir-suffix", value_name = "EXT")]
+    pub dir_suffix: Option<String>,
 
     /// Allow writing into an existing non-empty output directory
     #[arg(long)]
@@ -309,7 +310,8 @@ pub struct FilterCmd {
     pub f_max: Option<f64>,
 
     /// Drop frames whose largest |stress component| exceeds this, GPa; 0 = off  [default: 10]
-    #[arg(short = 's', long, value_name = "GPA")]
+    // 没有短名：全仓 -s 是批次标记，`filter -s 5` 曾被读成 5 GPa（审查 E2-2）
+    #[arg(long, value_name = "GPA")]
     pub s_max: Option<f64>,
 
     /// First surviving frame to take (0-based, inclusive)          [default: 0]
@@ -1248,9 +1250,9 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
                  systems with `ferro dataset filter`"
             );
         }
-        // --suffix 与划分后缀是同一个位置的两个主张
-        if args.suffix.is_some() {
-            bail!("--suffix and --ratio both name the output suffix; pick one");
+        // --dir-suffix 与划分后缀是同一个位置的两个主张
+        if args.dir_suffix.is_some() {
+            bail!("--dir-suffix and --ratio both name the output suffix; pick one");
         }
     }
     // extxyz 没有 set 的概念,by-source 的边界无处安放 —— 与其写出一个丢了边界
@@ -1262,11 +1264,11 @@ fn run_merge(args: &MergeCmd) -> Result<usize> {
         );
     }
     // The suffix is glued onto a directory name: `/` or `..` in it would leave `-o`
-    if let Some(s) = &args.suffix {
+    if let Some(s) = &args.dir_suffix {
         let ok = s.strip_prefix('.').is_some_and(|rest| !rest.is_empty() && rest.chars().all(crate::batch::label_char_ok));
         if !ok {
             bail!(
-                "invalid --suffix {s:?}: it is appended to a directory name, so it must start \
+                "invalid --dir-suffix {s:?}: it is appended to a directory name, so it must start \
                  with '.' followed by letters, digits, '_', '+' or '-' (e.g. .train)"
             );
         }
@@ -1332,7 +1334,7 @@ fn merge_group(
     let split = merge_split(args)?;
     // 划分时后缀由 write_split 给三部分各自命名,这里不能先贴一个
     let suffix = if split.is_off() {
-        match args.suffix.clone() {
+        match args.dir_suffix.clone() {
             Some(forced) => forced,
             None => match suffix_survey(&sorted.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()) {
                 SuffixSurvey::Bare => TRAIN_SUFFIX.to_string(),
@@ -1345,7 +1347,7 @@ fn merge_group(
                     bail!(
                         "this composition mixes split parts, so the merged set belongs to \
                          no one of them:\n{}\nMerge one part at a time, or name the result \
-                         with --suffix",
+                         with --dir-suffix",
                         lines.join("\n")
                     );
                 }
@@ -1502,7 +1504,7 @@ mod tests {
         for (args, want) in [
             ("-f nan", "finite"),
             ("-f inf", "finite"),
-            ("-s nan", "finite"),
+            ("--s-max nan", "finite"),
             ("--oo-min nan", "--oo-min"),
             ("--oo-min inf", "--oo-min"),
             ("--al6 nan", "--al6"),
@@ -1622,7 +1624,7 @@ mod tests {
         // 默认参数：应力判据对这个 system 关掉，照常完成
         assert_eq!(run(&[]).unwrap(), 0, "默认参数下无 virial 的 system 不应失败");
         // 显式给了 -s：仍按「给了阈值却缺标签」处理
-        assert!(!matches!(run(&["-s", "10"]), Ok(0)), "显式 -s 时应失败");
+        assert!(!matches!(run(&["--s-max", "10"]), Ok(0)), "显式 --s-max 时应失败");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1742,7 +1744,7 @@ mod tests {
     }
 
     /// merge 打乱、重排原子、切 set 之后，每帧的能量、盒子、应力、坐标与力仍属同一帧同一原子
-    /// `--suffix` is glued onto a directory name: one with `/` or `..` used to write
+    /// `--dir-suffix` is glued onto a directory name: one with `/` or `..` used to write
     /// outside `-o`. Refused before any input is read or any directory created.
     #[test]
     fn a_merge_suffix_that_could_leave_the_output_is_refused_up_front() {
@@ -1754,16 +1756,37 @@ mod tests {
         use clap::Parser;
         let out = std::env::temp_dir().join(format!("ferro_merge_suffix_{}", std::process::id()));
         for bad in ["/../../escaped", ".a/b", "train", "."] {
-            let argv = ["merge", "-i", "no/such/dir", "-o", out.to_str().unwrap(), "--mkdir", "--suffix", bad];
+            let argv = ["merge", "-i", "no/such/dir", "-o", out.to_str().unwrap(), "--mkdir", "--dir-suffix", bad];
             let err = run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap_err().to_string();
-            assert!(err.contains("--suffix"), "{bad}: {err}");
+            assert!(err.contains("--dir-suffix"), "{bad}: {err}");
         }
         assert!(!out.exists(), "nothing may be created for a refused suffix");
         for good in [".train", ".valid", ".run_2"] {
-            let argv = ["merge", "-i", "no/such/dir", "-o", out.to_str().unwrap(), "--mkdir", "--suffix", good];
+            let argv = ["merge", "-i", "no/such/dir", "-o", out.to_str().unwrap(), "--mkdir", "--dir-suffix", good];
             let err = run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap_err().to_string();
-            assert!(!err.contains("--suffix"), "{good} is a valid suffix: {err}");
+            assert!(!err.contains("--dir-suffix"), "{good} is a valid suffix: {err}");
         }
+    }
+
+    /// Review E2-2: `-s` is the batch tag everywhere else, so `filter -s 5` no longer
+    /// means 5 GPa, and merge's directory suffix is no longer called `--suffix`.
+    #[test]
+    fn the_old_dataset_spellings_are_refused() {
+        use clap::Parser;
+        #[derive(clap::Parser)]
+        struct F {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        #[derive(clap::Parser)]
+        struct M {
+            #[command(flatten)]
+            cmd: MergeCmd,
+        }
+        assert!(F::try_parse_from(["filter", "-i", "x", "-s", "5"]).is_err());
+        assert!(F::try_parse_from(["filter", "-i", "x", "--s-max", "5"]).is_ok());
+        assert!(M::try_parse_from(["merge", "-i", "x", "-o", "y", "--suffix", ".train"]).is_err());
+        assert!(M::try_parse_from(["merge", "-i", "x", "-o", "y", "--dir-suffix", ".train"]).is_ok());
     }
 
     #[test]

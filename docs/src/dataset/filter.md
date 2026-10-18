@@ -6,7 +6,7 @@ and writes the survivors as a new dataset. **The input is never modified.**
 ```bash
 ferro dataset filter -i raw                      # look, write nothing
 ferro dataset filter -i raw -o clean
-ferro dataset filter -i raw -o clean -f 15 -s 8
+ferro dataset filter -i raw -o clean -f 15 --s-max 8
 ferro dataset filter -i raw -o clean -N 500 --set-size 250
 ```
 
@@ -84,7 +84,7 @@ the previous step left — a criterion that merely re-catches another one's fram
 still looks productive there. An exclusive count near zero means the criterion
 is not earning its place.
 
-A real example, on a 2000-frame AIMD dataset with `-f 3 -s 0.2`:
+A real example, on a 2000-frame AIMD dataset with `-f 3 --s-max 0.2`:
 
 ```
 [criteria]

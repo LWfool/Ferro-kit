@@ -7,7 +7,7 @@ optionally shuffling them, and cuts the result into sets.
 ferro dataset merge -i data/*.train -o merged
 ferro dataset merge -i data/*.train -o merged --seed 42
 ferro dataset merge -i data/*.train -o merged --mode by-source
-ferro dataset merge -i clean/* -o merged --set-size 250 --suffix .train
+ferro dataset merge -i clean/* -o merged --set-size 250 --dir-suffix .train
 ```
 
 ## Grouping is by content, not by name
@@ -29,7 +29,7 @@ Subscripts are **actual counts, not reduced** â€” `Al96O192Zn48` is 336 atoms â€
 and the atom-count prefix makes `ls` group systems of equal size together.
 
 The suffix is inherited when every input in the group shares one of `.train`,
-`.test`, `.valid`, and `--suffix` overrides it. Otherwise:
+`.test`, `.valid`, and `--dir-suffix` overrides it. Otherwise:
 
 | the group's inputs | the merged name gets |
 |---|---|
@@ -121,7 +121,7 @@ Three combinations are refused before the first system is read:
 | refused | why |
 |---|---|
 | `--mode by-source` + `--ratio` | that mode exists to keep set boundaries on system edges; a frame-level split breaks exactly that |
-| `--suffix` + `--ratio` | both name the output suffix |
+| `--dir-suffix` + `--ratio` | both name the output suffix |
 | inputs already ending in `.train` / `.valid` / `.test` | splitting a split would produce `X.train.test` |
 
 The last one is the common accident: `merge -i 'data/*.train' --ratio 9:1`

@@ -800,7 +800,7 @@ Parameters:
                           relative to -i. OMIT for a read-only run
       --mkdir             Create -o without asking (needed with no terminal)
   -f, --f-max  EV_PER_A   Largest force magnitude allowed             [20.0]
-  -s, --s-max  GPA        Largest |stress component| allowed          [10.0]
+      --s-max  GPA        Largest |stress component| allowed          [10.0]
       --start  N          First SURVIVING frame to take (0-based)        [0]
       --end    N          Last SURVIVING frame (0-based, INCLUSIVE)   [last]
       --stride N          Take every Nth surviving frame                 [1]
@@ -852,7 +852,7 @@ Parameters:
                           system directory; nep carries stress as virial=
       --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
                           mean train:test (9:1). Weights, not fractions
-      --suffix EXT        Force this suffix. Default: the one every input
+      --dir-suffix EXT    Force this suffix. Default: the one every input
                           shares, else .train; inputs from different parts of a
                           split are refused rather than silently relabelled
       --overwrite         Allow writing into an existing non-empty directory
