@@ -124,6 +124,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
 
     // ── Masses section ────────────────────────────────────────────────────────
     let mut type_element: HashMap<usize, String> = HashMap::new();
+    let mut type_mass: HashMap<usize, f64> = HashMap::new();
     if let Some(start) = section("Masses") {
         for (k, raw) in lines.iter().enumerate().skip(start + 1) {
             let line = strip_comment(raw);
@@ -142,6 +143,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
             let elem = raw.find('#')
                 .and_then(|p| raw[p+1..].split_whitespace().next().map(|s| s.to_string()))
                 .unwrap_or_else(|| element_from_mass(mass).to_string());
+            type_mass.insert(tid, mass);
             if type_element.insert(tid, elem).is_some() {
                 bail!("line {}: Masses gives atom type {tid} twice", k + 1);
             }
@@ -203,6 +205,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
             .cloned()
             .unwrap_or_else(|| format!("X{tp}"));
         let mut atom = Atom::new(elem, pos);
+        atom.mass = type_mass.get(&tp).copied();
         if let Some(q) = q.filter(|&q| q != 0.0) { atom.charge = Some(q); }
         frame.add_atom(atom);
     }
@@ -284,6 +287,32 @@ Atoms # full
         assert!((frame.atom(0).charge.unwrap() - (-0.834)).abs() < 1e-6);
         let [a, ..] = frame.cell.as_ref().unwrap().lengths();
         assert!((a - 20.0).abs() < 1e-6);
+    }
+
+    // The Masses value is the atom's mass, not just a hint for guessing the element:
+    // D2O must keep 2.014 for H, or every density and centre of mass is silently off.
+    #[test]
+    fn test_masses_are_kept_as_atom_masses() {
+        let text = WATER_FULL.replace("2 1.008   # H", "2 2.014   # H");
+        let path = tmp("d2o.data", &text);
+        let traj = read_lammps_data(&path, AtomStyle::Full).unwrap();
+        let f = traj.first().unwrap();
+        assert_eq!(f.atom(1).element, "H");
+        assert_eq!(f.atom(1).mass, Some(2.014));
+        assert_eq!(f.atom(0).mass, Some(15.999));
+
+        let out = path.with_file_name("d2o_roundtrip.data");
+        crate::writers::lammps_data::write_lammps_data(&traj, &out).unwrap();
+        let back = read_lammps_data(&out, AtomStyle::Full).unwrap();
+        assert!((back.first().unwrap().atom(1).effective_mass() - 2.014).abs() < 1e-9);
+
+        // H and D in one frame share an element but not a mass: refuse, write nothing
+        let mut mixed = traj.clone();
+        mixed.frames[0].atoms[2].mass = Some(1.008);
+        let refused = path.with_file_name("d2o_mixed.data");
+        let err = crate::writers::lammps_data::write_lammps_data(&mixed, &refused).unwrap_err();
+        assert!(err.to_string().contains("different masses"), "{err}");
+        assert!(!refused.exists(), "a refused write must not leave a file");
     }
 
     // 以下三份由 ASE 3.29 `write(..., atom_style=st, write_image_flags=True)` 生成：

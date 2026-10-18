@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 /// 无胞帧的盒子取包围盒每侧外扩这么多（Å），坐标原样写（dump 与 data 都允许 lo ≠ 0）。
 /// 余量无物理意义，只保证 lo < hi（平面分子某维厚度为 0）、原子不落在 hi 边界上被
@@ -16,13 +16,6 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let path_ = path.display();
     let frame = trajectory.first().context("trajectory is empty")?;
 
-    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
-    let mut w = BufWriter::new(file);
-
-    let comment = trajectory.metadata.source.as_deref().unwrap_or("LAMMPS data file written by ferro");
-    writeln!(w, "{comment}")?;
-    writeln!(w)?;
-
     let n = frame.n_atoms();
 
     // Unique elements in first-appearance order → type IDs
@@ -33,6 +26,25 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
         .map(|(i, e)| (e.as_str(), i + 1))
         .collect();
 
+    // The atom's own mass (a data file's Masses value, an isotope), not the table's.
+    // One mass per type: atoms of one element that disagree cannot be written.
+    // Checked before the file is created, so a refusal leaves nothing half-written.
+    let type_masses = elem_order.iter().map(|elem| {
+        let mut masses = frame.atoms.iter().filter(|a| a.element == *elem).map(|a| a.effective_mass());
+        let mass = masses.next().unwrap_or(1.0);
+        match masses.find(|m| (m - mass).abs() > 1e-6) {
+            Some(other) => bail!("atoms of element {elem} carry different masses ({mass} and {other}); \
+                                  LAMMPS data gives one mass per atom type"),
+            None => Ok(mass),
+        }
+    }).collect::<Result<Vec<f64>>>()?;
+
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
+    let mut w = BufWriter::new(file);
+
+    let comment = trajectory.metadata.source.as_deref().unwrap_or("LAMMPS data file written by ferro");
+    writeln!(w, "{comment}")?;
+    writeln!(w)?;
 
     writeln!(w, "{n} atoms")?;
     writeln!(w, "{n_types} atom types")?;
@@ -63,10 +75,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
     // Masses section
     writeln!(w, "Masses")?;
     writeln!(w)?;
-    for (i, elem) in elem_order.iter().enumerate() {
-        let mass = ferro_core::data::elements::by_symbol(elem)
-            .map(|e| e.atomic_mass)
-            .unwrap_or(1.0);
+    for (i, (elem, mass)) in elem_order.iter().zip(&type_masses).enumerate() {
         writeln!(w, "{} {:.4}  # {elem}", i + 1, mass)?;
     }
     writeln!(w)?;
