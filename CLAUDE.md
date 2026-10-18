@@ -58,7 +58,9 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 - 库 crate 用 `ferro_core::error::ChemError` / `Result<T>`；CLI 用 `anyhow::Result`
 - 顶层类型恒为 `Trajectory`，单帧文件也是（`frames: vec![frame_0]`）
 - **`Molecule` 类型不存在** —— `Frame` 覆盖分子与周期体系，由 `pbc: [bool; 3]` 区分
-- 原子索引是**隐式的**（在 `Vec<Atom>` 里的位置），不存 `index` 字段
+- 原子索引是**隐式的**（在帧里的下标），不存 `index` 字段。`Frame` 是拓扑 / 坐标分离存储：
+  元素、标签、质量、磁矩在 `Arc` 共享的 `Site` 表里，坐标、电荷、力、速度是帧自己的私有数组，
+  只经访问器读写（`atom(i)` / `atoms()` / `positions()` / `set_forces`…）；重排原子用 `Frame::permuted`
 - **矩阵一律行优先**：`ferro-core` 里行 = 晶格矢量 / 张量行；落盘取九个数走
   `matrix3_row_major()`，**禁止对 nalgebra 类型用 `as_slice()`**（它是列优先，
   即转置；对称张量下这个错误完全静默）

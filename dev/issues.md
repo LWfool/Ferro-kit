@@ -958,3 +958,15 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 往 dict / 结构里补字段 | 新键与已有键同名，静默覆盖（`read_output` 的 `steps` 计数被首末步号元组覆盖，`59d3469` 修） | 补字段前 grep 已有键；测试断言旧键的类型，不只断言新键存在 |
 | 读文本 | `read_to_string` / `BufRead::lines` | `readers::util::read_text` / `text_lines`：坏字节报文件、行号、列号；打开失败才说 cannot open |
 | `dataset collect` 的输入 | 改 `expand_inputs` 让它收目录 | 收 DeePMD 目录的是 `expand_trajectories`（traj / map / net）；collect 仍只收文件 |
+
+## 拓扑 / 坐标分离存储编码陷阱（2026-10-18，审查第 4 步）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 构造帧 | 先 `set_forces` 再 `add_atom` | `add_atom` 在已有力 / 速度时 panic（会少一个）；先加原子再设力。`set_atoms` 会丢掉旧的力与速度 |
+| 改元素 / 标签 | 以为改的是这一帧 | `sites_mut()` 在位点表被别的帧共享时先复制（copy-on-write），只改这一帧；要改整条轨迹就逐帧改 |
+| 自己拼 `Trajectory { frames, .. }` | 位点表各帧一份，内存回到逐帧 | 用 `add_frame`，或拼完调 `share_sites()`；`ferro_io::read` 出口已统一调 |
+| 重排原子 | 只排坐标，漏了力 / 速度 / 电荷 / 键 | `Frame::permuted(order)` 一次全带走（`issues.md` 两次「重排漏了 bonds」就是这个） |
+| `AtomRef` 的字段 | `&*a.element`、`a.label.as_deref()` 再从闭包返回 | 字段本身已是 `&str` / `Option<&str>`，直接用；经局部变量再借一次会把生命周期缩到闭包内 |
+| 批量机械替换 | 惰性正则 `(?:.|\n)*?` 跨语句吞代码；`ARGS + "?"` 只让末尾 `)` 可选 | 跨行匹配中间禁 `;`；可选组写 `(?:…)?`；脚本绝不跑在定义该类型的文件上（frame.rs 内部本就直接改私有字段） |
+

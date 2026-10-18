@@ -7,46 +7,66 @@ Every ferro API accepts and returns `Trajectory`, even for single-frame files.
 ```
 Trajectory
   └── Vec<Frame>
-        ├── Vec<Atom>           — atomic species, positions, optional properties
+        ├── Arc<Vec<Site>>      — what each atom is: element, label, mass, magmom
+        │                         (one table shared by consecutive frames)
+        ├── positions, charges  — per atom, per frame
         ├── Option<Cell>        — None = non-periodic
         ├── [bool; 3]           — pbc flags per axis
         └── Optional results    — energy, forces, stress, velocities,
                                   temperature, step
 ```
 
-## Atom
+## Atoms: what an atom is, and where it is
+
+A frame does not store a list of atom objects.  What stays the same from frame to frame — the
+element, the site label, a mass override, the initial magnetic moment — is a `Site`, kept in one
+table that consecutive frames of a system **share**.  What changes — positions, charges, forces,
+velocities — is an array of the frame's own.  A frame therefore costs 24 bytes per atom for its
+positions, not a whole atom record with two strings: reading a 200-frame, 2004-atom dump went from
+80 MB to 19 MB.  A trajectory whose atoms change (GCMC, reactive MD) simply has frames with their own
+site tables.
 
 ```rust
-pub struct Atom {
+pub struct Site {
     pub element: String,
-    pub position: Vector3<f64>,  // Å, Cartesian
-    pub label: Option<String>,   // e.g. "Fe1", "Fe2"
+    pub label: Option<String>,   // e.g. "Fe1", "P_3"
     pub mass: Option<f64>,       // None → look up from element table
     pub magmom: Option<f64>,     // initial magnetic moment (DFT input)
-    pub charge: Option<f64>,     // Bader / DDEC charge (post-processing)
 }
 ```
 
-The atom **index is implicit** (position in `Vec<Atom>`); no `index` field is stored to prevent inconsistency.
+Charges are per frame, not per site: a LAMMPS dump's `q` column and a Bader result both change from
+frame to frame.
+
+Code reads an atom as `frame.atom(i)` (an `AtomRef` with `element`, `position`, `label`, `mass`,
+`magmom`, `charge`) or all of them as `frame.atoms()`; `frame.positions()` is the coordinate array
+itself.  `Atom` is the owned record a frame is **built** from (`add_atom`, `set_atoms`).
+
+The atom **index is implicit** (its position in the frame); no `index` field is stored to prevent
+inconsistency.
 
 ## Frame
 
 ```rust
 pub struct Frame {
-    pub atoms: Vec<Atom>,
+    // private: sites, positions, charges, forces, velocities
     pub cell: Option<Cell>,              // None = non-periodic
     pub pbc: [bool; 3],
     pub charge: i32,
     pub multiplicity: u32,
     pub bonds: Option<Vec<(usize,usize)>>,
     pub energy: Option<f64>,             // eV
-    pub forces: Option<Vec<Vector3<f64>>>, // eV/Å
     pub stress: Option<Matrix3<f64>>,    // eV/Å³
-    pub velocities: Option<Vec<Vector3<f64>>>, // Å/fs (internal standard)
     pub temperature: Option<f64>,        // K, instantaneous ionic temperature
     pub step: Option<i64>,               // MD step number, when the engine prints one
 }
 ```
+
+Forces (eV/Å) and velocities (Å/fs, the internal standard) are read with `forces()` /
+`velocities()` and set with `set_forces` / `set_velocities`, which **refuse an array whose length is
+not the atom count** — the per-atom arrays are private so their lengths cannot drift from the atoms.
+`permuted(order)` reorders the atoms and moves every per-atom quantity, and the bond numbering, with
+them.
 
 `temperature` and `step` are filled by the AIMD readers and are `None` for
 everything else (a POSCAR, a CIF, a relaxation). They live on the frame rather

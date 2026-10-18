@@ -12,6 +12,19 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### A third of the memory
+
+A trajectory now stores what an atom is (element, label, mass) once for a run of frames, and only
+positions, charges, forces and velocities per frame; the large text readers (LAMMPS dump, extxyz,
+CP2K and pw.x logs) no longer hold the whole file as text while parsing, and `map density` /
+`map radius` / `traj gr` sum frames in batches instead of keeping one grid per frame.  Reading a
+200-frame, 2004-atom dump took 80 MB and takes 19 MB; `map density` on it 468 MB → 71 MB, `traj gr`
+227 MB → 57 MB.  Every result is unchanged, byte for byte.
+
+Library: `Frame.atoms`, `Frame.forces` and `Frame.velocities` are no longer public fields.  Read
+atoms with `atom(i)` / `atoms()` / `positions()`, forces with `forces()`; build frames with
+`add_atom` / `set_atoms`, and set forces with `set_forces`, which refuses a wrong length.
+
 ### `convert`, `info` and `traj` read program outputs and DeePMD systems
 
 A VASP `OUTCAR` / `vasprun.xml`, a CP2K or pw.x `.out` log and a DeePMD system directory used to
