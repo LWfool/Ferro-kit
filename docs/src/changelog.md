@@ -12,6 +12,24 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
+
+- What ferro's Rust libraries report is raised as `ferro.FerroError`.  It is a subclass of
+  `RuntimeError`, so `except RuntimeError` keeps working; `except ferro.FerroError` no longer
+  swallows Python's own errors.  `read`, `write`, `read_output`, `gr_pair`, `gr_all` and `msd`
+  release the GIL while they work.
+- `qe_structure_cards` returns `[(card name, text)]` instead of one text holding three cards.
+- New: `ferro.interplanar_spacings(cell)` and `ferro.EV_ANG3_TO_KBAR` (CODATA 2018; `conv
+  analyze` used the 2014 value, a difference in the ninth digit).
+- `ferro-py job` / `conv` report a bad frame selection, `--units` or `--atom-style` before they
+  read the first file, and make `-o` only once every input has been read and generated: with
+  `--mkdir`, a failed run no longer leaves an empty directory behind.
+- `ferro-py job -s qe --timestep` converts with QE's own Rydberg time unit (0.0483776865 fs,
+  was 0.048378): `dt` for 2 fs is now 41.3414, was 41.3411.
+- A UPF in `pseudo_dir` whose element neither its header nor its name gives is skipped, not a
+  traceback; it is named when an element then has no pseudopotential.  A template's `nraise`
+  that is not a whole number is named in the error.
+
 ### One naming rule for every product
 
 Every product is now named `<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.  The

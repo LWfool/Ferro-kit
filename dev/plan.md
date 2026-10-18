@@ -42,7 +42,7 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 | 4 ✅ | 内存：map 系列改 fold → reader 流式 → **`Atom` 存储改为拓扑 / 坐标分离** | `c1d78f7` D-P1（含 gr）、`efcdee8` C-1、`cd04252` B15 / B5（2026-10-18）。200 帧 × 2004 原子 dump：读入 80 -> 19 MB，map density 468 -> 71 MB，gr 227 -> 57 MB；golden master 每步逐字节一致 |
 | 5 ✅ | 职责归位与数据模型清理 | `17ab908` A-4 / B2 / B3 / B4、`2ccbcca` B12 / A-2 / B11 / B13 / B9 / B14、`c5ca527` A-1 / A-6、`e53db89` A-5 / A-9、`da6e1bc` E2-4、`4fc563b` A-12（2026-10-18）。golden master 每步逐字节一致；AIMD 7 个 fixture 的 collect npy 与 inspect 产物与旧二进制一致 |
 | 6 ✅ | CLI 命名与驱动 | `9820aff` R-2、`e060431` E2-3 / E2-6 / E2-7 / E2-8、`49c6a84` E2-11 / E2-12 / D 换算、`0f31256` E2-2、`9ac0bf0` E2-5（2026-10-18）。golden master：改名那步 94 个文件改名后逐字节一致、其余不变；其余各步产物逐字节一致 |
-| 7 | ferro-python | F 全部 |
+| 7 ✅ | ferro-python | `424f4a2` F-6 / F-7、`5da642a` F-1、`9013f13` F-3 / F-4 / F-5、`0a19964` F-9 / F-10 / F-2 / F-13、`fa4d10d` F-8 / F-12（2026-10-18）。F-11 已在第 1、3 步修。job 生成 golden master（3 程序 × 3 任务 × 选项变体 × NVT / 三斜，42 组）只有 QE `dt` 按 D2 变化，其余逐字节一致 |
 | 8 | 剩余轻级与文档漂移 | 各组「轻」 |
 
 第 1 步的两条用户定：**除 lammpstrj / xyz / extxyz / pdb 这类轨迹格式外都是单帧**（C-3：库 writer 遇多帧
@@ -55,6 +55,17 @@ LAMMPS data 同一元素的原子质量不一致时 writer 报错（一个 type 
 网络分类与 analysis：第 5 步 A-1 把网络分类搬进 analysis 时，`NeighborList` 跟着搬，`PeriodicCell`
 留 core（io / structure 以后量距离也要它）。挂起组没动内部：cube_sdf / chg_sdf 只加入口检查（截断上界），
 Bader 仍用 `Cell::minimum_image`。
+
+第 7 步的用户定：D1 认不出元素的 UPF **跳过**（缺赝势时报错里点名被跳过的文件）；D2 `HBAR2_2M`、
+`RY_TIME_FS` 是程序侧的量，**留在 Python** 并注明理由，`RY_TIME_FS` 改用 QE `constants.f90` 的精确值；
+D3 E2-4 下沉的 dataset 函数**这次不做** Python 绑定（无调用方）；D4 `qe_structure_cards` 返回
+`[(卡片名, 原文)]`，破坏性变化接受。实现上与计划的出入：`kmesh` 不改签名，新绑定是模块函数
+`ferro.interplanar_spacings(cell)`（收 3×3 胞，测试照旧喂矩阵），不是 `Trajectory` 的方法；gr 的
+`py.detach` 放进共用的 `run_gr` 里经 `Python::attach` 取 token（给 `gr_pair` 加 `py` 参数超出 clippy
+的 7 参数上限）。**留给第 8 步**：`readers/cp2k.rs` 自带 `BOHR` 常数与 `units.rs` 重复；`ferro-py
+--start -1` 等负数选帧参数抛 `OverflowError` traceback（argparse 收 int、绑定收 usize，改前即如此）；
+`HBAR2_2M = 3.80998` 是 CODATA 的 ħ²/2mₑ，按记忆 VASP 自己的 HSQDTM = RYTOEV·AUTOA² ≈ 3.81002，
+预测 NGX 若要与 VASP 逐格一致应取后者 —— 未查源码核实，待用户定是否查。
 
 第 6 步的用户定：D1 bader 跟命名规则（`bader_ACF_<input>`）；D2 merge 的 `--suffix` 改名 `--dir-suffix`；
 D3 map 单输入也带输入名；D4 帮助页全部统一列宽；D5 sdf 段序 `sdf[_famN]_<type>_<input>[_<s>]`。

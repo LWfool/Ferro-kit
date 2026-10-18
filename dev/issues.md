@@ -979,5 +979,5 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 闭包返回借用 | 把 `\|p\| (&p.0, &p.1)` 先绑到变量再传给 `impl Fn(&T) -> (&Path, …)`，报 lifetime may not live long enough | 闭包直接写在参数位置让签名从约束推断，或改写成 `fn` |
 | 重排 / 排序 | 以为排序在 `ml::merge` | 规范序是 `ferro_core::data::elements::canonical_cmp`，排原子是 `Trajectory::canonically_sorted`；type_map、gr 列序、merge 同一条规则 |
 | 维里 | 手写 `stress * volume` / `virial / volume` | `Frame::virial()` / `Cell::stress_from_virial()`，零体积统一报错 |
-| shell 里的非 ASCII | heredoc 或命令行参数带中文 / 制表符号（`──`），python 报 Non-UTF-8、grep 报 illegal byte sequence | 含中文的编辑一律 Write 脚本文件或 Edit 工具（第 5 步又犯两次，都在落盘前被拦下；第 6 步再犯两次：一次 heredoc 带 Å / 中文在落盘前报错，一次 sed 参数带中文，改动本身正确写进了文件，但违反了规则） |
+| shell 里的非 ASCII | heredoc 或命令行参数带中文 / 制表符号（`──`），python 报 Non-UTF-8、grep 报 illegal byte sequence | 含中文的编辑一律 Write 脚本文件或 Edit 工具（第 5 步又犯两次，都在落盘前被拦下；第 6 步再犯两次：一次 heredoc 带 Å / 中文在落盘前报错，一次 sed 参数带中文，改动本身正确写进了文件，但违反了规则；第 7 步又一次：heredoc 写的编辑脚本带中文旧串，改动正确，但违反了规则） |
 
