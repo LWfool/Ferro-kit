@@ -49,5 +49,7 @@ def test_write_table(tmp_path):
 
 def test_read_output_carries_every_stat():
     _, stats = ferro.read_output(str(FIXTURES / "cp2k_sp_v61.out"))
-    for key in ("layout_drift", "restarts", "version_note", "steps"):
+    for key in ("layout_drift", "restarts", "version_note", "step_range"):
         assert key in stats, key
+    # `steps` stays the count of steps the file claims; the span has its own key
+    assert isinstance(stats["steps"], int) and stats["steps"] >= stats["kept"]

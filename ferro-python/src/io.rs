@@ -87,7 +87,7 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
 /// does. Returns `(Trajectory, stats)`: frames carry energy, forces and stress; frames
 /// dropped for an unconverged SCF and the like are not in the trajectory, their counts
 /// are in the stats (`scf_failed`, `incomplete`, ...). `version_note` says why the
-/// program version deserves a second look (None when it does not), and `steps` is the
+/// program version deserves a second look (None when it does not), and `step_range` is the
 /// `(first, last)` step number the file claims.
 #[pyfunction]
 fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
@@ -104,7 +104,7 @@ fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap
         }
         put("version", s.version.into_pyobject(py)?.into_any().unbind());
         put("version_note", s.version_note.into_pyobject(py)?.into_any().unbind());
-        put("steps", s.steps.into_pyobject(py)?.into_any().unbind());
+        put("step_range", s.steps.into_pyobject(py)?.into_any().unbind());
 
         Ok((PyTrajectory::new(traj), stats))
     })
