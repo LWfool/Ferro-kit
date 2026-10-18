@@ -140,7 +140,7 @@ ferro traj angle -a O -b P -c O -i traj.dump \
 ```
 
 ```rust
-use ferro_analysis::md::{AngleParams, calc_angle, write_angle};
+use ferro_analysis::{AngleParams, calc_angle, write_angle};
 
 let params = AngleParams {
     r_cut_ab: 2.4,

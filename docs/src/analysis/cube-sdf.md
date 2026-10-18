@@ -119,7 +119,7 @@ ferro map sdf -i traj.dump --qn 0 --former P --ligand O -o q0_sdf
 ```
 
 ```rust
-use ferro_analysis::md::{ClusterSdfParams, calc_cluster_sdf};
+use ferro_analysis::{ClusterSdfParams, calc_cluster_sdf};
 use ferro_io::write_cube;
 
 let params = ClusterSdfParams {

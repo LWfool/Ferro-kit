@@ -1,6 +1,6 @@
 # Jump Distance Distribution
 
-> **Library function only, no CLI entry.** `ferro_analysis::md::cube_jump` is fully implemented
+> **Library function only, no CLI entry.** `ferro_analysis::calc_cube_jump` is fully implemented
 > (10 unit tests) and exported, but when 0.2.0 merged the eight `fe-*` binaries into a single
 > `ferro`, the `fe-cube -m jump` branch was never wired back into the `ferro map` subcommand
 > table.  The Rust API below works; command-line usage has to wait for `map jump`.
@@ -83,7 +83,7 @@ ferro map jump -i traj.lammpstrj --elements Li --record-at midpoint -o run1
 For now only the Rust API is available:
 
 ```rust
-use ferro_analysis::md::{CubeJumpParams, JumpPosition, calc_cube_jump};
+use ferro_analysis::{CubeJumpParams, JumpPosition, calc_cube_jump};
 use ferro_io::write_cube;
 
 let params = CubeJumpParams {

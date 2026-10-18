@@ -242,7 +242,7 @@ ferro traj msd -i 'runs/*.lammpstrj' --elements Li --dt 1000 --max-lag 500
 ```
 
 ```rust
-use ferro_analysis::md::{MsdParams, calc_msd};
+use ferro_analysis::{MsdParams, calc_msd};
 
 let params = MsdParams { max_lag: Some(1000), dt: 2.0,
     elements: Some(vec!["Li".into()]), fit_range: Some((0.3, 0.8)) };

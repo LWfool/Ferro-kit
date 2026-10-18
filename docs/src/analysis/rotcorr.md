@@ -188,7 +188,7 @@ ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bo
 ```
 
 ```rust
-use ferro_analysis::md::{Legendre, RotCorrParams, RotVector, calc_rotcorr};
+use ferro_analysis::{Legendre, RotCorrParams, RotVector, calc_rotcorr};
 
 let params = RotCorrParams {
     center: "P".into(), neighbor: "O".into(), r_cut: 1.8, max_lag: Some(500), dt: 2.0,

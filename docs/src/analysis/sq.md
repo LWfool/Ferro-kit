@@ -173,7 +173,7 @@ Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
 ## Usage
 
 ```rust
-use ferro_analysis::md::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr, write_sq};
+use ferro_analysis::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr, write_sq};
 
 let gr = calc_gr(&traj, &GrParams::with_auto_rmax(&traj)).unwrap();
 let sq = calc_sq_from_gr(&gr, &SqParams {
@@ -186,5 +186,5 @@ write_sq(&gr, &sq, "output.sq").unwrap();
 ## Implementation Notes
 
 - The Fourier transform is parallelised over $q$ values with `rayon::par_iter`.
-- Scattering data (form factors and neutron lengths) are stored as static tables in `ferro_analysis::md::scattering_data`.
+- Scattering data (form factors and neutron lengths) are stored as static tables in `ferro-analysis` (`md/scattering_data.rs`).
 - For a single-element system, `total_xrd ≈ total` because all Faber-Ziman weights reduce to 1.

@@ -52,9 +52,6 @@ pub struct Frame {
     // private: sites, positions, charges, forces, velocities
     pub cell: Option<Cell>,              // None = non-periodic
     pub pbc: [bool; 3],
-    pub charge: i32,
-    pub multiplicity: u32,
-    pub bonds: Option<Vec<(usize,usize)>>,
     pub energy: Option<f64>,             // eV
     pub stress: Option<Matrix3<f64>>,    // eV/Å³
     pub temperature: Option<f64>,        // K, instantaneous ionic temperature
@@ -65,8 +62,14 @@ pub struct Frame {
 Forces (eV/Å) and velocities (Å/fs, the internal standard) are read with `forces()` /
 `velocities()` and set with `set_forces` / `set_velocities`, which **refuse an array whose length is
 not the atom count** — the per-atom arrays are private so their lengths cannot drift from the atoms.
-`permuted(order)` reorders the atoms and moves every per-atom quantity, and the bond numbering, with
-them.
+`permuted(order)` reorders the atoms and moves every per-atom quantity with them.
+
+The virial is not stored: `virial()` gives `stress × V` (eV, no sign change) and
+`Cell::stress_from_virial` the other way, the one place the two are converted; a zero-volume cell
+is an error in both directions.
+
+A frame has no total charge or spin multiplicity: no file format ferro reads records them per
+frame, and a job generator takes them as its own options (`ferro-py job --charge`).
 
 `temperature` and `step` are filled by the AIMD readers and are `None` for
 everything else (a POSCAR, a CIF, a relaxation). They live on the frame rather
@@ -161,9 +164,17 @@ c\cos\beta & c(\cos\alpha - \cos\beta\cos\gamma)/\sin\gamma & c\sqrt{1 - \cos^2\
 ```rust
 pub struct Trajectory {
     pub frames: Vec<Frame>,
-    pub metadata: Option<TrajectoryMetadata>,
+    pub metadata: TrajectoryMetadata,
+}
+
+pub struct TrajectoryMetadata {
+    pub title: Option<String>,    // the file's own title: a POSCAR / xyz comment, a CIF block name
+    pub program: Option<String>,  // the program that wrote an output, e.g. "CP2K 2024.1 out"
 }
 ```
+
+Writers put back only the `title`: converting a CP2K log to xyz leaves the comment line empty rather
+than calling the structure "CP2K 2024.1 out".
 
 NPT trajectories (variable box per frame) are handled naturally: each `Frame` carries its own `Cell`.
 

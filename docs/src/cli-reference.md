@@ -164,7 +164,7 @@ Things that trip people up:
 - **Atoms are written in atomic-number order, in every format.**  A file listing Zn, Al, P, O is
   written as all O, then Al, P, Zn, the way a POSCAR groups its species, so one system converted
   from any program comes out in the same order.  Atoms of one element keep their relative order,
-  and forces, velocities and bonds move with their atoms.  The LAMMPS atom ids and type numbers
+  and forces, velocities and charges move with their atoms.  The LAMMPS atom ids and type numbers
   follow the new order (`O` becomes type 1).  There is no switch to keep the input order.
 - **The two CP2K input formats and QE input are read-only.**  To generate either input use
   `ferro-py job -s cp2k|qe`, which writes a complete calculation setup rather than bare coordinates.

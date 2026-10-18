@@ -12,6 +12,41 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Network classification belongs to the analysis library
+
+Nothing changes on the command line except four corrections:
+
+- `ferro net` refuses a trajectory in which a frame has no cell.  The statistics used to leave such
+  frames out silently while `--export-traj` refused them; each frame is now classified once and
+  feeds both.
+- Converting a program output (CP2K, pw.x, OUTCAR, vasprun.xml) to xyz, POSCAR or LAMMPS data no
+  longer writes the program name as the structure's title or comment line.
+- `dataset collect --type inspect` on a vasprun.xml run now carries the note that its temperature
+  column is derived from the kinetic energy.  It was meant to and never did.
+- Writing a DeePMD system whose frames carry a stress in a zero-volume cell is an error; it used to
+  write a zero virial.  The `--ratio` errors of `dataset filter` / `merge` now begin with
+  `Validation error:`, like the other parameter errors.
+
+Python: `Trajectory.charge(frame)` and `multiplicity(frame)` are gone; they always returned 0 and 1.
+
+Library:
+
+- `Frame.charge`, `Frame.multiplicity`, `Frame.bonds`, `TrajectoryMetadata.timestep` and
+  `Trajectory::time_at` are removed (nothing produced them).  `TrajectoryMetadata.source` is split
+  into `title` and `program`.
+- `AtomType`, `TypeParams`, `CutoffTable`, `classify_frame`, the network graph and `NeighborList`
+  moved from `ferro_core` to `ferro_analysis`; `PeriodicCell` stays in core.  New
+  `calc_network_typed` returns the per-frame types with the statistics.
+  `ferro_structure::find_clusters` and `classify_trajectory` are removed.
+- `ferro_analysis::ml::merge::sort_atoms` is `Trajectory::canonically_sorted`; the (Z, symbol)
+  order is `ferro_core::data::elements::canonical_cmp`.  New `Frame::virial` and
+  `Cell::stress_from_virial`.
+- `ferro_analysis` and `ferro_io` are reached from the crate root only (`ferro_analysis::GrParams`,
+  not `ferro_analysis::md::gr::GrParams`); `ml` stays a module.  The time-correlation analyses
+  check the frame spacing themselves, so `check_frame_spacing` is no longer public.
+- The `--ratio` split, the stitching of restart segments, the per-frame table of
+  `collect --type inspect` and the filter's diagnostic tables are in `ferro_analysis::ml`.
+
 ### A third of the memory
 
 A trajectory now stores what an atom is (element, label, mass) once for a run of frames, and only

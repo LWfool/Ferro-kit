@@ -66,7 +66,7 @@ ferro map radius -i traj.dump --radius 1.0 -o all_radius.cube
 ```
 
 ```rust
-use ferro_analysis::md::{CubeRadiusParams, calc_cube_radius};
+use ferro_analysis::{CubeRadiusParams, calc_cube_radius};
 use ferro_io::write_cube;
 
 let params = CubeRadiusParams {

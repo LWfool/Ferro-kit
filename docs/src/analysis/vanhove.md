@@ -80,7 +80,7 @@ ferro traj vanhove -i traj.dump --tau 500 --dt 2.0 -s run1
 ```
 
 ```rust
-use ferro_analysis::md::{VanHoveParams, calc_vanhove};
+use ferro_analysis::{VanHoveParams, calc_vanhove};
 
 let params = VanHoveParams {
     tau: Some(500), shift: 1, dt: 2.0,

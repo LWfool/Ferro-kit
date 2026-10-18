@@ -113,7 +113,7 @@ ferro map force -i traj.dump -o force.cube
 ```
 
 ```rust
-use ferro_analysis::md::{CubeDensityParams, CubeMode, calc_cube_density};
+use ferro_analysis::{CubeDensityParams, CubeMode, calc_cube_density};
 use ferro_io::write_cube;
 
 let params = CubeDensityParams {

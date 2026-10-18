@@ -970,3 +970,14 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | `AtomRef` 的字段 | `&*a.element`、`a.label.as_deref()` 再从闭包返回 | 字段本身已是 `&str` / `Option<&str>`，直接用；经局部变量再借一次会把生命周期缩到闭包内 |
 | 批量机械替换 | 惰性正则 `(?:.|\n)*?` 跨语句吞代码；`ARGS + "?"` 只让末尾 `)` 可选 | 跨行匹配中间禁 `;`；可选组写 `(?:…)?`；脚本绝不跑在定义该类型的文件上（frame.rs 内部本就直接改私有字段） |
 
+## 职责归位编码陷阱（2026-10-18，审查第 5 步）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 新加公开项 | 在子模块里 `pub fn`，外部却够不着 | analysis / io 的子模块已私有（A-12），新公开项要在 crate 根 `pub use`；没导出又没调用的，dead_code 会报 —— 那正是它的用途 |
+| 库报错 | 把 CLI 语境写进库的错误（「this analysis follows atoms by index」放进 core） | core 只陈述事实（哪一帧、哪个原子），「为什么要紧」由调用方补：analysis 走 `check::same_atoms`，deepmd writer 自己补「一个 system 一种成分」 |
+| 闭包返回借用 | 把 `\|p\| (&p.0, &p.1)` 先绑到变量再传给 `impl Fn(&T) -> (&Path, …)`，报 lifetime may not live long enough | 闭包直接写在参数位置让签名从约束推断，或改写成 `fn` |
+| 重排 / 排序 | 以为排序在 `ml::merge` | 规范序是 `ferro_core::data::elements::canonical_cmp`，排原子是 `Trajectory::canonically_sorted`；type_map、gr 列序、merge 同一条规则 |
+| 维里 | 手写 `stress * volume` / `virial / volume` | `Frame::virial()` / `Cell::stress_from_virial()`，零体积统一报错 |
+| shell 里的非 ASCII | heredoc 或命令行参数带中文 / 制表符号（`──`），python 报 Non-UTF-8、grep 报 illegal byte sequence | 含中文的编辑一律 Write 脚本文件或 Edit 工具（第 5 步又犯两次，都在落盘前被拦下） |
+

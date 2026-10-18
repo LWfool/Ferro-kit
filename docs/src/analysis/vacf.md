@@ -121,7 +121,7 @@ ferro traj vacf -i traj.lammpstrj --dt 5.0 --units metal --max-lag 400
 ```
 
 ```rust
-use ferro_analysis::md::{VacfParams, calc_vacf};
+use ferro_analysis::{VacfParams, calc_vacf};
 
 let params = VacfParams { max_lag: Some(500), dt: 2.0, elements: Some(vec!["Li".into()]) };
 let result = calc_vacf(&traj, &params)?;
