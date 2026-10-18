@@ -17,6 +17,7 @@
 //! Parallelism: per-frame `par_iter`; each frame independently produces (count, value_sum) arrays, then reduced.
 
 use crate::check;
+use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
@@ -166,19 +167,18 @@ fn process_frame(
 
 /// Calculate spatial distribution on a voxel grid from a trajectory.
 ///
-/// Returns `None` if:
-/// - no frame with a periodic cell is found, or
-/// - no frame has the required velocity/force data for the selected mode.
+/// Errors if a parameter is out of range, a frame's cell is not 3-D periodic, no frame
+/// has a periodic cell, or no frame carries the velocities / forces the mode needs.
 pub fn calc_cube_density(
     traj: &Trajectory,
     params: &CubeDensityParams,
-) -> Option<CubeDensityResult> {
-    // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
-    params.validate().ok()?;
-    check::periodic_cells(traj, None).ok()?;
+) -> ferro_core::Result<CubeDensityResult> {
+    params.validate()?;
+    check::periodic_cells(traj, None)?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
-    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
+    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
+        .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
 
     // Parallel over frames
@@ -188,7 +188,12 @@ pub fn calc_cube_density(
         .filter_map(|f| process_frame(f, params, nx, ny, nz))
         .collect();
 
-    if results.is_empty() { return None; }
+    if results.is_empty() {
+        let what = if matches!(params.mode, CubeMode::Velocity) { "velocities" } else { "forces" };
+        return Err(ChemError::ValidationError(format!(
+            "no frame with a periodic cell carries {what}, which mode {:?} needs", params.mode
+        )));
+    }
 
     let n_frames = results.len();
 
@@ -237,7 +242,7 @@ pub fn calc_cube_density(
         spacing,
     };
 
-    Some(CubeDensityResult { cube, n_frames, n_atoms, params: params.clone() })
+    Ok(CubeDensityResult { cube, n_frames, n_atoms, params: params.clone() })
 }
 
 // ─── 测试 ────────────────────────────────────────────────────────────────────
@@ -261,13 +266,14 @@ mod tests {
     }
 
     #[test]
-    fn test_no_cell_returns_none() {
+    fn test_no_cell_is_an_error() {
         let mut frame = Frame::default();
         frame.add_atom(Atom::new("H", Vector3::zeros()));
         let mut traj = Trajectory::new();
         traj.frames.push(frame);
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
-        assert!(calc_cube_density(&traj, &params).is_none());
+        let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
+        assert!(err.contains("no frame has a periodic cell"), "{err}");
     }
 
     #[test]
@@ -358,14 +364,15 @@ mod tests {
     }
 
     #[test]
-    fn test_velocity_mode_no_velocities_returns_none() {
+    fn test_velocity_mode_no_velocities_is_an_error() {
         let traj = make_traj(vec![(2.5, 2.5, 2.5)], vec!["Li"]);
         let params = CubeDensityParams {
             nx: 2, ny: 2, nz: 2,
             mode: CubeMode::Velocity,
             ..Default::default()
         };
-        assert!(calc_cube_density(&traj, &params).is_none());
+        let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
+        assert!(err.contains("carries velocities"), "{err}");
     }
 
     #[test]

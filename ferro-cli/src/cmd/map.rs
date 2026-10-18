@@ -238,8 +238,7 @@ fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     drive(&c.common, |traj, stem, out| {
-        let result = calc_cube_density(traj, &params)
-            .ok_or_else(|| anyhow!("Cube calc failed (missing cell, velocities, or forces?)"))?;
+        let result = calc_cube_density(traj, &params)?;
 
         let name = mode_name(&mode);
         let file = if stem.is_empty() { format!("{name}.cube") } else { format!("{name}_{stem}.cube") };

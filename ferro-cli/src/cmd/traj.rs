@@ -402,7 +402,7 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| Ok(sq.to_tables(gr)?))?;
 
     let mut summary = Summary::new(&["volume", "volume_std", "r_max", "q_trunc"]);
-    for (input, (gr, _)) in &results {
+    for (input, (gr, sq)) in &results {
         let atoms: usize = gr.element_counts.values().sum();
         // g(r) 截断在 r_max，q ≲ 2π/r_max 的 S(q) 由截断振荡主导（审查 B-3）。
         // r_max 逐输入截到最小镜像上界，故此值逐输入、进 [inputs] 而不进共享头部
@@ -420,6 +420,9 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
                  is dominated by the truncation of g(r); --q-min is {}",
                 input.label, q_trunc, gr.r_max_used, c.q_min
             );
+        }
+        for w in &sq.warnings {
+            eprintln!("        warning: {}: {w}", input.label);
         }
     }
     summary.failed(&failures);

@@ -14,6 +14,7 @@
 //! Parallelism: per-atom par_iter; each atom independently unwraps and accumulates, then results are reduced.
 
 use crate::check;
+use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
@@ -121,22 +122,27 @@ fn voxel_idx(fx: f64, fy: f64, fz: f64, nx: usize, ny: usize, nz: usize) -> (usi
 /// The displacement uses the minimum-image convention via fractional-coordinate
 /// unwrapping, making the result correct for periodic and NPT trajectories.
 ///
-/// Returns `None` if:
-/// - no frame with a periodic cell is found,
-/// - the trajectory has fewer than `tau + 1` frames, or
-/// - no atoms match the element filter.
+/// Errors if a parameter is out of range, the trajectory has fewer than `tau + 1`
+/// frames, the atoms differ between frames, a frame's cell is not 3-D periodic, no
+/// frame has a periodic cell, or no atom matches the element filter.
 pub fn calc_cube_jump(
     traj: &Trajectory,
     params: &CubeJumpParams,
-) -> Option<CubeJumpResult> {
-    // 无 CLI 入口，库调用方未必先调 validate；坏参数在这里拦下而不是除零
-    params.validate().ok()?;
+) -> ferro_core::Result<CubeJumpResult> {
+    // No CLI entry: a library caller may not have called validate, so bad
+    // parameters are stopped here rather than dividing by zero
+    params.validate()?;
     let n_frames = traj.frames.len();
-    if n_frames < params.tau + 1 { return None; }
-    traj.check_same_atoms().ok()?;
-    let cells = check::periodic_cells(traj, None).ok()?;
+    if n_frames < params.tau + 1 {
+        return Err(ChemError::ValidationError(format!(
+            "{n_frames} frame(s), but tau = {} needs at least {}", params.tau, params.tau + 1
+        )));
+    }
+    traj.check_same_atoms()?;
+    let cells = check::periodic_cells(traj, None)?;
 
-    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
+    let no_cell = || ChemError::ValidationError("no frame has a periodic cell".into());
+    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some()).ok_or_else(no_cell)?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
 
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
@@ -154,11 +160,15 @@ pub fn calc_cube_jump(
         .map(|(i, _)| i)
         .collect();
 
-    if selected_atoms.is_empty() { return None; }
+    if selected_atoms.is_empty() {
+        return Err(ChemError::ValidationError(format!(
+            "no atom matches the element filter {:?}", params.elements.as_deref().unwrap_or_default()
+        )));
+    }
     let n_atoms = selected_atoms.len();
 
     // 预提取所有帧的分数坐标和盒子矩阵转置（NPT：各帧用自身 cell）
-    let ref_pc = cells.iter().flatten().next()?;
+    let ref_pc = cells.iter().flatten().next().ok_or_else(no_cell)?;
     let frac_all: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&cells).map(|(frame, pc)| {
         let pc = pc.as_ref().unwrap_or(ref_pc);
         frame.atoms.iter().map(|a| {
@@ -239,7 +249,7 @@ pub fn calc_cube_jump(
         spacing,
     };
 
-    Some(CubeJumpResult { cube, n_frames, n_atoms, n_jumps, params: params.clone() })
+    Ok(CubeJumpResult { cube, n_frames, n_atoms, n_jumps, params: params.clone() })
 }
 
 // ─── 测试 ────────────────────────────────────────────────────────────────────
@@ -266,26 +276,44 @@ mod tests {
         traj
     }
 
+    fn err(traj: &Trajectory, params: &CubeJumpParams) -> String {
+        calc_cube_jump(traj, params).err().map(|e| e.to_string()).unwrap_or_default()
+    }
+
     #[test]
-    fn test_no_cell_returns_none() {
+    fn test_no_cell_is_an_error() {
         let mut frame = Frame::default();
         frame.add_atom(Atom::new("Li", Vector3::zeros()));
         let mut traj = Trajectory::new();
         traj.frames.push(frame.clone());
         traj.frames.push(frame);
         let params = CubeJumpParams { tau: 1, ..Default::default() };
-        assert!(calc_cube_jump(&traj, &params).is_none());
+        assert!(err(&traj, &params).contains("no frame has a periodic cell"));
     }
 
     #[test]
-    fn test_too_few_frames_returns_none() {
+    fn test_too_few_frames_is_an_error() {
         let cell = make_cell();
         let mut f = Frame::with_cell(cell, [true; 3]);
         f.add_atom(Atom::new("Li", Vector3::zeros()));
         let mut traj = Trajectory::new();
         traj.frames.push(f);
         let params = CubeJumpParams { tau: 1, ..Default::default() };
-        assert!(calc_cube_jump(&traj, &params).is_none());
+        assert!(err(&traj, &params).contains("needs at least 2"));
+    }
+
+    /// The reasons that used to vanish into `None`: an element filter that matches
+    /// nothing, and atoms that change between frames (`check_same_atoms` was swallowed)
+    #[test]
+    fn test_empty_selection_and_changing_atoms_are_errors() {
+        let traj = two_frame_traj((5.0, 5.0, 5.0), (5.5, 5.0, 5.0), "Li");
+        let params = CubeJumpParams { tau: 1, elements: Some(vec!["Na".into()]), ..Default::default() };
+        assert!(err(&traj, &params).contains("no atom matches"));
+
+        let mut grown = traj.clone();
+        grown.frames[1].add_atom(Atom::new("Li", Vector3::new(1.0, 1.0, 1.0)));
+        let params = CubeJumpParams { tau: 1, ..Default::default() };
+        assert!(!err(&grown, &params).is_empty(), "a changing atom count must not pass");
     }
 
     #[test]

@@ -196,7 +196,8 @@ mod tests {
         let msg = calc_vanhove(&traj, &VanHoveParams::default()).err().map(|e| e.to_string());
         assert!(msg.as_deref().is_some_and(|m| m.contains("singular") && m.contains("frame 0")),
             "vanhove 应报奇异胞并点名帧号：{msg:?}");
-        assert!(calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).is_none());
+        let msg = calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).err().map(|e| e.to_string());
+        assert!(msg.as_deref().is_some_and(|m| m.contains("singular")), "cube jump: {msg:?}");
         let params = ClusterSdfParams {
             former: "P".into(), ligand: "O".into(), target_qn: 0, ..Default::default()
         };
@@ -289,13 +290,13 @@ mod tests {
                     former: "P".into(), ligand: "O".into(), target_qn: 0, ..Default::default() }).map(|_| ())),
                 ("network", crate::calc_network(&traj, &TypeParams::new(c, CutoffTable::new())).map(|_| ())),
                 ("filter", filter_frames(&traj, &FilterParams { oo_min: 1.2, ..Default::default() }).map(|_| ())),
+                ("map density", calc_cube_density(&traj, &CubeDensityParams::default()).map(|_| ())),
+                ("cube jump", calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).map(|_| ())),
             ];
             for (who, r) in res {
                 let msg = r.err().map(|e| e.to_string()).unwrap_or_default();
                 assert!(msg.contains("frame 0") && msg.contains("only 3-D periodic"), "{who} {pbc:?}: {msg:?}");
             }
-            assert!(calc_cube_density(&traj, &CubeDensityParams::default()).is_none());
-            assert!(calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).is_none());
         }
     }
 }

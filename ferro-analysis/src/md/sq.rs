@@ -89,6 +89,8 @@ pub struct SqResult {
     pub params: SqParams,
     /// Number density used \[Å⁻³\]
     pub rho: f64,
+    /// What the caller should be told about this result; the library never prints
+    pub warnings: Vec<String>,
 }
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
@@ -191,6 +193,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
     let mut total_xrd = None;
     let mut total_neutron = None;
 
+    let mut warnings = Vec::new();
     let n_total: usize = gr.element_counts.values().sum();
     if (want_xrd || want_neu) && n_total > 0 {
         // 浓度 cᵢ = Nᵢ / N_total
@@ -201,7 +204,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
                 (e.as_str(), c, elem_z_local(e))
             })
             .collect();
-        warn_missing_scattering_data(&elems);
+        warnings.extend(missing_scattering_data(&elems));
 
         if want_neu {
             let w = build_neutron_weights(&elems, &gr.gr);
@@ -233,6 +236,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
         total_neutron,
         params: params.clone(),
         rho,
+        warnings,
     })
 }
 
@@ -264,23 +268,21 @@ where
     (parts, total)
 }
 
-/// Warn when a type has no entry in the scattering-factor tables.
+/// The warning for types with no entry in the scattering-factor tables, if any.
 ///
 /// Reachable whenever the element column holds something the periodic table does not
 /// recognise — e.g. a LAMMPS dump without an `element` column, where types degrade to
 /// `X1`/`X2`. The weighted totals would otherwise be silently meaningless.
-fn warn_missing_scattering_data(elems: &[(&str, f64, usize)]) {
+fn missing_scattering_data(elems: &[(&str, f64, usize)]) -> Option<String> {
     let missing: Vec<&str> = elems.iter()
         .filter(|(_, _, z)| *z == 0)
         .map(|(e, _, _)| *e)
         .collect();
-    if !missing.is_empty() {
-        eprintln!(
-            "[ferro] warning: no scattering data for {} — weighted total S(q) is meaningless. \
-             Check that the trajectory carries real element symbols.",
-            missing.join(", ")
-        );
-    }
+    (!missing.is_empty()).then(|| format!(
+        "no scattering data for {} — weighted total S(q) is meaningless. \
+         Check that the trajectory carries real element symbols.",
+        missing.join(", ")
+    ))
 }
 
 /// Build Faber-Ziman XRD weights w_ij at a single q value.
@@ -497,6 +499,23 @@ mod tests {
         let max_diff = xrd.iter().zip(part.iter()).map(|(a,b)| (a-b).abs()).fold(0.0_f64, f64::max);
         assert!(max_diff < 1e-9, "single-element XRD total should equal the partial, diff={max_diff:.4}");
         assert!(sq_res.total_neutron.is_none(), "neutron not requested");
+        assert!(sq_res.warnings.is_empty(), "{:?}", sq_res.warnings);
+    }
+
+    /// A placeholder element (`X1` from a dump without an element column) has no
+    /// scattering factor; the result says so instead of the library printing it.
+    #[test]
+    fn test_missing_scattering_data_is_a_result_warning() {
+        let mut frame = make_sc_fe(3);
+        for a in &mut frame.atoms { a.element = "X1".into(); }
+        let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
+            r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
+        }).unwrap();
+        let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
+            q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Xrd,
+        }).unwrap();
+        assert_eq!(sq_res.warnings.len(), 1);
+        assert!(sq_res.warnings[0].contains("no scattering data for X1"), "{:?}", sq_res.warnings);
     }
 
     #[test]
