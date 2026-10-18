@@ -90,6 +90,16 @@ pub(crate) fn periodic_cells(
     Ok(cells)
 }
 
+/// [`periodic_cells`] for an analysis that needs a cell in every frame.
+pub(crate) fn all_periodic_cells(
+    traj: &Trajectory,
+    cutoff: Option<(&str, f64)>,
+) -> ferro_core::Result<Vec<PeriodicCell>> {
+    periodic_cells(traj, cutoff)?.into_iter().enumerate().map(|(i, c)| c.ok_or_else(|| {
+        ChemError::ValidationError(format!("all frames must have a periodic cell (frame {i} has none)"))
+    })).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

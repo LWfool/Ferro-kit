@@ -13,11 +13,10 @@
 //!     `"A-B"` and `"B-A"` generally differ
 
 use crate::check;
-use ferro_core::{Table, Trajectory};
+use ferro_core::{NeighborList, Table, Trajectory};
 use ferro_core::error::ChemError;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
-use super::angle::CellList;
 
 /// ferro package version (from Cargo.toml)
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -225,13 +224,10 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // 边长：非正交晶胞 d < L，用边长会高估可用截断。
     let mut mic_max = f64::INFINITY;
     let mut volumes: Vec<f64> = Vec::with_capacity(traj.frames.len());
-    let cells = check::periodic_cells(traj, None)?;
+    let cells = check::all_periodic_cells(traj, None)?;
     for (frame, pc) in traj.frames.iter().zip(&cells) {
-        let (Some(cell), Some(pc)) = (frame.cell.as_ref(), pc) else {
-            return Err(ChemError::ValidationError("all frames must have a periodic cell".into()));
-        };
         mic_max = mic_max.min(pc.mic_bound());
-        volumes.push(cell.volume());
+        volumes.push(frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume());
     }
     let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };
 
@@ -306,18 +302,18 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // 的「1ステップ毎にgrの計算」），而 CN(r) 与 ⟨ρ_f·g_f⟩ 要的是不带体积权重的纯计数。
     // NVT 下两者互为常数倍，NPT 下则相差一个 Cov(hist, V) 项。
     let init = || Acc::new(n_upairs, n_bins);
-    let acc = traj.frames.par_iter()
-        .fold(init, |mut acc, frame| {
-            let cell = frame.cell.as_ref().unwrap();
-            let vol = cell.volume();
+    let acc = traj.frames.par_iter().zip(cells.par_iter())
+        .fold(init, |mut acc, (frame, pc)| {
+            let vol = frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume();
             let n_atoms = frame.atoms.len();
-            let cl = CellList::build(frame, cell, r_max);
+            let cl = NeighborList::build(&frame.positions(), pc, r_max)
+                .expect("r_max is clamped to every frame's minimum-image bound");
             // 帧内纯计数缓冲（对应 code1 的 cr / code2 的 cn_），帧末一次性加权归并 ——
             // 比在每次命中处累加两份直方图便宜得多（命中数 ≫ bin 数）
             for row in acc.cr.iter_mut() { row.fill(0.0); }
             for i in 0..n_atoms {
                 let Some(&ti) = type_idx.get(group_key(&frame.atoms[i], by)) else { continue; };
-                for (j, r_val, _) in cl.neighbors_of(i, r_max) {
+                for (j, r_val, _) in cl.neighbors_of(i) {
                     if j <= i { continue; }
                     if r_val < params.r_min { continue; }
                     let bin = ((r_val - params.r_min) / params.dr) as usize;

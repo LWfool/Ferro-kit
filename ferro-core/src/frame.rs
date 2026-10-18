@@ -113,6 +113,11 @@ impl Frame {
         self.atoms.push(atom);
     }
 
+    /// Cartesian positions of all atoms, in index order.
+    pub fn positions(&self) -> Vec<Vector3<f64>> {
+        self.atoms.iter().map(|a| a.position).collect()
+    }
+
     /// 返回所有原子的元素符号切片引用。
     pub fn symbols(&self) -> Vec<&str> {
         self.atoms.iter().map(|a| a.element.as_str()).collect()
