@@ -21,8 +21,7 @@ use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
-use rayon::prelude::*;
-use super::util::build_avg_frame;
+use super::util::{build_avg_frame, par_map_in_order};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -181,26 +180,24 @@ pub fn calc_cube_density(
         .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
 
-    // Parallel over frames
-    let results: Vec<(Array3<f64>, Array3<f64>)> = traj
-        .frames
-        .par_iter()
-        .filter_map(|f| process_frame(f, params, nx, ny, nz))
-        .collect();
+    // Parallel over frames, summed in frame order
+    let mut count = Array3::<f64>::zeros((nx, ny, nz));
+    let mut value_sum = Array3::<f64>::zeros((nx, ny, nz));
+    let mut n_frames = 0usize;
+    par_map_in_order(&traj.frames, |f| process_frame(f, params, nx, ny, nz), |r| {
+        if let Some((dc, dv)) = r {
+            count += &dc;
+            value_sum += &dv;
+            n_frames += 1;
+        }
+    });
 
-    if results.is_empty() {
+    if n_frames == 0 {
         let what = if matches!(params.mode, CubeMode::Velocity) { "velocities" } else { "forces" };
         return Err(ChemError::ValidationError(format!(
             "no frame with a periodic cell carries {what}, which mode {:?} needs", params.mode
         )));
     }
-
-    let n_frames = results.len();
-
-    let (count, value_sum) = results.into_iter().fold(
-        (Array3::<f64>::zeros((nx, ny, nz)), Array3::<f64>::zeros((nx, ny, nz))),
-        |(mut c, mut v), (dc, dv)| { c += &dc; v += &dv; (c, v) },
-    );
 
     let voxel_vol = ref_cell.volume() / (nx * ny * nz) as f64;
 

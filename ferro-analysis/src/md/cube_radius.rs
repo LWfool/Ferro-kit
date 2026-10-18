@@ -19,8 +19,8 @@ use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
-use rayon::prelude::*;
 use super::cube_density::cube_reference_frame;
+use super::util::par_map_in_order;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -181,21 +181,16 @@ pub fn calc_cube_radius(
     let ref_cell = ref_frame.cell.as_ref().unwrap();
     let cells = check::periodic_cells(traj, Some(("radius", params.radius)))?;
 
-    // 帧级并行
-    let results: Vec<Array3<f64>> = traj
-        .frames
-        .par_iter()
-        .zip(cells.par_iter())
-        .filter_map(|(f, c)| c.as_ref().map(|c| process_frame(f, c, params)))
-        .collect();
-
-    let n_frames = results.len();
-
-    // 累加所有帧的贡献
-    let data = results.into_iter().fold(
-        Array3::<f64>::zeros((nx, ny, nz)),
-        |mut acc, rho| { acc += &rho; acc },
-    );
+    // Parallel over frames, summed in frame order
+    let pairs: Vec<(&Frame, &Option<PeriodicCell>)> = traj.frames.iter().zip(&cells).collect();
+    let mut data = Array3::<f64>::zeros((nx, ny, nz));
+    let mut n_frames = 0usize;
+    par_map_in_order(&pairs, |(f, c)| c.as_ref().map(|c| process_frame(f, c, params)), |rho| {
+        if let Some(rho) = rho {
+            data += &rho;
+            n_frames += 1;
+        }
+    });
 
     let n_atoms = ref_frame
         .atoms

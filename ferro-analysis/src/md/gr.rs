@@ -15,8 +15,8 @@
 use crate::check;
 use ferro_core::{NeighborList, Table, Trajectory};
 use ferro_core::error::ChemError;
-use rayon::prelude::*;
 use std::collections::BTreeMap;
+use super::util::par_map_in_order;
 
 /// ferro package version (from Cargo.toml)
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -179,34 +179,12 @@ pub struct GrResult {
 
 // ─── 计算函数 ────────────────────────────────────────────────────────────────
 
-/// Per-thread fold accumulator for [`calc_gr`].
+/// The two histograms [`calc_gr`] sums over frames.
 struct Acc {
     /// `Σ_f count` — volume-free counts, feeding CN(r) and `⟨ρ_f·g_f⟩`
     plain: Vec<Vec<f64>>,
     /// `Σ_f count · V_f` — volume-weighted counts, feeding g(r)
     vol_w: Vec<Vec<f64>>,
-    /// Scratch buffer holding one frame's counts; reused across frames
-    cr: Vec<Vec<f64>>,
-}
-
-impl Acc {
-    fn new(n_upairs: usize, n_bins: usize) -> Self {
-        Acc {
-            plain: vec![vec![0.0f64; n_bins]; n_upairs],
-            vol_w: vec![vec![0.0f64; n_bins]; n_upairs],
-            cr:    vec![vec![0.0f64; n_bins]; n_upairs],
-        }
-    }
-
-    fn merge(mut a: Self, b: Self) -> Self {
-        for p in 0..a.plain.len() {
-            for i in 0..a.plain[p].len() {
-                a.plain[p][i] += b.plain[p][i];
-                a.vol_w[p][i] += b.vol_w[p][i];
-            }
-        }
-        a
-    }
 }
 
 /// Compute partial g(r) and directed CN(r) for every ordered pair of types.
@@ -295,22 +273,27 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         .collect();
     let n_total = first_frame.atoms.len() as f64;
 
-    // 并行逐帧计数：每个线程独立维护两份直方图与三个体积标量，最后 reduce 合并
-    // 使用 linked-cell list 将帧内原子对遍历从 O(N²) 降至 O(N)
+    // Frames are counted in parallel and summed in frame order (`par_map_in_order`): a
+    // rayon fold kept one accumulator per split task, three pair x bin tables each, and
+    // its reduce grouped the volume-weighted sums by the thread schedule.
+    // The linked-cell list takes the in-frame pair loop from O(N^2) to O(N)
     //
     // 为什么是两份直方图：g(r) 要的是 ⟨hist·V_f⟩（逐帧归一化后再时间平均，见 code1/gr.c
     // 的「1ステップ毎にgrの計算」），而 CN(r) 与 ⟨ρ_f·g_f⟩ 要的是不带体积权重的纯计数。
     // NVT 下两者互为常数倍，NPT 下则相差一个 Cov(hist, V) 项。
-    let init = || Acc::new(n_upairs, n_bins);
-    let acc = traj.frames.par_iter().zip(cells.par_iter())
-        .fold(init, |mut acc, (frame, pc)| {
+    let mut acc = Acc {
+        plain: vec![vec![0.0f64; n_bins]; n_upairs],
+        vol_w: vec![vec![0.0f64; n_bins]; n_upairs],
+    };
+    let frames: Vec<_> = traj.frames.iter().zip(&cells).collect();
+    par_map_in_order(&frames, |(frame, pc)| {
             let vol = frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume();
             let n_atoms = frame.atoms.len();
             let cl = NeighborList::build(&frame.positions(), pc, r_max)
                 .expect("r_max is clamped to every frame's minimum-image bound");
-            // 帧内纯计数缓冲（对应 code1 的 cr / code2 的 cn_），帧末一次性加权归并 ——
-            // 比在每次命中处累加两份直方图便宜得多（命中数 ≫ bin 数）
-            for row in acc.cr.iter_mut() { row.fill(0.0); }
+            // One frame's plain counts (code1's cr / code2's cn_), weighted and merged once
+            // per frame — far cheaper than adding to two histograms at every hit (hits >> bins)
+            let mut cr = vec![vec![0.0f64; n_bins]; n_upairs];
             for i in 0..n_atoms {
                 let Some(&ti) = type_idx.get(group_key(&frame.atoms[i], by)) else { continue; };
                 for (j, r_val, _) in cl.neighbors_of(i) {
@@ -319,21 +302,20 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
                     let bin = ((r_val - params.r_min) / params.dr) as usize;
                     if bin >= n_bins { continue; }
                     let Some(&tj) = type_idx.get(group_key(&frame.atoms[j], by)) else { continue; };
-                    acc.cr[pair_lookup[ti][tj]][bin] += 1.0;
+                    cr[pair_lookup[ti][tj]][bin] += 1.0;
                 }
             }
-            for p in 0..n_upairs {
-                for b in 0..n_bins {
-                    let c = acc.cr[p][b];
+            (cr, vol)
+        }, |(cr, vol)| {
+            for ((row, plain), vol_w) in cr.iter().zip(&mut acc.plain).zip(&mut acc.vol_w) {
+                for ((&c, pl), vw) in row.iter().zip(plain.iter_mut()).zip(vol_w.iter_mut()) {
                     if c != 0.0 {
-                        acc.plain[p][b] += c;
-                        acc.vol_w[p][b] += c * vol;
+                        *pl += c;
+                        *vw += c * vol;
                     }
                 }
             }
-            acc
-        })
-        .reduce(init, Acc::merge);
+        });
 
     // ── normalisation ───────────────────────────────────────────────────────
     let n_frames = traj.frames.len();

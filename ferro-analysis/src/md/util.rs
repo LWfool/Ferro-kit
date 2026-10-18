@@ -22,6 +22,26 @@ use nalgebra::Vector3;
 ///
 /// Without a cell there is no periodicity and nothing to unwrap, so that case keeps the
 /// plain Cartesian mean.
+/// Maps `items` in parallel and hands each result to `consume` in item order.
+///
+/// The map runs in batches of a few items per thread, so only one batch of results
+/// is alive at a time: collecting every frame's grid before summing held hundreds of
+/// MB for a `map density` (review D-P1). Consuming in item order keeps a float sum
+/// bit-identical to the sequential one, which a parallel `reduce` would not — its
+/// grouping follows the thread schedule.
+pub(crate) fn par_map_in_order<T: Sync, R: Send>(
+    items: &[T],
+    map: impl Fn(&T) -> R + Sync,
+    mut consume: impl FnMut(R),
+) {
+    use rayon::prelude::*;
+    let batch = 2 * rayon::current_num_threads().max(1);
+    for chunk in items.chunks(batch) {
+        let out: Vec<R> = chunk.par_iter().map(&map).collect();
+        out.into_iter().for_each(&mut consume);
+    }
+}
+
 pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
     let ref_f = traj.frames.first().unwrap();
     let n = ref_f.atoms.len();
