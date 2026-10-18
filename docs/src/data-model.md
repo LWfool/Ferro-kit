@@ -88,6 +88,10 @@ order is not consistent across programs (the specification and ASE use `xx yy zz
 `in kB` and GPUMD's `stress_*.out` use `xx yy zz xy yz zx`), and nothing in the file says which one wrote it.  Rewrite it as 9 numbers.
 `pbc = [true,true,true]` → bulk crystal or glass.
 
+The analyses know only the last kind.  A frame that has a cell but any `pbc` flag `false` is an error in
+every analysis that measures distances — it is never measured as a bulk.  An analysis that accepts
+non-periodic input (`msd`, `rotcorr`, `bondlife`, `vanhove`) wants such a frame with **no** cell.
+
 ## Cell
 
 ```rust

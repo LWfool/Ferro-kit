@@ -47,11 +47,15 @@ $$\mathbf{r}_{ij}^\text{min} = \mathbf{r}_{ij} - \mathbf{M} \cdot \text{round}\!
 
 This is correct for orthorhombic and triclinic cells as long as $r_\text{max} < L_\text{min}/2$.
 
-### Every direction is treated as periodic
+### Only 3-D periodic cells
 
-`gr` (and with it `sq`), `angle`, `net` and `msd` do **not** read a frame's per-axis `pbc` flags: once a
-frame has a cell, all three directions are periodic and the density is $N/V$ of the whole cell.  For a
-**slab with vacuum** this has two consequences:
+A frame whose cell is not periodic in all three directions is an error, here and in every other analysis
+that measures distances in a box: extxyz `pbc="T T F"` or `"F F F"`, a LAMMPS `f`/`s` boundary, CP2K
+`PERIODIC XY` / `NONE`, a DeePMD system with `nopbc`.  The density $N/V$ has no meaning for such a frame,
+and the minimum image would find neighbours through images that do not exist.
+
+A slab stored as **fully periodic** (every POSCAR is, and so is any file that says `T T T`) is measured as a
+bulk: the density is $N/V$ of the whole cell, vacuum included.  That has two consequences:
 
 - the density includes the vacuum, so $g(r)$ tends to the filling fraction $V_\text{slab}/V_\text{cell}$ at
   large $r$ instead of 1 — the peak positions are right, the heights are scaled;

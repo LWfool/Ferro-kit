@@ -654,7 +654,7 @@ git 历史（`8a8fe75`..`443d45c`），未定的留在 `plan.md`「零调用清�
 | 全局 | 看见两处相似就合并 | **Rule of Three**：两处不动，第三处才评估，判据是「是否同一个变化原因」。2026-09-12 那轮按此把六条 ×2 的重复判为**有意保留**（见下） |
 | 「零调用 = 死代码」 | 直接删 | 本仓多数功能**还没进入实际使用**，「需求确定但 CLI 层没接」与「开发遗留」在代码里长得一样。`cube_jump` 就是前者（429 行 + 10 测试 + 手册页齐全，只缺 CLI 入口）。判据要靠人，清单见 `plan.md` |
 | `readers/` 的 `floats` 辅助 | 看见同名函数就全合成一个 | 合并后的 `readers/util.rs::floats` 是 `map_while`（**遇到非数字即停**，让行尾注释不中断解析）。`vasp_outcar.rs:57` 那个是 `filter_map`（**跳过非数字继续**，为了 `in kB` 这类行首带标签的行），**语义相反，不能并**。另：第四份曾藏在 `cube.rs` 叫 `parse_floats`，按名字 grep 找不到 |
-| `ml/geometry.rs:43 min_image` vs `Cell::minimum_image` | 语义相同，想合 | 前者把矩阵 transpose 与 inverse **提到 O(N²) 内循环之外**。合并等于把 `try_inverse()` 放回内循环 |
+| `ml/geometry.rs:43 min_image` vs `Cell::minimum_image` | 语义相同，想合 | 前者把矩阵 transpose 与 inverse **提到 O(N²) 内循环之外**。合并等于把 `try_inverse()` 放回内循环。**2026-10-18 已合**：两边都改走构造时预存逆矩阵的 `PeriodicCell`，见文末「周期几何」节 |
 | `md/gr.rs:34 elem_z` vs `md/sq.rs:100 elem_z_local` | 两个 `symbol_to_z` 的薄包装，想统一 | **未知符号的回退值相反且都对**：`elem_z` 给 255（排到末尾），`elem_z_local` 给 0（sq 用 Z 当电子数，255 是荒谬值）。统一任何一个都会弄坏另一边 |
 | `md/cube_sdf.rs:149 signature` | 当成第三套化学式渲染 | 它拼的是**原子类型**当 HashMap key（`Ob:6\|P_2:1`），不是化学式。骨架（BTreeMap 计数 → 拼串）像而已 |
 | 化学式渲染两套 | 当成不一致要统一 | `group_name` 省略计数 1（目录名，`ls` 里当名字读），`formula_of` 不省略（报错里与第二个化学式上下叠着读，补齐的下标才对得上列）。**用途相反，都对**。两处已互相指名 |
@@ -920,7 +920,7 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | `Table::meta` 经 `concat_union` 堆叠 | 只留第一份 meta（见上「network 重构」一节，那是为保住表的**自述**）。往表头写逐输入的数（O–O 分位、自动截断），多输入时第一个的值冒充整批（C-D6、B-7） | 表头只放与输入无关的说明；逐输入的数走 `Summary` 的列，进 `[inputs]`。同 `CLAUDE.md` 的 `meta_lines` 规则，只是落在 `Table::meta` 上 |
 | 峰值折叠 | `fold(0.0, f64::max)`：`f64::max` 遇 NaN 返回另一个数，NaN 被吞，再 `m > f_max` 对 NaN 为假，坏帧通过（C-D4） | 折叠时显式传播 NaN，判据写 `m.is_nan() \|\| m > max`（clippy 不让写 `!(m <= max)`）|
 | 只在 CLI 做的检查 | 帧间隔检查在 `cmd/traj.rs` 私有，Python `msd` 绕过，且默认 `dt=1.0`（D-M1） | 判据下沉到分析库（`md::check_frame_spacing`），CLI 与 Python 调同一个；会静默缩放时间轴的参数不给默认值 |
-| 公开函数里的最小镜像 | 内部 `minimum_image(..).expect("non-singular")`，CLI 入口查过，库的其他调用方（`find_clusters`、`classify_frame`）直调即 panic（D-M17） | 公开入口查一次（`interplanar_spacings()?` 恰在奇异时报错），返回 `Result`；内部 `expect` 写明**由谁查过**。只返回 `Option` 的（`chg_sdf`）入口返回 `None` 防 panic |
+| 公开函数里的最小镜像 | 内部 `minimum_image(..).expect("non-singular")`，CLI 入口查过，库的其他调用方（`find_clusters`、`classify_frame`）直调即 panic（D-M17） | 公开入口查一次（`interplanar_spacings()?` 恰在奇异时报错），返回 `Result`；内部 `expect` 写明**由谁查过**。只返回 `Option` 的（`chg_sdf`）入口返回 `None` 防 panic。2026-10-18 起入口改为构造 `PeriodicCell`（见文末「周期几何」节） |
 | 倾斜胞的拼接 | 沿晶格矢量量 gap、沿**另一块自己的**单位矢量平移（D-M2）：正交胞上逐位正确，倾角一不同就错位且 gap 变小 | 高度用面间距（法向投影），平移在目标胞的坐标系里算；正交胞上新旧逐位相同，所以必须有倾斜胞的测试 |
 | clap 默认值 | doc 注释手写 `[default: x]` 又给 `default_value_t`，短帮助显示两遍 | 有 `default_value(_t)` 就不手写；`help_sync::a_clap_default_is_not_also_written_by_hand` 盯着 |
 | argv 预处理 | `--X-Y=v` 的剥离对所有子命令生效，`traj gr --P-O=2.3` 被吞、退出码 0（D-M16） | 预处理只对需要它的子命令（判据写在 `split_pair_args` 里）|
@@ -935,3 +935,14 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 对称展开的测试坐标 | 想测「特殊位置上的像合并」，写了 `(0.0004, 0.25, 0.25)` 配反演 —— y、z 在反演下变 0.75，根本不是不动点，测试按错因失败 | 特殊位置的其余分量取该操作的不动值（反演取 0 或 0.5）|
 | CLI 参数的「默认」与「给了」 | `default_value_t` 之后 derive 结构里分不清用户给没给（D-4 要据此决定关判据还是报错） | 改 `Option<T>` + 方法取默认；doc 注释手写 `[default: …]`（无 `default_value` 时 `help_sync` 允许） |
 | 第三个同构 xyz 块 | CP2K MD 按「第一块坐标、第二块力」取，VELOCITIES 也打到 stdout 且排在力前时，速度当力存、全程无错 | 两块之后继续扫到下一锚点，再见同原子数的块整份报错 |
+
+## 周期几何编码陷阱（2026-10-18，审查第 2 步）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 盒子里量距离 | 直接拿 `frame.cell` 算：`pbc` 不是 TTT 的帧被当体相（A-7），`Cell::minimum_image` 每调一次求一次逆 | 分析入口 `check::periodic_cells` / `all_periodic_cells` 逐帧建 `PeriodicCell`（拒非 TTT、奇异、非有限，按截断查上界），循环里用它。core 的分类器内部取 `PeriodicCell::of(frame)`。`Cell::minimum_image` 只剩 Bader 两处（挂起） |
+| `NeighborList` 的结果 | 当成「严格在截断内」直接用 | 它是**超集**：含边界并留 1e-9 相对余量。调用方按自己的截断、用自己的算法再筛（gr 按 bin、angle 按 `>=`、bondlife `<=`、分类器 `<`）。要逐字节保持的量（rotcorr 求和、分类距离）用 `pc.minimum_image` 重算，不用列表里的矢量 —— 两者末位不同 |
+| 邻居顺序 | 以为顺序无所谓 | `neighbors_of` 按下标排序，与全扫顺序相同，浮点求和才不变。别为省一次排序去掉它 |
+| 测试 fixture | `Frame { cell: Some(..), ..Frame::default() }` 的 pbc 是默认的 FFF，以前照样被当周期体系算，现在被拒 | 有胞的 fixture 用 `Frame::with_cell(cell, [true; 3])` 或显式写 `pbc` |
+| `NeighborList::build` 的截断 | 截断为 0（没有任何截断对）时 bin 数是 `1/0` → `usize::MAX`，分配爆掉 | 先判截断 > 0（分类器在没有截断时不建列表）|
+| box_builder 的 cell list | 看见两份 cell list 想合 | 不合（R6）：它只服务立方盒、每步弛豫重建、力的累加依赖访问顺序；两处注释互指 |

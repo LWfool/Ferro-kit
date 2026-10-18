@@ -44,8 +44,8 @@ impl Atom {
         })
     }
 
-    /// 计算与另一原子的 Cartesian 距离（Å），不考虑周期性。
-    /// 周期性距离请通过 [`crate::cell::Cell::minimum_image`] 处理。
+    /// Cartesian distance to another atom \[Å\], ignoring periodicity.
+    /// Periodic distances go through [`crate::periodic::PeriodicCell::minimum_image`].
     pub fn distance_to(&self, other: &Atom) -> f64 {
         (self.position - other.position).norm()
     }

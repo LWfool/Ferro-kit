@@ -271,7 +271,11 @@ pub fn build_box(
     })
 }
 
-/// Cell list 辅助结构：将空间划分为 bin，加速近邻搜索。
+/// Cell list for the packing relaxation: space split into bins to speed up the neighbour search.
+///
+/// Deliberately not `ferro_core::NeighborList`: this one serves a cubic box only, is rebuilt
+/// every relaxation step while the atoms move, and the force sums depend on its visiting order;
+/// that list validates a general cell once per frame. They change for different reasons.
 struct CellList {
     n_bins: usize,
     inv_bin_size: f64,

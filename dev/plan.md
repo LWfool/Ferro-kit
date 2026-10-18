@@ -37,7 +37,7 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 | 步 | 内容 | 条目 |
 |---|---|---|
 | 1 ✅ | 零散的静默错数据 / 越界写（修法明确、代价小） | C-6 `db9e46a`、C-3 `093fef3`、C-10 / A-10 `d953bdf`、C-7 `c2e7f0a`、E2-9 `c937463`、E2-10 `45c67c3`、C-5 `dfe79ca`（2026-10-18）。**用户定不做**：A-11（dr 够小差别不大，CLI 默认 0.002 不动）；B7、B8 归 Bader 组挂起 |
-| 2 | **周期几何原语下沉 core**（按轴 pbc、预存逆矩阵、cell list、构造时拒奇异 / NaN、构造处查最小镜像上界）；非三维周期体系的 gr / sq 归一化口径另定 | A-7 / B1、D-A2、B10、B6、D-P2、D-A5；延伸布局建议 4、9，bondlife cell list，rotcorr Sum |
+| 2 ✅ | **周期几何原语下沉 core**（`PeriodicCell` / `NeighborList`：预存逆矩阵、构造时拒非 TTT / 奇异 / NaN、构造处查最小镜像上界） | `dc17252` 原语 + B10、`d433d91` A-7 / B1、`955d43e` gr / angle、`cf69c0c` bondlife / rotcorr Sum / msd / cube_radius / vanhove / cube_jump、`565dfdb` B6 / D-P2 / D-A5（2026-10-18）。golden master（NPT / NVT / 强三斜 × 14 种分析 + dataset filter，239 个文件）每步逐字节一致 |
 | 3 | 告警通道 + `Result` 统一 + `Format` 表（名字优先、内容兜底，并入 sniff 与多帧能力） | C-4 / E2-1 / A-8 / D-A1、D-A3、C-2、C-3（余下部分）、C-7 契约、C-9、C-8 / D-1 |
 | 4 | 内存：map 系列改 fold → reader 流式 → **`Atom` 存储改为拓扑 / 坐标分离** | D-P1、C-1、B15、B5 |
 | 5 | 职责归位与数据模型清理 | A-1、A-2 / B5、A-5 / D-A4、E2-4、A-4 / B2 / B3（按上面的用户定）、B4、B14、B9、B11–B13、A-6、A-9、A-12 |
@@ -48,6 +48,13 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 第 1 步的两条用户定：**除 lammpstrj / xyz / extxyz / pdb 这类轨迹格式外都是单帧**（C-3：库 writer 遇多帧
 报错，Python `ferro.write` 与 `ferro convert` 一样一帧一个文件，命名函数 `indexed_path` 下沉 ferro-io 共用）；
 LAMMPS data 同一元素的原子质量不一致时 writer 报错（一个 type 一个质量）。
+
+第 2 步的用户定：**非三维周期体系一律报错**，不按轴支持、不另定 gr / sq 归一化口径（「理论上不会有
+非三维周期体系」）；pbc 只在 `PeriodicCell::new` 一处判，FFF 与 TTF 同等对待。structure 的
+`box_builder` 不并入 `NeighborList`（R6，两处注释互指）。随之 `NeighborList` 的使用方只剩 core 的
+网络分类与 analysis：第 5 步 A-1 把网络分类搬进 analysis 时，`NeighborList` 跟着搬，`PeriodicCell`
+留 core（io / structure 以后量距离也要它）。挂起组没动内部：cube_sdf / chg_sdf 只加入口检查（截断上界），
+Bader 仍用 `Cell::minimum_image`。
 
 Bader 与 cube_sdf 两个改写组仍各自挂起，D 组给出的新结构记在下面「D 组」R-2 / R-3。
 第 2 步与第 4 步都要改 `Frame` 的几何读取路径：第 2 步的原语接口按「坐标切片 + 胞 + pbc」设计，
@@ -549,8 +556,8 @@ network / dft / ml / core（C）：
 - `cluster.rs:56 NetworkGraph.former_qn` 是桥氧个数，`AtomType::Former.qn` 是同元素连接数，
   core 里同名不同义 → 改名 `n_bo`
 - Bader 归属原子的 MIC 用分数取整、不查上界，强三斜小胞取错镜像（推断，极少触发）
-- merge `--mode by-source` 静默忽略 `--seed`，filter 遇无用 `--seed` 报错，口径不一；filter
-  几何判据不读 `Frame.pbc`，手册 dataset 页未写
+- merge `--mode by-source` 静默忽略 `--seed`，filter 遇无用 `--seed` 报错，口径不一；~~filter
+  几何判据不读 `Frame.pbc`，手册 dataset 页未写~~（2026-10-18 审查第 2 步：非 TTT 的胞报错，手册 data-model 页写明）
 - `EV_TO_KCAL_MOL=23.0605419`（CODATA 2018 为 23.0605478，差 2.6e-7）
 - VASP4 POSCAR 元素给 `X1`（ASE 会推）；xyz 首列是原子序数时 ferro 存 `"8"`（ASE 转 O）；
   QE `starting_magnetization` 存进 `magmom` 再经 extxyz 导出会被当 μB

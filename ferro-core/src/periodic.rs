@@ -85,6 +85,9 @@ impl PeriodicCell {
 }
 
 /// Linked-cell neighbour search within a cutoff, O(N) per frame.
+///
+/// `ferro-structure`'s `box_builder` keeps a cell list of its own on purpose: a cubic box
+/// rebuilt every relaxation step, with force sums tied to its visiting order.
 pub struct NeighborList {
     n: [usize; 3],
     /// `bins[ix + iy*nx + iz*nx*ny]` = atom indices in that bin

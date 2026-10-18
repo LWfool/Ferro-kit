@@ -12,6 +12,20 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### A box that is not periodic in all three directions is an error
+
+A frame with a cell but `pbc` other than `T T T` — extxyz `pbc="F F F"` or `"T T F"`, a LAMMPS
+dump with an `f` or `s` boundary, CP2K `PERIODIC XY` / `NONE`, a DeePMD system with `nopbc` —
+used to be measured as a bulk by every analysis: a molecule in a 3 Å box found its neighbours
+through images that do not exist, and `traj gr` reported them with exit code 0. Such an input
+now fails with `only 3-D periodic cells are supported`, in `traj`, `map`, `net` and the
+geometric criteria of `dataset filter`. Results for fully periodic input are unchanged, byte for
+byte.
+
+`dataset filter --al6` also checks the cutoff scan of its diagnostics against the
+minimum-image bound now, and `map sdf` checks `--cutoff-fl` / `--cutoff-ml`; both used to
+measure past it without a word.
+
 ### Python `write`: CIF, POSCAR and LAMMPS data get one file per frame
 
 `ferro.write` of a trajectory with several frames to a CIF, POSCAR or LAMMPS data

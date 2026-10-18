@@ -42,6 +42,8 @@
 **Why:** 2026-10-16 `ferro.jobs` 一轮里出现了五六次，一次乱码提交信息已 amend 掉；其余在
 提交前发现。纯 ASCII 的 heredoc 不受影响。2026-10-17 又犯两次：`cat >> test.py <<EOF` 追加含中文
 注释的测试，乱码随提交进了库（`3cb0eba`，`1cad05b` 修）；`git commit -m` 中文乱码（已 amend）。
+2026-10-18 又犯两次，而且**不只是中文**：heredoc 里的 Python 只要含 `→`、`ᵀ` 这类非 ASCII
+字符同样报 `Non-UTF-8 code`，脚本整个没执行、文件原样未改 —— 输出被折叠时很容易当成改成功了。
 
 **How to apply:** 提交信息先用 Write 写到 scratchpad 文件再 `git commit -F`；改含中文的源码、
 文档用 Edit / Write，不用 heredoc 里的 Python 替换；Bash 里 grep 中文也会报

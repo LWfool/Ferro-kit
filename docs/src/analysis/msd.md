@@ -158,9 +158,9 @@ and that fold stays inside the cube).  For TOR this matters under NPT:
 - **Every frame needs a cell** once the first frame has one; a frame without a cell, or with a singular
   cell, fails that input.
 - **Non-periodic input** (no cell in the first frame) is used as it is, with no unwrapping.
-- **The per-axis `pbc` flags are not read**: a frame with a cell is unwrapped in all three directions.
-  For a slab this is harmless along the vacuum (atoms do not cross it), but report $D$ from the in-plane
-  components (see below), not from the total.
+- **A cell must be 3-D periodic**: a frame whose `pbc` flags are not `T T T` fails that input.  A slab
+  stored as fully periodic is unwrapped in all three directions, which is harmless along the vacuum
+  (atoms do not cross it), but report $D$ from the in-plane components (see below), not from the total.
 - **No centre-of-mass drift removal.**  If the whole system drifts (a thermostat that does not conserve
   momentum, or a poorly zeroed initial velocity), the drift adds $v_\text{COM}^2 t^2$ to every atom's MSD
   and inflates $D$.  `gmx msd -rmcomm` and LAMMPS `compute msd com yes` subtract it; ferro does not.
