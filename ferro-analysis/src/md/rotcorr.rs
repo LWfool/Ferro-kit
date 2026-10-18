@@ -27,6 +27,7 @@
 //! Parallelism: per molecule.
 
 use crate::check;
+use super::util::check_frame_spacing;
 use rayon::prelude::*;
 use crate::neighbor::NeighborList;
 use ferro_core::{Table, Trajectory};
@@ -135,6 +136,7 @@ pub struct RotCorrResult {
 /// neighbor within `r_cut` in any frame.
 pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Result<RotCorrResult> {
     params.validate()?;
+    check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;

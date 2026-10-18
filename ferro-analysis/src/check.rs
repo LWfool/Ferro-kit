@@ -311,4 +311,36 @@ mod tests {
             }
         }
     }
+
+    /// The five time-correlation analyses check the frame spacing themselves
+    /// (review A-5): a restart written twice is refused whoever calls them.
+    #[test]
+    fn time_correlations_refuse_a_duplicated_step() {
+        use crate::md::*;
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::Vector3;
+        let mut traj = Trajectory::new();
+        for (k, step) in [0, 10, 10, 20].into_iter().enumerate() {
+            let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+            let mut f = Frame::with_cell(cell, [true; 3]);
+            f.add_atom(Atom::new("P", Vector3::new(5.0 + 0.01 * k as f64, 5.0, 5.0)));
+            f.add_atom(Atom::new("O", Vector3::new(6.5, 5.0, 5.0)));
+            f.set_velocities(Some(vec![Vector3::zeros(); 2])).unwrap();
+            f.step = Some(step);
+            traj.add_frame(f);
+        }
+        let res: Vec<(&str, ferro_core::Result<()>)> = vec![
+            ("msd", calc_msd(&traj, &MsdParams::default()).map(|_| ())),
+            ("vacf", calc_vacf(&traj, &VacfParams::default()).map(|_| ())),
+            ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
+                center: "P".into(), neighbor: "O".into(), r_cut: 2.0, ..Default::default() }).map(|_| ())),
+            ("bondlife", calc_bondlife(&traj, &BondLifeParams {
+                center: "P".into(), neighbor: "O".into(), r_bond: 2.0, ..Default::default() }).map(|_| ())),
+            ("vanhove", calc_vanhove(&traj, &VanHoveParams::default()).map(|_| ())),
+        ];
+        for (who, r) in res {
+            let msg = r.err().map(|e| e.to_string()).unwrap_or_default();
+            assert!(msg.contains("steps 10 and 10"), "{who}: {msg:?}");
+        }
+    }
 }

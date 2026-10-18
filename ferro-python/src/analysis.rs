@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use ferro_analysis::md::check_frame_spacing;
 use ferro_analysis::{calc_gr, calc_msd, GrParams, GroupBy, MsdParams};
 use pyo3::prelude::*;
 
@@ -106,7 +105,6 @@ fn msd(
     max_lag: Option<usize>,
     elements: Option<Vec<String>>,
 ) -> PyResult<HashMap<String, Vec<f64>>> {
-    check_frame_spacing(&traj.inner).map_err(pyerr)?;
     let params = MsdParams { max_lag, dt, elements, fit_range: None };
     let res = calc_msd(&traj.inner, &params).map_err(pyerr)?;
 

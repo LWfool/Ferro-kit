@@ -15,6 +15,7 @@
 //! Parallelism: per atom.
 
 use crate::check;
+use super::util::check_frame_spacing;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
@@ -92,6 +93,7 @@ pub struct VacfResult {
 /// element filter.
 pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<VacfResult> {
     params.validate()?;
+    check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;

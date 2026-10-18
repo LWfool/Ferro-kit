@@ -18,6 +18,7 @@
 //! Parallelism: per frame for distances, per candidate for the correlations.
 
 use crate::check;
+use super::util::check_frame_spacing;
 use rayon::prelude::*;
 use crate::neighbor::NeighborList;
 use ferro_core::{Table, Trajectory};
@@ -164,6 +165,7 @@ pub fn lifetimes(c: &[f64], dt: f64) -> (f64, f64) {
 /// is absent, or no pair comes within `r_bond` in any frame.
 pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::Result<BondLifeResult> {
     params.validate()?;
+    check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;

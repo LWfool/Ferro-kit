@@ -16,7 +16,6 @@ use ferro_analysis::{
     AngleParams, AngleResult, BondLifeParams, BondLifeResult, GroupBy, GrParams, GrResult, Legendre, MsdParams, MsdResult, RotCorrParams,
     RotCorrResult, SqParams, SqResult, VacfParams, VacfResult, VanHoveParams, VanHoveResult,
 };
-use ferro_analysis::md::check_frame_spacing;
 
 use crate::args::common::{CommonArgs, SelectArgs};
 use crate::args::traj::{RotVectorCli, SqWeightingCli};
@@ -457,7 +456,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
     params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| { check_frame_spacing(traj)?; Ok(calc_msd(traj, &params)?) })?;
+        drive(&c.common, Some(label), |traj| Ok(calc_msd(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &MsdResult| Ok(r.to_tables()))?;
 
@@ -590,7 +589,7 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
     params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| { check_frame_spacing(traj)?; Ok(calc_vacf(traj, &params)?) })?;
+        drive(&c.common, Some(label), |traj| Ok(calc_vacf(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &VacfResult| Ok(r.to_tables()))?;
     // Green-Kubo 积分的末值逐文件不同，放进清单方便横向比（D 要看 diffusion 列走平处）
@@ -635,7 +634,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| { check_frame_spacing(traj)?; Ok(calc_rotcorr(traj, &params)?) })?;
+        drive(&c.common, Some(label), |traj| Ok(calc_rotcorr(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
     // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 r_cut 抓不稳邻居
@@ -677,7 +676,7 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
     // 取值范围（含 r-break >= r-bond）在建目录、读第一个文件之前查完
     params.validate()?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| { check_frame_spacing(traj)?; Ok(calc_bondlife(traj, &params)?) })?;
+        drive(&c.common, Some(label), |traj| Ok(calc_bondlife(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &BondLifeResult| Ok(r.to_tables()))?;
     let mut summary = Summary::new(&[
@@ -717,10 +716,7 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
-    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
-        check_frame_spacing(traj)?;
-        Ok(calc_vanhove(traj, &params)?)
-    })?;
+    let (results, failures, out) = drive(&c.common, Some(label), |traj| Ok(calc_vanhove(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
     // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼；

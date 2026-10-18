@@ -14,6 +14,7 @@
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use crate::check;
+use super::util::check_frame_spacing;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::error::ChemError;
@@ -153,6 +154,7 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 /// `τ` beyond `n_frames − 1` is clamped, not an error.
 pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Result<VanHoveResult> {
     params.validate()?;
+    check_frame_spacing(traj)?;
     let n_steps = traj.n_frames();
     if n_steps < 2 {
         return Err(ChemError::ValidationError(format!("trajectory requires at least 2 frames, got {n_steps}")));

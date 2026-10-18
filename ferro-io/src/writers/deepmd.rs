@@ -202,13 +202,14 @@ pub fn write_deepmd_npy_bounds(
     Ok(())
 }
 
-/// `[lo, hi)` frame ranges, the remainder spread instead of left as a stub set.
+/// `[lo, hi)` frame ranges of at most `set_size` frames, the remainder spread instead
+/// of left as a stub set: 500 frames at 400 gives 250 + 250, not 400 + 100 — the
+/// lopsided pair is worse for both training balance and for using a set as a
+/// validation split. `set_size == 0` means one set.
 ///
-/// **`cmd/dataset.rs`'s `set_spans` is the same fourteen lines.**  Two copies is under the
-/// rule-of-three threshold so neither was merged, but the spread-the-remainder rule is
-/// written down as a cross-mode rule in `dev/issues.md` — if you change one, change the
-/// other, or the two paths will split sets differently and nothing will say so.
-fn set_bounds(nf: usize, set_size: usize) -> Vec<(usize, usize)> {
+/// `dataset merge` splits each system with it too, so the two paths cannot split
+/// sets differently (review A-9: it once had a copy of its own).
+pub fn set_bounds(nf: usize, set_size: usize) -> Vec<(usize, usize)> {
     if set_size == 0 || nf <= set_size {
         return vec![(0, nf)];
     }
@@ -350,6 +351,11 @@ mod set_tests {
         // 410 帧、每 set 400：朴素切法给出 400 + 10，那个 10 帧的 set 当验证集没有意义
         assert_eq!(set_bounds(410, 400), vec![(0, 205), (205, 410)]);
         assert_eq!(set_bounds(1000, 400), vec![(0, 334), (334, 667), (667, 1000)]);
+        assert_eq!(set_bounds(500, 400), vec![(0, 250), (250, 500)]);
+        assert_eq!(
+            set_bounds(2000, 400),
+            vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]
+        );
     }
 
     #[test]

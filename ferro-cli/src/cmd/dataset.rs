@@ -33,7 +33,7 @@ use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
-    read_aimd_as, read_deepmd_npy_with_warnings, write_deepmd_npy,
+    read_aimd_as, read_deepmd_npy_with_warnings, set_bounds, write_deepmd_npy,
     write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdFormat, AimdStats,
     StressKey,
 };
@@ -1461,32 +1461,6 @@ fn print_table(t: &ferro_core::Table) {
 /// Frames per set unless told otherwise.
 const DEFAULT_SET_SIZE: usize = 400;
 
-/// `[lo, hi)` set spans within ONE system, remainder spread evenly.
-///
-/// Splitting happens inside a system so no set ever straddles two of them. The
-/// remainder is spread rather than left at the end: 500 frames at 400 gives
-/// 250 + 250, not 400 + 100 — the lopsided pair is worse for both training
-/// balance and for using a set as a validation split.
-///
-/// **`ferro-io`'s `writers/deepmd.rs::set_bounds` is the same fourteen lines** — see the
-/// note there before changing either.
-fn set_spans(n: usize, set_size: usize) -> Vec<(usize, usize)> {
-    if set_size == 0 || n <= set_size {
-        return vec![(0, n)];
-    }
-    let n_sets = n.div_ceil(set_size);
-    let base = n / n_sets;
-    let extra = n % n_sets;
-    let mut out = Vec::with_capacity(n_sets);
-    let mut lo = 0;
-    for i in 0..n_sets {
-        let take = base + usize::from(i < extra);
-        out.push((lo, lo + take));
-        lo += take;
-    }
-    out
-}
-
 fn run_merge(args: &MergeCmd) -> Result<usize> {
     let Some(out_root) = &args.output else {
         bail!("merge needs an output directory (-o DIR)");
@@ -1650,7 +1624,7 @@ fn merge_group(
             let mut bounds: Vec<(usize, usize)> = Vec::new();
             let mut record: Vec<(usize, usize, PathBuf)> = Vec::new();
             for (p, lo, hi) in &source_spans {
-                for (a, b) in set_spans(hi - lo, args.set_size) {
+                for (a, b) in set_bounds(hi - lo, args.set_size) {
                     record.push((bounds.len(), b - a, p.clone()));
                     bounds.push((lo + a, lo + b));
                 }
@@ -2260,20 +2234,6 @@ mod tests {
         assert_eq!(common_ancestor(&dirs), PathBuf::from("/s/a"));
         let disjoint = vec![PathBuf::from("/x/a"), PathBuf::from("/y/b")];
         assert_eq!(common_ancestor(&disjoint), PathBuf::from("/"));
-    }
-
-    #[test]
-    fn set_spans_split_within_a_system_and_spread_the_remainder() {
-        // 500 帧 / 400：均分成 250+250，而不是 400+100
-        assert_eq!(set_spans(500, 400), vec![(0, 250), (250, 500)]);
-        assert_eq!(
-            set_spans(2000, 400),
-            vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]
-        );
-        assert_eq!(set_spans(120, 400), vec![(0, 120)]);
-        assert_eq!(set_spans(120, 0), vec![(0, 120)]);
-        // 余数摊开：1000 / 400 -> 3 个 set，334+333+333
-        assert_eq!(set_spans(1000, 400), vec![(0, 334), (334, 667), (667, 1000)]);
     }
 
     /// 后缀继承:一致就继承,没有就是训练数据,混着就说不清这份产物是哪一部分。

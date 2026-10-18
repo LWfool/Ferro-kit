@@ -106,7 +106,7 @@ fn unwrapped_frac_sum(frames: &[&Frame], n: usize, cell: &Cell) -> Option<Vec<Ve
 ///
 /// 重启拼接的 dump 常把重启点写两次（同一个 TIMESTEP），或中途改过 dump 间隔；
 /// 全原点平均把每一对帧都当成 `lag × dt` 相隔，这两种情形都会静默算错。
-pub fn check_frame_spacing(traj: &Trajectory) -> Result<()> {
+pub(crate) fn check_frame_spacing(traj: &Trajectory) -> Result<()> {
     let steps: Option<Vec<i64>> = traj.frames.iter().map(|f| f.step).collect();
     let Some(steps) = steps else { return Ok(()) };
     let Some(first_gap) = steps.get(1).map(|s1| s1 - steps[0]) else { return Ok(()) };

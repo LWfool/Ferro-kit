@@ -24,7 +24,7 @@ pub use qe::qe_structure_cards;
 pub use cp2k::cp2k_structure_sections;
 pub use cube::write_cube;
 pub use table::{write_table, TableFormat};
-pub use deepmd::{write_deepmd_npy, write_deepmd_npy_bounds, write_deepmd_npy_sets};
+pub use deepmd::{set_bounds, write_deepmd_npy, write_deepmd_npy_bounds, write_deepmd_npy_sets};
 
 use ferro_core::{Frame, Trajectory};
 use std::path::{Path, PathBuf};

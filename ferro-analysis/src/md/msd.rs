@@ -11,6 +11,7 @@
 //! Parallelism: per atom (each atom's three series are independent).
 
 use crate::check;
+use super::util::check_frame_spacing;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{PeriodicCell, Table, Trajectory};
@@ -215,6 +216,7 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
 /// - `fit_range` is invalid or selects fewer than 2 points
 pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<MsdResult> {
     params.validate()?;
+    check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
