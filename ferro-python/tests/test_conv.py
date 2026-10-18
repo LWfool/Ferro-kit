@@ -97,6 +97,16 @@ def test_qe_ecutwfc_scan_keeps_ecutrho_at_least_four_times(tmp_path, monkeypatch
     assert json.loads((out / conv.MANIFEST).read_text())["unit"] == "Ry"
 
 
+def test_conv_checks_before_reading_and_makes_output_last(vasp_cfg, tmp_path, capsys):
+    out = tmp_path / "encut"
+    scan = ["conv", "-s", "vasp", "--scan", "encut=500,600", "-o", str(out), "--mkdir"]
+    assert cli.main([*scan, "-i", str(tmp_path / "missing.vasp"), "--stride", "2", "--number", "2"]) == 1
+    assert "give stride or number" in capsys.readouterr().err, "parameters are checked before reading"
+    assert cli.main([*scan, "-i", str(tmp_path / "missing.vasp")]) == 1
+    assert "missing.vasp" in capsys.readouterr().err
+    assert not out.exists(), "-o is made only once every input has been read and generated"
+
+
 @pytest.mark.parametrize("software, scan", [("vasp", "fine-grid=2,3"), ("cp2k", "finer-grid")])
 def test_fine_grid_option_clashes_with_grid_scans(tmp_path, capsys, software, scan):
     # cp2k 的 --fine-grid 会把 off 档也打开 USE_FINER_GRID，两档成了同一份输入

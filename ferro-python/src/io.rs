@@ -25,6 +25,32 @@ fn parse_units(units: Option<&str>) -> PyResult<Option<LammpsUnits>> {
     units.map(|u| u.parse::<LammpsUnits>().map_err(pyerr)).transpose()
 }
 
+fn parse_atom_style(atom_style: Option<&str>) -> PyResult<Option<AtomStyle>> {
+    atom_style.map(|s| s.parse::<AtomStyle>().map_err(pyerr)).transpose()
+}
+
+/// Checks `units` / `atom_style` as `read` does, for `ferro-py` to call before reading the
+/// first file: a typo is reported at once, not after a long trajectory has been read.
+#[pyfunction]
+#[pyo3(name = "_check_read_options", signature = (units = None, atom_style = None))]
+fn check_read_options(units: Option<&str>, atom_style: Option<&str>) -> PyResult<()> {
+    parse_units(units)?;
+    parse_atom_style(atom_style)?;
+    Ok(())
+}
+
+/// The frame-selection checks of `Trajectory.frame_indices` that need no trajectory.
+#[pyfunction]
+#[pyo3(name = "_check_selection", signature = (start = None, end = None, stride = None, number = None))]
+fn check_selection(
+    start: Option<usize>,
+    end: Option<usize>,
+    stride: Option<usize>,
+    number: Option<usize>,
+) -> PyResult<()> {
+    crate::types::check_selection(start, end, stride, number)
+}
+
 /// Reads a structure / trajectory file, recognising its format as `ferro convert` does.
 ///
 /// Recognised by name (any case): xyz, extxyz, pdb, cif, POSCAR/CONTCAR/vasp/pos,
@@ -61,7 +87,7 @@ fn read(
     }
     let options = ReadOptions {
         units: parse_units(units)?,
-        atom_style: atom_style.map(|s| s.parse::<AtomStyle>().map_err(pyerr)).transpose()?,
+        atom_style: parse_atom_style(atom_style)?,
         type_map: type_map.map(|m| m.into_iter().collect()),
     };
     // Reading is the long part; other Python threads run meanwhile
@@ -142,5 +168,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(write, m)?)?;
     m.add_function(wrap_pyfunction!(read_output, m)?)?;
     m.add_function(wrap_pyfunction!(write_table, m)?)?;
+    m.add_function(wrap_pyfunction!(check_read_options, m)?)?;
+    m.add_function(wrap_pyfunction!(check_selection, m)?)?;
     Ok(())
 }

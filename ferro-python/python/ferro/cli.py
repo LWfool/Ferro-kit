@@ -319,9 +319,9 @@ def run_job(argv):
     if args.ensemble not in (None, "nvt") and args.software != "cp2k":
         raise UsageError(f"{args.software} jobs are NVT only; --ensemble {args.ensemble} is a CP2K option")
     type_map = parse_type_map(args.type_map) if args.type_map else None
+    check_read_args(args)
     files = expand_inputs(args.input)
     generator = generator(config.load())
-    ensure_dir(args.output, args.mkdir)
 
     built = []
     for name, traj, i, f in read_structures(files, args, type_map):
@@ -330,8 +330,16 @@ def run_job(argv):
         except (ValueError, ferro.FerroError) as e:
             raise UsageError(f"{f} frame {i}: {e}") from None
     # 先全部生成、再写：一个失败就什么都不写，不留半截的批次
+    # -o is made only now: a failed read or generation leaves no empty directory behind
+    ensure_dir(args.output, args.mkdir)
     report_batch(built, write_batch(built, args.output))
     return 0
+
+
+def check_read_args(args):
+    """The checks of `--units` / `--atom-style` and the frame selection, before the first file is read."""
+    ferro._check_read_options(args.units, args.atom_style)
+    ferro._check_selection(args.start, args.end, args.stride, args.number)
 
 
 def read_structures(files, args, type_map):
@@ -479,15 +487,17 @@ def run_conv(argv):
     if parameter in ("fine-grid", "finer-grid") and args.fine_grid is not None:
         raise UsageError(f"--fine-grid and --scan {parameter} both set the fine grid; give one")
     type_map = parse_type_map(args.type_map) if args.type_map else None
+    check_read_args(args)
     files = expand_inputs(args.input)
     generator = generator(config.load())
-    ensure_dir(args.output, args.mkdir)
     structures = [(name, traj, i) for name, traj, i, _ in read_structures(files, args, type_map)]
     try:
         built, manifest = conv.build(generator, args.software, parameter, values, structures, options,
                                      args.template)
     except (ValueError, ferro.FerroError) as e:
         raise UsageError(str(e)) from None
+    # -o is made only now, as in run_job
+    ensure_dir(args.output, args.mkdir)
     report_batch(built, write_batch(built, args.output))
     path = Path(args.output) / conv.MANIFEST
     path.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")

@@ -166,6 +166,10 @@ def test_job_mixed_compositions_write_nothing(tmp_path, job, capsys):
     (["--type-map", "1:Zr"], "is not TYPE=ELEMENT"),
     (["-s", "gaussian"], "unknown software 'gaussian'"),
     (["-t", "aimd", "--ensemble", "npt_i"], "NVT only"),
+    (["--stride", "2", "--number", "3"], "give stride or number"),
+    (["--start", "3", "--end", "1"], "start 3 is past end 1"),
+    (["--units", "lj"], "unknown LAMMPS units 'lj'"),
+    (["--atom-style", "bond"], "unknown atom style 'bond'"),
 ])
 def test_job_parameter_errors_come_first(tmp_path, job, capsys, extra, message):
     # 输入文件不存在，也应先报参数错
@@ -176,6 +180,13 @@ def test_job_parameter_errors_come_first(tmp_path, job, capsys, extra, message):
 def test_job_needs_mkdir_without_terminal(tmp_path, job, capsys):
     assert job("-i", str(NVT), "-o", str(tmp_path / "new")) == 1
     assert "--mkdir" in capsys.readouterr().err
+
+
+def test_failed_job_leaves_no_output_directory(tmp_path, job, capsys):
+    out = tmp_path / "new"
+    assert job("-i", str(tmp_path / "missing.vasp"), "-o", str(out), "--mkdir") == 1
+    assert "missing.vasp" in capsys.readouterr().err
+    assert not out.exists(), "-o is made only once every input has been read and generated"
 
 
 def test_job_errors_name_the_frame(tmp_path, job, capsys):
