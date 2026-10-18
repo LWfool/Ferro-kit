@@ -197,13 +197,24 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
 /// The format is a parameter rather than something decided here, so a caller
 /// holding a better answer than the banner — the user, typically — can say so.
 pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdStats)> {
-    match fmt {
+    let (traj, stats) = match fmt {
         AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md_with_stats(path),
         AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp_with_stats(path),
         AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
         AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
         AimdFormat::QeOut => super::qe_out::read_qe_out_with_stats(path),
+    }?;
+    // At least one frame, for every format. CP2K and QE already refuse with a more
+    // specific hint; the VASP readers returned an empty trajectory, which `collect`
+    // then joined to the run's other files (see the test below).
+    if traj.frames.is_empty() {
+        bail!(
+            "no usable frame: {} step(s), {} dropped ({} SCF, {} incomplete, {} composition)",
+            stats.n_steps, stats.n_dropped(), stats.n_scf_failed,
+            stats.n_incomplete, stats.n_bad_composition
+        );
     }
+    Ok((traj, stats))
 }
 
 /// Reads any recognised AIMD output, identifying the format by its banner.
@@ -218,6 +229,20 @@ mod tests {
 
     fn p(name: &str) -> PathBuf {
         PathBuf::from("../tests").join(name)
+    }
+
+    /// A file whose every step was dropped is an error for every format, not an empty
+    /// trajectory: `collect` skips an error, but an empty Ok joined the run's other
+    /// files and poisoned the composition check, losing the good file with it.
+    #[test]
+    fn a_file_with_no_usable_frame_is_an_error_for_vasp_too() {
+        let text = std::fs::read_to_string(p("vasp_OUTCAR_2frames")).unwrap();
+        let head: String = text.lines().take(1800).map(|l| format!("{l}\n")).collect();
+        let f = std::env::temp_dir().join(format!("ferro_outcar_no_frame_{}", std::process::id()));
+        std::fs::write(&f, head).unwrap();
+        let err = read_aimd_as(&f, AimdFormat::VaspOutcar).unwrap_err().to_string();
+        assert!(err.contains("no usable frame"), "{err}");
+        let _ = std::fs::remove_file(&f);
     }
 
     #[test]

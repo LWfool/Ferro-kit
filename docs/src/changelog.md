@@ -20,6 +20,13 @@ It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
 `ferro convert` does. Library callers of `write_cif` / `write_poscar` /
 `write_lammps_data` get an error for several frames instead.
 
+### `dataset collect`: a VASP output with no usable frame is skipped, not joined
+
+An OUTCAR or vasprun.xml whose every step was dropped (an unfinished first step,
+say) used to be read as zero frames and joined to the other files of its directory;
+the composition check then failed and the good files were lost with it. It is now
+skipped with `no usable frame`, as CP2K and QE outputs already were.
+
 ### Site labels survive a LAMMPS dump round trip
 
 Writing a dump now folds `<element>_<suffix>` site labels (`P_3`, `O_b`) into the
