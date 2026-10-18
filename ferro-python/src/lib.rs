@@ -20,15 +20,25 @@ mod jobs;
 mod structure;
 mod types;
 
-/// 把任意可显示错误（anyhow::Error / ferro_core::ChemError 等）转为 Python 异常。
+pyo3::create_exception!(
+    ferro,
+    FerroError,
+    pyo3::exceptions::PyRuntimeError,
+    "An error reported by ferro's Rust libraries (a file that cannot be read, a missing cell, ...). \
+     A subclass of RuntimeError, so `except RuntimeError` written before it existed still catches it."
+);
+
+/// Turns any displayable error (anyhow::Error, ferro_core::ChemError, ...) into a `ferro.FerroError`:
+/// its own class, so a caller catches what ferro reports without swallowing Python's own RuntimeErrors.
 pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
-    // `{:#}` 带出 anyhow 的整条 context 链；to_string() 只剩最外层的「parsing FILE」，原因丢了
-    pyo3::exceptions::PyRuntimeError::new_err(format!("{e:#}"))
+    // `{:#}` keeps anyhow's whole context chain; to_string() keeps only the outer "parsing FILE"
+    FerroError::new_err(format!("{e:#}"))
 }
 
 #[pymodule]
 fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::PyTrajectory>()?;
+    m.add("FerroError", m.py().get_type::<FerroError>())?;
     io::register(m)?;
     jobs::register(m)?;
     structure::register(m)?;

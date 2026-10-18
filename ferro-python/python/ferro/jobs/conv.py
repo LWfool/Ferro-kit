@@ -162,7 +162,7 @@ def read_result(directory, software):
     for path in candidates:
         try:
             traj, stats = ferro.read_output(str(path))
-        except RuntimeError as e:
+        except ferro.FerroError as e:
             last_error = str(e)
             continue
         if len(traj) == 0:

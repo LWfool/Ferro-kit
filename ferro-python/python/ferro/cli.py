@@ -327,7 +327,7 @@ def run_job(argv):
     for name, traj, i, f in read_structures(files, args, type_map):
         try:
             built.append((name, generator.generate(traj, i, options, args.template)))
-        except (ValueError, RuntimeError) as e:
+        except (ValueError, ferro.FerroError) as e:
             raise UsageError(f"{f} frame {i}: {e}") from None
     # 先全部生成、再写：一个失败就什么都不写，不留半截的批次
     report_batch(built, write_batch(built, args.output))
@@ -486,7 +486,7 @@ def run_conv(argv):
     try:
         built, manifest = conv.build(generator, args.software, parameter, values, structures, options,
                                      args.template)
-    except (ValueError, RuntimeError) as e:
+    except (ValueError, ferro.FerroError) as e:
         raise UsageError(str(e)) from None
     report_batch(built, write_batch(built, args.output))
     path = Path(args.output) / conv.MANIFEST
@@ -623,7 +623,7 @@ def main(argv=None):
         if command is None:
             raise UsageError(f"unknown command '{argv[0]}'; run `ferro-py -h` for the list")
         return command(argv[1:])
-    except (UsageError, ValueError, RuntimeError, OSError) as e:
+    except (UsageError, ValueError, ferro.FerroError, OSError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 

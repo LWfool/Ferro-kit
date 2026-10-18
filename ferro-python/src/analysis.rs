@@ -87,7 +87,8 @@ fn run_gr(
     };
     let r_max = r_max.unwrap_or_else(|| GrParams::with_auto_rmax(&traj.inner).r_max);
     let params = GrParams { r_min, r_max, dr, group_by };
-    calc_gr(&traj.inner, &params).map_err(pyerr)
+    // The binning is the long part; other Python threads run meanwhile
+    Python::attach(|py| py.detach(|| calc_gr(&traj.inner, &params))).map_err(pyerr)
 }
 
 /// 均方位移 MSD(t)：每个 lag 对全部时间原点平均（FFT），周期体系按 TOR 解包裹。
@@ -100,13 +101,14 @@ fn run_gr(
 #[pyfunction]
 #[pyo3(signature = (traj, dt, max_lag=None, elements=None))]
 fn msd(
+    py: Python<'_>,
     traj: &PyTrajectory,
     dt: f64,
     max_lag: Option<usize>,
     elements: Option<Vec<String>>,
 ) -> PyResult<HashMap<String, Vec<f64>>> {
     let params = MsdParams { max_lag, dt, elements, fit_range: None };
-    let res = calc_msd(&traj.inner, &params).map_err(pyerr)?;
+    let res = py.detach(|| calc_msd(&traj.inner, &params)).map_err(pyerr)?;
 
     let mut out: HashMap<String, Vec<f64>> = HashMap::new();
     out.insert("time".to_string(), res.time);

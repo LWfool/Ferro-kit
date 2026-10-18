@@ -76,3 +76,11 @@ def test_read_uses_the_same_format_table_as_convert(tmp_path):
     path = tmp_path / "ONE.XYZ"
     ferro.write(ferro.read(str(NVT)).tail(1), str(path))
     assert len(ferro.read(str(path))) == 1
+
+
+def test_errors_are_ferro_errors(tmp_path):
+    assert issubclass(ferro.FerroError, RuntimeError), "except RuntimeError must keep catching them"
+    with pytest.raises(ferro.FerroError, match="missing.xyz"):
+        ferro.read(str(tmp_path / "missing.xyz"))
+    with pytest.raises(ferro.FerroError):
+        ferro.read(str(NVT)).frame_indices(stride=0)

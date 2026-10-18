@@ -73,7 +73,7 @@ class QeInput:
     def from_str(cls, text):
         try:
             parsed, rest = ferro.parse_qe_input_parts(text)
-        except RuntimeError as e:
+        except ferro.FerroError as e:
             raise QeInputError(str(e)) from None
         namelists = {}
         for name, entries in parsed:

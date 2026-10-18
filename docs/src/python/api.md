@@ -189,7 +189,7 @@ Mean squared displacement: every lag averaged over all time origins (FFT), perio
 with the TOR scheme.  `dt` is the time between stored frames in fs (MD timestep × dump interval) and
 is required, as `--dt` is on the command line: a guessed default rescales the whole time axis
 silently.  A trajectory that carries step numbers must be evenly spaced with no repeated frames,
-otherwise a `RuntimeError` names the offending pair.  `max_lag` in frames, default half the trajectory.  Details in
+otherwise a `FerroError` names the offending pair.  `max_lag` in frames, default half the trajectory.  Details in
 [MSD](analysis/msd.md).
 
 Returned keys: `"time"` [fs], `"msd"` (total), `"msd_x"`, `"msd_y"`, `"msd_z"` (Cartesian components,
@@ -201,6 +201,15 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])
 
 ## Errors
 
-Rust errors (I/O failures, missing cells, empty trajectories) surface as Python
-exceptions (`RuntimeError` / `IndexError` / `ValueError`) with the underlying
-message preserved.
+What ferro's Rust libraries report (a file that cannot be read, a missing cell, a bad
+`units=` value, frames that are not evenly spaced) is raised as `ferro.FerroError`, with the
+whole message.  It is a subclass of `RuntimeError`, so code written as `except RuntimeError`
+still catches it; `except ferro.FerroError` catches ferro's errors without Python's own.
+
+A few argument errors raise Python's usual classes instead:
+
+| Exception | When |
+|---|---|
+| `IndexError` | a frame index past the end of the trajectory |
+| `ValueError` | `by=` other than `"element"` / `"label"`; `merge` of an empty trajectory |
+| `KeyError` | `gr_pair` asked for a pair the trajectory does not hold |

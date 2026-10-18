@@ -42,6 +42,7 @@ fn parse_units(units: Option<&str>) -> PyResult<Option<LammpsUnits>> {
 #[pyfunction]
 #[pyo3(signature = (path, units = None, atom_style = None, type_map = None))]
 fn read(
+    py: Python<'_>,
     path: &str,
     units: Option<&str>,
     atom_style: Option<&str>,
@@ -63,8 +64,9 @@ fn read(
         atom_style: atom_style.map(|s| s.parse::<AtomStyle>().map_err(pyerr)).transpose()?,
         type_map: type_map.map(|m| m.into_iter().collect()),
     };
-    let (traj, report) = ferro_io::read(p, &options).map_err(pyerr)?;
-    Python::attach(|py| emit_warnings(py, &report.warnings))?;
+    // Reading is the long part; other Python threads run meanwhile
+    let (traj, report) = py.detach(|| ferro_io::read(p, &options)).map_err(pyerr)?;
+    emit_warnings(py, &report.warnings)?;
     Ok(PyTrajectory::new(traj))
 }
 
@@ -77,8 +79,9 @@ fn read(
 /// dump needs `units` ("real" / "metal").
 #[pyfunction]
 #[pyo3(signature = (traj, path, units = None))]
-fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
-    ferro_io::write(&traj.inner, Path::new(path), parse_units(units)?).map_err(pyerr)?;
+fn write(py: Python<'_>, traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
+    let units = parse_units(units)?;
+    py.detach(|| ferro_io::write(&traj.inner, Path::new(path), units)).map_err(pyerr)?;
     Ok(())
 }
 
@@ -90,9 +93,12 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
 /// program version deserves a second look (None when it does not), and `step_range` is the
 /// `(first, last)` step number the file claims.
 #[pyfunction]
-fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
-    let (traj, s) = read_aimd_with_stats(Path::new(path)).map_err(pyerr)?;
-    Python::attach(|py| {
+fn read_output(
+    py: Python<'_>,
+    path: &str,
+) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
+    let (traj, s) = py.detach(|| read_aimd_with_stats(Path::new(path))).map_err(pyerr)?;
+    {
         let mut stats = std::collections::BTreeMap::new();
         let mut put = |k: &str, v: Py<PyAny>| { stats.insert(k.to_string(), v); };
         put("format", s.format.name().into_pyobject(py)?.into_any().unbind());
@@ -107,7 +113,7 @@ fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap
         put("step_range", s.steps.into_pyobject(py)?.into_any().unbind());
 
         Ok((PyTrajectory::new(traj), stats))
-    })
+    }
 }
 
 /// 写一张表，格式与 ferro 其他分析产物相同（`# ` 开头的元数据行、表头、数据；NaN 写成空格）。
