@@ -136,10 +136,12 @@ These return text for a calculation input; atoms are written in the order they a
 |---|---|
 | `sort_atoms(traj)` | Per frame, atoms in (Z, symbol) order → new `Trajectory` |
 | `poscar_string(traj, frame_index=0, comment="ferro")` | POSCAR text of one frame |
-| `qe_structure_cards(traj, pseudos, frame_index=0)` | pw.x `ATOMIC_SPECIES` / `CELL_PARAMETERS` / `ATOMIC_POSITIONS`; `pseudos` maps every element to a pseudopotential file name.  A frame without a cell is an error |
+| `qe_structure_cards(traj, pseudos, frame_index=0)` | pw.x `ATOMIC_SPECIES` / `CELL_PARAMETERS` / `ATOMIC_POSITIONS` as `[(card name, text)]`, each text from the card's first line; `pseudos` maps every element to a pseudopotential file name.  A frame without a cell is an error |
 | `cp2k_structure_sections(traj, frame_index=0)` | CP2K `&CELL` + `&COORD`; a frame without a cell is an error |
 | `parse_qe_input_parts(text)` | pw.x input → `([(namelist, [(key, raw value)])], cards text)`; the same parser `read` uses |
 | `write_namelists(namelists)` | The inverse: namelists back to text |
+| `interplanar_spacings(cell)` | `(d_a, d_b, d_c)` [Å] of a cell given as rows a, b, c: the spacing of the lattice planes normal to each reciprocal vector, `1 / \|b_i\|` with 2π not included.  The k-point mesh of `ferro-py job` is ⌈2π / (d_i · kspacing)⌉.  A singular cell is an error |
+| `EV_ANG3_TO_KBAR` | 1 eV/Å³ in kbar (1602.176634, CODATA 2018), the constant ferro's own pressure columns use |
 
 ## Structure operations
 

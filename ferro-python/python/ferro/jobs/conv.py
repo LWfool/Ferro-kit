@@ -15,7 +15,6 @@ from ferro.jobs.qe import QeInput
 from ferro.jobs.vasp import Incar
 
 MANIFEST = "ferro-conv.json"
-EV_A3_TO_KBAR = 1602.1766208   # 1 eV/Å³ = 160.21766208 GPa
 SWITCH = ("off", "on")
 
 
@@ -169,7 +168,7 @@ def read_result(directory, software):
             return None, None, None, "SCF not converged" if stats.get("scf_failed") else "no complete step"
         f = len(traj) - 1
         stress = traj.stress(f)
-        pressure = None if stress is None else sum(stress[i][i] for i in range(3)) / 3 * EV_A3_TO_KBAR
+        pressure = None if stress is None else sum(stress[i][i] for i in range(3)) / 3 * ferro.EV_ANG3_TO_KBAR
         return traj.energy(f), traj.forces(f), pressure, "ok"
     return None, None, None, f"unreadable ({last_error})"
 

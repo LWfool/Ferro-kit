@@ -123,3 +123,12 @@ def test_write_batch_refuses_other_composition(tmp_path):
     with pytest.raises(JobError, match="another composition"):
         write_batch(batch("Q\n"), tmp_path)
     assert (tmp_path / "POTCAR").read_text() == "P\n", "拒绝时不得改动已有的共用 POTCAR"
+
+
+def test_kmesh_rejects_a_singular_cell():
+    with pytest.raises(ferro.FerroError, match="singular"):
+        kmesh([[1, 0, 0], [2, 0, 0], [0, 0, 1]], 0.5)
+
+
+def test_pressure_conversion_is_codata_2018():
+    assert ferro.EV_ANG3_TO_KBAR == pytest.approx(1602.176634, rel=1e-12)

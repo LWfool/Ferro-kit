@@ -2,14 +2,15 @@ use std::fmt::Write as _;
 use ferro_core::Frame;
 use anyhow::{Context, Result};
 
-/// 单帧的三张结构卡片：ATOMIC_SPECIES（质量 + 赝势文件名）、CELL_PARAMETERS 与
-/// ATOMIC_POSITIONS（均为 angstrom），每张后跟一空行。`pseudos` 为 元素 → 赝势文件名，
-/// 须覆盖帧内全部元素。`ferro.jobs` 生成 QE 任务用它，QE 卡片格式只此一份
-pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result<String> {
+/// 单帧的三张结构卡片 `[(卡片名, 原文)]`：ATOMIC_SPECIES（质量 + 赝势文件名）、CELL_PARAMETERS 与
+/// ATOMIC_POSITIONS（均为 angstrom），原文从卡片首行起、以换行结尾。`pseudos` 为 元素 → 赝势文件名，
+/// 须覆盖帧内全部元素。`ferro.jobs` 生成 QE 任务用它，QE 卡片格式只此一份。
+/// Each card is returned on its own, so the caller never has to split a joined text again.
+pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result<Vec<(String, String)>> {
     // 无胞时 pw.x 拒收 ibrav = 0 的输入（审查 D-M9），宁可在写之前报错
     let cell = frame.cell.as_ref().context("QE input needs a periodic cell (CELL_PARAMETERS)")?;
-    let mut w = String::new();
 
+    let mut w = String::new();
     writeln!(w, "ATOMIC_SPECIES")?;
     for elem in frame.unique_elements() {
         let mass = ferro_core::data::elements::by_symbol(&elem)
@@ -20,14 +21,14 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
             .with_context(|| format!("no pseudopotential given for {elem}"))?;
         writeln!(w, "  {elem}  {mass:.4}  {pseudo}")?;
     }
-    writeln!(w)?;
+    let species = std::mem::take(&mut w);
 
     writeln!(w, "CELL_PARAMETERS {{angstrom}}")?;
     for i in 0..3 {
         let r = cell.matrix.row(i);
         writeln!(w, "  {:.10}  {:.10}  {:.10}", r[0], r[1], r[2])?;
     }
-    writeln!(w)?;
+    let cell_parameters = std::mem::take(&mut w);
 
     writeln!(w, "ATOMIC_POSITIONS {{angstrom}}")?;
     for atom in frame.atoms() {
@@ -35,8 +36,11 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
             atom.element,
             atom.position.x, atom.position.y, atom.position.z)?;
     }
-    writeln!(w)?;
-    Ok(w)
+    Ok(vec![
+        ("ATOMIC_SPECIES".into(), species),
+        ("CELL_PARAMETERS".into(), cell_parameters),
+        ("ATOMIC_POSITIONS".into(), w),
+    ])
 }
 
 
@@ -60,6 +64,12 @@ mod tests {
     #[test]
     fn test_cards_round_trip() {
         let cards = qe_structure_cards(&bcc(), &[("Fe".into(), "Fe.pbe.UPF".into())]).unwrap();
+        let names: Vec<&str> = cards.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["ATOMIC_SPECIES", "CELL_PARAMETERS", "ATOMIC_POSITIONS"]);
+        for (name, text) in &cards {
+            assert!(text.starts_with(name.as_str()) && text.ends_with('\n'), "{text}");
+        }
+        let cards: String = cards.iter().map(|(_, t)| format!("{t}\n")).collect();
         assert!(cards.contains("  Fe  55.8450  Fe.pbe.UPF"), "{cards}");
         let text = format!("&SYSTEM\n  ibrav = 0, nat = 2, ntyp = 1\n/\n{cards}");
         let f = read_qe_input(&tmp("bcc_cards.qe", &text)).unwrap().frames.remove(0);

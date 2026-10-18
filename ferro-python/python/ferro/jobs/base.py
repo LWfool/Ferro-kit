@@ -17,6 +17,8 @@ import ferro
 TASKS = ("sp", "opt", "aimd")
 ENSEMBLES = ("nvt", "npt_i", "npt_f")
 BUILTIN_TEMPLATES = Path(__file__).parent / "templates"
+# k-point spacing [1/Å, 2π included] when neither --kspacing nor the template gives a mesh
+DEFAULT_KSPACING = 0.5
 
 
 class JobError(ValueError):
@@ -147,17 +149,11 @@ def multiplicity(n_valence, charge, requested):
 
 
 def kmesh(cell, kspacing):
-    """Γ 中心网格：N_i = max(1, ⌈|b_i|·2π / kspacing⌉)，b_i 为倒格矢（VASP KSPACING 的定义）。"""
-    def cross(u, v):
-        return (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+    """Γ 中心网格：N_i = max(1, ⌈|b_i|·2π / kspacing⌉)，b_i 为倒格矢（VASP KSPACING 的定义）。
 
-    a1, a2, a3 = cell
-    volume = sum(x * y for x, y in zip(a1, cross(a2, a3)))
-    mesh = []
-    for u, v in ((a2, a3), (a3, a1), (a1, a2)):
-        b = math.sqrt(sum(x * x for x in cross(u, v))) / abs(volume)
-        mesh.append(max(1, math.ceil(b * 2 * math.pi / kspacing - 1e-9)))
-    return mesh
+    |b_i| = 1 / d_i, the interplanar spacing; the geometry is Rust's (`Cell::interplanar_spacings`).
+    """
+    return [max(1, math.ceil(2 * math.pi / (d * kspacing) - 1e-9)) for d in ferro.interplanar_spacings(cell)]
 
 
 class Generator:
@@ -197,6 +193,8 @@ class Generator:
         one = ferro.sort_atoms(traj.subset([frame]))
         if one.cell(0) is None or not all(one.pbc(0)):
             raise JobError("only periodic systems (a cell, periodic along a, b and c) are supported")
+        # `X<type>` is what the Rust readers name an atom whose element they do not know
+        # (ferro-io readers/lammps_dump.rs, lammps_data.rs, vasp.rs, ...)
         placeholders = sorted(e for e in one.elements() if re.fullmatch(r"X\d+", e))
         if placeholders:
             raise JobError(

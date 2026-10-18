@@ -9,9 +9,11 @@ import re
 
 import ferro
 from ferro import config as _config
-from ferro.jobs.base import Generator, InputSet, JobError, kmesh, multiplicity
+from ferro.jobs.base import DEFAULT_KSPACING, Generator, InputSet, JobError, kmesh, multiplicity
 
-RY_TIME_FS = 0.048378   # Rydberg 原子时间单位（INPUT_PW dt：1 a.u. = 4.8378e-17 s）
+# The Rydberg atomic time unit [fs], pw.x's unit of dt: 2 · AU_SEC of QE's constants.f90
+# (AU_SEC = 2.4188843265857e-17 s). QE's unit, so it lives here, not in ferro's units.rs
+RY_TIME_FS = 0.048377686531714
 
 # pw.x 的全部卡片名（INPUT_PW）。卡片在 Rust reader 里另有按名查找（readers/qe.rs
 # find_card），那里只为读结构定位三张卡片，这里为编辑切出全部卡片，用途不同，不合并
@@ -241,11 +243,10 @@ class QeGenerator(Generator):
             notes.append("nspin = 2 kept from the template, tot_magnetization = 0 for --multiplicity 1")
         notes.append(f"{n_valence - options.charge:g} electrons, multiplicity {mult}")
 
-        cards = ferro.qe_structure_cards(one, {e: p[0] for e, p in chosen.items()})
-        for block in cards.strip().split("\n\n"):
-            qe.set_card(block.split()[0], block)
+        for name, card in ferro.qe_structure_cards(one, {e: p[0] for e, p in chosen.items()}):
+            qe.set_card(name, card)
         if options.kspacing is not None or qe.card("K_POINTS") is None:
-            spacing = options.kspacing if options.kspacing is not None else 0.5
+            spacing = options.kspacing if options.kspacing is not None else DEFAULT_KSPACING
             mesh = kmesh(one.cell(0), spacing)
             qe.set_card("K_POINTS", "K_POINTS automatic\n  " + " ".join(map(str, mesh)) + "  0 0 0")
             notes.append(f"kspacing {spacing:g} -> mesh {' x '.join(map(str, mesh))}")

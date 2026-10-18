@@ -9,7 +9,7 @@ import re
 
 import ferro
 from ferro import config as _config
-from ferro.jobs.base import Generator, InputSet, JobError, kmesh, multiplicity
+from ferro.jobs.base import DEFAULT_KSPACING, Generator, InputSet, JobError, kmesh, multiplicity
 
 # VASP 官方推荐的 PBE POTCAR（vasp.at wiki「Available pseudopotentials」，potpaw.64，
 # 2026-10-16 查）。表里没有的元素用元素名本身；配置 [vasp.potcar] 逐元素覆盖
@@ -152,7 +152,9 @@ class Incar:
         return "\n".join(self._lines) + "\n"
 
 
-HBAR2_2M = 3.80998   # ħ²/2mₑ，eV·Å²
+# ħ²/2mₑ [eV·Å²]. Only the prediction of VASP's NGX below uses it, so it stays next to that
+# rule rather than in ferro's units.rs
+HBAR2_2M = 3.80998
 
 
 def _good_size(m):
@@ -263,7 +265,7 @@ class VaspGenerator(Generator):
         if options.kspacing is not None:
             incar["KSPACING"] = options.kspacing
         elif "KSPACING" not in incar:
-            incar["KSPACING"] = 0.5
+            incar["KSPACING"] = DEFAULT_KSPACING
         try:
             spacing = float(incar["KSPACING"])
         except ValueError:

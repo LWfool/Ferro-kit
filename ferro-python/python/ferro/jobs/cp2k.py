@@ -11,7 +11,7 @@ import re
 
 import ferro
 from ferro import config as _config
-from ferro.jobs.base import Generator, InputSet, JobError, kmesh, multiplicity
+from ferro.jobs.base import DEFAULT_KSPACING, Generator, InputSet, JobError, kmesh, multiplicity
 
 
 class Cp2kInputError(ValueError):
@@ -322,7 +322,7 @@ class Cp2kGenerator(Generator):
         if options.kspacing is None and dft.sections("KPOINTS"):
             notes.append("k-points: kept as written in the template")
             return
-        spacing = options.kspacing if options.kspacing is not None else 0.5
+        spacing = options.kspacing if options.kspacing is not None else DEFAULT_KSPACING
         mesh = kmesh(one.cell(0), spacing)
         dft.remove("KPOINTS")
         if mesh == [1, 1, 1]:

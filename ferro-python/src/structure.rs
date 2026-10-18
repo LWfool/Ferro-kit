@@ -1,6 +1,6 @@
 //! 结构操作绑定（超胞 / 真空层 / 合并）。
 
-use ferro_core::Trajectory;
+use ferro_core::{matrix3_from_row_major, Cell, Trajectory};
 use ferro_structure::{add_vacuum, make_supercell, merge_frames};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -54,7 +54,19 @@ fn merge(
     Ok(PyTrajectory::new(Trajectory::from_frame(merged)))
 }
 
+/// Interplanar spacings (d_a, d_b, d_c) [Å] of a cell given as rows a, b, c [Å]: the distance
+/// between the lattice planes normal to each reciprocal vector, `1 / |b_i|` (2π not included).
+/// The k-point mesh of `ferro.jobs` is built on it; a singular cell is an error.
+#[pyfunction]
+fn interplanar_spacings(cell: [[f64; 3]; 3]) -> PyResult<(f64, f64, f64)> {
+    let [a, b, c] = cell;
+    let m = matrix3_from_row_major(&[a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]]);
+    let [da, db, dc] = Cell::from_matrix(m).interplanar_spacings().map_err(pyerr)?;
+    Ok((da, db, dc))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(interplanar_spacings, m)?)?;
     m.add_function(wrap_pyfunction!(supercell, m)?)?;
     m.add_function(wrap_pyfunction!(add_vacuum_layer, m)?)?;
     m.add_function(wrap_pyfunction!(merge, m)?)?;

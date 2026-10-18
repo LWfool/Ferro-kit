@@ -78,7 +78,7 @@ def test_charge_spin_and_md(cfg, traj):
     qe = QeInput.from_str(s.files["pw.in"])
     assert (qe.get("system", "tot_charge"), qe.get("system", "nspin"), qe.get("system", "tot_magnetization")) == \
         ("1", "2", "1")
-    assert (qe.get("ions", "tempw"), qe.get("control", "nstep"), qe.get("control", "dt")) == ("1500", "10", "41.3411")
+    assert (qe.get("ions", "tempw"), qe.get("control", "nstep"), qe.get("control", "dt")) == ("1500", "10", "41.3414")
     assert qe.get("system", "nosym") == ".true.", "MD 不关对称性，热浴给的速度破坏对称后 checkallsym 中止"
     assert any("nraise = 150 steps = 300 fs" in n for n in s.notes), "nraise 以步计，dt 2 fs 下是 300 fs"
     with pytest.raises(JobError, match="NVT only"):

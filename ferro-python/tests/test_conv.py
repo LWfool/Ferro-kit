@@ -172,7 +172,7 @@ def test_compare_matches_an_independent_calculation(tmp_path):
         assert row["dE_meV_atom"] == pytest.approx((x.energy(0) - t[2].energy(0)) / n * 1000)
         assert row["dF_max_meV_A"] == pytest.approx(max(d))
         assert row["dF_rms_meV_A"] == pytest.approx(math.sqrt(sum(v * v for v in d) / n))
-        p = [sum(s[i][i] for i in range(3)) / 3 * conv.EV_A3_TO_KBAR for s in (x.stress(0), t[2].stress(0))]
+        p = [sum(s[i][i] for i in range(3)) / 3 * ferro.EV_ANG3_TO_KBAR for s in (x.stress(0), t[2].stress(0))]
         assert row["dP_kbar"] == pytest.approx(p[0] - p[1])
     assert rows[2]["within"] == "yes" and rows[2]["dF_rms_meV_A"] == 0, "参考档与自己比偏差为 0"
     rows, ref = conv.compare(manifest, tmp_path, ref=400.0)
@@ -203,7 +203,7 @@ def test_qe_outputs_are_read_back(tmp_path):
     assert rows[0]["status"].startswith("unreadable") and "SCF not converged" in rows[0]["status"]
     sp, spin = (ferro.read_output(str(FIXTURES / n))[0] for n in ("qe75_sp.out", "qe75_sp_spin.out"))
     assert rows[1]["dE_meV_atom"] == pytest.approx((spin.energy(0) - sp.energy(0)) / 6 * 1000)
-    p = sum(sp.stress(0)[i][i] for i in range(3)) / 3 * conv.EV_A3_TO_KBAR
+    p = sum(sp.stress(0)[i][i] for i in range(3)) / 3 * ferro.EV_ANG3_TO_KBAR
     assert rows[2]["pressure_kbar"] == pytest.approx(-15.51, abs=0.01), "与 pw.out 打印的 P 一致：不翻号"
     assert rows[2]["pressure_kbar"] == pytest.approx(p)
 

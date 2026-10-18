@@ -82,7 +82,9 @@ def test_qe_cards_and_namelists_round_trip(tmp_path, nvt):
     one = ferro.sort_atoms(nvt.subset([0]))
     with pytest.raises(RuntimeError, match="no pseudopotential given"):
         ferro.qe_structure_cards(one, {"O": "O.UPF"})
-    cards = ferro.qe_structure_cards(one, {e: f"{e}.pbe.UPF" for e in one.elements()})
+    named = ferro.qe_structure_cards(one, {e: f"{e}.pbe.UPF" for e in one.elements()})
+    assert [n for n, _ in named] == ["ATOMIC_SPECIES", "CELL_PARAMETERS", "ATOMIC_POSITIONS"]
+    cards = "\n".join(text for _, text in named)
     namelists = [("control", [("calculation", "'scf'")]),
                  ("system", [("ibrav", "0"), ("nat", str(one.n_atoms())), ("ntyp", "3")])]
     path = tmp_path / "pw.in"

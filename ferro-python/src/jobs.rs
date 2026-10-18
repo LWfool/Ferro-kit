@@ -28,14 +28,14 @@ fn poscar_string(traj: &PyTrajectory, frame_index: usize, comment: &str) -> PyRe
     ferro_io::poscar_string(frame(traj, frame_index)?, comment).map_err(pyerr)
 }
 
-/// 指定帧的 QE 三张结构卡片；`pseudos` 为 元素 → 赝势文件名，须覆盖全部元素。
+/// 指定帧的 QE 三张结构卡片 `[(卡片名, 原文)]`；`pseudos` 为 元素 → 赝势文件名，须覆盖全部元素。
 #[pyfunction]
 #[pyo3(signature = (traj, pseudos, frame_index = 0))]
 fn qe_structure_cards(
     traj: &PyTrajectory,
     pseudos: std::collections::BTreeMap<String, String>,
     frame_index: usize,
-) -> PyResult<String> {
+) -> PyResult<Vec<(String, String)>> {
     let pseudos: Vec<(String, String)> = pseudos.into_iter().collect();
     ferro_io::qe_structure_cards(frame(traj, frame_index)?, &pseudos).map_err(pyerr)
 }

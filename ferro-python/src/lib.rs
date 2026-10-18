@@ -45,5 +45,7 @@ fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     analysis::register(m)?;
     doc::register(m)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    // The one pressure conversion the Python side needs, from ferro's units (CODATA 2018)
+    m.add("EV_ANG3_TO_KBAR", ferro_core::units::EV_ANG3_TO_GPA * ferro_core::units::GPA_TO_KBAR)?;
     Ok(())
 }

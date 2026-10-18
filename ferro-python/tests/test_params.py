@@ -111,9 +111,8 @@ def test_qe_structure_cards_drop_in(tmp_path):
     qe = QeInput.from_str(PW)
     qe.set("system", "nat", t.n_atoms())
     qe.set("system", "ntyp", len(t.elements()))
-    cards = ferro.qe_structure_cards(t, {e: f"{e}.UPF" for e in t.elements()})
-    for block in cards.strip().split("\n\n"):
-        qe.set_card(block.split()[0], block)
+    for name, card in ferro.qe_structure_cards(t, {e: f"{e}.UPF" for e in t.elements()}):
+        qe.set_card(name, card)
     path = tmp_path / "pw.in"
     path.write_text(qe.to_str())
     assert ferro.read(str(path)).symbols(0) == t.symbols(0), "替换进模板的结构卡片可被读回"

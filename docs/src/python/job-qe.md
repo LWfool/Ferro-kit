@@ -47,7 +47,7 @@ The functional is the one of the UPF files: the template does not set
 | `&CELL` | `cell_dynamics`, `press_conv_thr` | `opt --vary-cell` and the template has no `&CELL` | `'bfgs'`, 0.5 kbar |
 | `&IONS` | `tempw` | `aimd --temperature` | K |
 | `&CONTROL` | `nstep` | `aimd --steps` | steps |
-| `&CONTROL` | `dt` | `aimd --timestep` | fs ÷ 0.048378 (Rydberg atomic units: 1 fs = 20.67) |
+| `&CONTROL` | `dt` | `aimd --timestep` | fs ÷ 0.0483776865 (the Rydberg atomic time unit of QE's `constants.f90`: 1 fs = 20.6707) |
 
 The cell always comes from `CELL_PARAMETERS`, which is why `ibrav` is forced to
 0: with any other `ibrav`, pw.x builds the cell from `celldm` and ignores the
