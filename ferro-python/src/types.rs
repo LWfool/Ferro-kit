@@ -115,10 +115,10 @@ impl PyTrajectory {
         }))
     }
 
-    /// 指定帧三个方向的周期性 (x, y, z)。
+    /// 指定帧沿三个晶格矢量的周期性 (a, b, c)。
     fn pbc(&self, frame: usize) -> PyResult<(bool, bool, bool)> {
-        let [x, y, z] = self.frame_ref(frame)?.pbc;
-        Ok((x, y, z))
+        let [a, b, c] = self.frame_ref(frame)?.pbc;
+        Ok((a, b, c))
     }
 
     /// 仅保留尾部 `n` 帧的新轨迹。

@@ -1,4 +1,4 @@
-"""``ferro-py``：ferro 的 Python 命令行。子命令 ``config``、``job``，以后加 ``plot``。
+"""``ferro-py``：ferro 的 Python 命令行。子命令 ``job``、``conv``、``config``、``doc``，以后加 ``plot``。
 
 帮助页与 Rust 的 ``ferro`` 同为五段（用途 / Parameters / Output / Examples /
 Full documentation），手写在各子命令旁；``tests/test_cli.py`` 核对帮助页与
@@ -24,7 +24,7 @@ Usage:
 Commands:
   job           Generate VASP / QE / CP2K inputs (sp, opt, aimd) from structures
   job template  Write a built-in template to edit and pass back with --template
-  conv          Generate a convergence test (VASP fine grid / ENCUT, CP2K cutoffs)
+  conv          Generate a convergence test (VASP / CP2K / QE cutoffs and grids)
   conv analyze  Compare its single points: energy, pressure, forces
   config init   Write a commented configuration template
   doc           Read the manual (`ferro-py doc job vasp`)
@@ -373,9 +373,9 @@ Parameters:
   -s, --software S      vasp | cp2k | qe  (required)
       --scan P[=VALUES] The parameter and its values, START:STOP:STEP or a,b,c  (required)
                         vasp: encut [eV], fine-grid [x NG]
-                        cp2k: cutoff [Ry], rel-cutoff [Ry], finer-grid, accurate-xcint
+                        cp2k: cutoff [Ry], rel-cutoff [Ry], and the switches
+                        finer-grid, accurate-xcint (off and on, no values)
                         qe: ecutwfc [Ry]
-                        (the last two are switches: off and on, no values)
   -i, --input FILE      Structure file(s), any format ferro reads; quoted globs allowed
   -o, --output DIR      Directory receiving the test  (required)
       --template FILE   sp template instead of the configured / built-in one
@@ -411,9 +411,10 @@ CONV_ANALYZE_HELP = """\
 ferro-py conv analyze — Compare the single points of a convergence test
 
   Reads every job's output (VASP OUTCAR / vasprun.xml; CP2K cp2k.out, *.out or
-  *.log) and compares each value with the reference, frame by frame: energy per
-  atom, pressure, the largest per-atom force difference and the RMS over atoms of
-  |F_i - F_i(ref)|. The thresholds only mark rows; they decide nothing.
+  *.log; QE pw.out or *.out) and compares each value with the reference, frame by
+  frame: energy per atom, pressure, the largest per-atom force difference and the
+  RMS over atoms of |F_i - F_i(ref)|. The thresholds only mark rows; they decide
+  nothing.
 
 Parameters:
   DIR                   Directory written by `ferro-py conv`  (required)

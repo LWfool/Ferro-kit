@@ -112,7 +112,7 @@ and `POSCAR` gives `POSCAR_0000`, … (indices padded to at least four digits).
 
 ### `read_output(path) -> (Trajectory, dict)`
 
-Reads a calculation output — VASP `OUTCAR` / `vasprun.xml`, CP2K single-point or MD output —
+Reads a calculation output — VASP `OUTCAR` / `vasprun.xml`, CP2K single-point or MD output, pw.x output —
 recognised by its content, as `ferro dataset collect` does.  Frames carry energy, forces and
 stress.  Frames that were dropped (SCF not converged, incomplete) are not in the trajectory; the
 dict counts them (`scf_failed`, `incomplete`, `no_cell`, …) next to `format`, `steps` (the
@@ -192,7 +192,7 @@ with the TOR scheme.  `dt` is the time between stored frames in fs (MD timestep 
 is required, as `--dt` is on the command line: a guessed default rescales the whole time axis
 silently.  A trajectory that carries step numbers must be evenly spaced with no repeated frames,
 otherwise a `FerroError` names the offending pair.  `max_lag` in frames, default half the trajectory.  Details in
-[MSD](analysis/msd.md).
+[MSD](../analysis/msd.md).
 
 Returned keys: `"time"` [fs], `"msd"` (total), `"msd_x"`, `"msd_y"`, `"msd_z"` (Cartesian components,
 which add up to the total).
