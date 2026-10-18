@@ -238,7 +238,7 @@ pub fn bader_weight(chg: &ChargeGrid, frame: &Frame, params: &BaderParams) -> Ba
         let vp = nalgebra::Vector3::new(volpos_car[v][0], volpos_car[v][1], volpos_car[v][2]);
         let mut best_j = 0usize;
         let mut best_d = f64::MAX;
-        for (j, atom) in frame.atoms.iter().enumerate() {
+        for (j, atom) in frame.atoms().enumerate() {
             let dv = cell.minimum_image(vp - atom.position).expect("cell is non-singular");
             let d = dv.norm();
             if d < best_d {

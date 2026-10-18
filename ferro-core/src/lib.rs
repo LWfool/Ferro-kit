@@ -25,7 +25,7 @@ pub mod cluster;
 
 // top-level re-exports for downstream crates
 pub use array_order::{matrix3_from_row_major, matrix3_row_major};
-pub use atom::Atom;
+pub use atom::{Atom, AtomRef, Site};
 pub use cell::Cell;
 pub use periodic::{NeighborList, PeriodicCell};
 pub use charge_grid::ChargeGrid;

@@ -118,11 +118,11 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
     // 没有合理的折回方式，报错而不是让两块重叠
     const WRAP_TOL: f64 = 1e-10;
     let moved = |frame: &Frame, cell: &Cell, t: Vector3<f64>, name: &str| -> Result<Vec<Atom>> {
-        let mut atoms = Vec::with_capacity(frame.atoms.len());
+        let mut atoms = Vec::with_capacity(frame.n_atoms());
         let mut stranded = 0usize;
-        for atom in &frame.atoms {
+        for atom in frame.atoms() {
             let f = cell.cartesian_to_fractional(atom.position - cell.origin)?;
-            let mut a = atom.clone();
+            let mut a = atom.to_atom();
             for i in 0..3 {
                 if f[i] >= -WRAP_TOL && f[i] < 1.0 + WRAP_TOL { continue; }
                 if frame.pbc[i] {
@@ -148,20 +148,10 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
     let mut atoms = moved(frame_a, cell_a, shift_a, "frame_a")?;
     atoms.extend(moved(frame_b, cell_b, shift_b, "frame_b")?);
 
-    Ok(Frame {
-        atoms,
-        cell: Some(Cell::from_matrix(new_m)),
-        pbc: frame_a.pbc,
-        charge: frame_a.charge + frame_b.charge,
-        multiplicity: 1,
-        bonds: None,
-        energy: None,
-        forces: None,
-        stress: None,
-        velocities: None,
-        temperature: None,
-        step: None,
-    })
+    let mut frame = Frame::with_cell(Cell::from_matrix(new_m), frame_a.pbc);
+    frame.set_atoms(atoms);
+    frame.charge = frame_a.charge + frame_b.charge;
+    Ok(frame)
 }
 
 #[cfg(test)]
@@ -195,10 +185,10 @@ mod tests {
         let b = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
         let out = merge_frames(&a, &b, "z", 2.0).unwrap();
         // frame_a 原子位置不变
-        let pos_a = out.atoms[0].position;
+        let pos_a = out.positions()[0];
         assert!((pos_a.z - 0.0).abs() < 1e-10);
         // frame_b 原子 z 平移 10 + 2 = 12
-        let pos_b = out.atoms[1].position;
+        let pos_b = out.positions()[1];
         assert!((pos_b.z - 12.0).abs() < 1e-10);
     }
 
@@ -208,7 +198,7 @@ mod tests {
         let a = cubic_frame(10.0, vec![("Fe", 0.0, 0.0, 0.0)]);
         let b = cubic_frame(6.0, vec![("O", 0.0, 0.0, 0.0)]);
         let out = merge_frames(&a, &b, "z", 0.0).unwrap();
-        let pos_b = out.atoms[1].position;
+        let pos_b = out.positions()[1];
         // x, y 居中偏移 2
         assert!((pos_b.x - 2.0).abs() < 1e-10);
         assert!((pos_b.y - 2.0).abs() < 1e-10);
@@ -226,7 +216,7 @@ mod tests {
         assert!((lb - 10.0).abs() < 1e-10);
         assert!((lc - 10.0).abs() < 1e-10);
         // frame_b 原子 x 平移 10 + 3 = 13
-        let pos_b = out.atoms[1].position;
+        let pos_b = out.positions()[1];
         assert!((pos_b.x - 13.0).abs() < 1e-10);
     }
 
@@ -237,7 +227,7 @@ mod tests {
         // 分数 z = -0.9，折回后 0.1：应落在 B 块底部 12 + 1，而不是 12 − 9 = 3（A 块内部）
         let b = cubic_frame(10.0, vec![("O", 5.0, 5.0, -9.0)]);
         let out = merge_frames(&a, &b, "z", 2.0).unwrap();
-        assert!((out.atoms[1].position.z - 13.0).abs() < 1e-10, "实得 {}", out.atoms[1].position.z);
+        assert!((out.positions()[1].z - 13.0).abs() < 1e-10, "实得 {}", out.positions()[1].z);
     }
 
     // LAMMPS 的 lo ≠ 0：块在 [lo, lo+L)，按盒子的真实位置放
@@ -248,8 +238,8 @@ mod tests {
         a.cell.as_mut().unwrap().origin = Vector3::new(0.0, 0.0, 1.82);
         b.cell.as_mut().unwrap().origin = Vector3::new(0.0, 0.0, 1.82);
         let out = merge_frames(&a, &b, "z", 2.0).unwrap();
-        assert!((out.atoms[0].position.z - 0.18).abs() < 1e-10, "A：实得 {}", out.atoms[0].position.z);
-        assert!((out.atoms[1].position.z - 12.1).abs() < 1e-10, "B：实得 {}", out.atoms[1].position.z);
+        assert!((out.positions()[0].z - 0.18).abs() < 1e-10, "A：实得 {}", out.positions()[0].z);
+        assert!((out.positions()[1].z - 12.1).abs() < 1e-10, "B：实得 {}", out.positions()[1].z);
     }
 
     // 非周期方向越出盒子的原子没有合理的折回方式，报错而不是让两块重叠
@@ -266,7 +256,7 @@ mod tests {
         let a = cubic_frame(10.0, vec![("Fe", 0.0, 0.0, 0.0), ("Fe", 1.0, 0.0, 0.0)]);
         let b = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
         let out = merge_frames(&a, &b, "z", 1.0).unwrap();
-        assert_eq!(out.atoms.len(), 3);
+        assert_eq!(out.n_atoms(), 3);
     }
 
     #[test]
@@ -293,9 +283,9 @@ mod tests {
         b.add_atom(Atom::new("O", Vector3::zeros()));
         let out = merge_frames(&a, &b, "z", 1.0).unwrap();
         assert!(out.energy.is_none());
-        assert!(out.forces.is_none());
+        assert!(out.forces().is_none());
         assert!(out.stress.is_none());
-        assert!(out.velocities.is_none());
+        assert!(out.velocities().is_none());
     }
 
     #[test]
@@ -347,9 +337,9 @@ mod tests {
         let a = cubic_frame(6.0, vec![("Fe", 0.0, 0.0, 0.0)]);
         let b = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
         let out = merge_frames(&a, &b, "z", 0.0).unwrap();
-        let pa = out.atoms[0].position;
+        let pa = out.positions()[0];
         assert!((pa - Vector3::new(2.0, 2.0, 0.0)).norm() < 1e-10, "A 应在面内居中，实际 {pa:?}");
-        let pb = out.atoms[1].position;
+        let pb = out.positions()[1];
         assert!((pb - Vector3::new(0.0, 0.0, 6.0)).norm() < 1e-10, "B 应紧贴 A 顶面，实际 {pb:?}");
     }
 
@@ -360,7 +350,7 @@ mod tests {
         let b = frame_rows([10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 3.0, 0.0, 10.0], "O");
         let out = merge_frames(&a, &b, "z", 2.0).unwrap();
         // B 原点在它的底面上：底面应在 A 顶面（z=10）之上 2 Å
-        let pb = out.atoms[1].position;
+        let pb = out.positions()[1];
         assert!((pb.z - 12.0).abs() < 1e-10, "B 底面应在 z = 12，实际 {pb:?}");
         // 面内按胞中心居中：B 中心 x = (10+3)/2 = 6.5，挪到 5
         assert!((pb.x + 1.5).abs() < 1e-10 && pb.y.abs() < 1e-10, "B 应按胞中心居中，实际 {pb:?}");
@@ -377,7 +367,7 @@ mod tests {
         // 拼接矢量沿 A 的方向
         let c = out.cell.as_ref().unwrap().matrix.row(2).transpose();
         assert!((c - Vector3::new(6.6, 0.0, 22.0)).norm() < 1e-10, "实际 {c:?}");
-        let pb = out.atoms[1].position;
+        let pb = out.positions()[1];
         assert!((pb.z - 12.0).abs() < 1e-10, "实际 {pb:?}");
     }
 

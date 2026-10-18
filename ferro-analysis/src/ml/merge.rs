@@ -51,37 +51,24 @@ pub fn canonical_order(elements: &[String]) -> Vec<usize> {
 /// frames with the same element sequence reuse the previous permutation.
 pub fn sort_atoms(traj: &Trajectory) -> Trajectory {
     let mut out = traj.clone();
-    // (元素序列, 置换, 反向映射)；帧间元素序列不变时复用，不必每帧重排
-    let mut cached: Option<(Vec<String>, Vec<usize>, Vec<usize>)> = None;
+    // (element sequence, permutation), reused while consecutive frames keep the sequence
+    let mut cached: Option<(Vec<String>, Vec<usize>)> = None;
     for f in &mut out.frames {
-        let elements: Vec<String> = f.atoms.iter().map(|a| a.element.clone()).collect();
-        if cached.as_ref().is_none_or(|(e, _, _)| *e != elements) {
+        let elements: Vec<String> = f.atoms().map(|a| a.element.to_string()).collect();
+        if cached.as_ref().is_none_or(|(e, _)| *e != elements) {
             let order = canonical_order(&elements);
-            // bonds 存的是原子编号，跟着置换走要的是反向映射：old -> new
-            let mut new_of = vec![0usize; order.len()];
-            for (new, &old) in order.iter().enumerate() {
-                new_of[old] = new;
-            }
-            cached = Some((elements, order, new_of));
+            cached = Some((elements, order));
         }
-        let (_, order, new_of) = cached.as_ref().expect("cached above");
+        let (_, order) = cached.as_ref().expect("cached above");
         if order.iter().enumerate().all(|(i, &j)| i == j) {
             continue;
         }
-        let atoms: Vec<_> = order.iter().map(|&i| f.atoms[i].clone()).collect();
-        f.atoms = atoms;
-        // 逐原子的旁路数组必须跟着同一个置换走；能量/盒子/应力与原子编号无关。
-        // Frame 上共三个：forces、velocities 与 bonds —— 漏掉任何一个都是静默的
-        if let Some(forces) = &f.forces {
-            f.forces = Some(order.iter().map(|&i| forces[i]).collect());
-        }
-        if let Some(velocities) = &f.velocities {
-            f.velocities = Some(order.iter().map(|&i| velocities[i]).collect());
-        }
-        if let Some(bonds) = &f.bonds {
-            f.bonds = Some(bonds.iter().map(|&(a, b)| (new_of[a], new_of[b])).collect());
-        }
+        // Frame::permuted moves forces, velocities, charges and bonds with the atoms;
+        // energy, cell and stress do not depend on atom numbering
+        *f = f.permuted(order);
     }
+    // Each permuted frame got a site table of its own; equal ones are shared again
+    out.share_sites();
     out
 }
 
@@ -90,7 +77,7 @@ pub fn composition_key(traj: &Trajectory) -> Vec<String> {
     let mut v: Vec<String> = traj
         .frames
         .first()
-        .map(|f| f.atoms.iter().map(|a| a.element.clone()).collect())
+        .map(|f| f.atoms().map(|a| a.element.to_string()).collect())
         .unwrap_or_default();
     let order = canonical_order(&v);
     v = order.into_iter().map(|i| v[i].clone()).collect();
@@ -112,8 +99,8 @@ pub fn composition_key(traj: &Trajectory) -> Vec<String> {
 pub fn group_name(traj: &Trajectory) -> String {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     if let Some(f) = traj.frames.first() {
-        for a in &f.atoms {
-            *counts.entry(a.element.clone()).or_default() += 1;
+        for a in f.atoms() {
+            *counts.entry(a.element.to_string()).or_default() += 1;
         }
     }
     let n: usize = counts.values().sum();
@@ -142,16 +129,16 @@ mod tests {
     fn traj_of(elements: &[&str]) -> Trajectory {
         let cell = Cell::from_matrix(Matrix3::identity() * 10.0);
         let mut f = Frame::with_cell(cell, [true; 3]);
-        f.atoms = elements
+        f.set_atoms(elements
             .iter()
             .enumerate()
             .map(|(i, e)| Atom::new(*e, Vector3::new(i as f64, 0.0, 0.0)))
-            .collect();
-        f.forces = Some(
+            );
+        f.set_forces(Some(
             (0..elements.len())
                 .map(|i| Vector3::new(i as f64 * 0.1, 0.0, 0.0))
                 .collect(),
-        );
+        )).unwrap();
         Trajectory { frames: vec![f], metadata: Default::default() }
     }
 
@@ -167,12 +154,12 @@ mod tests {
         let t = traj_of(&["Zn", "O"]);
         let s = sort_atoms(&t);
         let f = &s.frames[0];
-        assert_eq!(f.atoms[0].element, "O");
+        assert_eq!(f.element(0), "O");
         // O 原来在索引 1，位置与力都必须跟过来
-        assert_eq!(f.atoms[0].position.x, 1.0);
-        assert!((f.forces.as_ref().unwrap()[0].x - 0.1).abs() < 1e-12);
-        assert_eq!(f.atoms[1].element, "Zn");
-        assert_eq!(f.atoms[1].position.x, 0.0);
+        assert_eq!(f.positions()[0].x, 1.0);
+        assert!((f.forces().unwrap()[0].x - 0.1).abs() < 1e-12);
+        assert_eq!(f.element(1), "Zn");
+        assert_eq!(f.positions()[1].x, 0.0);
     }
 
     /// Velocities and bonds are per-atom too, and were once left behind.
@@ -183,16 +170,16 @@ mod tests {
     fn sorting_carries_velocities_and_bonds_too() {
         let mut t = traj_of(&["Zn", "O", "Al"]);
         let f = &mut t.frames[0];
-        f.velocities = Some(
+        f.set_velocities(Some(
             (0..3).map(|i| Vector3::new(i as f64 * 10.0, 0.0, 0.0)).collect(),
-        );
+        )).unwrap();
         // Zn(0)-O(1) 与 O(1)-Al(2)；排序后 O->0, Al->1, Zn->2
         f.bonds = Some(vec![(0, 1), (1, 2)]);
 
         let s = sort_atoms(&t);
         let f = &s.frames[0];
-        let v = f.velocities.as_ref().unwrap();
-        assert_eq!(f.atoms[0].element, "O");
+        let v = f.velocities().unwrap();
+        assert_eq!(f.element(0), "O");
         assert!((v[0].x - 10.0).abs() < 1e-12, "O 的速度必须跟过来");
         assert!((v[2].x - 0.0).abs() < 1e-12, "Zn 的速度也是");
         // 键连的是原子，不是位置：两端都要重编号。端点的先后不动 —— 规范成
@@ -207,17 +194,17 @@ mod tests {
         let mut t = traj_of(&["Zn", "O"]);
         let mut f1 = traj_of(&["O", "Zn"]).frames.remove(0);
         // 第 1 帧同一构型、原子倒序：O 在 0.1，Zn 在 0.0，力各随其原子
-        f1.atoms[0].position.x = 1.0;
-        f1.atoms[1].position.x = 0.0;
-        f1.forces = Some(vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)]);
+        f1.positions_mut()[0].x = 1.0;
+        f1.positions_mut()[1].x = 0.0;
+        f1.set_forces(Some(vec![Vector3::new(0.1, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0)])).unwrap();
         t.frames.push(f1);
 
         let s = sort_atoms(&t);
         for (k, f) in s.frames.iter().enumerate() {
-            let elems: Vec<&str> = f.atoms.iter().map(|a| a.element.as_str()).collect();
+            let elems: Vec<&str> = f.atoms().map(|a| a.element).collect();
             assert_eq!(elems, vec!["O", "Zn"], "第 {k} 帧未排成规范序");
-            assert_eq!(f.atoms[0].position.x, 1.0, "第 {k} 帧 O 的坐标没跟过来");
-            assert!((f.forces.as_ref().unwrap()[0].x - 0.1).abs() < 1e-12, "第 {k} 帧 O 的力没跟过来");
+            assert_eq!(f.positions()[0].x, 1.0, "第 {k} 帧 O 的坐标没跟过来");
+            assert!((f.forces().unwrap()[0].x - 0.1).abs() < 1e-12, "第 {k} 帧 O 的力没跟过来");
         }
     }
 
@@ -225,8 +212,8 @@ mod tests {
     fn an_already_sorted_system_is_untouched() {
         let t = traj_of(&["O", "O", "Al"]);
         let s = sort_atoms(&t);
-        let before: Vec<f64> = t.frames[0].atoms.iter().map(|a| a.position.x).collect();
-        let after: Vec<f64> = s.frames[0].atoms.iter().map(|a| a.position.x).collect();
+        let before: Vec<f64> = t.frames[0].atoms().map(|a| a.position.x).collect();
+        let after: Vec<f64> = s.frames[0].atoms().map(|a| a.position.x).collect();
         assert_eq!(before, after);
     }
 

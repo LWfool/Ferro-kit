@@ -218,14 +218,14 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 
     let total_hist: BTreeMap<String, Vec<u64>> = traj.frames.par_iter().zip(cells.par_iter())
         .fold(init, |mut h, (frame, pc)| {
-            let n = frame.atoms.len();
+            let n = frame.n_atoms();
 
             // 每帧构建 linked-cell list，将邻居搜索从 O(N²) 降至 O(N)
-            let cl = NeighborList::build(&frame.positions(), pc, max_rcut)
+            let cl = NeighborList::build(frame.positions(), pc, max_rcut)
                 .expect("checked against every frame's minimum-image bound at the entry");
 
             for b_idx in 0..n {
-                let b_elem = group_key(&frame.atoms[b_idx], by);
+                let b_elem = group_key(frame.atom(b_idx), by);
 
                 // 只搜索 27 个相邻 cell，平均 ~30 个原子而非全部 N 个
                 let neighbors = cl.neighbors_of(b_idx);
@@ -237,8 +237,8 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                         let (a_idx, a_dist, a_vec) = neighbors[ai];
                         let (c_idx, c_dist, c_vec) = neighbors[ci];
 
-                        let a_elem = group_key(&frame.atoms[a_idx], by);
-                        let c_elem = group_key(&frame.atoms[c_idx], by);
+                        let a_elem = group_key(frame.atom(a_idx), by);
+                        let c_elem = group_key(frame.atom(c_idx), by);
 
                         // 规范排序：低 Z 端 → rcut_ab，高 Z 端 → rcut_bc
                         // 相同元素两端使用 min(rcut_ab, rcut_bc)
@@ -325,7 +325,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     }
 
     Ok(AngleResult {
-        angle, hist: total_hist, stats, n_frames, n_atoms: first_frame.atoms.len(),
+        angle, hist: total_hist, stats, n_frames, n_atoms: first_frame.n_atoms(),
         params: params.clone(), elements,
     })
 }

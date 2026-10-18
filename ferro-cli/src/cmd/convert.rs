@@ -339,8 +339,8 @@ mod tests {
             let mut f = Frame::with_cell(Cell::from_matrix(Matrix3::identity() * 10.0), [true; 3]);
             // 坐标与力都由元素决定，排序后能逐原子核对是否跟对了
             let x = |e: &str| match e { "O" => 1.0, "Al" => 2.0, "P" => 3.0, _ => 4.0 };
-            f.atoms = elements.iter().map(|e| Atom::new(*e, Vector3::new(x(e), 0.5, 0.5))).collect();
-            f.forces = Some(elements.iter().map(|e| Vector3::new(-x(e), 0.0, 0.0)).collect());
+            f.set_atoms(elements.iter().map(|e| Atom::new(*e, Vector3::new(x(e), 0.5, 0.5))));
+            f.set_forces(Some(elements.iter().map(|e| Vector3::new(-x(e), 0.0, 0.0)).collect())).unwrap();
             f
         };
         let dir = std::env::temp_dir().join(format!("ferro_convert_sort_{}", std::process::id()));
@@ -357,10 +357,10 @@ mod tests {
         run(&cmd(input.to_str(), output.to_str())).unwrap();
         let back = read_trajectory(&output, &ReadArgs::default()).unwrap();
         for (k, f) in back.frames.iter().enumerate() {
-            let order: Vec<&str> = f.atoms.iter().map(|a| a.element.as_str()).collect();
+            let order: Vec<&str> = f.atoms().map(|a| a.element).collect();
             assert_eq!(order, ["O", "Al", "P", "Zn"], "第 {k} 帧应按原子序数排");
-            let forces = f.forces.as_ref().expect("力应写出");
-            for (a, fv) in f.atoms.iter().zip(forces) {
+            let forces = f.forces().expect("力应写出");
+            for (a, fv) in f.atoms().zip(forces) {
                 assert_eq!(fv.x, -a.position.x, "第 {k} 帧 {} 的力没跟着原子走", a.element);
             }
         }

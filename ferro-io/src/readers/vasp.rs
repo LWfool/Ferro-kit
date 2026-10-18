@@ -118,7 +118,7 @@ fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<String>)> {
             .map(|v| Vector3::new(v[0], v[1], v[2]))
             .collect();
         if vels.len() == total {
-            frame.velocities = Some(vels);
+            frame.set_velocities(Some(vels))?;
         } else {
             warnings.push(format!(
                 "warning: velocity block has {} of {total} lines; velocities dropped",
@@ -178,7 +178,7 @@ Direct
         // 第 2 个原子在分数坐标 (0.5,0.5,0.5) = 笛卡尔 (1.435,…)；Cartesian 读则是 (0.5,…)
         let x1 = |mode: &str| {
             let text = BCC_FE.replace("Direct\n", &format!("{mode}\n"));
-            parse_traj(&text).unwrap().frames[0].atoms[1].position.x
+            parse_traj(&text).unwrap().frames[0].positions()[1].x
         };
         for mode in ["Direct", "direct", "Fractional", ""] {
             assert!((x1(mode) - 1.435).abs() < 1e-9, "{mode:?} 应按 Direct 读");
@@ -192,7 +192,7 @@ Direct
     fn test_element_line_across_vasp_versions() {
         let elems = |line: &str| -> Vec<String> {
             let text = BCC_FE.replace("   Fe\n   2\n", line);
-            parse_traj(&text).unwrap().frames[0].atoms.iter().map(|a| a.element.clone()).collect()
+            parse_traj(&text).unwrap().frames[0].atoms().map(|a| a.element.to_string()).collect()
         };
         // 5.4.4 等旧版：纯元素符号
         assert_eq!(elems("Fe Co\n1 1\n"), ["Fe", "Co"]);
@@ -232,7 +232,7 @@ Direct
 
     fn vel_x(text: &str) -> Option<Vec<f64>> {
         let traj = parse_traj(text).unwrap();
-        traj.first().unwrap().velocities.as_ref().map(|v| v.iter().map(|v| v.x).collect())
+        traj.first().unwrap().velocities().map(|v| v.iter().map(|v| v.x).collect())
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::path::Path;
 use crate::readers::lammps_dump::LammpsUnits;
-use ferro_core::{Atom, Trajectory};
+use ferro_core::{AtomRef, Trajectory};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -20,10 +20,10 @@ const EV_TO_KCAL: f64 = 1.0 / 0.04336410; // eV/Å → kcal/(mol·Å)
 /// A label that does not start with `<element>_` is **not** folded: CIF/CP2K/QE site
 /// names (`O1`, `Fe1`) would otherwise land in the element column and read back as
 /// the bogus element `O1`.
-pub fn dump_name(atom: &Atom) -> &str {
-    match atom.label.as_deref() {
-        Some(label) if label.strip_prefix(atom.element.as_str()).is_some_and(|s| s.starts_with('_')) => label,
-        _ => &atom.element,
+pub fn dump_name<'a>(atom: AtomRef<'a>) -> &'a str {
+    match atom.label {
+        Some(label) if label.strip_prefix(atom.element).is_some_and(|s| s.starts_with('_')) => label,
+        _ => atom.element,
     }
 }
 
@@ -33,7 +33,7 @@ pub fn dump_name(atom: &Atom) -> &str {
 pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<LammpsUnits>) -> Result<()> {
     let path_ = path.display();
     // 先查再建文件，免得报错后留下一个空文件
-    if units.is_none() && trajectory.frames.iter().any(|f| f.velocities.is_some() || f.forces.is_some()) {
+    if units.is_none() && trajectory.frames.iter().any(|f| f.velocities().is_some() || f.forces().is_some()) {
         bail!(
             "{path_}: the trajectory carries velocities/forces, and their numbers in a dump depend \
              on the LAMMPS `units` the reader will use; give it explicitly \
@@ -48,7 +48,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
     // 同一个 type 会在不同帧指向不同的东西
     let mut elem_types: Vec<&str> = Vec::new();
     for frame in &trajectory.frames {
-        for atom in &frame.atoms {
+        for atom in frame.atoms() {
             if !elem_types.contains(&dump_name(atom)) {
                 elem_types.push(dump_name(atom));
             }
@@ -97,9 +97,9 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
         }
 
         // ATOMS header
-        let has_vel = frame.velocities.is_some();
-        let has_force = frame.forces.is_some();
-        let has_charge = frame.atoms.iter().any(|a| a.charge.is_some());
+        let has_vel = frame.velocities().is_some();
+        let has_force = frame.forces().is_some();
+        let has_charge = frame.atoms().any(|a| a.charge.is_some());
 
         let mut header = "ITEM: ATOMS id type element x y z".to_string();
         if has_vel { header.push_str(" vx vy vz"); }
@@ -118,7 +118,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
             })
         };
 
-        for (i, atom) in frame.atoms.iter().enumerate() {
+        for (i, atom) in frame.atoms().enumerate() {
             let name = dump_name(atom);
             let tp = elem_types.iter().position(|e| *e == name).unwrap_or(0) + 1;
 
@@ -130,7 +130,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
                 i + 1, name, pos.x, pos.y, pos.z);
 
             if has_vel {
-                let v = frame.velocities.as_ref()
+                let v = frame.velocities()
                     .and_then(|vv| vv.get(i))
                     .copied()
                     .unwrap_or_default();
@@ -144,7 +144,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale));
             }
             if has_force {
-                let f = frame.forces.as_ref()
+                let f = frame.forces()
                     .and_then(|ff| ff.get(i))
                     .copied()
                     .unwrap_or_default();
@@ -197,7 +197,7 @@ fn lammps_cell_matrix(lx: f64, ly: f64, lz: f64, xy: f64, xz: f64, yz: f64) -> f
 
 fn bounding_box(frame: &ferro_core::Frame) -> (f64, f64, f64, f64, f64, f64) {
     let mut mn = [f64::MAX; 3]; let mut mx = [f64::MIN; 3];
-    for a in &frame.atoms {
+    for a in frame.atoms() {
         mn[0]=mn[0].min(a.position.x); mn[1]=mn[1].min(a.position.y); mn[2]=mn[2].min(a.position.z);
         mx[0]=mx[0].max(a.position.x); mx[1]=mx[1].max(a.position.y); mx[2]=mx[2].max(a.position.z);
     }
@@ -277,15 +277,15 @@ mod tests {
     fn test_site_labels_survive_a_roundtrip() {
         let mut traj = bcc_traj();
         for frame in &mut traj.frames {
-            frame.atoms[0].label = Some("Fe_3".into());
-            frame.atoms[1].label = Some("Fe1".into());
+            frame.sites_mut()[0].label = Some("Fe_3".into());
+            frame.sites_mut()[1].label = Some("Fe1".into());
         }
         let path = std::env::temp_dir().join(format!("labels_rt_{}.dump", std::process::id()));
         write_lammps_dump(&traj, &path, Some(LammpsUnits::Real)).unwrap();
         let back = read_lammps_dump(&path, Some(LammpsUnits::Real)).unwrap();
         let f = back.first().unwrap();
-        assert_eq!((f.atom(0).element.as_str(), f.atom(0).label.as_deref()), ("Fe", Some("Fe_3")));
-        assert_eq!((f.atom(1).element.as_str(), f.atom(1).label.as_deref()), ("Fe", None));
+        assert_eq!((f.atom(0).element, f.atom(0).label), ("Fe", Some("Fe_3")));
+        assert_eq!((f.atom(1).element, f.atom(1).label), ("Fe", None));
         // different names, different types: Fe_3 and Fe are two LAMMPS types
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains(" 1 Fe_3 ") && text.contains(" 2 Fe "), "{text}");
@@ -300,11 +300,11 @@ mod tests {
             a.label = label.map(str::to_string);
             a
         };
-        assert_eq!(dump_name(&atom("P", Some("P_3"))), "P_3");   // conforming: folded
-        assert_eq!(dump_name(&atom("O", Some("O1"))), "O");      // CIF site name: not folded
-        assert_eq!(dump_name(&atom("Fe", Some("Fe1"))), "Fe");   // CP2K kind name: not folded
-        assert_eq!(dump_name(&atom("Zn", Some("Zn"))), "Zn");    // same as the element
-        assert_eq!(dump_name(&atom("Ar", None)), "Ar");          // no label
+        assert_eq!(dump_name(atom("P", Some("P_3")).view()), "P_3");   // conforming: folded
+        assert_eq!(dump_name(atom("O", Some("O1")).view()), "O");      // CIF site name: not folded
+        assert_eq!(dump_name(atom("Fe", Some("Fe1")).view()), "Fe");   // CP2K kind name: not folded
+        assert_eq!(dump_name(atom("Zn", Some("Zn")).view()), "Zn");    // same as the element
+        assert_eq!(dump_name(atom("Ar", None).view()), "Ar");          // no label
     }
 
     /// 坐标转进 LAMMPS 规范胞时，速度与力必须跟着同一个变换走。
@@ -333,8 +333,8 @@ mod tests {
             let m = nalgebra::Matrix3::from_fn(|i, j| rows[i][j]);
             let mut frame = Frame::with_cell(Cell::from_matrix(m), [true; 3]);
             frame.add_atom(Atom::new("Si", Vector3::from(r)));
-            frame.velocities = Some(vec![Vector3::from(v)]);
-            frame.forces = Some(vec![Vector3::from(f)]);
+            frame.set_velocities(Some(vec![Vector3::from(v)])).unwrap();
+            frame.set_forces(Some(vec![Vector3::from(f)])).unwrap();
             let path = std::env::temp_dir().join(format!("rot_{name}.dump"));
             // metal：力不换算，速度 Å/fs → Å/ps 乘 1000
             write_lammps_dump(&Trajectory::from_frame(frame), &path, Some(LammpsUnits::Metal)).unwrap();
@@ -426,7 +426,7 @@ mod tests {
         for (got, want) in [(a, 1.52 + 2.0), (b, 0.59 + 2.0), (c, 2.0)] {
             assert!((got - want).abs() < 1e-9, "盒长 {got}，应为 {want}");
         }
-        for (x, y) in f.atoms.iter().zip(&water().atoms) {
+        for (x, y) in f.atoms().zip(water().atoms()) {
             assert!((x.position - y.position).norm() < 1e-9, "坐标应原样写出");
         }
     }
@@ -473,7 +473,7 @@ mod tests {
             let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());
             assert!((ca.origin - cb.origin).norm() < 1e-9, "{tag}: 原点应往返不变，{:?} → {:?}", ca.origin, cb.origin);
             assert!((ca.matrix - cb.matrix).norm() < 1e-9, "{tag}: 晶格应往返不变");
-            assert!((fa.atoms[0].position - fb.atoms[0].position).norm() < 1e-9, "{tag}: 坐标应往返不变");
+            assert!((fa.positions()[0] - fb.positions()[0]).norm() < 1e-9, "{tag}: 坐标应往返不变");
         }
         // 第一个盒子的原点就是 lo；三斜的原点是 lo_bound 减去倾斜外探量
         let src = std::env::temp_dir().join("ferro_dump_origin_ortho_in.lammpstrj");

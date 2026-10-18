@@ -29,7 +29,7 @@ pub fn classify_trajectory(traj: &Trajectory, params: &TypeParams) -> Result<Vec
 /// their element column at **write** time; see `ferro_io::dump_name`.
 pub fn apply_type_labels(frame: &Frame, labels: &[String]) -> Frame {
     let mut out = frame.clone();
-    for (atom, label) in out.atoms.iter_mut().zip(labels.iter()) {
+    for (atom, label) in out.sites_mut().iter_mut().zip(labels.iter()) {
         atom.label = Some(label.clone());
     }
     out
@@ -55,9 +55,9 @@ mod tests {
     fn test_apply_writes_label_and_leaves_element_alone() {
         let f = frame_of(&[("P", None), ("O", None)]);
         let out = apply_type_labels(&f, &["P_3".into(), "O_b".into()]);
-        assert_eq!(out.atoms[0].element, "P", "element 必须仍是元素");
-        assert_eq!(out.atoms[0].label.as_deref(), Some("P_3"));
-        assert_eq!(out.atoms[1].element, "O");
-        assert_eq!(out.atoms[1].label.as_deref(), Some("O_b"));
+        assert_eq!(out.element(0), "P", "element 必须仍是元素");
+        assert_eq!(out.atom(0).label, Some("P_3"));
+        assert_eq!(out.element(1), "O");
+        assert_eq!(out.atom(1).label, Some("O_b"));
     }
 }

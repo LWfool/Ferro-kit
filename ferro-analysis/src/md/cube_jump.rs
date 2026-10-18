@@ -150,11 +150,10 @@ pub fn calc_cube_jump(
 
     // 确定要处理的原子索引（以 ref_frame 为准）
     let selected_atoms: Vec<usize> = ref_frame
-        .atoms
-        .iter()
+        .atoms()
         .enumerate()
         .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.contains(&a.element),
+            Some(elems) => elems.iter().any(|e| e == a.element),
             None => true,
         })
         .map(|(i, _)| i)
@@ -171,7 +170,7 @@ pub fn calc_cube_jump(
     let ref_pc = cells.iter().flatten().next().ok_or_else(no_cell)?;
     let frac_all: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&cells).map(|(frame, pc)| {
         let pc = pc.as_ref().unwrap_or(ref_pc);
-        frame.atoms.iter().map(|a| {
+        frame.atoms().map(|a| {
             let f = pc.to_fractional(a.position);
             [f.x, f.y, f.z]
         }).collect()

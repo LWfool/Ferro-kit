@@ -67,21 +67,17 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
         new_m[(axis_idx, j)] *= scale;
     }
 
-    Ok(Frame {
-        atoms: frame.atoms.clone(),
-        // 只拉长一条晶格矢量，盒子原点不动（审查 A-12）
-        cell: Some(Cell { matrix: new_m, origin: cell.origin }),
-        pbc: frame.pbc,
-        charge: frame.charge,
-        multiplicity: frame.multiplicity,
-        bonds: frame.bonds.clone(),
-        energy: None,
-        forces: None,
-        stress: None,
-        velocities: None,
-        temperature: None,
-        step: None,
-    })
+    // Same atoms and bonds; the results of the old box do not carry over
+    let mut out = frame.clone();
+    // Only one lattice vector stretches; the box origin stays (review A-12)
+    out.cell = Some(Cell { matrix: new_m, origin: cell.origin });
+    out.set_forces(None)?;
+    out.set_velocities(None)?;
+    out.energy = None;
+    out.stress = None;
+    out.temperature = None;
+    out.step = None;
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -158,7 +154,7 @@ mod tests {
     fn test_positions_unchanged() {
         let frame = cubic_frame(10.0);
         let out = add_vacuum(&frame, "z", 5.0).unwrap();
-        let pos = out.atoms[0].position;
+        let pos = out.positions()[0];
         assert!((pos.x - 1.0).abs() < 1e-10);
         assert!((pos.y - 2.0).abs() < 1e-10);
         assert!((pos.z - 3.0).abs() < 1e-10);
@@ -189,10 +185,10 @@ mod tests {
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("O", Vector3::zeros()));
         frame.energy = Some(-100.0);
-        frame.forces = Some(vec![Vector3::zeros()]);
+        frame.set_forces(Some(vec![Vector3::zeros()])).unwrap();
         let out = add_vacuum(&frame, "z", 5.0).unwrap();
         assert!(out.energy.is_none());
-        assert!(out.forces.is_none());
+        assert!(out.forces().is_none());
     }
 
     #[test]

@@ -307,7 +307,7 @@ Atoms # full
 
         // H and D in one frame share an element but not a mass: refuse, write nothing
         let mut mixed = traj.clone();
-        mixed.frames[0].atoms[2].mass = Some(1.008);
+        mixed.frames[0].sites_mut()[2].mass = Some(1.008);
         let refused = path.with_file_name("d2o_mixed.data");
         let err = crate::writers::lammps_data::write_lammps_data(&mixed, &refused).unwrap_err();
         assert!(err.to_string().contains("different masses"), "{err}");
@@ -393,7 +393,7 @@ Atoms # full
         ] {
             let traj = read_lammps_data(&tmp(&format!("ase_{style}.data"), text), style).unwrap();
             let f = traj.first().unwrap();
-            let elems: Vec<&str> = f.atoms.iter().map(|a| a.element.as_str()).collect();
+            let elems: Vec<&str> = f.atoms().map(|a| a.element).collect();
             assert_eq!(elems, ["O", "H", "H"], "{style}");
             for (k, w) in want.iter().enumerate() {
                 let p = f.atom(k).position;
@@ -443,7 +443,7 @@ Atoms # full
         let text = WATER_FULL.replace("2 1.008   # H\n", &format!("2 1.008   # H\n{pairij}"));
         let traj = read_lammps_data(&tmp("pairij.data", &text), AtomStyle::Full).unwrap();
         let f = traj.first().unwrap();
-        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("O", "H"));
+        assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
     }
 
     // LAMMPS 的段可任意排序：Masses 写在 Atoms 之后也得读到
@@ -453,7 +453,7 @@ Atoms # full
         let text = WATER_FULL.replace(masses, "") + "\n" + masses;
         let traj = read_lammps_data(&tmp("late_masses.data", &text), AtomStyle::Full).unwrap();
         let f = traj.first().unwrap();
-        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("O", "H"));
+        assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
     }
 
     #[test]

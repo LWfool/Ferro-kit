@@ -40,8 +40,8 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
     }
 
     // 原子行：Z  0.000000  x  y  z（Å → Bohr）
-    for atom in &frame.atoms {
-        let z = by_symbol(&atom.element)
+    for atom in frame.atoms() {
+        let z = by_symbol(atom.element)
             .map(|e| e.atomic_number as i32)
             .unwrap_or(0);
         let x = atom.position.x * ANG_TO_BOHR;
@@ -124,7 +124,7 @@ mod tests {
         // 原点非零时 reader 若减原点、writer 照写绝对坐标，每往返一次原子平移 −O
         let mut original = make_test_cube();
         original.origin = Vector3::new(-3.0, 1.5, 2.0);
-        original.frame.atoms[0].position = Vector3::new(-2.5, 2.0, 2.5);
+        original.frame.positions_mut()[0] = Vector3::new(-2.5, 2.0, 2.5);
         let path = std::env::temp_dir().join("roundtrip_origin.cube");
         write_cube(&original, &path).unwrap();
         let once = read_cube(&path).unwrap();

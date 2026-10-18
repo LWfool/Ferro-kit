@@ -24,7 +24,7 @@ pub fn mean_squared_displacement(traj: &Trajectory) -> Vec<f64> {
             let frame0 = &traj.frames[t0];
             let frame1 = &traj.frames[t0 + dt];
             for i in 0..n_atoms {
-                if let (Some(a0), Some(a1)) = (frame0.atoms.get(i), frame1.atoms.get(i)) {
+                if let (Some(a0), Some(a1)) = (frame0.get_atom(i), frame1.get_atom(i)) {
                     sum += (a1.position - a0.position).norm_squared();
                     count += 1;
                 }
@@ -50,8 +50,8 @@ pub fn rmsd_to_first(traj: &Trajectory) -> Vec<f64> {
         .map(|frame| {
             let sum: f64 = (0..n_atoms)
                 .filter_map(|i| {
-                    let r = reference.atoms.get(i)?;
-                    let f = frame.atoms.get(i)?;
+                    let r = reference.get_atom(i)?;
+                    let f = frame.get_atom(i)?;
                     Some((f.position - r.position).norm_squared())
                 })
                 .sum();
@@ -74,8 +74,7 @@ pub fn radius_of_gyration_trajectory(traj: &Trajectory) -> Vec<f64> {
             let total_mass = frame.total_mass();
             if total_mass == 0.0 { return 0.0; }
             let sum: f64 = frame
-                .atoms
-                .iter()
+                .atoms()
                 .map(|a| {
                     let r = (a.position - com).norm();
                     a.effective_mass() * r * r

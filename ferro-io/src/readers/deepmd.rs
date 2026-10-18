@@ -121,15 +121,10 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
 
         for k in 0..nf {
             let mut frame = Frame::new();
-            frame.atoms = (0..natoms)
-                .map(|i| {
-                    let b = (k * natoms + i) * 3;
-                    Atom::new(
-                        elements[i],
-                        Vector3::new(coord[b], coord[b + 1], coord[b + 2]),
-                    )
-                })
-                .collect();
+            frame.set_atoms((0..natoms).map(|i| {
+                let b = (k * natoms + i) * 3;
+                Atom::new(elements[i], Vector3::new(coord[b], coord[b + 1], coord[b + 2]))
+            }));
 
             if let Some(b) = &boxes {
                 let nine: [f64; 9] = b[k * 9..k * 9 + 9].try_into().expect("9 values");
@@ -151,14 +146,14 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
                 frame.energy = Some(e[k]);
             }
             if let Some(f) = &force {
-                frame.forces = Some(
+                frame.set_forces(Some(
                     (0..natoms)
                         .map(|i| {
                             let b = (k * natoms + i) * 3;
                             Vector3::new(f[b], f[b + 1], f[b + 2])
                         })
                         .collect(),
-                );
+                )).expect("one force per atom");
             }
             frames.push(frame);
         }
@@ -168,6 +163,7 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
         bail!("{}: no frames found under set.*", dir.display());
     }
     let mut traj = Trajectory { frames, metadata: Default::default() };
+    traj.share_sites();
     traj.metadata.source = Some("DeePMD npy".to_string());
     Ok((traj, warnings))
 }
@@ -253,15 +249,15 @@ mod tests {
         let mut frames = Vec::new();
         for k in 0..3 {
             let mut f = Frame::with_cell(cell.clone(), [true; 3]);
-            f.atoms = vec![
+            f.set_atoms(vec![
                 Atom::new("O", Vector3::new(k as f64, 0.5, 0.25)),
                 Atom::new("Si", Vector3::new(1.0, 0.0, 0.0)),
-            ];
+            ]);
             f.energy = Some(-10.0 - k as f64);
-            f.forces = Some(vec![
+            f.set_forces(Some(vec![
                 Vector3::new(0.5, -0.25, 0.125),
                 Vector3::new(-0.5, 0.25, -0.125),
-            ]);
+            ])).unwrap();
             // 故意不对称：对称矩阵测不出 virial 被转置
             f.stress = Some(Matrix3::from_row_slice(&[
                 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0 + k as f64,
@@ -286,13 +282,13 @@ mod tests {
         assert!(warn.is_empty(), "{warn:?}");
         assert_eq!(b.n_frames(), a.n_frames());
         for (x, y) in a.frames.iter().zip(&b.frames) {
-            assert_eq!(x.atoms.len(), y.atoms.len());
-            for (p, q) in x.atoms.iter().zip(&y.atoms) {
+            assert_eq!(x.n_atoms(), y.n_atoms());
+            for (p, q) in x.atoms().zip(y.atoms()) {
                 assert_eq!(p.element, q.element);
                 assert_eq!(p.position, q.position);
             }
             assert_eq!(x.energy, y.energy);
-            assert_eq!(x.forces, y.forces);
+            assert_eq!(x.forces(), y.forces());
             assert_eq!(x.cell.as_ref().unwrap().matrix, y.cell.as_ref().unwrap().matrix);
             // stress -> virial -> stress 经过一次乘除体积，不要求逐位相同
             let (s, t) = (x.stress.unwrap(), y.stress.unwrap());
@@ -346,7 +342,7 @@ mod tests {
         write_npy(set.join("coord.npy"), &a).unwrap();
         let t = read_deepmd_npy(&d).unwrap();
         assert_eq!(t.n_frames(), 3);
-        assert_eq!(t.frames[2].atoms[0].position, Vector3::new(2.0, 0.5, 0.25));
+        assert_eq!(t.frames[2].positions()[0], Vector3::new(2.0, 0.5, 0.25));
     }
 
     #[test]

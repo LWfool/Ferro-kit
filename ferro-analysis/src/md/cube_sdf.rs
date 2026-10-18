@@ -285,7 +285,7 @@ pub(crate) fn sdf_cutoff(params: &ClusterSdfParams) -> (&'static str, f64) {
 pub(crate) fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<ClusterSnapshot> {
     // 修饰体原子（不属于 former–ligand 图，单独收集）
     let mod_global: Vec<usize> = match params.modifier.as_deref() {
-        Some(m) => frame.atoms.iter().enumerate()
+        Some(m) => frame.atoms().enumerate()
             .filter(|(_, a)| a.element == m)
             .map(|(i, _)| i)
             .collect(),
@@ -353,16 +353,16 @@ fn extract_snapshot(
         g.former_global[anchor_pi]
     };
 
-    let anchor_pos = frame.atoms[anchor_ga].position;
+    let anchor_pos = frame.positions()[anchor_ga];
 
     // 收集修饰体原子（紧邻团簇 O 原子）
     let cluster_mod: Vec<usize> = if ml_cutoff2 > 0.0 && !mod_global.is_empty() {
         let cluster_o_pos: Vec<Vector3<f64>> = cluster_o.iter()
-            .map(|&oi| frame.atoms[g.ligand_global[oi]].position)
+            .map(|&oi| frame.positions()[g.ligand_global[oi]])
             .collect();
 
         mod_global.iter().enumerate().filter_map(|(mi, &ma_idx)| {
-            let ma_pos = frame.atoms[ma_idx].position;
+            let ma_pos = frame.positions()[ma_idx];
             let is_near = cluster_o_pos.iter().any(|&op| {
                 cell.minimum_image(op - ma_pos)
                     .expect("checked at the entry by check::periodic_cells")
@@ -386,7 +386,7 @@ fn extract_snapshot(
         let ga = g.former_global[pi];
         if ga == anchor_ga { anchor_idx = types.len(); }
         types.push(format!("P{}", g.former_qn[pi]));
-        raw_pos.push(frame.atoms[ga].position);
+        raw_pos.push(frame.positions()[ga]);
     }
 
     // O 原子
@@ -397,14 +397,14 @@ fn extract_snapshot(
         let ga = g.ligand_global[oi];
         if ga == anchor_ga { anchor_idx = types.len(); }
         types.push(ligand_label(g.ligand_kind[oi]).to_string());
-        raw_pos.push(frame.atoms[ga].position);
+        raw_pos.push(frame.positions()[ga]);
     }
 
     // modifier 原子
     for mi in cluster_mod {
         let ga = mod_global[mi];
-        types.push(frame.atoms[ga].element.clone());
-        raw_pos.push(frame.atoms[ga].position);
+        types.push(frame.element(ga).to_string());
+        raw_pos.push(frame.positions()[ga]);
     }
 
     if types.is_empty() { return None; }

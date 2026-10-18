@@ -76,7 +76,7 @@ pub fn build_network_graph(
     let cell = PeriodicCell::of(frame)?;
     let mut former_global: Vec<usize> = Vec::new();
     let mut ligand_global: Vec<usize> = Vec::new();
-    for (i, atom) in frame.atoms.iter().enumerate() {
+    for (i, atom) in frame.atoms().enumerate() {
         if atom.element == former {
             former_global.push(i);
         } else if atom.element == ligand {
@@ -103,17 +103,17 @@ pub fn build_network_graph(
 
     // Neighbours come sorted by atom index, and ligand_global is ascending, so each
     // former's ligands are visited in the same order as a scan over all of them
-    let nlist = NeighborList::build(&frame.positions(), &cell, cutoff)?;
-    let mut local_ligand: Vec<Option<usize>> = vec![None; frame.atoms.len()];
+    let nlist = NeighborList::build(frame.positions(), &cell, cutoff)?;
+    let mut local_ligand: Vec<Option<usize>> = vec![None; frame.n_atoms()];
     for (li, &la) in ligand_global.iter().enumerate() {
         local_ligand[la] = Some(li);
     }
     let cut2 = cutoff * cutoff;
     for (fi, &fa) in former_global.iter().enumerate() {
-        let fpos = frame.atoms[fa].position;
+        let fpos = frame.positions()[fa];
         for (la, _, _) in nlist.neighbors_of(fa) {
             let Some(li) = local_ligand[la] else { continue };
-            let diff = cell.minimum_image(frame.atoms[la].position - fpos);
+            let diff = cell.minimum_image(frame.positions()[la] - fpos);
             if diff.norm_squared() < cut2 {
                 f_l_adj[fi].push(li);
                 l_f_adj[li].push(fi);
@@ -216,7 +216,9 @@ mod tests {
 
     fn cubic(frame_atoms: Vec<Atom>, l: f64) -> Frame {
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(l, l, l)));
-        Frame { atoms: frame_atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() }
+        let mut f = Frame::with_cell(cell, [true; 3]);
+        f.set_atoms(frame_atoms);
+        f
     }
 
     #[test]

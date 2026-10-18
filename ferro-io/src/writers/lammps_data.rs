@@ -30,7 +30,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
     // One mass per type: atoms of one element that disagree cannot be written.
     // Checked before the file is created, so a refusal leaves nothing half-written.
     let type_masses = elem_order.iter().map(|elem| {
-        let mut masses = frame.atoms.iter().filter(|a| a.element == *elem).map(|a| a.effective_mass());
+        let mut masses = frame.atoms().filter(|a| a.element == *elem).map(|a| a.effective_mass());
         let mass = masses.next().unwrap_or(1.0);
         match masses.find(|m| (m - mass).abs() > 1e-6) {
             Some(other) => bail!("atoms of element {elem} carry different masses ({mass} and {other}); \
@@ -87,8 +87,8 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
     // Build LAMMPS cell for coordinate transformation
     let lammps_cell = lammps_cell_matrix(lx, ly, lz, xy, xz, yz);
 
-    for (i, atom) in frame.atoms.iter().enumerate() {
-        let tp = elem_to_type[atom.element.as_str()];
+    for (i, atom) in frame.atoms().enumerate() {
+        let tp = elem_to_type[atom.element];
         let q = atom.charge.unwrap_or(0.0);
 
         // Transform position to LAMMPS coordinate frame
@@ -144,7 +144,7 @@ fn lammps_cell_matrix(lx: f64, ly: f64, lz: f64, xy: f64, xz: f64, yz: f64) -> f
 fn bounding_box(frame: &ferro_core::Frame) -> (f64, f64, f64, f64, f64, f64) {
     let mut mn = [f64::MAX; 3];
     let mut mx = [f64::MIN; 3];
-    for a in &frame.atoms {
+    for a in frame.atoms() {
         mn[0] = mn[0].min(a.position.x);
         mn[1] = mn[1].min(a.position.y);
         mn[2] = mn[2].min(a.position.z);
@@ -200,7 +200,7 @@ mod tests {
             assert!((v[0] - lo).abs() < 1e-9 && (v[1] - hi).abs() < 1e-9, "{tag} 应为 {lo} {hi}，实得 {line}");
         }
         let back = read_lammps_data(&path, AtomStyle::Full).unwrap().frames.remove(0);
-        for (x, y) in back.atoms.iter().zip(&f.atoms) {
+        for (x, y) in back.atoms().zip(f.atoms()) {
             assert!((x.position - y.position).norm() < 1e-9, "坐标应原样写出");
         }
     }
@@ -230,6 +230,6 @@ mod tests {
         assert!((ca.origin - Vector3::new(1.5, -2.0, 3.0)).norm() < 1e-12, "原点应为 lo，实得 {:?}", ca.origin);
         assert!((ca.origin - cb.origin).norm() < 1e-9, "原点应往返不变：{:?} 变成 {:?}", ca.origin, cb.origin);
         assert!((ca.matrix - cb.matrix).norm() < 1e-9, "晶格应往返不变");
-        assert!((fa.atoms[0].position - fb.atoms[0].position).norm() < 1e-9, "坐标应往返不变");
+        assert!((fa.positions()[0] - fb.positions()[0]).norm() < 1e-9, "坐标应往返不变");
     }
 }

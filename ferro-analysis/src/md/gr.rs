@@ -45,10 +45,10 @@ pub enum GroupBy {
 }
 
 /// The grouping key of a single atom under the selected mode.
-pub(super) fn group_key(atom: &ferro_core::Atom, by: GroupBy) -> &str {
+pub(super) fn group_key(atom: ferro_core::AtomRef<'_>, by: GroupBy) -> &str {
     match by {
-        GroupBy::Element => atom.element.as_str(),
-        GroupBy::Label => atom.label.as_deref().unwrap_or(atom.element.as_str()),
+        GroupBy::Element => atom.element,
+        GroupBy::Label => atom.label.unwrap_or(atom.element),
     }
 }
 
@@ -59,7 +59,7 @@ pub(super) fn group_key(atom: &ferro_core::Atom, by: GroupBy) -> &str {
 /// would leave their relative order at the mercy of hash iteration order.
 pub(super) fn sorted_types(frame: &ferro_core::Frame, by: GroupBy) -> Vec<String> {
     let mut set = std::collections::HashSet::new();
-    for a in &frame.atoms {
+    for a in frame.atoms() {
         set.insert(group_key(a, by).to_string());
     }
     let mut types: Vec<String> = set.into_iter().collect();
@@ -244,18 +244,18 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // `else { continue }` 会把首帧没见过的类型悄悄丢掉，结果看着正常却完全错误。
     let count_types = |frame: &ferro_core::Frame| -> Vec<usize> {
         let mut c = vec![0usize; n_types];
-        for atom in &frame.atoms {
+        for atom in frame.atoms() {
             if let Some(&ti) = type_idx.get(group_key(atom, by)) { c[ti] += 1; }
         }
         c
     };
     let first_counts = count_types(first_frame);
     for (fi, frame) in traj.frames.iter().enumerate().skip(1) {
-        if frame.atoms.len() != first_frame.atoms.len() {
+        if frame.n_atoms() != first_frame.n_atoms() {
             return Err(ChemError::ValidationError(format!(
                 "atom count changes across the trajectory (frame 0 has {}, frame {} has {}); \
                  g(r) normalisation assumes a fixed particle number",
-                first_frame.atoms.len(), fi, frame.atoms.len()
+                first_frame.n_atoms(), fi, frame.n_atoms()
             )));
         }
         if count_types(frame) != first_counts {
@@ -271,7 +271,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         .iter().cloned().zip(first_counts.iter().copied())
         .filter(|&(_, c)| c > 0)
         .collect();
-    let n_total = first_frame.atoms.len() as f64;
+    let n_total = first_frame.n_atoms() as f64;
 
     // Frames are counted in parallel and summed in frame order (`par_map_in_order`): a
     // rayon fold kept one accumulator per split task, three pair x bin tables each, and
@@ -288,20 +288,20 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     let frames: Vec<_> = traj.frames.iter().zip(&cells).collect();
     par_map_in_order(&frames, |(frame, pc)| {
             let vol = frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume();
-            let n_atoms = frame.atoms.len();
-            let cl = NeighborList::build(&frame.positions(), pc, r_max)
+            let n_atoms = frame.n_atoms();
+            let cl = NeighborList::build(frame.positions(), pc, r_max)
                 .expect("r_max is clamped to every frame's minimum-image bound");
             // One frame's plain counts (code1's cr / code2's cn_), weighted and merged once
             // per frame — far cheaper than adding to two histograms at every hit (hits >> bins)
             let mut cr = vec![vec![0.0f64; n_bins]; n_upairs];
             for i in 0..n_atoms {
-                let Some(&ti) = type_idx.get(group_key(&frame.atoms[i], by)) else { continue; };
+                let Some(&ti) = type_idx.get(group_key(frame.atom(i), by)) else { continue; };
                 for (j, r_val, _) in cl.neighbors_of(i) {
                     if j <= i { continue; }
                     if r_val < params.r_min { continue; }
                     let bin = ((r_val - params.r_min) / params.dr) as usize;
                     if bin >= n_bins { continue; }
-                    let Some(&tj) = type_idx.get(group_key(&frame.atoms[j], by)) else { continue; };
+                    let Some(&tj) = type_idx.get(group_key(frame.atom(j), by)) else { continue; };
                     cr[pair_lookup[ti][tj]][bin] += 1.0;
                 }
             }
@@ -543,8 +543,8 @@ mod tests {
         let mut traj = Trajectory::new();
         for &s in scales {
             let mut f = Frame::with_cell(Cell::from_matrix(base_cell * s), [true; 3]);
-            for a in &base.atoms {
-                f.add_atom(Atom::new(&a.element, a.position * s));
+            for a in base.atoms() {
+                f.add_atom(Atom::new(a.element, a.position * s));
             }
             traj.add_frame(f);
         }
@@ -666,7 +666,7 @@ mod tests {
         // 总原子数不变但组成变了 —— 这类轨迹拼接最容易被静默接受
         let f1 = make_o_si_crystal(3);
         let mut f2 = f1.clone();
-        f2.atoms[0].element = "Si".to_string();
+        f2.sites_mut()[0].element = "Si".to_string();
         let mut traj = Trajectory::from_frame(f1);
         traj.add_frame(f2);
         let err = calc_gr(&traj, &GrParams::default()).unwrap_err();

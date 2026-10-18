@@ -63,7 +63,7 @@ pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()
                         "--type-map: unknown element symbol {sym:?}");
     }
     for frame in &mut traj.frames {
-        for atom in &mut frame.atoms {
+        for atom in frame.sites_mut() {
             let tp: u32 = atom.element.strip_prefix('X').and_then(|n| n.parse().ok())
                 .with_context(|| format!(
                     "--type-map given, but the dump already names elements ({:?}) in its element column",
@@ -390,8 +390,9 @@ fn parse_frame(
         else { all_forces.push(Vector3::zeros()); }
     }
 
-    if has_vel { frame.velocities = Some(all_vels); }
-    if has_force { frame.forces = Some(all_forces); }
+    // One vector per atom line read above, so the lengths always match
+    if has_vel { frame.set_velocities(Some(all_vels)).expect("one velocity per atom"); }
+    if has_force { frame.set_forces(Some(all_forces)).expect("one force per atom"); }
 
     *i = ah + 1 + n;
     Ok(frame)
@@ -483,13 +484,13 @@ ITEM: ATOMS id type element x y z
             .replace(" 1 Fe ", " 1 ").replace("2 1 1.4", "2 2 1.4");
         let read = || parse_traj(&no_elem, None).unwrap();
         let t = read();
-        assert_eq!((t.frames[0].atom(0).element.as_str(), t.frames[0].atom(1).element.as_str()),
+        assert_eq!((t.frames[0].element(0), t.frames[0].element(1)),
                    ("X1", "X2"), "无映射时仍是占位符");
 
         let mut t = read();
         apply_type_map(&mut t, &[(1, "Zr".into()), (2, "O".into()), (3, "P".into())]).unwrap();
         for f in &t.frames {
-            assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("Zr", "O"), "每帧都要换");
+            assert_eq!((f.atom(0).element, f.atom(1).element), ("Zr", "O"), "每帧都要换");
         }
 
         let err = |map: &[(u32, String)], t: &mut Trajectory| format!("{:#}", apply_type_map(t, map).unwrap_err());
@@ -545,8 +546,8 @@ ITEM: ATOMS id type element x y z
     fn test_label_split_fills_element_and_label() {
         let traj = read_lammps_dump(&tmp("labels.dump", DUMP_LABELS), Some(LammpsUnits::Real)).unwrap();
         let f = traj.first().unwrap();
-        let got: Vec<(&str, Option<&str>)> = f.atoms.iter()
-            .map(|a| (a.element.as_str(), a.label.as_deref()))
+        let got: Vec<(&str, Option<&str>)> = f.atoms()
+            .map(|a| (a.element, a.label))
             .collect();
         assert_eq!(got, vec![
             ("P",  Some("P_0")),
@@ -561,7 +562,7 @@ ITEM: ATOMS id type element x y z
     fn test_plain_element_column_leaves_label_none() {
         // 普通轨迹不受拆分影响
         let traj = read_lammps_dump(&tmp("plain.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap();
-        for atom in &traj.first().unwrap().atoms {
+        for atom in traj.first().unwrap().atoms() {
             assert_eq!(atom.element, "Fe");
             assert!(atom.label.is_none(), "plain symbol should not produce a label");
         }
@@ -630,7 +631,7 @@ ITEM: ATOMS id type element x y z
     #[test]
     fn test_velocity_real_units() {
         let traj = read_lammps_dump(&tmp("vel_real.dump", DUMP_VEL), Some(LammpsUnits::Real)).unwrap();
-        let vx = traj.first().unwrap().velocities.as_ref().unwrap()[0].x;
+        let vx = traj.first().unwrap().velocities().unwrap()[0].x;
         assert!((vx - 2.0).abs() < 1e-10, "real units: vx should be 2.0 Å/fs, got {vx}");
     }
 
@@ -649,13 +650,13 @@ ITEM: ATOMS id type element x y z
         assert!(msg.contains("vx") && msg.contains("--units"), "错误信息应点名速度列与 --units，实际：{msg}");
         // 只有坐标的 dump 不受单位影响，None 照常读
         let traj = read_lammps_dump(&tmp("plain_none.dump", DUMP_ORTHO), None).unwrap();
-        assert!(traj.first().unwrap().velocities.is_none());
+        assert!(traj.first().unwrap().velocities().is_none());
     }
 
     #[test]
     fn test_velocity_metal_units() {
         let traj = read_lammps_dump(&tmp("vel_metal.dump", DUMP_VEL), Some(LammpsUnits::Metal)).unwrap();
-        let vx = traj.first().unwrap().velocities.as_ref().unwrap()[0].x;
+        let vx = traj.first().unwrap().velocities().unwrap()[0].x;
         // 2.0 Å/ps × 1e-3 = 0.002 Å/fs
         assert!((vx - 0.002).abs() < 1e-12, "metal units: vx should be 0.002 Å/fs, got {vx}");
     }

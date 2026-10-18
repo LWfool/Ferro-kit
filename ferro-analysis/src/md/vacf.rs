@@ -8,7 +8,7 @@
 //! `diffusion(t) = (1/3)∫₀ᵗ Cv(τ)dτ` by the running trapezoidal rule; it levels off
 //! at the self-diffusion coefficient D.
 //!
-//! Velocities are used as stored in `frame.velocities`, in the internal unit Å/fs
+//! Velocities are used as stored in `frame.velocities()`, in the internal unit Å/fs
 //! (the LAMMPS reader converts metal-unit Å/ps with `--units metal`). `Cv` is then in
 //! Å²/fs² and `diffusion` in Å²/fs.
 //!
@@ -95,7 +95,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
     let n_frames = traj.n_frames();
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
-    if let Some(k) = traj.frames.iter().position(|f| f.velocities.is_none()) {
+    if let Some(k) = traj.frames.iter().position(|f| f.velocities().is_none()) {
         return Err(ChemError::ValidationError(format!(
             "frame {k} has no velocities; VACF needs velocities in every frame"
         )));
@@ -103,9 +103,9 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
 
     // 按第一帧筛选原子下标
     let ref_frame = &traj.frames[0];
-    let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
+    let atom_indices: Vec<usize> = ref_frame.atoms().enumerate()
         .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.contains(&a.element),
+            Some(elems) => elems.iter().any(|e| e == a.element),
             None => true,
         })
         .map(|(i, _)| i)
@@ -115,7 +115,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
     }
     let n_atoms = atom_indices.len();
     let elements: Vec<String> = atom_indices.iter()
-        .map(|&i| ref_frame.atoms[i].element.clone())
+        .map(|&i| ref_frame.element(i).to_string())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -128,7 +128,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
             let mut out = zero();
             for (axis, o) in out.iter_mut().enumerate() {
                 for (xk, f) in x.iter_mut().zip(&traj.frames) {
-                    *xk = f.velocities.as_ref().unwrap()[i][axis];
+                    *xk = f.velocities().unwrap()[i][axis];
                 }
                 ac.sums(x, s);
                 o.copy_from_slice(s);
@@ -227,7 +227,7 @@ mod tests {
             for e in elems {
                 frame.add_atom(Atom::new(*e, Vector3::zeros()));
             }
-            frame.velocities = Some((0..elems.len()).map(|j| vel(t, j)).collect());
+            frame.set_velocities(Some((0..elems.len()).map(|j| vel(t, j)).collect())).unwrap();
             traj.add_frame(frame);
         }
         traj
@@ -240,7 +240,7 @@ mod tests {
         let traj = traj_from(|t, j| Vector3::new(jitter(3 * t + j), jitter(5 * t + 7 * j + 1), jitter(t * 11 + j + 3)),
             &["O"; 4], n);
         let r = calc_vacf(&traj, &VacfParams { max_lag: Some(n - 1), ..Default::default() }).unwrap();
-        let v = |t: usize, j: usize| traj.frames[t].velocities.as_ref().unwrap()[j];
+        let v = |t: usize, j: usize| traj.frames[t].velocities().unwrap()[j];
         for m in 0..n {
             let mut want = [0.0; 3];
             for t in 0..n - m {
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn test_missing_velocities_names_the_frame() {
         let mut traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 4);
-        traj.frames[2].velocities = None;
+        traj.frames[2].set_velocities(None).unwrap();
         let err = calc_vacf(&traj, &VacfParams::default()).unwrap_err().to_string();
         assert!(err.contains("frame 2"), "错误信息应指出是哪一帧：{err}");
     }

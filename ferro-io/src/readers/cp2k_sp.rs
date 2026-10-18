@@ -470,9 +470,9 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
             .collect();
 
         let mut frame = Frame::with_cell(Cell::from_matrix(matrix), pbc);
-        frame.atoms = atoms;
+        frame.set_atoms(atoms);
         frame.energy = Some(energy_to_ev(lines[a])?);
-        frame.forces = Some(forces);
+        frame.set_forces(Some(forces))?;
         frame.stress = stress;
         frames.push(frame);
         stats.n_kept += 1;
@@ -549,7 +549,7 @@ mod tests {
         assert_eq!(f.cell.as_ref().unwrap().lengths(), [5.0, 5.0, 5.0]);
         assert_eq!(f.pbc, [true; 3]);
 
-        let fx = f.forces.as_ref().unwrap()[0].x;
+        let fx = f.forces().unwrap()[0].x;
         assert!((fx - 1e-2 * HARTREE_TO_EV / BOHR_TO_ANG).abs() < 1e-12, "{fx}");
 
         // 1e4 bar = 1 GPa,正 = 压缩,不变号
@@ -563,11 +563,11 @@ mod tests {
     #[test]
     fn a_renamed_kind_becomes_a_label_and_never_replaces_the_element() {
         let (traj, _) = parse_cp2k_sp(MINI).unwrap();
-        let atoms = &traj.frames[0].atoms;
+        let atoms: Vec<_> = traj.frames[0].atoms().collect();
         assert_eq!(atoms[0].element, "Si");
         assert_eq!(atoms[0].label, None, "kind 名与元素相同时不该填 label");
         assert_eq!(atoms[1].element, "O", "element 必须是真元素,不是 kind 名");
-        assert_eq!(atoms[1].label.as_deref(), Some("O_b"));
+        assert_eq!(atoms[1].label, Some("O_b"));
     }
 
     /// Concatenating N outputs is how a batch of FP jobs is handed over.
@@ -604,7 +604,7 @@ mod tests {
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_dropped(), 0);
         assert!(traj.frames[0].stress.is_none());
-        assert!(traj.frames[0].forces.is_some(), "缺应力不该连带丢掉力");
+        assert!(traj.frames[0].forces().is_some(), "缺应力不该连带丢掉力");
     }
 
     /// Truncation lands in the force table; the atom count is what catches it.
@@ -669,8 +669,8 @@ mod tests {
         assert!(note.contains("7.1"), "{note}");
         // 老格式的力与新格式一字不差,单位换算两条路必须一致
         let (new, _) = parse_cp2k_sp(MINI).unwrap();
-        for (a, b) in traj.frames[0].forces.as_ref().unwrap().iter()
-            .zip(new.frames[0].forces.as_ref().unwrap())
+        for (a, b) in traj.frames[0].forces().unwrap().iter()
+            .zip(new.frames[0].forces().unwrap())
         {
             assert!((a - b).norm() < 1e-12, "{a:?} vs {b:?}");
         }
@@ -737,7 +737,7 @@ mod tests {
 
         let (a, b) = (&old.frames[0], &new.frames[0]);
         assert!((a.energy.unwrap() - b.energy.unwrap()).abs() < 1e-12);
-        for (fa, fb) in a.forces.as_ref().unwrap().iter().zip(b.forces.as_ref().unwrap()) {
+        for (fa, fb) in a.forces().unwrap().iter().zip(b.forces().unwrap()) {
             assert!((fa - fb).norm() < 1e-12, "{fa:?} vs {fb:?}");
         }
         let (sa, sb) = (a.stress.unwrap(), b.stress.unwrap());
@@ -790,7 +790,7 @@ mod tests {
 
         // atomic_forces_list[0][0] = [2.1561e-4, 3.4116e-4, 3.17438e-3] Hartree/Bohr
         let fac = HARTREE_TO_EV / BOHR_TO_ANG;
-        let f0 = f.forces.as_ref().unwrap()[0];
+        let f0 = f.forces().unwrap()[0];
         assert!((f0.x - 2.156_1e-4 * fac).abs() < 1e-9, "{f0:?}");
         assert!((f0.z - 3.174_38e-3 * fac).abs() < 1e-9, "{f0:?}");
 
@@ -803,13 +803,13 @@ mod tests {
         assert!((s[(0, 1)] * 160.217_663_4 - -0.076_865_33).abs() < 1e-6);
 
         // Fe1/Fe2 是两个 kind、同一个元素。element 必须是 Fe,区分留在 label
-        let fe: Vec<_> = f.atoms.iter().filter(|a| a.element == "Fe").collect();
+        let fe: Vec<_> = f.atoms().filter(|a| a.element == "Fe").collect();
         assert_eq!(fe.len(), 12, "两个 kind 都得算成 Fe");
         let labels: std::collections::BTreeSet<_> =
-            fe.iter().filter_map(|a| a.label.as_deref()).collect();
+            fe.iter().filter_map(|a| a.label).collect();
         assert_eq!(labels, ["Fe1", "Fe2"].into_iter().collect());
         // O 的 kind 名就是 O,不该凭空多一个 label
-        assert!(f.atoms.iter().filter(|a| a.element == "O").all(|a| a.label.is_none()));
+        assert!(f.atoms().filter(|a| a.element == "O").all(|a| a.label.is_none()));
     }
 
     #[test]
@@ -826,11 +826,11 @@ mod tests {
         assert_eq!(f.count_element("O"), 303);
         assert_eq!(f.count_element("Al"), 10);
         // 这份体系的 kind 名就是元素,没有一个原子该带 label
-        assert!(f.atoms.iter().all(|a| a.label.is_none()));
+        assert!(f.atoms().all(|a| a.label.is_none()));
 
         assert!((f.energy.unwrap() - -8_399.118_581_052_153 * HARTREE_TO_EV).abs() < 1e-6);
         assert_eq!(f.cell.as_ref().unwrap().lengths().map(|v| (v * 1e3).round()), [18742.0; 3]);
-        assert_eq!(f.forces.as_ref().unwrap().len(), 457);
+        assert_eq!(f.forces().unwrap().len(), 457);
         // STRESS| ... [bar] 对角三个都是负的(拉伸),符号照抄 CP2K 不变
         let s = f.stress.unwrap();
         assert!(s[(0, 0)] < 0.0 && s[(1, 1)] < 0.0 && s[(2, 2)] < 0.0, "{s:?}");

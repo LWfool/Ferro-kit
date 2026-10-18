@@ -142,7 +142,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
 
     // 确定参与计算的 center 原子下标（按第一帧筛选）
     let ref_frame = &traj.frames[0];
-    let center_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
+    let center_indices: Vec<usize> = ref_frame.atoms().enumerate()
         .filter(|(_, a)| a.element == params.center)
         .map(|(i, _)| i)
         .collect();
@@ -157,14 +157,14 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     // 当帧的键矢量：周期体系取最小镜像
     let bond = |k: usize, from: usize, to: usize| {
         let frame = &traj.frames[k];
-        let d = frame.atoms[to].position - frame.atoms[from].position;
+        let d = frame.positions()[to] - frame.positions()[from];
         match (&cells[k], has_cell) {
             (Some(pc), true) => pc.minimum_image(d),
             _ => d,
         }
     };
     let is_neighbor = |i: usize, ci: usize| -> bool {
-        i != ci && ref_frame.atoms[i].element == params.neighbor
+        i != ci && ref_frame.element(i) == params.neighbor
     };
 
     // orient[帧][单元] = 取向向量（未归一化；零向量 = 该帧无效）
@@ -173,7 +173,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
             // Candidates come from a neighbour list in a periodic frame, sorted by index
             // like the full scan, so the bond vectors are summed in the same order
             let nl = match (&cells[k], has_cell) {
-                (Some(pc), true) => Some(NeighborList::build(&frame.positions(), pc, params.r_cut)
+                (Some(pc), true) => Some(NeighborList::build(frame.positions(), pc, params.r_cut)
                     .expect("r_cut checked against every frame's bound at the entry")),
                 _ => None,
             };
@@ -182,7 +182,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 let mut len_sum = 0.0;
                 let around: Vec<usize> = match &nl {
                     Some(nl) => nl.neighbors_of(ci).into_iter().map(|(j, _, _)| j).collect(),
-                    None => (0..frame.atoms.len()).collect(),
+                    None => (0..frame.n_atoms()).collect(),
                 };
                 for ni in around.into_iter().filter(|&ni| is_neighbor(ni, ci)) {
                     let d = bond(k, ci, ni);
@@ -202,7 +202,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         RotVector::Bond => {
             // 第一帧定键，之后按原子身份一直跟踪（gmx rotacf -d）：不再看距离
             let pairs: Vec<(usize, usize)> = center_indices.iter()
-                .flat_map(|&ci| (0..ref_frame.atoms.len())
+                .flat_map(|&ci| (0..ref_frame.n_atoms())
                     .filter(move |&ni| is_neighbor(ni, ci))
                     .map(move |ni| (ci, ni)))
                 .filter(|&(ci, ni)| bond(0, ci, ni).norm_squared() < r_cut2)
@@ -415,9 +415,9 @@ mod tests {
         let n = traj.n_frames();
         let unit = |t: usize, k: usize| -> Option<Vector3<f64>> {
             let f = &traj.frames[t];
-            let o = f.atoms[2 * k].position;
+            let o = f.positions()[2 * k];
             let mut u = Vector3::zeros();
-            for a in f.atoms.iter().filter(|a| a.element == "H") {
+            for a in f.atoms().filter(|a| a.element == "H") {
                 let d = f.cell.as_ref().unwrap().minimum_image(a.position - o).unwrap();
                 if d.norm() < r_cut { u += d; }
             }
@@ -571,7 +571,7 @@ mod tests {
         let unit = |t: usize, k: usize| {
             let f = &traj.frames[t];
             f.cell.as_ref().unwrap()
-                .minimum_image(f.atoms[2 * k + 1].position - f.atoms[2 * k].position).unwrap().normalize()
+                .minimum_image(f.positions()[2 * k + 1] - f.positions()[2 * k]).unwrap().normalize()
         };
         for m in 0..=23 {
             let mut acc = 0.0;

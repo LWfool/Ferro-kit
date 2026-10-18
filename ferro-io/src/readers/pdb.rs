@@ -158,7 +158,7 @@ ENDMDL
         format!("ATOM      1 {name:<4} UNK A   1       0.000   0.000   0.119  1.00  0.00          {elem:>2}")
     }
     fn element_of(line: &str) -> String {
-        read_pdb(&write_tmp("test_elem.pdb", &format!("{line}\n"))).unwrap().frames[0].atoms[0].element.clone()
+        read_pdb(&write_tmp("test_elem.pdb", &format!("{line}\n"))).unwrap().frames[0].element(0).to_string()
     }
 
     #[test]

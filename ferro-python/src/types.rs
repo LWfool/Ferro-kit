@@ -54,16 +54,13 @@ impl PyTrajectory {
     /// 指定帧的原子坐标 \[Å\]，列表 of (x, y, z)。
     fn positions(&self, frame: usize) -> PyResult<Vec<(f64, f64, f64)>> {
         let f = self.frame_ref(frame)?;
-        Ok(f.atoms
-            .iter()
-            .map(|a| (a.position.x, a.position.y, a.position.z))
-            .collect())
+        Ok(f.positions().iter().map(|p| (p.x, p.y, p.z)).collect())
     }
 
     /// 指定帧的元素符号列表（与 `positions` 顺序一致）。
     fn symbols(&self, frame: usize) -> PyResult<Vec<String>> {
         let f = self.frame_ref(frame)?;
-        Ok(f.atoms.iter().map(|a| a.element.clone()).collect())
+        Ok(f.atoms().map(|a| a.element.to_string()).collect())
     }
 
     /// 指定帧的晶胞矩阵（行向量 a/b/c，单位 Å）；非周期性返回 `None`。
@@ -93,7 +90,7 @@ impl PyTrajectory {
 
     /// 指定帧每个原子的力 \[eV/Å\]，顺序与 `positions` 一致；没有时为 `None`。
     fn forces(&self, frame: usize) -> PyResult<Option<Vec<(f64, f64, f64)>>> {
-        Ok(self.frame_ref(frame)?.forces.as_ref()
+        Ok(self.frame_ref(frame)?.forces()
             .map(|fs| fs.iter().map(|f| (f.x, f.y, f.z)).collect()))
     }
 

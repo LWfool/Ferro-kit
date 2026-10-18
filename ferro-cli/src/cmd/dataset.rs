@@ -1040,9 +1040,9 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frame
 fn report_kind_labels(traj: &Trajectory) {
     let Some(first) = traj.first() else { return };
     let mut seen: BTreeMap<(&str, &str), usize> = BTreeMap::new();
-    for a in &first.atoms {
-        if let Some(l) = a.label.as_deref() {
-            *seen.entry((l, a.element.as_str())).or_default() += 1;
+    for a in first.atoms() {
+        if let Some(l) = a.label {
+            *seen.entry((l, a.element)).or_default() += 1;
         }
     }
     if seen.is_empty() {
@@ -1276,7 +1276,7 @@ fn filter_one(
         params.s_max = 0.0;
         println!("  Note: {} has no virial; the default stress criterion is off for it", rel.display());
     }
-    if args.f_max.is_none() && params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces.is_none()) {
+    if args.f_max.is_none() && params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces().is_none()) {
         params.f_max = 0.0;
         println!("  Note: {} has no forces; the default force criterion is off for it", rel.display());
     }
@@ -1792,16 +1792,16 @@ mod tests {
                 .map(|_| {
                     let mut f = Frame::with_cell(cell.clone(), [true; 3]);
                     let c = Vector3::new(5.0, 5.0, 5.0);
-                    f.atoms = vec![Atom::new("Al", c)];
+                    f.set_atoms(vec![Atom::new("Al", c)]);
                     for k in 0..3 {
                         for sgn in [1.0, -1.0] {
                             let mut v = Vector3::zeros();
                             v[k] = sgn * d;
-                            f.atoms.push(Atom::new("O", c + v));
+                            f.add_atom(Atom::new("O", c + v));
                         }
                     }
                     f.energy = Some(-1.0);
-                    f.forces = Some(vec![Vector3::zeros(); 7]);
+                    f.set_forces(Some(vec![Vector3::zeros(); 7])).unwrap();
                     f.stress = Some(Matrix3::zeros());
                     f
                 })
@@ -1859,9 +1859,9 @@ mod tests {
         let frames = (0..3)
             .map(|_| {
                 let mut f = Frame::with_cell(cell.clone(), [true; 3]);
-                f.atoms = vec![Atom::new("O", Vector3::new(1.0, 1.0, 1.0)), Atom::new("H", Vector3::new(2.0, 1.0, 1.0))];
+                f.set_atoms(vec![Atom::new("O", Vector3::new(1.0, 1.0, 1.0)), Atom::new("H", Vector3::new(2.0, 1.0, 1.0))]);
                 f.energy = Some(-1.0);
-                f.forces = Some(vec![Vector3::zeros(); 2]);
+                f.set_forces(Some(vec![Vector3::zeros(); 2])).unwrap();
                 f
             })
             .collect();
@@ -1954,10 +1954,10 @@ mod tests {
             .map(|&g| {
                 let mut f = Frame::with_cell(Cell::from_matrix(id_cell(g)), [true; 3]);
                 let shift = nalgebra::Vector3::new(0.001 * g as f64, 0.0, 0.0);
-                f.atoms = order.iter().map(|&id| Atom::new(ID_ELEM[id], id_base(id) + shift)).collect();
-                f.forces = Some(
+                f.set_atoms(order.iter().map(|&id| Atom::new(ID_ELEM[id], id_base(id) + shift)));
+                f.set_forces(Some(
                     order.iter().map(|&id| nalgebra::Vector3::new(id as f64, 0.01 * g as f64, 0.5)).collect(),
-                );
+                )).unwrap();
                 f.energy = Some(-(g as f64) - 1.0);
                 f.stress = Some(id_stress(g));
                 f
@@ -1976,9 +1976,9 @@ mod tests {
                 assert_eq!(f.cell.as_ref().unwrap().matrix, id_cell(g), "帧 {g} 的盒子错配");
                 let ds = (f.stress.unwrap() - id_stress(g)).abs().max();
                 assert!(ds < 1e-12, "帧 {g} 的应力错配（差 {ds}）");
-                let forces = f.forces.as_ref().unwrap();
+                let forces = f.forces().unwrap();
                 let mut ids: Vec<usize> = Vec::new();
-                for (atom, fv) in f.atoms.iter().zip(forces) {
+                for (atom, fv) in f.atoms().zip(forces) {
                     let id = fv.x.round() as usize;
                     ids.push(id);
                     assert_eq!(atom.element, ID_ELEM[id], "帧 {g} 原子 {id} 的元素错配");
@@ -2063,7 +2063,7 @@ mod tests {
         let mut t = id_system(&[0, 1, 2, 3, 4, 5], &[1, 0, 2]);
         // 帧 1、4 的力超过默认的 20 eV/Å
         for g in [1, 4] {
-            for fv in t.frames[g].forces.as_mut().unwrap() {
+            for fv in t.frames[g].forces_mut().unwrap() {
                 fv.z = 50.0;
             }
         }
@@ -2108,24 +2108,24 @@ mod tests {
         let (traj, _) = read_deepmd_npy_with_warnings(&dest).unwrap();
         assert_eq!(traj.n_frames(), 2);
         // 规范序是 (Z, 符号)：O(8) 在前，Si(14) 在后 —— 与写出的顺序无关
-        let elems: Vec<&str> = traj.frames[0].atoms.iter().map(|a| a.element.as_str()).collect();
+        let elems: Vec<&str> = traj.frames[0].atoms().map(|a| a.element).collect();
         assert_eq!(elems, vec!["O", "Si"]);
 
         // 两份文件描述的是同一个构型，重排之后两帧必须逐位相同
         let (f0, f1) = (&traj.frames[0], &traj.frames[1]);
         for i in 0..2 {
             assert!(
-                (f0.atoms[i].position - f1.atoms[i].position).norm() < 1e-12,
+                (f0.positions()[i] - f1.positions()[i]).norm() < 1e-12,
                 "atom {i}: {:?} vs {:?}",
-                f0.atoms[i].position,
-                f1.atoms[i].position
+                f0.positions()[i],
+                f1.positions()[i]
             );
-            let (a, b) = (f0.forces.as_ref().unwrap()[i], f1.forces.as_ref().unwrap()[i]);
+            let (a, b) = (f0.forces().unwrap()[i], f1.forces().unwrap()[i]);
             assert!((a - b).norm() < 1e-12, "force {i}: {a:?} vs {b:?}");
         }
         // 力确实跟着原子走了，而不是两帧都成了零
-        assert!(f0.forces.as_ref().unwrap()[0].x < 0.0, "O 受 -x");
-        assert!(f0.forces.as_ref().unwrap()[1].x > 0.0, "Si 受 +x");
+        assert!(f0.forces().unwrap()[0].x < 0.0, "O 受 -x");
+        assert!(f0.forces().unwrap()[1].x > 0.0, "Si 受 +x");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

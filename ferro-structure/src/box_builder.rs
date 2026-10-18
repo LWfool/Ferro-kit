@@ -255,20 +255,9 @@ pub fn build_box(
     // ── 步骤 4：软核弛豫 ─────────────────────────────────────────────────────
     relax(&mut atoms, box_len, min_dist, relax_steps);
 
-    Ok(Frame {
-        atoms,
-        cell: Some(cell),
-        pbc: [true; 3],
-        charge: 0,
-        multiplicity: 1,
-        bonds: None,
-        energy: None,
-        forces: None,
-        stress: None,
-        velocities: None,
-        temperature: None,
-        step: None,
-    })
+    let mut frame = Frame::with_cell(cell, [true; 3]);
+    frame.set_atoms(atoms);
+    Ok(frame)
 }
 
 /// Cell list for the packing relaxation: space split into bins to speed up the neighbour search.
@@ -546,9 +535,9 @@ mod tests {
         // 端到端：库外带括号公式一路走到建盒
         let comps = vec![Component { compound: "Ca3(PO4)2".to_string(), n_molecules: 8 }];
         let frame = build_box(&comps, 3.0, 1.5, 20).unwrap();
-        assert_eq!(frame.atoms.iter().filter(|a| a.element == "Ca").count(), 24);
-        assert_eq!(frame.atoms.iter().filter(|a| a.element == "P").count(), 16);
-        assert_eq!(frame.atoms.iter().filter(|a| a.element == "O").count(), 64);
+        assert_eq!(frame.atoms().filter(|a| a.element == "Ca").count(), 24);
+        assert_eq!(frame.atoms().filter(|a| a.element == "P").count(), 16);
+        assert_eq!(frame.atoms().filter(|a| a.element == "O").count(), 64);
     }
 
     #[test]
@@ -609,7 +598,7 @@ mod tests {
         }];
         let frame = build_box(&comps, 1.0, 1.5, 50).unwrap();
         // 10 个 H2O = 30 个原子
-        assert_eq!(frame.atoms.len(), 30);
+        assert_eq!(frame.n_atoms(), 30);
     }
 
     #[test]
@@ -642,7 +631,7 @@ mod tests {
         }];
         let frame = build_box(&comps, 1.0, 1.5, 100).unwrap();
         let box_len = frame.cell.as_ref().unwrap().lengths()[0];
-        for atom in &frame.atoms {
+        for atom in frame.atoms() {
             assert!(atom.position.x >= 0.0 && atom.position.x < box_len);
             assert!(atom.position.y >= 0.0 && atom.position.y < box_len);
             assert!(atom.position.z >= 0.0 && atom.position.z < box_len);
@@ -658,11 +647,11 @@ mod tests {
         let min_dist = 1.5;
         let frame = build_box(&comps, 0.5, min_dist, 200).unwrap();
         let box_len = frame.cell.as_ref().unwrap().lengths()[0];
-        let n = frame.atoms.len();
+        let n = frame.n_atoms();
         // 检查所有原子对的最小距离
         for i in 0..n {
             for j in (i + 1)..n {
-                let diff = frame.atoms[j].position - frame.atoms[i].position;
+                let diff = frame.positions()[j] - frame.positions()[i];
                 let mic = minimum_image_ortho(&diff, box_len);
                 let dist = mic.norm();
                 // 允许小量误差
@@ -691,7 +680,7 @@ mod tests {
         ];
         let frame = build_box(&comps, 0.8, 1.5, 50).unwrap();
         // 5×3 + 3×6 = 33 个原子
-        assert_eq!(frame.atoms.len(), 33);
+        assert_eq!(frame.n_atoms(), 33);
     }
 
     #[test]

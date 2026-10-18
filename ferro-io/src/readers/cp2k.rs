@@ -405,7 +405,7 @@ mod tests {
         // &COORD 第 5 列是分子名；速度在 &VELOCITY 段。此前第 5–7 列能解析成数就当速度
         let text = si(FCC, "", "1.0 1 2 3");
         let f = parse_cp2k(&text).unwrap();
-        assert!(f.first().unwrap().velocities.is_none());
+        assert!(f.first().unwrap().velocities().is_none());
     }
 
     #[test]

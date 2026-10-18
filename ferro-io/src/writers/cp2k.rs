@@ -20,7 +20,7 @@ pub fn cp2k_structure_sections(frame: &Frame) -> Result<String> {
     writeln!(w, "  PERIODIC {periodic}")?;
     writeln!(w, "&END CELL")?;
     writeln!(w, "&COORD")?;
-    for atom in &frame.atoms {
+    for atom in frame.atoms() {
         writeln!(w, "  {}  {:.10}  {:.10}  {:.10}",
             atom.element, atom.position.x, atom.position.y, atom.position.z)?;
     }
@@ -48,7 +48,7 @@ mod tests {
         let f = back.first().unwrap();
         assert!((f.cell.as_ref().unwrap().matrix - m).norm() < 1e-9, "胞应原样读回（行 = 晶格矢量）");
         assert_eq!(f.pbc, [true, true, false], "PERIODIC XY 应读回");
-        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("Zr", "O"));
+        assert_eq!((f.atom(0).element, f.atom(1).element), ("Zr", "O"));
         assert!((f.atom(1).position - Vector3::new(4.5, 5.25, 6.125)).norm() < 1e-9);
     }
 

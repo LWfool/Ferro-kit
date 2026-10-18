@@ -5,16 +5,16 @@ use nalgebra::Vector3;
 
 /// 计算两原子间的 Cartesian 距离 \[Å\]（不考虑周期性）
 pub fn distance(frame: &Frame, i: usize, j: usize) -> Option<f64> {
-    let a = frame.atoms.get(i)?;
-    let b = frame.atoms.get(j)?;
+    let a = frame.get_atom(i)?;
+    let b = frame.get_atom(j)?;
     Some((a.position - b.position).norm())
 }
 
 /// 计算三原子的键角 \[度\]，顶点为原子 j
 pub fn angle(frame: &Frame, i: usize, j: usize, k: usize) -> Option<f64> {
-    let ai = frame.atoms.get(i)?;
-    let aj = frame.atoms.get(j)?;
-    let ak = frame.atoms.get(k)?;
+    let ai = frame.get_atom(i)?;
+    let aj = frame.get_atom(j)?;
+    let ak = frame.get_atom(k)?;
     let v1 = ai.position - aj.position;
     let v2 = ak.position - aj.position;
     let cos_a = (v1.dot(&v2) / (v1.norm() * v2.norm())).clamp(-1.0, 1.0);
@@ -23,10 +23,10 @@ pub fn angle(frame: &Frame, i: usize, j: usize, k: usize) -> Option<f64> {
 
 /// 计算四原子的二面角 \[度\]
 pub fn dihedral(frame: &Frame, i: usize, j: usize, k: usize, l: usize) -> Option<f64> {
-    let ai = frame.atoms.get(i)?;
-    let aj = frame.atoms.get(j)?;
-    let ak = frame.atoms.get(k)?;
-    let al = frame.atoms.get(l)?;
+    let ai = frame.get_atom(i)?;
+    let aj = frame.get_atom(j)?;
+    let ak = frame.get_atom(k)?;
+    let al = frame.get_atom(l)?;
     let b1 = aj.position - ai.position;
     let b2 = ak.position - aj.position;
     let b3 = al.position - ak.position;
@@ -38,13 +38,12 @@ pub fn dihedral(frame: &Frame, i: usize, j: usize, k: usize, l: usize) -> Option
 
 /// 计算回转半径 \[Å\]
 pub fn radius_of_gyration(frame: &Frame) -> f64 {
-    if frame.atoms.is_empty() { return 0.0; }
+    if frame.n_atoms() == 0 { return 0.0; }
     let com = frame.center_of_mass();
     let total_mass = frame.total_mass();
     if total_mass == 0.0 { return 0.0; }
     let sum: f64 = frame
-        .atoms
-        .iter()
+        .atoms()
         .map(|a| {
             let r = (a.position - com).norm();
             a.effective_mass() * r * r
@@ -55,9 +54,9 @@ pub fn radius_of_gyration(frame: &Frame) -> f64 {
 
 /// 计算 Cartesian 包围盒尺寸 \[Å\]
 pub fn bounding_box(frame: &Frame) -> Option<Vector3<f64>> {
-    if frame.atoms.is_empty() { return None; }
-    let first = frame.atoms[0].position;
-    let (min, max) = frame.atoms.iter().skip(1).fold((first, first), |(mn, mx), a| {
+    if frame.n_atoms() == 0 { return None; }
+    let first = frame.positions()[0];
+    let (min, max) = frame.atoms().skip(1).fold((first, first), |(mn, mx), a| {
         let p = a.position;
         (
             Vector3::new(mn.x.min(p.x), mn.y.min(p.y), mn.z.min(p.z)),

@@ -54,11 +54,11 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     writeln!(w, "_atom_site_fract_z")?;
 
     let mut counters: HashMap<String, usize> = HashMap::new();
-    for atom in &frame.atoms {
-        let label = if let Some(l) = &atom.label {
-            l.clone()
+    for atom in frame.atoms() {
+        let label = if let Some(l) = atom.label {
+            l.to_string()
         } else {
-            let n = counters.entry(atom.element.clone()).or_insert(0);
+            let n = counters.entry(atom.element.to_string()).or_insert(0);
             *n += 1;
             format!("{}{n}", atom.element)
         };

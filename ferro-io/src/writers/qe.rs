@@ -30,7 +30,7 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
     writeln!(w)?;
 
     writeln!(w, "ATOMIC_POSITIONS {{angstrom}}")?;
-    for atom in &frame.atoms {
+    for atom in frame.atoms() {
         writeln!(w, "  {}  {:.10}  {:.10}  {:.10}",
             atom.element,
             atom.position.x, atom.position.y, atom.position.z)?;

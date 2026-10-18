@@ -77,21 +77,21 @@ pub fn write_deepmd_npy_bounds(
     if frames.is_empty() {
         bail!("cannot write an empty trajectory as a DeePMD system");
     }
-    let natoms = frames[0].atoms.len();
+    let natoms = frames[0].n_atoms();
     if natoms == 0 {
         bail!("cannot write a DeePMD system with zero atoms");
     }
 
     // 一个 system 内 type.raw 只写一次，故各帧的类型序列必须逐项相同
-    let elements: Vec<&str> = frames[0].atoms.iter().map(|a| a.element.as_str()).collect();
+    let elements: Vec<&str> = frames[0].atoms().map(|a| a.element).collect();
     for (i, f) in frames.iter().enumerate() {
-        if f.atoms.len() != natoms {
+        if f.n_atoms() != natoms {
             bail!(
                 "frame {i} has {} atoms but frame 0 has {natoms}; split the trajectory into one system per composition",
-                f.atoms.len()
+                f.n_atoms()
             );
         }
-        if f.atoms.iter().zip(&elements).any(|(a, e)| a.element != *e) {
+        if f.atoms().zip(&elements).any(|(a, e)| a.element != *e) {
             bail!("frame {i} has a different type sequence than frame 0; one DeePMD system holds one composition");
         }
     }
@@ -149,7 +149,7 @@ pub fn write_deepmd_npy_bounds(
 
     let mut coord = Vec::with_capacity(nf * natoms * 3);
     for f in frames {
-        for a in &f.atoms {
+        for a in f.atoms() {
             coord.extend_from_slice(&[a.position.x, a.position.y, a.position.z]);
         }
     }
@@ -167,7 +167,7 @@ pub fn write_deepmd_npy_bounds(
     if let Some(energies) = all_or_none(frames.iter().map(|f| f.energy), "energy")? {
         arrays.push(("energy".into(), energies, 1));
     }
-    if let Some(force_frames) = all_or_none(frames.iter().map(|f| f.forces.as_ref()), "forces")? {
+    if let Some(force_frames) = all_or_none(frames.iter().map(|f| f.forces()), "forces")? {
         let mut force = Vec::with_capacity(nf * natoms * 3);
         for fs_ in force_frames {
             if fs_.len() != natoms {
@@ -273,12 +273,12 @@ mod tests {
         let mut frames = Vec::new();
         for k in 0..2 {
             let mut f = Frame::with_cell(cell.clone(), [true; 3]);
-            f.atoms = vec![
+            f.set_atoms(vec![
                 Atom::new("O", Vector3::new(k as f64, 0.0, 0.0)),
                 Atom::new("Si", Vector3::new(1.0, 0.0, 0.0)),
-            ];
+            ]);
             f.energy = Some(-10.0 - k as f64);
-            f.forces = Some(vec![Vector3::new(0.5, 0.0, 0.0), Vector3::new(-0.5, 0.0, 0.0)]);
+            f.set_forces(Some(vec![Vector3::new(0.5, 0.0, 0.0), Vector3::new(-0.5, 0.0, 0.0)])).unwrap();
             f.stress = Some(Matrix3::from_row_slice(&[
                 1.0, 2.0, 3.0, 2.0, 4.0, 5.0, 3.0, 5.0, 6.0,
             ]));
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn rejects_a_changing_composition() {
         let mut t = demo_traj();
-        t.frames[1].atoms[0].element = "N".to_string();
+        t.frames[1].sites_mut()[0].element = "N".to_string();
         assert!(write_deepmd_npy(&t, &out_dir("ferro_dp_comp")).is_err());
     }
 

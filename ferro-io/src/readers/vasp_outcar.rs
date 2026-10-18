@@ -330,7 +330,7 @@ fn finish(
     for (i, sym) in elements.iter().enumerate() {
         frame.add_atom(Atom::new(sym.clone(), p.positions[i]));
     }
-    frame.forces = Some(p.forces.clone());
+    frame.set_forces(Some(p.forces.clone())).expect("one force per atom, checked above");
     frame.energy = Some(energy);
     frame.temperature = p.temperature;
     frame.step = Some(p.step);
@@ -433,7 +433,7 @@ mod tests {
         for (got, want) in p0.iter().zip(&[2.15183, 5.81516, 1.20982]) {
             assert!((got - want).abs() < 1e-9, "{p0:?}");
         }
-        let fl = f0.forces.as_ref().unwrap().last().unwrap();
+        let fl = f0.forces().unwrap().last().unwrap();
         for (got, want) in fl.iter().zip(&[-1.609282, 0.303173, -0.607801]) {
             assert!((got - want).abs() < 1e-9, "{fl:?}");
         }
@@ -490,7 +490,7 @@ mod tests {
             for (g, w) in f.atom(i).position.iter().zip(&pos) {
                 assert!((g - w).abs() < 1e-9, "{dir} 坐标 {g} vs {w}");
             }
-            for (g, w) in f.forces.as_ref().unwrap()[i].iter().zip(&force) {
+            for (g, w) in f.forces().unwrap()[i].iter().zip(&force) {
                 assert!((g - w).abs() < 1e-9, "{dir} 力 {g} vs {w}");
             }
             // 1e-7 相对容差同上:两边 eV/Å³ 换算常数差 8e-9

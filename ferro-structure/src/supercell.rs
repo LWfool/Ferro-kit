@@ -117,7 +117,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
     let c_vec = Vector3::new(m[(2, 0)], m[(2, 1)], m[(2, 2)]);
 
     // ── 扩展原子列表 ──────────────────────────────────────────────────────────
-    let n_orig = frame.atoms.len();
+    let n_orig = frame.n_atoms();
     let n_replicas = nx * ny * nz;
     let mut new_atoms = Vec::with_capacity(n_orig * n_replicas);
 
@@ -125,8 +125,8 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         for iy in 0..ny {
             for ix in 0..nx {
                 let offset = ix as f64 * a_vec + iy as f64 * b_vec + iz as f64 * c_vec;
-                for atom in &frame.atoms {
-                    let mut new_atom = atom.clone();
+                for atom in frame.atoms() {
+                    let mut new_atom = atom.to_atom();
                     new_atom.position += offset;
                     new_atoms.push(new_atom);
                 }
@@ -145,20 +145,11 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
     });
 
     // ── 组装新帧 ──────────────────────────────────────────────────────────────
-    Ok(Frame {
-        atoms: new_atoms,
-        cell: Some(new_cell),
-        pbc: frame.pbc,
-        charge: frame.charge * n_replicas as i32,
-        multiplicity: 1,
-        bonds: new_bonds,
-        energy: None,
-        forces: None,
-        stress: None,
-        velocities: None,
-        temperature: None,
-        step: None,
-    })
+    let mut out = Frame::with_cell(new_cell, frame.pbc);
+    out.set_atoms(new_atoms);
+    out.charge = frame.charge * n_replicas as i32;
+    out.bonds = new_bonds;
+    Ok(out)
 }
 
 // ── 测试 ──────────────────────────────────────────────────────────────────────
@@ -181,7 +172,7 @@ mod tests {
     fn test_identity_supercell() {
         let frame = bcc_frame(2.87);
         let sc = make_supercell(&frame, 1, 1, 1).unwrap();
-        assert_eq!(sc.atoms.len(), frame.atoms.len());
+        assert_eq!(sc.n_atoms(), frame.n_atoms());
         let [la, lb, lc] = sc.cell.as_ref().unwrap().lengths();
         assert!((la - 2.87).abs() < 1e-10);
         assert!((lb - 2.87).abs() < 1e-10);
@@ -205,7 +196,7 @@ mod tests {
         let sc = make_supercell(&frame, 2, 2, 2).unwrap();
 
         // 原子数：2 * 2*2*2 = 16
-        assert_eq!(sc.atoms.len(), 16);
+        assert_eq!(sc.n_atoms(), 16);
 
         // 格子边长：各方向乘以倍数
         let [la, lb, lc] = sc.cell.as_ref().unwrap().lengths();
@@ -219,7 +210,7 @@ mod tests {
         let a = 3.0;
         let frame = bcc_frame(a);
         let sc = make_supercell(&frame, 2, 3, 1).unwrap();
-        assert_eq!(sc.atoms.len(), 2 * 2 * 3);
+        assert_eq!(sc.n_atoms(), 2 * 2 * 3);
         let [la, lb, lc] = sc.cell.as_ref().unwrap().lengths();
         assert!((la - 2.0 * a).abs() < 1e-10);
         assert!((lb - 3.0 * a).abs() < 1e-10);
@@ -235,8 +226,8 @@ mod tests {
 
         let sc = make_supercell(&frame, 2, 2, 1).unwrap();
         // 4 个副本的原子坐标应为 (0,0,0), (4,0,0), (0,4,0), (4,4,0)
-        let mut xs: Vec<f64> = sc.atoms.iter().map(|a| a.position.x).collect();
-        let mut ys: Vec<f64> = sc.atoms.iter().map(|a| a.position.y).collect();
+        let mut xs: Vec<f64> = sc.atoms().map(|a| a.position.x).collect();
+        let mut ys: Vec<f64> = sc.atoms().map(|a| a.position.y).collect();
         xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
         assert!((xs[0] - 0.0).abs() < 1e-10);

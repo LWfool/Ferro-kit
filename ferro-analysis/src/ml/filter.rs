@@ -179,7 +179,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
             "stride and number are two ways of saying the same thing; give only one".into(),
         ));
     }
-    if params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces.is_none()) {
+    if params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces().is_none()) {
         return Err(ChemError::ValidationError(
             "a force threshold was given but some frames carry no forces".into(),
         ));
@@ -222,7 +222,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
             let peak = |it: &mut dyn Iterator<Item = f64>| {
                 it.fold(0.0_f64, |a, x| if a.is_nan() || x.is_nan() { f64::NAN } else { a.max(x) })
             };
-            let max_force = f.forces.as_ref().map(|v| peak(&mut v.iter().map(|x| x.norm())));
+            let max_force = f.forces().map(|v| peak(&mut v.iter().map(|x| x.norm())));
             let max_stress = f.stress.map(|s| peak(&mut s.iter().map(|x| x.abs())));
             let mut flags = 0;
             // NaN 与阈值比较恒假，单写 `m > 阈值` 会放它过去，须显式判坏
@@ -416,12 +416,12 @@ mod tests {
             .zip(stresses)
             .map(|(&f, &s)| {
                 let mut fr = Frame::with_cell(cell.clone(), [true; 3]);
-                fr.atoms = vec![
+                fr.set_atoms(vec![
                     Atom::new("O", Vector3::zeros()),
                     Atom::new("O", Vector3::new(1.0, 0.0, 0.0)),
-                ];
+                ]);
                 // 第二个原子拿峰值，确保取的是逐原子最大而不是第一个
-                fr.forces = Some(vec![Vector3::zeros(), Vector3::new(f, 0.0, 0.0)]);
+                fr.set_forces(Some(vec![Vector3::zeros(), Vector3::new(f, 0.0, 0.0)])).unwrap();
                 fr.stress = Some(Matrix3::from_row_slice(&[
                     0.0, 0.0, 0.0, 0.0, 0.0, s, 0.0, s, 0.0,
                 ]));
@@ -439,10 +439,10 @@ mod tests {
             .iter()
             .map(|&g| {
                 let mut f = Frame::with_cell(cell.clone(), [true; 3]);
-                f.atoms = vec![
+                f.set_atoms(vec![
                     Atom::new("O", Vector3::new(1.0, 1.0, 1.0)),
                     Atom::new("O", Vector3::new(1.0 + g, 1.0, 1.0)),
-                ];
+                ]);
                 f
             })
             .collect();
@@ -491,7 +491,7 @@ mod tests {
             for d in dirs.iter().take(n_o) {
                 atoms.push(Atom::new("O", Vector3::new(5.0 + d[0], 5.0 + d[1], 5.0 + d[2])));
             }
-            f.atoms = atoms;
+            f.set_atoms(atoms);
             frames.push(f);
         }
         let t = Trajectory { frames, metadata: Default::default() };
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn a_threshold_without_the_label_fails_before_judging() {
         let mut t = traj_of(&[1.0, 1.0], &[0.1, 0.1]);
-        t.frames[1].forces = None;
+        t.frames[1].set_forces(None).unwrap();
         let p = FilterParams { f_max: 20.0, ..Default::default() };
         let err = filter_frames(&t, &p).unwrap_err().to_string();
         assert!(err.contains("forces"), "{err}");

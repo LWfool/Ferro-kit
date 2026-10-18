@@ -21,11 +21,11 @@ pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -
     }
     let mut best = f64::INFINITY;
     for (n, &i) in ia.iter().enumerate() {
-        let pi = frame.atoms[i].position;
+        let pi = frame.positions()[i];
         // 同元素时只走上三角，距离对称
         let rest = if a == b { &ib[n + 1..] } else { &ib[..] };
         for &j in rest {
-            let d = cell.minimum_image(frame.atoms[j].position - pi);
+            let d = cell.minimum_image(frame.positions()[j] - pi);
             let r2 = d.norm_squared();
             if r2 < best {
                 best = r2;
@@ -37,8 +37,7 @@ pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -
 
 fn idx_of(frame: &Frame, elem: &str) -> Vec<usize> {
     frame
-        .atoms
-        .iter()
+        .atoms()
         .enumerate()
         .filter_map(|(i, a)| (a.element == elem).then_some(i))
         .collect()
@@ -92,10 +91,10 @@ mod tests {
     fn cubic(a: f64, atoms: Vec<(&str, [f64; 3])>) -> (Frame, PeriodicCell) {
         let cell = Cell::from_matrix(Matrix3::identity() * a);
         let mut f = Frame::with_cell(cell, [true; 3]);
-        f.atoms = atoms
+        f.set_atoms(atoms
             .into_iter()
             .map(|(e, p)| Atom::new(e, Vector3::new(p[0], p[1], p[2])))
-            .collect();
+            );
         let pc = PeriodicCell::of(&f).unwrap();
         (f, pc)
     }

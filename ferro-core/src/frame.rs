@@ -1,42 +1,59 @@
 //! Single-frame structure (analogous to ASE's `Atoms` object).
 
+use std::sync::Arc;
+
 use nalgebra::{Matrix3, Vector3};
 
-use crate::atom::Atom;
+use crate::atom::{Atom, AtomRef, Site};
 use crate::cell::Cell;
+use crate::error::{ChemError, Result};
 
-/// 单帧结构，是 ferro 中的核心结构单元。
+/// One structure: the core unit of ferro.
 ///
-/// - 非周期性体系（分子）：`cell = None`，`pbc = [false; 3]`
-/// - 三维周期性体系（晶体）：`cell = Some(…)`，`pbc = [true; 3]`
-/// - 二维周期性体系（表面）：`cell = Some(…)`，`pbc = [true, true, false]`
+/// - Non-periodic (molecule): `cell = None`, `pbc = [false; 3]`
+/// - 3-D periodic (crystal): `cell = Some(…)`, `pbc = [true; 3]`
+/// - 2-D periodic (surface): `cell = Some(…)`, `pbc = [true, true, false]`
 ///
-/// NPT 模拟轨迹中每帧盒子不同，由 [`crate::trajectory::Trajectory`] 中各帧
-/// 各自持有自己的 `cell` 自然处理，无需特殊设计。
+/// An NPT trajectory has a different box in every frame; each frame of a
+/// [`crate::trajectory::Trajectory`] holding its own `cell` handles that without
+/// anything special.
+///
+/// **Storage** (review B15). What an atom is — element, label, mass, magnetic
+/// moment — sits in a table of [`Site`]s behind an `Arc`, which consecutive frames
+/// of one system share ([`crate::Trajectory::add_frame`] links them); what changes
+/// from frame to frame — positions, charges, forces, velocities — sits in arrays of
+/// the frame's own. A frame costs 24 bytes per atom for its positions instead of a
+/// whole `Atom` with two strings. The per-atom arrays are private so their lengths
+/// cannot drift from the atom count (review B5): [`Frame::set_forces`] and
+/// [`Frame::set_velocities`] refuse a wrong length.
 #[derive(Debug, Clone)]
 pub struct Frame {
-    /// 原子列表；原子的唯一标识是其在此 Vec 中的下标
-    pub atoms: Vec<Atom>,
-    /// 晶格；`None` 表示非周期性体系
+    sites: Arc<Vec<Site>>,
+    positions: Vec<Vector3<f64>>,
+    /// Per-atom charge \[e\]; `None` when no atom has one
+    charges: Option<Vec<Option<f64>>>,
+    /// Per-atom force \[eV/Å\], in atom order
+    forces: Option<Vec<Vector3<f64>>>,
+    /// Per-atom velocity \[Å/fs\], in atom order
+    velocities: Option<Vec<Vector3<f64>>>,
+    /// Lattice; `None` for a non-periodic system
     pub cell: Option<Cell>,
-    /// 各方向是否周期性
+    /// Whether each direction is periodic
     pub pbc: [bool; 3],
 
-    // ── 体系属性 ────────────────────────────────────────────────────────────
-    /// 体系总电荷（单位 e）
+    // ── System properties ────────────────────────────────────────────────────
+    /// Total charge of the system \[e\]
     pub charge: i32,
-    /// 自旋多重度 2S+1；未成对电子数 = multiplicity − 1
+    /// Spin multiplicity 2S+1; unpaired electrons = multiplicity − 1
     pub multiplicity: u32,
 
-    // ── 可选键连接（需要时再填充）───────────────────────────────────────────
-    /// 键列表 (i, j)，i/j 为 atoms 中的下标
+    // ── Optional bonds ───────────────────────────────────────────────────────
+    /// Bond list (i, j), indices into the atoms
     pub bonds: Option<Vec<(usize, usize)>>,
 
-    // ── 计算结果（后处理写回）───────────────────────────────────────────────
-    /// 体系总能量（eV）
+    // ── Results ──────────────────────────────────────────────────────────────
+    /// Total energy \[eV\]
     pub energy: Option<f64>,
-    /// 每个原子的受力（eV/Å），顺序与 atoms 一致
-    pub forces: Option<Vec<Vector3<f64>>>,
     /// Stress tensor (eV/Å³), row-major, **positive = compression**.
     ///
     /// This is the sign CP2K, VASP and QE print, and the opposite of ASE's
@@ -46,8 +63,6 @@ pub struct Frame {
     ///
     /// Voigt order is left to the caller — nothing in this crate flattens it.
     pub stress: Option<Matrix3<f64>>,
-    /// 每个原子的速度（Å/fs），顺序与 atoms 一致
-    pub velocities: Option<Vec<Vector3<f64>>>,
     /// Instantaneous ionic temperature (K), as an MD engine reports it per step.
     ///
     /// `None` for everything that is not an MD frame — a relaxation, a POSCAR, a
@@ -68,25 +83,27 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// 创建空帧（非周期性，中性单重态）。
+    /// An empty frame (non-periodic, neutral singlet).
     pub fn new() -> Self {
         Self {
-            atoms: Vec::new(),
+            sites: Arc::new(Vec::new()),
+            positions: Vec::new(),
+            charges: None,
+            forces: None,
+            velocities: None,
             cell: None,
             pbc: [false; 3],
             charge: 0,
             multiplicity: 1,
             bonds: None,
             energy: None,
-            forces: None,
             stress: None,
-            velocities: None,
             temperature: None,
             step: None,
         }
     }
 
-    /// 创建周期性帧（晶体/表面常用入口）。
+    /// A periodic frame (the usual entry for crystals and surfaces).
     pub fn with_cell(cell: Cell, pbc: [bool; 3]) -> Self {
         Self {
             cell: Some(cell),
@@ -95,123 +112,310 @@ impl Frame {
         }
     }
 
-    // ── 原子访问 ─────────────────────────────────────────────────────────────
+    // ── Atoms ────────────────────────────────────────────────────────────────
 
     pub fn n_atoms(&self) -> usize {
-        self.atoms.len()
+        self.positions.len()
     }
 
-    pub fn atom(&self, index: usize) -> &Atom {
-        &self.atoms[index]
+    /// Atom `index`, read out of the site table and the arrays.
+    pub fn atom(&self, index: usize) -> AtomRef<'_> {
+        let s = &self.sites[index];
+        AtomRef {
+            element: &s.element,
+            position: self.positions[index],
+            label: s.label.as_deref(),
+            mass: s.mass,
+            magmom: s.magmom,
+            charge: self.charges.as_ref().and_then(|c| c[index]),
+        }
     }
 
-    pub fn atom_mut(&mut self, index: usize) -> &mut Atom {
-        &mut self.atoms[index]
+    /// Atom `index`, or `None` past the last one.
+    pub fn get_atom(&self, index: usize) -> Option<AtomRef<'_>> {
+        (index < self.n_atoms()).then(|| self.atom(index))
     }
 
+    /// Every atom, in index order.
+    pub fn atoms(&self) -> impl ExactSizeIterator<Item = AtomRef<'_>> + DoubleEndedIterator + Clone + '_ {
+        (0..self.n_atoms()).map(move |i| self.atom(i))
+    }
+
+    /// Appends an atom.
+    ///
+    /// # Panics
+    /// When the frame already carries forces or velocities: they would be one short.
+    /// Add the atoms first, then set them.
     pub fn add_atom(&mut self, atom: Atom) {
-        self.atoms.push(atom);
+        assert!(
+            self.forces.is_none() && self.velocities.is_none(),
+            "add_atom after set_forces / set_velocities would leave them one atom short"
+        );
+        let Atom { element, position, label, mass, magmom, charge } = atom;
+        if charge.is_some() && self.charges.is_none() {
+            self.charges = Some(vec![None; self.n_atoms()]);
+        }
+        if let Some(c) = &mut self.charges {
+            c.push(charge);
+        }
+        Arc::make_mut(&mut self.sites).push(Site { element, label, mass, magmom });
+        self.positions.push(position);
+    }
+
+    /// Replaces every atom; forces and velocities are dropped with the old atoms.
+    pub fn set_atoms(&mut self, atoms: impl IntoIterator<Item = Atom>) {
+        self.sites = Arc::new(Vec::new());
+        self.positions.clear();
+        self.charges = None;
+        self.forces = None;
+        self.velocities = None;
+        for a in atoms {
+            self.add_atom(a);
+        }
+    }
+
+    /// The site table: element, label, mass and magnetic moment of every atom.
+    pub fn sites(&self) -> &[Site] {
+        &self.sites
+    }
+
+    /// The site table, for changing an element or a label. The table is copied
+    /// first when other frames share it.
+    pub fn sites_mut(&mut self) -> &mut [Site] {
+        Arc::make_mut(&mut self.sites).as_mut_slice()
+    }
+
+    /// Whether two frames share one site table (so their atoms are the same by construction).
+    pub fn shares_sites_with(&self, other: &Frame) -> bool {
+        Arc::ptr_eq(&self.sites, &other.sites)
+    }
+
+    /// Makes this frame use `other`'s site table when the two are equal, so a
+    /// trajectory stores it once.
+    pub fn share_sites_with(&mut self, other: &Frame) {
+        if !self.shares_sites_with(other) && self.sites == other.sites {
+            self.sites = Arc::clone(&other.sites);
+        }
     }
 
     /// Cartesian positions of all atoms, in index order.
-    pub fn positions(&self) -> Vec<Vector3<f64>> {
-        self.atoms.iter().map(|a| a.position).collect()
+    pub fn positions(&self) -> &[Vector3<f64>] {
+        &self.positions
     }
 
-    /// 返回所有原子的元素符号切片引用。
+    pub fn positions_mut(&mut self) -> &mut [Vector3<f64>] {
+        &mut self.positions
+    }
+
+    /// Element symbol of atom `index`.
+    pub fn element(&self, index: usize) -> &str {
+        &self.sites[index].element
+    }
+
+    /// Sets the charge of atom `index`.
+    pub fn set_charge(&mut self, index: usize, charge: Option<f64>) {
+        let n = self.n_atoms();
+        self.charges.get_or_insert_with(|| vec![None; n])[index] = charge;
+    }
+
+    /// Per-atom forces \[eV/Å\], in atom order.
+    pub fn forces(&self) -> Option<&[Vector3<f64>]> {
+        self.forces.as_deref()
+    }
+
+    pub fn forces_mut(&mut self) -> Option<&mut [Vector3<f64>]> {
+        self.forces.as_deref_mut()
+    }
+
+    /// Sets the forces; one per atom, or an error.
+    pub fn set_forces(&mut self, forces: Option<Vec<Vector3<f64>>>) -> Result<()> {
+        self.check_len("forces", forces.as_ref())?;
+        self.forces = forces;
+        Ok(())
+    }
+
+    /// Per-atom velocities \[Å/fs\], in atom order.
+    pub fn velocities(&self) -> Option<&[Vector3<f64>]> {
+        self.velocities.as_deref()
+    }
+
+    pub fn velocities_mut(&mut self) -> Option<&mut [Vector3<f64>]> {
+        self.velocities.as_deref_mut()
+    }
+
+    /// Sets the velocities; one per atom, or an error.
+    pub fn set_velocities(&mut self, velocities: Option<Vec<Vector3<f64>>>) -> Result<()> {
+        self.check_len("velocities", velocities.as_ref())?;
+        self.velocities = velocities;
+        Ok(())
+    }
+
+    fn check_len(&self, what: &str, v: Option<&Vec<Vector3<f64>>>) -> Result<()> {
+        match v {
+            Some(v) if v.len() != self.n_atoms() => Err(ChemError::ValidationError(format!(
+                "{} {what} for {} atoms", v.len(), self.n_atoms()
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    /// The frame with its atoms in the order `order` gives: new atom `k` is old atom
+    /// `order[k]`. Every per-atom array moves with its atoms, and bonds are renumbered.
+    ///
+    /// # Panics
+    /// When `order` is not a permutation of `0..n_atoms`.
+    pub fn permuted(&self, order: &[usize]) -> Frame {
+        let n = self.n_atoms();
+        let mut seen = vec![false; n];
+        assert!(
+            order.len() == n && order.iter().all(|&i| i < n && !std::mem::replace(&mut seen[i], true)),
+            "permuted: the order is not a permutation of 0..{n}"
+        );
+        let pick = |v: &[Vector3<f64>]| order.iter().map(|&i| v[i]).collect::<Vec<_>>();
+        let mut new_index = vec![0usize; n];
+        for (k, &i) in order.iter().enumerate() {
+            new_index[i] = k;
+        }
+        Frame {
+            sites: Arc::new(order.iter().map(|&i| self.sites[i].clone()).collect()),
+            positions: pick(&self.positions),
+            charges: self.charges.as_ref().map(|c| order.iter().map(|&i| c[i]).collect()),
+            forces: self.forces.as_deref().map(pick),
+            velocities: self.velocities.as_deref().map(pick),
+            bonds: self.bonds.as_ref().map(|b| b.iter().map(|&(i, j)| (new_index[i], new_index[j])).collect()),
+            ..self.clone_without_atoms()
+        }
+    }
+
+    /// Keeps the first `n` atoms (and their forces, velocities and charges).
+    pub fn truncate_atoms(&mut self, n: usize) {
+        if n >= self.n_atoms() {
+            return;
+        }
+        Arc::make_mut(&mut self.sites).truncate(n);
+        self.positions.truncate(n);
+        for v in [&mut self.forces, &mut self.velocities].into_iter().flatten() {
+            v.truncate(n);
+        }
+        if let Some(c) = &mut self.charges {
+            c.truncate(n);
+        }
+    }
+
+    /// The frame-level fields, with no atoms.
+    fn clone_without_atoms(&self) -> Frame {
+        Frame {
+            sites: Arc::new(Vec::new()),
+            positions: Vec::new(),
+            charges: None,
+            forces: None,
+            velocities: None,
+            cell: self.cell.clone(),
+            pbc: self.pbc,
+            charge: self.charge,
+            multiplicity: self.multiplicity,
+            bonds: self.bonds.clone(),
+            energy: self.energy,
+            stress: self.stress,
+            temperature: self.temperature,
+            step: self.step,
+        }
+    }
+
+    /// Element symbols of all atoms, in index order.
     pub fn symbols(&self) -> Vec<&str> {
-        self.atoms.iter().map(|a| a.element.as_str()).collect()
+        self.sites.iter().map(|s| s.element.as_str()).collect()
     }
 
-    /// 按首次出现顺序返回去重后的元素符号（用于 KIND/类型 ID/POSCAR 元素行等）。
+    /// Distinct element symbols in order of first appearance (KIND / type ids / the POSCAR element line).
     pub fn unique_elements(&self) -> Vec<String> {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
-        for a in &self.atoms {
-            if seen.insert(a.element.as_str()) {
-                out.push(a.element.clone());
+        for s in self.sites.iter() {
+            if seen.insert(s.element.as_str()) {
+                out.push(s.element.clone());
             }
         }
         out
     }
 
-    /// 返回某元素在此帧中的原子数量。
+    /// Number of atoms of `element` in this frame.
     pub fn count_element(&self, element: &str) -> usize {
-        self.atoms.iter().filter(|a| a.element == element).count()
+        self.sites.iter().filter(|s| s.element == element).count()
     }
 
-    // ── 几何量 ───────────────────────────────────────────────────────────────
+    // ── Geometry ─────────────────────────────────────────────────────────────
 
-    /// 总质量（amu）。
+    /// Total mass \[amu\].
     pub fn total_mass(&self) -> f64 {
-        self.atoms.iter().map(|a| a.effective_mass()).sum()
+        self.sites.iter().map(|s| s.effective_mass()).sum()
     }
 
-    /// 质心（Å），按质量加权。
+    /// Mass-weighted centre \[Å\].
     pub fn center_of_mass(&self) -> Vector3<f64> {
-        if self.atoms.is_empty() {
+        if self.positions.is_empty() {
             return Vector3::zeros();
         }
         let total = self.total_mass();
-        self.atoms
+        self.sites
             .iter()
-            .map(|a| a.position * a.effective_mass())
+            .zip(&self.positions)
+            .map(|(s, p)| p * s.effective_mass())
             .fold(Vector3::zeros(), |acc, v| acc + v)
             / total
     }
 
-    /// 几何中心（Å），不加权。
+    /// Unweighted centre \[Å\].
     pub fn geometric_center(&self) -> Vector3<f64> {
-        if self.atoms.is_empty() {
+        if self.positions.is_empty() {
             return Vector3::zeros();
         }
-        let sum = self.atoms
-            .iter()
-            .map(|a| a.position)
-            .fold(Vector3::zeros(), |acc, v| acc + v);
-        sum / self.atoms.len() as f64
+        let sum = self.positions.iter().fold(Vector3::zeros(), |acc, v| acc + v);
+        sum / self.positions.len() as f64
     }
 
-    // ── 变换 ─────────────────────────────────────────────────────────────────
+    // ── Transformations ──────────────────────────────────────────────────────
 
-    /// 平移所有原子。
+    /// Moves every atom by `disp`.
     pub fn translate(&mut self, disp: Vector3<f64>) {
-        for atom in &mut self.atoms {
-            atom.position += disp;
+        for p in &mut self.positions {
+            *p += disp;
         }
     }
 
-    /// 将质心移到原点。
+    /// Moves the centre of mass to the origin.
     pub fn center(&mut self) {
         let com = self.center_of_mass();
         self.translate(-com);
     }
 
-    // ── 周期性 ───────────────────────────────────────────────────────────────
+    // ── Periodicity ──────────────────────────────────────────────────────────
 
-    /// 任意方向是否周期性。
+    /// Whether any direction is periodic.
     pub fn is_periodic(&self) -> bool {
         self.pbc.iter().any(|&p| p)
     }
 
-    /// 把周期方向上越出盒子的原子折回 `[0, 1)`；非周期方向、盒内原子都不动。
+    /// Folds atoms outside the box back into `[0, 1)` along the periodic directions;
+    /// atoms inside, and the non-periodic directions, are left alone.
     ///
-    /// 越界的原子平移整数个晶格矢量，不做「分数 → 笛卡尔」往返：往返会给每个原子
-    /// 带来 1e-15 级舍入，盒内原子的坐标末位也跟着变。判越界留 `WRAP_TOL` 的余量，
-    /// 坐标正好在 0 而算出分数 -1e-17 的原子不该被搬到盒子另一头。
-    /// 无 cell 或晶胞奇异时不动。
+    /// An atom outside moves by a whole number of lattice vectors, without a
+    /// fractional -> Cartesian round trip: the round trip would leave a 1e-15
+    /// rounding on every atom, inside ones included. "Outside" allows `WRAP_TOL`, so
+    /// an atom at exactly 0 whose fraction comes out -1e-17 is not sent to the far
+    /// side. Does nothing without a cell or with a singular one.
     pub fn wrap_all(&mut self) {
         const WRAP_TOL: f64 = 1e-10;
         let Some(cell) = self.cell.as_ref() else { return };
         let pbc = self.pbc;
-        for atom in &mut self.atoms {
-            let Ok(f) = cell.cartesian_to_fractional(atom.position) else { return };
+        for p in &mut self.positions {
+            let Ok(f) = cell.cartesian_to_fractional(*p) else { return };
             let shift = Vector3::from_fn(|i, _| {
                 let out = f[i] < -WRAP_TOL || f[i] >= 1.0 + WRAP_TOL;
                 if pbc[i] && out { -f[i].floor() } else { 0.0 }
             });
             if shift != Vector3::zeros() {
-                atom.position += cell.fractional_to_cartesian(shift);
+                *p += cell.fractional_to_cartesian(shift);
             }
         }
     }
@@ -227,6 +431,57 @@ impl Default for Frame {
 mod tests {
     use super::*;
     use crate::cell::Cell;
+
+    fn three_atoms() -> Frame {
+        let mut f = Frame::new();
+        for (e, x) in [("O", 0.0), ("H", 1.0), ("Fe", 2.0)] {
+            let mut a = Atom::new(e, Vector3::new(x, 0.0, 0.0));
+            a.label = Some(format!("{e}_x"));
+            f.add_atom(a);
+        }
+        f
+    }
+
+    /// Per-atom arrays cannot drift from the atom count (review B5).
+    #[test]
+    fn forces_and_velocities_of_the_wrong_length_are_refused() {
+        let mut f = three_atoms();
+        let err = f.set_forces(Some(vec![Vector3::zeros(); 2])).unwrap_err().to_string();
+        assert!(err.contains("2 forces for 3 atoms"), "{err}");
+        assert!(f.forces().is_none());
+        f.set_velocities(Some(vec![Vector3::zeros(); 3])).unwrap();
+        assert_eq!(f.velocities().unwrap().len(), 3);
+    }
+
+    /// A permutation moves every per-atom quantity with its atom and renumbers bonds.
+    #[test]
+    fn permuted_moves_everything_with_its_atom() {
+        let mut f = three_atoms();
+        f.set_charge(1, Some(0.5));
+        f.set_forces(Some((0..3).map(|i| Vector3::new(i as f64, 0.0, 0.0)).collect())).unwrap();
+        f.bonds = Some(vec![(0, 1)]);
+        let g = f.permuted(&[2, 0, 1]);
+        assert_eq!(g.symbols(), ["Fe", "O", "H"]);
+        assert_eq!(g.atom(2).label, Some("H_x"));
+        assert_eq!(g.atom(2).charge, Some(0.5));
+        assert_eq!(g.atom(0).charge, None);
+        assert_eq!(g.forces().unwrap()[0].x, 2.0);
+        assert_eq!(g.positions()[1].x, 0.0);
+        assert_eq!(g.bonds, Some(vec![(1, 2)]));
+    }
+
+    /// Equal site tables are shared, and changing one frame's sites leaves the other's.
+    #[test]
+    fn site_tables_are_shared_and_copied_on_write() {
+        let a = three_atoms();
+        let mut b = three_atoms();
+        assert!(!b.shares_sites_with(&a));
+        b.share_sites_with(&a);
+        assert!(b.shares_sites_with(&a));
+        b.sites_mut()[0].element = "N".into();
+        assert!(!b.shares_sites_with(&a));
+        assert_eq!((a.element(0), b.element(0)), ("O", "N"));
+    }
 
     #[test]
     fn test_new_frame() {

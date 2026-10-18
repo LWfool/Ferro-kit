@@ -59,17 +59,17 @@ pub fn write_extxyz_with(
 
         // Properties spec
         let mut prop_spec = "species:S:1:pos:R:3".to_string();
-        if frame.forces.is_some() { prop_spec.push_str(":forces:R:3"); }
+        if frame.forces().is_some() { prop_spec.push_str(":forces:R:3"); }
         // 速度写成 ASE 认的 momenta（审查 A-2）：ASE 与 GPUMD 都不认 velocities 列。
         // 带上换算所用的 masses，ASE 的 get_velocities 与本仓 reader 都按它除回，往返无损
-        if frame.velocities.is_some() { prop_spec.push_str(":masses:R:1:momenta:R:3"); }
-        let has_charge = frame.atoms.iter().any(|a| a.charge.is_some());
+        if frame.velocities().is_some() { prop_spec.push_str(":masses:R:1:momenta:R:3"); }
+        let has_charge = frame.atoms().any(|a| a.charge.is_some());
         if has_charge { prop_spec.push_str(":charges:R:1"); }
-        let has_magmom = frame.atoms.iter().any(|a| a.magmom.is_some());
+        let has_magmom = frame.atoms().any(|a| a.magmom.is_some());
         if has_magmom { prop_spec.push_str(":magmoms:R:1"); }
         // extxyz 的列是自描述的,故位点标签走自己的一列,species 保持纯元素。
         // 这是与 LAMMPS dump 的区别:那边没地方放第二个名字,只能折进 element 列
-        let has_label = frame.atoms.iter().any(|a| a.label.is_some());
+        let has_label = frame.atoms().any(|a| a.label.is_some());
         if has_label { prop_spec.push_str(":label:S:1"); }
         parts.push(format!("Properties={prop_spec}"));
 
@@ -110,10 +110,10 @@ pub fn write_extxyz_with(
         // Atom lines
         let dummy_forces = vec![];
         let dummy_vels = vec![];
-        let forces = frame.forces.as_deref().unwrap_or(&dummy_forces);
-        let vels = frame.velocities.as_deref().unwrap_or(&dummy_vels);
+        let forces = frame.forces().unwrap_or(&dummy_forces);
+        let vels = frame.velocities().unwrap_or(&dummy_vels);
 
-        for (i, atom) in frame.atoms.iter().enumerate() {
+        for (i, atom) in frame.atoms().enumerate() {
             let mut line = format!("{} {} {} {}",
                 atom.element,
                 fmt(atom.position.x), fmt(atom.position.y), fmt(atom.position.z));
@@ -135,7 +135,7 @@ pub fn write_extxyz_with(
             }
             if has_label {
                 // 无标签的原子回退为元素符号:S 列不能留空,否则列数对不齐
-                line.push_str(&format!(" {}", atom.label.as_deref().unwrap_or(&atom.element)));
+                line.push_str(&format!(" {}", atom.label.unwrap_or(atom.element)));
             }
             writeln!(w, "{line}")?;
         }
@@ -165,10 +165,10 @@ mod tests {
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
         frame.energy = Some(-17.43);
-        frame.forces = Some(vec![
+        frame.set_forces(Some(vec![
             Vector3::new(0.1, 0.0, 0.0),
             Vector3::new(-0.1, 0.0, 0.0),
-        ]);
+        ])).unwrap();
         Trajectory::from_frame(frame)
     }
 
@@ -195,12 +195,12 @@ mod tests {
         assert!(atom_line.ends_with("P_3"), "标签在自己的列里: {atom_line}");
 
         let back = read_extxyz(p).unwrap();
-        let atoms = &back.frames[0].atoms;
+        let atoms: Vec<_> = back.frames[0].atoms().collect();
         assert_eq!(atoms[0].element, "P");
-        assert_eq!(atoms[0].label.as_deref(), Some("P_3"));
+        assert_eq!(atoms[0].label, Some("P_3"));
         assert_eq!(atoms[1].element, "O");
-        assert_eq!(atoms[1].label.as_deref(), Some("O_b"));
-        assert_eq!(atoms[2].label.as_deref(), Some("Zn"));
+        assert_eq!(atoms[1].label, Some("O_b"));
+        assert_eq!(atoms[2].label, Some("Zn"));
     }
 
     // 审查 A-2：速度写成 ASE 认的 momenta（m·v，ASE 时间单位）并带 masses 列。
@@ -212,7 +212,7 @@ mod tests {
         frame.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("H", Vector3::new(0.96, 0.0, 0.0)));
         let v = vec![Vector3::new(0.01, -0.02, 0.03), Vector3::new(0.1, 0.2, -0.3)];
-        frame.velocities = Some(v.clone());
+        frame.set_velocities(Some(v.clone())).unwrap();
         let path = std::env::temp_dir().join("ferro_momenta.extxyz");
         write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
 
@@ -228,7 +228,7 @@ mod tests {
         }
         // 往返：ferro 自己读回的速度与写入的一致。writer 定点 {:.10}，momenta ~10 量级，
         // 故误差 ~1e-11，与以前直接写 Å/fs 速度同一量级
-        let back = read_extxyz(&path).unwrap().frames.remove(0).velocities.unwrap();
+        let back = read_extxyz(&path).unwrap().frames.remove(0).velocities().unwrap().to_vec();
         for (a, b) in back.iter().zip(&v) {
             assert!((a - b).norm() < 1e-9, "往返速度 {a:?} ≠ {b:?}");
         }
@@ -246,7 +246,7 @@ mod tests {
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");
         assert!((f.energy.unwrap() - (-17.43)).abs() < 1e-6);
-        let forces = f.forces.as_ref().unwrap();
+        let forces = f.forces().unwrap();
         assert!((forces[0].x - 0.1).abs() < 1e-6);
     }
     #[test]

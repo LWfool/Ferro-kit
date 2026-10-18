@@ -3,8 +3,8 @@
 //! Divides the simulation box into an nx×ny×nz grid and accumulates the time-averaged
 //! distribution of selected atoms in each voxel.  Three modes are supported:
 //!   - `Density`  — atomic number density \[atoms/Å³\]
-//!   - `Velocity` — average speed |v| per voxel \[Å/fs\] (requires `frame.velocities`)
-//!   - `Force`    — average force magnitude |f| per voxel \[eV/Å\] (requires `frame.forces`)
+//!   - `Velocity` — average speed |v| per voxel \[Å/fs\] (requires `frame.velocities()`)
+//!   - `Force`    — average force magnitude |f| per voxel \[eV/Å\] (requires `frame.forces()`)
 //!
 //! Output is a [`CubeData`] that can be written directly via `ferro_io::write_cube`
 //! to produce a Gaussian cube file for visualisation in VESTA, VMD, etc.
@@ -30,9 +30,9 @@ use super::util::{build_avg_frame, par_map_in_order};
 pub enum CubeMode {
     /// Time-averaged number density \[atoms/Å³\]
     Density,
-    /// Time-averaged speed |v| per voxel \[Å/fs\] (requires `frame.velocities`)
+    /// Time-averaged speed |v| per voxel \[Å/fs\] (requires `frame.velocities()`)
     Velocity,
-    /// Time-averaged force magnitude |f| per voxel \[eV/Å\] (requires `frame.forces`)
+    /// Time-averaged force magnitude |f| per voxel \[eV/Å\] (requires `frame.forces()`)
     Force,
 }
 
@@ -128,17 +128,17 @@ fn process_frame(
 ) -> Option<(Array3<f64>, Array3<f64>)> {
     let cell = frame.cell.as_ref()?;
     match params.mode {
-        CubeMode::Velocity if frame.velocities.is_none() => return None,
-        CubeMode::Force if frame.forces.is_none() => return None,
+        CubeMode::Velocity if frame.velocities().is_none() => return None,
+        CubeMode::Force if frame.forces().is_none() => return None,
         _ => {}
     }
 
     let mut count = Array3::<f64>::zeros((nx, ny, nz));
     let mut value_sum = Array3::<f64>::zeros((nx, ny, nz));
 
-    for (i, atom) in frame.atoms.iter().enumerate() {
+    for (i, atom) in frame.atoms().enumerate() {
         if let Some(elems) = &params.elements {
-            if !elems.contains(&atom.element) { continue; }
+            if !elems.iter().any(|e| e == atom.element) { continue; }
         }
         let frac = cell.cartesian_to_fractional(atom.position).ok()?;
         let (ix, iy, iz) = voxel_idx(frac, nx, ny, nz);
@@ -147,12 +147,12 @@ fn process_frame(
                 count[[ix, iy, iz]] += 1.0;
             }
             CubeMode::Velocity => {
-                let v = frame.velocities.as_ref().unwrap()[i];
+                let v = frame.velocities().unwrap()[i];
                 value_sum[[ix, iy, iz]] += v.norm();
                 count[[ix, iy, iz]] += 1.0;
             }
             CubeMode::Force => {
-                let f = frame.forces.as_ref().unwrap()[i];
+                let f = frame.forces().unwrap()[i];
                 value_sum[[ix, iy, iz]] += f.norm();
                 count[[ix, iy, iz]] += 1.0;
             }
@@ -213,10 +213,9 @@ pub fn calc_cube_density(
     };
 
     let n_atoms = ref_frame
-        .atoms
-        .iter()
+        .atoms()
         .filter(|a| match &params.elements {
-            Some(elems) => elems.contains(&a.element),
+            Some(elems) => elems.iter().any(|e| e == a.element),
             None => true,
         })
         .count();
@@ -348,7 +347,7 @@ mod tests {
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("Li", Vector3::new(2.5, 2.5, 2.5)));
-        frame.velocities = Some(vec![Vector3::new(2.0, 0.0, 0.0)]);
+        frame.set_velocities(Some(vec![Vector3::new(2.0, 0.0, 0.0)])).unwrap();
         let mut traj = Trajectory::new();
         traj.frames.push(frame);
         let params = CubeDensityParams {
@@ -378,7 +377,7 @@ mod tests {
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("O", Vector3::new(2.5, 2.5, 2.5)));
-        frame.forces = Some(vec![Vector3::new(0.0, 3.0, 4.0)]);
+        frame.set_forces(Some(vec![Vector3::new(0.0, 3.0, 4.0)])).unwrap();
         let mut traj = Trajectory::new();
         traj.frames.push(frame);
         let params = CubeDensityParams {
@@ -421,9 +420,9 @@ mod tests {
         // 体素归属本来就按折回后的分数坐标：密度逐位相同
         assert_eq!(a.cube.data, b.cube.data);
         // 参考结构折回网格 [0, 10)，盒内原子不动
-        for (x, y) in a.cube.frame.atoms.iter().zip(&b.cube.frame.atoms) {
+        for (x, y) in a.cube.frame.atoms().zip(b.cube.frame.atoms()) {
             assert!((x.position - y.position).norm() < 1e-12, "{:?} vs {:?}", x.position, y.position);
         }
-        assert_eq!(a.cube.frame.atoms[2].position, Vector3::new(2.0, 2.0, 2.0));
+        assert_eq!(a.cube.frame.positions()[2], Vector3::new(2.0, 2.0, 2.0));
     }
 }

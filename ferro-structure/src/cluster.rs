@@ -44,8 +44,8 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
     let formers = params.formers();
     let former_set: std::collections::HashSet<&str> =
         formers.iter().map(|s| s.as_str()).collect();
-    let former_indices: Vec<usize> = frame.atoms.iter().enumerate()
-        .filter(|(_, a)| former_set.contains(a.element.as_str()))
+    let former_indices: Vec<usize> = frame.atoms().enumerate()
+        .filter(|(_, a)| former_set.contains(a.element))
         .map(|(i, _)| i)
         .collect();
 
@@ -58,8 +58,8 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
     // 3. 找桥氧：恰好连接两个形成子的配体
     //    对每个桥氧，找其 NF 邻居，合并这些 NF 所属的连通分量
     let mut elem_map: HashMap<&str, Vec<usize>> = HashMap::new();
-    for (idx, atom) in frame.atoms.iter().enumerate() {
-        elem_map.entry(atom.element.as_str()).or_default().push(idx);
+    for (idx, atom) in frame.atoms().enumerate() {
+        elem_map.entry(atom.element).or_default().push(idx);
     }
 
     let mut edges: Vec<(usize, usize)> = Vec::new();
@@ -69,7 +69,7 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
         // 三簇配体（连 3 个形成子，网络里连得最紧的节点）当成完全不连通
         let AtomType::Ligand { elem: lig_elem, .. } = atom_type else { continue };
         // 收集该配体在截断内的所有形成子邻居
-        let la_pos = frame.atoms[la_idx].position;
+        let la_pos = frame.positions()[la_idx];
         let mut nf_locals: Vec<usize> = Vec::new();
 
         for former_elem in &formers {
@@ -80,7 +80,7 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
             let Some(fa_idxs) = elem_map.get(former_elem.as_str()) else { continue };
             for &fa_idx in fa_idxs {
                 if fa_idx == la_idx { continue; }
-                let diff = cell.minimum_image(frame.atoms[fa_idx].position - la_pos)
+                let diff = cell.minimum_image(frame.positions()[fa_idx] - la_pos)
                     .expect("classify_frame 已查奇异胞");
                 if diff.norm_squared() < c2 {
                     if let Some(&li) = local.get(&fa_idx) {
@@ -100,7 +100,7 @@ pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult
     let (local_cluster, next_id) = connected_components(n, &edges);
 
     // 5. 组装结果（per-atom）
-    let mut cluster_id: Vec<Option<usize>> = vec![None; frame.atoms.len()];
+    let mut cluster_id: Vec<Option<usize>> = vec![None; frame.n_atoms()];
     for (li, &ai) in former_indices.iter().enumerate() {
         cluster_id[ai] = Some(local_cluster[li]);
     }
@@ -133,7 +133,7 @@ mod tests {
     fn test_singular_cell_gives_none() {
         let atoms = vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 0.0)));
-        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
+        let frame = { let mut f = Frame::with_cell(cell, [true; 3]); f.set_atoms(atoms); f };
         assert!(find_clusters(&frame, &make_params(2.3)).is_none());
     }
 
@@ -147,7 +147,7 @@ mod tests {
             atom("P", 3.2, 0.0, 0.0),
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 20.0)));
-        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
+        let frame = { let mut f = Frame::with_cell(cell, [true; 3]); f.set_atoms(atoms); f };
         let params = make_params(2.3);
         let res = find_clusters(&frame, &params).unwrap();
         // P1 和 P2 在同一团簇
@@ -166,7 +166,7 @@ mod tests {
             atom("O", 11.6, 0.0, 0.0), // NBO(P2)
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
-        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
+        let frame = { let mut f = Frame::with_cell(cell, [true; 3]); f.set_atoms(atoms); f };
         let params = make_params(2.3);
         let res = find_clusters(&frame, &params).unwrap();
         // P1 和 P2 在不同团簇
@@ -187,7 +187,7 @@ mod tests {
             atom("P", -r / 2.0, -r * 0.8660254, 0.0),
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
-        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
+        let frame = { let mut f = Frame::with_cell(cell, [true; 3]); f.set_atoms(atoms); f };
         let params = make_params(2.3);
         let res = find_clusters(&frame, &params).unwrap();
         assert_eq!(res.n_clusters, 1, "三簇氧把三个 P 连成一个团簇");
@@ -212,7 +212,7 @@ mod tests {
             atom("F", 0.0, 9.0, 0.0), // 远处的 F，只为让 F 进入配体元素集
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
-        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
+        let frame = { let mut f = Frame::with_cell(cell, [true; 3]); f.set_atoms(atoms); f };
         let res = find_clusters(&frame, &params).unwrap();
         assert_eq!(res.n_clusters, 1, "P-O 桥必须按 P-O 的截断判定");
         assert_eq!(res.cluster_id[0], res.cluster_id[2]);

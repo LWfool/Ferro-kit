@@ -162,9 +162,9 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
 
     // 按第一帧筛选参与计算的原子下标
     let ref_frame = &traj.frames[0];
-    let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
+    let atom_indices: Vec<usize> = ref_frame.atoms().enumerate()
         .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.contains(&a.element),
+            Some(elems) => elems.iter().any(|e| e == a.element),
             None => true,
         })
         .map(|(i, _)| i)
@@ -182,7 +182,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     // 收集元素列表（用于输出文件头）
     let elements: Vec<String> = {
         let mut set = BTreeSet::new();
-        for &i in &atom_indices { set.insert(ref_frame.atoms[i].element.clone()); }
+        for &i in &atom_indices { set.insert(ref_frame.element(i).to_string()); }
         set.into_iter().collect()
     };
 
@@ -211,7 +211,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
 
         let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&pcs).map(|(frame, pc)| {
             atom_indices.iter().map(|&i| {
-                let f = pc.to_fractional(frame.atoms[i].position);
+                let f = pc.to_fractional(frame.positions()[i]);
                 [f.x, f.y, f.z]
             }).collect()
         }).collect();
@@ -231,7 +231,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         // 非周期：直接使用 Cartesian 坐标，无需 unwrap
         traj.frames.iter().map(|frame| {
             atom_indices.iter().map(|&i| {
-                let p = &frame.atoms[i].position;
+                let p = &frame.positions()[i];
                 [p.x, p.y, p.z]
             }).collect()
         }).collect()

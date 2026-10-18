@@ -457,20 +457,15 @@ fn parse_step(
     };
 
     let force_factor = HARTREE_TO_EV / BOHR_TO_ANG;
-    let atoms: Vec<Atom> = c_syms
-        .iter()
-        .zip(&coords)
-        .map(|(s, p)| Atom::new(s.as_str(), *p))
-        .collect();
     // pbc is the header's, filled in once the whole file is read
     let mut frame = Frame::with_cell(Cell::from_matrix(Matrix3::from_row_slice(&m)), [true; 3]);
-    frame.atoms = atoms;
+    frame.set_atoms(c_syms.iter().zip(&coords).map(|(s, p)| Atom::new(s.as_str(), *p)));
     frame.energy = energy;
     frame.temperature = temperature;
     // 直接从锚点行取,不用上面那个并行的 steps —— 某个锚点的步号解析不出时
     // 那个 Vec 会整体错位一位,而错位读到的是别帧的步号,不报错
     frame.step = lines[a].split_whitespace().last().and_then(|t| t.parse::<i64>().ok());
-    frame.forces = Some(forces.iter().map(|f| f * force_factor).collect());
+    frame.set_forces(Some(forces.iter().map(|f| f * force_factor).collect()))?;
     frame.stress = stress;
     acc.frames.push(frame);
     stats.n_kept += 1;
@@ -724,7 +719,7 @@ mod tests {
             assert_eq!(t.n_frames(), 1, "{name}");
             let f = &t.frames[0];
             assert_eq!(f.energy, b.energy, "{name}: energy");
-            assert_eq!(f.forces, b.forces, "{name}: forces");
+            assert_eq!(f.forces(), b.forces(), "{name}: forces");
             assert_eq!(f.stress, b.stress, "{name}: stress");
             assert_eq!(
                 f.cell.as_ref().unwrap().matrix,
@@ -732,8 +727,8 @@ mod tests {
                 "{name}: cell"
             );
             assert_eq!(
-                f.atoms.iter().map(|a| a.position).collect::<Vec<_>>(),
-                b.atoms.iter().map(|a| a.position).collect::<Vec<_>>(),
+                f.atoms().map(|a| a.position).collect::<Vec<_>>(),
+                b.atoms().map(|a| a.position).collect::<Vec<_>>(),
                 "{name}: positions"
             );
         }
@@ -799,12 +794,12 @@ mod tests {
         assert_eq!(traj.n_frames(), 1);
 
         let f = &traj.frames[0];
-        assert_eq!(f.atoms.len(), 2);
-        assert_eq!(f.atoms[0].element, "Si");
+        assert_eq!(f.n_atoms(), 2);
+        assert_eq!(f.element(0), "Si");
         // -10.5 hartree
         assert!((f.energy.unwrap() - -10.5 * HARTREE_TO_EV).abs() < 1e-9);
         // 0.01 Hartree/Bohr
-        let fx = f.forces.as_ref().unwrap()[0].x;
+        let fx = f.forces().unwrap()[0].x;
         assert!((fx - 0.01 * HARTREE_TO_EV / BOHR_TO_ANG).abs() < 1e-9);
         // 1e4 bar = 1 GPa；符号原样保留（正 = 压缩）
         let s = f.stress.unwrap();
@@ -874,7 +869,7 @@ mod tests {
         let f = &traj.frames[0];
         println!("energy={:?}", f.energy);
         println!("stress[0][0]={:?}", f.stress.map(|s| s[(0, 0)]));
-        println!("force[0]={:?}", f.forces.as_ref().map(|v| v[0]));
+        println!("force[0]={:?}", f.forces().map(|v| v[0]));
         println!("cell={:?}", f.cell.as_ref().map(|c| c.matrix));
     }
 }

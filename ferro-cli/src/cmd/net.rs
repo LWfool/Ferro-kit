@@ -268,8 +268,8 @@ fn export_labelled(
             // The dump writer folds `<element>_<suffix>` labels into its element column
             // (`dump_name`); count the labels it has to leave out
             if fmt == ExportFormat::Lammpstrj {
-                skipped += labelled.atoms.iter()
-                    .filter(|a| a.label.as_deref().is_some_and(|l| l != a.element) && dump_name(a) == a.element)
+                skipped += labelled.atoms()
+                    .filter(|a| a.label.is_some_and(|l| l != a.element) && dump_name(*a) == a.element)
                     .count();
             }
             labelled
@@ -610,9 +610,9 @@ mod tests {
         let d = 1.5 / 3f64.sqrt();
         for c in [[3.0, 3.0, 3.0], [3.0, 13.0, 8.0], [13.0, 6.0, 15.0], [10.0, 15.0, 4.0]] {
             let c = Vector3::new(c[0], c[1], c[2]);
-            f.atoms.push(Atom::new("P", c));
+            f.add_atom(Atom::new("P", c));
             for s in [[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]] {
-                f.atoms.push(Atom::new("O", c + Vector3::new(s[0], s[1], s[2]) * d));
+                f.add_atom(Atom::new("O", c + Vector3::new(s[0], s[1], s[2]) * d));
             }
         }
         Trajectory { frames: vec![f], metadata: Default::default() }
@@ -622,9 +622,9 @@ mod tests {
     #[test]
     fn test_export_lammpstrj_follows_units() {
         let mut traj = phosphate_box();
-        let n = traj.frames[0].atoms.len();
+        let n = traj.frames[0].n_atoms();
         let v = nalgebra::Vector3::new(0.001, 0.0, 0.0); // 内部 Å/fs = metal 的 1 Å/ps
-        traj.frames[0].velocities = Some(vec![v; n]);
+        traj.frames[0].set_velocities(Some(vec![v; n])).unwrap();
         let (p, _) = build_params(&args(&["--P-O=2.0"]), None, None).unwrap();
         let dir = std::env::temp_dir().join("ferro_net_export_units");
         let out = batch::Output { dir: Some(dir.clone()), label: None, suffix: None, mkdir: true };
@@ -633,7 +633,7 @@ mod tests {
         export_labelled(&traj, &p, "box", &out, ExportFormat::Lammpstrj, Some(LammpsUnits::Metal)).unwrap();
         let path = dir.join("box_types.lammpstrj");
         let back = ferro_io::read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap();
-        let got = back.frames[0].velocities.as_ref().unwrap()[0];
+        let got = back.frames[0].velocities().unwrap()[0];
         assert!((got - v).norm() < 1e-12, "按 metal 写出再按 metal 读回应不变，得到 {got:?}");
 
         let err = export_labelled(&traj, &p, "box", &out, ExportFormat::Lammpstrj, None).unwrap_err();

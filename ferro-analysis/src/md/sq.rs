@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn test_missing_scattering_data_is_a_result_warning() {
         let mut frame = make_sc_fe(3);
-        for a in &mut frame.atoms { a.element = "X1".into(); }
+        for a in frame.sites_mut() { a.element = "X1".into(); }
         let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -644,7 +644,7 @@ mod tests {
     fn test_single_atom_species_partial_is_undefined_not_zero() {
         // 4³ 个 Fe 中换 1 个为 Ni：没有 Ni–Ni 对，g/S 都无定义
         let mut frame = make_sc_fe(4);
-        frame.atoms[0].element = "Ni".into();
+        frame.sites_mut()[0].element = "Ni".into();
         let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
             r_min: 0.0, r_max: 5.5, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -729,8 +729,8 @@ mod tests {
         let mut traj = Trajectory::new();
         for &s in scales {
             let mut f = Frame::with_cell(Cell::from_matrix(base_cell * s), [true; 3]);
-            for a in &base.atoms {
-                f.add_atom(Atom::new(&a.element, a.position * s));
+            for a in base.atoms() {
+                f.add_atom(Atom::new(a.element, a.position * s));
             }
             traj.add_frame(f);
         }

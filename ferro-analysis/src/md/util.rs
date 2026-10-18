@@ -44,10 +44,10 @@ pub(crate) fn par_map_in_order<T: Sync, R: Send>(
 
 pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
     let ref_f = traj.frames.first().unwrap();
-    let n = ref_f.atoms.len();
+    let n = ref_f.n_atoms();
     let mut out = ref_f.clone();
 
-    let frames: Vec<&Frame> = traj.frames.iter().filter(|f| f.atoms.len() == n).collect();
+    let frames: Vec<&Frame> = traj.frames.iter().filter(|f| f.n_atoms() == n).collect();
     if frames.is_empty() {
         return out;
     }
@@ -57,20 +57,20 @@ pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
         ref_f.cell.as_ref(),
         ref_f.cell.as_ref().and_then(|c| unwrapped_frac_sum(&frames, n, c)),
     ) {
-        for (a, s) in out.atoms.iter_mut().zip(sum.iter()) {
-            a.position = cell.fractional_to_cartesian(s * inv_n);
+        for (p, s) in out.positions_mut().iter_mut().zip(sum.iter()) {
+            *p = cell.fractional_to_cartesian(s * inv_n);
         }
         return out;
     }
 
     let mut pos_sum = vec![Vector3::<f64>::zeros(); n];
     for frame in &frames {
-        for (s, a) in pos_sum.iter_mut().zip(frame.atoms.iter()) {
+        for (s, a) in pos_sum.iter_mut().zip(frame.atoms()) {
             *s += a.position;
         }
     }
-    for (a, s) in out.atoms.iter_mut().zip(pos_sum.iter()) {
-        a.position = s * inv_n;
+    for (p, s) in out.positions_mut().iter_mut().zip(pos_sum.iter()) {
+        *p = s * inv_n;
     }
     out
 }
@@ -85,7 +85,7 @@ fn unwrapped_frac_sum(frames: &[&Frame], n: usize, cell: &Cell) -> Option<Vec<Ve
     let mut sum = vec![Vector3::<f64>::zeros(); n];
     let mut prev: Vec<Vector3<f64>> = Vec::with_capacity(n);
     for (fi, frame) in frames.iter().enumerate() {
-        for (ai, atom) in frame.atoms.iter().enumerate() {
+        for (ai, atom) in frame.atoms().enumerate() {
             let mut f = cell.cartesian_to_fractional(atom.position).ok()?;
             if fi == 0 {
                 prev.push(f);
@@ -156,16 +156,16 @@ mod tests {
         let avg = build_avg_frame(&boundary_crosser(true));
         // 0.5 与 9.5 隔着 x = 0 这个面，最短路径的中点是 0（等价于 10），不是 5。
         // 直接对笛卡尔分量取平均会给出 5.0 —— 原子被放到了盒子正中央。
-        let x = avg.atoms[0].position.x;
+        let x = avg.positions()[0].x;
         assert!(x.abs() < 1e-10 || (x - 10.0).abs() < 1e-10, "got x = {x}, expected 0 or 10");
-        assert!((avg.atoms[0].position.y - 5.0).abs() < 1e-10);
+        assert!((avg.positions()[0].y - 5.0).abs() < 1e-10);
     }
 
     #[test]
     fn without_a_cell_the_cartesian_mean_is_kept() {
         // 无周期性就没有「跨边界」可言，5.0 是这两个位置唯一讲得通的平均
         let avg = build_avg_frame(&boundary_crosser(false));
-        assert!((avg.atoms[0].position.x - 5.0).abs() < 1e-10);
+        assert!((avg.positions()[0].x - 5.0).abs() < 1e-10);
     }
 
     #[test]
@@ -176,8 +176,8 @@ mod tests {
         odd.add_atom(Atom::new("O", Vector3::new(2.0, 2.0, 2.0)));
         traj.frames.push(odd);
         let avg = build_avg_frame(&traj);
-        assert_eq!(avg.atoms.len(), 1);
-        let x = avg.atoms[0].position.x;
+        assert_eq!(avg.n_atoms(), 1);
+        let x = avg.positions()[0].x;
         assert!(x.abs() < 1e-10 || (x - 10.0).abs() < 1e-10, "got x = {x}");
     }
 

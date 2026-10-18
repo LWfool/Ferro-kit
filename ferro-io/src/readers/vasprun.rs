@@ -252,7 +252,7 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
         let cart = cell.transpose() * f;
         frame.add_atom(Atom::new(sym.clone(), cart));
     }
-    frame.forces = st.forces.clone();
+    frame.set_forces(st.forces.clone()).expect("one force per atom, checked above");
     frame.energy = Some(energy);
     // vasprun 没有温度字段(只有输入参数 TEBEG),按 T = 2*E_kin/(3N*k_B) 反算。
     // 除数是 3N 不是 3N-3:OUTCAR 的 EKIN=4.268142 eV / N=296 与它自己打印的
@@ -334,7 +334,7 @@ mod tests {
         for (got, want) in p0.iter().zip(&[0.138232, 5.899914, 2.216376]) {
             assert!((got - want).abs() < 1e-5, "{p0:?}");
         }
-        let fl = f0.forces.as_ref().unwrap().last().unwrap();
+        let fl = f0.forces().unwrap().last().unwrap();
         for (got, want) in fl.iter().zip(&[-0.754179, -0.855899, 0.228165]) {
             assert!((got - want).abs() < 1e-6, "{fl:?}");
         }
@@ -390,7 +390,7 @@ mod tests {
             for (g, w) in f.atom(i).position.iter().zip(&pos) {
                 assert!((g - w).abs() < 1e-9, "{dir} 坐标 {g} vs {w}");
             }
-            for (g, w) in f.forces.as_ref().unwrap()[i].iter().zip(&force) {
+            for (g, w) in f.forces().unwrap()[i].iter().zip(&force) {
                 assert!((g - w).abs() < 1e-9, "{dir} 力 {g} vs {w}");
             }
             // 表里是 dpdata 原样的九个数,期望值取其对称部分。

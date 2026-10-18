@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 use std::path::Path;
 use ferro_core::{Frame, Trajectory};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 
 /// 写 VASP5 POSCAR 格式，坐标使用 Direct（分数坐标），原子按元素分组。
 pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
@@ -15,11 +15,6 @@ pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
 pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
     let cell = frame.cell.as_ref().context("frame has no cell (POSCAR requires periodic frame)")?;
 
-    if let Some(vels) = &frame.velocities {
-        if vels.len() != frame.n_atoms() {
-            bail!("{} velocities for {} atoms", vels.len(), frame.n_atoms());
-        }
-    }
 
     let mut w = String::new();
 
@@ -47,19 +42,19 @@ pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
     // 遍历 —— 速度块必须与坐标块逐行对应（VASP 文档：velocities of each ion defined
     // in the "Ion positions" section），此前速度按原序写，元素交错时对错了原子
     let order: Vec<usize> = elem_order.iter()
-        .flat_map(|elem| frame.atoms.iter().enumerate()
+        .flat_map(|elem| frame.atoms().enumerate()
             .filter(move |(_, a)| a.element == *elem)
             .map(|(i, _)| i))
         .collect();
 
     writeln!(w, "Direct")?;
     for &i in &order {
-        let f = cell.cartesian_to_fractional(frame.atoms[i].position)?;
+        let f = cell.cartesian_to_fractional(frame.positions()[i])?;
         writeln!(w, "  {:>18.16}  {:>18.16}  {:>18.16}", f.x, f.y, f.z)?;
     }
 
     // Optional velocities（空行 = Cartesian，Å/fs）
-    if let Some(vels) = &frame.velocities {
+    if let Some(vels) = frame.velocities() {
         writeln!(w)?;
         for &i in &order {
             let vel = vels[i];
@@ -113,7 +108,7 @@ mod tests {
         for (el, x) in [("O", 1.0), ("Si", 2.0), ("O", 3.0), ("Si", 4.0)] {
             frame.add_atom(Atom::new(el, Vector3::new(x, 0.0, 0.0)));
         }
-        frame.velocities = Some((1..=4).map(|k| Vector3::new(k as f64 / 10.0, 0.0, 0.0)).collect());
+        frame.set_velocities(Some((1..=4).map(|k| Vector3::new(k as f64 / 10.0, 0.0, 0.0)).collect())).unwrap();
         let path = std::env::temp_dir().join("interleaved_vel.poscar");
         write_poscar(&Trajectory::from_frame(frame), &path).unwrap();
 

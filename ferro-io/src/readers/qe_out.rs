@@ -402,16 +402,16 @@ impl Steps {
         }
 
         let mut frame = Frame::with_cell(Cell::from_matrix(*cell), [true; 3]);
-        frame.atoms = atoms.iter().map(|(label, pos)| {
+        frame.set_atoms(atoms.iter().map(|(label, pos)| {
             let mut atom = Atom::new(extract_element(label), *pos);
             // 物种名与元素相同时不填 label（同 cp2k_sp）
             if atom.element != *label {
                 atom.label = Some(label.clone());
             }
             atom
-        }).collect();
+        }));
         frame.energy = Some(energy * RY_TO_EV);
-        frame.forces = forces;
+        frame.set_forces(forces)?;
         frame.stress = stress;
         if self.is_md {
             frame.step = Some(k as i64);
@@ -446,7 +446,7 @@ mod tests {
         assert!(st.version_note.is_none() && st.steps.is_none());
         let f = &traj.frames[0];
         assert!(close(f.energy.unwrap(), -3567.569297968025, 1e-8), "dpdata 的能量：{:?}", f.energy);
-        let force = f.forces.as_ref().unwrap()[0] / (RY_TO_EV / BOHR_TO_ANG);
+        let force = f.forces().unwrap()[0] / (RY_TO_EV / BOHR_TO_ANG);
         assert!(close(force.x, -0.00284143, 1e-12) && close(force.y, -0.00306774, 1e-12),
             "取总力（第一组），不是非局域分量 0.30871553：{force:?}");
         // 正 = 受压；输出里 P = -15.51 kbar（受拉），由 Ry/bohr³ 列算出的压力须与之相符
@@ -455,7 +455,7 @@ mod tests {
         assert!(close(p_kbar, -15.51, 0.01), "应力不翻号、单位对：P = {p_kbar}");
         assert!(close(s[(0, 1)], 0.00004574 * RY_TO_EV / BOHR_TO_ANG.powi(3), 1e-12));
         assert_eq!(f.symbols(), ["O", "O", "O", "O", "Al", "P"]);
-        assert!(f.atoms.iter().all(|a| a.label.is_none()), "物种名就是元素名时不填 label");
+        assert!(f.atoms().all(|a| a.label.is_none()), "物种名就是元素名时不填 label");
         assert_eq!(f.pbc, [true; 3]);
     }
 
@@ -468,7 +468,7 @@ mod tests {
         let cell = f.cell.as_ref().unwrap().matrix;
         let input = Matrix3::new(4.2889663600, 0.0, 0.0, -0.3278899130, 4.2764144610, 0.0, 0.0, 0.0, 2.7079830000);
         assert!((cell - input).abs().max() < 5e-6, "晶胞行 = 晶格矢量，与 pw.in 一致：{cell}");
-        let p = f.atoms[5].position;
+        let p = f.positions()[5];
         assert!((p - Vector3::new(1.9805382235, 2.1382072305, 1.3539915000)).abs().max() < 5e-6, "{p}");
     }
 
@@ -482,7 +482,7 @@ mod tests {
         for (got, want) in e.iter().zip([-262.21150703, -262.21091702, -262.20919745, -262.20649405, -262.20288005]) {
             assert!(close(*got, want, 1e-9), "{e:?}");
         }
-        let o1 = |k: usize| traj.frames[k].atoms[0].position;
+        let o1 = |k: usize| traj.frames[k].positions()[0];
         assert!((o1(0) - Vector3::new(0.8373002615, 0.9039570416, 1.3539915)).abs().max() < 5e-6, "第 0 帧取输出头");
         assert_eq!(o1(1), Vector3::new(0.8433996476, 0.9045494384, 1.3606785696),
             "第 1 帧取第 1 次 Entering Dynamics 之后的卡片");
@@ -509,7 +509,7 @@ mod tests {
         let (traj, st) = parse_qe_out(&fixture("qe75_sp_spin.out")).unwrap();
         assert_eq!(st.n_kept, 1);
         assert!(close(traj.frames[0].energy.unwrap(), -3561.1819324030753, 1e-8), "dpdata 的能量");
-        assert_eq!(traj.frames[0].forces.as_ref().unwrap().len(), 6);
+        assert_eq!(traj.frames[0].forces().unwrap().len(), 6);
     }
 
     #[test]
@@ -544,7 +544,7 @@ mod tests {
         let text = fixture("qe75_sp.out").replace("total   stress", "no      stress");
         let (traj, st) = parse_qe_out(&text).unwrap();
         assert_eq!(st.n_kept, 1);
-        assert!(traj.frames[0].stress.is_none() && traj.frames[0].forces.is_some());
+        assert!(traj.frames[0].stress.is_none() && traj.frames[0].forces().is_some());
     }
 
     #[test]

@@ -243,9 +243,7 @@ fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
     // ChargeGrid 的网格从 0 起，原子要换到相对网格原点的坐标
     let origin_ang = pc.origin_bohr * BOHR_TO_ANG;
     let mut frame = pc.frame;
-    for atom in &mut frame.atoms {
-        atom.position -= origin_ang;
-    }
+    frame.translate(-origin_ang);
 
     let chg = ChargeGrid::new(rho, pc.shape, &cell);
     Ok((frame, chg))

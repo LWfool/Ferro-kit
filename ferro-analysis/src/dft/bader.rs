@@ -176,7 +176,7 @@ impl BaderResult {
                 .map(|(v, _)| self.iondist.get(v).copied().unwrap_or(f64::MAX))
                 .fold(f64::MAX, f64::min);
             let min_dist = if min_dist == f64::MAX { 0.0 } else { min_dist };
-            let pos = frame.atoms.get(i).map(|a| a.position).unwrap_or_default();
+            let pos = frame.get_atom(i).map(|a| a.position).unwrap_or_default();
 
             let _ = writeln!(w, " {:>5} {:>12.6} {:>12.6} {:>12.6} {:>14.6} {:>14.6} {:>14.6}",
                      i + 1, pos.x, pos.y, pos.z, charge, min_dist, vol);

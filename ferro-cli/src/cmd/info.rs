@@ -57,11 +57,11 @@ pub fn run(args: &InfoCmd) -> Result<()> {
 fn frame_mass_amu(frame: &Frame) -> (f64, BTreeMap<&str, usize>) {
     let mut fallbacks: BTreeMap<&str, usize> = BTreeMap::new();
     let mut total = 0.0;
-    for a in &frame.atoms {
+    for a in frame.atoms() {
         total += a.effective_mass();
         // 只有既无显式质量、元素表又查不到的才是回退：显式质量是用户给的，不算未知
-        if a.mass.is_none() && by_symbol(&a.element).is_none() {
-            *fallbacks.entry(a.element.as_str()).or_insert(0) += 1;
+        if a.mass.is_none() && by_symbol(a.element).is_none() {
+            *fallbacks.entry(a.element).or_insert(0) += 1;
         }
     }
     (total, fallbacks)
@@ -69,13 +69,13 @@ fn frame_mass_amu(frame: &Frame) -> (f64, BTreeMap<&str, usize>) {
 
 fn print_frame_info(frame: &Frame, idx: usize) {
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
-    for a in &frame.atoms {
-        *counts.entry(a.element.as_str()).or_insert(0) += 1;
+    for a in frame.atoms() {
+        *counts.entry(a.element).or_insert(0) += 1;
     }
     let composition: Vec<String> = counts.iter().map(|(e, n)| format!("{e}: {n}")).collect();
 
     println!("\nFrame {idx}:");
-    println!("  Atoms:  {}  ({})", frame.atoms.len(), composition.join(", "));
+    println!("  Atoms:  {}  ({})", frame.n_atoms(), composition.join(", "));
 
     if let Some(cell) = &frame.cell {
         let [a, b, c] = cell.lengths();
@@ -110,10 +110,10 @@ fn print_frame_info(frame: &Frame, idx: usize) {
     if let Some(e) = frame.energy {
         println!("  Energy: {e:.6} eV");
     }
-    if frame.forces.is_some() {
+    if frame.forces().is_some() {
         println!("  Forces: yes");
     }
-    if frame.velocities.is_some() {
+    if frame.velocities().is_some() {
         println!("  Velocities: yes");
     }
 }
@@ -130,7 +130,7 @@ mod tests {
         frame.cell = Some(Cell::from_lengths_angles(a, a, a, 90.0, 90.0, 90.0).unwrap());
         frame.pbc = [true; 3];
         for e in elements {
-            frame.atoms.push(Atom::new(*e, Vector3::new(0.0, 0.0, 0.0)));
+            frame.add_atom(Atom::new(*e, Vector3::new(0.0, 0.0, 0.0)));
         }
         frame
     }
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_explicit_mass_overrides_table_and_is_not_a_fallback() {
         let mut frame = cubic_frame(10.0, &["Si"]);
-        frame.atoms[0].mass = Some(100.0);
+        frame.sites_mut()[0].mass = Some(100.0);
         let (mass, fallbacks) = frame_mass_amu(&frame);
         assert!((mass - 100.0).abs() < 1e-12);
         assert!(fallbacks.is_empty(), "显式质量是用户给的，不该算未知元素");

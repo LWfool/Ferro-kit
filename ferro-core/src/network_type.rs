@@ -285,7 +285,7 @@ pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<Fra
     let rcut = params.cutoffs.values().chain(params.modifier_cutoffs.values())
         .copied().fold(0.0, f64::max);
     let nl = if rcut > 0.0 {
-        Some(NeighborList::build(&frame.positions(), &cell, rcut)?)
+        Some(NeighborList::build(frame.positions(), &cell, rcut)?)
     } else {
         None
     };
@@ -293,7 +293,7 @@ pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<Fra
         nl.as_ref().map_or_else(Vec::new, |nl| nl.neighbors_of(i).into_iter().map(|(j, _, _)| j).collect())
     };
     let d2 = |from: usize, to: usize| {
-        cell.minimum_image(frame.atoms[to].position - frame.atoms[from].position).norm_squared()
+        cell.minimum_image(frame.positions()[to] - frame.positions()[from]).norm_squared()
     };
 
     // Atom indices by element
@@ -303,15 +303,15 @@ pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<Fra
     let nf_map = build_nf_map(frame, params, &elem_map, &near, &d2);
 
     // 2. Assemble: Other by default, then overwritten by ligand / former / modifier (the old order)
-    let mut types: Vec<AtomType> = frame.atoms.iter()
-        .map(|a| AtomType::Other { elem: a.element.clone() })
+    let mut types: Vec<AtomType> = frame.atoms()
+        .map(|a| AtomType::Other { elem: a.element.to_string() })
         .collect();
 
     let mut ligand_formers: HashMap<usize, Vec<usize>> = HashMap::with_capacity(nf_map.len());
     for (&idx, nf) in &nf_map {
         let mut partners: Vec<String> = nf.iter().map(|(e, _)| e.clone()).collect();
         partners.sort_unstable();
-        types[idx] = AtomType::Ligand { elem: frame.atoms[idx].element.clone(), partners };
+        types[idx] = AtomType::Ligand { elem: frame.element(idx).to_string(), partners };
 
         let mut idxs: Vec<usize> = nf.iter().map(|(_, i)| *i).collect();
         idxs.sort_unstable();
@@ -330,8 +330,8 @@ pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<Fra
 
 fn build_elem_map(frame: &Frame) -> HashMap<String, Vec<usize>> {
     let mut map: HashMap<String, Vec<usize>> = HashMap::new();
-    for (idx, atom) in frame.atoms.iter().enumerate() {
-        map.entry(atom.element.clone()).or_default().push(idx);
+    for (idx, atom) in frame.atoms().enumerate() {
+        map.entry(atom.element.to_string()).or_default().push(idx);
     }
     map
 }
@@ -365,7 +365,7 @@ fn build_nf_map(
             for (former, cutoff) in &former_pairs {
                 let c2 = cutoff * cutoff;
                 for &fa_idx in &around {
-                    if frame.atoms[fa_idx].element != *former { continue; }
+                    if frame.element(fa_idx) != *former { continue; }
                     if d2(la_idx, fa_idx) < c2 {
                         nf_map.entry(la_idx).or_default().push((former.clone(), fa_idx));
                     }
@@ -464,7 +464,7 @@ fn classify_modifiers_inner(
                 if m != &mod_elem { continue; }
                 let c2 = cutoff * cutoff;
                 for &la_idx in &around {
-                    if frame.atoms[la_idx].element != *ligand { continue; }
+                    if frame.element(la_idx) != *ligand { continue; }
                     if d2(ma_idx, la_idx) < c2 { cn += 1; }
                 }
             }
@@ -614,9 +614,8 @@ mod tests {
         use nalgebra::Vector3;
         let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
         let mut f = Frame::new();
-        f.atoms = atoms.iter()
-            .map(|(e, x, y, z)| Atom::new(*e, Vector3::new(*x, *y, *z)))
-            .collect();
+        f.set_atoms(atoms.iter()
+            .map(|(e, x, y, z)| Atom::new(*e, Vector3::new(*x, *y, *z))));
         f.cell = Some(cell);
         f.pbc = [true; 3];
         f

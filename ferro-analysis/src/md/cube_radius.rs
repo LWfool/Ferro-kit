@@ -116,9 +116,9 @@ fn process_frame(
 
     let mut rho = Array3::<f64>::zeros((nx, ny, nz));
 
-    for atom in &frame.atoms {
+    for atom in frame.atoms() {
         if let Some(elems) = &params.elements {
-            if !elems.contains(&atom.element) { continue; }
+            if !elems.iter().any(|e| e == atom.element) { continue; }
         }
 
         // 原子分数坐标，归一化到 [0, 1)
@@ -193,10 +193,9 @@ pub fn calc_cube_radius(
     });
 
     let n_atoms = ref_frame
-        .atoms
-        .iter()
+        .atoms()
         .filter(|a| match &params.elements {
-            Some(elems) => elems.contains(&a.element),
+            Some(elems) => elems.iter().any(|e| e == a.element),
             None => true,
         })
         .count();
@@ -358,7 +357,7 @@ mod tests {
         let mut rho = vec![0.0; n[0] * n[1] * n[2]];
         for frame in &traj.frames {
             let cell = frame.cell.as_ref().unwrap();
-            for atom in &frame.atoms {
+            for atom in frame.atoms() {
                 let f = cell.cartesian_to_fractional(atom.position).unwrap();
                 for ix in 0..n[0] {
                     for iy in 0..n[1] {

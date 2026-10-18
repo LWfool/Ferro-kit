@@ -18,7 +18,7 @@ pub fn write_xyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
             ""
         };
         writeln!(writer, "{comment}")?;
-        for atom in &frame.atoms {
+        for atom in frame.atoms() {
             writeln!(
                 writer,
                 "{:<2}  {:>12.6}  {:>12.6}  {:>12.6}",

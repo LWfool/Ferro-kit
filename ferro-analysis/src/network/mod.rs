@@ -687,7 +687,7 @@ pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Resul
     check::periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
 
     let n_frames = usable.len();
-    let n_atoms = usable[0].atoms.len();
+    let n_atoms = usable[0].n_atoms();
 
     let acc = usable
         .par_iter()
@@ -781,7 +781,7 @@ fn compute_frame(frame: &Frame, params: &TypeParams) -> Option<FrameData> {
         let n_formers = formers.len();
         // 桥中间那个原子的元素。多配体体系里 Al-O-P 与 Al-F-P 是两种桥,
         // 合并计数会报出一个实验无法复现的数
-        let ligand_elem = &frame.atoms[lig_idx].element;
+        let ligand_elem = frame.element(lig_idx).to_string();
         for i in 0..n_formers {
             for j in (i + 1)..n_formers {
                 let (Some(a), Some(b)) = (site(formers[i]), site(formers[j])) else { continue };
@@ -992,7 +992,7 @@ mod tests {
 
     fn cube(atoms: Vec<Atom>) -> Frame {
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 20.0)));
-        Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() }
+        { let mut f = Frame::with_cell(cell, [true; 3]); f.set_atoms(atoms); f }
     }
 
     fn traj_of(frames: Vec<Frame>) -> Trajectory {

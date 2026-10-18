@@ -44,7 +44,7 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
         if multi {
             writeln!(writer, "MODEL     {:>4}", model_idx + 1)?;
         }
-        for (i, atom) in frame.atoms.iter().enumerate() {
+        for (i, atom) in frame.atoms().enumerate() {
             let p = to_std * atom.position;
             writeln!(
                 writer,
@@ -156,7 +156,7 @@ mod tests {
         let loaded = read_pdb(&path).unwrap();
         let f = loaded.first().unwrap();
         let c = f.cell.as_ref().unwrap();
-        for (atom, s) in f.atoms.iter().zip(&fracs) {
+        for (atom, s) in f.atoms().zip(&fracs) {
             let got = c.cartesian_to_fractional(atom.position).unwrap();
             assert!((got - s).norm() < 1e-3, "读回分数坐标 {got:?}，应为 {s:?}");
         }

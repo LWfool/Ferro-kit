@@ -263,6 +263,9 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
             traj
         }
     };
+    let mut traj = traj;
+    // Every reader then stores one site table for a run of identical frames (review B15)
+    traj.share_sites();
     Ok((traj, report))
 }
 
@@ -340,7 +343,7 @@ mod tests {
         let mut frame = Frame::new();
         frame.cell = Some(Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap());
         frame.pbc = [true; 3];
-        frame.atoms.push(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
+        frame.add_atom(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
         Trajectory { frames: vec![frame], metadata: Default::default() }
     }
 
@@ -372,21 +375,21 @@ mod tests {
             Si 0 0 0 0.1 0.2 0.3 0.01 0.02 0.03\n");
         let f = &t.frames[0];
         assert!(f.cell.is_some(), "Lattice should become the cell");
-        assert!(f.forces.is_some() && f.velocities.is_some(), "forces and velocities must survive");
+        assert!(f.forces().is_some() && f.velocities().is_some(), "forces and velocities must survive");
         assert_eq!(f.energy, Some(-1.5));
 
         // GPUMD's train.xyz often uses lower-case keys
         let t = read("gpumd.xyz", "1\nlattice=\"5 0 0 0 5 0 0 0 5\" \
             properties=species:S:1:pos:R:3:force:R:3 energy=-2.0\nSi 0 0 0 0.1 0.2 0.3\n");
-        assert!(t.frames[0].cell.is_some() && t.frames[0].forces.is_some(), "lower-case keys are extxyz too");
+        assert!(t.frames[0].cell.is_some() && t.frames[0].forces().is_some(), "lower-case keys are extxyz too");
 
         // The .xyz ferro's own `dataset --type nep` writes reads back losslessly
         let p = dir.join("self.xyz");
         let mut src = one_atom_traj();
-        src.frames[0].forces = Some(vec![Vector3::new(0.1, -0.2, 0.3)]);
+        src.frames[0].set_forces(Some(vec![Vector3::new(0.1, -0.2, 0.3)])).unwrap();
         write_extxyz(&src, &p).unwrap();
         let back = read_plain(&p).unwrap();
-        assert!(back.frames[0].cell.is_some() && back.frames[0].forces.is_some(), "own extxyz must read back");
+        assert!(back.frames[0].cell.is_some() && back.frames[0].forces().is_some(), "own extxyz must read back");
 
         // Plain XYZ, including a CP2K trajectory comment with `=` in it, stays XYZ
         let t = read("plain.xyz", "2\ni = 0, time = 0.000, E = -1.0\nO 0 0 0\nH 0 0 1\n");
@@ -451,7 +454,7 @@ mod tests {
             write(&traj, &path, Some(LammpsUnits::Real)).unwrap();
             let back = read_plain(&path).unwrap();
             assert_eq!(back.n_frames(), 1, "{name}");
-            assert_eq!(back.frames[0].atoms[0].element, "Si", "{name}");
+            assert_eq!(back.frames[0].element(0), "Si", "{name}");
         }
     }
 
@@ -477,7 +480,7 @@ mod tests {
             let err = read_plain(&path).unwrap_err().to_string();
             assert!(err.contains("atom style"), "{name}: {err}");
             let full = ReadOptions { atom_style: Some(AtomStyle::Full), ..Default::default() };
-            assert_eq!(read(&path, &full).unwrap().0.frames[0].atoms[0].element, "Si", "{name}");
+            assert_eq!(read(&path, &full).unwrap().0.frames[0].element(0), "Si", "{name}");
             let mapped = ReadOptions { type_map: Some(vec![(1, "P".into())]), ..full };
             assert!(read(&path, &mapped).unwrap_err().to_string().contains("LAMMPS dump input only"));
         }
@@ -519,10 +522,10 @@ mod tests {
         let dir = tmp_dir("deepmd");
         let mut traj = one_atom_traj();
         traj.frames[0].energy = Some(-1.0);
-        traj.frames[0].forces = Some(vec![Vector3::zeros()]);
+        traj.frames[0].set_forces(Some(vec![Vector3::zeros()])).unwrap();
         crate::write_deepmd_npy(&traj, &dir).unwrap();
         assert_eq!(Format::detect(&dir).unwrap(), Format::Deepmd);
-        assert_eq!(read_plain(&dir).unwrap().frames[0].atoms[0].element, "Si");
+        assert_eq!(read_plain(&dir).unwrap().frames[0].element(0), "Si");
         let err = Format::detect(dir.join("set.000").as_path()).unwrap_err().to_string();
         assert!(err.contains("not a DeePMD system"), "{err}");
     }

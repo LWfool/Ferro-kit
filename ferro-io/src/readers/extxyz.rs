@@ -200,8 +200,8 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
             }
         }
 
-        if all_forces.len() == n { frame.forces = Some(all_forces); }
-        if all_vels.len() == n { frame.velocities = Some(all_vels); }
+        if all_forces.len() == n { frame.set_forces(Some(all_forces))?; }
+        if all_vels.len() == n { frame.set_velocities(Some(all_vels))?; }
 
         if traj.n_frames() == 0 {
             if let Some(src) = kv.get("config_type").or_else(|| kv.get("comment")) {
@@ -506,7 +506,7 @@ Properties=Z:I:1:pos:R:3
 ";
         let traj = read_extxyz(&tmp("z_only.extxyz", Z_ONLY)).unwrap();
         let f = traj.first().unwrap();
-        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("O", "Si"));
+        assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "Si"));
 
         const NO_NAME: &str = "1
 Properties=pos:R:3
@@ -553,7 +553,7 @@ Si 0.0 0.0 0.0
     fn test_forces() {
         let traj = read_extxyz(&tmp("forces.extxyz", WITH_FORCES)).unwrap();
         let f = traj.first().unwrap();
-        let forces = f.forces.as_ref().unwrap();
+        let forces = f.forces().unwrap();
         assert!((forces[0].x - 0.1).abs() < 1e-10);
         assert!((forces[1].x - (-0.1)).abs() < 1e-10);
     }
@@ -625,7 +625,7 @@ Si 0.0 0.0 0.0
         let nep = ASE_STRESS.replace("forces:R:3", "force:R:3");
         let traj = read_extxyz(&tmp("nep_force.extxyz", &nep)).unwrap();
         let f = traj.first().unwrap();
-        let forces = f.forces.as_ref().expect("force column not read");
+        let forces = f.forces().expect("force column not read");
         assert!((forces[0].x - 0.1).abs() < 1e-12);
         assert!((forces[1].z + 0.3).abs() < 1e-12);
     }
@@ -684,7 +684,7 @@ Si 0.0 0.0 0.0
         for name in ["vel", "velo", "velocities"] {
             let text = format!("1\nProperties=species:S:1:pos:R:3:{name}:R:3\nO 0 0 0 0.1 -0.2 0.3\n");
             let f = &parse_extxyz(&text).unwrap().frames[0];
-            let v = f.velocities.as_ref().unwrap_or_else(|| panic!("{name} 列应读成速度"))[0];
+            let v = f.velocities().unwrap_or_else(|| panic!("{name} 列应读成速度"))[0];
             assert_eq!((v.x, v.y, v.z), (0.1, -0.2, 0.3), "{name}");
         }
     }
@@ -697,7 +697,7 @@ Si 0.0 0.0 0.0
                    Properties=species:S:1:pos:R:3:momenta:R:3 pbc=\"T T T\"\n\
                    O 0.00000000 0.00000000 0.00000000 1.62877910 -3.25755820 4.88633731\n\
                    H 0.96000000 0.00000000 0.00000000 1.02619497 2.05238994 -3.07858491\n";
-        let v = parse_extxyz(ase).unwrap().frames.remove(0).velocities.unwrap();
+        let v = parse_extxyz(ase).unwrap().frames.remove(0).velocities().unwrap().to_vec();
         let want = [[0.01, -0.02, 0.03], [0.1, 0.2, -0.3]];
         for (got, want) in v.iter().zip(want) {
             for k in 0..3 {
@@ -711,7 +711,7 @@ Si 0.0 0.0 0.0
     fn test_momenta_use_the_masses_column() {
         let text = "1\nProperties=species:S:1:pos:R:3:masses:R:1:momenta:R:3\n\
                     O 0 0 0 2.0 0.098226947884640630 0 0\n";
-        let v = parse_extxyz(text).unwrap().frames.remove(0).velocities.unwrap()[0];
+        let v = parse_extxyz(text).unwrap().frames.remove(0).velocities().unwrap().to_vec()[0];
         // p / m = 0.0491 Å/ase_t，乘 units.fs 得 Å/fs
         let want = 0.098_226_947_884_640_63 / 2.0 * 0.098_226_947_884_640_63;
         assert!((v.x - want).abs() < 1e-15, "实得 {}，应为 {want}", v.x);
@@ -727,8 +727,8 @@ Si 0.0 0.0 0.0
         );
         let traj = parse_extxyz(&format!("{good}{good}")).unwrap();
         let f = &traj.frames[1];
-        assert_eq!(f.atoms[0].charge, Some(-0.8));
-        assert_eq!(f.velocities.as_ref().unwrap()[0].z, 3.0);
+        assert_eq!(f.atom(0).charge, Some(-0.8));
+        assert_eq!(f.velocities().unwrap()[0].z, 3.0);
         // 坏值放在第 2 帧（注释第 5 行、原子第 6 行），断言消息点名帧号、行号和字段
         let cases = [
             ("0.2", "1.0d0", "forces"),

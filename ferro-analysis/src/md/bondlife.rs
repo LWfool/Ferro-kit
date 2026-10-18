@@ -175,7 +175,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
 
     let ref_frame = &traj.frames[0];
     let of = |el: &str| -> Vec<usize> {
-        ref_frame.atoms.iter().enumerate().filter(|(_, a)| a.element == el).map(|(i, _)| i).collect()
+        ref_frame.atoms().enumerate().filter(|(_, a)| a.element == el).map(|(i, _)| i).collect()
     };
     let (centers, neighbors) = (of(&params.center), of(&params.neighbor));
     for (list, el) in [(&centers, &params.center), (&neighbors, &params.neighbor)] {
@@ -188,7 +188,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     // Minimum image in a frame with a box, plain Cartesian difference without one
     let dist = |k: usize, i: usize, j: usize| -> f64 {
         let f = &traj.frames[k];
-        let d = f.atoms[j].position - f.atoms[i].position;
+        let d = f.positions()[j] - f.positions()[i];
         match &cells[k] {
             Some(pc) => pc.minimum_image(d).norm(),
             None => d.norm(),
@@ -197,7 +197,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
 
     // Pass 1: a pair that comes within r_bond in any frame is a candidate (i < j for
     // one element). A frame with a box searches a neighbour list, one without scans all
-    let mut is_neighbor = vec![false; ref_frame.atoms.len()];
+    let mut is_neighbor = vec![false; ref_frame.n_atoms()];
     for &j in &neighbors { is_neighbor[j] = true; }
     let mut candidates: Vec<(usize, usize)> = (0..n_frames).into_par_iter().flat_map_iter(|k| {
         let mut hit = Vec::new();
@@ -206,7 +206,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
         };
         match &cells[k] {
             Some(pc) => {
-                let nl = NeighborList::build(&traj.frames[k].positions(), pc, r_bond)
+                let nl = NeighborList::build(traj.frames[k].positions(), pc, r_bond)
                     .expect("r_bond <= r_break, checked against every frame's bound at the entry");
                 for &i in &centers {
                     for (j, _, _) in nl.neighbors_of(i) {

@@ -107,8 +107,22 @@ impl Trajectory {
         self.frames.last()
     }
 
-    pub fn add_frame(&mut self, frame: Frame) {
+    /// Appends a frame, sharing the previous frame's site table when the two are equal
+    /// — a trajectory of one system then stores its elements and labels once.
+    pub fn add_frame(&mut self, mut frame: Frame) {
+        if let Some(last) = self.frames.last() {
+            frame.share_sites_with(last);
+        }
         self.frames.push(frame);
+    }
+
+    /// Links every frame to its predecessor's site table where the two are equal, for
+    /// a trajectory whose frames were pushed onto `frames` directly.
+    pub fn share_sites(&mut self) {
+        for k in 1..self.frames.len() {
+            let (done, rest) = self.frames.split_at_mut(k);
+            rest[0].share_sites_with(&done[k - 1]);
+        }
     }
 
     /// Check that every frame has the same atoms as frame 0: same count, same element
@@ -129,14 +143,18 @@ impl Trajectory {
                     frame.n_atoms(), first.n_atoms()
                 )));
             }
-            // 只比元素不比 label：net 导出的标注轨迹里 label 逐帧在变，原子身份不变
+            if frame.shares_sites_with(first) {
+                continue;
+            }
+            // Elements only, not labels: in a trajectory `net` exported, labels change
+            // from frame to frame while the atoms stay the same
             if let Some(j) = (0..first.n_atoms())
-                .find(|&j| frame.atoms[j].element != first.atoms[j].element)
+                .find(|&j| frame.element(j) != first.element(j))
             {
                 return Err(ChemError::ValidationError(format!(
                     "atom {j} is {} in frame {k} but {} in frame 0; this analysis follows \
                      atoms by index and needs the same atoms in every frame",
-                    frame.atoms[j].element, first.atoms[j].element
+                    frame.element(j), first.element(j)
                 )));
             }
         }
@@ -253,25 +271,25 @@ mod tests {
     fn test_check_same_atoms() {
         // 原子数相同、只有 label 变：net 标注轨迹的常态，应放行
         let mut traj = numbered_traj(3);
-        traj.frames[2].atoms[0].label = Some("Fe_x".into());
+        traj.frames[2].sites_mut()[0].label = Some("Fe_x".into());
         assert!(traj.check_same_atoms().is_ok(), "只有 label 不同应放行");
         assert!(Trajectory::new().check_same_atoms().is_ok(), "空轨迹应放行");
 
         // 末帧少原子：截断 dump 的样子
         let mut short = numbered_traj(3);
-        short.frames[2].atoms.clear();
+        short.frames[2].set_atoms([]);
         let msg = short.check_same_atoms().unwrap_err().to_string();
         assert!(msg.contains("frame 2 has 0 atoms but frame 0 has 1"), "应点名帧与原子数：{msg}");
 
         // 原子数相同但元素换了位置
         let mut swapped = numbered_traj(3);
-        swapped.frames[1].atoms[0].element = "O".into();
+        swapped.frames[1].sites_mut()[0].element = "O".into();
         let msg = swapped.check_same_atoms().unwrap_err().to_string();
         assert!(msg.contains("atom 0 is O in frame 1 but Fe in frame 0"), "应点名原子与元素：{msg}");
     }
 
     fn picked(traj: &Trajectory) -> Vec<usize> {
-        traj.frames.iter().map(|f| f.atoms[0].position.x as usize).collect()
+        traj.frames.iter().map(|f| f.positions()[0].x as usize).collect()
     }
 
     #[test]

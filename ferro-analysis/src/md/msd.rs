@@ -141,11 +141,11 @@ fn unwrap_tor(
     Ok(atom_indices.par_iter().map(|&i| {
         let n = traj.n_frames();
         let mut s = [Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n)];
-        let mut w_prev = traj.frames[0].atoms[i].position;
+        let mut w_prev = traj.frames[0].positions()[i];
         let mut u = w_prev;
         for (k, frame) in traj.frames.iter().enumerate() {
             if k > 0 {
-                let w = frame.atoms[i].position;
+                let w = frame.positions()[i];
                 let pc = boxes[k];
                 let f = pc.to_fractional(w - w_prev);
                 // ⌊x + 1/2⌋ 而非 round()：与论文式 2 逐字一致（两者只在恰好 ±0.5 处不同）
@@ -220,9 +220,9 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     // 按第一帧筛选元素
     let ref_frame = &traj.frames[0];
-    let atom_indices: Vec<usize> = ref_frame.atoms.iter().enumerate()
+    let atom_indices: Vec<usize> = ref_frame.atoms().enumerate()
         .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.contains(&a.element),
+            Some(elems) => elems.iter().any(|e| e == a.element),
             None => true,
         })
         .map(|(i, _)| i)
@@ -232,7 +232,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
     }
     let n_atoms = atom_indices.len();
     let elements: Vec<String> = atom_indices.iter()
-        .map(|&i| ref_frame.atoms[i].element.clone())
+        .map(|&i| ref_frame.element(i).to_string())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
@@ -242,7 +242,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
         unwrap_tor(traj, &cells, &atom_indices)?
     } else {
         atom_indices.iter().map(|&i| {
-            let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.atoms[i].position).collect();
+            let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.positions()[i]).collect();
             [p.iter().map(|v| v.x).collect(), p.iter().map(|v| v.y).collect(),
              p.iter().map(|v| v.z).collect()]
         }).collect()
@@ -437,7 +437,7 @@ mod tests {
     fn test_msd_rejects_frames_with_different_atoms() {
         // 末帧少原子（截断轨迹）此前在按第 0 帧原子下标取坐标时越界 panic
         let mut traj = make_traj_static(5);
-        traj.frames[4].atoms.truncate(10);
+        traj.frames[4].truncate_atoms(10);
         let err = calc_msd(&traj, &MsdParams::default()).expect_err("原子数不一致应报错而不是 panic");
         assert!(err.to_string().contains("frame 4 has 10 atoms"), "{err}");
     }
@@ -493,12 +493,12 @@ mod tests {
 
     /// 独立实现的 TOR：逐步加后一帧盒子下的最小镜像位移（走 Cell::minimum_image）
     fn tor_reference(traj: &Trajectory) -> Vec<Vec<Vector3<f64>>> {
-        let mut u: Vec<Vector3<f64>> = traj.frames[0].atoms.iter().map(|a| a.position).collect();
+        let mut u: Vec<Vector3<f64>> = traj.frames[0].atoms().map(|a| a.position).collect();
         let mut out = vec![u.clone()];
         for k in 1..traj.n_frames() {
             let cell = traj.frames[k].cell.as_ref().unwrap();
             for (j, uj) in u.iter_mut().enumerate() {
-                let d = traj.frames[k].atoms[j].position - traj.frames[k - 1].atoms[j].position;
+                let d = traj.frames[k].positions()[j] - traj.frames[k - 1].positions()[j];
                 *uj += cell.minimum_image(d).unwrap();
             }
             out.push(u.clone());
@@ -557,7 +557,7 @@ mod tests {
         }
         let r = calc_msd(&traj, &MsdParams { max_lag: Some(20), ..MsdParams::default() }).unwrap();
         let pos: Vec<Vec<Vector3<f64>>> = traj.frames.iter()
-            .map(|f| f.atoms.iter().map(|a| a.position).collect()).collect();
+            .map(|f| f.atoms().map(|a| a.position).collect()).collect();
         for (m, want) in brute_msd(&pos, 20).iter().enumerate() {
             let total: f64 = want.iter().sum();
             assert!((r.msd[m] - total).abs() < 1e-9, "lag {m}: {} vs {total}", r.msd[m]);
