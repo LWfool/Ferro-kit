@@ -57,7 +57,16 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("convert needs an output file: -o <FILE>  (run `ferro convert` for the format list)");
     };
 
-    if input == output {
+    // Compared as resolved paths: `-o ./x` for `-i x` is the same file, and writing
+    // it truncates the input. The output need not exist yet, so its parent is resolved.
+    let resolved = |p: &Path| -> PathBuf {
+        p.canonicalize().unwrap_or_else(|_| {
+            let parent = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
+            let name = p.file_name().map(PathBuf::from).unwrap_or_default();
+            parent.canonicalize().map(|d| d.join(&name)).unwrap_or_else(|_| p.to_path_buf())
+        })
+    };
+    if resolved(input) == resolved(output) {
         bail!("Input and output paths are identical");
     }
 
@@ -190,6 +199,22 @@ mod tests {
             read: ReadArgs::default(),
             format: None,
         }
+    }
+
+    /// `-o ./same.extxyz` for `-i same.extxyz` is the same file under another spelling:
+    /// comparing the text let it through and the write truncated the input.
+    #[test]
+    fn the_same_file_spelt_differently_is_refused() {
+        let dir = std::env::temp_dir().join(format!("ferro_convert_same_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        let input = dir.join("same.extxyz");
+        std::fs::write(&input, "1\nProperties=species:S:1:pos:R:3\nO 0 0 0\n").unwrap();
+        for out in [dir.join("./same.extxyz"), dir.join("sub/../same.extxyz")] {
+            let err = run(&cmd(Some(input.to_str().unwrap()), Some(out.to_str().unwrap())))
+                .unwrap_err().to_string();
+            assert!(err.contains("identical"), "{}: {err}", out.display());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// `-o out/` 没有文件名可判格式：不给 --format 就报错，并给出两种可抄的写法
