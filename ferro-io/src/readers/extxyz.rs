@@ -99,6 +99,13 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
         }
 
         let find = |name: &str| col_idx.get(name).copied();
+        // Without these an atom used to land at the origin, or be named X, silently
+        let Some(pos_col) = find("pos") else {
+            bail!("frame {frame_no}: Properties has no pos column (pos:R:3)");
+        };
+        if find("species").is_none() && find("z").is_none() {
+            bail!("frame {frame_no}: Properties has neither a species nor a Z column");
+        }
 
         let mut frame = match cell {
             Some(c) => Frame::with_cell(c, pbc),
@@ -128,15 +135,20 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
                 Ok(Vector3::new(num(name, c)?, num(name, c + 1)?, num(name, c + 2)?))
             };
 
-            let element = find("species")
-                .map(|c| cols[c].to_string())
-                .unwrap_or_else(|| "X".to_string());
-
-            let pos = if let Some(c) = find("pos") {
-                vec3("pos", c)?
-            } else {
-                Vector3::zeros()
+            // species, or else ASE's atomic-number column Z (checked above that one exists)
+            let element = match find("species") {
+                Some(c) => cols[c].to_string(),
+                None => {
+                    let c = find("z").unwrap_or_default(); // names are lowercased
+                    cols[c].parse::<u8>().ok()
+                        .and_then(ferro_core::data::elements::by_number)
+                        .map(|e| e.symbol.to_string())
+                        .with_context(|| format!(
+                            "frame {frame_no}, line {line_no}: invalid Z value {:?}", cols[c]))?
+                }
             };
+
+            let pos = vec3("pos", pos_col)?;
 
             let mut atom = Atom::new(element, pos);
             if let Some(c) = find("charges") {
@@ -455,6 +467,35 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
     }
 
     use crate::testutil::write_tmp as tmp;
+
+    /// A frame without a `pos` column used to read every atom at the origin, and one
+    /// without `species` named every atom X: both silently, with exit code 0.
+    #[test]
+    fn test_missing_pos_is_an_error_and_z_names_the_element() {
+        const NO_POS: &str = "1
+Properties=species:S:1:positions:R:3
+O 1.0 2.0 3.0
+";
+        let err = read_extxyz(&tmp("no_pos.extxyz", NO_POS)).unwrap_err();
+        assert!(format!("{err:#}").contains("pos"), "{err:#}");
+
+        // ASE writes Z when the atoms carry no symbols column
+        const Z_ONLY: &str = "2
+Properties=Z:I:1:pos:R:3
+8 0.0 0.0 0.0
+14 1.0 0.0 0.0
+";
+        let traj = read_extxyz(&tmp("z_only.extxyz", Z_ONLY)).unwrap();
+        let f = traj.first().unwrap();
+        assert_eq!((f.atom(0).element.as_str(), f.atom(1).element.as_str()), ("O", "Si"));
+
+        const NO_NAME: &str = "1
+Properties=pos:R:3
+0.0 0.0 0.0
+";
+        let err = read_extxyz(&tmp("no_name.extxyz", NO_NAME)).unwrap_err();
+        assert!(format!("{err:#}").contains("species"), "{err:#}");
+    }
 
     /// `Temperature=` is read back; the writer deliberately never emits it.
     #[test]

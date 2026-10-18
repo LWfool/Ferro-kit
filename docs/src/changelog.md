@@ -20,6 +20,13 @@ It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
 `ferro convert` does. Library callers of `write_cif` / `write_poscar` /
 `write_lammps_data` get an error for several frames instead.
 
+### extxyz without a `pos` or a species column is an error
+
+A frame whose `Properties` has no `pos` column used to read every atom at the
+origin, and one with no `species` column named every atom `X`. The first is now an
+error; for the second, ASE's atomic-number column `Z` gives the element, and a frame
+with neither is an error.
+
 ### `dataset merge --suffix` must look like `.train`
 
 The suffix is appended to the output directory names, and one containing `/` or `..`
