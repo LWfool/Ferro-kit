@@ -225,11 +225,12 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // 边长：非正交晶胞 d < L，用边长会高估可用截断。
     let mut mic_max = f64::INFINITY;
     let mut volumes: Vec<f64> = Vec::with_capacity(traj.frames.len());
-    for frame in &traj.frames {
-        let cell = frame.cell.as_ref().ok_or_else(|| {
-            ChemError::ValidationError("all frames must have a periodic cell".into())
-        })?;
-        mic_max = mic_max.min(cell.minimum_image_cutoff()?);
+    let cells = check::periodic_cells(traj, None)?;
+    for (frame, pc) in traj.frames.iter().zip(&cells) {
+        let (Some(cell), Some(pc)) = (frame.cell.as_ref(), pc) else {
+            return Err(ChemError::ValidationError("all frames must have a periodic cell".into()));
+        };
+        mic_max = mic_max.min(pc.mic_bound());
         volumes.push(cell.volume());
     }
     let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };

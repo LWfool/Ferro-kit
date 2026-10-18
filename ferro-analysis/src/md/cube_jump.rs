@@ -134,7 +134,7 @@ pub fn calc_cube_jump(
     let n_frames = traj.frames.len();
     if n_frames < params.tau + 1 { return None; }
     traj.check_same_atoms().ok()?;
-    check::invertible_cells(traj).ok()?;
+    check::periodic_cells(traj, None).ok()?;
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
@@ -162,7 +162,7 @@ pub fn calc_cube_jump(
         let cell = frame.cell.as_ref().unwrap_or(ref_cell);
         frame.atoms.iter().map(|a| {
             let f = cell.cartesian_to_fractional(a.position)
-                .expect("入口 check::invertible_cells 已查");
+                .expect("checked at the entry by check::periodic_cells");
             [f.x, f.y, f.z]
         }).collect()
     }).collect();

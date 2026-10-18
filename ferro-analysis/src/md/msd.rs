@@ -241,6 +241,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
         .into_iter()
         .collect();
 
+    check::periodic_cells(traj, None)?;
     let series: Series = if ref_frame.cell.is_some() {
         unwrap_tor(traj, &atom_indices)?
     } else {

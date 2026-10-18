@@ -187,7 +187,7 @@ pub fn calc_cube_radius(
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
         .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
-    check::within_minimum_image(traj, "radius", params.radius)?;
+    check::periodic_cells(traj, Some(("radius", params.radius)))?;
 
     // 帧级并行
     let results: Vec<Array3<f64>> = traj

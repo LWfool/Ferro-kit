@@ -175,6 +175,7 @@ pub fn calc_cube_density(
 ) -> Option<CubeDensityResult> {
     // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
     params.validate().ok()?;
+    check::periodic_cells(traj, None).ok()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;

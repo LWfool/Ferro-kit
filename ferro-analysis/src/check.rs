@@ -5,7 +5,7 @@
 //! 与 `correlate::resolve_max_lag` 的 `max-lag` 一致。
 
 use ferro_core::error::ChemError;
-use ferro_core::Trajectory;
+use ferro_core::{PeriodicCell, Trajectory};
 
 type Check = ferro_core::Result<()>;
 
@@ -50,39 +50,44 @@ pub(crate) fn holds_a_bin(range: &str, lo: f64, hi: f64, step: &str, w: f64) -> 
     fail(format!("{range} [{lo}, {hi}] is narrower than one {step} = {w} bin"))
 }
 
-/// 有胞的帧，胞矩阵须可逆。下游在闭包 / 并行迭代里 `expect` 最小镜像不失败，
-/// 入口查一次，那些 `expect` 便成了不变式。ASE 二维材料约定（c=0、pbc TTF）即奇异
-pub(crate) fn invertible_cells(traj: &Trajectory) -> Check {
-    for (i, f) in traj.frames.iter().enumerate() {
-        if f.cell.as_ref().is_some_and(|c| c.matrix.try_inverse().is_none()) {
-            return fail(format!("frame {i}: cell matrix is singular"));
-        }
-    }
-    Ok(())
-}
-
-/// 截断不超过最小镜像上界（最小面间距的一半）。超过时只看得到最近的一个镜像，
-/// 更远镜像里的邻居被静默漏掉。逐帧查而不是只看第 0 帧：NPT 下盒子会缩，后面某帧
-/// 越界时结果同样静默错。报最紧的那一帧，用户由此知道能用的上限。
-/// 没有 cell 的帧不参与（非周期，没有镜像）。
+/// Every frame's cell as a [`PeriodicCell`], `None` for a frame that has no cell.
 ///
-/// gr 不走这里：它把 `r_max` 截到上界，是写进手册的有意行为
-pub(crate) fn within_minimum_image(traj: &Trajectory, name: &str, cutoff: f64) -> Check {
-    let mut tightest: Option<(usize, f64)> = None;
-    for (i, f) in traj.frames.iter().enumerate() {
-        if let Some(cell) = f.cell.as_ref() {
-            let bound = cell.minimum_image_cutoff()?;
-            if tightest.is_none_or(|(_, b)| bound < b) {
-                tightest = Some((i, bound));
+/// A frame that carries a cell must be 3-D periodic with a finite, invertible
+/// matrix; anything else is an error naming the frame. The analyses only know bulk
+/// periodicity, and a slab or a molecule in a box used to be measured as one
+/// (review A-7). Built once at the entry, the cells make the minimum image in the
+/// parallel loops infallible.
+///
+/// With `cutoff = Some((name, r))`, `r` must not exceed the minimum-image bound
+/// (half the smallest interplanar spacing): past it only the nearest image is seen
+/// and neighbours in farther images are silently lost. Every frame is checked, not
+/// just frame 0 — an NPT box shrinks, and a late frame past the bound is just as
+/// wrong. The tightest frame is reported so the user learns the usable limit.
+///
+/// gr does not pass a cutoff: it clamps `r_max` to the bound, as the manual says.
+pub(crate) fn periodic_cells(
+    traj: &Trajectory,
+    cutoff: Option<(&str, f64)>,
+) -> ferro_core::Result<Vec<Option<PeriodicCell>>> {
+    let cells = traj.frames.iter().enumerate().map(|(i, f)| {
+        f.cell.as_ref().map(|c| PeriodicCell::new(c, f.pbc).map_err(|e| match e {
+            ChemError::ValidationError(m) => ChemError::ValidationError(format!("frame {i}: {m}")),
+            e => e,
+        })).transpose()
+    }).collect::<ferro_core::Result<Vec<_>>>()?;
+    if let Some((name, r)) = cutoff {
+        let tightest = cells.iter().enumerate()
+            .filter_map(|(i, c)| c.as_ref().map(|c| (i, c.mic_bound())))
+            .reduce(|a, b| if b.1 < a.1 { b } else { a });
+        if let Some((i, bound)) = tightest {
+            if r > bound {
+                fail(format!(
+                    "{name} {r:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
+                ))?;
             }
         }
     }
-    match tightest {
-        Some((i, bound)) if cutoff > bound => fail(format!(
-            "{name} {cutoff:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
-        )),
-        _ => Ok(()),
-    }
+    Ok(cells)
 }
 
 #[cfg(test)]
@@ -164,7 +169,7 @@ mod tests {
         let cell = Cell::from_matrix(Matrix3::new(10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0));
         let mut traj = Trajectory::new();
         for k in 0..3 {
-            let mut f = Frame::with_cell(cell.clone(), [true, true, false]);
+            let mut f = Frame::with_cell(cell.clone(), [true; 3]);
             f.add_atom(Atom::new("P", Vector3::new(5.0 + 0.01 * k as f64, 5.0, 5.0)));
             for d in [[1.0, 1.0, 1.0], [1.0, -1.0, -1.0], [-1.0, 1.0, -1.0], [-1.0, -1.0, 1.0]] {
                 f.add_atom(Atom::new("O", Vector3::new(5.0 + 0.9 * d[0], 5.0 + 0.9 * d[1], 5.0 + 0.9 * d[2])));
@@ -229,6 +234,52 @@ mod tests {
         for (who, res) in run(3.9) {
             let msg = res.err().map(|e| e.to_string()).unwrap_or_default();
             assert!(!msg.contains("minimum-image"), "{who} 不应拦下 3.9 Å：{msg}");
+        }
+    }
+
+    /// Review A-7: a frame that carries a box but is not 3-D periodic (a molecule in
+    /// a box, a slab) used to be measured as a bulk. Two O atoms 2.0 A apart in a
+    /// 3 A box: gr saw them at 1.0 A through an image that does not exist.
+    #[test]
+    fn frames_that_are_not_3d_periodic_are_refused() {
+        use crate::md::*;
+        use crate::ml::filter::{filter_frames, FilterParams};
+        use ferro_core::{Atom, Cell, CutoffTable, Frame, TypeParams};
+        use nalgebra::Vector3;
+        for pbc in [[false; 3], [true, true, false]] {
+            let mut traj = Trajectory::new();
+            for k in 0..3 {
+                let cell = Cell::from_lengths_angles(3.0, 3.0, 3.0, 90.0, 90.0, 90.0).unwrap();
+                let mut f = Frame::with_cell(cell, pbc);
+                let x = 0.01 * k as f64;
+                f.add_atom(Atom::new("O", Vector3::new(0.5 + x, 1.5, 1.5)));
+                f.add_atom(Atom::new("O", Vector3::new(2.5, 1.5, 1.5)));
+                f.add_atom(Atom::new("P", Vector3::new(1.5, 0.5, 1.5)));
+                traj.add_frame(f);
+            }
+            let mut c = CutoffTable::new();
+            c.insert(("P".into(), "O".into()), 1.2);
+            let res: Vec<(&str, ferro_core::Result<()>)> = vec![
+                ("gr", calc_gr(&traj, &GrParams::default()).map(|_| ())),
+                ("angle", calc_angle(&traj, &AngleParams { r_cut_ab: 1.2, r_cut_bc: 1.2, ..Default::default() }).map(|_| ())),
+                ("msd", calc_msd(&traj, &MsdParams::default()).map(|_| ())),
+                ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
+                    center: "P".into(), neighbor: "O".into(), r_cut: 1.2, ..Default::default() }).map(|_| ())),
+                ("bondlife", calc_bondlife(&traj, &BondLifeParams {
+                    center: "O".into(), neighbor: "O".into(), r_bond: 1.2, ..Default::default() }).map(|_| ())),
+                ("vanhove", calc_vanhove(&traj, &VanHoveParams::default()).map(|_| ())),
+                ("map radius", calc_cube_radius(&traj, &CubeRadiusParams::default()).map(|_| ())),
+                ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
+                    former: "P".into(), ligand: "O".into(), target_qn: 0, ..Default::default() }).map(|_| ())),
+                ("network", crate::calc_network(&traj, &TypeParams::new(c, CutoffTable::new())).map(|_| ())),
+                ("filter", filter_frames(&traj, &FilterParams { oo_min: 1.2, ..Default::default() }).map(|_| ())),
+            ];
+            for (who, r) in res {
+                let msg = r.err().map(|e| e.to_string()).unwrap_or_default();
+                assert!(msg.contains("frame 0") && msg.contains("only 3-D periodic"), "{who} {pbc:?}: {msg:?}");
+            }
+            assert!(calc_cube_density(&traj, &CubeDensityParams::default()).is_none());
+            assert!(calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).is_none());
         }
     }
 }

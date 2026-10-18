@@ -231,7 +231,7 @@ pub fn calc_cluster_sdf(
     params.validate()?;
     // 奇异胞以前在 build_network_graph / extract_snapshot 的 expect 里 panic（审查 B-1）；
     // 走 Err 而不是 None，CLI 才不会把它报成「没找到团簇」
-    check::invertible_cells(traj)?;
+    check::periodic_cells(traj, None)?;
     if traj.frames.is_empty() { return Ok(None); }
 
     let mut accumulators: HashMap<String, FamilyAccumulator> = HashMap::new();
@@ -287,7 +287,7 @@ pub(crate) fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParam
         &params.former, &params.ligand,
         params.former_ligand_cutoff,
     )
-    .expect("调用方已查奇异胞（cube_sdf 入口 check::invertible_cells，chg_sdf 入口同查）");
+    .expect("callers reject singular cells (cube_sdf via check::periodic_cells, chg_sdf at its entry)");
     if g.components.is_empty() { return Vec::new(); }
 
     let ml_cutoff2 = params.modifier_cutoff * params.modifier_cutoff;
@@ -354,7 +354,7 @@ fn extract_snapshot(
             let ma_pos = frame.atoms[ma_idx].position;
             let is_near = cluster_o_pos.iter().any(|&op| {
                 cell.minimum_image(op - ma_pos)
-                    .expect("入口 check::invertible_cells 已查")
+                    .expect("checked at the entry by check::periodic_cells")
                     .norm_squared() < ml_cutoff2
             });
             if is_near { Some(mi) } else { None }
@@ -400,7 +400,7 @@ fn extract_snapshot(
 
     // PBC 展开：以锚原子为原点，用最小镜像得到局部坐标
     let positions: Vec<Vector3<f64>> = raw_pos.iter()
-        .map(|&pos| cell.minimum_image(pos - anchor_pos).expect("入口 check::invertible_cells 已查"))
+        .map(|&pos| cell.minimum_image(pos - anchor_pos).expect("checked at the entry by check::periodic_cells"))
         .collect();
 
     Some(ClusterSnapshot { types, positions, anchor_idx, anchor_global_pos: anchor_pos })

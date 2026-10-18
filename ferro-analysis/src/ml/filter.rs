@@ -198,7 +198,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
     // 最小镜像只在关心的距离小于最小面间距的一半时严格成立
     if geometric {
         let want = params.oo_min.max(params.al6_rcut.unwrap_or(0.0));
-        check::within_minimum_image(traj, "cutoff", want)?;
+        check::periodic_cells(traj, Some(("cutoff", want)))?;
     }
 
     // Al6 走 network 的分类器，故只需给出 Al-O 一个截断；
@@ -252,7 +252,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
                 }
                 if let Some(tp) = &type_params {
                     let n = count_with_coordination(f, cell, tp, "Al", 6)
-                        .expect("入口 check::within_minimum_image 已查奇异胞");
+                        .expect("checked at the entry by check::periodic_cells");
                     // 「保留含 Al6 的帧」与「删除不含 Al6 的帧」是同一件事，
                     // 表达成后者，判据语义就和其余三条一致，交叉表也不必分裂
                     if n == 0 {

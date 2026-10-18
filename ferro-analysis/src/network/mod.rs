@@ -686,7 +686,7 @@ pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Resul
     let ((a, b), rcut) = params.cutoffs.iter().chain(&params.modifier_cutoffs)
         .max_by(|x, y| x.1.total_cmp(y.1))
         .expect("cutoffs 非空");
-    check::within_minimum_image(traj, &format!("{a}-{b} cutoff"), *rcut)?;
+    check::periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
 
     let n_frames = usable.len();
     let n_atoms = usable[0].0.atoms.len();
@@ -708,7 +708,7 @@ fn compute_frame(
     params: &TypeParams,
 ) -> Option<FrameData> {
     let ft = classify_frame_detailed(frame, cell, params)
-        .expect("入口 check::within_minimum_image 已查奇异胞");
+        .expect("checked at the entry by check::periodic_cells");
     let types = &ft.types;
 
     let mut bridge: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
@@ -998,7 +998,7 @@ mod tests {
 
     fn cube(atoms: Vec<Atom>) -> Frame {
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 20.0)));
-        Frame { atoms, cell: Some(cell), ..Frame::default() }
+        Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() }
     }
 
     fn traj_of(frames: Vec<Frame>) -> Trajectory {
