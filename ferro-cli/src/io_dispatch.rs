@@ -25,6 +25,17 @@ pub fn check_atom_style(path: &Path, style: Option<AtomStyle>) -> Result<Option<
     Ok(style)
 }
 
+/// Prints what a reader noticed, one `[ferro] ` prefix per line, so a library
+/// warning looks the same as before the readers stopped printing.
+fn print_warnings((traj, warnings): (Trajectory, Vec<String>)) -> Trajectory {
+    for w in &warnings {
+        for line in w.lines() {
+            eprintln!("[ferro] {line}");
+        }
+    }
+    traj
+}
+
 pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
     let is_dump = matches!(path.extension().and_then(|e| e.to_str()), Some("dump") | Some("lammpstrj"));
     if opts.type_map.is_some() && !is_dump {
@@ -33,11 +44,8 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
     let upper = name.to_uppercase();
 
-    if upper.starts_with("POSCAR") {
-        return read_poscar(path);
-    }
-    if upper.starts_with("CONTCAR") {
-        return read_contcar(path);
+    if upper.starts_with("POSCAR") || upper.starts_with("CONTCAR") {
+        return Ok(print_warnings(read_poscar_with_warnings(path)?));
     }
 
     match path.extension().and_then(|e| e.to_str()) {
@@ -47,13 +55,14 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
         Some("pdb")                      => Ok(read_pdb(path)?),
         Some("cif")                      => Ok(read_cif(path)?),
         Some("extxyz")                   => Ok(read_extxyz(path)?),
-        Some("vasp") | Some("poscar") | Some("pos") => read_poscar(path),
+        Some("vasp") | Some("poscar") | Some("pos") => Ok(print_warnings(read_poscar_with_warnings(path)?)),
         Some("lammps") | Some("data") | Some("lmp") => {
             let style = check_atom_style(path, opts.atom_style)?.expect("check_atom_style 已拒绝 None");
             Ok(read_lammps_data(path, style)?)
         }
         Some("dump") | Some("lammpstrj")             => {
-            let mut traj = read_lammps_dump(path, opts.units)?;
+            let mut traj = print_warnings(read_lammps_dump_with_warnings(path, opts.units)?);
+
             if let Some(map) = &opts.type_map {
                 apply_type_map(&mut traj, &map.0)?;
             }

@@ -53,3 +53,15 @@ def test_trajectory_formats_write_one_file(tmp_path):
     ferro.write(t, str(tmp_path / "all.extxyz"))
     assert [p.name for p in tmp_path.iterdir()] == ["all.extxyz"]
     assert ferro.read(str(tmp_path / "all.extxyz")).n_frames() == 3
+
+
+def test_reader_warnings_are_python_warnings(tmp_path):
+    # A dump cut inside its last frame: the frame is dropped and the reader says so
+    # through the warnings module, not by printing to stderr behind the caller's back
+    lines = NVT.read_text().splitlines(keepends=True)
+    starts = [i for i, l in enumerate(lines) if l.startswith("ITEM: TIMESTEP")]
+    path = tmp_path / "cut.lammpstrj"
+    path.write_text("".join(lines[: starts[-1] + 5]))
+    with pytest.warns(UserWarning, match="last frame"):
+        t = ferro.read(str(path))
+    assert len(t) == len(starts) - 1

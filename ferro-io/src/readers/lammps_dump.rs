@@ -38,6 +38,17 @@ impl std::str::FromStr for LammpsUnits {
 /// `units` 为 `None` 时，含 `vx`/`fx` 等速度或力列的 dump 报错 —— 这些列的量纲取决于
 /// LAMMPS 的 `units` 命令，文件里看不出来。
 pub fn read_lammps_dump(path: &Path, units: Option<LammpsUnits>) -> Result<Trajectory> {
+    Ok(read_lammps_dump_with_warnings(path, units)?.0)
+}
+
+/// Reads a LAMMPS dump, returning what the reader noticed alongside the frames.
+///
+/// The warnings name a dropped incomplete last frame and the element-column split
+/// (`P_3` -> element `P`, label `P_3`); the caller prints them, the library never does.
+pub fn read_lammps_dump_with_warnings(
+    path: &Path,
+    units: Option<LammpsUnits>,
+) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("cannot open {path_}"))?;
@@ -67,10 +78,11 @@ pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()
     Ok(())
 }
 
-fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<Trajectory> {
+fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<(Trajectory, Vec<String>)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
     let mut traj = Trajectory::new();
+    let mut warnings = Vec::new();
     // element 列原始串 → 拆分后的元素符号；仅用于读取结束时打印一次映射表
     let mut site_map: BTreeMap<String, String> = BTreeMap::new();
     let mut unknown_prefixes: BTreeSet<String> = BTreeSet::new();
@@ -89,18 +101,18 @@ fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<Trajec
                 if lines[start + 1..].iter().any(|l| l.trim().starts_with("ITEM: TIMESTEP")) {
                     bail!("frame {k} (line {}) is incomplete: {why}", start + 1);
                 }
-                eprintln!(
-                    "[ferro] warning: last frame (frame {k}, line {}) is incomplete and was \
+                warnings.push(format!(
+                    "warning: last frame (frame {k}, line {}) is incomplete and was \
                      dropped: {why}",
                     start + 1
-                );
+                ));
                 break;
             }
         }
     }
 
-    report_site_map(&site_map, &unknown_prefixes);
-    Ok(traj)
+    warnings.extend(site_map_warnings(&site_map, &unknown_prefixes));
+    Ok((traj, warnings))
 }
 
 /// 一帧读不成的两种原因，调用者对它们的处置不同。
@@ -354,32 +366,32 @@ fn parse_frame(
     Ok(frame)
 }
 
-/// Print the raw-string → element mapping once per file, so a silently wrong split
+/// The raw-string → element mapping, once per file, so a silently wrong split
 /// is visible rather than buried in the results.
 ///
-/// Stays quiet for ordinary trajectories where every element column entry is already
+/// Empty for ordinary trajectories where every element column entry is already
 /// a plain chemical symbol.
-fn report_site_map(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) {
+fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) -> Vec<String> {
+    let mut out = Vec::new();
     let split: Vec<(&String, &String)> = site_map.iter()
         .filter(|(raw, elem)| raw.as_str() != elem.as_str())
         .collect();
-    if split.is_empty() && unknown.is_empty() { return; }
-
     if !split.is_empty() {
-        eprintln!("[ferro] LAMMPS dump: element column carries site labels, split into element + label:");
+        let mut msg = String::from("LAMMPS dump: element column carries site labels, split into element + label:");
         for (raw, elem) in &split {
-            eprintln!("[ferro]   {raw:<12} -> element {elem:<4} label {raw}");
+            msg.push_str(&format!("\n  {raw:<12} -> element {elem:<4} label {raw}"));
         }
-        eprintln!("[ferro]   -a/-b/-c select by element, -x/-y/-z select by label");
+        out.push(msg);
     }
     if !unknown.is_empty() {
         let list: Vec<&str> = unknown.iter().map(|s| s.as_str()).collect();
-        eprintln!(
-            "[ferro] warning: underscore present but prefix is not a known element, \
+        out.push(format!(
+            "warning: underscore present but prefix is not a known element, \
              kept as element verbatim: {}",
             list.join(", ")
-        );
+        ));
     }
+    out
 }
 
 #[cfg(test)]
@@ -412,11 +424,33 @@ ITEM: ATOMS id type element x y z
 
     use crate::testutil::write_tmp as tmp;
 
+    fn parse_traj(content: &str, units: Option<LammpsUnits>) -> Result<Trajectory> {
+        Ok(parse_lammps_dump(content, units)?.0)
+    }
+
+    /// The reader reports, it does not print: a dropped last frame and the site-label
+    /// split come back as warnings, and an ordinary dump yields none.
+    #[test]
+    fn warnings_are_returned_not_printed() {
+        let (_, plain) = parse_lammps_dump(DUMP_ORTHO, None).unwrap();
+        assert!(plain.is_empty(), "{plain:?}");
+
+        let cut: String = DUMP_ORTHO.lines().take(21).map(|l| format!("{l}\n")).collect();
+        let (traj, w) = parse_lammps_dump(&cut, None).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert!(w.len() == 1 && w[0].contains("last frame (frame 1"), "{w:?}");
+
+        let labelled = DUMP_ORTHO.replace(" 1 Fe ", " 1 Fe_a ");
+        let (_, w) = parse_lammps_dump(&labelled, None).unwrap();
+        assert!(w.len() == 1 && w[0].contains("Fe_a") && w[0].contains("element Fe"), "{w:?}");
+        assert!(!w[0].contains("-a/-b/-c"), "CLI option names stay out of the library: {w:?}");
+    }
+
     #[test]
     fn test_type_map_on_dump_without_element_column() {
         let no_elem = DUMP_ORTHO.replace("id type element x y z", "id type x y z")
             .replace(" 1 Fe ", " 1 ").replace("2 1 1.4", "2 2 1.4");
-        let read = || parse_lammps_dump(&no_elem, None).unwrap();
+        let read = || parse_traj(&no_elem, None).unwrap();
         let t = read();
         assert_eq!((t.frames[0].atom(0).element.as_str(), t.frames[0].atom(1).element.as_str()),
                    ("X1", "X2"), "无映射时仍是占位符");
@@ -430,7 +464,7 @@ ITEM: ATOMS id type element x y z
         let err = |map: &[(u32, String)], t: &mut Trajectory| format!("{:#}", apply_type_map(t, map).unwrap_err());
         assert!(err(&[(1, "Zr".into())], &mut read()).contains("type 2 is missing"));
         assert!(err(&[(1, "Zr".into()), (2, "Xx".into())], &mut read()).contains("unknown element"));
-        let mut named = parse_lammps_dump(DUMP_ORTHO, None).unwrap();
+        let mut named = parse_traj(DUMP_ORTHO, None).unwrap();
         assert!(err(&[(1, "Zr".into())], &mut named).contains("already names elements"),
                 "有 element 列时不应被映射覆盖");
     }
@@ -506,7 +540,7 @@ ITEM: ATOMS id type element x y z
     fn test_unknown_prefix_kept_verbatim_as_element() {
         let traj = read_lammps_dump(&tmp("bad.dump", DUMP_BAD_LABEL), Some(LammpsUnits::Real)).unwrap();
         let f = traj.first().unwrap();
-        // 前缀非法 → 整串当元素、label 为 None（告警走 stderr）
+        // Unknown prefix: the whole string is the element, label is None (the reader warns)
         assert_eq!(f.atom(0).element, "foo_bar");
         assert!(f.atom(0).label.is_none());
         assert_eq!(f.atom(1).element, "O");
@@ -537,7 +571,7 @@ ITEM: ATOMS id type element x y z
             ("ATOMS 表头之后为空", head(20)),
         ];
         for (what, text) in cases {
-            let traj = parse_lammps_dump(&text, Some(LammpsUnits::Real))
+            let traj = parse_traj(&text, Some(LammpsUnits::Real))
                 .unwrap_or_else(|e| panic!("{what}：应丢掉末帧而不是报错，实际 {e:#}"));
             assert_eq!(traj.n_frames(), 1, "{what}：应只剩第 0 帧");
             assert_eq!(traj.first().unwrap().n_atoms(), 2, "{what}：第 0 帧应完整");
@@ -549,7 +583,7 @@ ITEM: ATOMS id type element x y z
         // 第 0 帧少一行原子、后面还有完整的第 1 帧 = 文件中间坏了，不能静默丢帧
         let mut lines: Vec<&str> = DUMP_ORTHO.lines().collect();
         lines.remove(10);
-        let err = parse_lammps_dump(&lines.join("\n"), Some(LammpsUnits::Real))
+        let err = parse_traj(&lines.join("\n"), Some(LammpsUnits::Real))
             .expect_err("中间帧不完整应报错");
         let msg = format!("{err:#}");
         assert!(msg.contains("frame 0") && msg.contains("1 of 2 atom lines"), "报错应点名帧与行数：{msg}");
@@ -640,7 +674,7 @@ ITEM: ATOMS id type element x y z
         let cart = ["2.1 4.05 0.8", "10.25 7.125 3.5"];
         let frac = ["0.1 0.2 0.3", "0.9 0.5 0.75"];
         for (cols, rows) in [("x y z", cart), ("xs ys zs", frac), ("xu yu zu", cart), ("xsu ysu zsu", frac)] {
-            let traj = parse_lammps_dump(&tri_dump(cols, rows), Some(LammpsUnits::Real)).unwrap();
+            let traj = parse_traj(&tri_dump(cols, rows), Some(LammpsUnits::Real)).unwrap();
             let f = traj.first().unwrap();
             for (k, w) in want.iter().enumerate() {
                 let p = f.atom(k).position;
@@ -653,7 +687,7 @@ ITEM: ATOMS id type element x y z
 
     #[test]
     fn test_missing_coordinates_or_bad_fields_are_errors() {
-        let err = |text: String| format!("{:#}", parse_lammps_dump(&text, Some(LammpsUnits::Real)).unwrap_err());
+        let err = |text: String| format!("{:#}", parse_traj(&text, Some(LammpsUnits::Real)).unwrap_err());
         // 没有坐标列、坐标列不全：以前坐标静默为 0
         assert!(err(tri_dump("q", ["0.1", "0.2"])).contains("no complete coordinate columns"));
         assert!(err(tri_dump("x y", ["1 2", "3 4"])).contains("no complete coordinate columns"));
@@ -665,12 +699,12 @@ ITEM: ATOMS id type element x y z
 
     #[test]
     fn test_mass_column_is_kept() {
-        let traj = parse_lammps_dump(&tri_dump("x y z mass", ["1 2 3 2.014", "1 2 3 15.999"]), Some(LammpsUnits::Real)).unwrap();
+        let traj = parse_traj(&tri_dump("x y z mass", ["1 2 3 2.014", "1 2 3 15.999"]), Some(LammpsUnits::Real)).unwrap();
         let f = traj.first().unwrap();
         assert_eq!(f.atom(0).mass, Some(2.014));
         assert_eq!(f.atom(1).mass, Some(15.999));
         // 没有 mass 列就是 None，不补零
-        let plain = parse_lammps_dump(&tri_dump("x y z", ["1 2 3", "1 2 3"]), Some(LammpsUnits::Real)).unwrap();
+        let plain = parse_traj(&tri_dump("x y z", ["1 2 3", "1 2 3"]), Some(LammpsUnits::Real)).unwrap();
         assert_eq!(plain.first().unwrap().atom(0).mass, None);
     }
 
@@ -678,11 +712,11 @@ ITEM: ATOMS id type element x y z
     fn test_bad_field_is_truncation_only_on_the_last_line_of_the_file() {
         // 截断切在最后一行的数字中间（`1.4e`）：末帧丢弃，前面的帧照常
         let cut = DUMP_ORTHO.replace("2 1 Fe 1.445 1.435 1.435\n", "2 1 Fe 1.445 1.435 1.4e");
-        let traj = parse_lammps_dump(&cut, Some(LammpsUnits::Real)).unwrap();
+        let traj = parse_traj(&cut, Some(LammpsUnits::Real)).unwrap();
         assert_eq!(traj.n_frames(), 1);
         // 同样的坏字段不在最后一行：截断解释不了，即使在末帧也报错
         let bad = DUMP_ORTHO.replace("1 1 Fe 0.01  0.0   0.0", "1 1 Fe 0.01  0.0   0.0e");
-        let msg = format!("{:#}", parse_lammps_dump(&bad, Some(LammpsUnits::Real)).unwrap_err());
+        let msg = format!("{:#}", parse_traj(&bad, Some(LammpsUnits::Real)).unwrap_err());
         assert!(msg.contains("frame 1") && msg.contains("z = '0.0e'"), "{msg}");
     }
 
@@ -690,7 +724,7 @@ ITEM: ATOMS id type element x y z
     fn test_boundary_flags_set_pbc() {
         let with = |flags: &str| {
             let text = DUMP_ORTHO.replace("ITEM: BOX BOUNDS pp pp pp", &format!("ITEM: BOX BOUNDS {flags}"));
-            parse_lammps_dump(&text, Some(LammpsUnits::Real)).unwrap().frames[0].pbc
+            parse_traj(&text, Some(LammpsUnits::Real)).unwrap().frames[0].pbc
         };
         assert_eq!(with("pp pp pp"), [true; 3]);
         assert_eq!(with("pp pp ff"), [true, true, false]);

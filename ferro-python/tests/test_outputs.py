@@ -45,3 +45,9 @@ def test_write_table(tmp_path):
         ferro.write_table(str(path), [("a", [1.0]), ("b", [1.0, 2.0])])
     with pytest.raises(RuntimeError, match="all numbers or all strings"):
         ferro.write_table(str(path), [("a", [1.0, "x"])])
+
+
+def test_read_output_carries_every_stat():
+    _, stats = ferro.read_output(str(FIXTURES / "cp2k_sp_v61.out"))
+    for key in ("layout_drift", "restarts", "version_note", "steps"):
+        assert key in stats, key

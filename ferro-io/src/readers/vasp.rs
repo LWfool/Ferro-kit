@@ -5,6 +5,12 @@ use anyhow::{ensure, Context, Result};
 use super::util::floats;
 
 pub fn read_poscar(path: &Path) -> Result<Trajectory> {
+    Ok(read_poscar_with_warnings(path)?.0)
+}
+
+/// Reads a POSCAR / CONTCAR, returning what the reader noticed alongside it
+/// (a velocity block shorter than the atom count, which is dropped).
+pub fn read_poscar_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("cannot open {path_}"))?;
@@ -15,7 +21,8 @@ pub fn read_contcar(path: &Path) -> Result<Trajectory> {
     read_poscar(path)
 }
 
-fn parse_poscar(content: &str) -> Result<Trajectory> {
+fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<String>)> {
+    let mut warnings = Vec::new();
     let mut lines = content.lines();
     let mut next = |what: &str| -> Result<&str> {
         lines.next().with_context(|| format!("unexpected EOF before {what}"))
@@ -114,17 +121,18 @@ fn parse_poscar(content: &str) -> Result<Trajectory> {
         if vels.len() == total {
             frame.velocities = Some(vels);
         } else {
-            eprintln!(
-                "[ferro] warning: velocity block has {} of {total} lines; velocities dropped",
+            warnings.push(format!(
+                "warning: velocity block has {} of {total} lines; velocities dropped",
                 vels.len()
-            );
+            ));
         }
     }
 
     let mut traj = Trajectory::from_frame(frame);
     if !comment.is_empty() { traj.metadata.source = Some(comment); }
-    Ok(traj)
+    Ok((traj, warnings))
 }
+
 
 
 /// 元素行的一项 → 元素符号：`Na_pv/6a2f546d` → `Na`，`Na` 原样
@@ -136,6 +144,10 @@ pub(super) fn potcar_symbol(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn parse_traj(content: &str) -> Result<Trajectory> {
+        Ok(parse_poscar(content)?.0)
+    }
 
     const BCC_FE: &str = "BCC Fe
   1.00000000
@@ -167,7 +179,7 @@ Direct
         // 第 2 个原子在分数坐标 (0.5,0.5,0.5) = 笛卡尔 (1.435,…)；Cartesian 读则是 (0.5,…)
         let x1 = |mode: &str| {
             let text = BCC_FE.replace("Direct\n", &format!("{mode}\n"));
-            parse_poscar(&text).unwrap().frames[0].atoms[1].position.x
+            parse_traj(&text).unwrap().frames[0].atoms[1].position.x
         };
         for mode in ["Direct", "direct", "Fractional", ""] {
             assert!((x1(mode) - 1.435).abs() < 1e-9, "{mode:?} 应按 Direct 读");
@@ -181,7 +193,7 @@ Direct
     fn test_element_line_across_vasp_versions() {
         let elems = |line: &str| -> Vec<String> {
             let text = BCC_FE.replace("   Fe\n   2\n", line);
-            parse_poscar(&text).unwrap().frames[0].atoms.iter().map(|a| a.element.clone()).collect()
+            parse_traj(&text).unwrap().frames[0].atoms.iter().map(|a| a.element.clone()).collect()
         };
         // 5.4.4 等旧版：纯元素符号
         assert_eq!(elems("Fe Co\n1 1\n"), ["Fe", "Co"]);
@@ -220,7 +232,7 @@ Direct
     const VELS: &str = "  0.1 0.0 0.0\n  0.2 0.0 0.0\n  0.3 0.0 0.0\n";
 
     fn vel_x(text: &str) -> Option<Vec<f64>> {
-        let traj = parse_poscar(text).unwrap();
+        let traj = parse_traj(text).unwrap();
         traj.first().unwrap().velocities.as_ref().map(|v| v.iter().map(|v| v.x).collect())
     }
 
@@ -249,15 +261,20 @@ Direct
     #[test]
     fn test_direct_velocities_are_an_error() {
         // Direct 速度的单位是 晶格矢量/时间步，换算要 POTIM —— 不猜
-        let err = parse_poscar(&format!("{ASE_HEAD}Direct\n{VELS}")).expect_err("Direct 速度应报错");
+        let err = parse_traj(&format!("{ASE_HEAD}Direct\n{VELS}")).expect_err("Direct 速度应报错");
         assert!(format!("{err:#}").contains("POTIM"), "{err:#}");
     }
 
     #[test]
     fn test_short_velocity_block_is_dropped() {
-        // 少一行：告警并丢弃，而不是把两条速度错配给三个原子
-        assert_eq!(vel_x(&format!("{ASE_HEAD}Cartesian\n  0.1 0 0\n  0.2 0 0\n")), None);
+        // One line short: warn and drop, rather than pairing two velocities with three atoms
+        let text = format!("{ASE_HEAD}Cartesian\n  0.1 0 0\n  0.2 0 0\n");
+        assert_eq!(vel_x(&text), None);
+        let (_, w) = parse_poscar(&text).unwrap();
+        assert!(w.len() == 1 && w[0].contains("2 of 3 lines"), "{w:?}");
+        assert!(parse_poscar(BCC_FE).unwrap().1.is_empty());
     }
+
 
     #[test]
     fn test_scaling_factor() {

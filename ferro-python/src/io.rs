@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use ferro_io::{
-    apply_type_map, is_extxyz, read_cif, read_contcar, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
-    read_lammps_dump, read_pdb, read_poscar, read_qe_input, read_xyz, write_cif, write_extxyz,
+    apply_type_map, is_extxyz, read_cif, read_cp2k_inp, read_cp2k_restart, read_extxyz, read_lammps_data, AtomStyle,
+    read_lammps_dump_with_warnings, read_pdb, read_poscar_with_warnings, read_qe_input, read_xyz, write_cif, write_extxyz,
     write_lammps_data, write_lammps_dump, write_pdb, write_poscar, write_xyz,
     index_width, indexed_path,
     LammpsUnits, read_aimd_with_stats, TableFormat,
@@ -35,6 +35,17 @@ fn detect(path: &str) -> String {
         .to_lowercase()
 }
 
+/// Raises each reader warning as a Python `UserWarning`, the channel a Python caller
+/// filters and captures; the Rust readers never print.
+fn emit_warnings(py: Python<'_>, warnings: &[String]) -> PyResult<()> {
+    let category = py.get_type::<pyo3::exceptions::PyUserWarning>();
+    for w in warnings {
+        let msg = std::ffi::CString::new(w.as_str()).map_err(pyerr)?;
+        PyErr::warn(py, &category, &msg, 1)?;
+    }
+    Ok(())
+}
+
 fn parse_units(units: Option<&str>) -> PyResult<Option<LammpsUnits>> {
     units.map(|u| u.parse::<LammpsUnits>().map_err(pyerr)).transpose()
 }
@@ -62,6 +73,11 @@ fn read(
     if type_map.is_some() && !is_dump {
         return Err(pyerr(format!("type_map applies to LAMMPS dump input only, not {path}")));
     }
+    let mut warnings = Vec::new();
+    let mut warned = |(traj, w): (ferro_core::Trajectory, Vec<String>)| {
+        warnings.extend(w);
+        traj
+    };
     let mut traj = match format.as_str() {
         // .xyz 也常装 extxyz（ASE、GPUMD），与 CLI 的 io_dispatch 同一个判据
         "xyz" if is_extxyz(p).map_err(pyerr)? => read_extxyz(p).map_err(pyerr)?,
@@ -69,12 +85,11 @@ fn read(
         "extxyz" => read_extxyz(p).map_err(pyerr)?,
         "pdb" => read_pdb(p).map_err(pyerr)?,
         "cif" => read_cif(p).map_err(pyerr)?,
-        "poscar" | "vasp" | "pos" => read_poscar(p).map_err(pyerr)?,
-        "contcar" => read_contcar(p).map_err(pyerr)?,
+        "poscar" | "contcar" | "vasp" | "pos" => warned(read_poscar_with_warnings(p).map_err(pyerr)?),
         "in" | "qe" => read_qe_input(p).map_err(pyerr)?,
         "inp" => read_cp2k_inp(p).map_err(pyerr)?,
         "restart" => read_cp2k_restart(p).map_err(pyerr)?,
-        "lammpstrj" | "dump" => read_lammps_dump(p, units).map_err(pyerr)?,
+        "lammpstrj" | "dump" => warned(read_lammps_dump_with_warnings(p, units).map_err(pyerr)?),
         "data" | "lmp" | "lammps" => {
             let style = atom_style.ok_or_else(|| pyerr(format!(
                 "{path} is a LAMMPS data file: pass atom_style='atomic', 'charge' or 'full'"
@@ -91,6 +106,7 @@ fn read(
         let map: Vec<(u32, String)> = map.into_iter().collect();
         apply_type_map(&mut traj, &map).map_err(pyerr)?;
     }
+    Python::attach(|py| emit_warnings(py, &warnings))?;
     Ok(PyTrajectory::new(traj))
 }
 
@@ -129,9 +145,13 @@ fn write(traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
     Ok(())
 }
 
-/// 读计算输出（VASP OUTCAR / vasprun.xml、CP2K 单点与 MD 输出），按文件内容识别程序，
-/// 同 `ferro dataset collect`。返回 `(Trajectory, 统计)`：帧带能量、力、应力；SCF 未收敛等
-/// 被丢弃的帧不在轨迹里，个数在统计里（`scf_failed`、`incomplete`…），调用方据此报原因。
+/// Reads a calculation output (VASP OUTCAR / vasprun.xml, CP2K single-point and MD
+/// output, pw.x output), identifying the program by content, as `ferro dataset collect`
+/// does. Returns `(Trajectory, stats)`: frames carry energy, forces and stress; frames
+/// dropped for an unconverged SCF and the like are not in the trajectory, their counts
+/// are in the stats (`scf_failed`, `incomplete`, ...). `version_note` says why the
+/// program version deserves a second look (None when it does not), and `steps` is the
+/// `(first, last)` step number the file claims.
 #[pyfunction]
 fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
     let (traj, s) = read_aimd_with_stats(Path::new(path)).map_err(pyerr)?;
@@ -141,10 +161,14 @@ fn read_output(path: &str) -> PyResult<(PyTrajectory, std::collections::BTreeMap
         put("format", s.format.name().into_pyobject(py)?.into_any().unbind());
         for (k, v) in [("steps", s.n_steps), ("kept", s.n_kept), ("scf_failed", s.n_scf_failed),
                        ("incomplete", s.n_incomplete), ("bad_composition", s.n_bad_composition),
-                       ("no_cell", s.n_no_cell)] {
+                       ("no_cell", s.n_no_cell), ("layout_drift", s.n_layout_drift),
+                       ("restarts", s.n_restarts)] {
             put(k, v.into_pyobject(py)?.into_any().unbind());
         }
         put("version", s.version.into_pyobject(py)?.into_any().unbind());
+        put("version_note", s.version_note.into_pyobject(py)?.into_any().unbind());
+        put("steps", s.steps.into_pyobject(py)?.into_any().unbind());
+
         Ok((PyTrajectory::new(traj), stats))
     })
 }
