@@ -41,7 +41,7 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 | 3 ✅ | 告警通道 + `Result` 统一 + `Format` 表（名字优先、内容兜底，并入 sniff 与多帧能力） | `be89f81` C-4 / A-8、`9c059cc` D-A1（sq）/ D-A3（cube_density、cube_jump）、`074545b` C-2 / C-3 / C-7 / C-9、`c860ab6` C-8 / D-1、`59d3469` 修 3.1 的 `steps` 键覆盖（2026-10-18）。golden master 每步逐字节一致。**挂起**：E2-1 与 D-A1 的 cube_sdf / chg_sdf 逐团簇告警、cube_sdf / chg_sdf / Bader 的返回类型（随改写组） |
 | 4 ✅ | 内存：map 系列改 fold → reader 流式 → **`Atom` 存储改为拓扑 / 坐标分离** | `c1d78f7` D-P1（含 gr）、`efcdee8` C-1、`cd04252` B15 / B5（2026-10-18）。200 帧 × 2004 原子 dump：读入 80 -> 19 MB，map density 468 -> 71 MB，gr 227 -> 57 MB；golden master 每步逐字节一致 |
 | 5 ✅ | 职责归位与数据模型清理 | `17ab908` A-4 / B2 / B3 / B4、`2ccbcca` B12 / A-2 / B11 / B13 / B9 / B14、`c5ca527` A-1 / A-6、`e53db89` A-5 / A-9、`da6e1bc` E2-4、`4fc563b` A-12（2026-10-18）。golden master 每步逐字节一致；AIMD 7 个 fixture 的 collect npy 与 inspect 产物与旧二进制一致 |
-| 6 | CLI 命名与驱动 | E2-2、E2 R-2（产物命名统一，破坏性）、E2-3 / E2-6 / E2-7 / E2-8、E2-5、E2-11、E2-12、msd 的 D 换算 |
+| 6 ✅ | CLI 命名与驱动 | `9820aff` R-2、`e060431` E2-3 / E2-6 / E2-7 / E2-8、`49c6a84` E2-11 / E2-12 / D 换算、`0f31256` E2-2、`9ac0bf0` E2-5（2026-10-18）。golden master：改名那步 94 个文件改名后逐字节一致、其余不变；其余各步产物逐字节一致 |
 | 7 | ferro-python | F 全部 |
 | 8 | 剩余轻级与文档漂移 | 各组「轻」 |
 
@@ -55,6 +55,14 @@ LAMMPS data 同一元素的原子质量不一致时 writer 报错（一个 type 
 网络分类与 analysis：第 5 步 A-1 把网络分类搬进 analysis 时，`NeighborList` 跟着搬，`PeriodicCell`
 留 core（io / structure 以后量距离也要它）。挂起组没动内部：cube_sdf / chg_sdf 只加入口检查（截断上界），
 Bader 仍用 `Cell::minimum_image`。
+
+第 6 步的用户定：D1 bader 跟命名规则（`bader_ACF_<input>`）；D2 merge 的 `--suffix` 改名 `--dir-suffix`；
+D3 map 单输入也带输入名；D4 帮助页全部统一列宽；D5 sdf 段序 `sdf[_famN]_<type>_<input>[_<s>]`。
+实现上与计划的出入：子步骤顺序改为先命名、后合并驱动（命名统一后 map 不再分单 / 多输入，驱动才能
+直接合并）；net 导出按统计表的 mode 名落为 `network_types_<input>`，不是计划里写的 `net_types`；
+公共参数块用 `const` + `{COMMON_OPTS}` 内联捕获，不用 `concat!`；net 帮助页搬进 help.rs；
+合并驱动后 net 的 `Labels:` 块打在 `Inputs:` 之前。新断言上线即抓到 chg-sdf `--qn` 默认值写错、
+traj 总览漏 bondlife，并发现 filter 页例子仍写 `-s 8`（6.4 漏改），一并修。
 
 第 5 步的用户定：**删 `Frame.charge`**（连同 multiplicity / bonds / timestep；逐原子电荷不动，Python 的
 `charge(frame)` / `multiplicity(frame)` 一并删）；`metadata.source` 拆成 **`title` + `program`** 两个自由文本，

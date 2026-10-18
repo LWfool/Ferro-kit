@@ -12,6 +12,40 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### One naming rule for every product
+
+Every product is now named `<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.  The
+stacked csv files of `traj` and `net` keep their names; the per-input products change, and a
+single input now carries its input name too, so the name no longer depends on how many files a
+glob matched:
+
+| Command | Before | Now |
+|---|---|---|
+| `map density` (also velocity, force, radius) | `density.cube`, `density_<s>.cube`, `density_<s>_<input>.cube` | `density_<input>[_<s>].cube` |
+| `map sdf` | `sdf_<type>.cube`, `<s>_<type>.cube`, `<s>_<input>_fam<N>_<type>.cube` | `sdf[_fam<N>]_<type>_<input>[_<s>].cube` |
+| `map chg-sdf` | `chg_sdf[_<s>][_fam<N>]_Q<n>.cube` | `chg_sdf[_fam<N>]_Q<n>[_<s>].cube` |
+| `net --export-traj` | `<input>_types[_<s>].<ext>` | `network_types_<input>[_<s>].<ext>` |
+| `bader` | `<input>_ACF[_<s>].dat` | `bader_ACF_<input>[_<s>].dat` (also BCF, AVF) |
+
+`-s` is the batch tag everywhere, so two `dataset` options that used the name differently are
+renamed:
+
+- `dataset filter -s` is gone; write `--s-max`.  `filter -s 5` used to mean 5 GPa.
+- `dataset merge --suffix` is now `--dir-suffix`: it names the output directory's suffix (`.train`).
+
+Also:
+
+- `map` with every input failing is an error (`every input failed`), as `traj` and `net` already were.
+- The `[inputs]` block lists a failed input in its place, not at the end, so it matches the
+  `[k/N]` lines on screen.  The `skipped:` line of a failed input goes to stderr.
+- `ferro net` prints its label scheme before the `Inputs:` line.
+- `dataset collect --type inspect` warns, on screen and in the `#` block of the frame table, when
+  an element missing from the element table makes the density too low (it counts as 1 amu), as
+  `ferro info` does.  A plain file where a system directory should go is refused with the usual
+  `--overwrite` message.
+- The help pages share one layout and one block for the common options; `map chg-sdf` showed
+  `--qn` defaulting to 2, it is 3.
+
 ### Network classification belongs to the analysis library
 
 Nothing changes on the command line except four corrections:
