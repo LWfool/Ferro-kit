@@ -182,7 +182,7 @@ S(q) 一侧；g(r) 一侧基本是正确性洁癖。** 0.1.12 及更早跑出的
 | `lammps_dump.rs` | dump 缺 `element` 列时元素名为 `X1`/`X2`，`symbol_to_z` 全部返回 255 | S(q) 的 XRD 系数与中子散射长度查表全部失败，`total_xrd`/`total_neutron` 无意义。0.1.11 起 `calc_sq_from_gr` 会打印告警（此前静默）。用 `-m sq` 前仍应确认 `ITEM: ATOMS` 头含 `element` |
 | 三处元素提取 | `symbol_to_z`（精确→两字节→首字节）与 `cp2k.rs:221`/`qe.rs:193` 的 `extract_element`、`cif.rs:463` 的 `element_from_label`（字母前缀 + 首字母大写）**规则不一致** | 对 `ZnA`：前者 → `Zn`，后者 → `Zna`。新增的下划线拆分规则只作用于 LAMMPS dump，不动这三处（它们处理 `Fe1`/`O2` 原生命名，字母前缀规则对其正确） |
 | `symbol_to_z` 贪婪匹配 | `Pb`→铅(82)、`Po`→钋(84)、`Os`→锇(76) 会盖过"P bridging"这类伪标签意图 | 这是选择「按第一个下划线拆分」而非贪婪前缀匹配的主要理由 |
-| `typing.rs` | ~~`apply_type_labels` 把类型标签写进 **`element`** 字段而非 `label`~~ **已过时**（2026-10-03 核实）：现在写 `label`；折进 element 的是 `fold_labels`，只在导出 LAMMPS dump 时用 | 伪元素轨迹即由 `fold_labels` 产生；`elem_z` 的前缀匹配就是为它服务的 |
+| `typing.rs` | ~~`apply_type_labels` 把类型标签写进 **`element`** 字段而非 `label`~~ **已过时**（2026-10-03 核实）：现在写 `label`；折进 element 的是 dump writer 的 `dump_name`（2026-10-18 由 structure 的 `fold_labels` 移入 io，凡写 dump 都折） | 伪元素轨迹即由 `dump_name` 产生；`elem_z` 的前缀匹配就是为它服务的 |
 | `cif.rs` 位点 | `Fe1`/`Fe2` 的 `element` 均为 `Fe`，g(r) 无法分辨不等价位点 | 用 `-x/-y` 按 `label` 选（CIF reader 已填 `label`）。注意 `Fe1` 不合 `<元素>_<后缀>` 约定，导出 LAMMPS dump 时**不会**被折进 element 列（0.2.1 的守卫），走 extxyz 的 `label:S:1` 列才无损 |
 
 ---

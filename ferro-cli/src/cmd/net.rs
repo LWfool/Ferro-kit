@@ -19,8 +19,8 @@ use clap::{Args, ValueEnum};
 use ferro_analysis::md::{first_shell_cutoffs, ShellCutoff};
 use ferro_analysis::{calc_network, NetworkResult};
 use ferro_core::{Trajectory, TypeParams};
-use ferro_io::{write_extxyz, write_lammps_dump, LammpsUnits};
-use ferro_structure::{apply_type_labels, classify_trajectory, fold_labels};
+use ferro_io::{dump_name, write_extxyz, write_lammps_dump, LammpsUnits};
+use ferro_structure::{apply_type_labels, classify_trajectory};
 use std::collections::BTreeMap;
 
 use crate::args::common::CommonArgs;
@@ -265,14 +265,14 @@ fn export_labelled(
         .map(|(frame, types)| {
             let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
             let labelled = apply_type_labels(frame, &labels);
-            match fmt {
-                ExportFormat::Lammpstrj => {
-                    let (folded, n) = fold_labels(&labelled);
-                    skipped += n;
-                    folded
-                }
-                ExportFormat::Extxyz => labelled,
+            // The dump writer folds `<element>_<suffix>` labels into its element column
+            // (`dump_name`); count the labels it has to leave out
+            if fmt == ExportFormat::Lammpstrj {
+                skipped += labelled.atoms.iter()
+                    .filter(|a| a.label.as_deref().is_some_and(|l| l != a.element) && dump_name(a) == a.element)
+                    .count();
             }
+            labelled
         })
         .collect();
     let out_traj = Trajectory { frames, metadata: traj.metadata.clone() };

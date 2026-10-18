@@ -20,6 +20,13 @@ It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
 `ferro convert` does. Library callers of `write_cif` / `write_poscar` /
 `write_lammps_data` get an error for several frames instead.
 
+### Site labels survive a LAMMPS dump round trip
+
+Writing a dump now folds `<element>_<suffix>` site labels (`P_3`, `O_b`) into the
+element column, as `ferro net --export-traj` always did. A `convert` from a labelled
+dump, or from an extxyz with a `label` column, to a dump used to drop every label;
+`ferro.write` to a dump keeps them the same way.
+
 ### LAMMPS data keeps the masses of its `Masses` section
 
 The mass given for each atom type is now the atoms' mass, not only a hint for the

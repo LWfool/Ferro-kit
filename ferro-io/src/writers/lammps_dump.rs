@@ -1,6 +1,6 @@
 use std::path::Path;
 use crate::readers::lammps_dump::LammpsUnits;
-use ferro_core::Trajectory;
+use ferro_core::{Atom, Trajectory};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -10,6 +10,22 @@ use anyhow::{bail, Context, Result};
 /// `f` 边界判丢。与 `writers/lammps_data.rs` 同值
 const CELLLESS_PAD: f64 = 1.0;
 const EV_TO_KCAL: f64 = 1.0 / 0.04336410; // eV/Å → kcal/(mol·Å)
+
+/// The name an atom gets in a dump's single `element` column.
+///
+/// A dump has nowhere to put a second per-atom string, so a site label of the form
+/// `<element>_<suffix>` (`P_3`, `O_b`) is folded into that column; the dump reader
+/// splits it back apart, so the round trip is exact.
+///
+/// A label that does not start with `<element>_` is **not** folded: CIF/CP2K/QE site
+/// names (`O1`, `Fe1`) would otherwise land in the element column and read back as
+/// the bogus element `O1`.
+pub fn dump_name(atom: &Atom) -> &str {
+    match atom.label.as_deref() {
+        Some(label) if label.strip_prefix(atom.element.as_str()).is_some_and(|s| s.starts_with('_')) => label,
+        _ => &atom.element,
+    }
+}
 
 /// 写 LAMMPS dump 文件。
 /// 包含列：id type element x y z [vx vy vz] [fx fy fz] [q]
@@ -33,8 +49,8 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
     let mut elem_types: Vec<&str> = Vec::new();
     for frame in &trajectory.frames {
         for atom in &frame.atoms {
-            if !elem_types.contains(&atom.element.as_str()) {
-                elem_types.push(atom.element.as_str());
+            if !elem_types.contains(&dump_name(atom)) {
+                elem_types.push(dump_name(atom));
             }
         }
     }
@@ -103,14 +119,15 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
         };
 
         for (i, atom) in frame.atoms.iter().enumerate() {
-            let tp = elem_types.iter().position(|e| *e == atom.element).unwrap_or(0) + 1;
+            let name = dump_name(atom);
+            let tp = elem_types.iter().position(|e| *e == name).unwrap_or(0) + 1;
 
             // 旋转绕盒子原点做：非规范取向的胞带非零原点时，原点那段平移不能跟着转
             let o = frame.cell.as_ref().map_or_else(nalgebra::Vector3::zeros, |c| c.origin);
             let pos = to_lammps(atom.position - o)? + o;
 
             let mut line = format!("{} {tp} {} {:.10} {:.10} {:.10}",
-                i + 1, atom.element, pos.x, pos.y, pos.z);
+                i + 1, name, pos.x, pos.y, pos.z);
 
             if has_vel {
                 let v = frame.velocities.as_ref()
@@ -251,6 +268,43 @@ mod tests {
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");
+    }
+
+    /// The dump reader splits `<element>_<suffix>` into element + label; the writer must
+    /// fold it back, or a dump -> dump `convert` silently drops every site label.
+    /// Labels not of that form (CIF / CP2K site names `O1`, `Fe1`) stay out of the column.
+    #[test]
+    fn test_site_labels_survive_a_roundtrip() {
+        let mut traj = bcc_traj();
+        for frame in &mut traj.frames {
+            frame.atoms[0].label = Some("Fe_3".into());
+            frame.atoms[1].label = Some("Fe1".into());
+        }
+        let path = std::env::temp_dir().join(format!("labels_rt_{}.dump", std::process::id()));
+        write_lammps_dump(&traj, &path, Some(LammpsUnits::Real)).unwrap();
+        let back = read_lammps_dump(&path, Some(LammpsUnits::Real)).unwrap();
+        let f = back.first().unwrap();
+        assert_eq!((f.atom(0).element.as_str(), f.atom(0).label.as_deref()), ("Fe", Some("Fe_3")));
+        assert_eq!((f.atom(1).element.as_str(), f.atom(1).label.as_deref()), ("Fe", None));
+        // different names, different types: Fe_3 and Fe are two LAMMPS types
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(" 1 Fe_3 ") && text.contains(" 2 Fe "), "{text}");
+    }
+
+    #[test]
+    fn dump_name_folds_only_conforming_labels() {
+        // CIF / CP2K / QE site names (O1, Fe1) do not follow <element>_<suffix>;
+        // folded into the element column they would read back as the element "O1"
+        let atom = |elem: &str, label: Option<&str>| {
+            let mut a = ferro_core::Atom::new(elem, nalgebra::Vector3::zeros());
+            a.label = label.map(str::to_string);
+            a
+        };
+        assert_eq!(dump_name(&atom("P", Some("P_3"))), "P_3");   // conforming: folded
+        assert_eq!(dump_name(&atom("O", Some("O1"))), "O");      // CIF site name: not folded
+        assert_eq!(dump_name(&atom("Fe", Some("Fe1"))), "Fe");   // CP2K kind name: not folded
+        assert_eq!(dump_name(&atom("Zn", Some("Zn"))), "Zn");    // same as the element
+        assert_eq!(dump_name(&atom("Ar", None)), "Ar");          // no label
     }
 
     /// 坐标转进 LAMMPS 规范胞时，速度与力必须跟着同一个变换走。
