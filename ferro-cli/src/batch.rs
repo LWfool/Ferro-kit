@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 use ferro_core::Table;
 use ferro_io::write_table;
-use ferro_io::writers::TableFormat;
+use ferro_io::TableFormat;
 
 /// One input and the label it carries into the `file` column, `[inputs]` and the
 /// file names of per-input products. Labels are unique within a batch, see

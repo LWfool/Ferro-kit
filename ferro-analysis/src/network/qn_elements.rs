@@ -24,11 +24,6 @@ use std::collections::BTreeSet;
 /// the two conditions that make a single digit sufficient.
 pub const QN_ELEMENTS: &[&str] = &["B", "P", "Si"];
 
-/// Whether `elem` is reported with a Qn speciation by default.
-pub fn has_qn(elem: &str) -> bool {
-    QN_ELEMENTS.contains(&elem)
-}
-
 /// [`QN_ELEMENTS`] as an owned set, for use as a [`super::TypeParams`] default.
 pub fn default_qn_set() -> BTreeSet<String> {
     QN_ELEMENTS.iter().map(|s| s.to_string()).collect()
@@ -40,12 +35,13 @@ mod tests {
 
     #[test]
     fn test_al_is_not_a_qn_element() {
-        // Al 由配位数刻画,不由 Qn。这条一旦破了,network_qn.csv 会多出
-        // 一个文献里不存在的 Al 行,而 Al 的 label 会从配位数变成桥接数
-        assert!(!has_qn("Al"));
-        assert!(has_qn("P"));
-        assert!(has_qn("Si"));
-        assert!(has_qn("B"));
+        // Al is described by its coordination, not by Qn. Should this break,
+        // network_qn.csv gains an Al row no paper reports, and the Al label turns
+        // from a coordination number into a bridging count
+        assert!(!QN_ELEMENTS.contains(&"Al"));
+        for e in ["P", "Si", "B"] {
+            assert!(QN_ELEMENTS.contains(&e), "{e}");
+        }
     }
 
     #[test]

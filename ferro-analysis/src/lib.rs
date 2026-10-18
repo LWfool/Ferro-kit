@@ -2,11 +2,13 @@
 
 mod check;
 mod neighbor;
-pub mod geometry;
-pub mod trajectory_analysis;
-pub mod md;
-pub mod network;
-pub mod dft;
+// One public path per item (review A-12): the analyses are reached from the crate
+// root; `ml` stays a module because its parts are an API of their own
+mod geometry;
+mod trajectory_analysis;
+mod md;
+mod network;
+mod dft;
 pub mod ml;
 
 pub use geometry::*;
@@ -26,4 +28,9 @@ pub use md::{
     CubeMode, CubeDensityParams, CubeDensityResult, calc_cube_density,
     CubeRadiusParams, CubeRadiusResult, calc_cube_radius,
     ClusterSdfParams, ClusterFamily, RmsdStats, ClusterSdfResult, calc_cluster_sdf,
+    ShellCutoff, first_shell_cutoffs,
+    JumpPosition, CubeJumpParams, CubeJumpResult, calc_cube_jump,
 };
+
+/// ferro-analysis version (from Cargo.toml)
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");

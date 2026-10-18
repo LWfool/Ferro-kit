@@ -39,4 +39,4 @@ pub use vasprun::{read_vasprun, read_vasprun_with_stats};
 pub use deepmd::{read_deepmd_npy, read_deepmd_npy_with_warnings};
 pub use qe_out::{read_qe_out, read_qe_out_with_stats};
 pub use qe::{read_qe_input, parse_qe_input_parts, write_namelists, Namelist, QeInputParts};
-pub use cube::{read_cube, read_cube_as_chg};
+pub use cube::read_cube_as_chg;

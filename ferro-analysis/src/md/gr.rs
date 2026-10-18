@@ -20,9 +20,6 @@ use ferro_core::error::ChemError;
 use std::collections::BTreeMap;
 use super::util::par_map_in_order;
 
-/// ferro package version (from Cargo.toml)
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
 
 /// Look up the atomic number for an element symbol or site label (e.g. "O_b_P_P", "P_0").

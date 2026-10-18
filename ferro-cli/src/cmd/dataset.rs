@@ -25,7 +25,7 @@ use ferro_analysis::ml::merge::{
     composition_key, group_name, shuffle_order, stitch_segments, DEFAULT_SEED,
 };
 use ferro_analysis::ml::Split;
-use ferro_analysis::md::first_shell_cutoffs;
+use ferro_analysis::first_shell_cutoffs;
 use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;

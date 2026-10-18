@@ -50,8 +50,6 @@ pub struct NetworkGraph {
     pub ligand_global: Vec<usize>,
     /// former_local → 截断内的 [ligand_local]
     pub f_l_adj: Vec<Vec<usize>>,
-    /// ligand_local → 截断内的 [former_local]
-    pub l_f_adj: Vec<Vec<usize>>,
     /// 每个 ligand 的类型（Free/NonBridging/Bridging）
     pub ligand_kind: Vec<LigandKind>,
     /// 每个 former 的个人 Qn（所连桥联配体数）
@@ -94,7 +92,6 @@ pub fn build_network_graph(
             former_global,
             ligand_global,
             f_l_adj,
-            l_f_adj,
             ligand_kind: vec![LigandKind::Free; nl],
             former_qn: vec![0; nf],
             components: Vec::new(),
@@ -156,7 +153,6 @@ pub fn build_network_graph(
         former_global,
         ligand_global,
         f_l_adj,
-        l_f_adj,
         ligand_kind,
         former_qn,
         components,

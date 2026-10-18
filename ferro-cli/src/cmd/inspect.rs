@@ -15,10 +15,7 @@ use anyhow::{Context, Result};
 use ferro_core::table::Table;
 use ferro_analysis::ml::diagnostics::frame_table;
 use ferro_core::Trajectory;
-use ferro_io::readers::lammps_dump::LammpsUnits;
-use ferro_io::AimdFormat;
-use ferro_io::writers::table::{write_table, TableFormat};
-use ferro_io::writers::{lammps_data::write_lammps_data, lammps_dump::write_lammps_dump};
+use ferro_io::{write_lammps_data, write_lammps_dump, write_table, AimdFormat, LammpsUnits, TableFormat};
 
 /// The folder the three products go into, inside the AIMD directory.
 ///

@@ -16,7 +16,7 @@
 
 use anyhow::{anyhow, bail, Result};
 use clap::{Args, ValueEnum};
-use ferro_analysis::md::{first_shell_cutoffs, ShellCutoff};
+use ferro_analysis::{first_shell_cutoffs, ShellCutoff};
 use ferro_analysis::{calc_network, calc_network_typed, AtomType, NetworkResult, TypeParams};
 use ferro_core::Trajectory;
 use ferro_io::{dump_name, write_extxyz, write_lammps_dump, LammpsUnits};

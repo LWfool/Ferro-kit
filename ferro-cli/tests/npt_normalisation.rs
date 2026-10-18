@@ -9,8 +9,7 @@
 //! have shown almost no fluctuation and tested nothing).
 
 use std::path::Path;
-use ferro_analysis::md::gr::{calc_gr, GrParams};
-use ferro_analysis::md::sq::{calc_sq_from_gr, SqParams};
+use ferro_analysis::{calc_gr, calc_sq_from_gr, GrParams, SqParams};
 use ferro_core::Trajectory;
 use ferro_io::{read_lammps_dump, LammpsUnits};
 use std::collections::BTreeMap;

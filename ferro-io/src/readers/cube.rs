@@ -154,12 +154,17 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 // ─── 公共入口：CubeData（可视化 / 密度图）────────────────────────────────────
 
 /// Read a Gaussian cube file into `CubeData` (for visualisation and density maps).
+///
+/// No caller today: cube files are read through [`read_cube_as_chg`]. Kept to be merged
+/// with it into one cube reader (user, 2026-10-18), not deleted.
+#[allow(dead_code)]
 pub fn read_cube(path: &Path) -> Result<CubeData> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_cube(&content).with_context(|| format!("parsing {path_}"))
 }
 
+#[allow(dead_code)]
 fn parse_cube(content: &str) -> Result<CubeData> {
     let pc = parse_header(content)?;
     let spacing = Matrix3::new(

@@ -32,7 +32,7 @@ pub mod qn_elements;
 pub use classify::{
     AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame, classify_frame_detailed,
 };
-pub use graph::{build_network_graph, connected_components, LigandKind, NetworkGraph};
+pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 
 use crate::check;
 use ferro_core::error::ChemError;

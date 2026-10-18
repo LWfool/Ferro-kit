@@ -1,5 +1,5 @@
 pub mod box_builder;
-pub mod compounds;
+mod compounds;
 pub mod merge;
 pub mod supercell;
 pub mod typing;
