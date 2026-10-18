@@ -235,6 +235,12 @@ mod tests {
                     r_bond: 1.0, r_break: Some(r), ..Default::default() }).map(|_| ())),
                 ("rotcorr", calc_rotcorr(&traj, &RotCorrParams { r_cut: r, ..Default::default() }).map(|_| ())),
                 ("network", net(r)),
+                ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
+                    former: "Si".into(), ligand: "O".into(), former_ligand_cutoff: r, ..Default::default()
+                }).map(|_| ())),
+                // Review D-A5: the scan reaches past the selection's own cutoff
+                ("cutoff scan", crate::ml::diagnostics::cutoff_scan(&traj, "Si", "O", 4, &[r - 0.6, r], 10)
+                    .map(|_| ())),
             ]
         };
         for (who, res) in run(4.5) {

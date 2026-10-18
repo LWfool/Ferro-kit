@@ -14,11 +14,11 @@
 use crate::check;
 use std::collections::HashMap;
 
-use ferro_core::{Atom, ChargeGrid, CubeData, Frame};
+use ferro_core::{Atom, ChargeGrid, CubeData, Frame, PeriodicCell};
 use nalgebra::{Matrix3, Vector3};
 
 use crate::md::cube_sdf::{
-    ClusterSdfParams, ClusterSnapshot, align_to_reference, process_frame,
+    ClusterSdfParams, ClusterSnapshot, align_to_reference, process_frame, sdf_cutoff,
 };
 
 // ─── 公开参数 ─────────────────────────────────────────────────────────────────
@@ -159,10 +159,6 @@ pub fn calc_chg_sdf(
     // 返回 Option，报不出原因；CLI 已在读文件前用 validate 报过错，这里只防 panic
     params.validate().ok()?;
     if pairs.is_empty() { return None; }
-    // 奇异胞会在 process_frame 的最小镜像处 panic（审查 D-M17）；同上，只防 panic
-    if pairs.iter().any(|(f, _)| f.cell.as_ref().is_some_and(|c| c.interplanar_spacings().is_err())) {
-        return None;
-    }
 
     // 从第一个 ChargeGrid 确定输出格分辨率
     let first_chg = &pairs[0].1;
@@ -185,6 +181,14 @@ pub fn calc_chg_sdf(
         padding: params.padding,
         rmsd_warn_threshold: params.rmsd_warn_threshold,
     };
+    // A cell process_frame cannot use — singular (review D-M17), not 3-D periodic, or
+    // tighter than the cutoff — would panic there; as above, this only prevents the panic
+    let (_, widest) = sdf_cutoff(&sdf_params);
+    if pairs.iter().any(|(f, _)| f.cell.as_ref().is_some_and(|c| {
+        !PeriodicCell::new(c, f.pbc).is_ok_and(|pc| widest <= pc.mic_bound())
+    })) {
+        return None;
+    }
 
     let mut accumulators: HashMap<String, ChgAcc> = HashMap::new();
     let mut n_frames = 0usize;

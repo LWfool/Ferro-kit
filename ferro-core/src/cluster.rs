@@ -6,7 +6,8 @@
 //! `ferro-analysis::cube_sdf` 等复用，避免重复实现连通分量逻辑。
 
 use crate::error::Result;
-use crate::{Cell, Frame};
+use crate::{Frame, NeighborList, PeriodicCell};
+
 
 /// 配体按所连形成子数量分类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,20 +60,20 @@ pub struct NetworkGraph {
     pub components: Vec<Vec<usize>>,
 }
 
-/// 构建单 (former, ligand) 对的网络图。
+/// Network graph of one (former, ligand) pair.
 ///
-/// 两个形成子若共享至少一个桥联配体（连 ≥2 形成子的配体）则属同一连通分量。
-/// `cutoff` 为形成子–配体键长截断 \[Å\]。无形成子或无配体时返回空图
-/// （`components` 为空）。奇异胞（如 `c = 0` 的 slab）返回 `Err`。
+/// Two formers are in the same connected component when they share at least one
+/// bridging ligand (one bonded to >= 2 formers). `cutoff` is the former–ligand bond
+/// cutoff \[Å\]. With no former or no ligand the graph is empty (`components` empty).
+/// `Err` when the frame has no 3-D periodic cell, the cell is singular (e.g. a slab
+/// with `c = 0`), or `cutoff` exceeds its minimum-image bound.
 pub fn build_network_graph(
     frame: &Frame,
-    cell: &Cell,
     former: &str,
     ligand: &str,
     cutoff: f64,
 ) -> Result<NetworkGraph> {
-    // 下面逐对走最小镜像，奇异胞在那里求不了逆；入口查一次
-    cell.interplanar_spacings()?;
+    let cell = PeriodicCell::of(frame)?;
     let mut former_global: Vec<usize> = Vec::new();
     let mut ligand_global: Vec<usize> = Vec::new();
     for (i, atom) in frame.atoms.iter().enumerate() {
@@ -100,13 +101,19 @@ pub fn build_network_graph(
         });
     }
 
+    // Neighbours come sorted by atom index, and ligand_global is ascending, so each
+    // former's ligands are visited in the same order as a scan over all of them
+    let nlist = NeighborList::build(&frame.positions(), &cell, cutoff)?;
+    let mut local_ligand: Vec<Option<usize>> = vec![None; frame.atoms.len()];
+    for (li, &la) in ligand_global.iter().enumerate() {
+        local_ligand[la] = Some(li);
+    }
     let cut2 = cutoff * cutoff;
     for (fi, &fa) in former_global.iter().enumerate() {
         let fpos = frame.atoms[fa].position;
-        for (li, &la) in ligand_global.iter().enumerate() {
-            let diff = cell
-                .minimum_image(frame.atoms[la].position - fpos)
-                .expect("入口 build_network_graph 已查奇异胞");
+        for (la, _, _) in nlist.neighbors_of(fa) {
+            let Some(li) = local_ligand[la] else { continue };
+            let diff = cell.minimum_image(frame.atoms[la].position - fpos);
             if diff.norm_squared() < cut2 {
                 f_l_adj[fi].push(li);
                 l_f_adj[li].push(fi);
@@ -207,10 +214,9 @@ mod tests {
         Atom::new(el, Vector3::new(x, y, z))
     }
 
-    fn cubic(frame_atoms: Vec<Atom>, l: f64) -> (Frame, Cell) {
+    fn cubic(frame_atoms: Vec<Atom>, l: f64) -> Frame {
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(l, l, l)));
-        let frame = Frame { atoms: frame_atoms, cell: Some(cell.clone()), ..Frame::default() };
-        (frame, cell)
+        Frame { atoms: frame_atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() }
     }
 
     #[test]
@@ -224,23 +230,23 @@ mod tests {
         assert_ne!(id[2], id[3]);
     }
 
-    /// 审查 D-M17：奇异胞曾 panic
+    /// Review D-M17: a singular cell used to panic
     #[test]
     fn singular_cell_is_an_error() {
-        let (frame, _) = cubic(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)], 20.0);
-        let flat = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 0.0)));
-        assert!(build_network_graph(&frame, &flat, "P", "O", 2.3).is_err());
+        let mut frame = cubic(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)], 20.0);
+        frame.cell = Some(Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 0.0))));
+        assert!(build_network_graph(&frame, "P", "O", 2.3).is_err());
     }
 
     #[test]
     fn two_formers_bridged_one_cluster() {
         // P – O – P，共享桥氧 → 1 个团簇
-        let (frame, cell) = cubic(vec![
+        let frame = cubic(vec![
             atom("P", 0.0, 0.0, 0.0),
             atom("O", 1.6, 0.0, 0.0),
             atom("P", 3.2, 0.0, 0.0),
         ], 20.0);
-        let g = build_network_graph(&frame, &cell, "P", "O", 2.3).unwrap();
+        let g = build_network_graph(&frame, "P", "O", 2.3).unwrap();
         assert_eq!(g.components.len(), 1);
         assert_eq!(g.components[0].len(), 2);
         assert_eq!(g.ligand_kind[0], LigandKind::Bridging);
@@ -250,13 +256,13 @@ mod tests {
     #[test]
     fn isolated_units_two_clusters() {
         // 两个孤立 P，各自一个非桥氧 → 2 个团簇
-        let (frame, cell) = cubic(vec![
+        let frame = cubic(vec![
             atom("P", 0.0, 0.0, 0.0),
             atom("O", 1.6, 0.0, 0.0),
             atom("P", 10.0, 0.0, 0.0),
             atom("O", 11.6, 0.0, 0.0),
         ], 30.0);
-        let g = build_network_graph(&frame, &cell, "P", "O", 2.3).unwrap();
+        let g = build_network_graph(&frame, "P", "O", 2.3).unwrap();
         assert_eq!(g.components.len(), 2);
         assert_eq!(g.ligand_kind[0], LigandKind::NonBridging);
         assert_eq!(g.former_qn, vec![0, 0]);
@@ -264,8 +270,8 @@ mod tests {
 
     #[test]
     fn empty_when_no_ligand() {
-        let (frame, cell) = cubic(vec![atom("P", 0.0, 0.0, 0.0)], 20.0);
-        let g = build_network_graph(&frame, &cell, "P", "O", 2.3).unwrap();
+        let frame = cubic(vec![atom("P", 0.0, 0.0, 0.0)], 20.0);
+        let g = build_network_graph(&frame, "P", "O", 2.3).unwrap();
         assert!(g.components.is_empty());
         assert_eq!(g.former_global.len(), 1);
     }

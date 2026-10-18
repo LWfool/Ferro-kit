@@ -14,7 +14,7 @@ use ferro_core::{classify_frame, AtomType, Frame, Trajectory, TypeParams};
 /// is an error.
 pub fn classify_trajectory(traj: &Trajectory, params: &TypeParams) -> Result<Vec<Vec<AtomType>>> {
     traj.frames.iter().filter_map(|f| {
-        f.cell.as_ref().map(|cell| classify_frame(f, cell, params))
+        f.cell.as_ref().map(|_| classify_frame(f, params))
     }).collect()
 }
 

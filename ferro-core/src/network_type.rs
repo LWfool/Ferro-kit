@@ -47,7 +47,7 @@
 
 use crate::data::qn_elements;
 use crate::error::Result;
-use crate::{Cell, Frame};
+use crate::{Frame, NeighborList, PeriodicCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Cutoff table: `(element_A, element_B)` → distance [Å]
@@ -271,27 +271,38 @@ pub struct FrameTypes {
 
 /// Classify every atom in one frame.  Returns one type per atom (same order as `frame.atoms`).
 ///
-/// `Err` when the cell matrix is singular (e.g. a slab written with `c = 0`).
-pub fn classify_frame(frame: &Frame, cell: &Cell, params: &TypeParams) -> Result<Vec<AtomType>> {
-    Ok(classify_frame_detailed(frame, cell, params)?.types)
+/// `Err` when the frame has no 3-D periodic cell, the cell is singular (e.g. a slab
+/// written with `c = 0`), or a cutoff exceeds its minimum-image bound.
+pub fn classify_frame(frame: &Frame, params: &TypeParams) -> Result<Vec<AtomType>> {
+    Ok(classify_frame_detailed(frame, params)?.types)
 }
 
 /// [`classify_frame`] plus the ligand→former adjacency, for pairwise statistics.
-pub fn classify_frame_detailed(
-    frame: &Frame,
-    cell: &Cell,
-    params: &TypeParams,
-) -> Result<FrameTypes> {
-    // 下面每一对原子都走最小镜像，奇异胞在那里求不了逆；入口查一次
-    cell.interplanar_spacings()?;
+pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<FrameTypes> {
+    let cell = PeriodicCell::of(frame)?;
+    // One neighbour list at the longest cutoff serves every pair; each pair is then
+    // measured again against its own cutoff
+    let rcut = params.cutoffs.values().chain(params.modifier_cutoffs.values())
+        .copied().fold(0.0, f64::max);
+    let nl = if rcut > 0.0 {
+        Some(NeighborList::build(&frame.positions(), &cell, rcut)?)
+    } else {
+        None
+    };
+    let near = |i: usize| -> Vec<usize> {
+        nl.as_ref().map_or_else(Vec::new, |nl| nl.neighbors_of(i).into_iter().map(|(j, _, _)| j).collect())
+    };
+    let d2 = |from: usize, to: usize| {
+        cell.minimum_image(frame.atoms[to].position - frame.atoms[from].position).norm_squared()
+    };
 
-    // 按元素建立索引
+    // Atom indices by element
     let elem_map = build_elem_map(frame);
 
-    // 1. 配体原子的 NF 邻居表（ligand_idx → Vec<(former_elem, former_idx)>）
-    let nf_map = build_nf_map(frame, cell, params, &elem_map);
+    // 1. Each ligand atom's former neighbours (ligand_idx → Vec<(former_elem, former_idx)>)
+    let nf_map = build_nf_map(frame, params, &elem_map, &near, &d2);
 
-    // 2. 组装：默认 Other，再依次被配体 / 形成子 / 修饰子覆盖（顺序同旧实现）
+    // 2. Assemble: Other by default, then overwritten by ligand / former / modifier (the old order)
     let mut types: Vec<AtomType> = frame.atoms.iter()
         .map(|a| AtomType::Other { elem: a.element.clone() })
         .collect();
@@ -306,10 +317,10 @@ pub fn classify_frame_detailed(
         idxs.sort_unstable();
         ligand_formers.insert(idx, idxs);
     }
-    for (idx, t) in classify_formers(frame, cell, params, &elem_map, &nf_map) {
+    for (idx, t) in classify_formers(params, &elem_map, &nf_map) {
         types[idx] = t;
     }
-    for (idx, t) in classify_modifiers_inner(frame, cell, params, &elem_map) {
+    for (idx, t) in classify_modifiers_inner(frame, params, &elem_map, &near, &d2) {
         types[idx] = t;
     }
     Ok(FrameTypes { types, ligand_formers })
@@ -326,15 +337,19 @@ fn build_elem_map(frame: &Frame) -> HashMap<String, Vec<usize>> {
 }
 
 /// `ligand_idx` → `Vec<(former_elem, former_idx)>` — includes ligand atoms with 0 NF neighbors.
+///
+/// `near(i)` lists the atoms near `i` in ascending index order, so each former's
+/// atoms are visited in the same order as a scan over all of them.
 fn build_nf_map(
     frame: &Frame,
-    cell: &Cell,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,
+    near: &dyn Fn(usize) -> Vec<usize>,
+    d2: &dyn Fn(usize, usize) -> f64,
 ) -> HashMap<usize, Vec<(String, usize)>> {
     let mut nf_map: HashMap<usize, Vec<(String, usize)>> = HashMap::new();
 
-    // 预先为所有配体原子建立空条目
+    // Every ligand atom gets an entry, bonded or not
     for ligand in params.ligands() {
         if let Some(idxs) = elem_map.get(&ligand) {
             for &idx in idxs { nf_map.entry(idx).or_default(); }
@@ -342,22 +357,16 @@ fn build_nf_map(
     }
 
     for ligand in params.ligands() {
-        let ligand_idxs = match elem_map.get(&ligand) {
-            Some(v) => v.clone(),
-            None => continue,
-        };
+        let Some(ligand_idxs) = elem_map.get(&ligand) else { continue };
         let former_pairs = params.formers_for_ligand(&ligand);
 
-        for &la_idx in &ligand_idxs {
-            let la_pos = frame.atoms[la_idx].position;
+        for &la_idx in ligand_idxs {
+            let around = near(la_idx);
             for (former, cutoff) in &former_pairs {
                 let c2 = cutoff * cutoff;
-                let Some(former_idxs) = elem_map.get(former) else { continue };
-                for &fa_idx in former_idxs {
-                    if fa_idx == la_idx { continue; }
-                    let diff = cell.minimum_image(frame.atoms[fa_idx].position - la_pos)
-                        .expect("入口 classify_frame_detailed 已查奇异胞");
-                    if diff.norm_squared() < c2 {
+                for &fa_idx in &around {
+                    if frame.atoms[fa_idx].element != *former { continue; }
+                    if d2(la_idx, fa_idx) < c2 {
                         nf_map.entry(la_idx).or_default().push((former.clone(), fa_idx));
                     }
                 }
@@ -370,57 +379,58 @@ fn build_nf_map(
 /// Former classification.  One pass yields both the bridging count (Qn) and the
 /// total coordination number — the analysis layer used to re-scan the same pairs
 /// for `cn` alone.
+///
+/// The former–ligand bonds are read off `nf_map`, which holds every one of them:
+/// it is built over the same cutoff table, and the minimum-image distance is
+/// exactly symmetric, so measuring each pair again from the former's side (as this
+/// used to) finds the same bonds.
 fn classify_formers(
-    frame: &Frame,
-    cell: &Cell,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,
     nf_map: &HashMap<usize, Vec<(String, usize)>>,
 ) -> Vec<(usize, AtomType)> {
-    let mut result: Vec<(usize, AtomType)> = Vec::new();
+    // former atom → the ligand atoms bonded to it
+    let mut bonded: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (&la_idx, nf) in nf_map {
+        for &(_, fa_idx) in nf {
+            bonded.entry(fa_idx).or_default().push(la_idx);
+        }
+    }
 
+    let mut result: Vec<(usize, AtomType)> = Vec::new();
     for former_elem in params.formers() {
         let Some(former_idxs) = elem_map.get(&former_elem) else { continue };
 
         for &fa_idx in former_idxs {
-            let fa_pos = frame.atoms[fa_idx].position;
             let mut n_bo = 0u32;
             let mut cn = 0u32;
             let mut bridges_to: BTreeMap<String, u32> = BTreeMap::new();
 
-            for ligand_elem in params.ligands() {
-                let Some(&cutoff) = params.cutoffs.get(&(former_elem.clone(), ligand_elem.clone()))
-                else { continue };
-                let c2 = cutoff * cutoff;
-                let Some(ligand_idxs) = elem_map.get(&ligand_elem) else { continue };
+            for &la_idx in bonded.get(&fa_idx).map(|v| v.as_slice()).unwrap_or(&[]) {
+                cn += 1;
 
-                for &la_idx in ligand_idxs {
-                    if la_idx == fa_idx { continue; }
-                    let diff = cell.minimum_image(frame.atoms[la_idx].position - fa_pos)
-                        .expect("入口 classify_frame_detailed 已查奇异胞");
-                    if diff.norm_squared() >= c2 { continue; }
-                    cn += 1;
+                // Bridging: the ligand has >= 2 former neighbours
+                let nf = &nf_map[&la_idx];
+                if nf.len() < 2 { continue; }
+                n_bo += 1;
 
-                    // 桥接判断：该配体有 ≥2 个 NF 邻居
-                    let nf = nf_map.get(&la_idx).map(|v| v.as_slice()).unwrap_or(&[]);
-                    if nf.len() < 2 { continue; }
-                    n_bo += 1;
-
-                    // 伙伴分解数的是**连接**，不是桥氧：该配体上除自己之外的
-                    // 每个形成子各算一个连接。三簇配体 P-O(-Al)(-Al) 因此给出
-                    // m_Al += 2 —— 文献 (Q^n_m / P^n_mAl,xB) 数的正是
-                    // 「connections with phosphate」，而一个三簇氧确实把该 P
-                    // 连上了两个 Al。按桥氧数记则 Σm 会亏空，无法与 n 相加
-                    for (partner, i) in nf {
-                        if *i == fa_idx { continue; }
-                        *bridges_to.entry(partner.clone()).or_insert(0) += 1;
-                    }
+                // The partner breakdown counts *connections*, not bridging ligands: every
+                // other former on the ligand is one connection. A tricluster P-O(-Al)(-Al)
+                // therefore gives m_Al += 2 — the literature's Q^n_m / P^n_mAl,xB counts
+                // exactly the "connections with phosphate", and one tricluster oxygen does
+                // link this P to two Al. Counting bridging ligands instead would leave Σm
+                // short, and it could no longer be added to n
+                for (partner, i) in nf {
+                    if *i == fa_idx { continue; }
+                    *bridges_to.entry(partner.clone()).or_insert(0) += 1;
                 }
             }
-            // n 只数**同元素**连接（P-O-P）,异核连接留在 bridges_to 里当 m。
-            // 这是文献 Q^n_m 的口径:总桥数由 n 与各 m 相加得到,而不是 n 本身。
-            // 约定在分类时定死而非渲染时查表:`--qn` 能覆盖它,一个类型必须携带
-            // 自己是在哪套约定下产生的
+            // n counts only *same-element* connections (P-O-P); hetero connections stay in
+            // bridges_to as m. That is the literature's Q^n_m: the total number of bridges
+            // is n plus every m, not n alone. The convention is fixed at classification
+            // time rather than looked up at render time: `--qn` can override it, so a type
+            // must carry the convention it was produced under
+
             let qn = params.is_qn_former(&former_elem)
                 .then(|| bridges_to.get(&former_elem).copied().unwrap_or(0));
             result.push((fa_idx, AtomType::Former {
@@ -436,9 +446,10 @@ fn classify_formers(
 /// is classified — that separation is the whole point of `--modifier`.
 fn classify_modifiers_inner(
     frame: &Frame,
-    cell: &Cell,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,
+    near: &dyn Fn(usize) -> Vec<usize>,
+    d2: &dyn Fn(usize, usize) -> f64,
 ) -> Vec<(usize, AtomType)> {
     let mut result: Vec<(usize, AtomType)> = Vec::new();
 
@@ -446,18 +457,15 @@ fn classify_modifiers_inner(
         let Some(mod_idxs) = elem_map.get(&mod_elem) else { continue };
 
         for &ma_idx in mod_idxs {
-            let ma_pos = frame.atoms[ma_idx].position;
+            let around = near(ma_idx);
             let mut cn = 0u32;
 
             for ((m, ligand), &cutoff) in &params.modifier_cutoffs {
                 if m != &mod_elem { continue; }
                 let c2 = cutoff * cutoff;
-                let Some(ligand_idxs) = elem_map.get(ligand) else { continue };
-                for &la_idx in ligand_idxs {
-                    if la_idx == ma_idx { continue; }
-                    let diff = cell.minimum_image(frame.atoms[la_idx].position - ma_pos)
-                        .expect("入口 classify_frame_detailed 已查奇异胞");
-                    if diff.norm_squared() < c2 { cn += 1; }
+                for &la_idx in &around {
+                    if frame.atoms[la_idx].element != *ligand { continue; }
+                    if d2(ma_idx, la_idx) < c2 { cn += 1; }
                 }
             }
 
@@ -488,6 +496,7 @@ fn unique_keys_right(table: &CutoffTable) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Cell;
 
     /// Qn former: the label digit is the bridging count.
     fn former(elem: &str, n_bo: u32, cn: u32) -> AtomType {
@@ -600,7 +609,7 @@ mod tests {
     // ─── Qn 与配位数的分叉 ────────────────────────────────────────────────────
 
     /// A frame in a 20 Å cubic box; positions in Å.
-    fn frame_of(atoms: &[(&str, f64, f64, f64)]) -> (Frame, Cell) {
+    fn frame_of(atoms: &[(&str, f64, f64, f64)]) -> Frame {
         use crate::Atom;
         use nalgebra::Vector3;
         let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
@@ -608,9 +617,9 @@ mod tests {
         f.atoms = atoms.iter()
             .map(|(e, x, y, z)| Atom::new(*e, Vector3::new(*x, *y, *z)))
             .collect();
-        f.cell = Some(cell.clone());
+        f.cell = Some(cell);
         f.pbc = [true; 3];
-        (f, cell)
+        f
     }
 
     fn params_po_alo() -> TypeParams {
@@ -623,9 +632,9 @@ mod tests {
     /// 审查 D-M17：奇异胞（c=0 的 slab）曾在最小镜像处 panic，公开函数应报错
     #[test]
     fn test_singular_cell_is_an_error_not_a_panic() {
-        let (frame, _) = frame_of(&[("P", 0.0, 0.0, 0.0), ("O", 1.5, 0.0, 0.0)]);
-        let flat = Cell::from_matrix(nalgebra::Matrix3::from_diagonal(&nalgebra::Vector3::new(10.0, 10.0, 0.0)));
-        let err = classify_frame(&frame, &flat, &params_po_alo()).unwrap_err().to_string();
+        let mut frame = frame_of(&[("P", 0.0, 0.0, 0.0), ("O", 1.5, 0.0, 0.0)]);
+        frame.cell = Some(Cell::from_matrix(nalgebra::Matrix3::from_diagonal(&nalgebra::Vector3::new(10.0, 10.0, 0.0))));
+        let err = classify_frame(&frame, &params_po_alo()).unwrap_err().to_string();
         assert!(err.contains("singular"), "实际 {err}");
     }
 
@@ -636,13 +645,13 @@ mod tests {
         //
         //   O0 —— 同时挨着 Al 和 P  → 桥氧,计入 Al 的 bridging 与 cn
         //   O1 —— 只挨着 Al        → 非桥氧,只计入 Al 的 cn
-        let (frame, cell) = frame_of(&[
+        let frame = frame_of(&[
             ("Al", 0.0, 0.0, 0.0),
             ("O",  1.5, 0.0, 0.0),   // Al-O-P 桥
             ("P",  3.0, 0.0, 0.0),
             ("O",  0.0, 1.5, 0.0),   // 只连 Al 的非桥氧
         ]);
-        let types = classify_frame(&frame, &cell, &params_po_alo()).unwrap();
+        let types = classify_frame(&frame, &params_po_alo()).unwrap();
 
         let AtomType::Former { qn, n_bo, cn, .. } = &types[0] else {
             panic!("Al 应被分类为形成子, got {:?}", types[0])
@@ -672,14 +681,14 @@ mod tests {
     fn test_qn_override_switches_which_digit_a_label_shows() {
         // `--qn` 改的是约定,而约定必须随分类走 —— 同一构型换个约定,
         // Al 的标签要从配位数变成桥接数
-        let (frame, cell) = frame_of(&[
+        let frame = frame_of(&[
             ("Al", 0.0, 0.0, 0.0),
             ("O",  1.5, 0.0, 0.0),
             ("P",  3.0, 0.0, 0.0),
             ("O",  0.0, 1.5, 0.0),
         ]);
         let params = params_po_alo().with_qn_elements(["Al".to_string()]);
-        let types = classify_frame(&frame, &cell, &params).unwrap();
+        let types = classify_frame(&frame, &params).unwrap();
 
         // Al 现在报 Qn = 同元素连接数。这个构型里没有 Al-O-Al,故为 0 ——
         // 与它的配位数 2 不同,正好证明约定确实切换了

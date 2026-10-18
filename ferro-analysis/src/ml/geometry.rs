@@ -5,8 +5,7 @@
 //! half the smallest interplanar spacing. The callers check that bound and say
 //! so rather than returning a quietly wrong number.
 
-use ferro_core::{AtomType, Cell, Frame, TypeParams};
-use nalgebra::{Matrix3, Vector3};
+use ferro_core::{AtomType, Frame, PeriodicCell, TypeParams};
 
 /// Smallest distance between two atoms of the given elements, minimum image.
 ///
@@ -14,23 +13,19 @@ use nalgebra::{Matrix3, Vector3};
 /// `a == b` a distance is measured between distinct atoms only — the zero of an
 /// atom with itself is not a contact, while its periodic images are, and those
 /// are far away by construction (they sit at the box widths).
-pub fn min_pair_distance(frame: &Frame, cell: &Cell, a: &str, b: &str) -> Option<f64> {
+pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -> Option<f64> {
     let ia: Vec<usize> = idx_of(frame, a);
     let ib: Vec<usize> = if a == b { ia.clone() } else { idx_of(frame, b) };
     if ia.is_empty() || ib.is_empty() || (a == b && ia.len() < 2) {
         return None;
     }
-    // 分数坐标折回只需要一次逆：cart = Mᵀ·frac，故 frac = (Mᵀ)⁻¹·cart
-    let mt = cell.matrix.transpose();
-    let inv = mt.try_inverse()?;
-
     let mut best = f64::INFINITY;
     for (n, &i) in ia.iter().enumerate() {
         let pi = frame.atoms[i].position;
         // 同元素时只走上三角，距离对称
         let rest = if a == b { &ib[n + 1..] } else { &ib[..] };
         for &j in rest {
-            let d = min_image(frame.atoms[j].position - pi, &mt, &inv);
+            let d = cell.minimum_image(frame.atoms[j].position - pi);
             let r2 = d.norm_squared();
             if r2 < best {
                 best = r2;
@@ -38,14 +33,6 @@ pub fn min_pair_distance(frame: &Frame, cell: &Cell, a: &str, b: &str) -> Option
         }
     }
     (best.is_finite()).then(|| best.sqrt())
-}
-
-fn min_image(d: Vector3<f64>, mt: &Matrix3<f64>, inv: &Matrix3<f64>) -> Vector3<f64> {
-    let mut f = inv * d;
-    for k in 0..3 {
-        f[k] -= f[k].round();
-    }
-    mt * f
 }
 
 fn idx_of(frame: &Frame, elem: &str) -> Vec<usize> {
@@ -65,12 +52,11 @@ fn idx_of(frame: &Frame, elem: &str) -> Vec<usize> {
 /// `cn` FIELD of [`AtomType::Former`]; never parse it back out of `label()`.
 pub fn count_with_coordination(
     frame: &Frame,
-    cell: &Cell,
     params: &TypeParams,
     elem: &str,
     cn: u32,
 ) -> ferro_core::Result<usize> {
-    Ok(ferro_core::classify_frame(frame, cell, params)?
+    Ok(ferro_core::classify_frame(frame, params)?
         .iter()
         .filter(|t| matches!(t, AtomType::Former { elem: e, cn: c, .. } if e == elem && *c == cn))
         .count())
@@ -83,12 +69,11 @@ pub fn count_with_coordination(
 /// tells you whether the cutoff sits on a shoulder or in a gap.
 pub fn coordination_histogram(
     frame: &Frame,
-    cell: &Cell,
     params: &TypeParams,
     elem: &str,
 ) -> ferro_core::Result<Vec<(u32, usize)>> {
     let mut hist: std::collections::BTreeMap<u32, usize> = Default::default();
-    for t in ferro_core::classify_frame(frame, cell, params)? {
+    for t in ferro_core::classify_frame(frame, params)? {
         if let AtomType::Former { elem: e, cn, .. } = t {
             if e == elem {
                 *hist.entry(cn).or_default() += 1;
@@ -101,16 +86,18 @@ pub fn coordination_histogram(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferro_core::Atom;
+    use ferro_core::{Atom, Cell};
+    use nalgebra::{Matrix3, Vector3};
 
-    fn cubic(a: f64, atoms: Vec<(&str, [f64; 3])>) -> (Frame, Cell) {
+    fn cubic(a: f64, atoms: Vec<(&str, [f64; 3])>) -> (Frame, PeriodicCell) {
         let cell = Cell::from_matrix(Matrix3::identity() * a);
-        let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+        let mut f = Frame::with_cell(cell, [true; 3]);
         f.atoms = atoms
             .into_iter()
             .map(|(e, p)| Atom::new(e, Vector3::new(p[0], p[1], p[2])))
             .collect();
-        (f, cell)
+        let pc = PeriodicCell::of(&f).unwrap();
+        (f, pc)
     }
 
     #[test]
@@ -145,12 +132,12 @@ mod tests {
         ] {
             atoms.push(("O", [5.0 + d[0], 5.0 + d[1], 5.0 + d[2]]));
         }
-        let (f, c) = cubic(20.0, atoms);
+        let (f, _) = cubic(20.0, atoms);
         let mut cut = std::collections::BTreeMap::new();
         cut.insert(("Al".to_string(), "O".to_string()), 2.4);
         let p = TypeParams::new(cut, Default::default());
-        assert_eq!(count_with_coordination(&f, &c, &p, "Al", 6).unwrap(), 1);
-        assert_eq!(count_with_coordination(&f, &c, &p, "Al", 4).unwrap(), 0);
-        assert_eq!(coordination_histogram(&f, &c, &p, "Al").unwrap(), vec![(6, 1)]);
+        assert_eq!(count_with_coordination(&f, &p, "Al", 6).unwrap(), 1);
+        assert_eq!(count_with_coordination(&f, &p, "Al", 4).unwrap(), 0);
+        assert_eq!(coordination_histogram(&f, &p, "Al").unwrap(), vec![(6, 1)]);
     }
 }

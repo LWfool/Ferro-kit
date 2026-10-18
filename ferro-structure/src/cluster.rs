@@ -38,7 +38,7 @@ impl ClusterResult {
 /// Returns `None` if `frame.cell` is missing or singular (e.g. a slab with `c = 0`).
 pub fn find_clusters(frame: &Frame, params: &TypeParams) -> Option<ClusterResult> {
     let cell = frame.cell.as_ref()?;
-    let types = classify_frame(frame, cell, params).ok()?;
+    let types = classify_frame(frame, params).ok()?;
 
     // 1. 找到所有形成子原子的索引
     let formers = params.formers();
@@ -133,7 +133,7 @@ mod tests {
     fn test_singular_cell_gives_none() {
         let atoms = vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 0.0)));
-        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
         assert!(find_clusters(&frame, &make_params(2.3)).is_none());
     }
 
@@ -147,7 +147,7 @@ mod tests {
             atom("P", 3.2, 0.0, 0.0),
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(20.0, 20.0, 20.0)));
-        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
         let params = make_params(2.3);
         let res = find_clusters(&frame, &params).unwrap();
         // P1 和 P2 在同一团簇
@@ -166,7 +166,7 @@ mod tests {
             atom("O", 11.6, 0.0, 0.0), // NBO(P2)
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
-        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
         let params = make_params(2.3);
         let res = find_clusters(&frame, &params).unwrap();
         // P1 和 P2 在不同团簇
@@ -187,7 +187,7 @@ mod tests {
             atom("P", -r / 2.0, -r * 0.8660254, 0.0),
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
-        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
         let params = make_params(2.3);
         let res = find_clusters(&frame, &params).unwrap();
         assert_eq!(res.n_clusters, 1, "三簇氧把三个 P 连成一个团簇");
@@ -212,7 +212,7 @@ mod tests {
             atom("F", 0.0, 9.0, 0.0), // 远处的 F，只为让 F 进入配体元素集
         ];
         let cell = Cell::from_matrix(Matrix3::from_diagonal(&Vector3::new(30.0, 30.0, 30.0)));
-        let frame = Frame { atoms, cell: Some(cell), ..Frame::default() };
+        let frame = Frame { atoms, cell: Some(cell), pbc: [true; 3], ..Frame::default() };
         let res = find_clusters(&frame, &params).unwrap();
         assert_eq!(res.n_clusters, 1, "P-O 桥必须按 P-O 的截断判定");
         assert_eq!(res.cluster_id[0], res.cluster_id[2]);

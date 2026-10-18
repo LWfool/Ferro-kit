@@ -231,7 +231,9 @@ pub fn calc_cluster_sdf(
     params.validate()?;
     // 奇异胞以前在 build_network_graph / extract_snapshot 的 expect 里 panic（审查 B-1）；
     // 走 Err 而不是 None，CLI 才不会把它报成「没找到团簇」
-    check::periodic_cells(traj, None)?;
+    // build_network_graph refuses a cutoff past the minimum-image bound, and the
+    // modifier search measures through the same minimum image
+    check::periodic_cells(traj, Some(sdf_cutoff(params)))?;
     if traj.frames.is_empty() { return Ok(None); }
 
     let mut accumulators: HashMap<String, FamilyAccumulator> = HashMap::new();
@@ -271,6 +273,15 @@ pub fn calc_cluster_sdf(
 
 // ─── 逐帧处理 ─────────────────────────────────────────────────────────────────
 
+/// The longest cutoff a cluster SDF measures with, and its CLI name.
+pub(crate) fn sdf_cutoff(params: &ClusterSdfParams) -> (&'static str, f64) {
+    if params.modifier.is_some() && params.modifier_cutoff > params.former_ligand_cutoff {
+        ("cutoff-ml", params.modifier_cutoff)
+    } else {
+        ("cutoff-fl", params.former_ligand_cutoff)
+    }
+}
+
 pub(crate) fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParams) -> Vec<ClusterSnapshot> {
     // 修饰体原子（不属于 former–ligand 图，单独收集）
     let mod_global: Vec<usize> = match params.modifier.as_deref() {
@@ -283,11 +294,11 @@ pub(crate) fn process_frame(frame: &Frame, cell: &Cell, params: &ClusterSdfParam
 
     // 共享原语：former–ligand 邻接图 + 连通分量
     let g = build_network_graph(
-        frame, cell,
+        frame,
         &params.former, &params.ligand,
         params.former_ligand_cutoff,
     )
-    .expect("callers reject singular cells (cube_sdf via check::periodic_cells, chg_sdf at its entry)");
+    .expect("callers check the cell and the cutoff (cube_sdf via check::periodic_cells, chg_sdf at its entry)");
     if g.components.is_empty() { return Vec::new(); }
 
     let ml_cutoff2 = params.modifier_cutoff * params.modifier_cutoff;

@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use ferro_core::{Cell, Table, Trajectory, TypeParams};
 
 use super::geometry::coordination_histogram;
+use crate::check;
 
 /// How a coordination selection responds to its cutoff.
 #[derive(Debug, Clone)]
@@ -37,6 +38,10 @@ pub fn cutoff_scan(
     rcuts: &[f64],
     max_frames: usize,
 ) -> ferro_core::Result<Vec<CutoffScan>> {
+    // The scan reaches past the selection's own cutoff, which is all the entry of
+    // the filter checked (review D-A5)
+    let widest = rcuts.iter().copied().fold(0.0, f64::max);
+    check::periodic_cells(traj, Some((&format!("{elem}-{ligand} cutoff scan"), widest)))?;
     let n = traj.n_frames();
     let step = (n / max_frames.max(1)).max(1);
     let sampled: Vec<usize> = (0..n).step_by(step).collect();
@@ -51,8 +56,8 @@ pub fn cutoff_scan(
             let mut total = 0usize;
             for &i in &sampled {
                 let f = &traj.frames[i];
-                let Some(cell) = f.cell.as_ref() else { continue };
-                let n_target: usize = coordination_histogram(f, cell, &params, elem)?
+                if f.cell.is_none() { continue }
+                let n_target: usize = coordination_histogram(f, &params, elem)?
                     .into_iter()
                     .filter(|(cn, _)| *cn == target_cn)
                     .map(|(_, c)| c)
@@ -80,8 +85,8 @@ pub fn pooled_coordination(
 ) -> ferro_core::Result<Vec<(u32, usize)>> {
     let mut hist: BTreeMap<u32, usize> = BTreeMap::new();
     for f in &traj.frames {
-        let Some(cell) = f.cell.as_ref() else { continue };
-        for (cn, n) in coordination_histogram(f, cell, params, elem)? {
+        if f.cell.is_none() { continue }
+        for (cn, n) in coordination_histogram(f, params, elem)? {
             *hist.entry(cn).or_default() += n;
         }
     }

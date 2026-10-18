@@ -676,9 +676,7 @@ pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Resul
     if traj.frames.is_empty() { return invalid("trajectory is empty"); }
     if params.cutoffs.is_empty() { return invalid("no former-ligand cutoff given"); }
 
-    let usable: Vec<(&Frame, &ferro_core::Cell)> = traj.frames.iter()
-        .filter_map(|frame| frame.cell.as_ref().map(|cell| (frame, cell)))
-        .collect();
+    let usable: Vec<&Frame> = traj.frames.iter().filter(|frame| frame.cell.is_some()).collect();
     if usable.is_empty() {
         return invalid("no usable frame (every frame is missing a cell; PBC required)");
     }
@@ -689,11 +687,11 @@ pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Resul
     check::periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
 
     let n_frames = usable.len();
-    let n_atoms = usable[0].0.atoms.len();
+    let n_atoms = usable[0].atoms.len();
 
     let acc = usable
         .par_iter()
-        .filter_map(|(frame, cell)| compute_frame(frame, cell, params))
+        .filter_map(|frame| compute_frame(frame, params))
         .fold(Accumulator::default, |mut acc, fd| { acc.push(&fd); acc })
         .reduce(Accumulator::default, |mut a, b| { a.merge(b); a });
 
@@ -702,12 +700,8 @@ pub fn calc_network(traj: &Trajectory, params: &TypeParams) -> ferro_core::Resul
 
 // ─── 单帧计算 ─────────────────────────────────────────────────────────────────
 
-fn compute_frame(
-    frame: &Frame,
-    cell: &ferro_core::Cell,
-    params: &TypeParams,
-) -> Option<FrameData> {
-    let ft = classify_frame_detailed(frame, cell, params)
+fn compute_frame(frame: &Frame, params: &TypeParams) -> Option<FrameData> {
+    let ft = classify_frame_detailed(frame, params)
         .expect("checked at the entry by check::periodic_cells");
     let types = &ft.types;
 
