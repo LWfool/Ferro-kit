@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use ferro_core::table::Table;
-use ferro_core::units::AMU_ANG3_TO_G_CM3;
+use ferro_analysis::ml::diagnostics::frame_table;
 use ferro_core::Trajectory;
 use ferro_io::readers::lammps_dump::LammpsUnits;
 use ferro_io::AimdFormat;
@@ -59,115 +59,27 @@ pub fn write_all(
     write_lammps_data(&last, &data)?;
 
     let info = dir.join(format!("{name}_info.csv"));
-    write_table(&build_table(traj, format, sources), &info, TableFormat::Csv)?;
+    write_table(&info_table(traj, format, sources), &info, TableFormat::Csv)?;
 
     Ok(vec![trj, data, info])
 }
 
-/// One row per frame, with the run summary carried in the `#` metadata block.
+/// The per-frame table, plus the note a vasprun.xml run needs.
 ///
-/// The summary is an aggregate of the very columns below it, so it lives in the
-/// comment block rather than in a second file: `pandas.read_csv(..., comment="#")`
-/// gets the table, and a human reading the head of the file gets the summary.
-fn build_table(traj: &Trajectory, format: AimdFormat, sources: &[String]) -> Table {
-    let n = traj.n_frames();
-    let mut frame_idx = Vec::with_capacity(n);
-    let mut steps = Vec::with_capacity(n);
-    let mut temps = Vec::with_capacity(n);
-    let mut energies = Vec::with_capacity(n);
-    let mut volumes = Vec::with_capacity(n);
-    let mut densities = Vec::with_capacity(n);
-
-    for (i, f) in traj.frames.iter().enumerate() {
-        frame_idx.push(i as f64);
-        // 缺失一律 NaN，渲染成空字段。补 0 会把「这条路读不出步号」说成「第 0 步」
-        steps.push(f.step.map_or(f64::NAN, |s| s as f64));
-        temps.push(f.temperature.unwrap_or(f64::NAN));
-        energies.push(f.energy.unwrap_or(f64::NAN));
-        let (v, d) = match &f.cell {
-            // 体积走 |det|，不是三个对角线相乘 —— 后者只对正交胞成立，
-            // 三斜胞下静默给出错的密度
-            Some(c) => {
-                let v = c.volume();
-                (v, f.total_mass() / v * AMU_ANG3_TO_G_CM3)
-            }
-            None => (f64::NAN, f64::NAN),
-        };
-        volumes.push(v);
-        densities.push(d);
-    }
-
-    let mut t = Table::new();
-    for line in summary_lines(traj, format, &temps, &densities) {
-        t.meta_line(line);
-    }
-    t.push_num("frame", frame_idx);
-    t.push_num("step", steps);
-    t.push_num("temperature", temps);
-    t.push_num("energy", energies);
-    t.push_num("volume", volumes);
-    t.push_num("density", densities);
-    t.push_text("source", sources.to_vec());
-    t
-}
-
-/// The `#` block: what this run is, and the two quantities worth a glance.
-fn summary_lines(traj: &Trajectory, format: AimdFormat, temps: &[f64], densities: &[f64]) -> Vec<String> {
-    let mut out = Vec::new();
-    let Some(first) = traj.first() else { return out };
-
-    let mut composition: Vec<String> = Vec::new();
-    for e in first.unique_elements() {
-        composition.push(format!("{e}{}", first.count_element(&e)));
-    }
-    out.push(format!("atoms = {}  ({})", first.n_atoms(), composition.join(" ")));
-    out.push(format!("frames = {}", traj.n_frames()));
-
-    if let Some(c) = &first.cell {
-        let [a, b, cc] = c.lengths();
-        let [al, be, ga] = c.angles();
-        out.push(format!(
-            "cell (frame 0) = a {a:.4}  b {b:.4}  c {cc:.4} Ang   \
-             alpha {al:.2}  beta {be:.2}  gamma {ga:.2} deg"
-        ));
-    }
-    if let Some(l) = mean_sd_line("temperature", temps, "K") {
-        out.push(l);
-    }
-    if let Some(l) = mean_sd_line("density", densities, "g/cm^3") {
-        out.push(l);
-    }
-    // vasprun.xml has no temperature field, so this column is derived; without
-    // saying so the same run read from another file gives numbers nobody can
-    // explain. Decided by the reader, not by a metadata string, which no reader
-    // ever set to "vasprun.xml" (review B4)
+/// vasprun.xml has no temperature field, so the column is derived; without saying
+/// so, the same run read from another file gives numbers nobody can explain.
+/// Decided by the reader the frames came through, not by a metadata string, which
+/// no reader ever set to "vasprun.xml" (review B4).
+fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String]) -> Table {
+    let mut t = frame_table(traj, sources);
     if format == AimdFormat::VaspXml && traj.frames.iter().any(|f| f.temperature.is_some()) {
-        out.push(
+        t.meta_line(
             "note: temperature is derived from the ionic kinetic energy \
              (T = 2*E_kin/(3N*k_B)); vasprun.xml does not print it"
                 .to_string(),
         );
     }
-    out
-}
-
-/// `mean +/- sd` over the finite values, or `None` when there are none.
-///
-/// Two-pass, as `ferro-analysis` does elsewhere: `<x^2> - <x>^2` loses most of its
-/// significant digits when the spread is small next to the mean, which is exactly
-/// the case for a thermostatted temperature.
-fn mean_sd_line(label: &str, values: &[f64], unit: &str) -> Option<String> {
-    let xs: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
-    if xs.is_empty() {
-        return None;
-    }
-    let mean = xs.iter().sum::<f64>() / xs.len() as f64;
-    let sd = if xs.len() > 1 {
-        (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (xs.len() - 1) as f64).sqrt()
-    } else {
-        0.0
-    };
-    Some(format!("{label} = {mean:.4} +/- {sd:.4} {unit}"))
+    t
 }
 
 #[cfg(test)]
@@ -191,43 +103,12 @@ mod tests {
         t
     }
 
-    /// Missing scalars render as empty fields, never as zero.
-    #[test]
-    fn a_missing_scalar_is_empty_not_zero() {
-        let traj = traj_of(&[Some(300.0), None], &[Some(1), None]);
-        let table = build_table(&traj, AimdFormat::Cp2kMd, &["a.out".into(), "a.out".into()]);
-        let step = table.column("step").unwrap();
-        assert_eq!(step.cell(0), "1.000000e0");
-        assert_eq!(step.cell(1), "", "缺步号必须是空字段,不是 0");
-        let temp = table.column("temperature").unwrap();
-        assert_eq!(temp.cell(1), "", "缺温度必须是空字段,不是 0");
-    }
-
-    /// The summary skips a quantity none of the frames carry.
-    #[test]
-    fn the_summary_omits_a_quantity_that_is_absent_everywhere() {
-        let traj = traj_of(&[None, None], &[Some(1), Some(2)]);
-        let table = build_table(&traj, AimdFormat::Cp2kMd, &["a.out".into(), "a.out".into()]);
-        let meta = table.meta.join("\n");
-        assert!(meta.contains("atoms = 2"), "{meta}");
-        assert!(meta.contains("frames = 2"), "{meta}");
-        assert!(!meta.contains("temperature ="), "无温度时不该报一个假的均值: {meta}");
-        assert!(meta.contains("density ="), "{meta}");
-    }
-
     /// The derived-temperature note is shown for vasprun.xml and only for it.
     #[test]
     fn the_vasprun_temperature_note_follows_the_reader() {
         let traj = traj_of(&[Some(300.0), Some(310.0)], &[None, None]);
-        let note = |f| build_table(&traj, f, &["a".into(), "a".into()]).meta.join("\n");
+        let note = |f| info_table(&traj, f, &["a".into(), "a".into()]).meta.join("\n");
         assert!(note(AimdFormat::VaspXml).contains("derived from the ionic kinetic energy"));
         assert!(!note(AimdFormat::VaspOutcar).contains("derived"));
-    }
-
-    #[test]
-    fn the_sd_is_zero_for_a_constant_series_and_not_noise() {
-        let line = mean_sd_line("temperature", &[300.0, 300.0, 300.0], "K").unwrap();
-        assert_eq!(line, "temperature = 300.0000 +/- 0.0000 K");
-        assert!(mean_sd_line("x", &[f64::NAN], "K").is_none());
     }
 }

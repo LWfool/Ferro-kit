@@ -22,8 +22,10 @@
 //! being consistent inside ferro matters more than matching dpdata's choice.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use ferro_core::data::elements::canonical_order;
+use ferro_core::error::ChemError;
 use ferro_core::Trajectory;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -51,7 +53,7 @@ pub fn composition_key(traj: &Trajectory) -> Vec<String> {
 /// alphabetically, which is how a formula is normally read, independent of the
 /// (Z, symbol) order used for `type_map`.
 ///
-/// A count of 1 drops its subscript (`Al2O4Zn`), unlike `cmd/dataset.rs`'s `formula_of`
+/// A count of 1 drops its subscript (`Al2O4Zn`), unlike [`formula_of`]
 /// (`Al2O4Zn1`).  The two are deliberately different, not an oversight: this one is read
 /// as a name in an `ls` listing, that one is read stacked against a second formula in a
 /// mismatch message, where the padded columns are what make the difference visible.
@@ -68,6 +70,118 @@ pub fn group_name(traj: &Trajectory) -> String {
         .map(|(e, c)| if *c == 1 { e.clone() } else { format!("{e}{c}") })
         .collect();
     format!("{n}_{formula}")
+}
+
+/// Puts the restart segments of one run back together, as `collect` does.
+///
+/// `parts` are the files of one run directory; `view` gives each one's path, frames
+/// and first MD step. The parts are sorted in place by first step, then path, with
+/// each file keeping its own frame order: a global sort by step looks more
+/// thorough, but a restart that counts from 0 again would interleave two real
+/// trajectories, which is worse than not sorting; the worst case here is
+/// concatenating by file name. Every part must hold the composition of the first —
+/// different atom sequences are two systems put in one directory, a person's
+/// mistake rather than bad data, and dropping them as bad frames would report a
+/// different thing altogether. The sequences compared are canonical (each file is
+/// sorted as it is read), so any difference left is one of counts.
+///
+/// Returns the concatenated trajectory, with the first part's metadata, and the
+/// file name each frame came from: the seams between segments are what deserve a
+/// look. Frames are not de-duplicated; the step numbers make an overlap visible.
+pub fn stitch_segments<T>(
+    parts: &mut [T],
+    view: impl Fn(&T) -> (&Path, &Trajectory, Option<i64>),
+) -> ferro_core::Result<(Trajectory, Vec<String>)> {
+    parts.sort_by(|a, b| {
+        let ((pa, _, sa), (pb, _, sb)) = (view(a), view(b));
+        (sa, pa).cmp(&(sb, pb))
+    });
+    let Some(first) = parts.first() else {
+        return Ok((Trajectory::new(), Vec::new()));
+    };
+    let (first_path, first_traj, _) = view(first);
+    let reference = symbols_of(first_traj);
+    for part in &parts[1..] {
+        let (path, traj, _) = view(part);
+        let here = symbols_of(traj);
+        if here != reference {
+            return Err(ChemError::ValidationError(format!(
+                "{} and {} hold different compositions ({} vs {}; {}); \
+                 a system holds one composition, so put them in separate directories",
+                first_path.display(),
+                path.display(),
+                formula_of(&reference),
+                formula_of(&here),
+                composition_diff(&reference, &here),
+            )));
+        }
+    }
+
+    let mut all = Trajectory::new();
+    all.metadata = first_traj.metadata.clone();
+    let mut sources: Vec<String> = Vec::new();
+    for part in parts.iter() {
+        let (path, traj, _) = view(part);
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.display().to_string());
+        sources.extend(std::iter::repeat_n(name, traj.n_frames()));
+        all.frames.extend(traj.frames.iter().cloned());
+    }
+    Ok((all, sources))
+}
+
+fn symbols_of(traj: &Trajectory) -> Vec<String> {
+    traj.frames
+        .first()
+        .map(|f| f.symbols().into_iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default()
+}
+
+/// `Al32O64Zn16` from a per-atom element sequence, for the mismatch message.
+///
+/// Counts of 1 keep their subscript here, unlike [`group_name`] — the two
+/// formulas in a mismatch message are read one above the other, and dropping the `1`s
+/// misaligns the element that differs.  Directory names have the opposite need.
+fn formula_of(symbols: &[String]) -> String {
+    let mut count: BTreeMap<&str, usize> = BTreeMap::new();
+    for s in symbols {
+        *count.entry(s.as_str()).or_default() += 1;
+    }
+    count.iter().map(|(el, n)| format!("{el}{n}")).collect()
+}
+
+/// The elements whose counts differ, as `Al 2 vs 3`.
+///
+/// Two formulas printed side by side answer "are they different" but not "where":
+/// `Al2O303P100Zn50 vs Al2O303P100Zn50` used to be a possible message, back when
+/// the comparison ran on unsorted sequences and the formulas could not show it.
+/// The sequences are canonical now, so every remaining difference is a count.
+fn composition_diff(a: &[String], b: &[String]) -> String {
+    let count = |v: &[String]| {
+        let mut m: BTreeMap<String, usize> = BTreeMap::new();
+        for s in v {
+            *m.entry(s.clone()).or_default() += 1;
+        }
+        m
+    };
+    let (ca, cb) = (count(a), count(b));
+    let diffs: Vec<String> = ca
+        .keys()
+        .chain(cb.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter_map(|el| {
+            let (na, nb) = (ca.get(el).copied().unwrap_or(0), cb.get(el).copied().unwrap_or(0));
+            (na != nb).then(|| format!("{el} {na} vs {nb}"))
+        })
+        .collect();
+    if diffs.is_empty() {
+        "same counts, different atom order".to_string()
+    } else {
+        format!("differing: {}", diffs.join(", "))
+    }
 }
 
 /// A deterministic shuffle of `0..n`.
@@ -119,6 +233,39 @@ mod tests {
             composition_key(&traj_of(&["Zn", "Al", "O", "O"])),
             composition_key(&traj_of(&["Zn", "Al", "O"]))
         );
+    }
+
+    #[test]
+    fn a_composition_is_rendered_for_the_mismatch_message() {
+        let syms: Vec<String> = ["O", "Al", "O", "Zn", "O"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(formula_of(&syms), "Al1O3Zn1");
+    }
+
+    /// Segments go in first-step order, each keeping its own frames, with the file
+    /// each frame came from; a second composition is refused, naming both files.
+    #[test]
+    fn segments_are_stitched_by_first_step_and_must_share_a_composition() {
+        let seg = |x: f64| {
+            let mut t = traj_of(&["O", "Al"]);
+            t.frames[0].positions_mut()[0].x = x;
+            t
+        };
+        let mut parts = vec![
+            (Path::new("run/b.out").to_path_buf(), seg(2.0), Some(200)),
+            (Path::new("run/a.out").to_path_buf(), seg(1.0), Some(100)),
+            (Path::new("run/c.out").to_path_buf(), seg(0.0), None),
+        ];
+        fn view(p: &(std::path::PathBuf, Trajectory, Option<i64>)) -> (&Path, &Trajectory, Option<i64>) {
+            (p.0.as_path(), &p.1, p.2)
+        }
+        let (all, sources) = stitch_segments(&mut parts, view).unwrap();
+        let xs: Vec<f64> = all.frames.iter().map(|f| f.positions()[0].x).collect();
+        assert_eq!(xs, [0.0, 1.0, 2.0], "no step sorts first, then by first step");
+        assert_eq!(sources, ["c.out", "a.out", "b.out"]);
+
+        parts.push((Path::new("run/d.out").to_path_buf(), traj_of(&["O", "Al", "Al"]), Some(300)));
+        let msg = stitch_segments(&mut parts, view).unwrap_err().to_string();
+        assert!(msg.contains("run/d.out") && msg.contains("Al 1 vs 2"), "{msg}");
     }
 
     #[test]

@@ -20,14 +20,11 @@ use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 
 use crate::batch::expand_inputs;
-use ferro_analysis::ml::diagnostics::{
-    coordination_table, count_histogram, cutoff_scan, distribution_table, pooled_coordination,
-    quantiles,
-    scan_table,
-};
+use ferro_analysis::ml::diagnostics::{filter_diagnostics, quantiles};
 use ferro_analysis::ml::merge::{
-    composition_key, group_name, shuffle_order, DEFAULT_SEED,
+    composition_key, group_name, shuffle_order, stitch_segments, DEFAULT_SEED,
 };
+use ferro_analysis::ml::Split;
 use ferro_analysis::md::first_shell_cutoffs;
 use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
@@ -107,104 +104,6 @@ const TRAIN_SUFFIX: &str = ".train";
 /// `filter` and `merge` strip it before naming their own products, so a collected
 /// `run1.db` filters to `run1.train` rather than `run1.db.train`.
 const COLLECT_SUFFIX: &str = ".db";
-
-/// Frame-level train/valid/test split.
-///
-/// Membership is drawn from a shuffled order — taking the tail as a test set
-/// would hand it the end of the trajectory, which is one contiguous stretch of
-/// a single state. The indices of each part are then sorted back into
-/// trajectory order, so only membership is random and the output stays
-/// byte-identical across runs with the same seed.
-///
-/// Note what this cannot fix: frames of one MD run are correlated, so a
-/// frame-level test set still shares its neighbourhood with the training set
-/// and reads optimistic. A split across whole systems is the honest estimate;
-/// this one is the convenient one.
-#[derive(Clone, Copy, Debug)]
-struct Split {
-    valid: f64,
-    test: f64,
-    seed: u64,
-}
-
-impl Split {
-    /// Parses `--ratio`: `train:valid:test`, or `train:test` with two fields.
-    ///
-    /// The numbers are weights, not fractions — `8:1:1` and `80:10:10` are the
-    /// same split — so no one has to make them sum to one. Two fields mean
-    /// train:test because that is the pair NEP asks for (`train.xyz` +
-    /// `test.xyz`) and the order the phrase "train/test split" already implies;
-    /// every run prints the three parts by name, so a misread shows up on the
-    /// first line of output rather than in a silently mislabelled dataset.
-    fn parse(spec: &str, seed: u64) -> Result<Self> {
-        let fields: Vec<&str> = spec.split(':').map(|f| f.trim()).collect();
-        let bad = || {
-            anyhow::anyhow!(
-                "--ratio must look like 8:1:1 (train:valid:test) or 9:1 \
-                 (train:test), got {spec:?}"
-            )
-        };
-        if !(2..=3).contains(&fields.len()) {
-            return Err(bad());
-        }
-        let mut w = Vec::with_capacity(3);
-        for f in &fields {
-            let v: f64 = f.parse().map_err(|_| bad())?;
-            if !v.is_finite() || v < 0.0 {
-                bail!("--ratio takes non-negative numbers, got {f:?}");
-            }
-            w.push(v);
-        }
-        let (train, valid, test) = match w.len() {
-            2 => (w[0], 0.0, w[1]),
-            _ => (w[0], w[1], w[2]),
-        };
-        let total = train + valid + test;
-        if total <= 0.0 {
-            bail!("--ratio is all zeros, so nothing would be written");
-        }
-        if valid <= 0.0 && test <= 0.0 {
-            bail!("--ratio {spec:?} holds out nothing; omit --ratio instead");
-        }
-        Ok(Split { valid: valid / total, test: test / total, seed })
-    }
-
-    /// The split off state, used when `--ratio` is absent.
-    fn off(seed: u64) -> Self {
-        Split { valid: 0.0, test: 0.0, seed }
-    }
-
-    fn is_off(&self) -> bool {
-        self.valid <= 0.0 && self.test <= 0.0
-    }
-
-    /// `[train, valid, test]` frame indices, each in ascending order.
-    fn parts(&self, n: usize, who: &Path) -> Result<[Vec<usize>; 3]> {
-        if self.is_off() {
-            return Ok([(0..n).collect(), Vec::new(), Vec::new()]);
-        }
-        // 比例向上取到至少 1 帧:给了比例却拿到 0 帧,是静默地没有验证集
-        let take = |r: f64| -> usize {
-            if r <= 0.0 { 0 } else { ((n as f64 * r).round() as usize).max(1) }
-        };
-        let (n_valid, n_test) = (take(self.valid), take(self.test));
-        if n_valid + n_test >= n {
-            bail!(
-                "{}: {n} frame(s) cannot give {n_valid} validation + {n_test} test \
-                 and still leave a training set",
-                who.display()
-            );
-        }
-        let order = shuffle_order(n, self.seed);
-        let mut valid: Vec<usize> = order[..n_valid].to_vec();
-        let mut test: Vec<usize> = order[n_valid..n_valid + n_test].to_vec();
-        let mut train: Vec<usize> = order[n_valid + n_test..].to_vec();
-        for v in [&mut train, &mut valid, &mut test] {
-            v.sort_unstable();
-        }
-        Ok([train, valid, test])
-    }
-}
 
 /// Appends a split suffix to the last component of a path.
 fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
@@ -325,7 +224,7 @@ fn write_split(
     }
 
     let stem = without_train_suffix(base);
-    let parts = split.parts(traj.n_frames(), base)?;
+    let parts = split.parts(traj.n_frames(), &base.display().to_string())?;
     for (idx, (label, suffix)) in SPLIT_PARTS.iter().enumerate() {
         if parts[idx].is_empty() {
             continue;
@@ -848,21 +747,10 @@ fn collect_group(
         bail!("no usable file in this directory");
     }
 
-    // 按首个 step 号排序，文件内保持原序。全局逐帧排序看着更彻底，但重启
-    // 若从 0 重新计数就会把两段真实轨迹交错洗牌，比不排序更糟；这里最坏
-    // 情况退化成「按文件名拼」，不比原来差
-    parts.sort_by(|a, b| {
-        let ka = (a.2.steps.map(|(s, _)| s), a.0.clone());
-        let kb = (b.2.steps.map(|(s, _)| s), b.0.clone());
-        ka.cmp(&kb)
-    });
-
-    // 一个 system 的 type.raw 只写一次，故各文件的原子序列必须逐项相同。
-    // 不一致是「把两个体系放进了一个目录」这个人的错误，不是数据的问题 ——
-    // 当作坏帧丢掉会把它渲染成完全不同的一件事
-    // 一个真实的 VASP 运行目录里 OUTCAR 与 vasprun.xml 同时存在,记的是同一批
-    // 帧。collect 的规则是「同目录的文件 = 同一次运行的分段」,照此拼接会把帧数
-    // 悄悄翻倍 —— 成分一致、两个文件各自也都读得通,不会有任何别的症状
+    // A real VASP run directory holds OUTCAR and vasprun.xml side by side, recording the
+    // same frames. collect's rule is "files of one directory = segments of one run",
+    // and following it would double the frame count silently: same composition, both
+    // files readable, no other symptom
     if let Some((first, fmt0)) = sniffed.first() {
         if let Some((path, other)) = sniffed.iter().find(|(_, f)| f != fmt0) {
             bail!(
@@ -874,36 +762,10 @@ fn collect_group(
         }
     }
 
-    // 比较的是规范序列（上面逐文件排过），所以剩下的差异必然是计数差异 ——
-    // 「同成分不同原子顺序」这个原因已经不存在了
-    let reference = symbols_of(&parts[0].1);
-    for (path, traj, _) in &parts[1..] {
-        let here = symbols_of(traj);
-        if here != reference {
-            bail!(
-                "{} and {} hold different compositions ({} vs {}; {}); \
-                 a system holds one composition, so put them in separate directories",
-                parts[0].0.display(),
-                path.display(),
-                formula_of(&reference),
-                formula_of(&here),
-                composition_diff(&reference, &here),
-            );
-        }
-    }
-
-    let mut all = Trajectory::new();
-    all.metadata = parts[0].1.metadata.clone();
-    // 逐帧记下来自哪个文件：collect 拼的是重启切开的段，接缝正是最该看的地方
-    let mut sources: Vec<String> = Vec::new();
-    for (path, traj, _) in &parts {
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
-        sources.extend(std::iter::repeat_n(name, traj.n_frames()));
-        all.frames.extend(traj.frames.iter().cloned());
-    }
+    // Sort by first step, check one composition, concatenate (ferro-analysis)
+    let (all, sources) = stitch_segments(&mut parts, |(path, traj, stats)| {
+        (path.as_path(), traj, stats.steps.map(|(s, _)| s))
+    })?;
 
     report_group(dest, &parts, all.n_frames());
     report_kind_labels(&all);
@@ -920,58 +782,6 @@ fn collect_group(
         write_deepmd_npy(&all, dest)?;
     }
     Ok(())
-}
-
-fn symbols_of(traj: &Trajectory) -> Vec<String> {
-    traj.frames
-        .first()
-        .map(|f| f.symbols().into_iter().map(|s| s.to_string()).collect())
-        .unwrap_or_default()
-}
-
-/// `Al32O64Zn16` from a per-atom element sequence, for the mismatch message.
-///
-/// Counts of 1 keep their subscript here, unlike `ml/merge.rs`'s `group_name` — the two
-/// formulas in a mismatch message are read one above the other, and dropping the `1`s
-/// misaligns the element that differs.  Directory names have the opposite need.
-fn formula_of(symbols: &[String]) -> String {
-    let mut count: BTreeMap<&str, usize> = BTreeMap::new();
-    for s in symbols {
-        *count.entry(s.as_str()).or_default() += 1;
-    }
-    count.iter().map(|(el, n)| format!("{el}{n}")).collect()
-}
-
-/// The elements whose counts differ, as `Al 2 vs 3`.
-///
-/// Two formulas printed side by side answer "are they different" but not "where":
-/// `Al2O303P100Zn50 vs Al2O303P100Zn50` used to be a possible message, back when
-/// the comparison ran on unsorted sequences and the formulas could not show it.
-/// The sequences are canonical now, so every remaining difference is a count.
-fn composition_diff(a: &[String], b: &[String]) -> String {
-    let count = |v: &[String]| {
-        let mut m: BTreeMap<String, usize> = BTreeMap::new();
-        for s in v {
-            *m.entry(s.clone()).or_default() += 1;
-        }
-        m
-    };
-    let (ca, cb) = (count(a), count(b));
-    let diffs: Vec<String> = ca
-        .keys()
-        .chain(cb.keys())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .filter_map(|el| {
-            let (na, nb) = (ca.get(el).copied().unwrap_or(0), cb.get(el).copied().unwrap_or(0));
-            (na != nb).then(|| format!("{el} {na} vs {nb}"))
-        })
-        .collect();
-    if diffs.is_empty() {
-        "same counts, different atom order".to_string()
-    } else {
-        format!("differing: {}", diffs.join(", "))
-    }
 }
 
 /// One section per system, one line per source file.
@@ -1306,7 +1116,7 @@ fn filter_one(
 
     // 诊断表恒算：实测 1110 帧 / 302 原子挂钟时间与不算时相同（rayon 跑满），
     // 而它是选阈值的依据，只在只读模式算就等于永远落不了盘
-    let diagnostics = diagnostic_tables(&traj, &result, &params)?;
+    let diagnostics = filter_diagnostics(&traj, &result, &params)?;
     let mut tables = result.to_tables();
     tables.extend(diagnostics.iter().cloned());
     let min_oo = if params.oo_min > 0.0 {
@@ -1366,7 +1176,7 @@ fn filter_split(args: &FilterCmd) -> Result<Split> {
     let seed = args.seed.unwrap_or(DEFAULT_SEED);
     match &args.ratio {
         None => Ok(Split::off(seed)),
-        Some(spec) => Split::parse(spec, seed),
+        Some(spec) => Ok(Split::parse(spec, seed)?),
     }
 }
 
@@ -1407,46 +1217,6 @@ fn find_systems(root: &Path) -> Result<Vec<PathBuf>> {
         }
     }
     out.sort();
-    Ok(out)
-}
-
-/// The tables that answer "should I be filtering, and at what value".
-///
-/// A selection whose outcome swings with its cutoff is chosen by the cutoff
-/// rather than by the structure, and a minimum distance drawn from a smooth
-/// distribution has no outliers to remove — neither is visible from the funnel
-/// alone. Only the criteria that are switched on contribute a table.
-fn diagnostic_tables(
-    traj: &ferro_core::Trajectory,
-    r: &FilterResult,
-    params: &FilterParams,
-) -> Result<Vec<(String, ferro_core::Table)>> {
-    let mut out = Vec::new();
-    if params.oo_min > 0.0 {
-        let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
-        out.push(("min_oo".to_string(), distribution_table(&v, 16)));
-    }
-
-    let Some(rcut) = params.al6_rcut else { return Ok(out) };
-
-    let n6: Vec<usize> = r.verdicts.iter().filter_map(|x| x.n_al6).collect();
-    if !n6.is_empty() {
-        out.push(("al6".to_string(), count_histogram("n_al6", &n6)));
-    }
-
-    let mut cut = std::collections::BTreeMap::new();
-    cut.insert(("Al".to_string(), "O".to_string()), rcut);
-    let tp = ferro_analysis::TypeParams::new(cut, Default::default());
-    let hist = pooled_coordination(traj, &tp, "Al")?;
-    if !hist.is_empty() {
-        // 所用截断逐 system 不同（--al6 不带值时），记在 [inputs] 的 al6_rcut 列
-        out.push(("al_cn".to_string(), coordination_table(&hist)));
-    }
-
-    // 以当前截断为中心扫一圈：陡不陡才是这张表要说的事
-    let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1).filter(|v| *v > 0.0).collect();
-    let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200)?;
-    out.push(("rcut_scan".to_string(), scan_table(&scan)));
     Ok(out)
 }
 
@@ -1651,7 +1421,7 @@ fn merge_split(args: &MergeCmd) -> Result<Split> {
     let seed = args.seed.unwrap_or(DEFAULT_SEED);
     match &args.ratio {
         None => Ok(Split::off(seed)),
-        Some(spec) => Split::parse(spec, seed),
+        Some(spec) => Ok(Split::parse(spec, seed)?),
     }
 }
 
@@ -2305,89 +2075,6 @@ mod tests {
         );
         // 已带 .db 的不叠加
         assert_eq!(collect_dest(None, &g("data/md.db", "")), PathBuf::from("data/md.db"));
-    }
-
-    #[test]
-    fn a_composition_is_rendered_for_the_mismatch_message() {
-        let syms: Vec<String> = ["O", "Al", "O", "Zn", "O"].iter().map(|s| s.to_string()).collect();
-        assert_eq!(formula_of(&syms), "Al1O3Zn1");
-    }
-    fn split_of(spec: &str) -> Split {
-        Split::parse(spec, DEFAULT_SEED).unwrap()
-    }
-
-    #[test]
-    fn a_split_partitions_every_frame_exactly_once() {
-        let [tr, va, te] = split_of("7:2:1").parts(20, Path::new("x")).unwrap();
-        assert_eq!((tr.len(), va.len(), te.len()), (14, 4, 2));
-        let mut all: Vec<usize> = tr.iter().chain(&va).chain(&te).copied().collect();
-        all.sort_unstable();
-        assert_eq!(all, (0..20).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn each_part_keeps_trajectory_order() {
-        // 成员是随机抽的,但每部分内部按帧序排列 —— 同 seed 下产物逐字节可复现
-        let [tr, va, te] = split_of("2:1:1").parts(40, Path::new("x")).unwrap();
-        for part in [&tr, &va, &te] {
-            assert!(part.windows(2).all(|w| w[0] < w[1]), "{part:?}");
-        }
-    }
-
-    #[test]
-    fn a_split_is_not_the_tail_of_the_trajectory() {
-        // 直接切尾巴的话 test 会全是最后几帧;抽样必须先打乱
-        let [_, _, te] = split_of("3:0:1").parts(40, Path::new("x")).unwrap();
-        assert!(te.iter().any(|&i| i < 30), "test set looks like a tail: {te:?}");
-    }
-
-    #[test]
-    fn a_ratio_too_small_to_reach_one_frame_still_gets_one() {
-        // 给了比例却拿到 0 帧,等于静默地没有验证集
-        let [tr, va, _] = split_of("99:1:0").parts(20, Path::new("x")).unwrap();
-        assert_eq!(va.len(), 1);
-        assert_eq!(tr.len(), 19);
-    }
-
-    #[test]
-    fn a_split_that_leaves_no_training_frames_is_an_error() {
-        let e = split_of("0.001:1:1").parts(4, Path::new("sysA")).unwrap_err();
-        let msg = format!("{e:#}");
-        assert!(msg.contains("sysA"), "{msg}");
-        // 续行符写成 `\\` 时消息里会多一个字面反斜杠和一段缩进
-        assert!(!msg.contains('\\') && !msg.contains("  "), "续行没有接好：{msg:?}");
-    }
-
-    #[test]
-    fn a_ratio_is_weights_not_fractions() {
-        // 8:1:1 与 80:10:10 是同一个划分 —— 用户不必凑成和为 1
-        let a = split_of("8:1:1").parts(100, Path::new("x")).unwrap();
-        let b = split_of("80:10:10").parts(100, Path::new("x")).unwrap();
-        assert_eq!(a[0].len(), b[0].len());
-        assert_eq!((a[0].len(), a[1].len(), a[2].len()), (80, 10, 10));
-    }
-
-    #[test]
-    fn two_fields_mean_train_and_test() {
-        // 9:1 的 1 是 test,不是 valid;每次运行都按名字打出各部分帧数,
-        // 解释错了第一行输出就看得见
-        let [tr, va, te] = split_of("9:1").parts(100, Path::new("x")).unwrap();
-        assert_eq!((tr.len(), va.len(), te.len()), (90, 0, 10));
-    }
-
-    #[test]
-    fn a_malformed_ratio_is_rejected_with_the_expected_shape() {
-        for bad in ["", "8", "8:1:1:1", "8:x:1", "8:-1:1", "0:0:0", "10:0:0"] {
-            let e = Split::parse(bad, DEFAULT_SEED).unwrap_err();
-            let msg = format!("{e:#}");
-            assert!(
-                msg.contains("--ratio"),
-                "{bad:?} produced an unhelpful message: {msg}"
-            );
-        }
-        assert!(Split::parse("8:1:1", DEFAULT_SEED).is_ok());
-        assert!(Split::parse(" 8 : 1 : 1 ", DEFAULT_SEED).is_ok());
-        assert!(Split::parse("0.8:0.1:0.1", DEFAULT_SEED).is_ok());
     }
 
     #[test]

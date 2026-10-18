@@ -11,7 +11,10 @@
 use std::collections::BTreeMap;
 
 use crate::network::TypeParams;
+use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::{Cell, Table, Trajectory};
+
+use super::filter::{FilterParams, FilterResult};
 
 use super::geometry::coordination_histogram;
 use crate::check;
@@ -194,9 +197,196 @@ pub fn cell_of(traj: &Trajectory, i: usize) -> Option<&Cell> {
     traj.frames.get(i)?.cell.as_ref()
 }
 
+/// The tables that answer "should I be filtering, and at what value".
+///
+/// A selection whose outcome swings with its cutoff is chosen by the cutoff
+/// rather than by the structure, and a minimum distance drawn from a smooth
+/// distribution has no outliers to remove — neither is visible from the funnel
+/// alone. Only the criteria that are switched on contribute a table.
+pub fn filter_diagnostics(
+    traj: &Trajectory,
+    r: &FilterResult,
+    params: &FilterParams,
+) -> ferro_core::Result<Vec<(String, Table)>> {
+    let mut out = Vec::new();
+    if params.oo_min > 0.0 {
+        let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
+        out.push(("min_oo".to_string(), distribution_table(&v, 16)));
+    }
+
+    let Some(rcut) = params.al6_rcut else { return Ok(out) };
+
+    let n6: Vec<usize> = r.verdicts.iter().filter_map(|x| x.n_al6).collect();
+    if !n6.is_empty() {
+        out.push(("al6".to_string(), count_histogram("n_al6", &n6)));
+    }
+
+    let mut cut = BTreeMap::new();
+    cut.insert(("Al".to_string(), "O".to_string()), rcut);
+    let tp = TypeParams::new(cut, Default::default());
+    let hist = pooled_coordination(traj, &tp, "Al")?;
+    if !hist.is_empty() {
+        // The cutoff differs from system to system (--al6 without a value), so it
+        // is recorded in the al6_rcut column of [inputs]
+        out.push(("al_cn".to_string(), coordination_table(&hist)));
+    }
+
+    // A sweep around the current cutoff: how steep it is is what this table is for
+    let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1).filter(|v| *v > 0.0).collect();
+    let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200)?;
+    out.push(("rcut_scan".to_string(), scan_table(&scan)));
+    Ok(out)
+}
+
+/// One row per frame of an AIMD run — step, temperature, energy, volume, density
+/// and the file the frame came from — with the run summary in the `#` metadata block.
+///
+/// The summary is an aggregate of the very columns below it, so it lives in the
+/// comment block rather than in a second file: `pandas.read_csv(..., comment="#")`
+/// gets the table, and a human reading the head of the file gets the summary.
+/// `sources` names the file of each frame, one entry per frame.
+pub fn frame_table(traj: &Trajectory, sources: &[String]) -> Table {
+    let n = traj.n_frames();
+    let mut frame_idx = Vec::with_capacity(n);
+    let mut steps = Vec::with_capacity(n);
+    let mut temps = Vec::with_capacity(n);
+    let mut energies = Vec::with_capacity(n);
+    let mut volumes = Vec::with_capacity(n);
+    let mut densities = Vec::with_capacity(n);
+
+    for (i, f) in traj.frames.iter().enumerate() {
+        frame_idx.push(i as f64);
+        // A missing value is NaN, rendered as an empty field. A 0 would say "step 0"
+        // where the truth is "this reader has no step number"
+        steps.push(f.step.map_or(f64::NAN, |s| s as f64));
+        temps.push(f.temperature.unwrap_or(f64::NAN));
+        energies.push(f.energy.unwrap_or(f64::NAN));
+        let (v, d) = match &f.cell {
+            // The volume is |det|, not the product of the diagonal: that holds for
+            // an orthogonal cell only and gives a silently wrong density otherwise
+            Some(c) => {
+                let v = c.volume();
+                (v, f.total_mass() / v * AMU_ANG3_TO_G_CM3)
+            }
+            None => (f64::NAN, f64::NAN),
+        };
+        volumes.push(v);
+        densities.push(d);
+    }
+
+    let mut t = Table::new();
+    for line in summary_lines(traj, &temps, &densities) {
+        t.meta_line(line);
+    }
+    t.push_num("frame", frame_idx);
+    t.push_num("step", steps);
+    t.push_num("temperature", temps);
+    t.push_num("energy", energies);
+    t.push_num("volume", volumes);
+    t.push_num("density", densities);
+    t.push_text("source", sources.to_vec());
+    t
+}
+
+/// The `#` block: what this run is, and the two quantities worth a glance.
+fn summary_lines(traj: &Trajectory, temps: &[f64], densities: &[f64]) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(first) = traj.first() else { return out };
+
+    let mut composition: Vec<String> = Vec::new();
+    for e in first.unique_elements() {
+        composition.push(format!("{e}{}", first.count_element(&e)));
+    }
+    out.push(format!("atoms = {}  ({})", first.n_atoms(), composition.join(" ")));
+    out.push(format!("frames = {}", traj.n_frames()));
+
+    if let Some(c) = &first.cell {
+        let [a, b, cc] = c.lengths();
+        let [al, be, ga] = c.angles();
+        out.push(format!(
+            "cell (frame 0) = a {a:.4}  b {b:.4}  c {cc:.4} Ang   \
+             alpha {al:.2}  beta {be:.2}  gamma {ga:.2} deg"
+        ));
+    }
+    if let Some(l) = mean_sd_line("temperature", temps, "K") {
+        out.push(l);
+    }
+    if let Some(l) = mean_sd_line("density", densities, "g/cm^3") {
+        out.push(l);
+    }
+    out
+}
+
+/// `mean +/- sd` over the finite values, or `None` when there are none.
+///
+/// Two-pass, as `ferro-analysis` does elsewhere: `<x^2> - <x>^2` loses most of its
+/// significant digits when the spread is small next to the mean, which is exactly
+/// the case for a thermostatted temperature.
+fn mean_sd_line(label: &str, values: &[f64], unit: &str) -> Option<String> {
+    let xs: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
+    if xs.is_empty() {
+        return None;
+    }
+    let mean = xs.iter().sum::<f64>() / xs.len() as f64;
+    let sd = if xs.len() > 1 {
+        (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (xs.len() - 1) as f64).sqrt()
+    } else {
+        0.0
+    };
+    Some(format!("{label} = {mean:.4} +/- {sd:.4} {unit}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn run_of(temps: &[Option<f64>], steps: &[Option<i64>]) -> Trajectory {
+        use ferro_core::{Atom, Frame};
+        use nalgebra::Vector3;
+        let mut t = Trajectory::new();
+        for (i, (temp, step)) in temps.iter().zip(steps).enumerate() {
+            let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+            let mut f = Frame::with_cell(cell, [true; 3]);
+            f.add_atom(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
+            f.add_atom(Atom::new("O", Vector3::new(1.0, 1.0, 1.0)));
+            f.energy = Some(-10.0 - i as f64);
+            f.temperature = *temp;
+            f.step = *step;
+            t.add_frame(f);
+        }
+        t
+    }
+
+    /// Missing scalars render as empty fields, never as zero.
+    #[test]
+    fn a_missing_scalar_is_empty_not_zero() {
+        let traj = run_of(&[Some(300.0), None], &[Some(1), None]);
+        let table = frame_table(&traj, &["a.out".into(), "a.out".into()]);
+        let step = table.column("step").unwrap();
+        assert_eq!(step.cell(0), "1.000000e0");
+        assert_eq!(step.cell(1), "", "a missing step must be an empty field, not 0");
+        let temp = table.column("temperature").unwrap();
+        assert_eq!(temp.cell(1), "", "a missing temperature must be an empty field, not 0");
+    }
+
+    /// The summary skips a quantity none of the frames carry.
+    #[test]
+    fn the_summary_omits_a_quantity_that_is_absent_everywhere() {
+        let traj = run_of(&[None, None], &[Some(1), Some(2)]);
+        let table = frame_table(&traj, &["a.out".into(), "a.out".into()]);
+        let meta = table.meta.join("\n");
+        assert!(meta.contains("atoms = 2"), "{meta}");
+        assert!(meta.contains("frames = 2"), "{meta}");
+        assert!(!meta.contains("temperature ="), "no temperature, so no made-up mean: {meta}");
+        assert!(meta.contains("density ="), "{meta}");
+    }
+
+    #[test]
+    fn the_sd_is_zero_for_a_constant_series_and_not_noise() {
+        let line = mean_sd_line("temperature", &[300.0, 300.0, 300.0], "K").unwrap();
+        assert_eq!(line, "temperature = 300.0000 +/- 0.0000 K");
+        assert!(mean_sd_line("x", &[f64::NAN], "K").is_none());
+    }
 
     #[test]
     fn distribution_of_only_non_finite_values_is_empty_not_a_panic() {
