@@ -109,7 +109,7 @@ fn main() -> Result<()> {
         }
         Command::Net(c) => {
             if cmd::net::wants_help(c) {
-                cmd::net::print_help();
+                help::print_net();
                 0
             } else {
                 cmd::net::run(c, &pair_args)?
@@ -172,10 +172,6 @@ mod help_sync {
     use clap::CommandFactory;
 
     const HELP_SRC: &str = include_str!("help.rs");
-    /// `ferro net` keeps its page next to the argv-stripping it needs, not in
-    /// `help.rs`. Left out of the scan it would be the one command the check
-    /// never sees — and it has 10 options.
-    const NET_SRC: &str = include_str!("cmd/net.rs");
 
     /// Which rich page belongs to which subcommand path.
     ///
@@ -199,7 +195,7 @@ mod help_sync {
         (&["convert"], "print_convert"),
         (&["info"], "print_info"),
         (&["bader"], "print_bader"),
-        (&["net"], "HELP_EXTRA"),
+        (&["net"], "print_net"),
         (&["dataset", "collect"], "print_dataset_collect"),
         (&["dataset", "filter"], "print_dataset_filter"),
         (&["dataset", "merge"], "print_dataset_merge"),
@@ -214,22 +210,18 @@ mod help_sync {
     const UNDOCUMENTED: &[(&[&str], &str)] =
         &[(&["traj", "gr"], "atom-c"), (&["traj", "gr"], "label-z")];
 
-    /// The body of `fn <name>(` up to the closing brace in column 0, or — for
-    /// `ferro net` — the `HELP_EXTRA` string constant in `cmd/net.rs`.
-    fn page(name: &str) -> &'static str {
-        if name == "HELP_EXTRA" {
-            let at = NET_SRC.find("const HELP_EXTRA").expect("cmd/net.rs has no HELP_EXTRA");
-            let rest = &NET_SRC[at..];
-            let end = rest.find("\";").map(|i| i + 2).unwrap_or(rest.len());
-            return &rest[..end];
-        }
+    /// The body of `fn <name>(` up to the closing brace in column 0, with the
+    /// shared option blocks it names (`{COMMON_OPTS}`, `{READ_OPTS}`) spelled out.
+    fn page(name: &str) -> String {
         let needle = format!("fn {name}() {{");
         let at = HELP_SRC
             .find(&needle)
             .unwrap_or_else(|| panic!("help.rs has no `{name}`; the PAGES table is stale"));
         let rest = &HELP_SRC[at..];
         let end = rest.find("\n}\n").unwrap_or(rest.len());
-        &rest[..end]
+        rest[..end]
+            .replace("{COMMON_OPTS}", ferro::help::COMMON_OPTS)
+            .replace("{READ_OPTS}", ferro::help::READ_OPTS)
     }
 
     fn subcommand(path: &[&str]) -> clap::Command {
@@ -267,6 +259,101 @@ mod help_sync {
                      if that is deliberate, add it to UNDOCUMENTED with the reason",
                     path.join(" ")
                 );
+            }
+        }
+    }
+
+    /// Each option of a page's `Parameters:` / `Common options:` section as one
+    /// block: its first line, starting with `-`, plus the indented continuation
+    /// lines below it. `Output:` lines such as `--type inspect  three files…` are
+    /// prose, not option rows.
+    fn option_blocks(text: &str) -> Vec<Vec<&str>> {
+        let mut blocks: Vec<Vec<&str>> = Vec::new();
+        let mut in_options = false;
+        for line in text.lines() {
+            let trimmed = line.trim_start();
+            let indent = line.len() - trimmed.len();
+            if indent == 0 && trimmed.ends_with(':') {
+                in_options = trimmed == "Parameters:" || trimmed == "Common options:";
+                blocks.push(Vec::new());
+                continue;
+            }
+            if !in_options {
+                continue;
+            }
+            if trimmed.starts_with('-') && indent <= 6 {
+                blocks.push(vec![line]);
+            } else if indent >= 20 && !trimmed.is_empty() {
+                if let Some(b) = blocks.last_mut() {
+                    b.push(line);
+                }
+            } else {
+                // 一个空行或段落标题结束当前块
+                blocks.push(Vec::new());
+            }
+        }
+        blocks.retain(|b| !b.is_empty());
+        blocks
+    }
+
+    /// Review E2-5: a page's `[x]` must be clap's default. `--qn` of `map chg-sdf`
+    /// said 2 while clap used 3; the option-name checks above cannot see that.
+    /// An option clap gives no default (`--ncore`, `--max-lag`) is not checked: its
+    /// `[all cores]` / `[N/2]` describes what the code does without one.
+    #[test]
+    fn every_default_on_a_page_is_clap_s_default() {
+        let same = |page: &str, clap: &str| {
+            page == clap
+                || matches!((page.parse::<f64>(), clap.parse::<f64>()), (Ok(a), Ok(b)) if a == b)
+        };
+        for (path, fname) in PAGES {
+            let cmd = subcommand(path);
+            for block in option_blocks(&page(fname)) {
+                let Some(long) = longs_in(block[0]).into_iter().next() else { continue };
+                let Some(arg) = cmd.get_arguments().find(|a| a.get_long() == Some(long.as_str()))
+                else {
+                    continue;
+                };
+                let defaults = arg.get_default_values();
+                let Some(clap) = defaults.first().map(|d| d.to_string_lossy().into_owned()) else {
+                    continue;
+                };
+                let written = block.iter().rev().find_map(|l| {
+                    let l = l.trim_end();
+                    let open = l.rfind("  [")?;
+                    l.ends_with(']').then(|| l[open + 3..l.len() - 1].to_string())
+                });
+                match written {
+                    Some(w) => assert!(
+                        same(&w, &clap),
+                        "{fname}: --{long} shows [{w}] but clap's default is {clap}"
+                    ),
+                    None => panic!("{fname}: --{long} has the default {clap} but its line shows none"),
+                }
+            }
+        }
+    }
+
+    /// Review E2-5: every subcommand is listed on the overview page of its group
+    /// (`ferro traj` lacked `bondlife`), and every group on `ferro`'s own page.
+    #[test]
+    fn every_subcommand_is_listed_on_its_overview() {
+        let listed = |page: &str, name: &str| {
+            page.lines().any(|l| l.split(|c: char| c.is_whitespace() || c == '|').any(|w| w == name))
+        };
+        let top = page("print_overview");
+        for group in super::Cli::command().get_subcommands() {
+            assert!(listed(&top, group.get_name()), "print_overview lacks `{}`", group.get_name());
+        }
+        for (group, fname) in [
+            ("traj", "print_traj_overview"),
+            ("map", "print_map_overview"),
+            ("dataset", "print_dataset_overview"),
+        ] {
+            let text = page(fname);
+            for sub in subcommand(&[group]).get_subcommands() {
+                assert!(listed(&text, sub.get_name()), "{fname} lacks `{}`", sub.get_name());
+                assert!(listed(&top, sub.get_name()), "print_overview lacks `{group} {}`", sub.get_name());
             }
         }
     }

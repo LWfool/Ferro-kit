@@ -1,3 +1,35 @@
+//! The rich help pages, printed when a command is typed without `-i`.
+//!
+//! One layout for every page: the option in columns 2–25, its description from column
+//! 26, and a default, when there is one, as `[x]` right-aligned to column 78. The
+//! options every trajectory command shares are written once, in [`COMMON_OPTS`]; a
+//! page names it as `{COMMON_OPTS}` and `main.rs::help_sync` checks the pages against
+//! clap — every option named, every `[x]` equal to clap's default.
+
+/// The reader options of every command that reads a trajectory file.
+macro_rules! read_opts {
+    () => {
+        "      --atom-style S      LAMMPS data input: atomic | charge | full (required)
+      --units U           Dump vx/fx units: real | metal (required if present)
+      --type-map M        Dump without element column: 1=Zr,2=O,..."
+    };
+}
+
+/// [`read_opts!`] as a value, for `convert` and `info`.
+pub const READ_OPTS: &str = read_opts!();
+
+/// The options of `CommonArgs`, shared by `traj`, `map` and `net`.
+pub const COMMON_OPTS: &str = concat!(
+    "  -i, --input  FILE...    Input trajectory file(s); globs allowed (quote them)
+  -o, --output DIR        Output directory                       [current dir]
+      --mkdir             Create -o without asking (needed with no terminal)
+  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
+      --last-n N          Use only the last N frames
+      --ncore  N          Parallel threads                         [all cores]
+",
+    read_opts!()
+);
+
 /// `ferro convert` with no `-i`: the read/write format matrix.
 pub fn print_convert() {
     println!(
@@ -11,13 +43,11 @@ Parameters:
   -o, --output PATH       Output file (format from its name), or a directory
                           when --format is given. Missing directories are created
       --format EXT        Write EXT (cif, vasp, extxyz, ...) into the -o directory
-      --start  N          First frame to take      (0-based, inclusive) [0]
-      --end    N          Last frame to take       (0-based, INCLUSIVE) [last]
-      --stride N          Take every Nth frame within [start, end]      [1]
+      --start  N          First frame to take (0-based, inclusive)         [0]
+      --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
+      --stride N          Take every Nth frame within [start, end]         [1]
       --number N          Take this many frames, spread evenly, both ends kept
-      --atom-style S      LAMMPS data input: atomic | charge | full (required)
-      --units U           Dump vx/fx units: real | metal (required if present)
-      --type-map M        Dump without element column: 1=Zr,2=O,...
+{READ_OPTS}
   -h, --help              Short parameter table (this page adds the formats)
  Formats -i / -o accept, recognised by file name:
 {}
@@ -49,9 +79,7 @@ pub fn print_info() {
 
 Parameters:
   -i, --input  FILE       Input file (format from its name)
-      --atom-style S      LAMMPS data input: atomic | charge | full (required)
-      --units U           Dump vx/fx units: real | metal (required if present)
-      --type-map M        Dump without element column: 1=Zr,2=O,...
+{READ_OPTS}
   -h, --help              Short parameter table
 
 Output:
@@ -81,11 +109,12 @@ Parameters:
   -m, --method NAME       ongrid (cheapest, staircased basins) | neargrid
                           (accurate on ordinary cells) | offgrid (interpolated,
                           slower, no grid bias) | weight (Yu-Trinkle, for
-                          strongly skewed cells)                   [neargrid]
-  -r, --refine INT        Edge refinement: -1 auto, -2 single pass, N passes [-1]
-  -v, --vacval FLOAT      Vacuum density threshold [e/Å³]             [1e-3]
-  -o, --output DIR        Where the reports go    [the input's own directory]
-  -s, --suffix SUFFIX     Tag -> bader_ACF_<stem>_<suffix>.dat
+                          strongly skewed cells)                    [neargrid]
+  -r, --refine INT        Edge refinement: -1 auto, -2 single pass, N passes
+                                                                          [-1]
+  -v, --vacval FLOAT      Vacuum density threshold [e/Å³]               [1e-3]
+  -o, --output DIR        Where the reports go     [the input's own directory]
+  -s, --suffix SUFFIX     Batch tag, the last segment of every report name
       --mkdir             Create -o without asking (needed with no terminal)
   -h, --help              Short parameter table
 
@@ -150,9 +179,11 @@ Conventions:
   analysed on its own and the results stack into ONE csv carrying a `file`
   column; a failed input is skipped and the exit code is 1.
   -o is a DIRECTORY for the commands that write several products, the output
-  FILE for `convert` (a directory with --format). -s tags a batch:
-    <-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
-  A command typed without -i prints its own page; -h gives the short table.
+  FILE for `convert` (a directory with --format). Every product is named
+    <-o dir>/<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>
+  where <input> appears on per-input products (map, bader, net --export-traj)
+  and -s gives <suffix>. A command typed without -i prints its own page; -h
+  gives the short table.
 
 Full documentation:  ferro doc cli-reference"#,
         env!("CARGO_PKG_VERSION")
@@ -176,16 +207,14 @@ Commands:
   vacf      Velocity autocorrelation function + Green-Kubo diffusion
   rotcorr   Rotational correlation C2(t) for molecular bond vectors
   vanhove   Van Hove self-correlation Gs(r, tau)
+  bondlife  Bond lifetimes + bond formation / breaking per frame
 
 Common options:
-  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output DIR      Write every product here; --mkdir creates it unasked
-  -s, --suffix SUFFIX   Batch tag -> <command>[_<table>][_<label>]_<suffix>.csv
-      --last-n N        Use only the last N frames of the trajectory
-      --ncore  N        Parallel threads (default: all cores)
-      --atom-style S    LAMMPS data input: atomic | charge | full (required)
-      --units U         Dump vx/fx units: real | metal (required if present)
-      --type-map M      Dump without element column: 1=Zr,2=O,...
+{COMMON_OPTS}
+
+Output:
+  One stacked csv per run, <command>[_<table>][_<selection>][_<suffix>].csv,
+  with a `file` column naming the input of each row.
 
 Selecting types (gr / angle only):
   -a -b -c by element (-a P -b O), -x -y -z by site label (-x P_2 -y O_b); the
@@ -212,14 +241,7 @@ Commands:
   chg-sdf   Charge-density cluster SDF from QE pp.x cube files (--cubes, not -i)
 
 Common options:
-  -i, --input  FILE...  Input trajectory file(s); glob patterns allowed (quote them)
-  -o, --output DIR      Write the cubes here; --mkdir creates it unasked
-  -s, --suffix SUFFIX   Batch tag appended to each cube name (density_<stem>_<suffix>.cube)
-      --last-n N        Use only the last N frames
-      --ncore  N        Parallel threads (default: all cores)
-      --atom-style S    LAMMPS data input: atomic | charge | full (required)
-      --units U         Dump vx/fx units: real | metal (required if present)
-      --type-map M      Dump without element column: 1=Zr,2=O,...
+{COMMON_OPTS}
 
 Output:
   One 3-D grid file per input, not a stacked table — nothing here stacks. The
@@ -243,17 +265,11 @@ Parameters:
                           around each P; omit both pairs for every pair
   -x LABEL -y LABEL       Select by site label: -x P_2 -y O_b. SINGLE frame
                           only; excludes -a/-b. Use --last-n 1
-  --r-min  FLOAT          Min cutoff radius [Å]                     [0.001]
-  --r-max  FLOAT          Max cutoff radius [Å]                    [10.005]
-                          (clamped to half the smallest interplanar spacing)
-  --dr     FLOAT          Histogram bin width [Å]                   [0.002]
-  --last-n INT            Use only the last N frames
-  --ncore  INT            Parallel threads                    [all cores]
-  -o DIR                  Output directory; --mkdir creates it unasked
-  -s SUFFIX               Batch tag  -> gr_<pair>_<suffix>.csv
-  --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --units U               Dump vx/fx units: real | metal (required if present)
-  --type-map M            Dump without element column: 1=Zr,2=O,...
+      --r-min  FLOAT      Min cutoff radius [Å]                        [0.001]
+      --r-max  FLOAT      Max cutoff radius [Å], clamped to half the smallest
+                          interplanar spacing                         [10.005]
+      --dr     FLOAT      Histogram bin width [Å]                      [0.002]
+{COMMON_OPTS}
 
 Output:
   gr_<pair>[_<suffix>].csv, long format: file pair r g_r cn_r
@@ -277,19 +293,13 @@ pub fn print_sq() {
   selection: EVERY pair is written, always. Filter columns in pandas.
 
 Parameters:
-  --q-min      FLOAT      Min q [Å⁻¹]                                 [0.1]
-  --q-max      FLOAT      Max q [Å⁻¹]                                [25.0]
-  --dq         FLOAT      q bin width [Å⁻¹]                          [0.02]
-  --weighting  ENUM       none | xrd | neutron | both                [both]
-  --r-max      FLOAT      g(r) cutoff [Å]                          [10.005]
-  --dr         FLOAT      g(r) bin width [Å]                        [0.002]
-  --last-n     INT        Use only the last N frames
-  --ncore      INT        Parallel threads (used in the g(r) step)
-  -o DIR                  Output directory; --mkdir creates it unasked
-  -s SUFFIX               Batch tag -> sq_<suffix>.csv
-  --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --units U               Dump vx/fx units: real | metal (required if present)
-  --type-map M            Dump without element column: 1=Zr,2=O,...
+      --q-min      FLOAT  Min q [Å⁻¹]                                    [0.1]
+      --q-max      FLOAT  Max q [Å⁻¹]                                   [25.0]
+      --dq         FLOAT  q bin width [Å⁻¹]                             [0.02]
+      --weighting  ENUM   none | xrd | neutron | both                   [both]
+      --r-max      FLOAT  g(r) cutoff [Å]                             [10.005]
+      --dr         FLOAT  g(r) bin width [Å]                           [0.002]
+{COMMON_OPTS}
 
 Output:
   sq[_<suffix>].csv, WIDE format, one row per (file, q):
@@ -314,19 +324,13 @@ pub fn print_msd() {
   TOR scheme (NPT-safe).
 
 Parameters:
-  --dt        FLOAT      Time between frames [fs]       (required)
-  --max-lag   INT        Longest lag [frames], 1..N-1   default: N/2
-  --elements  Fe,O,...   Track only these elements      default: all
-  --fit-range FMIN,FMAX  Linear-fit window as fractions of the lag axis
-                         (0..max-lag); reports D = slope/6, its error
-                         d_err and R²
-  --last-n    INT        Use only the last N frames
-  --ncore     INT        Parallel threads
-  -o DIR                 Output directory; --mkdir creates it unasked
-  -s SUFFIX              Batch tag -> msd_<elements>_<suffix>.csv
-  --atom-style S        LAMMPS data input: atomic | charge | full (required)
-  --units U             Dump vx/fx units: real | metal (required if present)
-  --type-map M          Dump without element column: 1=Zr,2=O,...
+      --dt        FLOAT   Time between frames [fs] (required)
+      --max-lag   INT     Longest lag [frames], 1..N-1                   [N/2]
+      --elements  Fe,O    Track only these elements                      [all]
+      --fit-range A,B     Linear-fit window as fractions of the lag axis
+                          (0..max-lag); reports D = slope/6, its error
+                          d_err and R²
+{COMMON_OPTS}
 
 Output:
   msd_<elements>[_<suffix>].csv, elements SORTED so one set has one name
@@ -350,25 +354,19 @@ pub fn print_angle() {
   angles, not 12.
 
 Parameters:
-  -a ELEM -b ELEM -c ELEM  Triplet by element,    B is the centre (all three
-                           are required; excludes -x/-y/-z)
-  -x LBL  -y LBL  -z LBL   Triplet by site label, Y is the centre
-  --r-cut-ab  FLOAT       End-A-to-centre-B cutoff [Å]                 [2.3]
-  --r-cut-bc  FLOAT       End-C-to-centre-B cutoff [Å]                 [2.3]
+  -a ELEM -b ELEM -c ELEM Triplet by element, B is the centre (all three are
+                          required; excludes -x/-y/-z)
+  -x LBL  -y LBL  -z LBL  Triplet by site label, Y is the centre
+      --r-cut-ab  FLOAT   End-A-to-centre-B cutoff [Å]                   [2.3]
+      --r-cut-bc  FLOAT   End-C-to-centre-B cutoff [Å]                   [2.3]
                           A is what -a/-x names, C what -c/-z names. Without a
                           named triplet both fall back to canonical (Z, symbol)
                           order; equal end types take min(ab, bc).
-  --angle-min FLOAT       Histogram lower edge [°]                     [0.0]
-  --angle-max FLOAT       Histogram upper edge [°]                   [180.0]
+      --angle-min FLOAT   Histogram lower edge [°]                       [0.0]
+      --angle-max FLOAT   Histogram upper edge [°]                     [180.0]
                           Angles outside the window are DISCARDED, not hidden.
-  --d-angle   FLOAT       Histogram bin width [°]                      [0.1]
-  --last-n    INT         Use only the last N frames
-  --ncore     INT         Parallel threads                       [all cores]
-  -o DIR                  Output directory; --mkdir creates it unasked
-  -s SUFFIX               Batch tag -> angle_<triplet>_<suffix>.csv
-  --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --units U               Dump vx/fx units: real | metal (required if present)
-  --type-map M            Dump without element column: 1=Zr,2=O,...
+      --d-angle   FLOAT   Histogram bin width [°]                        [0.1]
+{COMMON_OPTS}
 
 Output:
   angle_<triplet>[_<suffix>].csv, long format: file triplet theta count p
@@ -395,16 +393,10 @@ pub fn print_vacf() {
   Needs velocities in the input file.
 
 Parameters:
-  --dt       FLOAT      Time between frames [fs]      (required)
-  --max-lag  INT        Longest lag [frames], 1..N-1  default: N/2
-  --elements Fe,O,...   Include only these elements    default: all
-  --last-n   INT        Use only the last N frames
-  --ncore    INT        Parallel threads               default: all cores
-  -o DIR                Output directory; --mkdir creates it unasked
-  -s SUFFIX             Batch tag -> vacf_<elements>_<suffix>.csv
-  --atom-style S        LAMMPS data input: atomic | charge | full (required)
-  --units U             Dump vx/fx units: real | metal (required if present)
-  --type-map M          Dump without element column: 1=Zr,2=O,...
+      --dt        FLOAT   Time between frames [fs] (required)
+      --max-lag   INT     Longest lag [frames], 1..N-1                   [N/2]
+      --elements  Fe,O    Include only these elements                    [all]
+{COMMON_OPTS}
 
 Output:
   vacf_<elements>[_<suffix>].csv, elements sorted; vacf_all.csv without
@@ -427,24 +419,18 @@ pub fn print_rotcorr() {
   and --neighbor are required: they define the bond direction.
 
 Parameters:
-  --center    ELEM    Central atom element (required)   e.g. O
-  --neighbor  ELEM    Neighbor atom element (required)  e.g. H
-  --r-cut     FLOAT   Bond search cutoff [Å]            default: 1.2
-  --vector    MODE    sum  = sum of the centre's bonds, found per frame
-                      bond = each bond within --r-cut in frame 0, followed
-                             by atom identity (gmx rotacf -d); use it for
-                             tetrahedra, whose summed bonds cancel
-                                                        default: sum
-  --legendre  1|2     P_l order of the correlation      default: 2
-  --dt        FLOAT   Time between frames [fs]          (required)
-  --max-lag   INT     Longest lag [frames], 1..N-1      default: N/2
-  --last-n    INT     Use only the last N frames
-  --ncore     INT     Parallel threads                  default: all cores
-  -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> rotcorr_<centre>-<neighbour>_<suffix>.csv
-  --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --units U           Dump vx/fx units: real | metal (required if present)
-  --type-map M        Dump without element column: 1=Zr,2=O,...
+      --center    ELEM    Central atom element, e.g. O (required)
+      --neighbor  ELEM    Neighbour atom element, e.g. H (required)
+      --r-cut     FLOAT   Bond search cutoff [Å]                         [1.2]
+      --vector    MODE    sum  = sum of the centre's bonds, found per frame
+                          bond = each bond within --r-cut in frame 0,
+                                 followed by atom identity (gmx rotacf -d);
+                                 use it for tetrahedra, whose summed bonds
+                                 cancel                                  [sum]
+      --legendre  1|2     P_l order of the correlation                     [2]
+      --dt        FLOAT   Time between frames [fs] (required)
+      --max-lag   INT     Longest lag [frames], 1..N-1                   [N/2]
+{COMMON_OPTS}
 
 Output:
   rotcorr_<centre>-<neighbour>[_<suffix>].csv — never falls back to "all",
@@ -468,20 +454,14 @@ pub fn print_bondlife() {
   throughout), plus bonds formed and broken in every frame.
 
 Parameters:
-  --center        ELEM    Central atom element (required)        e.g. Si
-  --neighbor      ELEM    Neighbour element (required; may equal --center)
-  --r-bond        FLOAT   A free pair bonds at r <= r-bond [Å] (required)
-  --r-break       FLOAT   A bond survives while r <= r-break [Å]  default: --r-bond
-  --intermittency INT     Fill breaks of <= INT frames (S_C, events) default: 0
-  --dt            FLOAT   Time between frames [fs]               (required)
-  --max-lag       INT     Longest lag [frames], 1..N-1           default: N/2
-  --last-n        INT     Use only the last N frames
-  --ncore         INT     Parallel threads                       default: all cores
-  -o DIR                  Output directory; --mkdir creates it unasked
-  -s SUFFIX               Batch tag -> bondlife_<centre>-<neighbour>_<suffix>.csv
-  --atom-style S          LAMMPS data input: atomic | charge | full (required)
-  --units U               Dump vx/fx units: real | metal (required if present)
-  --type-map M            Dump without element column: 1=Zr,2=O,...
+      --center    ELEM    Central atom element, e.g. Si (required)
+      --neighbor  ELEM    Neighbour element; may equal --center (required)
+      --r-bond    FLOAT   A free pair bonds at r <= r-bond [Å] (required)
+      --r-break   FLOAT   A bond survives while r <= r-break [Å]    [--r-bond]
+      --intermittency INT Fill breaks of <= INT frames (S_C, events)       [0]
+      --dt        FLOAT   Time between frames [fs] (required)
+      --max-lag   INT     Longest lag [frames], 1..N-1                   [N/2]
+{COMMON_OPTS}
 
 Output:
   bondlife_<C>-<N>.csv          time, c_int, s_cont
@@ -504,19 +484,13 @@ pub fn print_vanhove() {
   written as the radial density P(r) = 4πr²·Gs [1/Å], ∫P dr = 1.
 
 Parameters:
-  --tau      INT        Lag time in frames              default: N/2
-  --dt       FLOAT      Time between frames [fs]       (required)
-  --shift    INT        Time-origin stride              default: 1
-  --r-max    FLOAT      Max displacement [Å]           default: 10.0
-  --dr       FLOAT      Bin width [Å]                  default: 0.01
-  --elements Fe,O,...   Track only these elements       default: all
-  --last-n   INT        Use only the last N frames
-  --ncore    INT        Parallel threads                default: all cores
-  -o DIR                Output directory; --mkdir creates it unasked
-  -s SUFFIX             Batch tag -> vanhove_<elements>_<suffix>.csv
-  --atom-style S        LAMMPS data input: atomic | charge | full (required)
-  --units U             Dump vx/fx units: real | metal (required if present)
-  --type-map M          Dump without element column: 1=Zr,2=O,...
+      --tau       INT     Lag time in frames                             [N/2]
+      --dt        FLOAT   Time between frames [fs] (required)
+      --shift     INT     Time-origin stride                               [1]
+      --r-max     FLOAT   Max displacement [Å]                          [10.0]
+      --dr        FLOAT   Bin width [Å]                                 [0.01]
+      --elements  Fe,O    Track only these elements                      [all]
+{COMMON_OPTS}
 
 Output:
   vanhove_<elements>[_<suffix>].csv (columns r, p_r), elements sorted;
@@ -541,21 +515,15 @@ pub fn print_cube_density() {
   [atoms/Å³] over time.
 
 Parameters:
-  --nx INT            Grid points along a axis    default: 50
-  --ny INT            Grid points along b axis    default: 50
-  --nz INT            Grid points along c axis    default: 50
-  --elements Fe,O     Count only these elements   default: all
-  --last-n   INT      Use only the last N frames
-  --ncore    INT      Parallel threads
-  -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> density_<stem>_<suffix>.cube
-  --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --units U           Dump vx/fx units: real | metal (required if present)
-  --type-map M        Dump without element column: 1=Zr,2=O,...
+      --nx        INT     Grid points along the a axis                    [50]
+      --ny        INT     Grid points along the b axis                    [50]
+      --nz        INT     Grid points along the c axis                    [50]
+      --elements  Fe,O    Count only these elements                      [all]
+{COMMON_OPTS}
 
 Output:
-  density_<stem>.cube, one per input — a Gaussian cube VESTA and VMD read
-  directly
+  density_<stem>[_<suffix>].cube, one per input — a Gaussian cube VESTA and
+  VMD read directly
 
 Examples:
   ferro map density -i traj.dump
@@ -572,20 +540,14 @@ pub fn print_cube_velocity() {
   Time-averaged speed |v| per voxel [Å/fs]. Needs velocities in the input.
 
 Parameters:
-  --nx INT            Grid points along a axis    default: 50
-  --ny INT            Grid points along b axis    default: 50
-  --nz INT            Grid points along c axis    default: 50
-  --elements Fe,O     Include only these elements default: all
-  --last-n   INT      Use only the last N frames
-  --ncore    INT      Parallel threads
-  -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> velocity_<stem>_<suffix>.cube
-  --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --units U           Dump vx/fx units: real | metal (required if present)
-  --type-map M        Dump without element column: 1=Zr,2=O,...
+      --nx        INT     Grid points along the a axis                    [50]
+      --ny        INT     Grid points along the b axis                    [50]
+      --nz        INT     Grid points along the c axis                    [50]
+      --elements  Fe,O    Include only these elements                    [all]
+{COMMON_OPTS}
 
 Output:
-  velocity_<stem>.cube, one per input
+  velocity_<stem>[_<suffix>].cube, one per input
 
 Examples:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80
@@ -602,24 +564,18 @@ pub fn print_cube_force() {
   Time-averaged force magnitude |f| per voxel [eV/Å]. Needs forces in the input.
 
 Parameters:
-  --nx INT            Grid points along a axis    default: 50
-  --ny INT            Grid points along b axis    default: 50
-  --nz INT            Grid points along c axis    default: 50
-  --elements Fe,O     Include only these elements default: all
-  --last-n   INT      Use only the last N frames
-  --ncore    INT      Parallel threads
-  -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> force_<stem>_<suffix>.cube
-  --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --units U           Dump vx/fx units: real | metal (required if present)
-  --type-map M        Dump without element column: 1=Zr,2=O,...
+      --nx        INT     Grid points along the a axis                    [50]
+      --ny        INT     Grid points along the b axis                    [50]
+      --nz        INT     Grid points along the c axis                    [50]
+      --elements  Fe,O    Include only these elements                    [all]
+{COMMON_OPTS}
 
 Output:
-  force_<stem>.cube, one per input
+  force_<stem>[_<suffix>].cube, one per input
 
 Examples:
   ferro map force -i traj.dump --elements O
-  ferro map force -i traj.extxyz --nx 80 --ny 80 --nz 80 -s force_O -o maps
+  ferro map force -i traj.extxyz --nx 80 --ny 80 --nz 80 -s O -o maps
 
 Full documentation:  ferro doc map force"#
     );
@@ -634,21 +590,15 @@ pub fn print_cube_radius() {
   and binary, unlike the broadened count `map density` makes.
 
 Parameters:
-  --nx      INT       Grid points along a axis    default: 50
-  --ny      INT       Grid points along b axis    default: 50
-  --nz      INT       Grid points along c axis    default: 50
-  --radius  FLOAT     Hard-sphere cutoff [Å]      default: 0.7
-  --elements Fe,O     Include only these elements default: all
-  --last-n  INT       Use only the last N frames
-  --ncore   INT       Parallel threads
-  -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> radius_<stem>_<suffix>.cube
-  --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --units U           Dump vx/fx units: real | metal (required if present)
-  --type-map M        Dump without element column: 1=Zr,2=O,...
+      --nx        INT     Grid points along the a axis                    [50]
+      --ny        INT     Grid points along the b axis                    [50]
+      --nz        INT     Grid points along the c axis                    [50]
+      --radius    FLOAT   Hard-sphere cutoff [Å]                         [0.7]
+      --elements  Fe,O    Include only these elements                    [all]
+{COMMON_OPTS}
 
 Output:
-  radius_<stem>.cube, one per input
+  radius_<stem>[_<suffix>].cube, one per input
 
 Examples:
   ferro map radius -i traj.dump --elements Li --radius 0.7
@@ -667,28 +617,23 @@ pub fn print_cube_sdf() {
   composition form one family, referenced to the first one seen.
 
 Parameters:
-  --qn         INT    Target Qn cluster level (0/1/2/3)       default: 3
-  --former     ELEM   Network-former element                   default: P
-  --ligand     ELEM   Ligand (bridging) element                default: O
-  --cutoff-fl  FLOAT  Former-ligand bond cutoff [Å]           default: 2.4
-  --modifier   ELEM   Modifier element (optional, e.g. Zn)
-  --cutoff-ml  FLOAT  Modifier-ligand cutoff [Å]              default: 2.8
-  --grid-res   FLOAT  Voxel size [Å]                          default: 0.1
-  --sigma      FLOAT  Gaussian broadening sigma [voxels]       default: 1.5
-  --padding    FLOAT  Grid boundary padding [Å]               default: 3.0
-  --rmsd-warn  FLOAT  RMSD warning threshold [Å]              default: 0.5
-  --last-n     INT    Use only the last N frames
-  --ncore      INT    Parallel threads
-  -o DIR              Output directory; --mkdir creates it unasked
-  -s SUFFIX           Batch tag -> sdf_<type>_<stem>_<suffix>.cube
-  --atom-style S      LAMMPS data input: atomic | charge | full (required)
-  --units U           Dump vx/fx units: real | metal (required if present)
-  --type-map M        Dump without element column: 1=Zr,2=O,...
+      --qn        INT     Target Qn cluster level (0/1/2/3)                [3]
+      --former    ELEM    Network-former element                           [P]
+      --ligand    ELEM    Ligand (bridging) element                        [O]
+      --cutoff-fl FLOAT   Former-ligand bond cutoff [Å]                  [2.4]
+      --modifier  ELEM    Modifier element (optional, e.g. Zn)
+      --cutoff-ml FLOAT   Modifier-ligand cutoff [Å]                     [2.8]
+      --grid-res  FLOAT   Voxel size [Å]                                 [0.1]
+      --sigma     FLOAT   Gaussian broadening sigma [voxels]             [1.5]
+      --padding   FLOAT   Grid boundary padding [Å]                      [3.0]
+      --rmsd-warn FLOAT   RMSD warning threshold [Å]                     [0.5]
+{COMMON_OPTS}
 
 Output:
-  sdf_<type>_<stem>.cube per atom type, or sdf_fam<N>_<type>_<stem>.cube with
-  more than one family. Types are P0..P3 (former Qn), Of/On/Ob (free /
-  non-bridging / bridging ligand) and the element symbol for a modifier.
+  sdf_<type>_<stem>[_<suffix>].cube per atom type, or
+  sdf_fam<N>_<type>_<stem>.cube with more than one family. Types are P0..P3
+  (former Qn), Of/On/Ob (free / non-bridging / bridging ligand) and the
+  element symbol for a modifier.
 
 Examples:
   ferro map sdf -i traj.dump --qn 3
@@ -708,23 +653,25 @@ pub fn print_cube_chg_sdf() {
   cubes must share one grid resolution, i.e. one QE cutoff.
 
 Parameters:
-  --cubes      FILE...  QE pp.x cube files (required, one per frame)
-  --qn         INT      Target Qn cluster level (0/1/2/3)      default: 2
-  --former     ELEM     Network-former element                  default: P
-  --ligand     ELEM     Ligand (bridging) element               default: O
-  --cutoff-fl  FLOAT    Former-ligand bond cutoff [Å]          default: 2.4
-  --modifier   ELEM     Modifier element (optional, e.g. Zn)
-  --cutoff-ml  FLOAT    Modifier-ligand cutoff [Å]             default: 2.8
-  --chg-padding FLOAT   Sub-grid boundary margin [Å]           default: 6.0
-  --rmsd-warn  FLOAT    RMSD warning threshold [Å]             default: 0.5
-  --ncore      INT      Parallel threads
-  -o DIR                Output directory; --mkdir creates it unasked
-  -s SUFFIX             Batch tag -> chg_sdf_Q<n>_<suffix>.cube
+      --cubes     FILE... QE pp.x cube files, one per frame (required)
+      --qn        INT     Target Qn cluster level (0/1/2/3)                [3]
+      --former    ELEM    Network-former element                           [P]
+      --ligand    ELEM    Ligand (bridging) element                        [O]
+      --cutoff-fl FLOAT   Former-ligand bond cutoff [Å]                  [2.4]
+      --modifier  ELEM    Modifier element (optional, e.g. Zn)
+      --cutoff-ml FLOAT   Modifier-ligand cutoff [Å]                     [2.8]
+      --chg-padding FLOAT Sub-grid boundary margin [Å]                   [6.0]
+      --rmsd-warn FLOAT   RMSD warning threshold [Å]                     [0.5]
+      --ncore     N       Parallel threads                         [all cores]
+  -o, --output DIR        Output directory                       [current dir]
+  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
+      --mkdir             Create -o without asking (needed with no terminal)
 
 Output:
-  chg_sdf_Q<n>.cube (chg_sdf_fam<N>_Q<n>.cube with more than one family) —
-  ONE cube from all the inputs together, unlike the rest of `map`, so the name
-  has no input stem. Values follow the ChargeGrid convention (rho_phys * V_cell).
+  chg_sdf_Q<n>[_<suffix>].cube (chg_sdf_fam<N>_Q<n>.cube with more than one
+  family) — ONE cube from all the inputs together, unlike the rest of `map`,
+  so the name has no input stem. Values follow the ChargeGrid convention
+  (rho_phys * V_cell).
 
 Examples:
   ferro map chg-sdf --cubes frame*.cube --qn 2 --former P --ligand O -s avg
@@ -733,6 +680,49 @@ Examples:
 Full documentation:  ferro doc map chg-sdf"#
     );
 }
+
+// ─── ferro net ──────────────────────────────────────────────────────────────
+
+pub fn print_net() {
+    println!(
+        r#"ferro net — Glass network topology
+
+  Classifies every atom as former, ligand or modifier from the pair cutoffs you
+  give, and reports six tables. At least one pair is required.
+
+Parameters:
+  --<Former>-<Ligand>=<cutoff>
+                          Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1, or auto:
+                          the first minimum of that pair's g(r), taken from
+                          each input separately. At least one is required
+      --modifier E,E      Elements counted for coordination only: no bridging
+                          count, no part in ligand classification. Give each a
+                          cutoff too
+      --qn E,E            Formers reported as a Qn speciation. REPLACES the
+                          default list (B,P,Si); every other former is
+                          described by its coordination number
+      --export-traj [FMT] Also write the classified trajectory, one file per
+                          input; FMT is lammpstrj or extxyz        [lammpstrj]
+{COMMON_OPTS}
+
+Output:
+  network_<table>[_<suffix>].csv, six stacked tables with a `file` column:
+  composition qn qn_partner ligand_type coordination linkage
+  (the two qn tables only when some former is a Qn element)
+  network_types_<input stem>[_<suffix>].<ext> with --export-traj
+  With auto, each input's cutoffs and g(min) are in the [inputs] block
+
+Examples:
+  ferro net -i traj.lammpstrj --P-O=2.4
+  ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
+  ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan --export-traj
+  ferro net -i 'runs/*/prod.lammpstrj' --P-O=auto --Al-O=auto -o scan
+
+Full documentation:  ferro doc net"#
+    );
+}
+
+// ─── ferro dataset ──────────────────────────────────────────────────────────
 
 pub fn print_dataset_overview() {
     println!(
@@ -765,9 +755,9 @@ Parameters:
   -o, --output DIR        Output root; default is beside each input
       --format FMT        Read the inputs as this format instead of trusting
                           the banner. cp2k/md | cp2k/sp | vasp/outcar |
-                          vasp/xml | qe/pw                    [from banner]
+                          vasp/xml | qe/pw                       [from banner]
       --type   WHAT       deepmd (DeePMD system) | inspect (diagnostics only)
-                                                                    [deepmd]
+                                                                      [deepmd]
       --mkdir             Create -o without asking (needed with no terminal)
       --overwrite         Allow writing into an existing non-empty directory
 
@@ -799,20 +789,20 @@ Parameters:
   -o, --output DIR        Output root; each system is rebuilt under its path
                           relative to -i. OMIT for a read-only run
       --mkdir             Create -o without asking (needed with no terminal)
-  -f, --f-max  EV_PER_A   Largest force magnitude allowed             [20.0]
-      --s-max  GPA        Largest |stress component| allowed          [10.0]
-      --start  N          First SURVIVING frame to take (0-based)        [0]
-      --end    N          Last SURVIVING frame (0-based, INCLUSIVE)   [last]
-      --stride N          Take every Nth surviving frame                 [1]
+  -f, --f-max  EV_PER_A   Largest force magnitude allowed               [20.0]
+      --s-max  GPA        Largest |stress component| allowed            [10.0]
+      --start  N          First SURVIVING frame to take (0-based)          [0]
+      --end    N          Last SURVIVING frame (0-based, INCLUSIVE)     [last]
+      --stride N          Take every Nth surviving frame                   [1]
   -N, --number N          Take this many surviving frames, spread evenly
       --oo-min [DMIN]     Drop frames whose smallest O-O distance is below
                           this; bare --oo-min uses 2.0 A
       --al6 [RCUT]        Keep only frames holding a 6-coordinated Al; bare
                           --al6 takes the cutoff from the Al-O RDF
       --shuffle           Shuffle the kept frames, after every other step
-      --seed   N          Seed for --shuffle and for --ratio            [666]
-      --set-size N        Frames per output set; 0 = one set          [400]
-      --type   WHAT       deepmd | nep | extxyz                    [deepmd]
+      --seed   N          Seed for --shuffle and for --ratio             [666]
+      --set-size N        Frames per output set; 0 = one set             [400]
+      --type   WHAT       deepmd | nep | extxyz                       [deepmd]
                           nep/extxyz write ONE .xyz per system instead of a
                           system directory; nep carries stress as virial=
       --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
@@ -826,7 +816,7 @@ Output:
 
 Examples:
   ferro dataset filter -i raw                       # look, write nothing
-  ferro dataset filter -i raw -o clean -f 15 -s 8
+  ferro dataset filter -i raw -o clean -f 15 --s-max 8
   ferro dataset filter -i raw -o nep --type nep --ratio 8:1:1
 
 Full documentation:  ferro doc dataset filter"#
@@ -844,17 +834,17 @@ Parameters:
   -i, --input  DIR...     System directories to combine (globs allowed)
   -o, --output DIR        Output root; one directory per composition (required)
       --mkdir             Create -o without asking (needed with no terminal)
-      --mode   MODE       shuffle | by-source                    [shuffle]
-      --seed   N          Shuffle seed; by-source ignores it          [666]
-      --set-size N        Frames per output set; 0 = one set          [400]
-      --type   WHAT       deepmd | nep | extxyz                    [deepmd]
+      --mode   MODE       shuffle | by-source                        [shuffle]
+      --seed   N          Shuffle seed; by-source ignores it             [666]
+      --set-size N        Frames per output set; 0 = one set             [400]
+      --type   WHAT       deepmd | nep | extxyz                       [deepmd]
                           nep/extxyz write ONE .xyz per group instead of a
                           system directory; nep carries stress as virial=
       --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
                           mean train:test (9:1). Weights, not fractions
       --dir-suffix EXT    Force this suffix. Default: the one every input
-                          shares, else .train; inputs from different parts of a
-                          split are refused rather than silently relabelled
+                          shares, else .train; inputs from different parts of
+                          a split are refused rather than silently relabelled
       --overwrite         Allow writing into an existing non-empty directory
 
 Output:

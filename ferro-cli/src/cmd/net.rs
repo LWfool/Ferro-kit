@@ -74,10 +74,6 @@ pub fn wants_help(cmd: &NetCmd) -> bool {
     cmd.common.input.is_empty()
 }
 
-pub fn print_help() {
-    println!("{}", HELP_EXTRA);
-}
-
 /// Runs the network analysis. `pair_args` are the `--P-O=2.3`-style cutoffs `main`
 /// pulled out of argv.
 pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
@@ -443,50 +439,6 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option
     Ok(map)
 }
 
-const HELP_EXTRA: &str = "\
-ferro net — Glass network topology
-
-  Classifies every atom as former, ligand or modifier from the pair cutoffs you
-  give, and reports six tables. At least one pair is required.
-
-Parameters:
-  --<Former>-<Ligand>=<cutoff>
-                        Pair cutoff [Å], e.g. --P-O=2.4 --Al-F=2.1, or auto:
-                        the first minimum of that pair's g(r), taken from each
-                        input separately. At least one is required
-  -i, --input  FILE...  Input trajectory files; glob patterns allowed (quote them)
-  -o, --output DIR      Write every product here, tables and --export-traj alike;
-                        --mkdir creates it without asking
-  -s, --suffix SUFFIX   Output name suffix: network_<table>_<suffix>.csv
-      --last-n N        Use only the last N frames (skip equilibration)
-      --ncore N         Parallel threads                            [all cores]
-      --atom-style S    LAMMPS data input: atomic | charge | full (required)
-      --units U         Dump vx/fx units: real | metal (required if present)
-      --type-map M      Dump without element column: 1=Zr,2=O,...
-      --modifier E,E    Elements counted for coordination only: no bridging
-                        count, no part in ligand classification. Give each a
-                        cutoff too
-      --qn E,E          Formers reported as a Qn speciation. REPLACES the
-                        default list (B,P,Si); every other former is described
-                        by its coordination number
-      --export-traj [FMT]
-                        Also write the classified trajectory, one file per
-                        input: network_types_<input stem>[_<suffix>].<ext>
-                        FMT is lammpstrj (default) or extxyz
-
-Output:
-  network_<table>[_<suffix>].csv, six stacked tables with a `file` column:
-  composition qn qn_partner ligand_type coordination linkage
-  (the two qn tables only when some former is a Qn element)
-  With auto, each input's cutoffs and g(min) are in the [inputs] block
-
-Examples:
-  ferro net -i traj.lammpstrj --P-O=2.4
-  ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
-  ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan --export-traj
-  ferro net -i 'runs/*/prod.lammpstrj' --P-O=auto --Al-O=auto -o scan
-
-Full documentation:  ferro doc net";
 
 
 #[cfg(test)]
