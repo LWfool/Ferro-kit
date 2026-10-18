@@ -134,21 +134,9 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         }
     }
 
-    // ── 重映射键（仅胞内键，按副本偏移下标）──────────────────────────────────
-    let new_bonds = frame.bonds.as_ref().map(|bonds| {
-        (0..n_replicas)
-            .flat_map(|replica| {
-                let offset = replica * n_orig;
-                bonds.iter().map(move |&(i, j)| (i + offset, j + offset))
-            })
-            .collect::<Vec<_>>()
-    });
-
     // ── 组装新帧 ──────────────────────────────────────────────────────────────
     let mut out = Frame::with_cell(new_cell, frame.pbc);
     out.set_atoms(new_atoms);
-    out.charge = frame.charge * n_replicas as i32;
-    out.bonds = new_bonds;
     Ok(out)
 }
 
@@ -241,29 +229,13 @@ mod tests {
     }
 
     #[test]
-    fn test_charge_scales() {
+    fn test_every_replica_keeps_the_atom_charges() {
         let cell = Cell::from_lengths_angles(4.0, 4.0, 4.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.charge = 2;
         frame.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.0)));
+        frame.set_charge(0, Some(-0.8));
         let sc = make_supercell(&frame, 3, 1, 1).unwrap();
-        assert_eq!(sc.charge, 6);
-    }
-
-    #[test]
-    fn test_bonds_remapped() {
-        let cell = Cell::from_lengths_angles(4.0, 4.0, 4.0, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.0)));
-        frame.add_atom(Atom::new("H", Vector3::new(1.0, 0.0, 0.0)));
-        frame.bonds = Some(vec![(0, 1)]);
-
-        let sc = make_supercell(&frame, 2, 1, 1).unwrap();
-        let bonds = sc.bonds.as_ref().unwrap();
-        // 2 副本 * 1 键 = 2 键
-        assert_eq!(bonds.len(), 2);
-        assert!(bonds.contains(&(0, 1)));
-        assert!(bonds.contains(&(2, 3)));
+        assert!(sc.atoms().all(|a| a.charge == Some(-0.8)));
     }
 
     #[test]

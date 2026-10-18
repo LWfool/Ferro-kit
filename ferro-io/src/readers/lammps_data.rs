@@ -210,7 +210,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
     }
 
     let mut traj = Trajectory::from_frame(frame);
-    if !comment.is_empty() { traj.metadata.source = Some(comment); }
+    if !comment.is_empty() { traj.metadata.title = Some(comment); }
     Ok(traj)
 }
 

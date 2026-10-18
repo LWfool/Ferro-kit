@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 /// 写 VASP5 POSCAR 格式，坐标使用 Direct（分数坐标），原子按元素分组。
 pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let frame = super::single_frame(trajectory, "POSCAR")?;
-    let text = poscar_string(frame, trajectory.metadata.source.as_deref().unwrap_or("ferro"))?;
+    let text = poscar_string(frame, trajectory.metadata.title.as_deref().unwrap_or("ferro"))?;
     std::fs::write(path, text).with_context(|| format!("cannot create {}", path.display()))
 }
 
@@ -78,7 +78,7 @@ mod tests {
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
         let mut traj = Trajectory::from_frame(frame);
-        traj.metadata.source = Some("BCC Fe".to_string());
+        traj.metadata.title = Some("BCC Fe".to_string());
         traj
     }
 

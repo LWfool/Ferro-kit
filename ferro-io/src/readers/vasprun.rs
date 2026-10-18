@@ -73,6 +73,7 @@ pub fn read_vasprun_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
 
     let mut stats = AimdStats::new(AimdFormat::VaspXml);
     let mut traj = Trajectory::new();
+    traj.metadata.program = Some("VASP vasprun.xml".to_string());
     let mut st = State::default();
     let mut buf = Vec::new();
 

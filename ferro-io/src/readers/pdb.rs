@@ -20,7 +20,7 @@ pub fn read_pdb(path: &Path) -> Result<Trajectory> {
                 // 记录名 6 字节是 ASCII，6 处必是字符边界；以前从 10 切，多字节标题会 panic
                 let source = line[6..].trim();
                 if !source.is_empty() {
-                    traj.metadata.source = Some(source.to_string());
+                    traj.metadata.title = Some(source.to_string());
                 }
             }
             "CRYST1" => {
@@ -150,7 +150,7 @@ ENDMDL
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 3);
         assert_eq!(frame.atom(0).element, "O");
-        assert_eq!(traj.metadata.source.as_deref(), Some("Water molecule"));
+        assert_eq!(traj.metadata.title.as_deref(), Some("Water molecule"));
     }
 
     /// 原子名 + 77–78 列 → 一行 ATOM（列位照 PDB 规范）
@@ -191,7 +191,7 @@ ENDMDL
     fn test_non_ascii_does_not_panic() {
         let text = WATER_PDB.replace("Water molecule", "水分子测试");
         let traj = read_pdb(&write_tmp("test_utf8.pdb", &text)).unwrap();
-        assert_eq!(traj.metadata.source.as_deref(), Some("水分子测试"));
+        assert_eq!(traj.metadata.title.as_deref(), Some("水分子测试"));
         // 坐标列里混进多字节字符：报错，不 panic
         let bad = WATER_PDB.replace("0.000   0.763", "0.000  水763");
         assert!(read_pdb(&write_tmp("test_utf8_bad.pdb", &bad)).is_err());

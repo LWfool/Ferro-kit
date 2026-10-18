@@ -517,7 +517,7 @@ pub fn read_cif(path: &Path) -> Result<Trajectory> {
 
     let mut traj = Trajectory::new();
     if let Some(name) = structs.first().map(|b| b.name.clone()) {
-        if !name.is_empty() { traj.metadata.source = Some(name); }
+        if !name.is_empty() { traj.metadata.title = Some(name); }
     }
 
     for block in structs {
@@ -698,7 +698,7 @@ O1   O   0.5  0.5  0.5  1.0(0)
             loop_\n_publ_author_name\n'Doe, J.'\n'Roe, R.'\n\n";
         let traj = read_cif(&write_tmp("test_global.cif", &format!("{GLOBAL}{P1_CIF}"))).unwrap();
         assert_eq!(traj.n_frames(), 1);
-        assert_eq!(traj.metadata.source.as_deref(), Some("test_p1"), "source 取第一个结构 block");
+        assert_eq!(traj.metadata.title.as_deref(), Some("test_p1"), "source 取第一个结构 block");
 
         let err = read_cif(&write_tmp("test_global_only.cif", GLOBAL)).unwrap_err();
         assert!(format!("{err:#}").contains("data_global"), "{err:#}");

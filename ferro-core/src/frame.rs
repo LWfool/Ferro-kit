@@ -41,16 +41,6 @@ pub struct Frame {
     /// Whether each direction is periodic
     pub pbc: [bool; 3],
 
-    // ── System properties ────────────────────────────────────────────────────
-    /// Total charge of the system \[e\]
-    pub charge: i32,
-    /// Spin multiplicity 2S+1; unpaired electrons = multiplicity − 1
-    pub multiplicity: u32,
-
-    // ── Optional bonds ───────────────────────────────────────────────────────
-    /// Bond list (i, j), indices into the atoms
-    pub bonds: Option<Vec<(usize, usize)>>,
-
     // ── Results ──────────────────────────────────────────────────────────────
     /// Total energy \[eV\]
     pub energy: Option<f64>,
@@ -83,7 +73,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// An empty frame (non-periodic, neutral singlet).
+    /// An empty, non-periodic frame.
     pub fn new() -> Self {
         Self {
             sites: Arc::new(Vec::new()),
@@ -93,9 +83,6 @@ impl Frame {
             velocities: None,
             cell: None,
             pbc: [false; 3],
-            charge: 0,
-            multiplicity: 1,
-            bonds: None,
             energy: None,
             stress: None,
             temperature: None,
@@ -260,7 +247,7 @@ impl Frame {
     }
 
     /// The frame with its atoms in the order `order` gives: new atom `k` is old atom
-    /// `order[k]`. Every per-atom array moves with its atoms, and bonds are renumbered.
+    /// `order[k]`. Every per-atom array moves with its atoms.
     ///
     /// # Panics
     /// When `order` is not a permutation of `0..n_atoms`.
@@ -272,17 +259,12 @@ impl Frame {
             "permuted: the order is not a permutation of 0..{n}"
         );
         let pick = |v: &[Vector3<f64>]| order.iter().map(|&i| v[i]).collect::<Vec<_>>();
-        let mut new_index = vec![0usize; n];
-        for (k, &i) in order.iter().enumerate() {
-            new_index[i] = k;
-        }
         Frame {
             sites: Arc::new(order.iter().map(|&i| self.sites[i].clone()).collect()),
             positions: pick(&self.positions),
             charges: self.charges.as_ref().map(|c| order.iter().map(|&i| c[i]).collect()),
             forces: self.forces.as_deref().map(pick),
             velocities: self.velocities.as_deref().map(pick),
-            bonds: self.bonds.as_ref().map(|b| b.iter().map(|&(i, j)| (new_index[i], new_index[j])).collect()),
             ..self.clone_without_atoms()
         }
     }
@@ -312,9 +294,6 @@ impl Frame {
             velocities: None,
             cell: self.cell.clone(),
             pbc: self.pbc,
-            charge: self.charge,
-            multiplicity: self.multiplicity,
-            bonds: self.bonds.clone(),
             energy: self.energy,
             stress: self.stress,
             temperature: self.temperature,
@@ -453,13 +432,12 @@ mod tests {
         assert_eq!(f.velocities().unwrap().len(), 3);
     }
 
-    /// A permutation moves every per-atom quantity with its atom and renumbers bonds.
+    /// A permutation moves every per-atom quantity with its atom.
     #[test]
     fn permuted_moves_everything_with_its_atom() {
         let mut f = three_atoms();
         f.set_charge(1, Some(0.5));
         f.set_forces(Some((0..3).map(|i| Vector3::new(i as f64, 0.0, 0.0)).collect())).unwrap();
-        f.bonds = Some(vec![(0, 1)]);
         let g = f.permuted(&[2, 0, 1]);
         assert_eq!(g.symbols(), ["Fe", "O", "H"]);
         assert_eq!(g.atom(2).label, Some("H_x"));
@@ -467,7 +445,6 @@ mod tests {
         assert_eq!(g.atom(0).charge, None);
         assert_eq!(g.forces().unwrap()[0].x, 2.0);
         assert_eq!(g.positions()[1].x, 0.0);
-        assert_eq!(g.bonds, Some(vec![(1, 2)]));
     }
 
     /// Equal site tables are shared, and changing one frame's sites leaves the other's.
@@ -488,8 +465,6 @@ mod tests {
         let f = Frame::new();
         assert_eq!(f.n_atoms(), 0);
         assert!(!f.is_periodic());
-        assert_eq!(f.charge, 0);
-        assert_eq!(f.multiplicity, 1);
     }
 
     #[test]

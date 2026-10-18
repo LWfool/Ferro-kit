@@ -912,7 +912,7 @@ fn collect_group(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "run".to_string());
-        for p in crate::cmd::inspect::write_all(&all, dest, &name, &sources, overwrite)? {
+        for p in crate::cmd::inspect::write_all(&all, parts[0].2.format, dest, &name, &sources, overwrite)? {
             println!("  -> {}", p.display());
         }
     } else {

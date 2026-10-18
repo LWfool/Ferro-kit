@@ -11,7 +11,7 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let file = File::create(path).context(format!("cannot create {path_}"))?;
     let mut writer = BufWriter::new(file);
 
-    if let Some(source) = &trajectory.metadata.source {
+    if let Some(source) = &trajectory.metadata.title {
         writeln!(writer, "HEADER    {source}")?;
     }
 
@@ -86,7 +86,7 @@ mod tests {
         frame.add_atom(Atom::new("H", Vector3::new(0.0, 0.763, -0.477)));
         frame.add_atom(Atom::new("H", Vector3::new(0.0, -0.763, -0.477)));
         let mut traj = Trajectory::from_frame(frame);
-        traj.metadata.source = Some("Water molecule".to_string());
+        traj.metadata.title = Some("Water molecule".to_string());
         traj
     }
 

@@ -73,16 +73,6 @@ impl PyTrajectory {
         }))
     }
 
-    /// 指定帧的总电荷。
-    fn charge(&self, frame: usize) -> PyResult<i32> {
-        Ok(self.frame_ref(frame)?.charge)
-    }
-
-    /// 指定帧的自旋多重度 2S+1。
-    fn multiplicity(&self, frame: usize) -> PyResult<u32> {
-        Ok(self.frame_ref(frame)?.multiplicity)
-    }
-
     /// 指定帧的总能量 \[eV\]；结构文件没有能量时为 `None`。
     fn energy(&self, frame: usize) -> PyResult<Option<f64>> {
         Ok(self.frame_ref(frame)?.energy)

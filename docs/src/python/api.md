@@ -62,8 +62,6 @@ this type too).
 | `positions(frame)` | `list[(float,float,float)]` | Cartesian coords [Å] |
 | `symbols(frame)` | `list[str]` | Element symbols (matches `positions`) |
 | `cell(frame)` | `list[list[float]] \| None` | 3×3 cell rows [Å]; None if non-periodic |
-| `charge(frame)` | `int` | Total charge |
-| `multiplicity(frame)` | `int` | Spin multiplicity 2S+1 |
 | `tail(n)` | `Trajectory` | New trajectory with the last `n` frames |
 | `pbc(frame)` | `(bool,bool,bool)` | Periodicity along a, b, c |
 | `energy(frame)` | `float \| None` | Total energy [eV]; None for structure files |

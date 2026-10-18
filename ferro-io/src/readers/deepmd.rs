@@ -164,7 +164,6 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
     }
     let mut traj = Trajectory { frames, metadata: Default::default() };
     traj.share_sites();
-    traj.metadata.source = Some("DeePMD npy".to_string());
     Ok((traj, warnings))
 }
 

@@ -487,7 +487,7 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
     }
 
     let mut traj = Trajectory { frames, metadata: Default::default() };
-    traj.metadata.source = Some(match version {
+    traj.metadata.program = Some(match version {
         Some(v) => format!("CP2K {v} single point"),
         None => "CP2K single point".to_string(),
     });

@@ -44,13 +44,19 @@ pub fn spread_range(n: usize, start: usize, end: Option<usize>, count: usize) ->
         .collect()
 }
 
-/// 轨迹元数据。
+/// Trajectory metadata.
+///
+/// Two fields, two meanings (review B4): a structure file's own title, and the
+/// program that produced an output.  Writers put back only the title — a program
+/// name is not a title for the next file.
 #[derive(Debug, Clone, Default)]
 pub struct TrajectoryMetadata {
-    /// 帧间时间步长（fs）；`None` 表示静态结构或未知
-    pub timestep: Option<f64>,
-    /// 来源文件或软件名称，如 "VASP OUTCAR"、"LAMMPS dump"
-    pub source: Option<String>,
+    /// The title the file gives itself: a POSCAR / xyz / LAMMPS data comment line,
+    /// a CIF block name, a PDB TITLE, an extxyz `config_type` or `comment`
+    pub title: Option<String>,
+    /// The program, and its version when the output prints one, that wrote an
+    /// AIMD output, e.g. "CP2K 2024.1 out"
+    pub program: Option<String>,
 }
 
 /// 轨迹：一个或多个帧的时间序列。
@@ -231,13 +237,6 @@ impl Trajectory {
     pub fn iter_frames(&self) -> impl Iterator<Item = &Frame> {
         self.frames.iter()
     }
-
-    // ── 时间 ─────────────────────────────────────────────────────────────────
-
-    /// 返回第 `index` 帧对应的时间（fs）；需要 `metadata.timestep` 不为 `None`。
-    pub fn time_at(&self, index: usize) -> Option<f64> {
-        self.metadata.timestep.map(|dt| dt * index as f64)
-    }
 }
 
 impl Default for Trajectory {
@@ -379,16 +378,6 @@ mod tests {
         traj.add_frame(make_frame(0.0));
         traj.add_frame(make_frame(1.0));
         assert_eq!(traj.n_frames(), 2);
-    }
-
-    #[test]
-    fn test_time_at() {
-        let mut traj = Trajectory::new();
-        traj.metadata.timestep = Some(2.0);
-        traj.add_frame(make_frame(0.0));
-        traj.add_frame(make_frame(1.0));
-        assert_eq!(traj.time_at(0), Some(0.0));
-        assert_eq!(traj.time_at(1), Some(2.0));
     }
 
     #[test]

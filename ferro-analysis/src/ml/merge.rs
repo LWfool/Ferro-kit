@@ -162,29 +162,24 @@ mod tests {
         assert_eq!(f.positions()[1].x, 0.0);
     }
 
-    /// Velocities and bonds are per-atom too, and were once left behind.
+    /// Velocities are per-atom too, and were once left behind.
     ///
-    /// A DeePMD system carries neither, so `merge` never showed the bug; the
+    /// A DeePMD system carries none, so `merge` never showed the bug; the
     /// diagnostics `collect` exports (a dump with velocities) do.
     #[test]
-    fn sorting_carries_velocities_and_bonds_too() {
+    fn sorting_carries_velocities_too() {
         let mut t = traj_of(&["Zn", "O", "Al"]);
         let f = &mut t.frames[0];
         f.set_velocities(Some(
             (0..3).map(|i| Vector3::new(i as f64 * 10.0, 0.0, 0.0)).collect(),
         )).unwrap();
-        // Zn(0)-O(1) 与 O(1)-Al(2)；排序后 O->0, Al->1, Zn->2
-        f.bonds = Some(vec![(0, 1), (1, 2)]);
 
         let s = sort_atoms(&t);
         let f = &s.frames[0];
         let v = f.velocities().unwrap();
         assert_eq!(f.element(0), "O");
-        assert!((v[0].x - 10.0).abs() < 1e-12, "O 的速度必须跟过来");
-        assert!((v[2].x - 0.0).abs() < 1e-12, "Zn 的速度也是");
-        // 键连的是原子，不是位置：两端都要重编号。端点的先后不动 —— 规范成
-        // a < b 是另一件事，这里只做重编号
-        assert_eq!(f.bonds.clone().unwrap(), vec![(2, 0), (0, 1)]);
+        assert!((v[0].x - 10.0).abs() < 1e-12, "the velocity of O must move with it");
+        assert!((v[2].x - 0.0).abs() < 1e-12, "and so must that of Zn");
     }
 
     /// Each frame takes its own permutation: one file may list the atoms in a

@@ -13,7 +13,7 @@ pub fn write_xyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
     for (i, frame) in trajectory.frames.iter().enumerate() {
         writeln!(writer, "{}", frame.n_atoms())?;
         let comment = if i == 0 {
-            trajectory.metadata.source.as_deref().unwrap_or("")
+            trajectory.metadata.title.as_deref().unwrap_or("")
         } else {
             ""
         };
@@ -44,7 +44,7 @@ mod tests {
         frame.add_atom(Atom::new("H", Vector3::new(0.0, 0.763, -0.477)));
         frame.add_atom(Atom::new("H", Vector3::new(0.0, -0.763, -0.477)));
         let mut traj = Trajectory::from_frame(frame);
-        traj.metadata.source = Some("Water molecule".to_string());
+        traj.metadata.title = Some("Water molecule".to_string());
         traj
     }
 
@@ -58,6 +58,6 @@ mod tests {
         let loaded = read_xyz(path_str).unwrap();
         assert_eq!(loaded.n_frames(), 1);
         assert_eq!(loaded.first().unwrap().n_atoms(), 3);
-        assert_eq!(loaded.metadata.source.as_deref(), Some("Water molecule"));
+        assert_eq!(loaded.metadata.title.as_deref(), Some("Water molecule"));
     }
 }

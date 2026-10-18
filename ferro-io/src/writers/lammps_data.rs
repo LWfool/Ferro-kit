@@ -42,7 +42,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
-    let comment = trajectory.metadata.source.as_deref().unwrap_or("LAMMPS data file written by ferro");
+    let comment = trajectory.metadata.title.as_deref().unwrap_or("LAMMPS data file written by ferro");
     writeln!(w, "{comment}")?;
     writeln!(w)?;
 

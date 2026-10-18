@@ -23,7 +23,7 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let mut w = BufWriter::new(file);
 
     // data block name
-    let block_name = trajectory.metadata.source
+    let block_name = trajectory.metadata.title
         .as_deref()
         .map(sanitize_block_name)
         .filter(|s| !s.is_empty())
@@ -102,7 +102,7 @@ mod tests {
         let path_str = &path;
 
         let mut traj = Trajectory::from_frame(make_bcc_frame());
-        traj.metadata.source = Some("BCC_Fe".to_string());
+        traj.metadata.title = Some("BCC_Fe".to_string());
         write_cif(&traj, path_str).unwrap();
 
         let loaded = read_cif(path_str).unwrap();

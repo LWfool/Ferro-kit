@@ -168,15 +168,13 @@ mod tests {
     }
 
     #[test]
-    fn test_charge_multiplicity_preserved() {
+    fn test_atom_charges_preserved() {
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.charge = 2;
-        frame.multiplicity = 3;
         frame.add_atom(Atom::new("O", Vector3::zeros()));
+        frame.set_charge(0, Some(-0.8));
         let out = add_vacuum(&frame, "z", 5.0).unwrap();
-        assert_eq!(out.charge, 2);
-        assert_eq!(out.multiplicity, 3);
+        assert_eq!(out.atom(0).charge, Some(-0.8));
     }
 
     #[test]

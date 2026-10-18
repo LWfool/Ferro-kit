@@ -150,7 +150,6 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
 
     let mut frame = Frame::with_cell(Cell::from_matrix(new_m), frame_a.pbc);
     frame.set_atoms(atoms);
-    frame.charge = frame_a.charge + frame_b.charge;
     Ok(frame)
 }
 
@@ -260,17 +259,17 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_charge_sum() {
+    fn test_merge_keeps_atom_charges() {
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let mut a = Frame::with_cell(cell.clone(), [true; 3]);
-        a.charge = 2;
         a.add_atom(Atom::new("Fe", Vector3::zeros()));
+        a.set_charge(0, Some(2.0));
         let mut b = Frame::with_cell(cell, [true; 3]);
-        b.charge = -1;
         b.add_atom(Atom::new("O", Vector3::zeros()));
+        b.set_charge(0, Some(-1.0));
         let out = merge_frames(&a, &b, "z", 1.0).unwrap();
-        assert_eq!(out.charge, 1);
-        assert_eq!(out.multiplicity, 1);
+        assert_eq!(out.atom(0).charge, Some(2.0));
+        assert_eq!(out.atom(1).charge, Some(-1.0));
     }
 
     #[test]

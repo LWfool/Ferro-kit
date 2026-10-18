@@ -205,7 +205,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
 
         if traj.n_frames() == 0 {
             if let Some(src) = kv.get("config_type").or_else(|| kv.get("comment")) {
-                traj.metadata.source = Some(src.clone());
+                traj.metadata.title = Some(src.clone());
             }
         }
         traj.add_frame(frame);

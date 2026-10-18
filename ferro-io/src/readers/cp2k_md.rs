@@ -564,7 +564,7 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
     }
 
     let mut traj = Trajectory { frames, metadata: Default::default() };
-    traj.metadata.source = Some(match version {
+    traj.metadata.program = Some(match version {
         Some(v) => format!("CP2K {v} out"),
         None => "CP2K out".to_string(),
     });
@@ -781,7 +781,7 @@ mod tests {
     fn version_string_reaches_the_metadata() {
         let text = format!(" CP2K| version string:                 CP2K version 2024.1\n{MINI}");
         let (t, _) = parse_cp2k_md(&text).unwrap();
-        assert_eq!(t.metadata.source.as_deref(), Some("CP2K 2024.1 out"));
+        assert_eq!(t.metadata.program.as_deref(), Some("CP2K 2024.1 out"));
     }
 
     #[test]

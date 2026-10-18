@@ -103,6 +103,7 @@ pub fn read_vasp_outcar_with_stats(path: &Path) -> Result<(Trajectory, AimdStats
     let mut elements: Vec<String> = Vec::new();
 
     let mut traj = Trajectory::new();
+    traj.metadata.program = Some("VASP OUTCAR".to_string());
     let mut pending: Option<Pending> = None;
     // 需要跨行读取的块:剩余行数与去向
     let mut want_cell = 0usize;

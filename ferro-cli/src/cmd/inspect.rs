@@ -16,6 +16,7 @@ use ferro_core::table::Table;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::Trajectory;
 use ferro_io::readers::lammps_dump::LammpsUnits;
+use ferro_io::AimdFormat;
 use ferro_io::writers::table::{write_table, TableFormat};
 use ferro_io::writers::{lammps_data::write_lammps_data, lammps_dump::write_lammps_dump};
 
@@ -30,9 +31,11 @@ pub const DIR_NAME: &str = "ferro_inspect";
 ///
 /// `sources` names the file each frame came from, one entry per frame; `collect`
 /// stitches restart segments, and that column plus the step numbers are what make
-/// a seam — or a doubled run — visible.
+/// a seam — or a doubled run — visible. `format` is the reader the frames came
+/// through.
 pub fn write_all(
     traj: &Trajectory,
+    format: AimdFormat,
     dir: &Path,
     name: &str,
     sources: &[String],
@@ -56,7 +59,7 @@ pub fn write_all(
     write_lammps_data(&last, &data)?;
 
     let info = dir.join(format!("{name}_info.csv"));
-    write_table(&build_table(traj, sources), &info, TableFormat::Csv)?;
+    write_table(&build_table(traj, format, sources), &info, TableFormat::Csv)?;
 
     Ok(vec![trj, data, info])
 }
@@ -66,7 +69,7 @@ pub fn write_all(
 /// The summary is an aggregate of the very columns below it, so it lives in the
 /// comment block rather than in a second file: `pandas.read_csv(..., comment="#")`
 /// gets the table, and a human reading the head of the file gets the summary.
-fn build_table(traj: &Trajectory, sources: &[String]) -> Table {
+fn build_table(traj: &Trajectory, format: AimdFormat, sources: &[String]) -> Table {
     let n = traj.n_frames();
     let mut frame_idx = Vec::with_capacity(n);
     let mut steps = Vec::with_capacity(n);
@@ -95,7 +98,7 @@ fn build_table(traj: &Trajectory, sources: &[String]) -> Table {
     }
 
     let mut t = Table::new();
-    for line in summary_lines(traj, &temps, &densities) {
+    for line in summary_lines(traj, format, &temps, &densities) {
         t.meta_line(line);
     }
     t.push_num("frame", frame_idx);
@@ -109,7 +112,7 @@ fn build_table(traj: &Trajectory, sources: &[String]) -> Table {
 }
 
 /// The `#` block: what this run is, and the two quantities worth a glance.
-fn summary_lines(traj: &Trajectory, temps: &[f64], densities: &[f64]) -> Vec<String> {
+fn summary_lines(traj: &Trajectory, format: AimdFormat, temps: &[f64], densities: &[f64]) -> Vec<String> {
     let mut out = Vec::new();
     let Some(first) = traj.first() else { return out };
 
@@ -134,11 +137,11 @@ fn summary_lines(traj: &Trajectory, temps: &[f64], densities: &[f64]) -> Vec<Str
     if let Some(l) = mean_sd_line("density", densities, "g/cm^3") {
         out.push(l);
     }
-    // vasprun 没有温度字段，这一列是反算来的；不说清楚会让同一次运行换个来源
-    // 时数字对不上却无人解释得了
-    if traj.frames.iter().any(|f| f.temperature.is_some())
-        && traj.metadata.source.as_deref() == Some("vasprun.xml")
-    {
+    // vasprun.xml has no temperature field, so this column is derived; without
+    // saying so the same run read from another file gives numbers nobody can
+    // explain. Decided by the reader, not by a metadata string, which no reader
+    // ever set to "vasprun.xml" (review B4)
+    if format == AimdFormat::VaspXml && traj.frames.iter().any(|f| f.temperature.is_some()) {
         out.push(
             "note: temperature is derived from the ionic kinetic energy \
              (T = 2*E_kin/(3N*k_B)); vasprun.xml does not print it"
@@ -192,7 +195,7 @@ mod tests {
     #[test]
     fn a_missing_scalar_is_empty_not_zero() {
         let traj = traj_of(&[Some(300.0), None], &[Some(1), None]);
-        let table = build_table(&traj, &["a.out".into(), "a.out".into()]);
+        let table = build_table(&traj, AimdFormat::Cp2kMd, &["a.out".into(), "a.out".into()]);
         let step = table.column("step").unwrap();
         assert_eq!(step.cell(0), "1.000000e0");
         assert_eq!(step.cell(1), "", "缺步号必须是空字段,不是 0");
@@ -204,12 +207,21 @@ mod tests {
     #[test]
     fn the_summary_omits_a_quantity_that_is_absent_everywhere() {
         let traj = traj_of(&[None, None], &[Some(1), Some(2)]);
-        let table = build_table(&traj, &["a.out".into(), "a.out".into()]);
+        let table = build_table(&traj, AimdFormat::Cp2kMd, &["a.out".into(), "a.out".into()]);
         let meta = table.meta.join("\n");
         assert!(meta.contains("atoms = 2"), "{meta}");
         assert!(meta.contains("frames = 2"), "{meta}");
         assert!(!meta.contains("temperature ="), "无温度时不该报一个假的均值: {meta}");
         assert!(meta.contains("density ="), "{meta}");
+    }
+
+    /// The derived-temperature note is shown for vasprun.xml and only for it.
+    #[test]
+    fn the_vasprun_temperature_note_follows_the_reader() {
+        let traj = traj_of(&[Some(300.0), Some(310.0)], &[None, None]);
+        let note = |f| build_table(&traj, f, &["a".into(), "a".into()]).meta.join("\n");
+        assert!(note(AimdFormat::VaspXml).contains("derived from the ionic kinetic energy"));
+        assert!(!note(AimdFormat::VaspOutcar).contains("derived"));
     }
 
     #[test]

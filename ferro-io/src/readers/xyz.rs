@@ -54,7 +54,7 @@ pub fn read_xyz(path: &Path) -> Result<Trajectory> {
         if traj.n_frames() == 0 {
             let s = comment.trim();
             if !s.is_empty() {
-                traj.metadata.source = Some(s.to_string());
+                traj.metadata.title = Some(s.to_string());
             }
         }
 
@@ -96,7 +96,7 @@ C  1.4  0.0  0.1
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 3);
         assert_eq!(frame.atom(0).element, "O");
-        assert_eq!(traj.metadata.source.as_deref(), Some("Water molecule"));
+        assert_eq!(traj.metadata.title.as_deref(), Some("Water molecule"));
     }
 
     #[test]

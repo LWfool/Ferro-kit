@@ -335,7 +335,7 @@ fn parse_qe_out_lines<I: Iterator<Item = Result<String>>>(
         );
     }
     let mut traj = Trajectory { frames, metadata: Default::default() };
-    traj.metadata.source = Some(match &stats.version {
+    traj.metadata.program = Some(match &stats.version {
         Some(v) => format!("Quantum ESPRESSO {v} pw.x"),
         None => "Quantum ESPRESSO pw.x".to_string(),
     });
