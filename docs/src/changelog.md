@@ -12,6 +12,33 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `convert`, `info` and `traj` read program outputs and DeePMD systems
+
+A VASP `OUTCAR` / `vasprun.xml`, a CP2K or pw.x `.out` log and a DeePMD system directory used to
+be readable only by `dataset collect` / `dataset filter`: `ferro info -i vasprun.xml` answered
+`Unsupported .xml`.  Every command that reads a structure now takes them, the outputs recognised by
+their program banner and read the way `collect` reads them (unconverged frames dropped and
+counted).  Extensions are compared case-insensitively (`.XYZ`, `.CIF`), and the Python `read` /
+`write` use the same format table as `ferro convert`, so the two can no longer disagree.
+
+### Text that is not UTF-8 is an error at its line
+
+One byte that is not UTF-8 used to reject a whole file with `cannot open FILE` — although it had
+opened fine — or `stream did not contain valid UTF-8`, without a position.  The error now names the
+file, line, column and byte.
+
+### Reader warnings reach Python
+
+The readers no longer print.  The CLI shows the same messages as before (the LAMMPS dump site-label
+mapping no longer ends with a line about `-a/-b/-c`); Python's `read` raises them as `UserWarning`,
+where they used to go straight to stderr.  `read_output` also returns `version_note`,
+`step_range`, `layout_drift` and `restarts`, which it used to drop — a CP2K version ferro has no
+fixture for was flagged on the command line and silent in Python.
+
+Library: `calc_cube_density` and `calc_cube_jump` return `Result` and say why they failed (no
+periodic cell, no velocities / forces, too few frames, atoms changing between frames, an empty
+element filter) instead of `None`; `SqResult` carries its warnings.
+
 ### A box that is not periodic in all three directions is an error
 
 A frame with a cell but `pbc` other than `T T T` — extxyz `pbc="F F F"` or `"T T F"`, a LAMMPS

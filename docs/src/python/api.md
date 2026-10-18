@@ -79,7 +79,8 @@ Frame indices are 0-based; out-of-range raises `IndexError`.
 
 ### `read(path, units=None, atom_style=None, type_map=None) -> Trajectory`
 
-Format auto-detected from the file name / extension:
+Format auto-detected from the file name / extension (any case), with the same table as
+`ferro convert`:
 
 | Extension / name | Format |
 |---|---|
@@ -90,6 +91,12 @@ Format auto-detected from the file name / extension:
 | `.inp` / `.restart` | CP2K input / restart |
 | `.lammpstrj` / `.dump` | LAMMPS dump; **`units` (`"real"` or `"metal"`) is required when it has velocity/force columns**, since a dump does not record its unit system |
 | `.data` / `.lmp` / `.lammps` | LAMMPS data; **`atom_style` (`"atomic"`, `"charge"` or `"full"`) is required**, never guessed from the `Atoms` comment or the column count |
+| `OUTCAR`, `vasprun.xml`, CP2K / pw.x `.out` | recognised by the program banner, read as `read_output` reads it (unconverged frames dropped) |
+| a directory holding `type.raw` | DeePMD system |
+
+What the reader noticed on the way — a dropped incomplete last frame, a dump's element column
+split into element and site label, frames dropped from a program output — arrives as a Python
+`UserWarning` (filter or capture it with the `warnings` module); nothing is printed.
 
 A dump without an element column reads its atoms as `X1`, `X2`, …; `type_map={1: "Zr", 2: "O"}`
 names them, exactly as `--type-map` on the command line.  A type missing from the map, an
@@ -110,7 +117,11 @@ and `POSCAR` gives `POSCAR_0000`, … (indices padded to at least four digits).
 Reads a calculation output — VASP `OUTCAR` / `vasprun.xml`, CP2K single-point or MD output —
 recognised by its content, as `ferro dataset collect` does.  Frames carry energy, forces and
 stress.  Frames that were dropped (SCF not converged, incomplete) are not in the trajectory; the
-dict counts them (`scf_failed`, `incomplete`, …) next to `format`, `steps`, `kept` and `version`.
+dict counts them (`scf_failed`, `incomplete`, `no_cell`, …) next to `format`, `steps` (the
+number of steps the file claims), `kept` and `version`.  `version_note` says why the program
+version deserves a second look (`None` when it does not), `step_range` is the `(first, last)`
+step number the file claims, and `layout_drift` / `restarts` are CP2K's block-layout drift and
+in-place restart counts.
 
 ### `write_table(path, columns, meta=[])`
 

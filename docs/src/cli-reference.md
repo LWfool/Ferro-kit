@@ -127,6 +127,9 @@ count behind a single site label is usually too small for its partial to show an
 ## `ferro convert`
 
 Format conversion.  The format on both sides is decided by the **file name**; there is no `--from` / `--to`.
+The one exception is on the read side: a name that says nothing about its format — an `OUTCAR`, a
+`vasprun.xml`, a CP2K or pw.x `.out` log — is recognised by the program banner inside, and a
+directory holding `type.raw` is a DeePMD system.
 
 ```bash
 ferro convert                              # without -i: prints the table below
@@ -148,6 +151,13 @@ ferro convert -i traj.lammpstrj -o cifs/ --format cif --units metal   # one CIF 
 | QE (pw.x) | `.in` `.qe` | y | — | — |
 | CP2K input | `.inp` | y | — | — |
 | CP2K restart | `.restart` | y | — | — |
+| VASP OUTCAR | banner (an `OUTCAR` has no extension) | y | — | — |
+| vasprun.xml | banner (`.xml`) | y | — | — |
+| CP2K output | banner (`.out`), MD or single point by its run type | y | — | — |
+| QE output | banner (`.out`), pw.x only | y | — | — |
+| DeePMD | a directory holding `type.raw` | y | — | — |
+
+Extensions are compared **case-insensitively**: `CONF.XYZ` is XYZ, `OUT.CIF` is CIF.
 
 Things that trip people up:
 
@@ -158,6 +168,12 @@ Things that trip people up:
   follow the new order (`O` becomes type 1).  There is no switch to keep the input order.
 - **The two CP2K input formats and QE input are read-only.**  To generate either input use
   `ferro-py job -s cp2k|qe`, which writes a complete calculation setup rather than bare coordinates.
+- **A program output is read as `ferro dataset collect` reads it**: frames whose SCF did not
+  converge, and an incomplete last step, are dropped, and the counts are printed as a warning.
+  A file with no usable frame is an error.  Program outputs and DeePMD systems are read-only too.
+- **Bytes that are not UTF-8 text are an error** naming the file, line, column and byte (a
+  binary file, or another program's output mixed into a log through `2>&1`).  Nothing is replaced
+  and read past.
 - **"One per file" splits the trajectory**: 500 frames written to `conf.cif` give `conf_0000.cif` …
   `conf_0499.cif`, the index being the original frame number.  CIF is split too, although the format
   allows several `data_` blocks in one file: VESTA and Materials Studio show only the first block.

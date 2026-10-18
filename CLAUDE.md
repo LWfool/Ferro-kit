@@ -81,8 +81,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 
 ## 扩展项目
 
-**加文件格式** → 技能 `add-format`。硬约束：`ferro-cli/src/io_dispatch.rs` 的
-`read_trajectory` 与 `out_format`（写侧）**两处**都要加检测，漏一处那个方向就认不出新格式。
+**加文件格式** → 技能 `add-format`。硬约束：格式识别与读写**只在 `ferro-io/src/format.rs`**
+（`Format` 表）；CLI 与 Python 不各写扩展名分支，reader 不打印（告警随结果返回）。
 
 **加分析方法** → 技能 `add-analysis`。三条违反了会静默出错的：
 - `meta_lines` **只放批内共享的参数**；逐输入才有意义的量走 `[inputs]` 清单，
@@ -148,7 +148,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 | 技能 | 用途 |
 |---|---|
 | `add-analysis` | 新增分析方法：实现 → CLI 分支 → 帮助页 → 手册页 → `PAGES` 登记 |
-| `add-format` | 新增文件格式：reader/writer → 导出 → `io_dispatch` 两处 → Python 包装 |
+| `add-format` | 新增文件格式：reader/writer → 导出 → `format.rs` 的 `Format` 表 |
 | `update-dev-records` | 「更新开发记录」或「发版」：定版本号 → 更新 dev/ → 同步 ferro-python → 打 tag |
 
 技能实体在 `dev/skills/`（进 git）；Claude Code 只扫 `.claude/skills/`，那里是指向它的

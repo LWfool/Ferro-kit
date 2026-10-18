@@ -946,3 +946,15 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 测试 fixture | `Frame { cell: Some(..), ..Frame::default() }` 的 pbc 是默认的 FFF，以前照样被当周期体系算，现在被拒 | 有胞的 fixture 用 `Frame::with_cell(cell, [true; 3])` 或显式写 `pbc` |
 | `NeighborList::build` 的截断 | 截断为 0（没有任何截断对）时 bin 数是 `1/0` → `usize::MAX`，分配爆掉 | 先判截断 > 0（分类器在没有截断时不建列表）|
 | box_builder 的 cell list | 看见两份 cell list 想合 | 不合（R6）：它只服务立方盒、每步弛豫重建、力的累加依赖访问顺序；两处注释互指 |
+
+## 格式表 / 告警通道编码陷阱（2026-10-18，审查第 3 步）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 加格式 | 在 CLI 或 Python 里加扩展名分支 | 只改 `ferro-io/src/format.rs`：`Format` 加变体，`ALL` / `name` / `detected_by` / `can_write` / `multi_frame` / `from_name` / `read_as` / `write_one` 由编译器与 match 逼着补。CLI 的格式表由 `Format::ALL` 生成，Python 的 `read` / `write` 走同一张表 |
+| reader 里想提示用户 | `eprintln!` | 返回告警（`_with_warnings` 或进 `ReadReport.warnings`），CLI 在 `io_dispatch::read_trajectory` 统一加 `[ferro] ` 打印，Python 走 `warnings.warn`。告警文本不写 CLI 选项名（Python 用户没有 `-a/-b/-c`） |
+| 带参数名的报错 | 搬进 io 后文案只剩一种说法 | `--atom-style` / `--type-map` 与 Python 的 `atom_style=` / `type_map=` 各自在读前检查、用自己的参数名；io 的 `read_as` 只留中性的防御性报错 |
+| 名字不说明格式的文件 | 一律报 Unsupported | 走 `sniff` 认横幅；`.out` / `.xml` / `.log` / 无扩展名时 sniff 的报错原样给出，其余扩展名才加「Unsupported input format」前缀 |
+| 往 dict / 结构里补字段 | 新键与已有键同名，静默覆盖（`read_output` 的 `steps` 计数被首末步号元组覆盖，`59d3469` 修） | 补字段前 grep 已有键；测试断言旧键的类型，不只断言新键存在 |
+| 读文本 | `read_to_string` / `BufRead::lines` | `readers::util::read_text` / `text_lines`：坏字节报文件、行号、列号；打开失败才说 cannot open |
+| `dataset collect` 的输入 | 改 `expand_inputs` 让它收目录 | 收 DeePMD 目录的是 `expand_trajectories`（traj / map / net）；collect 仍只收文件 |
