@@ -28,7 +28,7 @@
 
 use crate::check;
 use rayon::prelude::*;
-use ferro_core::{Table, Trajectory};
+use ferro_core::{NeighborList, Table, Trajectory};
 use ferro_core::error::ChemError;
 
 use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
@@ -138,7 +138,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     traj.check_same_atoms()?;
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     // 键矢量取最小镜像：r_cut 超过上界时更远镜像里的近邻被漏掉
-    check::periodic_cells(traj, Some(("r-cut", params.r_cut)))?;
+    let cells = check::periodic_cells(traj, Some(("r-cut", params.r_cut)))?;
 
     // 确定参与计算的 center 原子下标（按第一帧筛选）
     let ref_frame = &traj.frames[0];
@@ -155,10 +155,11 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     let r_cut2 = params.r_cut * params.r_cut;
 
     // 当帧的键矢量：周期体系取最小镜像
-    let bond = |frame: &ferro_core::Frame, from: usize, to: usize| {
+    let bond = |k: usize, from: usize, to: usize| {
+        let frame = &traj.frames[k];
         let d = frame.atoms[to].position - frame.atoms[from].position;
-        match (&frame.cell, has_cell) {
-            (Some(cell), true) => cell.minimum_image(d).expect("cell is non-singular"),
+        match (&cells[k], has_cell) {
+            (Some(pc), true) => pc.minimum_image(d),
             _ => d,
         }
     };
@@ -168,12 +169,23 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
 
     // orient[帧][单元] = 取向向量（未归一化；零向量 = 该帧无效）
     let orient: Vec<Vec<[f64; 3]>> = match params.vector {
-        RotVector::Sum => traj.frames.iter().map(|frame| {
+        RotVector::Sum => traj.frames.iter().enumerate().map(|(k, frame)| {
+            // Candidates come from a neighbour list in a periodic frame, sorted by index
+            // like the full scan, so the bond vectors are summed in the same order
+            let nl = match (&cells[k], has_cell) {
+                (Some(pc), true) => Some(NeighborList::build(&frame.positions(), pc, params.r_cut)
+                    .expect("r_cut checked against every frame's bound at the entry")),
+                _ => None,
+            };
             center_indices.iter().map(|&ci| {
                 let mut u = [0.0_f64; 3];
                 let mut len_sum = 0.0;
-                for ni in (0..frame.atoms.len()).filter(|&ni| is_neighbor(ni, ci)) {
-                    let d = bond(frame, ci, ni);
+                let around: Vec<usize> = match &nl {
+                    Some(nl) => nl.neighbors_of(ci).into_iter().map(|(j, _, _)| j).collect(),
+                    None => (0..frame.atoms.len()).collect(),
+                };
+                for ni in around.into_iter().filter(|&ni| is_neighbor(ni, ci)) {
+                    let d = bond(k, ci, ni);
                     if d.norm_squared() < r_cut2 {
                         u[0] += d.x;
                         u[1] += d.y;
@@ -193,16 +205,16 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 .flat_map(|&ci| (0..ref_frame.atoms.len())
                     .filter(move |&ni| is_neighbor(ni, ci))
                     .map(move |ni| (ci, ni)))
-                .filter(|&(ci, ni)| bond(ref_frame, ci, ni).norm_squared() < r_cut2)
+                .filter(|&(ci, ni)| bond(0, ci, ni).norm_squared() < r_cut2)
                 .collect();
             if pairs.is_empty() {
                 return Err(ChemError::ValidationError(format!(
                     "no {}-{} bond within r_cut = {} Ang in the first frame",
                     params.center, params.neighbor, params.r_cut)));
             }
-            traj.frames.par_iter().map(|frame| {
+            (0..n_frames).into_par_iter().map(|k| {
                 pairs.iter().map(|&(ci, ni)| {
-                    let d = bond(frame, ci, ni);
+                    let d = bond(k, ci, ni);
                     [d.x, d.y, d.z]
                 }).collect()
             }).collect()

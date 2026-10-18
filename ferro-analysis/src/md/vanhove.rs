@@ -17,7 +17,7 @@ use crate::check;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::error::ChemError;
-use ferro_core::{Table, Trajectory};
+use ferro_core::{PeriodicCell, Table, Trajectory};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -158,7 +158,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         return Err(ChemError::ValidationError(format!("trajectory requires at least 2 frames, got {n_steps}")));
     }
     traj.check_same_atoms()?;
-    check::periodic_cells(traj, None)?;
+    let cells = check::periodic_cells(traj, None)?;
 
     // 按第一帧筛选参与计算的原子下标
     let ref_frame = &traj.frames[0];
@@ -206,15 +206,12 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     // 构建绝对 Cartesian 坐标数组（周期系统经过 unwrap）
     let cart: Vec<Vec<[f64; 3]>> = if ref_frame.cell.is_some() {
         // 周期系统：分数坐标 unwrap 后转回绝对坐标
-        if traj.frames.iter().any(|f| f.cell.is_none()) {
-            return Err(ChemError::ValidationError("frame 0 has a cell but a later frame does not".into()));
-        }
+        let pcs: Vec<&PeriodicCell> = cells.iter().map(Option::as_ref).collect::<Option<_>>()
+            .ok_or_else(|| ChemError::ValidationError("frame 0 has a cell but a later frame does not".into()))?;
 
-        let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
-            let cell = frame.cell.as_ref().unwrap();
+        let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&pcs).map(|(frame, pc)| {
             atom_indices.iter().map(|&i| {
-                let f = cell.cartesian_to_fractional(frame.atoms[i].position)
-                    .expect("checked at the entry by check::periodic_cells");
+                let f = pc.to_fractional(frame.atoms[i].position);
                 [f.x, f.y, f.z]
             }).collect()
         }).collect();

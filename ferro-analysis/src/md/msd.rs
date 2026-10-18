@@ -13,7 +13,7 @@
 use crate::check;
 use rayon::prelude::*;
 use std::collections::BTreeSet;
-use ferro_core::{Table, Trajectory};
+use ferro_core::{PeriodicCell, Table, Trajectory};
 use ferro_core::error::ChemError;
 use nalgebra::Vector3;
 
@@ -130,17 +130,13 @@ type Series = Vec<[Vec<f64>; 3]>;
 /// is the minimum image in frame `i+1`'s cell, taken in fractional coordinates as
 /// `f − ⌊f + 1/2⌋`. A step is far below half a cell, so this is exact for any
 /// cell shape.
-fn unwrap_tor(traj: &Trajectory, atom_indices: &[usize]) -> ferro_core::Result<Series> {
-    // 每帧的 (Mᵀ, (Mᵀ)⁻¹)：行优先 matrix 的行是晶格矢量，cart = Mᵀ·frac
-    let boxes = traj.frames.iter().map(|f| {
-        let m = f.cell.as_ref()
-            .ok_or_else(|| ChemError::ValidationError(
-                "all frames must have a periodic cell for MSD".into()))?
-            .matrix.transpose();
-        let inv = m.try_inverse()
-            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
-        Ok((m, inv))
-    }).collect::<ferro_core::Result<Vec<_>>>()?;
+fn unwrap_tor(
+    traj: &Trajectory,
+    cells: &[Option<PeriodicCell>],
+    atom_indices: &[usize],
+) -> ferro_core::Result<Series> {
+    let boxes = cells.iter().map(|c| c.as_ref().ok_or_else(|| ChemError::ValidationError(
+        "all frames must have a periodic cell for MSD".into()))).collect::<ferro_core::Result<Vec<_>>>()?;
 
     Ok(atom_indices.par_iter().map(|&i| {
         let n = traj.n_frames();
@@ -150,11 +146,11 @@ fn unwrap_tor(traj: &Trajectory, atom_indices: &[usize]) -> ferro_core::Result<S
         for (k, frame) in traj.frames.iter().enumerate() {
             if k > 0 {
                 let w = frame.atoms[i].position;
-                let (m, inv) = &boxes[k];
-                let f = inv * (w - w_prev);
+                let pc = boxes[k];
+                let f = pc.to_fractional(w - w_prev);
                 // ⌊x + 1/2⌋ 而非 round()：与论文式 2 逐字一致（两者只在恰好 ±0.5 处不同）
                 let f_mic = f.map(|c| c - (c + 0.5).floor());
-                u += m * f_mic;
+                u += pc.to_cartesian(f_mic);
                 w_prev = w;
             }
             for (axis, v) in s.iter_mut().zip([u.x, u.y, u.z]) {
@@ -241,9 +237,9 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
         .into_iter()
         .collect();
 
-    check::periodic_cells(traj, None)?;
+    let cells = check::periodic_cells(traj, None)?;
     let series: Series = if ref_frame.cell.is_some() {
-        unwrap_tor(traj, &atom_indices)?
+        unwrap_tor(traj, &cells, &atom_indices)?
     } else {
         atom_indices.iter().map(|&i| {
             let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.atoms[i].position).collect();

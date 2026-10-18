@@ -16,7 +16,7 @@
 
 use crate::check;
 use ferro_core::error::ChemError;
-use ferro_core::{CubeData, Frame, Trajectory};
+use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use rayon::prelude::*;
@@ -77,17 +77,13 @@ pub struct CubeRadiusResult {
 /// fractional-coordinate offset in direction i when the Cartesian distance equals `radius`.
 /// Multiply by the voxel count along that axis, ceil, and add 1 as a safety margin.
 fn search_range(
-    mat: &Matrix3<f64>,
+    cell: &PeriodicCell,
     radius: f64,
     nx: usize,
     ny: usize,
     nz: usize,
 ) -> (i64, i64, i64) {
-    // (M^T)^{-1} : Cartesian → 分数坐标的变换矩阵
-    let m_t_inv = mat
-        .transpose()
-        .try_inverse()
-        .unwrap_or(*mat); // 奇异矩阵时退化（不应发生）
+    let m_t_inv = cell.reciprocal();
     let sx = (radius * m_t_inv.row(0).norm() * nx as f64).ceil() as i64 + 1;
     let sy = (radius * m_t_inv.row(1).norm() * ny as f64).ceil() as i64 + 1;
     let sz = (radius * m_t_inv.row(2).norm() * nz as f64).ceil() as i64 + 1;
@@ -106,21 +102,17 @@ fn window(c: i64, s: i64, n: usize) -> Vec<usize> {
     (c - s..=c + s).map(|i| i.rem_euclid(n as i64) as usize).collect()
 }
 
-/// 处理单帧，返回该帧的计数贡献。
-///
-/// 返回 `None` 表示帧没有周期性 cell（跳过该帧）。
+/// One frame's contribution to the counts.
 fn process_frame(
     frame: &Frame,
+    cell: &PeriodicCell,
     params: &CubeRadiusParams,
-) -> Option<Array3<f64>> {
-    let cell = frame.cell.as_ref()?;
+) -> Array3<f64> {
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
     // 搜索窗按**本帧**的晶胞算：NPT 下晶胞缩小时，按第一帧算的窗口偏小，
     // 以前只靠 +1 格的余量兜底
-    let (sx, sy, sz) = search_range(&cell.matrix, params.radius, nx, ny, nz);
+    let (sx, sy, sz) = search_range(cell, params.radius, nx, ny, nz);
     let radius2 = params.radius * params.radius;
-    // cart_disp = mat_t * frac_disp（与 C 代码 x = dx*A[0][0] + … 等价）
-    let mat_t = cell.matrix.transpose();
 
     let mut rho = Array3::<f64>::zeros((nx, ny, nz));
 
@@ -130,7 +122,7 @@ fn process_frame(
         }
 
         // 原子分数坐标，归一化到 [0, 1)
-        let frac = cell.cartesian_to_fractional(atom.position).ok()?;
+        let frac = cell.to_fractional(atom.position);
         let fx = frac.x.rem_euclid(1.0);
         let fy = frac.y.rem_euclid(1.0);
         let fz = frac.z.rem_euclid(1.0);
@@ -154,15 +146,15 @@ fn process_frame(
                     let d = Vector3::new(fx - vx, fy - vy, fz - vz);
                     let dfrac = d.map(|v| v - v.round());
 
-                    // 转为 Cartesian 并判断距离（对应 C 代码坐标转换 + if r < RADIUS）
-                    if (mat_t * dfrac).norm_squared() < radius2 {
+                    // To Cartesian and compare (the C code's transform + `if r < RADIUS`)
+                    if cell.to_cartesian(dfrac).norm_squared() < radius2 {
                         rho[[ix, iy, iz]] += 1.0;
                     }
                 }
             }
         }
     }
-    Some(rho)
+    rho
 }
 
 
@@ -187,13 +179,14 @@ pub fn calc_cube_radius(
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
         .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
-    check::periodic_cells(traj, Some(("radius", params.radius)))?;
+    let cells = check::periodic_cells(traj, Some(("radius", params.radius)))?;
 
     // 帧级并行
     let results: Vec<Array3<f64>> = traj
         .frames
         .par_iter()
-        .filter_map(|f| process_frame(f, params))
+        .zip(cells.par_iter())
+        .filter_map(|(f, c)| c.as_ref().map(|c| process_frame(f, c, params)))
         .collect();
 
     let n_frames = results.len();
@@ -352,7 +345,7 @@ mod tests {
     fn test_search_range_cubic() {
         // 10Å 立方盒子，10 voxel，radius=1.5Å → 每轴搜索 ceil(1.5/1.0)+1 = 3
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
-        let (sx, sy, sz) = search_range(&cell.matrix, 1.5, 10, 10, 10);
+        let (sx, sy, sz) = search_range(&PeriodicCell::new(&cell, [true; 3]).unwrap(), 1.5, 10, 10, 10);
         assert!(sx >= 2 && sy >= 2 && sz >= 2);
     }
 

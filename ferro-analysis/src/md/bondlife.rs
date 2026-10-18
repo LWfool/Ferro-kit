@@ -19,8 +19,7 @@
 
 use crate::check;
 use rayon::prelude::*;
-use nalgebra::Matrix3;
-use ferro_core::{Table, Trajectory};
+use ferro_core::{NeighborList, Table, Trajectory};
 use ferro_core::error::ChemError;
 
 use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
@@ -172,7 +171,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     let r_break = params.r_break.unwrap_or(r_bond);
     // 距离取最小镜像：r_break 超过上界时更远镜像里的键被漏掉
     let r_break_name = if params.r_break.is_some() { "r-break" } else { "r-bond" };
-    check::periodic_cells(traj, Some((r_break_name, r_break)))?;
+    let cells = check::periodic_cells(traj, Some((r_break_name, r_break)))?;
 
     let ref_frame = &traj.frames[0];
     let of = |el: &str| -> Vec<usize> {
@@ -186,34 +185,38 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     }
     let same = params.center == params.neighbor;
 
-    // 每帧 (Mᵀ, (Mᵀ)⁻¹)：分数坐标取最小镜像；无盒子的帧直接用笛卡尔差
-    let boxes: Vec<Option<(Matrix3<f64>, Matrix3<f64>)>> = traj.frames.iter().map(|f| {
-        f.cell.as_ref().map(|c| {
-            let m = c.matrix.transpose();
-            m.try_inverse().map(|inv| (m, inv))
-                .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))
-        }).transpose()
-    }).collect::<ferro_core::Result<_>>()?;
+    // Minimum image in a frame with a box, plain Cartesian difference without one
     let dist = |k: usize, i: usize, j: usize| -> f64 {
         let f = &traj.frames[k];
         let d = f.atoms[j].position - f.atoms[i].position;
-        match &boxes[k] {
-            Some((m, inv)) => {
-                let fr = inv * d;
-                (m * fr.map(|c| c - (c + 0.5).floor())).norm()
-            }
+        match &cells[k] {
+            Some(pc) => pc.minimum_image(d).norm(),
             None => d.norm(),
         }
     };
 
-    // 第一遍：任一帧进入 r_bond 的原子对都是候选（同元素时只取 i < j）
+    // Pass 1: a pair that comes within r_bond in any frame is a candidate (i < j for
+    // one element). A frame with a box searches a neighbour list, one without scans all
+    let mut is_neighbor = vec![false; ref_frame.atoms.len()];
+    for &j in &neighbors { is_neighbor[j] = true; }
     let mut candidates: Vec<(usize, usize)> = (0..n_frames).into_par_iter().flat_map_iter(|k| {
         let mut hit = Vec::new();
-        for &i in &centers {
-            for &j in &neighbors {
-                if i == j || (same && j < i) { continue; }
-                if dist(k, i, j) <= r_bond { hit.push((i, j)); }
+        let mut take = |i: usize, j: usize| {
+            if i != j && !(same && j < i) && dist(k, i, j) <= r_bond { hit.push((i, j)); }
+        };
+        match &cells[k] {
+            Some(pc) => {
+                let nl = NeighborList::build(&traj.frames[k].positions(), pc, r_bond)
+                    .expect("r_bond <= r_break, checked against every frame's bound at the entry");
+                for &i in &centers {
+                    for (j, _, _) in nl.neighbors_of(i) {
+                        if is_neighbor[j] { take(i, j); }
+                    }
+                }
             }
+            None => for &i in &centers {
+                for &j in &neighbors { take(i, j); }
+            },
         }
         hit
     }).collect();

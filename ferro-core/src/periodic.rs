@@ -66,6 +66,11 @@ impl PeriodicCell {
         self.mt * f.map(|c| c - c.round())
     }
 
+    /// `(Mᵀ)⁻¹`; row `i` is reciprocal lattice vector `i` (without 2π), of norm `1/dᵢ`.
+    pub fn reciprocal(&self) -> &Matrix3<f64> {
+        &self.inv
+    }
+
     /// Interplanar spacings d₁, d₂, d₃ \[Å\]; see [`Cell::interplanar_spacings`].
     pub fn spacings(&self) -> [f64; 3] {
         [0, 1, 2].map(|i| 1.0 / self.inv.row(i).norm())
@@ -113,11 +118,15 @@ impl NeighborList {
         Ok(Self { n, bins, frac, mt: cell.mt, rcut })
     }
 
-    /// Atoms other than `i` closer than the cutoff, sorted by index:
+    /// Atoms other than `i` within the cutoff, sorted by index:
     /// `(index, distance, minimum-image vector i → index)`.
+    ///
+    /// A superset: the test is inclusive and allows a relative `1e-9` past the cutoff,
+    /// so a caller that re-measures a pair with its own arithmetic (and its own `<` or
+    /// `<=`) never loses one that sits on the cutoff to a last-bit difference.
     pub fn neighbors_of(&self, i: usize) -> Vec<(usize, f64, [f64; 3])> {
         let fi = self.frac[i];
-        let rcut2 = self.rcut * self.rcut;
+        let rcut2 = self.rcut * self.rcut * (1.0 + 2e-9);
         let [nx, ny, nz] = self.n;
         let c = [0, 1, 2].map(|k| (fi[k] * self.n[k] as f64) as i64);
 
@@ -139,7 +148,7 @@ impl NeighborList {
                         let df = Vector3::new(fj[0] - fi[0], fj[1] - fi[1], fj[2] - fi[2]);
                         let cart = self.mt * df.map(|v| v - v.round());
                         let d2 = cart.norm_squared();
-                        if d2 > 0.0 && d2 < rcut2 {
+                        if d2 > 0.0 && d2 <= rcut2 {
                             out.push((j, d2.sqrt(), [cart.x, cart.y, cart.z]));
                         }
                     }

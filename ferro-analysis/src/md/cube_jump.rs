@@ -134,7 +134,7 @@ pub fn calc_cube_jump(
     let n_frames = traj.frames.len();
     if n_frames < params.tau + 1 { return None; }
     traj.check_same_atoms().ok()?;
-    check::periodic_cells(traj, None).ok()?;
+    let cells = check::periodic_cells(traj, None).ok()?;
 
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
@@ -158,11 +158,11 @@ pub fn calc_cube_jump(
     let n_atoms = selected_atoms.len();
 
     // 预提取所有帧的分数坐标和盒子矩阵转置（NPT：各帧用自身 cell）
-    let frac_all: Vec<Vec<[f64; 3]>> = traj.frames.iter().map(|frame| {
-        let cell = frame.cell.as_ref().unwrap_or(ref_cell);
+    let ref_pc = cells.iter().flatten().next()?;
+    let frac_all: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&cells).map(|(frame, pc)| {
+        let pc = pc.as_ref().unwrap_or(ref_pc);
         frame.atoms.iter().map(|a| {
-            let f = cell.cartesian_to_fractional(a.position)
-                .expect("checked at the entry by check::periodic_cells");
+            let f = pc.to_fractional(a.position);
             [f.x, f.y, f.z]
         }).collect()
     }).collect();
