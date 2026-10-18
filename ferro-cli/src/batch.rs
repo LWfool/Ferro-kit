@@ -11,8 +11,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
-use ferro_core::Table;
+use anyhow::{anyhow, bail, Result};
+use ferro_core::{Table, Trajectory};
 use ferro_io::write_table;
 use ferro_io::TableFormat;
 
@@ -29,6 +29,9 @@ pub struct Failure {
     pub path: PathBuf,
     pub label: String,
     pub reason: String,
+    /// Position in the input list, so [`Summary::failed`] can put the row back where
+    /// the screen's `[k/N]` showed it.
+    pub index: usize,
 }
 
 /// The label one input would get on its own: the file stem, not the full path
@@ -174,13 +177,53 @@ pub fn map_inputs<T>(
         match f(&input) {
             Ok(v) => ok.push((input, v)),
             Err(e) => {
-                // 跳过而非中止:跑一晚上的批量不该因为第 7 个文件丢掉前 6 个的结果
-                println!("        skipped: {e:#}");
-                failed.push(Failure { path: input.path, label: input.label, reason: format!("{e:#}") });
+                // 跳过而非中止:跑一晚上的批量不该因为第 7 个文件丢掉前 6 个的结果。
+                // 走 stderr，与 dataset 的 SKIP 一致（审查 E2-8）
+                eprintln!("        skipped: {e:#}");
+                failed.push(Failure {
+                    path: input.path,
+                    label: input.label,
+                    reason: format!("{e:#}"),
+                    index: i,
+                });
             }
         }
     }
     (ok, failed)
+}
+
+/// What [`drive`] hands back: one result per input that worked, the inputs that did
+/// not, and the prepared output location.
+pub type Driven<T> = (Vec<(Input, T)>, Vec<Failure>, Output);
+
+/// The half of the pipeline every trajectory command shares (`traj`, `map`, `net`):
+/// check the inputs, build `-o`, start the thread pool, run `calc` on each file, and
+/// refuse an empty result set.
+///
+/// It stops there on purpose. The second half — the `Summary` columns, the product
+/// name and title — differs in every caller, and threading those through as more
+/// closures would cost more to read than the lines it saves.
+///
+/// The output directory is built **before the first file is read**, because the label
+/// goes into the file name and a bad selection should fail immediately rather than
+/// after a long batch.
+pub fn drive<T>(
+    common: &crate::args::common::CommonArgs,
+    label: Option<String>,
+    calc: impl Fn(&Input, &Trajectory) -> Result<T>,
+) -> Result<Driven<T>> {
+    // 参数（含 --atom-style）在建目录、读第一个文件之前查完
+    let inputs = common.inputs()?;
+    let out = common.out(label);
+    out.prepare()?;
+    common.init_threads();
+    println!("Inputs: {} file(s)", inputs.len());
+
+    let (results, failures) = map_inputs(&inputs, |inp| calc(inp, &common.load(&inp.path)?));
+    if results.is_empty() {
+        return Err(anyhow!("every input failed; nothing to write"));
+    }
+    Ok((results, failures, out))
 }
 
 /// Stacks each input's tables into one table per table name, adding the `file` column.
@@ -478,12 +521,25 @@ impl Summary {
         }
     }
 
+    /// Adds the failed inputs, each at its place in the input order.
+    ///
+    /// Call after every [`Summary::ok`] row, which go in input order: inserting the
+    /// failures by ascending index then reproduces the order of the screen's `[k/N]`
+    /// (审查 E2-7: they used to all sit at the end).
     pub fn failed(&mut self, failures: &[Failure]) {
-        for f in failures {
-            self.file.push(f.label.clone());
-            self.status.push(f.reason.clone());
+        let rows = self.file.len();
+        for slot in self.extra.iter_mut() {
+            // note() 只填了部分行时先补齐，插入位置才对得上
+            slot.1.resize(rows, "-".to_string());
+        }
+        let mut sorted: Vec<&Failure> = failures.iter().collect();
+        sorted.sort_by_key(|f| f.index);
+        for f in sorted {
+            let at = f.index.min(self.file.len());
+            self.file.insert(at, f.label.clone());
+            self.status.insert(at, f.reason.clone());
             for slot in self.extra.iter_mut() {
-                slot.1.push("-".to_string());
+                slot.1.insert(at, "-".to_string());
             }
         }
     }
@@ -579,6 +635,31 @@ mod tests {
         assert_eq!(failed.len(), 1);
         assert_eq!(failed[0].label, "b");
         assert!(failed[0].reason.contains("boom"));
+    }
+
+    /// 审查 E2-7：失败行要落在它的输入位置上，与屏幕的 `[k/N]` 对得上，
+    /// 而不是全堆在 `[inputs]` 末尾；note() 只填了成功行的列也要随之对齐
+    #[test]
+    fn test_summary_keeps_failures_in_input_order() {
+        let inputs: Vec<PathBuf> = ["a", "b", "c", "d"].iter().map(PathBuf::from).collect();
+        let (ok, failed) = map_inputs(&inputs, |inp| {
+            if inp.label == "a" || inp.label == "c" { bail!("boom") } else { Ok(()) }
+        });
+        let mut s = Summary::new(&[]);
+        for (inp, _) in &ok {
+            s.ok(inp.label.clone(), 1, 1, &[]);
+            s.note("species", format!("sp-{}", inp.label));
+        }
+        s.failed(&failed);
+        let t = s.into_table();
+        let col = |name: &str| match t.column(name) {
+            Some(ferro_core::Column::Text(v)) => v.clone(),
+            other => panic!("{name}: {other:?}"),
+        };
+        assert_eq!(col("file"), ["a", "b", "c", "d"]);
+        assert_eq!(col("species"), ["-", "sp-b", "-", "sp-d"]);
+        assert_eq!(col("status")[1], "ok");
+        assert!(col("status")[2].contains("boom"));
     }
 
     #[test]

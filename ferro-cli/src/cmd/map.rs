@@ -188,7 +188,7 @@ fn mode_name(m: &CubeCliMode) -> &'static str {
     }
 }
 
-/// Shared driver: traverse inputs, skip failures, one grid file each.
+/// One grid file per input: [`batch::drive`] with nothing to stack afterwards.
 ///
 /// `map` has no type selection, so its `Output` carries no label; `body` gets the
 /// input's label for the file name.
@@ -196,18 +196,8 @@ fn drive(
     common: &CommonArgs,
     body: impl Fn(&Trajectory, &str, &batch::Output) -> Result<()>,
 ) -> Result<usize> {
-    // 参数（含 --atom-style）在建目录、读第一个文件之前查完
-    let inputs = common.inputs()?;
     let out = common.out(None);
-    out.prepare()?;
-
-    common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (_ok, failures) = batch::map_inputs(&inputs, |inp| {
-        let traj = common.load(&inp.path)?;
-        body(&traj, &inp.label, &out)
-    });
+    let (_ok, failures, _) = batch::drive(common, None, |inp, traj| body(traj, &inp.label, &out))?;
     Ok(failures.len())
 }
 
@@ -417,5 +407,19 @@ mod tests {
             assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
             assert!(!out.exists(), "{args}：参数错误时不该建 -o 目录");
         }
+    }
+
+    /// 审查 E2-6：全部输入都失败时 map 要像 traj / net 一样报错，而不是安静地返回
+    #[test]
+    fn test_every_input_failing_is_an_error() {
+        let dir = std::env::temp_dir().join("ferro_map_all_fail");
+        std::fs::create_dir_all(&dir).unwrap();
+        let bad = dir.join("broken.lammpstrj");
+        std::fs::write(&bad, "not a dump\n").unwrap();
+        let argv = ["map", "density", "-i", bad.to_str().unwrap(), "-o", dir.to_str().unwrap()];
+        let w = Wrap::try_parse_from(argv).unwrap();
+        let err = format!("{:#}", run(&w.cmd).expect_err("all inputs failed"));
+        assert!(err.contains("every input failed"), "{err}");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

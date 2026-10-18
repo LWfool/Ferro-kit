@@ -90,33 +90,22 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
         bail!("Every cutoff names a modifier element; at least one former is required");
     }
 
-    // 参数（含 --atom-style）在建目录、读第一个文件之前查完
-    let inputs = cmd.common.inputs()?;
-    // net 没有类型选择,故无 label 段;-o 的目录在读第一个文件之前建好
-    let out = cmd.common.out(None);
-    out.prepare()?;
-
-    cmd.common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
     print_label_scheme(&params);
-
-    let (results, failures) = batch::map_inputs(&inputs, |inp| {
-        let traj = cmd.common.load(&inp.path)?;
-        let (params, shells) = resolve_auto(&params, &auto, &traj)?;
+    // net 没有类型选择,故无 label 段
+    let out = cmd.common.out(None);
+    let (results, failures, out) = batch::drive(&cmd.common, None, |inp, traj| {
+        let (params, shells) = resolve_auto(&params, &auto, traj)?;
         let result = match cmd.export_traj {
             // One classification feeds both the statistics and the labelled trajectory
             Some(fmt) => {
-                let (result, per_frame) = calc_network_typed(&traj, &params)?;
-                export_labelled(&traj, &per_frame, &inp.label, &out, fmt, cmd.common.read.units)?;
+                let (result, per_frame) = calc_network_typed(traj, &params)?;
+                export_labelled(traj, &per_frame, &inp.label, &out, fmt, cmd.common.read.units)?;
                 result
             }
-            None => calc_network(&traj, &params)?,
+            None => calc_network(traj, &params)?,
         };
         Ok((result, shells))
-    });
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
+    })?;
 
     let tables = batch::stack(&results, |(r, _): &Resolved| {
         Ok(r.to_tables())

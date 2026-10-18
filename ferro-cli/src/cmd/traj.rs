@@ -21,7 +21,6 @@ use crate::args::common::{CommonArgs, SelectArgs};
 use crate::args::traj::{RotVectorCli, SqWeightingCli};
 use crate::batch::{self, Summary};
 use crate::help;
-use ferro_core::Trajectory;
 
 #[derive(Subcommand, Debug)]
 pub enum TrajCmd {
@@ -303,41 +302,6 @@ pub fn print_help(cmd: &TrajCmd) {
 
 // ─── 各分析 ──────────────────────────────────────────────────────────────────
 
-/// What [`drive`] hands back: one result per input that parsed, the inputs that did not,
-/// and the prepared output location.
-type Driven<T> = (Vec<(batch::Input, T)>, Vec<batch::Failure>, batch::Output);
-
-/// The half of the pipeline all seven analyses share: prepare the output directory,
-/// expand the inputs, start the thread pool, run one analysis per file, and refuse an
-/// empty result set.
-///
-/// It stops there on purpose.  The second half — the `Summary` columns, the product name
-/// and title — differs in every one of the seven, and threading those through as more
-/// closures would cost more to read than the eight lines it saves.
-/// `cmd/map.rs::drive` draws the line at the same place.
-///
-/// The output directory is built **before the first file is read**, because the label
-/// goes into the file name and a bad selection should fail immediately rather than after
-/// a long batch.
-fn drive<T>(
-    common: &CommonArgs,
-    label: Option<String>,
-    calc: impl Fn(&Trajectory) -> Result<T>,
-) -> Result<Driven<T>> {
-    // 参数（含 --atom-style）在建目录、读第一个文件之前查完
-    let inputs = common.inputs()?;
-    let out = common.out(label);
-    out.prepare()?;
-    common.init_threads();
-    println!("Inputs: {} file(s)", inputs.len());
-
-    let (results, failures) = batch::map_inputs(&inputs, |inp| calc(&common.load(&inp.path)?));
-    if results.is_empty() {
-        return Err(anyhow!("every input failed; nothing to write"));
-    }
-    Ok((results, failures, out))
-}
-
 fn run_gr(c: &GrCmd) -> Result<usize> {
     let (group_by, pair) = c.select.resolve_pair()?;
     let params = c.knobs.params(group_by);
@@ -348,7 +312,7 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
         None => batch::file_label::<&str>(&[])?,
     };
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| Ok(calc_gr(traj, &params)?))?;
+        batch::drive(&c.common, Some(label), |_, traj| Ok(calc_gr(traj, &params)?))?;
 
     let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
     let tables = batch::stack(&results, |r: &GrResult| Ok(r.to_tables(pair_ref)?))?;
@@ -391,7 +355,7 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     gr_params.validate()?;
     sq_params.validate()?;
-    let (results, failures, out) = drive(&c.common, None, |traj| {
+    let (results, failures, out) = batch::drive(&c.common, None, |_, traj| {
         let gr = calc_gr(traj, &gr_params)?;
         let sq = calc_sq_from_gr(&gr, &sq_params)?;
         Ok((gr, sq))
@@ -456,7 +420,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
     params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| Ok(calc_msd(traj, &params)?))?;
+        batch::drive(&c.common, Some(label), |_, traj| Ok(calc_msd(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &MsdResult| Ok(r.to_tables()))?;
 
@@ -545,7 +509,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         (format!("{a}-{b}-{cc}"), format!("{cc}-{b}-{a}"))
     });
 
-    let (results, failures, out) = drive(&c.common, Some(label), |traj| {
+    let (results, failures, out) = batch::drive(&c.common, Some(label), |_, traj| {
         let mut result = calc_angle(traj, &params)?;
         // 指定三元组时过滤输出（端原子已规范排序，两种顺序均检查）
         if let Some((key1, key2)) = &triplet_keys {
@@ -589,7 +553,7 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
     params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| Ok(calc_vacf(traj, &params)?))?;
+        batch::drive(&c.common, Some(label), |_, traj| Ok(calc_vacf(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &VacfResult| Ok(r.to_tables()))?;
     // Green-Kubo 积分的末值逐文件不同，放进清单方便横向比（D 要看 diffusion 列走平处）
@@ -634,7 +598,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| Ok(calc_rotcorr(traj, &params)?))?;
+        batch::drive(&c.common, Some(label), |_, traj| Ok(calc_rotcorr(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
     // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 r_cut 抓不稳邻居
@@ -676,7 +640,7 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
     // 取值范围（含 r-break >= r-bond）在建目录、读第一个文件之前查完
     params.validate()?;
     let (results, failures, out) =
-        drive(&c.common, Some(label), |traj| Ok(calc_bondlife(traj, &params)?))?;
+        batch::drive(&c.common, Some(label), |_, traj| Ok(calc_bondlife(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &BondLifeResult| Ok(r.to_tables()))?;
     let mut summary = Summary::new(&[
@@ -716,7 +680,7 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     let label = batch::set_label(c.elements.as_ref())?;
-    let (results, failures, out) = drive(&c.common, Some(label), |traj| Ok(calc_vanhove(traj, &params)?))?;
+    let (results, failures, out) = batch::drive(&c.common, Some(label), |_, traj| Ok(calc_vanhove(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
     // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼；
