@@ -234,7 +234,7 @@ pub fn read_qe_out(path: &Path) -> Result<Trajectory> {
 /// Reads a pw.x output file and reports what was dropped.
 pub fn read_qe_out_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path).with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_qe_out(&content).with_context(|| format!("parsing {path_}"))
 }
 

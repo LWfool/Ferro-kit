@@ -25,7 +25,6 @@
 //! anchor, and that offset is a property of one VASP version's layout.
 
 use std::path::Path;
-use std::io::{BufRead, BufReader};
 
 use anyhow::{bail, Context, Result};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
@@ -96,8 +95,6 @@ struct Pending {
 /// Reads a VASP OUTCAR and reports what was dropped.
 pub fn read_vasp_outcar_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
-    let file = std::fs::File::open(path).with_context(|| format!("cannot open {path_}"))?;
-    let reader = BufReader::new(file);
     let mut stats = AimdStats::new(AimdFormat::VaspOutcar);
 
     let mut symbols: Vec<String> = Vec::new();
@@ -114,8 +111,8 @@ pub fn read_vasp_outcar_with_stats(path: &Path) -> Result<(Trajectory, AimdStats
     let mut want_atoms = 0usize;
     let mut skip_before_atoms = 0usize;
 
-    for line in reader.lines() {
-        let line = line.with_context(|| format!("reading {path_}"))?;
+    for line in super::util::text_lines(path)? {
+        let line = line?;
 
         // ── 头部:元素与计数 ──────────────────────────────────────────────
         if line.contains("VRHFIN") {

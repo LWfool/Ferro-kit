@@ -1,24 +1,18 @@
 use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::Vector3;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use anyhow::{bail, Context, Result};
 use ferro_core::data::elements::by_symbol;
 
 /// 读取 PDB 文件，支持多模型（MODEL/ENDMDL 记录）。
 pub fn read_pdb(path: &Path) -> Result<Trajectory> {
-    let path_ = path.display();
-    let file = File::open(path).context(format!("cannot open {path_}"))?;
-    let reader = BufReader::new(file);
-
     let mut traj = Trajectory::new();
     let mut current = Frame::new();
     let mut has_model = false;
     let mut cell: Option<Cell> = None;
 
-    for (ln, line) in reader.lines().enumerate() {
-        let line = line.context("read error")?;
+    for (ln, line) in super::util::text_lines(path)?.enumerate() {
+        let line = line?;
         let tag = col(&line, 0, 6);
 
         match tag {

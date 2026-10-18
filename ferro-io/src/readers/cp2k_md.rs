@@ -161,8 +161,7 @@ pub fn read_cp2k_md(path: &Path) -> Result<Trajectory> {
 /// Reads a CP2K MD output file and reports what was dropped.
 pub fn read_cp2k_md_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_cp2k_md(&content).with_context(|| format!("parsing {path_}"))
 }
 

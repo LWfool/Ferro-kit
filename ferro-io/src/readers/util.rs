@@ -1,6 +1,9 @@
 //! Helpers shared by more than two readers.
 
-use anyhow::{ensure, Result};
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+
+use anyhow::{anyhow, ensure, Context, Result};
 
 /// The leading floats of `line`, stopping at the first token that is not a number.
 ///
@@ -15,4 +18,94 @@ pub(crate) fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
         .collect();
     ensure!(v.len() >= min, "expected ≥{min} floats on line {line:?}, got {}", v.len());
     Ok(v)
+}
+
+/// Reads a whole text file.
+///
+/// Bytes that are not UTF-8 are an error naming the file, line and column of the
+/// first one (review C-8): a parse past them would be guessing, and "cannot open"
+/// for a file that opened fine sends the user looking for the wrong problem.
+pub(crate) fn read_text(path: &Path) -> Result<String> {
+    let bytes = std::fs::read(path).with_context(|| format!("cannot open {}", path.display()))?;
+    String::from_utf8(bytes).map_err(|e| {
+        let at = e.utf8_error().valid_up_to();
+        let b = e.as_bytes();
+        let line_start = b[..at].iter().rposition(|&c| c == b'\n').map_or(0, |p| p + 1);
+        let line = 1 + b[..at].iter().filter(|&&c| c == b'\n').count();
+        not_utf8(path, line, at - line_start + 1, b[at])
+    })
+}
+
+/// The lines of a text file, read one at a time, ending as `str::lines` ends them
+/// (`\n` or `\r\n` removed). A line that is not UTF-8 is the same error as in
+/// [`read_text`], so the streaming readers report the same position.
+pub(crate) fn text_lines(path: &Path) -> Result<TextLines> {
+    let file = std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    Ok(TextLines { reader: BufReader::new(file), path: path.to_path_buf(), n: 0 })
+}
+
+pub(crate) struct TextLines {
+    reader: BufReader<std::fs::File>,
+    path: PathBuf,
+    n: usize,
+}
+
+impl Iterator for TextLines {
+    type Item = Result<String>;
+
+    fn next(&mut self) -> Option<Result<String>> {
+        let mut buf = Vec::new();
+        match self.reader.read_until(b'\n', &mut buf) {
+            Ok(0) => return None,
+            Ok(_) => {}
+            Err(e) => return Some(Err(anyhow::Error::new(e).context(format!("reading {}", self.path.display())))),
+        }
+        self.n += 1;
+        if buf.last() == Some(&b'\n') {
+            buf.pop();
+            if buf.last() == Some(&b'\r') {
+                buf.pop();
+            }
+        }
+        Some(String::from_utf8(buf).map_err(|e| {
+            let at = e.utf8_error().valid_up_to();
+            not_utf8(&self.path, self.n, at + 1, e.as_bytes()[at])
+        }))
+    }
+}
+
+fn not_utf8(path: &Path, line: usize, column: usize, byte: u8) -> anyhow::Error {
+    anyhow!(
+        "{}: line {line}, column {column}: byte 0x{byte:02x} is not UTF-8 text \
+         (a binary file, or another program's output mixed into this one?)",
+        path.display()
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One bad byte is an error at its own line and column, from both the whole-file
+    /// and the line-by-line path; good text reads unchanged, `\r\n` included.
+    #[test]
+    fn non_utf8_names_the_line_and_column() {
+        let path = std::env::temp_dir().join("ferro_util_not_utf8.txt");
+        std::fs::write(&path, b"first\r\nsec\xffond\nthird\n").unwrap();
+        for err in [
+            read_text(&path).unwrap_err(),
+            text_lines(&path).unwrap().collect::<Result<Vec<_>>>().unwrap_err(),
+        ] {
+            let msg = err.to_string();
+            assert!(msg.contains("line 2, column 4: byte 0xff"), "{msg}");
+        }
+
+        std::fs::write(&path, "a\r\nb\nc").unwrap();
+        assert_eq!(read_text(&path).unwrap().lines().collect::<Vec<_>>(), ["a", "b", "c"]);
+        assert_eq!(text_lines(&path).unwrap().collect::<Result<Vec<_>>>().unwrap(), ["a", "b", "c"]);
+        let _ = std::fs::remove_file(&path);
+
+        let missing = read_text(Path::new("/no/such/ferro/file")).unwrap_err().to_string();
+        assert!(missing.starts_with("cannot open"), "{missing}");
+    }
 }

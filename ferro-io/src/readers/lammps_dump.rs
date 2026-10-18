@@ -50,8 +50,7 @@ pub fn read_lammps_dump_with_warnings(
     units: Option<LammpsUnits>,
 ) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_lammps_dump(&content, units).with_context(|| format!("parsing {path_}"))
 }
 

@@ -344,7 +344,7 @@ pub fn read_cp2k_sp(path: &Path) -> Result<Trajectory> {
 /// Reads a CP2K single-point output file and reports what was dropped.
 pub fn read_cp2k_sp_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path).with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_cp2k_sp(&content).with_context(|| format!("parsing {path_}"))
 }
 

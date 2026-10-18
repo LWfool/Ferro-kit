@@ -1,16 +1,11 @@
 use std::path::Path;
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use anyhow::{Context, Result};
 
 /// 读取 XYZ 文件，支持多帧（多个连续 block）。
 pub fn read_xyz(path: &Path) -> Result<Trajectory> {
-    let path_ = path.display();
-    let file = File::open(path).context(format!("cannot open {path_}"))?;
-    let reader = BufReader::new(file);
-    let mut lines = reader.lines();
+    let mut lines = super::util::text_lines(path)?;
     let mut traj = Trajectory::new();
 
     loop {

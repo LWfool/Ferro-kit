@@ -5,8 +5,7 @@ use anyhow::{bail, Context, Result};
 
 pub fn read_cp2k_inp(path: &Path) -> Result<Trajectory> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_cp2k(&content).with_context(|| format!("parsing {path_}"))
 }
 

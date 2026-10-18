@@ -7,8 +7,7 @@ use anyhow::{bail, Context, Result};
 
 pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_extxyz(&content).with_context(|| format!("parsing {path_}"))
 }
 
@@ -19,11 +18,8 @@ pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
 /// nep|extxyz` all write extended XYZ under the `.xyz` extension. Routing those through
 /// the plain reader silently drops the cell, energy, forces, stress and velocities.
 pub fn is_extxyz(path: &Path) -> Result<bool> {
-    use std::io::{BufRead, BufReader};
-    let file = std::fs::File::open(path)
-        .with_context(|| format!("cannot open {}", path.display()))?;
     // 只读前两行，不为判格式把整条轨迹读进来
-    let Some(comment) = BufReader::new(file).lines().nth(1).transpose()? else {
+    let Some(comment) = super::util::text_lines(path)?.nth(1).transpose()? else {
         return Ok(false);
     };
     Ok(comment.split_whitespace().any(|tok| {

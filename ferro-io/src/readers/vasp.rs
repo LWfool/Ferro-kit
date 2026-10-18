@@ -12,8 +12,7 @@ pub fn read_poscar(path: &Path) -> Result<Trajectory> {
 /// (a velocity block shorter than the atom count, which is dropped).
 pub fn read_poscar_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_poscar(&content).with_context(|| format!("parsing {path_}"))
 }
 

@@ -13,8 +13,7 @@ use super::vasp::potcar_symbol;
 /// Read a VASP CHGCAR file, returning the structural frame and charge density grid.
 pub fn read_chgcar(path: &Path) -> Result<(Frame, ChargeGrid)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_chgcar(&content).with_context(|| format!("parsing {path_}"))
 }
 

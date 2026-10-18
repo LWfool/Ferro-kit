@@ -483,6 +483,22 @@ mod tests {
         }
     }
 
+    /// A stray byte in a program log (MPI noise sent through `2>&1`) is an error at
+    /// its line, from the banner check and from the reader alike (review C-8; user
+    /// decision: strict, not replaced).
+    #[test]
+    fn a_non_utf8_byte_in_a_log_names_its_line() {
+        let mut bytes = std::fs::read("../tests/cp2k_sp_v61.out").unwrap();
+        let at = bytes.iter().enumerate().filter(|(_, &c)| c == b'\n').nth(199).unwrap().0 + 1;
+        bytes.insert(at, 0xff);
+        let path = tmp_dir("utf8").join("bad.out");
+        std::fs::write(&path, &bytes).unwrap();
+        let err = format!("{:#}", read_plain(&path).unwrap_err());
+        assert!(err.contains("line 201, column 1: byte 0xff"), "{err}");
+        let err = format!("{:#}", read_as(&path, Format::Aimd(AimdFormat::Cp2kSp), &ReadOptions::default()).unwrap_err());
+        assert!(err.contains("line 201, column 1: byte 0xff"), "{err}");
+    }
+
     /// Program outputs and DeePMD systems are found by content and by directory, so
     /// `convert` / `info` / `traj` read them like any structure file (review C-2).
     #[test]

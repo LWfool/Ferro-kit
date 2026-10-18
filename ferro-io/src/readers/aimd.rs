@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use ferro_core::Trajectory;
 
 /// Which AIMD program wrote a file.
@@ -137,23 +137,17 @@ const SNIFF_MAX_LINES: usize = 5000;
 /// any one program. The banners are unambiguous and cost one read of the head
 /// of the file.
 pub fn sniff(path: &Path) -> Result<AimdFormat> {
-    use std::io::{BufRead, BufReader};
-
-    let file = std::fs::File::open(path)
-        .with_context(|| format!("cannot open {}", path.display()))?;
-    let mut reader = BufReader::new(file);
+    let mut lines = super::util::text_lines(path)?;
     let mut head = String::new();
     // Every banner is in the first few lines, but CP2K's `GLOBAL| Run type` comes
     // after its input echo and the build information, which grow with the input
     // (line 46 in a fixture). So: 96 lines, and past that keep going only while a
     // CP2K banner waits for its run type, up to a cap that bounds a non-matching file.
     for n in 0.. {
-        let mut line = String::new();
-        if reader.read_line(&mut line)? == 0 {
-            break;
-        }
+        let Some(line) = lines.next().transpose()? else { break };
         let found_run_type = line.contains("GLOBAL| Run type");
         head.push_str(&line);
+        head.push('\n');
         let cp2k = head.contains("CP2K|");
         if found_run_type || (n >= 96 && !cp2k) || n >= SNIFF_MAX_LINES {
             break;

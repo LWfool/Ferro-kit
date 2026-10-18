@@ -44,8 +44,7 @@ impl std::fmt::Display for AtomStyle {
 
 pub fn read_lammps_data(path: &Path, style: AtomStyle) -> Result<Trajectory> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_lammps_data(&content, style).with_context(|| format!("parsing {path_} as atom style {style}"))
 }
 

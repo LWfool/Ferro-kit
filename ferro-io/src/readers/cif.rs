@@ -499,8 +499,7 @@ fn block_to_frame(block: &CifBlock) -> Result<Frame> {
 /// 读取 CIF 文件，每个 `data_` block 对应轨迹中的一帧。
 pub fn read_cif(path: &Path) -> Result<Trajectory> {
     let path_ = path.display();
-    let input = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let input = super::util::read_text(path)?;
     let tokens = tokenize(&input);
     let blocks = parse_blocks(&tokens);
 

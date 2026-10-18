@@ -222,8 +222,7 @@ fn load(set: &Path, key: &str) -> Result<Option<Vec<f64>>> {
 }
 
 fn read_type_indices(path: &Path) -> Result<Vec<usize>> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {}", path.display()))?;
+    let text = super::util::read_text(path)?;
     // 一行一个还是一行全部都收：dpdata 的文档说是一行，np.savetxt 写的是一行一个
     text.split_whitespace()
         .map(|t| {
@@ -234,8 +233,7 @@ fn read_type_indices(path: &Path) -> Result<Vec<usize>> {
 }
 
 fn read_lines_tokens(path: &Path) -> Result<Vec<String>> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {}", path.display()))?;
+    let text = super::util::read_text(path)?;
     Ok(text.split_whitespace().map(|s| s.to_string()).collect())
 }
 

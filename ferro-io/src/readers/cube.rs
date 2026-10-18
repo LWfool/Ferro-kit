@@ -156,8 +156,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 /// Read a Gaussian cube file into `CubeData` (for visualisation and density maps).
 pub fn read_cube(path: &Path) -> Result<CubeData> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_cube(&content).with_context(|| format!("parsing {path_}"))
 }
 
@@ -193,8 +192,7 @@ fn parse_cube(content: &str) -> Result<CubeData> {
 /// `rho_stored = cube_value × V_cell_Bohr` (unit-independent invariant).
 pub fn read_cube_as_chg(path: &Path) -> Result<(Frame, ChargeGrid)> {
     let path_ = path.display();
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot open {path_}"))?;
+    let content = super::util::read_text(path)?;
     parse_cube_as_chg(&content).with_context(|| format!("parsing {path_}"))
 }
 
