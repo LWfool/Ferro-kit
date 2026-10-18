@@ -36,7 +36,7 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 
 | 步 | 内容 | 条目 |
 |---|---|---|
-| 1 | 零散的静默错数据 / 越界写（修法明确、代价小） | C-6、C-3、A-11、C-10 / A-10、C-7、E2-9、E2-10、B7、B8、C-5 |
+| 1 ✅ | 零散的静默错数据 / 越界写（修法明确、代价小） | C-6 `db9e46a`、C-3 `093fef3`、C-10 / A-10 `d953bdf`、C-7 `c2e7f0a`、E2-9 `c937463`、E2-10 `45c67c3`、C-5 `dfe79ca`（2026-10-18）。**用户定不做**：A-11（dr 够小差别不大，CLI 默认 0.002 不动）；B7、B8 归 Bader 组挂起 |
 | 2 | **周期几何原语下沉 core**（按轴 pbc、预存逆矩阵、cell list、构造时拒奇异 / NaN、构造处查最小镜像上界）；非三维周期体系的 gr / sq 归一化口径另定 | A-7 / B1、D-A2、B10、B6、D-P2、D-A5；延伸布局建议 4、9，bondlife cell list，rotcorr Sum |
 | 3 | 告警通道 + `Result` 统一 + `Format` 表（名字优先、内容兜底，并入 sniff 与多帧能力） | C-4 / E2-1 / A-8 / D-A1、D-A3、C-2、C-3（余下部分）、C-7 契约、C-9、C-8 / D-1 |
 | 4 | 内存：map 系列改 fold → reader 流式 → **`Atom` 存储改为拓扑 / 坐标分离** | D-P1、C-1、B15、B5 |
@@ -44,6 +44,10 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 | 6 | CLI 命名与驱动 | E2-2、E2 R-2（产物命名统一，破坏性）、E2-3 / E2-6 / E2-7 / E2-8、E2-5、E2-11、E2-12、msd 的 D 换算 |
 | 7 | ferro-python | F 全部 |
 | 8 | 剩余轻级与文档漂移 | 各组「轻」 |
+
+第 1 步的两条用户定：**除 lammpstrj / xyz / extxyz / pdb 这类轨迹格式外都是单帧**（C-3：库 writer 遇多帧
+报错，Python `ferro.write` 与 `ferro convert` 一样一帧一个文件，命名函数 `indexed_path` 下沉 ferro-io 共用）；
+LAMMPS data 同一元素的原子质量不一致时 writer 报错（一个 type 一个质量）。
 
 Bader 与 cube_sdf 两个改写组仍各自挂起，D 组给出的新结构记在下面「D 组」R-2 / R-3。
 第 2 步与第 4 步都要改 `Frame` 的几何读取路径：第 2 步的原语接口按「坐标切片 + 胞 + pbc」设计，
