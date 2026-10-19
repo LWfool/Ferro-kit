@@ -41,6 +41,11 @@ command line alike; regenerate it rather than migrating it.
   the `&TOPOLOGY` one replicates the coordinates (both must agree when the latter is not
   `1 1 1`). It used to be ignored, giving one unit cell of atoms. A value written as a
   preprocessor variable (`${NREP}`) is an error: ferro does not expand `@SET`.
+- LAMMPS dump: general triclinic boxes (`ITEM: BOX BOUNDS abc origin`, written under
+  `dump_modify triclinic/general yes`) are read — the three edge vectors and the origin, with
+  coordinates, velocities and forces taken as written. They used to be misread as
+  `lo hi tilt`. Without an `element` column, a `typelabel` column names the atoms (split into
+  element and site label as the `element` column is); it used to give `X<type>`.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

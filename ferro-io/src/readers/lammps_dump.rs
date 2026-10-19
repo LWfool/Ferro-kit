@@ -66,7 +66,7 @@ pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()
         for atom in frame.sites_mut() {
             let tp: u32 = atom.element.strip_prefix('X').and_then(|n| n.parse().ok())
                 .with_context(|| format!(
-                    "--type-map given, but the dump already names elements ({:?}) in its element column",
+                    "--type-map given, but the dump already names elements ({:?}) in its element or typelabel column",
                     atom.element))?;
             let (_, sym) = map.iter().find(|(t, _)| *t == tp)
                 .with_context(|| format!("atom type {tp} is missing from --type-map"))?;
@@ -205,50 +205,84 @@ fn parse_frame(
         _ => [true; 3],
     };
 
-    let mut lo = [0.0_f64; 3];
-    let mut hi = [0.0_f64; 3];
-    let mut tilt = [0.0_f64; 3]; // xy, xz, yz
-
-    for dim in 0..3 {
-        let vals: Vec<f64> = lines.get(bb + 1 + dim)
-            .map(|l| l.split_whitespace().map_while(|s| s.parse().ok()).collect())
-            .unwrap_or_default();
-        if vals.len() < 2 {
-            return Err(format!("BOX BOUNDS line {} of 3 is missing or cut short", dim + 1).into());
-        }
-        lo[dim] = vals[0];
-        hi[dim] = vals[1];
-        if vals.len() >= 3 {
-            tilt[dim] = vals[2]; // xy on dim 0, xz on dim 1, yz on dim 2
-        }
-    }
-
-    // User request C: also detect triclinic by value count (≥3 values per line)
-    // already handled above: vals.len() >= 3 sets tilt
-
-    let (xy, xz, yz) = (tilt[0], tilt[1], tilt[2]);
-    // 三斜时这六个数是 *_bound（倾斜后的外接盒），真实边长要把倾斜量减回去：
-    //   lx = (xhi_b - xlo_b) - |xy| - |xz|,  ly = (yhi_b - ylo_b) - |yz|
-    // 该式与规格的 MAX(0,xy,xz,xy+xz) - MIN(...) 在四个象限上恒等，
-    // 与 ase/io/lammpsrun.py::construct_cell 一致。正交时三个倾斜量为 0，
-    // 退化成 hi - lo，故这个分支对既有的正交轨迹逐位不变
-    let lx = (hi[0] - lo[0]) - xy.abs() - xz.abs();
-    let ly = (hi[1] - lo[1]) - yz.abs();
-    let lz = hi[2] - lo[2];
-
-    let mut cell = if is_triclinic || xy != 0.0 || xz != 0.0 || yz != 0.0 {
-        Cell::from_matrix(Matrix3::new(
-            lx,  0.0, 0.0,
-            xy,  ly,  0.0,
-            xz,  yz,  lz,
-        ))
-    } else {
-        Cell::from_matrix(Matrix3::new(
-            lx,  0.0, 0.0,
-            0.0, ly,  0.0,
-            0.0, 0.0, lz,
-        ))
+    // general triclinic（`dump_modify triclinic/general yes`）：段头 `BOX BOUNDS abc origin`，三行
+    // `ax ay az ox` / `bx by bz oy` / `cx cy cz oz`。坐标与速度、力等向量列都已在这个框架下
+    // 写出（LAMMPS dump / dump_modify 手册），原样收下；缩放坐标仍相对 A B C
+    let general = {
+        let t: Vec<&str> = lines[bb].split_whitespace().collect();
+        t.contains(&"abc") && t.contains(&"origin")
     };
+    let (mut cell, origin) = if general {
+        let mut rows = [[0.0_f64; 4]; 3];
+        for (dim, row) in rows.iter_mut().enumerate() {
+            let vals: Vec<f64> = lines.get(bb + 1 + dim)
+                .map(|l| l.split_whitespace().map_while(|s| s.parse().ok()).collect())
+                .unwrap_or_default();
+            let Ok(v) = <[f64; 4]>::try_from(vals.get(..4).unwrap_or_default()) else {
+                return Err(format!("BOX BOUNDS abc origin line {} of 3 is missing or cut short", dim + 1).into());
+            };
+            *row = v;
+        }
+        let [a, b, c] = rows;
+        let m = Matrix3::new(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+        (Cell::from_matrix(m), Vector3::new(a[3], b[3], c[3]))
+    } else {
+        let mut lo = [0.0_f64; 3];
+        let mut hi = [0.0_f64; 3];
+        let mut tilt = [0.0_f64; 3]; // xy, xz, yz
+
+        for dim in 0..3 {
+            let vals: Vec<f64> = lines.get(bb + 1 + dim)
+                .map(|l| l.split_whitespace().map_while(|s| s.parse().ok()).collect())
+                .unwrap_or_default();
+            if vals.len() < 2 {
+                return Err(format!("BOX BOUNDS line {} of 3 is missing or cut short", dim + 1).into());
+            }
+            lo[dim] = vals[0];
+            hi[dim] = vals[1];
+            if vals.len() >= 3 {
+                tilt[dim] = vals[2]; // xy on dim 0, xz on dim 1, yz on dim 2
+            }
+        }
+
+        // User request C: also detect triclinic by value count (≥3 values per line)
+        // already handled above: vals.len() >= 3 sets tilt
+
+        let (xy, xz, yz) = (tilt[0], tilt[1], tilt[2]);
+        // 三斜时这六个数是 *_bound（倾斜后的外接盒），真实边长要把倾斜量减回去：
+        //   lx = (xhi_b - xlo_b) - |xy| - |xz|,  ly = (yhi_b - ylo_b) - |yz|
+        // 该式与规格的 MAX(0,xy,xz,xy+xz) - MIN(...) 在四个象限上恒等，
+        // 与 ase/io/lammpsrun.py::construct_cell 一致。正交时三个倾斜量为 0，
+        // 退化成 hi - lo，故这个分支对既有的正交轨迹逐位不变
+        let lx = (hi[0] - lo[0]) - xy.abs() - xz.abs();
+        let ly = (hi[1] - lo[1]) - yz.abs();
+        let lz = hi[2] - lo[2];
+
+        let cell = if is_triclinic || xy != 0.0 || xz != 0.0 || yz != 0.0 {
+            Cell::from_matrix(Matrix3::new(
+                lx,  0.0, 0.0,
+                xy,  ly,  0.0,
+                xz,  yz,  lz,
+            ))
+        } else {
+            Cell::from_matrix(Matrix3::new(
+                lx,  0.0, 0.0,
+                0.0, ly,  0.0,
+                0.0, 0.0, lz,
+            ))
+        };
+
+        // 缩放坐标按 LAMMPS 的定义 x = lo + s·L 还原，lo 是盒子真实原点而非 *_bound；
+        // 这样同一原子写成 x 或 xs 读出同一个值（ASE 3.29 的 xs 不加 lo，与它自己的 x 列不自洽）
+        let origin = Vector3::new(
+            lo[0] - 0.0_f64.min(xy).min(xz).min(xy + xz),
+            lo[1] - 0.0_f64.min(yz),
+            lo[2],
+        );
+        (cell, origin)
+    };
+    // 原点随盒子带走，writer 写回 lo（审查 A-12：丢掉它往返后原子落到盒外）
+    cell.origin = origin;
 
     // ITEM: ATOMS col1 col2 ...
     let ah = seek(bb + 4, "ITEM: ATOMS")?;
@@ -284,15 +318,6 @@ fn parse_frame(
         .find_map(|(a, b, c, s)| Some(([get_col(a)?, get_col(b)?, get_col(c)?], s)))
         .ok_or_else(|| FrameError::Invalid(
             "ITEM: ATOMS has no complete coordinate columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu)".into()))?;
-    // 缩放坐标按 LAMMPS 的定义 x = lo + s·L 还原，lo 是盒子真实原点而非 *_bound；
-    // 这样同一原子写成 x 或 xs 读出同一个值（ASE 3.29 的 xs 不加 lo，与它自己的 x 列不自洽）
-    let origin = Vector3::new(
-        lo[0] - 0.0_f64.min(xy).min(xz).min(xy + xz),
-        lo[1] - 0.0_f64.min(yz),
-        lo[2],
-    );
-    // 原点随盒子带走，writer 写回 lo（审查 A-12：丢掉它往返后原子落到盒外）
-    cell.origin = origin;
 
     let mut atoms_raw: Vec<AtomRaw> = Vec::new();
 
@@ -325,8 +350,9 @@ fn parse_frame(
         let tp = get_col("type").map(int).transpose()?.unwrap_or(1);
 
         // element 列可能写的是位点类型标签（`O_b_P_P`、`Zn_f`），按第一个下划线
-        // 拆成 element + label；无下划线的普通符号原样通过。
-        let raw = get_col("element")
+        // 拆成 element + label；无下划线的普通符号原样通过。没有 element 列时用
+        // typelabel 列（LAMMPS 的 type label，由 labelmap 定义），拆法相同
+        let raw = get_col("element").or_else(|| get_col("typelabel"))
             .and_then(|c| parts.get(c))
             .map(|s| s.to_string())
             .unwrap_or_else(|| format!("X{tp}"));
@@ -856,5 +882,46 @@ ITEM: ATOMS id type element x y z
         assert_eq!(with("xy xz yz pp fs pp"), [true, false, true]);
         // 旧版 LAMMPS 不写标志：按周期
         assert_eq!(with(""), [true; 3]);
+    }
+
+    /// `dump_modify triclinic/general yes` (LAMMPS dump manual): the box is three edge
+    /// vectors plus the origin, and coordinates are already in that frame. It used to be
+    /// read as `lo hi tilt`, giving a nonsense box.
+    #[test]
+    fn test_general_triclinic_box() {
+        // A 沿 +y、B 沿 −x —— 不是下三角，当 restricted 读会错
+        let text = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\n\
+                    ITEM: BOX BOUNDS abc origin pp pp ff\n0 4 0 1\n-4 0 0 2\n0 0 4 3\n\
+                    ITEM: ATOMS id type element x y z\n1 1 O 1 4 3\n2 1 H 0 2 4\n";
+        let (traj, _) = parse_lammps_dump(text, None).unwrap();
+        let f = &traj.frames[0];
+        let cell = f.cell.as_ref().unwrap();
+        assert_eq!(cell.matrix, Matrix3::new(0.0, 4.0, 0.0, -4.0, 0.0, 0.0, 0.0, 0.0, 4.0));
+        assert_eq!(cell.origin, Vector3::new(1.0, 2.0, 3.0));
+        assert_eq!(f.pbc, [true, true, false]);
+        assert_eq!(f.positions()[1], Vector3::new(0.0, 2.0, 4.0), "x y z taken as written");
+        // 缩放坐标相对 A B C：origin + 0.5·A = (1, 4, 3)
+        let scaled = text.replace("x y z\n1 1 O 1 4 3", "xs ys zs\n1 1 O 0.5 0 0")
+                         .replace("2 1 H 0 2 4", "2 1 H 0.5 0.25 0.25");
+        let (traj, _) = parse_lammps_dump(&scaled, None).unwrap();
+        assert!((traj.frames[0].positions()[0] - Vector3::new(1.0, 4.0, 3.0)).norm() < 1e-12);
+        // 少一个数报错
+        let bad = text.replace("-4 0 0 2", "-4 0 0");
+        let (traj, w) = parse_lammps_dump(&bad, None).unwrap();
+        assert!(traj.frames.is_empty() && w[0].contains("abc origin line 2"), "{w:?}");
+    }
+
+    /// A dump with a `typelabel` column and no `element` column used to give `X<type>`.
+    #[test]
+    fn test_typelabel_column() {
+        let text = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n\
+                    0 10\n0 10\n0 10\nITEM: ATOMS id typelabel x y z\n1 O_b 0 0 0\n2 P 1 0 0\n";
+        let f = parse_lammps_dump(text, None).unwrap().0.frames.remove(0);
+        assert_eq!((f.atom(0).element, f.atom(0).label), ("O", Some("O_b")));
+        assert_eq!((f.atom(1).element, f.atom(1).label), ("P", None));
+        // element 列优先
+        let both = text.replace("id typelabel x y z\n1 O_b", "id element typelabel x y z\n1 Si O_b")
+                       .replace("2 P 1", "2 P P 1");
+        assert_eq!(parse_lammps_dump(&both, None).unwrap().0.frames[0].atom(0).element, "Si");
     }
 }
