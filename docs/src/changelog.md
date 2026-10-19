@@ -48,6 +48,9 @@ command line alike; regenerate it rather than migrating it.
   element and site label as the `element` column is); it used to give `X<type>`.
 - vasprun.xml: an empty `<i>` element no longer makes the next value in the file (such as a
   `<time>` entry) be read as the energy or kinetic energy.
+- **VASP 4 POSCAR / CHGCAR are no longer read.** A file with atom counts but no element line
+  above them is an error; it used to read with placeholder elements `X1`, `X2`, … whose
+  masses, densities and per-element analyses were all wrong. Add the element line (VASP 5+).
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

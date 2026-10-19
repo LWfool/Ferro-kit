@@ -1,7 +1,7 @@
 use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
-use anyhow::{ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use super::util::floats;
 
 pub fn read_poscar(path: &Path) -> Result<Trajectory> {
@@ -95,30 +95,21 @@ pub(super) fn parse_poscar_header(lines: &mut std::str::Lines<'_>) -> Result<(St
         m[2][0], m[2][1], m[2][2],
     ));
 
-    // VASP4 vs VASP5 detection
+    // 元素行 + 计数行（VASP 5 起）。只有计数、没有元素行的是 VASP 4 格式，不再支持（2026-10-19
+    // 用户定）：以前给 `X1`、`X2` 占位元素，密度、质量、按元素的分析全都是错的却退出码 0
     let line5 = next("element/count line")?.trim();
-    // Parse line5 once as usize counts: Some ⇒ VASP4, None ⇒ VASP5.
-    // (Parsing directly as usize avoids the prior u64-check / usize-unwrap
-    // mismatch that could panic on 32-bit targets for large values.)
-    let line5_counts: Option<Vec<usize>> =
-        line5.split_whitespace().map(|t| t.parse::<usize>().ok()).collect();
-    let (elements, counts): (Vec<String>, Vec<usize>) =
-        if let Some(c) = line5_counts {
-            // VASP4: counts only
-            let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
-            (e, c)
-        } else {
-            // VASP5: element symbols + counts on next line。6.4.2 起（HDF5 编译）写成
-            // `POTCAR 标签/哈希`，如 `C_h/1e4d9ea6ed`、`Cs/`；5.4.4 等旧版只写 `Na`，
-            // 两者同一规则取元素：`/` 前、再 `_` 前（同 ASE vasp.py）。CHGCAR 的头部用同一个函数
-            let e: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
-            let c: Vec<usize> = next("atom counts")?
-                .split_whitespace()
-                .map(|s| s.parse().context("invalid count"))
-                .collect::<Result<_>>()?;
-            ensure!(e.len() == c.len(), "element/count length mismatch");
-            (e, c)
-        };
+    if line5.split_whitespace().all(|t| t.parse::<usize>().is_ok()) {
+        bail!("no element line above the atom counts ({line5:?}): this is the VASP 4 format, \
+               which ferro does not read; add a line of element symbols (VASP 5+)");
+    }
+    // 6.4.2 起（HDF5 编译）写成 `POTCAR 标签/哈希`，如 `C_h/1e4d9ea6ed`、`Cs/`；5.4.4 等旧版只写
+    // `Na`，两者同一规则取元素：`/` 前、再 `_` 前（同 ASE vasp.py）。CHGCAR 的头部用同一个函数
+    let elements: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
+    let counts: Vec<usize> = next("atom counts")?
+        .split_whitespace()
+        .map(|s| s.parse().context("invalid count"))
+        .collect::<Result<_>>()?;
+    ensure!(elements.len() == counts.len(), "element/count length mismatch");
 
     // Optional "Selective dynamics"
     let mut coord_type = next("coordinate type")?;
@@ -211,8 +202,10 @@ Direct
         assert_eq!(elems("Fe_pv/6a2f546d Co/\n1 1\n"), ["Fe", "Co"]);
         // 手写的 POTCAR 标签
         assert_eq!(elems("Fe_sv_GW Co_h\n1 1\n"), ["Fe", "Co"]);
-        // VASP 4：无元素行，只有计数
-        assert_eq!(elems("1 1\n"), ["X1", "X2"]);
+        // VASP 4（无元素行，只有计数）报错，不再给 X1 X2
+        let text = BCC_FE.replace("   Fe\n   2\n", "1 1\n");
+        let err = format!("{:#}", parse_traj(&text).unwrap_err());
+        assert!(err.contains("VASP 4 format"), "{err}");
     }
 
     #[test]
