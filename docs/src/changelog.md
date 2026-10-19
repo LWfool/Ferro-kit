@@ -12,6 +12,11 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Writers: fewer silent results
+
+- DeePMD output (`dataset collect` / `filter` / `merge`): a frame periodic along some axes only
+  (a slab, `pbc = T T F`) is an error; it used to be written as fully periodic.
+
 ### Readers: fewer silent results
 
 - A file in which no frame is found is an error (`no frame found — is this really a … file?`).

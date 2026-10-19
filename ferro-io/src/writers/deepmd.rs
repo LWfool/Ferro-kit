@@ -11,7 +11,7 @@
 //!   set.000/
 //!     coord.npy     (nframes, natoms*3)  Angstrom
 //!     box.npy       (nframes, 9)         Angstrom, row-major lattice vectors
-//!     energy.npy    (nframes,)           eV
+//!     energy.npy    (nframes, 1)         eV
 //!     force.npy     (nframes, natoms*3)  eV/Angstrom
 //!     virial.npy    (nframes, 9)         eV
 //! ```
@@ -101,6 +101,12 @@ pub fn write_deepmd_npy_bounds(
     let has_cell = frames.iter().all(|f| f.cell.is_some());
     if !has_cell && frames.iter().any(|f| f.cell.is_some()) {
         bail!("some frames carry a cell and some do not; a DeePMD system is either periodic or not");
+    }
+    // DeePMD only knows periodic along all three axes or not at all (`nopbc`); a slab
+    // (`pbc = T T F`) used to be written as fully periodic.
+    if let Some(k) = frames.iter().position(|f| f.cell.is_some() && f.pbc != [true; 3] && f.pbc != [false; 3]) {
+        bail!("frame {k} is periodic along some axes only (pbc = {:?}); a DeePMD system is \
+               periodic along all three or none", frames[k].pbc);
     }
     let nopbc_frames = frames.iter().filter(|f| f.cell.is_none() || f.pbc == [false; 3]).count();
     if nopbc_frames != 0 && nopbc_frames != frames.len() {
@@ -380,5 +386,20 @@ mod set_tests {
         write_deepmd_npy(&t, &d).unwrap();
         assert!(d.join("set.000/coord.npy").exists());
         assert!(!d.join("set.001").exists());
+    }
+
+    /// A slab used to be written as fully periodic: DeePMD has no per-axis periodicity.
+    #[test]
+    fn partially_periodic_frames_are_refused() {
+        let mut t = demo_traj();
+        t.frames[1].pbc = [true, true, false];
+        let err = write_deepmd_npy(&t, &out_dir("ferro_dp_slab")).unwrap_err().to_string();
+        assert!(err.contains("frame 1") && err.contains("some axes only"), "{err}");
+        // 三轴全不周期照旧写 nopbc
+        let mut t = demo_traj();
+        for f in &mut t.frames { f.pbc = [false; 3]; }
+        let d = out_dir("ferro_dp_nopbc_all");
+        write_deepmd_npy(&t, &d).unwrap();
+        assert!(d.join("nopbc").exists());
     }
 }
