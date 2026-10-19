@@ -11,6 +11,7 @@ use crate::compounds;
 use ferro_core::data::elements;
 use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
+use ferro_core::units::AVOGADRO;
 
 /// A component in a mixed-compound system.
 pub struct Component {
@@ -189,8 +190,7 @@ pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64
 
     // V (cm³) = total_mass (g/mol) / (density (g/cm³) × N_A (1/mol))
     // V (Å³) = V (cm³) × 10^24
-    const N_A: f64 = 6.022_140_76e23;
-    let volume_cm3 = total_mass / (density * N_A);
+    let volume_cm3 = total_mass / (density * AVOGADRO);
     let volume_ang3 = volume_cm3 * 1e24;
     Ok(volume_ang3.cbrt())
 }
