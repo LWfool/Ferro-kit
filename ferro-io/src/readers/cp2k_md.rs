@@ -59,7 +59,7 @@
 
 use std::path::Path;
 use anyhow::{bail, Context, Result};
-use ferro_core::units::{convert_pressure, PressureUnit, BOHR_TO_ANG, HARTREE_TO_EV};
+use ferro_core::units::{convert_energy, convert_pressure, EnergyUnit, PressureUnit, BOHR_TO_ANG, HARTREE_TO_EV};
 use super::aimd::{AimdFormat, AimdStats};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
@@ -172,6 +172,7 @@ pub fn read_cp2k_md_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
 }
 
 // 方括号里的单位标注: "ENERGY| ... [hartree]  -2059.5" -> "hartree"
+// Also in `cp2k_sp.rs`, unshared on purpose (see `energy_to_ev`)
 fn unit_in_brackets(line: &str) -> Option<&str> {
     let start = line.find('[')?;
     let end = line[start..].find(']')? + start;
@@ -193,12 +194,12 @@ fn energy_unit(line: &str) -> Option<&str> {
     )
 }
 
+/// Also in `cp2k_sp.rs`: the unit names are looked up in `ferro_core::units`, the
+/// extraction (`energy_unit`) stays per reader (2026-09-22: cp2k_md / sp share no code).
 fn energy_to_ev(line: &str) -> Result<f64> {
     let unit = energy_unit(line).unwrap_or("");
-    let factor = match unit.to_ascii_lowercase().as_str() {
-        "hartree" | "a.u." | "au" => HARTREE_TO_EV,
-        "ev" => 1.0,
-        other => bail!("unknown energy unit `[{other}]` in: {}", line.trim()),
+    let Some(unit) = EnergyUnit::from_name(unit) else {
+        bail!("unknown energy unit `[{unit}]` in: {}", line.trim());
     };
     let v: f64 = line
         .split_whitespace()
@@ -206,16 +207,16 @@ fn energy_to_ev(line: &str) -> Result<f64> {
         .context("energy line has no value")?
         .parse()
         .with_context(|| format!("cannot parse energy in: {}", line.trim()))?;
-    Ok(v * factor)
+    Ok(convert_energy(v, unit, EnergyUnit::EV))
 }
 
+/// Also in `cp2k_sp.rs`, as `energy_to_ev` is.
 fn stress_unit(line: &str) -> Result<PressureUnit> {
-    match unit_in_brackets(line).unwrap_or("").to_ascii_lowercase().as_str() {
-        "bar" => Ok(PressureUnit::Bar),
-        "gpa" => Ok(PressureUnit::GPa),
-        "kbar" => Ok(PressureUnit::Kbar),
-        other => bail!("unknown stress unit `[{other}]`; STRESS_UNIT is a CP2K input keyword, so ferro reads it from the text rather than guessing"),
-    }
+    let unit = unit_in_brackets(line).unwrap_or("");
+    PressureUnit::from_name(unit).with_context(|| format!(
+        "unknown stress unit `[{unit}]`; STRESS_UNIT is a CP2K input keyword, \
+         so ferro reads it from the text rather than guessing"
+    ))
 }
 
 // 一行 xyz: "Al  -4.196  -1.527   6.015" -> ("Al", 三个数)

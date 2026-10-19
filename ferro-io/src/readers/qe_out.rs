@@ -58,7 +58,7 @@
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use ferro_core::units::{BOHR_TO_ANG, HARTREE_TO_EV};
+use ferro_core::units::{convert_length, LengthUnit, BOHR_TO_ANG, HARTREE_TO_EV};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 
@@ -119,11 +119,10 @@ fn card_unit(line: &str) -> (String, Option<f64>) {
 /// the file line number of `lines[0]`, for messages.
 fn read_cell_card(lines: &[&str], i: usize, base: usize, alat_ang: f64) -> Result<Matrix3<f64>> {
     let (unit, alat) = card_unit(lines[i]);
-    let scale = match unit.as_str() {
-        "angstrom" => 1.0,
-        "bohr" => BOHR_TO_ANG,
-        "alat" => alat.map_or(alat_ang, |a| a * BOHR_TO_ANG),
-        other => bail!("line {}: CELL_PARAMETERS in unit `{other}` is not supported", base + i + 1),
+    let scale = match (LengthUnit::from_name(&unit), unit.as_str()) {
+        (Some(u), _) => convert_length(1.0, u, LengthUnit::Angstrom),
+        (None, "alat") => alat.map_or(alat_ang, |a| a * BOHR_TO_ANG),
+        (None, other) => bail!("line {}: CELL_PARAMETERS in unit `{other}` is not supported", base + i + 1),
     };
     let mut m = Matrix3::zeros();
     for row in 0..3 {
@@ -147,13 +146,12 @@ fn read_positions_card(
         let (Some(label), Some(v)) = (it.next(), three_numbers(&mut it)) else {
             bail!("line {}: ATOMIC_POSITIONS has fewer than {nat} atoms", base + i + 2 + k);
         };
-        let pos = match unit.as_str() {
-            "angstrom" => v,
-            "bohr" => v * BOHR_TO_ANG,
-            "alat" => v * alat_ang,
+        let pos = match (LengthUnit::from_name(&unit), unit.as_str()) {
+            (Some(u), _) => v * convert_length(1.0, u, LengthUnit::Angstrom),
+            (None, "alat") => v * alat_ang,
             // 行向量是晶格矢量：r = s · M
-            "crystal" => (v.transpose() * cell).transpose(),
-            other => bail!("line {}: ATOMIC_POSITIONS in unit `{other}` is not supported", base + i + 1),
+            (None, "crystal") => (v.transpose() * cell).transpose(),
+            (None, other) => bail!("line {}: ATOMIC_POSITIONS in unit `{other}` is not supported", base + i + 1),
         };
         out.push((label.to_string(), pos));
     }

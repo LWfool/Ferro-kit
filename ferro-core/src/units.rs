@@ -81,6 +81,16 @@ pub enum LengthUnit {
 }
 
 impl LengthUnit {
+    /// The unit a program's output or input names, case-insensitively: `angstrom`,
+    /// `bohr`. What a name means is fixed; where it sits in a line is each reader's.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "angstrom" => Some(Self::Angstrom),
+            "bohr" => Some(Self::Bohr),
+            _ => None,
+        }
+    }
+
     fn to_angstrom(self, v: f64) -> f64 {
         match self {
             Self::Angstrom  => v,
@@ -115,6 +125,16 @@ pub enum EnergyUnit {
 }
 
 impl EnergyUnit {
+    /// The unit a program's output names, case-insensitively: `hartree` (also
+    /// `a.u.` / `au`, the atomic unit of energy, as CP2K wrote it before 2025), `ev`.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "hartree" | "a.u." | "au" => Some(Self::Hartree),
+            "ev" => Some(Self::EV),
+            _ => None,
+        }
+    }
+
     fn to_ev(self, v: f64) -> f64 {
         match self {
             Self::EV         => v,
@@ -152,6 +172,16 @@ pub enum PressureUnit {
 }
 
 impl PressureUnit {
+    /// The unit a program's output names, case-insensitively: `bar`, `gpa`, `kbar`.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "bar" => Some(Self::Bar),
+            "gpa" => Some(Self::GPa),
+            "kbar" => Some(Self::Kbar),
+            _ => None,
+        }
+    }
+
     fn to_ev_ang3(self, v: f64) -> f64 {
         match self {
             Self::EVPerAng3 => v,
@@ -248,5 +278,22 @@ mod tests {
         let ps = 1.0;
         let fs = convert_time(ps, TimeUnit::Picosecond, TimeUnit::Femtosecond);
         assert!((fs - 1000.0).abs() < 1e-10);
+    }
+
+    /// The unit names program outputs write, case-insensitively.
+    #[test]
+    fn unit_names() {
+        assert_eq!(LengthUnit::from_name("Bohr"), Some(LengthUnit::Bohr));
+        assert_eq!(LengthUnit::from_name("angstrom"), Some(LengthUnit::Angstrom));
+        assert_eq!(LengthUnit::from_name("alat"), None);
+        for name in ["hartree", "a.u.", "AU"] {
+            assert_eq!(EnergyUnit::from_name(name), Some(EnergyUnit::Hartree), "{name}");
+        }
+        assert_eq!(EnergyUnit::from_name("eV"), Some(EnergyUnit::EV));
+        assert_eq!(EnergyUnit::from_name("Ry"), None);
+        assert_eq!(PressureUnit::from_name("GPa"), Some(PressureUnit::GPa));
+        assert_eq!(PressureUnit::from_name("bar"), Some(PressureUnit::Bar));
+        assert_eq!(PressureUnit::from_name("kbar"), Some(PressureUnit::Kbar));
+        assert_eq!(PressureUnit::from_name("atm"), None);
     }
 }

@@ -1,6 +1,6 @@
 use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
-use ferro_core::units::BOHR_TO_ANG;
+use ferro_core::units::{convert_length, LengthUnit};
 use nalgebra::{Matrix3, Vector3};
 use super::util::element_from_label;
 use anyhow::{bail, Context, Result};
@@ -290,11 +290,10 @@ pub(crate) fn cp2k_periodic(v: &str) -> Option<[bool; 3]> {
 }
 
 fn length_unit(u: &str) -> Result<f64> {
-    match u.to_lowercase().as_str() {
-        "angstrom" => Ok(1.0),
-        "bohr" => Ok(BOHR_TO_ANG),
-        other => bail!("unsupported length unit {other:?} (supported: angstrom, bohr)"),
-    }
+    let Some(unit) = LengthUnit::from_name(u) else {
+        bail!("unsupported length unit {:?} (supported: angstrom, bohr)", u.to_lowercase());
+    };
+    Ok(convert_length(1.0, unit, LengthUnit::Angstrom))
 }
 
 /// CP2K 的逻辑值，照 cp_parser_methods.F `parser_get_logical` 的那张表（不区分大小写）；
