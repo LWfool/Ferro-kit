@@ -275,7 +275,7 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  gr_<pair>[_<suffix>].csv, long format: file pair r g_r cn_r
+  gr_<pair>[_<suffix>].csv, long format: file r center neighbor gr cn
   No selection -> gr_all.csv
 
 Examples:
@@ -372,7 +372,7 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  angle_<triplet>[_<suffix>].csv, long format: file triplet theta count p
+  angle_<triplet>[_<suffix>].csv, long format: file angle end_a center end_c count p
   The triplet is spelled as you wrote it (-a O -b P -c O -> angle_O-P-O.csv);
   no triplet -> angle_all.csv
 
