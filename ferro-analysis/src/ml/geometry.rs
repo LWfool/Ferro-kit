@@ -46,7 +46,7 @@ fn idx_of(frame: &Frame, elem: &str) -> Vec<usize> {
 
 /// How many atoms of `elem` have exactly `cn` neighbours, via the network classifier.
 ///
-/// Goes through [`classify_frame`] rather than counting distances
+/// Goes through `classify_frame` rather than counting distances
 /// here, so the answer is the same number `ferro net` reports — one definition
 /// of coordination for the whole project. The coordination is read from the
 /// `cn` FIELD of [`AtomType::Former`]; never parse it back out of `label()`.

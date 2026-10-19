@@ -5,7 +5,7 @@
 //! `ferro doc net > net.md` still gets the source as written.
 //!
 //! A crate of its own so that the rest of the CLI recompiles without it: the
-//! rendering style rarely changes. [`markdown`] lays out the page, [`latex`]
+//! rendering style rarely changes. `markdown` lays out the page, `latex`
 //! turns formulas into Unicode; nothing here knows about ferro's data.
 //!
 //! What a renderer cannot convert — a table without an alignment row, a math

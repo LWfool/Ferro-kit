@@ -305,7 +305,7 @@ pub fn write(traj: &Trajectory, path: &Path, opts: &WriteOptions) -> Result<Vec<
     write_numbered(traj, path, opts, &numbers)
 }
 
-/// [`write`], naming the per-frame files by `numbers` instead of by position —
+/// [`write()`], naming the per-frame files by `numbers` instead of by position —
 /// `ferro convert` numbers them by the frame they came from in the input.
 pub fn write_numbered(
     traj: &Trajectory,

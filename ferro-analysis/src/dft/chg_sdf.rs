@@ -150,7 +150,7 @@ impl ChgAcc {
 
 /// Compute averaged charge-density cluster SDF from a list of (Frame, ChargeGrid) pairs.
 ///
-/// Each pair is one QE pp.x cube file (read via [`ferro_io::read_cube_as_chg`]).
+/// Each pair is one QE pp.x cube file (read via `ferro_io::read_cube_as_chg`).
 /// Returns `None` if no target-Qn cluster is found.
 pub fn calc_chg_sdf(
     pairs: &[(Frame, ChargeGrid)],

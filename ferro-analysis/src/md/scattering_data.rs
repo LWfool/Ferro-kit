@@ -1,7 +1,7 @@
 //! 散射因子数据表
 //!
 //! **Waasmaier-Kirfel X 射线原子形状因子**（5 项，来自 code2/coefficient.c；
-//! 原始来源：xcoeff/xcoeff.f，https://www.szfki.hu/~nphys/rmc++/downloads.html）
+//! 原始来源：xcoeff/xcoeff.f，<https://www.szfki.hu/~nphys/rmc++/downloads.html>）
 //!
 //!   f(q) = Σᵢ₌₀⁴ aᵢ·exp(−bᵢ·s²) + c,  s = q/(4π) [Å⁻¹]
 //!

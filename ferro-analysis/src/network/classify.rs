@@ -51,18 +51,18 @@ use ferro_core::error::Result;
 use ferro_core::{Frame, PeriodicCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-/// Cutoff table: `(element_A, element_B)` → distance [Å]
+/// Cutoff table: `(element_A, element_B)` → distance \[Å\]
 pub type CutoffTable = BTreeMap<(String, String), f64>;
 
 /// Parameters for network atom type classification.
 #[derive(Debug, Clone)]
 pub struct TypeParams {
-    /// `(former_elem, ligand_elem)` → cutoff [Å]
+    /// `(former_elem, ligand_elem)` → cutoff \[Å\]
     pub cutoffs: CutoffTable,
-    /// `(modifier_elem, ligand_elem)` → cutoff [Å].  Empty → no modifier classification.
+    /// `(modifier_elem, ligand_elem)` → cutoff \[Å\].  Empty → no modifier classification.
     pub modifier_cutoffs: CutoffTable,
     /// Formers described by a Qn speciation; everything else is described by its
-    /// coordination number.  See [`super::qn_elements`].
+    /// coordination number.  See `super::qn_elements`.
     ///
     /// Held here rather than looked up from the static table at render time because
     /// `--qn` overrides it per run: a classification must carry the convention it was
@@ -247,7 +247,7 @@ impl AtomType {
     ///
     /// Not a connectivity test.  A tricluster joins three formers and is the most
     /// strongly connected node in the network, yet it is `false` here — use
-    /// `partners.len() >= 2` (equivalently [`super::LigandKind::Bridging`]) when the
+    /// `partners.len() >= 2` (equivalently `LigandKind::Bridging`) when the
     /// question is whether the ligand links formers at all.  Reach for this method
     /// only when a true two-ended bridge is what is meant, such as separating the
     /// pairwise `linkage` rows from the tricluster ones.

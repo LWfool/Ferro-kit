@@ -331,7 +331,7 @@ impl BondLifeResult {
     }
 
     /// `(tau_int_integral, tau_int_1e, tau_cont_integral, tau_cont_1e)` \[fs\] —
-    /// see [`lifetimes`].
+    /// see `lifetimes`.
     pub fn taus(&self) -> (f64, f64, f64, f64) {
         let (ii, i1) = lifetimes(&self.c_int, self.params.dt);
         let (ci, c1) = lifetimes(&self.s_cont, self.params.dt);
