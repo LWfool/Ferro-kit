@@ -3,7 +3,8 @@
 //! The manual lives in `docs/src/` as mdBook sources and is embedded here with
 //! `include_str!`. Reading it from disk would work only when the source tree is
 //! at hand, which is exactly the situation a `cargo install`ed binary is not in.
-//! At 208 KB it is a rounding error next to the basis-set tables already inside.
+//! At a few hundred KB it is a rounding error next to the basis-set tables
+//! already inside.
 //!
 //! Topics are named after the subcommand tree (`ferro doc dataset filter`), so
 //! the pointer a help page prints is the next command to type rather than a path
@@ -32,7 +33,7 @@ struct Page {
     /// A `##` heading within `text`, when the topic is one section of a page.
     ///
     /// `convert`, `info` and `bader` have no page of their own — they are
-    /// sections of the CLI reference. Printing all 863 lines of it for a
+    /// sections of the CLI reference. Printing its thousand-odd lines for a
     /// three-line question is not an answer, and splitting the reference into
     /// per-command files would leave the one complete reference in pieces.
     section: Option<&'static str>,
@@ -117,6 +118,12 @@ const PAGES: &[Page] = &[
         section: None,
     },
     Page {
+        topic: "cube-jump",
+        source: "analysis/cube-jump.md",
+        text: include_str!("../../docs/src/analysis/cube-jump.md"),
+        section: None,
+    },
+    Page {
         topic: "map radius",
         source: "analysis/cube-radius.md",
         text: include_str!("../../docs/src/analysis/cube-radius.md"),
@@ -132,12 +139,6 @@ const PAGES: &[Page] = &[
         topic: "map chg-sdf",
         source: "analysis/chg-sdf.md",
         text: include_str!("../../docs/src/analysis/chg-sdf.md"),
-        section: None,
-    },
-    Page {
-        topic: "cube-jump",
-        source: "analysis/cube-jump.md",
-        text: include_str!("../../docs/src/analysis/cube-jump.md"),
         section: None,
     },
     Page {
@@ -222,6 +223,10 @@ const ALIASES: &[(&str, &str)] = &[
     ("sq", "traj sq"),
     ("msd", "traj msd"),
     ("angle", "traj angle"),
+    ("vanhove", "traj vanhove"),
+    ("vacf", "traj vacf"),
+    ("rotcorr", "traj rotcorr"),
+    ("bondlife", "traj bondlife"),
     ("collect", "dataset collect"),
     ("filter", "dataset filter"),
     ("merge", "dataset merge"),
@@ -360,6 +365,18 @@ mod tests {
                 "alias `{from}` shadows a real topic"
             );
         }
+    }
+
+    #[test]
+    fn whole_pages_follow_the_summary() {
+        // python/ 的子页只由 `ferro-py doc` 收录,见 PAGES 里 "python" 一项的说明
+        let summary: Vec<&str> = include_str!("../../docs/src/SUMMARY.md")
+            .lines()
+            .filter_map(|l| Some(l.split_once("](")?.1.split_once(')')?.0))
+            .filter(|src| !src.starts_with("python/"))
+            .collect();
+        let pages: Vec<&str> = PAGES.iter().filter(|p| p.section.is_none()).map(|p| p.source).collect();
+        assert_eq!(pages, summary);
     }
 
     #[test]
