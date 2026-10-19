@@ -804,6 +804,7 @@ All three steps read and write the same directory format, and **none of them mod
 | `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported; PJM job logs `x<N>-<job>.<id>.out` are left out before grouping |
 | `-o <DIR>` | output root directory, **optional**; without it the output lands next to each input directory |
 | `--type <WHAT>` | `deepmd` (a DeePMD system) \| `inspect` (diagnostics only, no dataset) [deepmd] |
+| `--format <FMT>` | read every input as this format instead of trusting its banner: `cp2k/md` \| `cp2k/sp` \| `vasp/outcar` \| `vasp/xml` \| `qe/pw` |
 | `--mkdir` | create `-o` without asking (required when there is no terminal) |
 | `--overwrite` | allow writing into an existing non-empty directory |
 
@@ -909,6 +910,7 @@ this is the head of the pipeline and everything downstream reads it, so precisio
 |---|---|---|
 | `-i <DIR>...` | | system directories, or a directory containing them (`type.raw` is searched for recursively) |
 | `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i`; **omitting it means read-only** |
+| `--mkdir` | | create `-o` without asking (required when there is no terminal) |
 | `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
 | `--s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
 | `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this |
@@ -920,6 +922,8 @@ this is the head of the pipeline and everything downstream reads it, so precisio
 | `--shuffle` | off | shuffle before writing, **after every criterion and after the frame sampling** |
 | `--seed <N>` | 666 | the seed for `--shuffle`; giving it without `--shuffle` errors out |
 | `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
+| `--type <WHAT>` | deepmd | `deepmd` (system directory) \| `nep` (one `.xyz` per system, stress as `virial=`) \| `extxyz` (one `.xyz`, stress as `stress=`) |
+| `--ratio <A:B:C>` | | split each system train:valid:test (`8:1:1`) or train:test (`9:1`); weights, not fractions |
 | `--overwrite` | | allow writing into an existing non-empty directory |
 
 The funnel (narrowing step by step):
@@ -963,10 +967,13 @@ directories, so a later `merge -i clean/*` filters the flat csv files out by its
 |---|---|---|
 | `-i <DIR>...` | | the system directories to combine; globs are supported |
 | `-o <DIR>` | | output root directory, one subdirectory per composition |
+| `--mkdir` | | create `-o` without asking (required when there is no terminal) |
 | `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
 | `--seed <N>` | 666 | the shuffle seed, in both modes |
 | `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
 | `--dir-suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
+| `--type <WHAT>` | deepmd | as in `filter`; `nep` is refused with `--mode by-source` |
+| `--ratio <A:B:C>` | | as in `filter`, per group; refused with `--mode by-source`, with `--dir-suffix`, and on inputs already split |
 | `--overwrite` | | allow writing into an existing non-empty directory |
 
 **Grouping does not look at directory names** — `init.011` says nothing about what is inside.  Grouping is

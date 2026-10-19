@@ -472,7 +472,7 @@ training framework, not before. The cost is a factor of two in disk: for a
 ### One set, never split
 
 `collect` always writes a single `set.000`. Splitting into `set.000`,
-`set.001`… exists to give `merge --shuffle` its boundaries; nothing is shuffled
+`set.001`… exists to give `merge --mode shuffle` its boundaries; nothing is shuffled
 at collection time, and splitting early only makes `filter` read many small
 files.
 
