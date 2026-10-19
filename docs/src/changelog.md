@@ -51,6 +51,8 @@ command line alike; regenerate it rather than migrating it.
 - **VASP 4 POSCAR / CHGCAR are no longer read.** A file with atom counts but no element line
   above them is an error; it used to read with placeholder elements `X1`, `X2`, … whose
   masses, densities and per-element analyses were all wrong. Add the element line (VASP 5+).
+- QE input: `starting_magnetization` is no longer read into the per-atom magnetic moment. It
+  is a fraction between −1 and 1, not μB, and was exported as a moment to extended XYZ.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

@@ -43,22 +43,13 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     }
     let _ntyp: usize = sys.get("ntyp").and_then(|s| s.parse().ok()).unwrap_or(0);
 
-    // starting_magnetization(n) → type_index → magmom
-    let mut type_magmom: HashMap<usize, f64> = HashMap::new();
-    for (k, v) in &sys {
-        if k.starts_with("starting_magnetization(") {
-            let idx: usize = k.trim_start_matches("starting_magnetization(")
-                .trim_end_matches(')')
-                .parse().unwrap_or(0);
-            if let Ok(m) = v.parse::<f64>() { type_magmom.insert(idx, m); }
-        }
-    }
+    // starting_magnetization 不读进 magmom：它是 -1..1 的比例（自旋极化 / 价电子数），不是 μB，
+    // 经 extxyz 导出后会被当成磁矩（2026-10-19 用户定）
 
     // ── ATOMIC_SPECIES card ───────────────────────────────────────────────────
     // label → element (first line word treated as label, second as mass (ignored), third as pseudo)
-    let mut species: HashMap<String, (String, usize)> = HashMap::new(); // label → (element, type_index)
+    let mut species: HashMap<String, String> = HashMap::new(); // label → element
     if let Some(start) = find_card(&stripped, "ATOMIC_SPECIES") {
-        let mut tidx = 1usize;
         for l in stripped[start+1..].iter() {
             let l = l.trim();
             if l.is_empty() || is_card_or_namelist(l) { break; }
@@ -67,8 +58,7 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
                 let label = parts[0].to_string();
                 // Try to extract element: first alphabetic chars of label
                 let elem = extract_element(&label);
-                species.insert(label, (elem, tidx));
-                tidx += 1;
+                species.insert(label, elem);
             }
         }
     }
@@ -152,13 +142,12 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         let v = fortran_vec3(&parts[1..].join(" "))
             .with_context(|| format!("invalid ATOMIC_POSITIONS line {l:?}"))?;
         // 未声明的标签 pw.x 拒收；以前按标签字母猜元素，磁矩也随之静默丢失
-        let (elem, tidx) = species.get(&label).cloned().with_context(|| {
+        let elem = species.get(&label).cloned().with_context(|| {
             format!("ATOMIC_POSITIONS label {label:?} is not declared in ATOMIC_SPECIES")
         })?;
 
         let mut atom = Atom::new(elem, to_cart(v));
         atom.label = Some(label);
-        atom.magmom = type_magmom.get(&tidx).copied();
         frame.add_atom(atom);
     }
     if let Some(nat) = sys.get("nat")
@@ -473,9 +462,9 @@ CELL_PARAMETERS {angstrom}
     fn test_blank_separated_namelist() {
         let fe = |sys: &str| read_qe_input(&tmp("fe_blank.qe", &CRYSTAL_POS
             .replace("  ibrav = 0,\n  nat = 2,\n  ntyp = 1,\n", sys)));
-        // 空白分隔：nat 校验生效、磁矩读到
+        // 空白分隔：nat 校验生效；starting_magnetization 是比例不是 μB，不进 magmom
         let traj = fe("  ibrav=0 nat=2 ntyp=1 starting_magnetization(1)=0.5\n").unwrap();
-        assert_eq!(traj.first().unwrap().atom(0).magmom, Some(0.5));
+        assert_eq!(traj.first().unwrap().atom(0).magmom, None);
         let e = fe("  ibrav=0 nat=3 ntyp=1\n").unwrap_err();
         assert!(format!("{e:#}").contains("nat = 3"), "{e:#}");
         // 非零 ibrav 不再因切坏的值蒙混过关
