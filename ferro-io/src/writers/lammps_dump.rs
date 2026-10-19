@@ -1,6 +1,7 @@
 use std::path::Path;
 use crate::readers::lammps_dump::LammpsUnits;
 use ferro_core::{AtomRef, Trajectory};
+use ferro_core::units::EV_TO_KCAL_MOL;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -9,7 +10,6 @@ use anyhow::{bail, Context, Result};
 /// 余量无物理意义，只保证 lo < hi（平面分子某维厚度为 0）、原子不落在 hi 边界上被
 /// `f` 边界判丢。与 `writers/lammps_data.rs` 同值
 const CELLLESS_PAD: f64 = 1.0;
-const EV_TO_KCAL: f64 = 1.0 / 0.04336410; // eV/Å → kcal/(mol·Å)
 
 /// The name an atom gets in a dump's single `element` column.
 ///
@@ -162,7 +162,7 @@ pub fn write_lammps_dump(
                 // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
                 let fscale = match units {
                     Some(LammpsUnits::Metal) => 1.0,
-                    _ => EV_TO_KCAL,
+                    _ => EV_TO_KCAL_MOL,
                 };
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale));
             }

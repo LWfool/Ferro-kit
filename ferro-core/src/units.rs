@@ -20,8 +20,9 @@ pub const ANG_TO_BOHR: f64 = 1.0 / BOHR_TO_ANG;
 pub const HARTREE_TO_EV: f64 = 27.211_386_245_988;
 pub const EV_TO_HARTREE: f64 = 1.0 / HARTREE_TO_EV;
 
-/// eV → kcal/mol
-pub const EV_TO_KCAL_MOL: f64 = 23.060_541_9;
+/// eV → kcal/mol, CODATA 2018: e·N_A / 4184 J (thermochemical calorie), both exact.
+/// Was 23.0605419 (CODATA 2014), 2.6e-7 off.
+pub const EV_TO_KCAL_MOL: f64 = 23.060_547_830_619_03;
 pub const KCAL_MOL_TO_EV: f64 = 1.0 / EV_TO_KCAL_MOL;
 
 /// eV → kJ/mol
@@ -295,5 +296,12 @@ mod tests {
         assert_eq!(PressureUnit::from_name("bar"), Some(PressureUnit::Bar));
         assert_eq!(PressureUnit::from_name("kbar"), Some(PressureUnit::Kbar));
         assert_eq!(PressureUnit::from_name("atm"), None);
+    }
+
+    /// CODATA 2018: e and N_A are exact, the thermochemical calorie is 4.184 J.
+    #[test]
+    fn kcal_per_mol_is_codata_2018() {
+        let want = 1.602_176_634e-19 * AVOGADRO / 4184.0;
+        assert!((EV_TO_KCAL_MOL - want).abs() < 1e-12, "{EV_TO_KCAL_MOL} vs {want}");
     }
 }

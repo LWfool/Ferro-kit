@@ -2,12 +2,11 @@ use std::path::Path;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ferro_core::data::elements::by_symbol;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
+use ferro_core::units::KCAL_MOL_TO_EV;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
 type AtomRaw = (usize, Atom, Option<Vector3<f64>>, Option<Vector3<f64>>);
-
-const KCAL_TO_EV: f64 = 0.04336410;
 
 /// LAMMPS unit system for dump files.
 ///
@@ -391,7 +390,7 @@ fn parse_frame(
         // Force: real kcal/(mol·Å) → eV/Å, metal eV/Å already
         let fscale = match units {
             Some(LammpsUnits::Metal) => 1.0,
-            _ => KCAL_TO_EV,
+            _ => KCAL_MOL_TO_EV,
         };
         let force = triple("fx", "fy", "fz").map(vec3).transpose()?.map(|f| f * fscale);
 
