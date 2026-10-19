@@ -231,6 +231,10 @@ boundary flags; set `boundary` in the LAMMPS input.
 drops the velocities, because plain XYZ has nowhere to put them.  Convert to `.extxyz` to keep them: they are
 written as ASE's `momenta` column with a `masses` column next to it, so ASE's `get_velocities()` returns them.
 
+**Extended XYZ numbers are written fixed-point with 10 decimals** (ASE writes 8): positions, cell,
+forces, energies and stresses keep every digit above $10^{-10}$, far below DFT precision.  Values smaller
+than that, and the last bits of a float64, do not survive a round trip.
+
 **A charge or magnetic-moment column that only some atoms carry is refused** (extended XYZ, LAMMPS dump
 and data): a structure merged from a charged and an uncharged part would otherwise have the missing values
 written as 0, which reads back as "measured 0".  `--drop-partial` leaves the column out instead; LAMMPS data,

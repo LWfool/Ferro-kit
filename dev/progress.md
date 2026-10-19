@@ -3,12 +3,12 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：864 个（全部通过，clippy 零警告；2026-10-19 实数）；另 ferro-python 180 个 pytest
+## 测试总数：870 个（全部通过，clippy 零警告；2026-10-19 实数）；另 ferro-python 180 个 pytest
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 72 |
-| ferro-io | 277（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
+| ferro-io | 283（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
 | ferro-structure | 81 |
 | ferro-analysis | 291 |
 | ferro-render | 30 |

@@ -58,7 +58,7 @@
 |---|---|
 | 0 ✅ | 复核与归档（本节；`e8e8ded`） |
 | 1 ✅ | `1ef51c9` `4ae8643` `14226b8` `23d2fa8` `dd99421` `db9bda5` `bf47d29` `bc7341f` `d5e1d8f` `4df560e` `00e8190`（2026-10-19）。顺带修了一条同类的静默错误：PDB 用 `END` 分隔、不写 MODEL 的轨迹（CP2K / VMD 的写法）原先会并成一帧，现在按 `END` 分帧（同 ASE）。`MULTIPLE_UNIT_CELL` 对 5495 份 CP2K regtest / benchmark 输入实测无 panic；写成 `${NREP}` 的预处理变量报错（不展开 `@SET`）。golden master（82 个输入的 info + convert）每次提交都逐字节一致；ferro-python 180 个 pytest 通过。原条目：io 读侧：extxyz 电荷列别名 / `count`、PDB ENDMDL 与 `CRYST1 1 1 1`、CIF symop、LAMMPS data 的 Masses 校验与段序、`MULTIPLE_UNIT_CELL`、xyz / extxyz 截断、dump general triclinic 与 `typelabel`、vasprun 空 `<i>`、空文件 / 垃圾文件、VASP4、xyz 原子序数、QE magmom |
-| 2 | io 写侧：extxyz 精度与缺省补 0、cube 换行、PDB 超宽、DeePMD writer 的文档与 slab |
+| 2 ✅ | `3f25c5e` `b1d780d` `f040e11` `792238c` `2ac91ab`（2026-10-19）。用户定：extxyz 的 `{:.10}` **不改**（ASE 写 8 位小数），手册写明精度；部分原子带电荷 / 磁矩时**报错**，`convert --drop-partial` / `ferro.write(drop_partial=True)` 强制通过时整列不写（LAMMPS data 的电荷列必须有，全部写 0）。实现上与计划的出入：同一规则也用到 dump 与 data writer（三处同一变化原因，共用 `writers::partial_column`）；`ferro_io::write` 改收 `&WriteOptions`，与 `ReadOptions` 对称。cube 换行后 `map density` 产物新旧逐数值一致；golden master 只有 LAMMPS data 转 extxyz 多出 `masses` 列（2.2 的预期）。原条目：io 写侧：extxyz 精度与缺省补 0、cube 换行、PDB 超宽、DeePMD writer 的文档与 slab |
 | 3 | io 布局：「字母前缀 → 元素」合并、cp2k_md / sp 互指注释、`thiserror`、死变量、`N_A` 与 `EV_TO_KCAL_MOL` |
 | 4 | analysis 数值与口径：分箱统一、shell 平滑窗、msd lag 0、vanhove `--tau`、`dt` 默认值、有胞 / 无胞不一致、rotcorr P1 头部、sq `to_tables`、diagnostics、并查集 |
 | 5 | analysis 布局：md/util 合并、同文件复用、删死代码与两个旧模块、doc 注释错位、过时注释 |
