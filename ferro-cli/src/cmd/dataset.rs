@@ -22,7 +22,7 @@ use clap::{Args, Subcommand};
 use crate::batch::expand_inputs;
 use ferro_analysis::ml::diagnostics::{filter_diagnostics, quantiles};
 use ferro_analysis::ml::merge::{
-    composition_key, group_name, shuffle_order, stitch_segments, DEFAULT_SEED,
+    composition_key, group_name, shuffle_order, shuffle_within, stitch_segments, DEFAULT_SEED,
 };
 use ferro_analysis::ml::Split;
 use ferro_analysis::first_shell_cutoffs;
@@ -262,7 +262,7 @@ pub struct MergeCmd {
     #[arg(long, value_enum, default_value_t = MergeMode::Shuffle)]
     pub mode: MergeMode,
 
-    /// Shuffle seed; ignored by --mode by-source                  [default: 666]
+    /// Shuffle seed; by-source shuffles within each system         [default: 666]
     #[arg(long, value_name = "N")]
     pub seed: Option<u64>,
 
@@ -1391,9 +1391,15 @@ fn merge_group(
             )?;
         }
         MergeMode::BySource => {
-            // 不混合、不打乱：每个 system 独立切 set，边界落在 system 边界上，
-            // 于是每个 set 仍出自单一条件；system 内部的余数均分，避免
-            // 400 + 100 这种一大一小
+            // Never mixed across systems: each is shuffled on its own and cut into
+            // its own sets, so set boundaries fall on system edges and every set
+            // still comes from one condition. Without the shuffle a set would be a
+            // run of consecutive MD frames. The remainder is spread within each
+            // system, avoiding a lopsided 400 + 100.
+            let seed = args.seed.unwrap_or(DEFAULT_SEED);
+            let spans: Vec<(usize, usize)> = source_spans.iter().map(|(_, lo, hi)| (*lo, *hi)).collect();
+            let all = all.subset(&shuffle_within(&spans, seed));
+            println!("  shuffled within each system with seed {seed}");
             let mut bounds: Vec<(usize, usize)> = Vec::new();
             let mut record: Vec<(usize, usize, PathBuf)> = Vec::new();
             for (p, lo, hi) in &source_spans {
@@ -1786,6 +1792,44 @@ mod tests {
         assert!(F::try_parse_from(["filter", "-i", "x", "--s-max", "5"]).is_ok());
         assert!(M::try_parse_from(["merge", "-i", "x", "-o", "y", "--suffix", ".train"]).is_err());
         assert!(M::try_parse_from(["merge", "-i", "x", "-o", "y", "--dir-suffix", ".train"]).is_ok());
+    }
+
+    /// `--mode by-source` shuffles each system with `--seed` and never moves a frame
+    /// across systems; it used to ignore the seed and keep MD order.
+    #[test]
+    fn merge_by_source_shuffles_within_each_system_only() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: MergeCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_merge_by_source_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        ferro_io::write_deepmd_npy(&id_system(&[0, 1, 2, 3, 4, 5], &[0, 1, 2]), &root.join("in/a")).unwrap();
+        ferro_io::write_deepmd_npy(&id_system(&[10, 11, 12, 13, 14], &[1, 2, 0]), &root.join("in/b")).unwrap();
+        let (a, b) = (root.join("in/a"), root.join("in/b"));
+        let run = |out: &str, seed: &str| {
+            let out = root.join(out);
+            let argv = [
+                "merge", "-i", a.to_str().unwrap(), b.to_str().unwrap(), "-o", out.to_str().unwrap(),
+                "--mkdir", "--mode", "by-source", "--set-size", "2", "--seed", seed,
+            ];
+            assert_eq!(run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap(), 0);
+            check_ids(&out)
+        };
+        let got = run("out1", "42");
+        assert_eq!(got, run("out2", "42"), "same seed, different order");
+        assert_ne!(got, run("out3", "43"), "the seed is ignored");
+        let (from_a, from_b) = got.split_at(6);
+        assert_ne!(from_a, [0, 1, 2, 3, 4, 5], "system a kept MD order");
+        let mut sorted = from_a.to_vec();
+        sorted.sort();
+        assert_eq!(sorted, [0, 1, 2, 3, 4, 5], "a frame crossed a system edge");
+        let mut sorted = from_b.to_vec();
+        sorted.sort();
+        assert_eq!(sorted, [10, 11, 12, 13, 14]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

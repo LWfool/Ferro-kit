@@ -11,6 +11,6 @@ pub mod merge;
 pub mod split;
 
 pub use filter::{filter_frames, Criterion, FilterParams, FilterResult, FrameVerdict};
-pub use merge::{composition_key, group_name, shuffle_order, stitch_segments};
+pub use merge::{composition_key, group_name, shuffle_order, shuffle_within, stitch_segments};
 pub use split::Split;
 pub use geometry::{coordination_histogram, count_with_coordination, min_pair_distance};

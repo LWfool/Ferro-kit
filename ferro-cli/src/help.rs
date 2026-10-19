@@ -838,7 +838,7 @@ Parameters:
   -o, --output DIR        Output root; one directory per composition (required)
       --mkdir             Create -o without asking (needed with no terminal)
       --mode   MODE       shuffle | by-source                        [shuffle]
-      --seed   N          Shuffle seed; by-source ignores it             [666]
+      --seed   N          Shuffle seed; by-source: within each system    [666]
       --set-size N        Frames per output set; 0 = one set             [400]
       --type   WHAT       deepmd | nep | extxyz                       [deepmd]
                           nep/extxyz write ONE .xyz per group instead of a

@@ -193,6 +193,20 @@ pub fn shuffle_order(n: usize, seed: u64) -> Vec<usize> {
     idx
 }
 
+/// A deterministic shuffle of each `lo..hi` span on its own: a frame moves only
+/// within its span. One generator serves the spans in turn, so two spans of
+/// equal length do not get the same permutation.
+pub fn shuffle_within(spans: &[(usize, usize)], seed: u64) -> Vec<usize> {
+    let mut rng = chacha20::ChaCha12Rng::seed_from_u64(seed);
+    let mut order = Vec::new();
+    for &(lo, hi) in spans {
+        let mut idx: Vec<usize> = (lo..hi).collect();
+        idx.shuffle(&mut rng);
+        order.extend(idx);
+    }
+    order
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +297,21 @@ mod tests {
         let mut s = a.clone();
         s.sort();
         assert_eq!(s, (0..50).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn shuffle_within_keeps_every_index_in_its_span() {
+        let spans = [(0, 6), (6, 12), (12, 15)];
+        let a = shuffle_within(&spans, 42);
+        assert_eq!(a, shuffle_within(&spans, 42));
+        assert_ne!(a, shuffle_within(&spans, 43));
+        for &(lo, hi) in &spans {
+            let mut part = a[lo..hi].to_vec();
+            part.sort();
+            assert_eq!(part, (lo..hi).collect::<Vec<_>>());
+        }
+        let shape = |s: &[usize], lo: usize| s.iter().map(|i| i - lo).collect::<Vec<_>>();
+        assert_ne!(shape(&a[0..6], 0), shape(&a[6..12], 6), "equal spans, same permutation");
     }
 
     #[test]

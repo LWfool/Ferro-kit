@@ -22,6 +22,10 @@ command line alike; regenerate it rather than migrating it.
   Cartesian difference without a word.
 - `dataset filter`'s cutoff scan samples at most the 200 frames it promises (199 frames used to
   give 199 samples, anything up to 399 was possible), so its report can differ in the samples.
+- `dataset merge --mode by-source` shuffles each system with `--seed` (default 666) before
+  cutting its sets; it ignored the seed and kept MD order, so a set was a run of consecutive
+  frames. Set boundaries still fall on system edges, and `sets_source.txt` is unchanged, but
+  which frames land in which set differs: regenerate if a split depends on it.
 - `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
   atom is an error, as it is for `msd`, `vacf`, `vanhove` and `map jump`; it used to write a grid
   of zeros reporting "0 atoms". The error names the filter in every analysis.

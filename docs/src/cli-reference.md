@@ -964,7 +964,7 @@ directories, so a later `merge -i clean/*` filters the flat csv files out by its
 | `-i <DIR>...` | | the system directories to combine; globs are supported |
 | `-o <DIR>` | | output root directory, one subdirectory per composition |
 | `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
-| `--seed <N>` | 666 | the seed for `shuffle`; unused by `by-source` |
+| `--seed <N>` | 666 | the shuffle seed, in both modes |
 | `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
 | `--dir-suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
 | `--overwrite` | | allow writing into an existing non-empty directory |
@@ -980,7 +980,7 @@ quantities independent of atom numbering (box, energy, virial) are carried over 
 | Mode | Behaviour |
 |---|---|
 | `shuffle` | concatenate everything of the same composition → shuffle by seed → split by `--set-size` |
-| `by-source` | no mixing and no shuffling; each system is split **within itself**, no set spans two systems, and the correspondence is written to `sets_source.txt` |
+| `by-source` | no mixing across systems; each system is shuffled by seed and split **within itself**, no set spans two systems, and the correspondence is written to `sets_source.txt` |
 
 Both modes spread the remainder evenly: 500 frames split by 400 gives 250+250, not 400+100.
 

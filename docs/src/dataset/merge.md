@@ -1,7 +1,7 @@
 # Merging Datasets
 
 `ferro dataset merge` combines DeePMD systems of the same composition into one,
-optionally shuffling them, and cuts the result into sets.
+shuffles them, and cuts the result into sets.
 
 ```bash
 ferro dataset merge -i data/*.train -o merged
@@ -73,10 +73,12 @@ set holds a mix of whatever went in — temperatures, compressions, sources.
 
 ### `--mode by-source`
 
-No mixing, no shuffling. Each system is cut into sets **on its own**, so a set
-never straddles two systems and every `set.NNN` stays traceable to one
-condition. `--seed` does not apply. The mapping is written to
-`sets_source.txt`:
+No mixing across systems. Each system is shuffled with `--seed` and cut into
+sets **on its own**, so a set never straddles two systems and every `set.NNN`
+stays traceable to one condition. The shuffle stays inside the system: without
+it a set would be a run of consecutive MD frames, and a held-out set would be
+one stretch of the trajectory rather than a sample of it. The mapping is written
+to `sets_source.txt`:
 
 ```
 # set  frames  source
