@@ -102,7 +102,7 @@ The fine grid is a factor $F$ times VASP's coarse FFT grid:
 $$N_i^{\mathrm{fine}} = \mathrm{good}\left(\lceil F \cdot N_i \rceil\right), \qquad N_i = \mathrm{good}\left(\mathrm{round}\left(\frac{k\, G_{\mathrm{cut}} |\mathbf a_i|}{2\pi}\right)\right), \qquad G_{\mathrm{cut}} = \sqrt{\frac{E_{\mathrm{cut}}}{\hbar^2/2m_e}}$$
 
 with $k = 4$ for `PREC = Accurate` or `High` and $k = 3$ otherwise,
-$\hbar^2/2m_e = 3.80998$ eV·Å², $E_{\mathrm{cut}}$ the template's `ENCUT` (else
+$\hbar^2/2m_e = 3.81002$ eV·Å² (VASP's own `HSQDTM`, not the CODATA 3.80998), $E_{\mathrm{cut}}$ the template's `ENCUT` (else
 the largest ENMAX), and $\mathrm{good}(n)$ the smallest even number $\geq n$
 whose only prime factors are 2, 3, 5, 7 — the sizes VASP itself picks.
 

@@ -152,9 +152,11 @@ class Incar:
         return "\n".join(self._lines) + "\n"
 
 
-# ħ²/2mₑ [eV·Å²]. Only the prediction of VASP's NGX below uses it, so it stays next to that
-# rule rather than in ferro's units.rs
-HBAR2_2M = 3.80998
+# ħ²/2mₑ [eV·Å²] as VASP itself has it: HSQDTM = RYTOEV·AUTOA² in constant.inc, with
+# RYTOEV = 13.605826 and AUTOA = 0.529177249 (older than CODATA, kept by VASP on purpose).
+# CODATA gives 3.80998, which puts a grid that sits right on a size boundary one step off
+# VASP's own NGX. Only that prediction below uses it, so it stays here, not in units.rs
+HBAR2_2M = 13.605826 * 0.529177249 ** 2
 
 
 def _good_size(m):
