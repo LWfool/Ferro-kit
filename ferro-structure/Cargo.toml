@@ -10,3 +10,4 @@ license.workspace = true
 ferro-core = { path = "../ferro-core" }
 nalgebra   = { workspace = true }
 rand       = { workspace = true }
+chacha20   = { workspace = true }

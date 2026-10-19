@@ -1,9 +1,9 @@
 //! Mixed-compound box construction: estimate size, random placement, soft-core relaxation.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use nalgebra::Vector3;
-use rand::RngExt;
+use rand::{RngExt, SeedableRng};
 
 use ferro_core::atom::Atom;
 use ferro_core::cell::Cell;
@@ -205,11 +205,13 @@ pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64
 ///
 /// - `min_dist`: minimum allowed distance between atoms (Å). Suggested: 1.5.
 /// - `relax_steps`: number of relaxation steps. Suggested: 100.
+/// - `seed`: the same seed gives the same box, atom for atom.
 pub fn build_box(
     components: &[Component],
     density: f64,
     min_dist: f64,
     relax_steps: usize,
+    seed: u64,
 ) -> Result<Frame> {
     // Written so that NaN fails too: a NaN box length panics in the RNG's range.
     if !(min_dist > 0.0 && min_dist.is_finite()) {
@@ -220,7 +222,9 @@ pub fn build_box(
     }
 
     // ── 步骤 1：解析化学式，统计各元素原子数 ─────────────────────────────────
-    let mut element_counts: HashMap<String, usize> = HashMap::new();
+    // Ordered by element: a HashMap's order changes from run to run, and with it
+    // which random draw each atom gets.
+    let mut element_counts: BTreeMap<String, usize> = BTreeMap::new();
     for comp in components {
         if comp.n_molecules == 0 {
             continue;
@@ -242,7 +246,8 @@ pub fn build_box(
     let cell = Cell::from_lengths_angles(box_len, box_len, box_len, 90.0, 90.0, 90.0)?;
 
     // ── 步骤 3：随机放置原子 ─────────────────────────────────────────────────
-    let mut rng = rand::rng();
+    // ChaCha12, not StdRng: rand may change StdRng's algorithm between versions (as ml/merge).
+    let mut rng = chacha20::ChaCha12Rng::seed_from_u64(seed);
     let mut atoms: Vec<Atom> = Vec::new();
     for (elem, count) in &element_counts {
         for _ in 0..*count {
@@ -537,7 +542,7 @@ mod tests {
     fn test_build_box_accepts_formula_outside_database() {
         // 端到端：库外带括号公式一路走到建盒
         let comps = vec![Component { compound: "Ca3(PO4)2".to_string(), n_molecules: 8 }];
-        let frame = build_box(&comps, 3.0, 1.5, 20).unwrap();
+        let frame = build_box(&comps, 3.0, 1.5, 20, 7).unwrap();
         assert_eq!(frame.atoms().filter(|a| a.element == "Ca").count(), 24);
         assert_eq!(frame.atoms().filter(|a| a.element == "P").count(), 16);
         assert_eq!(frame.atoms().filter(|a| a.element == "O").count(), 64);
@@ -592,8 +597,8 @@ mod tests {
         }];
         for bad in [f64::NAN, f64::INFINITY] {
             assert!(estimate_box_length(&comps, bad).is_err(), "density {bad}");
-            assert!(build_box(&comps, bad, 1.5, 0).is_err(), "density {bad}");
-            assert!(build_box(&comps, 1.0, bad, 0).is_err(), "min_dist {bad}");
+            assert!(build_box(&comps, bad, 1.5, 0, 7).is_err(), "density {bad}");
+            assert!(build_box(&comps, 1.0, bad, 0, 7).is_err(), "min_dist {bad}");
         }
     }
 
@@ -612,7 +617,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 10,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 50).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 50, 7).unwrap();
         // 10 个 H2O = 30 个原子
         assert_eq!(frame.n_atoms(), 30);
     }
@@ -623,7 +628,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 5,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 50).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 50, 7).unwrap();
         assert_eq!(frame.count_element("H"), 10);
         assert_eq!(frame.count_element("O"), 5);
     }
@@ -634,7 +639,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 5,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 50).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 50, 7).unwrap();
         assert!(frame.is_periodic());
         assert_eq!(frame.pbc, [true; 3]);
     }
@@ -645,7 +650,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 20,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 100).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 100, 7).unwrap();
         let box_len = frame.cell.as_ref().unwrap().lengths()[0];
         for atom in frame.atoms() {
             assert!(atom.position.x >= 0.0 && atom.position.x < box_len);
@@ -661,7 +666,7 @@ mod tests {
             n_molecules: 20,
         }];
         let min_dist = 1.5;
-        let frame = build_box(&comps, 0.5, min_dist, 200).unwrap();
+        let frame = build_box(&comps, 0.5, min_dist, 200, 7).unwrap();
         let box_len = frame.cell.as_ref().unwrap().lengths()[0];
         let n = frame.n_atoms();
         // 检查所有原子对的最小距离
@@ -694,9 +699,23 @@ mod tests {
                 n_molecules: 3,
             },
         ];
-        let frame = build_box(&comps, 0.8, 1.5, 50).unwrap();
+        let frame = build_box(&comps, 0.8, 1.5, 50, 7).unwrap();
         // 5×3 + 3×6 = 33 个原子
         assert_eq!(frame.n_atoms(), 33);
+    }
+
+    #[test]
+    fn the_same_seed_gives_the_same_box() {
+        let comps = vec![
+            Component { compound: "water".into(), n_molecules: 5 },
+            Component { compound: "methanol".into(), n_molecules: 3 },
+        ];
+        let atoms = |seed| -> Vec<(String, [f64; 3])> {
+            let frame = build_box(&comps, 0.8, 1.5, 20, seed).unwrap();
+            frame.atoms().map(|a| (a.element.to_string(), a.position.into())).collect()
+        };
+        assert_eq!(atoms(7), atoms(7));
+        assert_ne!(atoms(7), atoms(8));
     }
 
     #[test]
