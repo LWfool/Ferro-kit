@@ -25,6 +25,11 @@ command line alike; regenerate it rather than migrating it.
 - `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
   atom is an error, as it is for `msd`, `vacf`, `vanhove` and `map jump`; it used to write a grid
   of zeros reporting "0 atoms". The error names the filter in every analysis.
+- Library: `ferro_analysis::{distance, angle, dihedral, radius_of_gyration, bounding_box,
+  mean_squared_displacement, rmsd_to_first, center_of_mass_trajectory,
+  radius_of_gyration_trajectory}` are removed. Nothing called them; they took no minimum image
+  and did not unwrap, so `mean_squared_displacement` sat next to `calc_msd` giving a different
+  answer. Use `calc_msd`, and `Cell::minimum_image` for distances.
 - The automatic first-shell cutoff (`net --A-B=auto`, `dataset filter --al6 auto`) smooths g(r)
   over the documented 0.10 Å; it was 0.14 Å (7 bins of 0.02 Å). Cutoffs on a shallow minimum
   move by a bin or two: on the test glasses Zn-O 2.631 → 2.651 and 2.611 → 2.571 Å, Al-O

@@ -4,15 +4,11 @@ mod check;
 mod neighbor;
 // One public path per item (review A-12): the analyses are reached from the crate
 // root; `ml` stays a module because its parts are an API of their own
-mod geometry;
-mod trajectory_analysis;
 mod md;
 mod network;
 mod dft;
 pub mod ml;
 
-pub use geometry::*;
-pub use trajectory_analysis::*;
 pub use network::{NetworkResult, calc_network, calc_network_typed, AtomType, CutoffTable, TypeParams};
 pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult,
               ChgSdfParams, ChgSdfResult, ChgSdfFamily, ChgRmsdStats, calc_chg_sdf};
