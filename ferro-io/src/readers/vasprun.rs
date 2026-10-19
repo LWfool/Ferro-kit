@@ -166,6 +166,12 @@ pub fn read_vasprun_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
                     "atominfo" => st.in_atominfo = false,
                     "array" => st.in_atoms_array = false,
                     "c" => st.in_c = false,
+                    // 空的 `<i name="e_fr_energy"></i>` 没有 Text 事件：不在这里清掉，下一个
+                    // 文本节点（别的量）会被当成能量收下（审查 10-03 A 轻）
+                    "i" => {
+                        st.reading_energy_name = None;
+                        st.reading_nelm = false;
+                    }
                     "scstep" => st.in_scstep = false,
                     "structure" => st.in_structure = false,
                     "varray" => {
@@ -443,5 +449,21 @@ mod tests {
             Err(e) => assert!(format!("{e:#}").contains("atominfo") || format!("{e:#}").contains("XML")),
             Ok((t, _)) => assert_eq!(t.n_frames(), 0),
         }
+    }
+
+    /// An empty `<i>` has no text event: its name used to stay armed, and the next text
+    /// node — here `<time>`'s "181.36 185.61" — was taken as the kinetic energy, losing
+    /// frame 0's temperature.
+    #[test]
+    fn empty_i_element_does_not_capture_the_next_text() {
+        let text = std::fs::read_to_string(FIXTURE).unwrap();
+        let total = "<i name=\"total\">  -2040.54719326 </i>";
+        assert_eq!(text.matches(total).count(), 1);
+        let edited = text.replacen(total, "<i name=\"kinetic\"></i>", 1);
+        let path = crate::testutil::write_tmp("vasprun_empty_i.xml", &edited);
+        let (want, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
+        let (got, _) = read_vasprun_with_stats(&path).unwrap();
+        assert!(got.frames[0].temperature.is_some());
+        assert_eq!(got.frames[0].temperature, want.frames[0].temperature);
     }
 }

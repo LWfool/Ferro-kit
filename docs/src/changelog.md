@@ -46,6 +46,8 @@ command line alike; regenerate it rather than migrating it.
   coordinates, velocities and forces taken as written. They used to be misread as
   `lo hi tilt`. Without an `element` column, a `typelabel` column names the atoms (split into
   element and site label as the `element` column is); it used to give `X<type>`.
+- vasprun.xml: an empty `<i>` element no longer makes the next value in the file (such as a
+  `<time>` entry) be read as the energy or kinetic energy.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 
