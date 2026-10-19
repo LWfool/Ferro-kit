@@ -364,7 +364,7 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
     })?;
 
     let tables =
-        batch::stack(&results, |(gr, sq): &(GrResult, SqResult)| Ok(sq.to_tables(gr)?))?;
+        batch::stack(&results, |(_, sq): &(GrResult, SqResult)| Ok(sq.to_tables()))?;
 
     let mut summary = Summary::new(&["volume", "volume_std", "r_max", "q_trunc"]);
     for (input, (gr, sq)) in &results {

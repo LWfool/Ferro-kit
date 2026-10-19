@@ -353,8 +353,7 @@ impl SqResult {
     /// **Every** canonical pair is written, always. There is no pair filter: keeping
     /// one pair next to the totals hides the `Σ w_ij·S_ij == total` closure that is the
     /// only reason the partials are here at all.
-    pub fn to_tables(&self, gr: &GrResult) -> Result<Vec<(String, Table)>, ChemError> {
-        let _ = gr;
+    pub fn to_tables(&self) -> Vec<(String, Table)> {
         let keys: Vec<String> = sorted_keys(&self.sq);
 
         let mut t = Table::new();
@@ -375,7 +374,7 @@ impl SqResult {
                 t.push_num(format!("{k}_neutron"), take(&self.sq_neutron, k));
             }
         }
-        Ok(vec![("sq".to_string(), t)])
+        vec![("sq".to_string(), t)]
     }
 
     /// Parameter block for the comment header, including the g(r) it was transformed from.
@@ -839,7 +838,7 @@ mod tests {
 
         // 没有配对过滤:q + 2 条 total + 3 对 × 3 列 = 12 列,恒定如此。
         // 只留一对会藏起 Σ w_ij·S_ij == total 的闭合,而那是 partial 存在的唯一理由
-        let (_, t) = sq.to_tables(&gr_res).unwrap().remove(0);
+        let (_, t) = sq.to_tables().remove(0);
         assert_eq!(t.n_cols(), 12);
         assert_eq!(t.n_rows(), sq.q.len(), "宽表 → 一行一个 q,配对增多只加列");
         assert!(t.validate().is_ok());
@@ -859,7 +858,7 @@ mod tests {
         let sq = calc_sq_from_gr(&gr_res, &SqParams {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Both,
         }).unwrap();
-        let (_, t) = sq.to_tables(&gr_res).unwrap().remove(0);
+        let (_, t) = sq.to_tables().remove(0);
 
         let col = |name: &str| match t.column(name).unwrap() {
             ferro_core::Column::Num(v) => v.clone(),
