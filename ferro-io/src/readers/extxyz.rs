@@ -118,6 +118,8 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
 
         // Properties column spec
         let props = kv.get("properties").map(|s| parse_properties(s))
+            .transpose()
+            .with_context(|| format!("frame {frame_no} (line {comment_no}): bad Properties"))?
             .unwrap_or_else(|| vec![
                 ("species".to_string(), 'S', 1),
                 ("pos".to_string(), 'R', 3),
@@ -195,8 +197,12 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
             let pos = vec3("pos", pos_col)?;
 
             let mut atom = Atom::new(element, pos);
-            if let Some(c) = find("charges") {
-                atom.charge = Some(num("charges", c)?);
+            // ASE 写出时把计算得到的 `charges` 改名 `charge` 列，`initial_charges` 原名写（ase/io/extxyz.py
+            // PROPERTY_NAME_MAP）；三者都有时取最像「本帧的电荷」的那个
+            let charge_col = ["charges", "charge", "initial_charges"].into_iter()
+                .find_map(|name| find(name).map(|c| (name, c)));
+            if let Some((name, c)) = charge_col {
+                atom.charge = Some(num(name, c)?);
             }
             if let Some(c) = find("masses") {
                 atom.mass = Some(num("masses", c)?);
@@ -433,18 +439,21 @@ fn close(a: &Matrix3<f64>, b: &Matrix3<f64>) -> bool {
     })
 }
 
-fn parse_properties(spec: &str) -> Vec<(String, char, usize)> {
+/// `name:type:count` triples. A count that is not a positive integer, or a spec that
+/// does not split into triples, is an error: taking it as 1 (as before) shifts every
+/// column after it onto the wrong field.
+fn parse_properties(spec: &str) -> Result<Vec<(String, char, usize)>> {
     let parts: Vec<&str> = spec.split(':').collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i + 2 < parts.len() {
-        let name = parts[i].to_lowercase();
-        let tc = parts[i+1].chars().next().unwrap_or('S').to_ascii_uppercase();
-        let count: usize = parts[i+2].parse().unwrap_or(1);
-        out.push((name, tc, count));
-        i += 3;
+    if !parts.len().is_multiple_of(3) {
+        bail!("{spec:?} is not a list of name:type:count triples");
     }
-    out
+    parts.chunks(3).map(|t| {
+        let name = t[0].to_lowercase();
+        let tc = t[1].chars().next().unwrap_or('S').to_ascii_uppercase();
+        let count: usize = t[2].parse().ok().filter(|&c| c > 0)
+            .with_context(|| format!("column {name}: count {:?} is not a positive integer", t[2]))?;
+        Ok((name, tc, count))
+    }).collect()
 }
 
 #[cfg(test)]
@@ -793,5 +802,32 @@ Si 0.0 0.0 0.0
         // 中间帧不完整仍是报错
         let bad = format!("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\n{head}");
         assert!(parse_extxyz(&bad).is_err());
+    }
+
+    /// ASE 3.29 output, verbatim: it writes initial charges as `initial_charges` and the
+    /// calculator's as `charge`. Only `charges` used to be read.
+    #[test]
+    fn test_charge_columns_written_by_ase() {
+        let init = "2\nLattice=\"5.6 0.0 0.0 0.0 5.6 0.0 0.0 0.0 5.6\" \
+            Properties=species:S:1:pos:R:3:initial_charges:R:1 pbc=\"T T T\"\n\
+            Na 0.0 0.0 0.0 0.9\nCl 2.8 0.0 0.0 -0.9\n";
+        let f = parse_extxyz(init).unwrap().frames.remove(0);
+        assert_eq!(f.atom(0).charge, Some(0.9));
+        // 两列都有时取计算得到的 charge
+        let calc = "2\nLattice=\"5.6 0.0 0.0 0.0 5.6 0.0 0.0 0.0 5.6\" \
+            Properties=species:S:1:pos:R:3:initial_charges:R:1:charge:R:1 energy=-1.0 pbc=\"T T T\"\n\
+            Na 0.0 0.0 0.0 0.0 0.8\nCl 2.8 0.0 0.0 0.0 -0.8\n";
+        let f = parse_extxyz(calc).unwrap().frames.remove(0);
+        assert_eq!(f.atom(1).charge, Some(-0.8));
+    }
+
+    /// A bad count used to be taken as 1, shifting every later column onto the wrong field.
+    #[test]
+    fn test_bad_properties_count_is_an_error() {
+        for spec in ["species:S:1:pos:R:x", "species:S:1:pos:R:0", "species:S:1:pos:R"] {
+            let text = format!("1\nProperties={spec}\nO 0 0 0\n");
+            let err = format!("{:#}", parse_extxyz(&text).unwrap_err());
+            assert!(err.contains("bad Properties"), "{spec}: {err}");
+        }
     }
 }

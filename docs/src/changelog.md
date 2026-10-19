@@ -22,6 +22,9 @@ command line alike; regenerate it rather than migrating it.
   file used to be rejected.
 - An atomic number in the first column of a plain XYZ file is read as that element (`8` → O),
   as ASE does; it used to become an element named `8`.
+- Extended XYZ: per-atom charges are also read from the `charge` and `initial_charges`
+  columns ASE writes (only `charges` was). A `Properties` count that is not a positive integer
+  is an error; it used to be taken as 1, shifting every later column.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 
