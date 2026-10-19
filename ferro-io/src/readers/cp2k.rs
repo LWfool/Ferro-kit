@@ -308,9 +308,6 @@ fn cp2k_logical(value: Option<&str>, lone: bool) -> Result<bool> {
 }
 
 fn find_end(lines: &[&str], start: usize) -> Option<usize> {
-    let _section_name: String = lines[start].to_lowercase()
-        .trim_start_matches('&')
-        .split_whitespace().next().unwrap_or("").to_string();
     let mut depth = 0usize;
     for (j, l) in lines[start..].iter().enumerate() {
         let low = l.to_lowercase().trim().to_string();
