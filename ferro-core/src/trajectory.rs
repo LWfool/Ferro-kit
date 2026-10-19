@@ -189,16 +189,7 @@ impl Trajectory {
     /// Metadata is preserved unchanged — note that `timestep` then no longer
     /// describes the spacing of the returned frames when `stride > 1`.
     pub fn select(&self, start: usize, end: Option<usize>, stride: usize) -> Trajectory {
-        let last = self.n_frames().saturating_sub(1);
-        let end = end.unwrap_or(last).min(last);
-        let stride = stride.max(1);
-
-        let frames = if start > end || self.frames.is_empty() {
-            Vec::new()
-        } else {
-            self.frames[start..=end].iter().step_by(stride).cloned().collect()
-        };
-        Trajectory { frames, metadata: self.metadata.clone() }
+        self.subset(&self.select_indices(start, end, stride))
     }
 
     /// The frame indices [`Trajectory::select`] would pick.
@@ -416,6 +407,15 @@ mod tests {
                 "start={start} end={end:?} stride={stride}"
             );
         }
+    }
+
+    /// `select` and `tail` carry the metadata over unchanged, as `subset` does
+    #[test]
+    fn test_select_keeps_metadata() {
+        let mut traj = numbered_traj(5);
+        traj.metadata.title = Some("run".into());
+        assert_eq!(traj.select(1, Some(3), 2).metadata.title.as_deref(), Some("run"));
+        assert_eq!(traj.tail(2).metadata.title.as_deref(), Some("run"));
     }
 
     #[test]
