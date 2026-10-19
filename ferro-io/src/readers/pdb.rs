@@ -6,16 +6,34 @@ use ferro_core::data::elements::by_symbol;
 
 /// 读取 PDB 文件，支持多模型（MODEL/ENDMDL 记录）。
 pub fn read_pdb(path: &Path) -> Result<Trajectory> {
+    Ok(read_pdb_with_warnings(path)?.0)
+}
+
+/// [`read_pdb`], returning what the reader noticed: a `CRYST1` placeholder taken as no
+/// cell, and a last MODEL with no `ENDMDL` (kept when it has the atom count of the
+/// frame before it, dropped otherwise).
+///
+/// A frame ends at `ENDMDL` or at `END`: CP2K and VMD write trajectories as blocks
+/// closed by `END` with no MODEL records (as ASE reads them). Those used to run
+/// together into one frame holding every block's atoms.
+pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
     let mut traj = Trajectory::new();
+    let mut warnings = Vec::new();
     let mut current = Frame::new();
-    let mut has_model = false;
+    let mut open_model: Option<usize> = None; // MODEL 行号，未见 ENDMDL 时为 Some
     let mut cell: Option<Cell> = None;
+    let close = |frame: &mut Frame, cell: &Option<Cell>| {
+        if let Some(c) = cell {
+            frame.cell = Some(c.clone());
+            frame.pbc = [true; 3];
+        }
+    };
 
     for (ln, line) in super::util::text_lines(path)?.enumerate() {
         let line = line?;
         let tag = col(&line, 0, 6);
 
-        match tag {
+        match tag.trim_end() {
             "HEADER" => {
                 // 记录名 6 字节是 ASCII，6 处必是字符边界；以前从 10 切，多字节标题会 panic
                 let source = line[6..].trim();
@@ -25,19 +43,27 @@ pub fn read_pdb(path: &Path) -> Result<Trajectory> {
             }
             "CRYST1" => {
                 cell = parse_cryst1(&line);
-            }
-            "MODEL " => {
-                has_model = true;
-            }
-            "ENDMDL" => {
-                let mut frame = std::mem::replace(&mut current, Frame::new());
-                if let Some(c) = &cell {
-                    frame.cell = Some(c.clone());
-                    frame.pbc = [true; 3];
+                // PDB 规范：非晶体学测得的结构 CRYST1 写 1 1 1 90 90 90 占位（MDAnalysis 同样当无胞）
+                if cell.as_ref().is_some_and(is_placeholder_cell) {
+                    if !warnings.iter().any(|w: &String| w.contains("CRYST1")) {
+                        warnings.push(format!(
+                            "warning: line {}: CRYST1 1 1 1 90 90 90 is the PDB placeholder for \
+                             a structure with no unit cell; read as non-periodic", ln + 1));
+                    }
+                    cell = None;
                 }
-                traj.add_frame(frame);
             }
-            "ATOM  " | "HETATM" => {
+            "MODEL" => open_model = Some(ln + 1),
+            "ENDMDL" | "END" => {
+                open_model = None;
+                // MODEL … ENDMDL 之后的 END 不另成一帧
+                if current.n_atoms() > 0 {
+                    let mut frame = std::mem::replace(&mut current, Frame::new());
+                    close(&mut frame, &cell);
+                    traj.add_frame(frame);
+                }
+            }
+            "ATOM" | "HETATM" => {
                 let atom = parse_atom_record(&line)
                     .with_context(|| format!("line {}: {line:?}", ln + 1))?;
                 current.add_atom(atom);
@@ -46,16 +72,36 @@ pub fn read_pdb(path: &Path) -> Result<Trajectory> {
         }
     }
 
-    // 没有 MODEL 记录时，视为单帧
-    if !has_model && current.n_atoms() > 0 {
-        if let Some(c) = cell {
-            current.cell = Some(c);
-            current.pbc = [true; 3];
+    if current.n_atoms() > 0 {
+        let k = traj.n_frames();
+        match open_model {
+            // 没有 MODEL / END 记录的单帧文件，正常
+            None => {}
+            // 末个 MODEL 没写 ENDMDL：原子数与前一帧一致才可信，否则多半是写到一半
+            Some(model_line) => {
+                let n = current.n_atoms();
+                match traj.frames.last().map(|f| f.n_atoms()) {
+                    Some(prev) if prev != n => {
+                        warnings.push(format!(
+                            "warning: last MODEL (frame {k}, line {model_line}) has no ENDMDL and \
+                             {n} atoms where the frame before has {prev}; dropped as incomplete"));
+                        return Ok((traj, warnings));
+                    }
+                    _ => warnings.push(format!(
+                        "warning: last MODEL (frame {k}, line {model_line}) has no ENDMDL; kept")),
+                }
+            }
         }
+        close(&mut current, &cell);
         traj.add_frame(current);
     }
 
-    Ok(traj)
+    Ok((traj, warnings))
+}
+
+fn is_placeholder_cell(c: &Cell) -> bool {
+    let near = |x: f64, y: f64| (x - y).abs() < 1e-6;
+    c.lengths().iter().all(|&l| near(l, 1.0)) && c.angles().iter().all(|&g| near(g, 90.0))
 }
 
 /// 第 a..b 字节列（0 起、左闭右开），行短或落在多字节字符中间时为空串。PDB 是按列的
@@ -202,5 +248,66 @@ ENDMDL
         let path = write_tmp("test_multi.pdb", MULTI_PDB);
         let traj = read_pdb(&path).unwrap();
         assert_eq!(traj.n_frames(), 2);
+    }
+
+    const C1: &str = "ATOM      1  C   UNK A   1       0.000   0.000   0.000  1.00  0.00           C\n";
+    const C2: &str = "ATOM      2  C   UNK A   1       1.400   0.000   0.000  1.00  0.00           C\n";
+
+    /// A last MODEL with no ENDMDL used to be dropped without a word.
+    #[test]
+    fn test_last_model_without_endmdl() {
+        // 原子数与前一帧相同：保留并告警
+        let text = format!("MODEL 1\n{C1}{C2}ENDMDL\nMODEL 2\n{C1}{C2}");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_noend.pdb", &text)).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        assert!(w.len() == 1 && w[0].contains("frame 1, line 5") && w[0].contains("kept"), "{w:?}");
+        // 原子数少了：写到一半，丢掉并告警
+        let text = format!("MODEL 1\n{C1}{C2}ENDMDL\nMODEL 2\n{C1}");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_noend_cut.pdb", &text)).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert!(w.len() == 1 && w[0].contains("dropped"), "{w:?}");
+        // 只有一个 MODEL 且没写 ENDMDL：保留
+        let (traj, _) = read_pdb_with_warnings(&write_tmp("test_noend_one.pdb", &format!("MODEL 1\n{C1}"))).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+    }
+
+    /// CP2K / VMD trajectories close each block with END and have no MODEL records;
+    /// they used to run together into one frame of every block's atoms.
+    #[test]
+    fn test_end_separated_blocks_are_frames() {
+        let text = format!("{C1}{C2}END\n{C1}{C2}END\n");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_end_blocks.pdb", &text)).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        assert_eq!(traj.frames[1].n_atoms(), 2);
+        assert!(w.is_empty(), "{w:?}");
+        // MODEL … ENDMDL 后再写 END 不多出一帧
+        let (traj, _) = read_pdb_with_warnings(&write_tmp("test_model_end.pdb", MULTI_PDB_END)).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+    }
+
+    const MULTI_PDB_END: &str = "\
+MODEL        1
+ATOM      1  C   UNK A   1       0.000   0.000   0.000  1.00  0.00           C
+ENDMDL
+MODEL        2
+ATOM      1  C   UNK A   1       1.400   0.000   0.000  1.00  0.00           C
+ENDMDL
+END
+";
+
+    /// `CRYST1 1 1 1 90 90 90` is the PDB placeholder for "no unit cell" (as MDAnalysis
+    /// reads it); it used to become a 1 Å periodic box.
+    #[test]
+    fn test_cryst1_placeholder_is_no_cell() {
+        let cryst = |abc: &str| format!("CRYST1{abc}  90.00  90.00  90.00 P 1           1\n{C1}END\n");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_cryst_1.pdb",
+            &cryst("    1.000    1.000    1.000"))).unwrap();
+        assert!(traj.frames[0].cell.is_none());
+        assert_eq!(traj.frames[0].pbc, [false; 3]);
+        assert!(w.len() == 1 && w[0].contains("placeholder"), "{w:?}");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_cryst_10.pdb",
+            &cryst("   10.000   10.000   10.000"))).unwrap();
+        assert!(traj.frames[0].cell.is_some());
+        assert!(w.is_empty());
     }
 }

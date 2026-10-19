@@ -13,7 +13,7 @@ use ferro_core::Trajectory;
 use crate::readers::{
     apply_type_map, is_extxyz, read_aimd_as, read_cif, read_cp2k_inp, read_cp2k_restart,
     read_deepmd_npy_with_warnings, read_extxyz_with_warnings, read_lammps_data, read_lammps_dump_with_warnings,
-    read_pdb, read_poscar_with_warnings, read_qe_input, read_xyz_with_warnings, sniff, AimdFormat, AimdStats,
+    read_pdb_with_warnings, read_poscar_with_warnings, read_qe_input, read_xyz_with_warnings, sniff, AimdFormat, AimdStats,
     AtomStyle, LammpsUnits,
 };
 use crate::writers::{
@@ -232,7 +232,7 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
     let traj = match format {
         Format::Xyz => warned(read_xyz_with_warnings(path)?),
         Format::Extxyz => warned(read_extxyz_with_warnings(path)?),
-        Format::Pdb => read_pdb(path)?,
+        Format::Pdb => warned(read_pdb_with_warnings(path)?),
         Format::Cif => read_cif(path)?,
         Format::Poscar => warned(read_poscar_with_warnings(path)?),
         Format::LammpsData => {

@@ -25,6 +25,12 @@ command line alike; regenerate it rather than migrating it.
 - Extended XYZ: per-atom charges are also read from the `charge` and `initial_charges`
   columns ASE writes (only `charges` was). A `Properties` count that is not a positive integer
   is an error; it used to be taken as 1, shifting every later column.
+- PDB: blocks closed by `END` with no `MODEL` records (CP2K and VMD trajectories) are read as
+  one frame each; they used to merge into a single frame holding every block's atoms. A last
+  `MODEL` with no `ENDMDL` is kept with a warning when it has as many atoms as the frame
+  before it, and dropped with a warning otherwise; it used to vanish silently.
+  `CRYST1 1 1 1 90 90 90`, the PDB placeholder for a structure with no unit cell, is read as
+  non-periodic with a warning; it used to become a periodic 1 Å box.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

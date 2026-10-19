@@ -23,7 +23,7 @@ pub(crate) mod util;
 mod spacegroup;
 
 pub use xyz::{read_xyz, read_xyz_with_warnings};
-pub use pdb::read_pdb;
+pub use pdb::{read_pdb, read_pdb_with_warnings};
 pub use cif::read_cif;
 pub use vasp::{read_poscar, read_poscar_with_warnings, read_contcar};
 pub use chgcar::read_chgcar;
