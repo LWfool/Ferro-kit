@@ -63,7 +63,7 @@ use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 
 use super::aimd::{AimdFormat, AimdStats};
-use super::qe::extract_element;
+use super::util::element_from_label;
 
 const RY_TO_EV: f64 = HARTREE_TO_EV / 2.0;
 
@@ -408,7 +408,7 @@ impl Steps {
 
         let mut frame = Frame::with_cell(Cell::from_matrix(*cell), [true; 3]);
         frame.set_atoms(atoms.iter().map(|(label, pos)| {
-            let mut atom = Atom::new(extract_element(label), *pos);
+            let mut atom = Atom::new(element_from_label(label), *pos);
             // 物种名与元素相同时不填 label（同 cp2k_sp）
             if atom.element != *label {
                 atom.label = Some(label.clone());

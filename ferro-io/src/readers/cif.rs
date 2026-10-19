@@ -2,6 +2,7 @@ use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
+use super::util::element_from_label;
 use anyhow::{bail, ensure, Context, Result};
 
 use super::spacegroup;
@@ -547,33 +548,12 @@ fn parse_cif_float(s: &str) -> Option<f64> {
     }
 }
 
-/// 从原子标签提取元素符号（如 "Fe1a" → "Fe", "H12" → "H"）。
-fn element_from_label(label: &str) -> String {
-    let alpha: String = label.chars().take_while(|c| c.is_alphabetic()).collect();
-    capitalize_element(&alpha)
-}
-
 /// 清理 `_atom_site_type_symbol`：去除电荷标注（如 "Fe2+" → "Fe"），
 /// 处理 "?" / "."。
 fn clean_element(s: &str) -> String {
     match s.trim() {
         "?" | "." | "" => "X".to_string(),
-        s => {
-            let alpha: String = s.chars().take_while(|c| c.is_alphabetic()).collect();
-            capitalize_element(&alpha)
-        }
-    }
-}
-
-fn capitalize_element(s: &str) -> String {
-    if s.is_empty() { return "X".to_string(); }
-    let mut it = s.chars();
-    match it.next() {
-        None => "X".to_string(),
-        Some(first) => {
-            let rest: String = it.collect::<String>().to_lowercase();
-            format!("{}{rest}", first.to_uppercase())
-        }
+        s => element_from_label(s),
     }
 }
 

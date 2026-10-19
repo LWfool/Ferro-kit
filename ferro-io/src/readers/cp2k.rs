@@ -2,6 +2,7 @@ use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use ferro_core::units::BOHR_TO_ANG;
 use nalgebra::{Matrix3, Vector3};
+use super::util::element_from_label;
 use anyhow::{bail, Context, Result};
 
 pub fn read_cp2k_inp(path: &Path) -> Result<Trajectory> {
@@ -141,7 +142,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         let label = parts[0].to_string();
         let elem = kind_map.get(&label.to_lowercase())
             .cloned()
-            .unwrap_or_else(|| extract_element(&label));
+            .unwrap_or_else(|| element_from_label(&label));
 
         let v = Vector3::new(x, y, z);
         // SCALED 相对原胞（topology_cp2k.F:108 用的是 cell_muc，即 &CELL 写的 A B C 本身）
@@ -331,15 +332,6 @@ fn parse_vec3(parts: &[&str]) -> Option<[f64; 3]> {
         parts[1].parse().ok()?,
         parts[2].parse().ok()?,
     ])
-}
-
-fn extract_element(label: &str) -> String {
-    let alpha: String = label.chars().take_while(|c| c.is_alphabetic()).collect();
-    if alpha.is_empty() { return "X".to_string(); }
-    let mut it = alpha.chars();
-    let first = it.next().unwrap().to_uppercase().to_string();
-    let rest: String = it.collect::<String>().to_lowercase();
-    format!("{first}{rest}")
 }
 
 #[cfg(test)]

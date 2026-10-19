@@ -2,6 +2,7 @@ use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
+use super::util::element_from_label;
 use anyhow::{bail, Context, Result};
 
 const BOHR: f64 = 0.52917721;
@@ -57,7 +58,7 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
             if parts.len() >= 2 {
                 let label = parts[0].to_string();
                 // Try to extract element: first alphabetic chars of label
-                let elem = extract_element(&label);
+                let elem = element_from_label(&label);
                 species.insert(label, elem);
             }
         }
@@ -332,15 +333,6 @@ fn is_card_or_namelist(l: &str) -> bool {
         "ATOMIC_POSITIONS" | "ATOMIC_SPECIES" | "CELL_PARAMETERS" |
         "K_POINTS" | "CONSTRAINTS" | "ATOMIC_FORCES"
     ) || up.trim().starts_with('&')
-}
-
-pub(super) fn extract_element(label: &str) -> String {
-    let alpha: String = label.chars().take_while(|c| c.is_alphabetic()).collect();
-    if alpha.is_empty() { return "X".to_string(); }
-    let mut it = alpha.chars();
-    let first = it.next().unwrap().to_uppercase().to_string();
-    let rest: String = it.collect::<String>().to_lowercase();
-    format!("{first}{rest}")
 }
 
 #[cfg(test)]

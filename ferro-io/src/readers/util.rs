@@ -20,6 +20,20 @@ pub(crate) fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
     Ok(v)
 }
 
+/// The element a site label names: its leading letters, capitalised as a symbol
+/// (`fe2` -> `Fe`, `O1` -> `O`, `CA` -> `Ca`); `X` when it starts with no letter.
+///
+/// Not checked against the element table — the callers keep a label such as `Ow`
+/// as written and leave validation to the analyses. Shared by the CP2K input, QE
+/// input / output and CIF readers.
+pub(crate) fn element_from_label(label: &str) -> String {
+    let mut letters = label.chars().take_while(|c| c.is_alphabetic());
+    match letters.next() {
+        None => "X".to_string(),
+        Some(first) => first.to_uppercase().chain(letters.flat_map(char::to_lowercase)).collect(),
+    }
+}
+
 /// Reads a whole text file.
 ///
 /// Bytes that are not UTF-8 are an error naming the file, line and column of the
@@ -111,5 +125,13 @@ mod tests {
 
         let missing = read_text(Path::new("/no/such/ferro/file")).unwrap_err().to_string();
         assert!(missing.starts_with("cannot open"), "{missing}");
+    }
+
+    #[test]
+    fn element_from_label_takes_the_leading_letters() {
+        for (label, want) in [("Fe1a", "Fe"), ("H12", "H"), ("CA", "Ca"), ("fe2", "Fe"),
+                              ("O", "O"), ("Ow", "Ow"), ("1O", "X"), ("", "X")] {
+            assert_eq!(element_from_label(label), want, "{label}");
+        }
     }
 }
