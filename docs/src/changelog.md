@@ -31,6 +31,8 @@ command line alike; regenerate it rather than migrating it.
   before it, and dropped with a warning otherwise; it used to vanish silently.
   `CRYST1 1 1 1 90 90 90`, the PDB placeholder for a structure with no unit cell, is read as
   non-periodic with a warning; it used to become a periodic 1 Å box.
+- CIF: a symmetry operation with a term ferro does not recognise (`2x`, `y*1`) is an error
+  naming the term; the term used to be dropped, misplacing the atoms it generated.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

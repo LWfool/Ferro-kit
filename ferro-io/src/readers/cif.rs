@@ -389,25 +389,30 @@ fn parse_symop_component(
     for ch in s.chars() {
         match ch {
             '+' | '-' => {
-                apply_term(&term, sign, row, rot, trans);
+                apply_term(&term, sign, row, rot, trans)?;
                 term.clear();
                 sign = if ch == '+' { 1.0 } else { -1.0 };
             }
             c => term.push(c),
         }
     }
-    apply_term(&term, sign, row, rot, trans);
-    Ok(())
+    apply_term(&term, sign, row, rot, trans)
 }
 
-fn apply_term(term: &str, sign: f64, row: usize, rot: &mut Matrix3<f64>, trans: &mut Vector3<f64>) {
+/// 认不出的项报错 —— 以前静默丢掉，`2x`、`x*1` 之类让该行旋转部分少一项，
+/// 展开出的原子落在错误位置
+fn apply_term(term: &str, sign: f64, row: usize, rot: &mut Matrix3<f64>, trans: &mut Vector3<f64>) -> Result<()> {
     match term {
         "x" => rot[(row, 0)] += sign,
         "y" => rot[(row, 1)] += sign,
         "z" => rot[(row, 2)] += sign,
         "" => {}
-        s => { if let Some(v) = parse_fraction(s) { trans[row] += sign * v; } }
+        s => match parse_fraction(s) {
+            Some(v) => trans[row] += sign * v,
+            None => bail!("unrecognised term {s:?}"),
+        },
     }
+    Ok(())
 }
 
 fn parse_fraction(s: &str) -> Option<f64> {
@@ -860,5 +865,17 @@ Cl1  Cl  0.5  0.5  0.5
         assert_eq!(element_from_label("H12"), "H");
         assert_eq!(element_from_label("Ca2a"), "Ca");
         assert_eq!(element_from_label("O"), "O");
+    }
+
+    /// A term the parser does not know used to be dropped, leaving the row short.
+    #[test]
+    fn test_parse_symop_unknown_term_is_an_error() {
+        for bad in ["2x,y,z", "x,y*1,z", "x,y,1/0", "x,y,w"] {
+            let err = parse_symop(bad).unwrap_err().to_string();
+            assert!(err.contains("unrecognised term"), "{bad}: {err}");
+        }
+        // 小数平移、平移写在前面仍认
+        let q = parse_symop("1/2+x,y-0.25,-z").unwrap().apply(Vector3::new(0.1, 0.5, 0.2));
+        assert!((q - Vector3::new(0.6, 0.25, -0.2)).norm() < 1e-12);
     }
 }
