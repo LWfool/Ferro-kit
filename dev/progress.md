@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：884 个（全部通过，clippy 零警告；2026-10-19 实数）；另 ferro-python 180 个 pytest
+## 测试总数：895 个（全部通过，clippy 零警告；2026-10-19 实数）；另 ferro-python 180 个 pytest
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 75 |
 | ferro-io | 284（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
-| ferro-structure | 81 |
-| ferro-analysis | 300 |
-| ferro-render | 30 |
-| ferro-cli（lib 101 + bin 5 + 集成 8） | 114 |
+| ferro-structure | 84 |
+| ferro-analysis | 301 |
+| ferro-render | 31 |
+| ferro-cli（lib 105 + bin 5 + 集成 10） | 120 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。0.4.0 这批的破坏性改动见 `overview.md`。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
@@ -379,10 +379,10 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   零匹配报错）、`unique_labels`（同名输入改 `_2`，撞名按小写比 —— macOS / Windows 文件系统
   不分大小写，2026-10-14 审查 E-12）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
-- **`cmd/dataset.rs`**：`ferro dataset collect` —— AIMD out → DeePMD system
+- **`cmd/dataset/`**（2026-10-19 由 `dataset.rs` 拆为 `mod` / `collect` / `filter` / `merge` / `inspect`）：`ferro dataset collect` —— AIMD out → DeePMD system
   目录。**一目录一 system**（2026-08-26 改）：同目录的 `.out` 是同一次运行被
   重启切开的段，合并回去；命名保留目录层级（剥掉公共祖先，其余原样嵌套，
-  文件 stem 不进名字），只有一组时直接写进 `-o` 本身。
+  文件 stem 不进名字），只有一组时写到 `-o/<目录名>.db`（2026-10-19 前是 `-o` 本身加 `.db`，旁边留一个空的 `-o`）。
   **分组前剔除 PJM 作业日志**（2026-10-05，`drop_pjm_logs` / `is_pjm_log`）：
   `x<数字>-<jobname>.<全数字 jobid>.out`，不读、不计失败，打一行 NOTE；全被剔除
   时读文件前报错；规则写死、无关闭开关（用户裁定）。此前它们逐个计入失败、退出码 1。
@@ -407,7 +407,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   给了 `-o` 则只打三张统计表。`--shuffle` 在**全部判据与
   抽帧之后**打乱写出顺序（seed 默认 666）—— 抽帧要看时间序，而打乱不可逆。
   `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱后按
-  `--set-size` 切 / `by-source` **一个 system 一个 set**、不打乱不重切，
+  `--set-size` 切 / `by-source` 每个 system 内部按 `--seed` 打乱后各自切 set（2026-10-19 起，此前不打乱），set 边界落在 system 边界上，
   并写 `sets_source.txt`）
   - **`--type deepmd|nep|extxyz` 与 train/valid/test 划分**（2026-08-26，
     filter 与 merge 共用 `OutType` / `Split` / `write_split`）：nep 与 extxyz
@@ -418,7 +418,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     成员取自打乱序、各部分内部排回帧序 —— 同 seed 逐字节可复现；比例向上取到
     至少 1 帧。四处在读第一个文件前失败：by-source + 划分、by-source + 非
     deepmd、`--suffix` + 划分、输入已带划分后缀
-- **`cmd/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断
+- **`cmd/dataset/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断
   产物（`.lammpstrj` 全帧 / `.data` **末帧** / `_info.csv` 逐帧标量表），落在
   `<AIMD 目录>/ferro_inspect/`，**不写任何 npy**，`-o` 在这条路上报错。
   `_info.csv` 是一张 `Table`：摘要进 `#` 头，表体列
