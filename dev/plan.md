@@ -10,7 +10,7 @@
 
 ## 优先级高
 
-### 2026-10-17 全盘架构审查（六路并行，只读；HEAD `5498e30`；全部未修）
+### 2026-10-17 全盘架构审查（六路并行，只读；HEAD `5498e30`；2026-10-19 八步执行完，挂起组见下）
 
 六个子代理按领域审：A 分层与依赖 · B ferro-core 数据模型 · C ferro-io · D ferro-analysis · E ferro-cli ·
 F ferro-python。已登记的条目不重报，延伸处注明原编号。复现 fixture 是一次性的（会话 scratch），未进仓。
@@ -43,7 +43,7 @@ vasprun / OUTCAR / cif + spacegroup / extxyz 应力、`ferro.jobs` 的 `base.py`
 | 5 ✅ | 职责归位与数据模型清理 | `17ab908` A-4 / B2 / B3 / B4、`2ccbcca` B12 / A-2 / B11 / B13 / B9 / B14、`c5ca527` A-1 / A-6、`e53db89` A-5 / A-9、`da6e1bc` E2-4、`4fc563b` A-12（2026-10-18）。golden master 每步逐字节一致；AIMD 7 个 fixture 的 collect npy 与 inspect 产物与旧二进制一致 |
 | 6 ✅ | CLI 命名与驱动 | `9820aff` R-2、`e060431` E2-3 / E2-6 / E2-7 / E2-8、`49c6a84` E2-11 / E2-12 / D 换算、`0f31256` E2-2、`9ac0bf0` E2-5（2026-10-18）。golden master：改名那步 94 个文件改名后逐字节一致、其余不变；其余各步产物逐字节一致 |
 | 7 ✅ | ferro-python | `424f4a2` F-6 / F-7、`5da642a` F-1、`9013f13` F-3 / F-4 / F-5、`0a19964` F-9 / F-10 / F-2 / F-13、`fa4d10d` F-8 / F-12（2026-10-18）。F-11 已在第 1、3 步修。job 生成 golden master（3 程序 × 3 任务 × 选项变体 × NVT / 三斜，42 组）只有 QE `dt` 按 D2 变化，其余逐字节一致 |
-| 8 | 剩余轻级与文档漂移 | 各组「轻」 |
+| 8 ✅ | 剩余轻级与文档漂移 | `f3f3a05` C-11、`3f949fd` D-3、`59e580e` D-2 / D-4、`77be874` cp2k reader 的 BOHR、`32b2d0a` 负数选帧参数、`e30ae32` clippy.toml（B 组「—」）、`f9172b5` HBAR2_2M（2026-10-19）。bader / POSCAR / CP2K 输入的产物新旧二进制逐字节一致；job golden master 除 pseudo_dir 路径外逐字节一致 |
 
 第 1 步的两条用户定：**除 lammpstrj / xyz / extxyz / pdb 这类轨迹格式外都是单帧**（C-3：库 writer 遇多帧
 报错，Python `ferro.write` 与 `ferro convert` 一样一帧一个文件，命名函数 `indexed_path` 下沉 ferro-io 共用）；
@@ -55,6 +55,15 @@ LAMMPS data 同一元素的原子质量不一致时 writer 报错（一个 type 
 网络分类与 analysis：第 5 步 A-1 把网络分类搬进 analysis 时，`NeighborList` 跟着搬，`PeriodicCell`
 留 core（io / structure 以后量距离也要它）。挂起组没动内部：cube_sdf / chg_sdf 只加入口检查（截断上界），
 Bader 仍用 `Cell::minimum_image`。
+
+第 8 步的用户定：C-11 sp 向 md 对齐（锚点上方最近的 SCF 行说了算，没有就保留）；D-2 **不合**
+（cp2k_md / sp 不共用代码，三行函数不抵跨文件依赖），四处互指；D-3 **合**（CHGCAR 头部就是 POSCAR，推翻
+布局建议 10 的「不合」），`vasp.rs::parse_poscar_header`；HBAR2_2M 先查再改：VASP 的 HSQDTM =
+RYTOEV·AUTOA² = 3.8100199（RYTOEV 经 VASP 论坛版主确认，AUTOA / HSQDTM 的定义取自复述 constant.inc 的
+VaspBandUnfolding，未对照 VASP 源码本身），随机 2 万个立方胞里 3 个网格变化。实现上与计划的出入：CHGCAR
+负缩放因子的报错文案随 POSCAR 统一（计划写「各自保持」，为此多传一个参数不值）；clippy.toml 的路径写
+`nalgebra::Matrix::as_slice`（变异验证生效，数组 / Vec 的 as_slice 不误报）。仍开着的只有挂起组：
+Bader（A-3、B7、B8）与 cube_sdf / chg_sdf 两个改写组。
 
 第 7 步的用户定：D1 认不出元素的 UPF **跳过**（缺赝势时报错里点名被跳过的文件）；D2 `HBAR2_2M`、
 `RY_TIME_FS` 是程序侧的量，**留在 Python** 并注明理由，`RY_TIME_FS` 改用 QE `constants.f90` 的精确值；

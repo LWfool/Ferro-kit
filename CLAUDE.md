@@ -111,8 +111,9 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 | 位置 | 内容 |
 |---|---|
 | `ferro-core/src/` | `atom/cell/frame/trajectory`、`periodic.rs`（`PeriodicCell`）、`table.rs`、`data/elements.rs`（元素表、`canonical_cmp`） |
-| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `cube_density` `cube_radius` `cube_jump`（**无 CLI 入口**，见 `dev/plan.md`）`cube_sdf` `scattering_data` |
-| `ferro-analysis/src/network/` | `classify.rs`（`AtomType` / `TypeParams`）、`graph.rs`（形成子–配体图）、`qn_elements.rs`、`mod.rs`（六张表的统计）；`neighbor.rs` 是 crate 内共用的 `NeighborList` |
+| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `bondlife` `cube_density` `cube_radius` `cube_jump`（**无 CLI 入口**，见 `dev/plan.md`）`cube_sdf` `scattering_data`；共用的 `correlate`（FFT 自相关）、`shell`（g(r) 第一极小当截断）、`util` |
+| `ferro-analysis/src/network/` | `classify.rs`（`AtomType` / `TypeParams`）、`graph.rs`（形成子–配体图）、`qn_elements.rs`、`mod.rs`（六张表的统计） |
+| `ferro-analysis/src/` 顶层 | `neighbor.rs`（crate 内共用的 `NeighborList`）、`check.rs`（各 `validate` 共用的范围检查） |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
 | `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表、inspect 逐帧表）、`merge`（分组、重启分段拼接、打乱）、`split`（`--ratio`） |
 | `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`outpath.rs`（`-o` 的目录创建与确认）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制） |

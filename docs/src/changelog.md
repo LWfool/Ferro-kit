@@ -29,6 +29,17 @@ command line alike; regenerate it rather than migrating it.
 - A UPF in `pseudo_dir` whose element neither its header nor its name gives is skipped, not a
   traceback; it is named when an element then has no pseudopotential.  A template's `nraise`
   that is not a whole number is named in the error.
+- A negative `--start`, `--end`, `--stride` or `--number` to `ferro-py job` / `conv` is a usage
+  error (exit 2), not an `OverflowError` traceback.
+- The VASP fine grid (`NGXF`…) is predicted with VASP's own ħ²/2mₑ, 3.81002 eV·Å² (`HSQDTM`),
+  instead of the CODATA 3.80998; only a cell that sits right on a grid-size boundary changes.
+
+### Readers
+
+- A CP2K single-point output with no `SCF run` line at all (FIST and other runs without SCF) is
+  read, as the MD reader already did; before, every frame was dropped as unconverged.
+- CP2K input coordinates and cells given in bohr convert with CODATA 2018 (0.5291772109 Å), as
+  everywhere else in ferro; they moved in the ninth significant digit.
 
 ### One naming rule for every product
 
