@@ -189,7 +189,8 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
                         q -= x[m - 1] * x[m - 1] + x[n - m] * x[n - m];
                     }
                     let origins = (n - m) as f64;
-                    out[axis][m] = (q - 2.0 * s2[m]) / origins;
+                    // Lag 0 is 0 by definition; S1 - 2·S2 left round-off there (-1.7e-18)
+                    out[axis][m] = if m == 0 { 0.0 } else { (q - 2.0 * s2[m]) / origins };
                 }
             }
             out
@@ -807,5 +808,14 @@ mod tests {
 
         let plain = calc_msd(&traj, &MsdParams::default()).unwrap();
         assert!(plain.meta_lines().join("\n").contains("fit      = off"));
+    }
+
+    /// Lag 0 used to read -1.7e-18 (round-off of S1 - 2·S2) instead of 0.
+    #[test]
+    fn test_lag_zero_is_exactly_zero() {
+        let traj = make_traj_npt_triclinic(40, 7);
+        let res = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).unwrap();
+        assert_eq!(res.msd[0], 0.0);
+        assert!(res.msd[1] > 0.0);
     }
 }
