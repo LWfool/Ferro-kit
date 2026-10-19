@@ -28,12 +28,17 @@ use ferro_core::frame::Frame;
 ///
 /// # Errors
 /// - `ValidationError` if the cell matrix is singular.
+/// - `ValidationError` if `min_length` is NaN or infinite.
 pub fn find_supercell_dims(
     cell: &Cell,
     n_atoms: usize,
     min_length: f64,
     min_atoms: usize,
 ) -> Result<[usize; 3]> {
+    // NaN would fall through to "no constraint", infinity to a usize::MAX multiple.
+    if !min_length.is_finite() {
+        return Err(ChemError::ValidationError(format!("min_length must be finite, got {min_length}")));
+    }
     // 用面间距而非矢量长度：「满足最小镜像截断」要的是垂直厚度，三斜胞里 d < |a|，
     // 按长度算会给出不够大的超胞。扩 n 倍后面间距恰好也是 n·d
     let lengths = cell.interplanar_spacings()?;
@@ -310,5 +315,13 @@ mod tests {
     fn test_find_dims_no_constraint() {
         let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
         assert_eq!(find_supercell_dims(&cell, 4, 0.0, 0).unwrap(), [1, 1, 1]);
+    }
+
+    #[test]
+    fn a_min_length_that_is_not_finite_is_an_error() {
+        let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
+        for bad in [f64::NAN, f64::INFINITY] {
+            assert!(find_supercell_dims(&cell, 4, bad, 0).is_err(), "{bad}");
+        }
     }
 }

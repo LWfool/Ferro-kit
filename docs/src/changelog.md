@@ -32,6 +32,9 @@ command line alike; regenerate it rather than migrating it.
   answer. Use `calc_msd`, and `Cell::minimum_image` for distances.
 - Library: `Table::validate` and `Table::concat_union` return `ferro_core::Result`
   (`ChemError::ValidationError`) instead of `Result<_, String>`.
+- Library: `find_supercell_dims` refuses a NaN or infinite `min_length`, and `build_box` /
+  `estimate_box_length` a NaN or infinite `density` / `min_dist`. NaN used to pass the
+  `<= 0` checks: `min_length` was then ignored, the others panicked.
 - The automatic first-shell cutoff (`net --A-B=auto`, `dataset filter --al6 auto`) smooths g(r)
   over the documented 0.10 Å; it was 0.14 Å (7 bins of 0.02 Å). Cutoffs on a shallow minimum
   move by a bin or two: on the test glasses Zn-O 2.631 → 2.651 and 2.611 → 2.571 Å, Al-O

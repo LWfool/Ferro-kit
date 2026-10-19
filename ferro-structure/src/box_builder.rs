@@ -166,9 +166,10 @@ fn resolve_component(spec: &str) -> Result<(HashMap<String, usize>, f64)> {
 ///
 /// V = Σ(n_i × M_i) / (ρ × N_A), L = V^(1/3).
 pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64> {
-    if density <= 0.0 {
+    // Written so that NaN fails too; an infinite density would give a zero box.
+    if !(density > 0.0 && density.is_finite()) {
         return Err(ChemError::ValidationError(format!(
-            "density must be > 0, got {}",
+            "density must be a finite number > 0, got {}",
             density
         )));
     }
@@ -210,9 +211,10 @@ pub fn build_box(
     min_dist: f64,
     relax_steps: usize,
 ) -> Result<Frame> {
-    if min_dist <= 0.0 {
+    // Written so that NaN fails too: a NaN box length panics in the RNG's range.
+    if !(min_dist > 0.0 && min_dist.is_finite()) {
         return Err(ChemError::ValidationError(format!(
-            "min_dist must be > 0, got {}",
+            "min_dist must be a finite number > 0, got {}",
             min_dist
         )));
     }
@@ -580,6 +582,19 @@ mod tests {
             n_molecules: 100,
         }];
         assert!(estimate_box_length(&comps, 0.0).is_err());
+    }
+
+    #[test]
+    fn a_density_or_min_dist_that_is_not_finite_is_an_error() {
+        let comps = vec![Component {
+            compound: "water".into(),
+            n_molecules: 4,
+        }];
+        for bad in [f64::NAN, f64::INFINITY] {
+            assert!(estimate_box_length(&comps, bad).is_err(), "density {bad}");
+            assert!(build_box(&comps, bad, 1.5, 0).is_err(), "density {bad}");
+            assert!(build_box(&comps, 1.0, bad, 0).is_err(), "min_dist {bad}");
+        }
     }
 
     #[test]
