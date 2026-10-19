@@ -20,6 +20,8 @@ command line alike; regenerate it rather than migrating it.
 - A trajectory with a cell in some frames and none in others is an error in every analysis that
   checks cells; `rotcorr` and `bondlife` used to measure the cell-less frames with the plain
   Cartesian difference without a word.
+- `dataset filter`'s cutoff scan samples at most the 200 frames it promises (199 frames used to
+  give 199 samples, anything up to 399 was possible), so its report can differ in the samples.
 - Library: `MsdParams`, `VacfParams`, `RotCorrParams`, `BondLifeParams` and `VanHoveParams`
   default `dt` to NaN, and `validate` / `calc_*` refuse it as "dt must be given"; the default of
   1.0 fs used to compute silently. The CLI and Python already required it.

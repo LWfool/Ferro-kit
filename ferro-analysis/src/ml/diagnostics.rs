@@ -30,6 +30,13 @@ pub struct CutoffScan {
     pub per_frame: f64,
 }
 
+/// Evenly spaced frame indices, at most `max_frames` of them. The stride rounds up:
+/// rounding down took 199 frames for a limit of 100 (anything up to 2·max − 1).
+fn sample_frames(n: usize, max_frames: usize) -> Vec<usize> {
+    let step = n.div_ceil(max_frames.max(1)).max(1);
+    (0..n).step_by(step).collect()
+}
+
 /// Scans `rcuts` and reports how many frames an "at least one" selection keeps.
 ///
 /// Sampling at most `max_frames` frames: the shape of this curve is what
@@ -48,8 +55,7 @@ pub fn cutoff_scan(
     let widest = rcuts.iter().copied().fold(0.0, f64::max);
     check::periodic_cells(traj, Some((&format!("{elem}-{ligand} cutoff scan"), widest)))?;
     let n = traj.n_frames();
-    let step = (n / max_frames.max(1)).max(1);
-    let sampled: Vec<usize> = (0..n).step_by(step).collect();
+    let sampled = sample_frames(n, max_frames);
 
     rcuts
         .iter()
@@ -457,5 +463,16 @@ mod tests {
     fn count_histogram_groups_by_value() {
         let t = count_histogram("n", &[0, 0, 1, 2, 2, 2]);
         assert_eq!(t.cols.len(), 2);
+    }
+
+    #[test]
+    fn sampling_never_exceeds_the_limit() {
+        assert_eq!(sample_frames(199, 100).len(), 100);
+        assert_eq!(sample_frames(200, 100).len(), 100);
+        assert_eq!(sample_frames(50, 100).len(), 50);
+        assert_eq!(sample_frames(1000, 200), (0..1000).step_by(5).collect::<Vec<_>>());
+        for n in 1..500 {
+            assert!(sample_frames(n, 37).len() <= 37, "{n}");
+        }
     }
 }
