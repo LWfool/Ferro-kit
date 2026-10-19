@@ -59,6 +59,12 @@ pub struct Frame {
 }
 ```
 
+`pbc` records what the file says (`[false,false,false]` for a molecule, `[true,true,false]` for a
+slab), but the analyses know only `[true,true,true]`.  A frame that has a cell but any `pbc` flag
+`false` is an error in every analysis that measures distances — it is never measured as a bulk.  An
+analysis that accepts non-periodic input (`msd`, `rotcorr`, `bondlife`, `vanhove`) wants such a frame
+with **no** cell.
+
 Forces (eV/Å) and velocities (Å/fs, the internal standard) are read with `forces()` /
 `velocities()` and set with `set_forces` / `set_velocities`, which **refuse an array whose length is
 not the atom count** — the per-atom arrays are private so their lengths cannot drift from the atoms.
@@ -86,9 +92,6 @@ What fills them:
 | vasprun.xml | **derived**: `T = 2·E_kin/(3N·k_B)` from `<i name="kinetic">`, because the format does not print it | — |
 | extxyz | `Temperature=` when present (read only; the writer never emits it) | — |
 
-`pbc = [false,false,false]` → molecular system.  
-`pbc = [true,true,false]` → surface / slab.
-
 ### Sign of the stress
 
 `stress` is always **positive = compression** (the sign CP2K / VASP / QE print), stored row-major.
@@ -109,11 +112,6 @@ otherwise ferro errors out — it will not pick one for you.  The tensor must al
 (the extxyz specification requires it), and the **6-component Voigt form is rejected**: its component
 order is not consistent across programs (the specification and ASE use `xx yy zz yz xz xy`, VASP's
 `in kB` and GPUMD's `stress_*.out` use `xx yy zz xy yz zx`), and nothing in the file says which one wrote it.  Rewrite it as 9 numbers.
-`pbc = [true,true,true]` → bulk crystal or glass.
-
-The analyses know only the last kind.  A frame that has a cell but any `pbc` flag `false` is an error in
-every analysis that measures distances — it is never measured as a bulk.  An analysis that accepts
-non-periodic input (`msd`, `rotcorr`, `bondlife`, `vanhove`) wants such a frame with **no** cell.
 
 ## Cell
 

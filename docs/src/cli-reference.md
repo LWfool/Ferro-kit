@@ -345,7 +345,7 @@ Two edge cases for the density:
 - **Without a cell the row is not printed at all**, and no `n/a` placeholder is written — no volume means
   no density, and a placeholder reads like a measurement.
 - **Unknown elements pull the density down.**  A symbol that is not in the element table (a stray site
-  label, or the `X` that a too-short PDB line degenerates into) falls back to 1 amu in `effective_mass()`,
+  label, or a placeholder such as `X` written by another program) falls back to 1 amu in `effective_mass()`,
   with no symptom other than a smaller number.  The density row is therefore followed by a warning naming how many atoms and which symbols triggered the fallback:
 
   ```
