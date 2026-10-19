@@ -37,7 +37,9 @@
 //! missing or truncated, whose force count differs from the atom count, or
 //! whose composition differs from the first frame. A dropped frame is counted
 //! and skipped; it never aborts the file, because a batch of FP jobs always
-//! contains a few that did not finish.
+//! contains a few that did not finish. The SCF verdict is the nearest `SCF run`
+//! line above the energy; a frame with none (FIST and other runs without SCF)
+//! is kept, as the MD reader does.
 //!
 //! Stress is the one optional quantity: a run without `STRESS_TENSOR` prints no
 //! such block, and the frame is still perfectly good training data — it just
@@ -353,7 +355,8 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
     let mut stats = AimdStats::new(AimdFormat::Cp2kSp);
 
     let mut anchors: Vec<usize> = Vec::new();
-    let mut converged: Vec<usize> = Vec::new();
+    // (行号, 是否收敛)
+    let mut scf: Vec<(usize, bool)> = Vec::new();
     let mut version: Option<String> = None;
     let mut run_type: Option<String> = None;
     for (i, l) in lines.iter().enumerate() {
@@ -361,8 +364,8 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
             || starts_with_tokens(l, &["ENERGY|", "Total", "force_eval"])
         {
             anchors.push(i);
-        } else if l.contains("SCF run converged") {
-            converged.push(i);
+        } else if l.contains("SCF run") {
+            scf.push((i, !l.contains("NOT")));
         } else if version.is_none() && starts_with_tokens(l, &["CP2K|", "version", "string:"]) {
             version = l.split_whitespace().last().map(|v| v.to_string());
         } else if run_type.is_none() && starts_with_tokens(l, &["GLOBAL|", "Run", "type"]) {
@@ -394,8 +397,10 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
         let lo = if k == 0 { 0 } else { anchors[k - 1] };
         let hi = anchors.get(k + 1).copied().unwrap_or(lines.len());
 
-        // SCF 未收敛时 CP2K 照样打能量和力,所以锚点在、数据不能要
-        if !converged.iter().any(|&c| c > lo && c < a) {
+        // SCF 未收敛时 CP2K 照样打能量和力,所以锚点在、数据不能要。看锚点上方最近的
+        // 那条 SCF 行;一条都没有(FIST 等不跑 SCF 的单点)时保留,与 cp2k_md 同一口径
+        let verdict = scf.iter().rev().find(|&&(i, _)| i > lo && i < a).map(|&(_, ok)| ok);
+        if verdict == Some(false) {
             stats.n_scf_failed += 1;
             continue;
         }
@@ -592,6 +597,21 @@ mod tests {
         // 但同一批里收敛的那份照常留下,不因为有坏帧就整份作废
         let mixed = format!("{bad}{MINI}");
         let (traj, st) = parse_cp2k_sp(&mixed).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert_eq!(st.n_scf_failed, 1);
+    }
+
+    /// A single point that runs no SCF (FIST) is kept, as the MD reader keeps it.
+    #[test]
+    fn a_frame_without_any_scf_line_is_kept() {
+        let fist = MINI.replace(" *** SCF run converged in     4 steps ***\n", "");
+        let (traj, st) = parse_cp2k_sp(&fist).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert_eq!(st.n_scf_failed, 0);
+
+        // 上一帧收敛的 SCF 行不算到下一帧头上:第二帧最近的 SCF 行是 NOT
+        let bad = MINI.replace("*** SCF run converged in     4 steps ***", "*** SCF run NOT converged ***");
+        let (traj, st) = parse_cp2k_sp(&format!("{MINI}{bad}")).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_scf_failed, 1);
     }
