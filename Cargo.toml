@@ -6,7 +6,8 @@ members = [
     "ferro-analysis",
     "ferro-render",
     "ferro-cli",
-    # "ferro-python",  # 暂时注释掉，等熟悉 Rust 后再启用
+    # ferro-python is deliberately not a member: it is its own workspace, built with
+    # maturin (see docs/src/installation.md), so a plain `cargo build` needs no Python
 ]
 resolver = "2"
 
