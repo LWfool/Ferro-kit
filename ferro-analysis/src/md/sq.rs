@@ -1,7 +1,8 @@
 //! Structure factor S(q) calculation and output.
 //!
 //! Workflow: compute g(r) first (`calc_gr`), then call `calc_sq_from_gr` to obtain S(q).
-//! Output: two files — `.gr` (written by the gr module) and `.sq` (written here).
+//! Output: `SqResult::to_tables` gives one wide table (`q`, totals, then every pair);
+//! the caller writes it with `ferro_io::write_table`.
 //!
 //! Formula (Faber-Ziman, from code2/dump2sq.c CalcSq):
 //!   S_ij(q) = 1 + (4πρ/q) Σ_r r[g_ij(r)−1] sin(qr) Δr

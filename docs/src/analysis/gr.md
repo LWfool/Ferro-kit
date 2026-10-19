@@ -143,11 +143,15 @@ ferro traj gr -a P -b O -i traj.dump --r-min 0.001 --r-max 15.0 --dr 0.002 -s po
 ```
 
 ```rust
-use ferro_analysis::{GrParams, calc_gr, write_gr};
+use ferro_analysis::{GrParams, calc_gr};
+use ferro_io::{write_table, TableFormat};
+use std::path::Path;
 
 let params = GrParams::with_auto_rmax(&traj);
 let result = calc_gr(&traj, &params).unwrap();
-write_gr(&result, "output.gr", None).unwrap();
+for (name, table) in result.to_tables(None).unwrap() {
+    write_table(&table, Path::new(&format!("output_{name}.csv")), TableFormat::Csv).unwrap();
+}
 ```
 
 ## Selecting by site label holds over a single frame only

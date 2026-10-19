@@ -173,14 +173,18 @@ Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
 ## Usage
 
 ```rust
-use ferro_analysis::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr, write_sq};
+use ferro_analysis::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr};
+use ferro_io::{write_table, TableFormat};
+use std::path::Path;
 
 let gr = calc_gr(&traj, &GrParams::with_auto_rmax(&traj)).unwrap();
 let sq = calc_sq_from_gr(&gr, &SqParams {
     q_min: 0.5, q_max: 20.0, dq: 0.02,
     weighting: SqWeighting::Neutron,
-});
-write_sq(&gr, &sq, "output.sq").unwrap();
+}).unwrap();
+for (name, table) in sq.to_tables() {
+    write_table(&table, Path::new(&format!("output_{name}.csv")), TableFormat::Csv).unwrap();
+}
 ```
 
 ## Implementation Notes
