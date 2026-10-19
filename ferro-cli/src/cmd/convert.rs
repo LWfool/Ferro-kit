@@ -36,6 +36,10 @@ pub struct ConvertCmd {
     #[arg(long, value_name = "N", conflicts_with = "stride")]
     pub number: Option<usize>,
 
+    /// Leave out a charge / magnetic-moment column only some atoms carry (refused otherwise)
+    #[arg(long)]
+    pub drop_partial: bool,
+
     #[command(flatten)]
     pub read: ReadArgs,
 }
@@ -139,7 +143,8 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // One file when the format holds several frames, one per frame when it does not:
     // 20 frames to POSCAR can only be 20 files, so there is no switch to remember.
     // The per-frame files are numbered by the frame they came from in the input
-    let written = ferro_io::write_numbered(&picked, output, args.read.units, &indices)?;
+    let opts = ferro_io::WriteOptions { units: args.read.units, drop_partial: args.drop_partial };
+    let written = ferro_io::write_numbered(&picked, output, &opts, &indices)?;
     if written.len() == 1 {
         println!(
             "Converted {} -> {}  ({} of {n_read} frame{} in 1 file)",
@@ -190,6 +195,7 @@ mod tests {
             end: None,
             stride: None,
             number: None,
+            drop_partial: false,
             read: ReadArgs::default(),
             format: None,
         }
@@ -352,7 +358,7 @@ mod tests {
             frames: vec![frame_of(&["Zn", "Al", "P", "O"]), frame_of(&["O", "P", "Zn", "Al"])],
             metadata: Default::default(),
         };
-        ferro_io::write(&t, &input, None).unwrap();
+        ferro_io::write(&t, &input, &ferro_io::WriteOptions::default()).unwrap();
 
         let output = dir.join("out.extxyz");
         run(&cmd(input.to_str(), output.to_str())).unwrap();

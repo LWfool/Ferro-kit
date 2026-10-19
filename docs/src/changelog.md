@@ -27,6 +27,14 @@ command line alike; regenerate it rather than migrating it.
   isotope, a LAMMPS data `Masses` entry, a dump `mass` column), not only alongside velocities;
   atoms without one get the element's mass. Converting a LAMMPS data file to extended XYZ
   therefore now carries its masses; they used to be dropped.
+- A charge or magnetic-moment column that only some atoms of a frame carry is an error in
+  extended XYZ, LAMMPS dump and LAMMPS data output, and nothing is written; the missing values
+  used to be written as 0. New `ferro convert --drop-partial` (Python:
+  `ferro.write(..., drop_partial=True)`) leaves the column out instead — LAMMPS data, whose
+  charge column is mandatory, then writes every charge as 0.
+- Library: `ferro_io::write` / `write_numbered` take `&WriteOptions { units, drop_partial }`
+  in place of the `units` argument; `write_extxyz_with`, `write_lammps_dump` and
+  `write_lammps_data` take the `drop_partial` flag.
 
 ### Readers: fewer silent results
 

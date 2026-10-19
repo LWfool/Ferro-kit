@@ -424,7 +424,7 @@ mod tests {
         use crate::readers::extxyz::read_extxyz;
         use crate::writers::extxyz::{write_extxyz_with, StressKey};
         let p = std::env::temp_dir().join("ferro_vasprun_virial_roundtrip.xyz");
-        write_extxyz_with(&traj, &p, StressKey::Virial).unwrap();
+        write_extxyz_with(&traj, &p, StressKey::Virial, false).unwrap();
         let back = read_extxyz(&p).unwrap();
         let (s0, s1) = (traj.frames[0].stress.unwrap(), back.frames[0].stress.unwrap());
         assert!((s0 - s1).abs().max() < 1e-12, "往返后应力变了:{s0} vs {s1}");

@@ -30,7 +30,13 @@ pub fn dump_name<'a>(atom: AtomRef<'a>) -> &'a str {
 /// 写 LAMMPS dump 文件。
 /// 包含列：id type element x y z [vx vy vz] [fx fy fz] [q]
 /// `units` 为 `None` 时，带速度或力的轨迹报错：写出的数值取决于读它的 LAMMPS 用哪个 `units`。
-pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<LammpsUnits>) -> Result<()> {
+/// 只有部分原子带电荷的帧报错，`drop_partial` 时不写 q 列（见 `partial_column`）。
+pub fn write_lammps_dump(
+    trajectory: &Trajectory,
+    path: &Path,
+    units: Option<LammpsUnits>,
+    drop_partial: bool,
+) -> Result<()> {
     let path_ = path.display();
     // 先查再建文件，免得报错后留下一个空文件
     if units.is_none() && trajectory.frames.iter().any(|f| f.velocities().is_some() || f.forces().is_some()) {
@@ -40,6 +46,10 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
              (CLI: --units real|metal, Python: units=\"real\"|\"metal\")"
         );
     }
+    let has_charge: Vec<bool> = trajectory.frames.iter().enumerate().map(|(k, f)| {
+        let with = f.atoms().filter(|a| a.charge.is_some()).count();
+        super::partial_column("charge", with, f.n_atoms(), k, drop_partial)
+    }).collect::<Result<_>>()?;
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
@@ -99,7 +109,7 @@ pub fn write_lammps_dump(trajectory: &Trajectory, path: &Path, units: Option<Lam
         // ATOMS header
         let has_vel = frame.velocities().is_some();
         let has_force = frame.forces().is_some();
-        let has_charge = frame.atoms().any(|a| a.charge.is_some());
+        let has_charge = has_charge[ts];
 
         let mut header = "ITEM: ATOMS id type element x y z".to_string();
         if has_vel { header.push_str(" vx vy vz"); }
@@ -240,7 +250,7 @@ mod tests {
 
         let path = std::env::temp_dir().join("type_stable.lammpstrj");
         let p = &path;
-        write_lammps_dump(&traj, p, Some(LammpsUnits::Real)).unwrap();
+        write_lammps_dump(&traj, p, Some(LammpsUnits::Real), false).unwrap();
 
         let text = std::fs::read_to_string(p).unwrap();
         let mut seen: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
@@ -261,7 +271,7 @@ mod tests {
         let path = std::env::temp_dir().join("bcc_rt.dump");
         let p = &path;
         let orig = bcc_traj();
-        write_lammps_dump(&orig, p, Some(LammpsUnits::Real)).unwrap();
+        write_lammps_dump(&orig, p, Some(LammpsUnits::Real), false).unwrap();
 
         let loaded = read_lammps_dump(p, Some(LammpsUnits::Real)).unwrap();
         assert_eq!(loaded.n_frames(), 2);
@@ -281,7 +291,7 @@ mod tests {
             frame.sites_mut()[1].label = Some("Fe1".into());
         }
         let path = std::env::temp_dir().join(format!("labels_rt_{}.dump", std::process::id()));
-        write_lammps_dump(&traj, &path, Some(LammpsUnits::Real)).unwrap();
+        write_lammps_dump(&traj, &path, Some(LammpsUnits::Real), false).unwrap();
         let back = read_lammps_dump(&path, Some(LammpsUnits::Real)).unwrap();
         let f = back.first().unwrap();
         assert_eq!((f.atom(0).element, f.atom(0).label), ("Fe", Some("Fe_3")));
@@ -337,7 +347,7 @@ mod tests {
             frame.set_forces(Some(vec![Vector3::from(f)])).unwrap();
             let path = std::env::temp_dir().join(format!("rot_{name}.dump"));
             // metal：力不换算，速度 Å/fs → Å/ps 乘 1000
-            write_lammps_dump(&Trajectory::from_frame(frame), &path, Some(LammpsUnits::Metal)).unwrap();
+            write_lammps_dump(&Trajectory::from_frame(frame), &path, Some(LammpsUnits::Metal), false).unwrap();
 
             let text = std::fs::read_to_string(&path).unwrap();
             let cols: Vec<f64> = text.lines().last().unwrap()
@@ -375,7 +385,7 @@ mod tests {
         let mut traj = Trajectory::new();
         traj.add_frame(frame);
         let path = std::env::temp_dir().join("tri_w.dump");
-        write_lammps_dump(&traj, &path, Some(crate::readers::lammps_dump::LammpsUnits::Metal)).unwrap();
+        write_lammps_dump(&traj, &path, Some(crate::readers::lammps_dump::LammpsUnits::Metal), false).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();
         let box_lines: Vec<&str> = text
@@ -415,7 +425,7 @@ mod tests {
     #[test]
     fn test_cellless_frame_gets_padded_box_and_ff() {
         let path = std::env::temp_dir().join("ferro_dump_cellless.lammpstrj");
-        write_lammps_dump(&Trajectory::from_frame(water()), &path, None).unwrap();
+        write_lammps_dump(&Trajectory::from_frame(water()), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS ff ff ff\n"), "无胞帧应写 ff ff ff：\n{text}");
 
@@ -438,7 +448,7 @@ mod tests {
         let mut f = Frame::with_cell(cell, [true; 3]);
         f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
         let path = std::env::temp_dir().join("ferro_dump_ortho.lammpstrj");
-        write_lammps_dump(&Trajectory::from_frame(f), &path, None).unwrap();
+        write_lammps_dump(&Trajectory::from_frame(f), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS pp pp pp\n"), "正交盒不应写倾斜量：\n{text}");
     }
@@ -450,7 +460,7 @@ mod tests {
         let mut f = Frame::with_cell(cell, [true, true, false]);
         f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
         let path = std::env::temp_dir().join("ferro_dump_slab.lammpstrj");
-        write_lammps_dump(&Trajectory::from_frame(f), &path, None).unwrap();
+        write_lammps_dump(&Trajectory::from_frame(f), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS pp pp ff\n"), "slab 应写 pp pp ff：\n{text}");
         assert_eq!(read_lammps_dump(&path, None).unwrap().frames[0].pbc, [true, true, false]);
@@ -467,7 +477,7 @@ mod tests {
             let dst = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_out.lammpstrj"));
             std::fs::write(&src, text).unwrap();
             let a = read_lammps_dump(&src, None).unwrap();
-            write_lammps_dump(&a, &dst, None).unwrap();
+            write_lammps_dump(&a, &dst, None, false).unwrap();
             let b = read_lammps_dump(&dst, None).unwrap();
             let (fa, fb) = (&a.frames[0], &b.frames[0]);
             let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());

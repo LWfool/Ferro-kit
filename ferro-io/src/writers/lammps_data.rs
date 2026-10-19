@@ -12,11 +12,16 @@ const CELLLESS_PAD: f64 = 1.0;
 
 /// 写 LAMMPS data 文件，atom_style full，real 单位（长度 Å）。
 /// 周期性帧写晶格信息；非周期性帧写最小包围盒。
-pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
+///
+/// full 的电荷列每个原子都得有：没有原子带电荷时写 0（结构本就不带电荷），只有部分原子
+/// 带电荷时报错，`drop_partial` 时全部写 0（见 `partial_column`）。
+pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: bool) -> Result<()> {
     let path_ = path.display();
     let frame = super::single_frame(trajectory, "LAMMPS data")?;
 
     let n = frame.n_atoms();
+    let with_charge = frame.atoms().filter(|a| a.charge.is_some()).count();
+    let use_charge = super::partial_column("charge", with_charge, n, 0, drop_partial)?;
 
     // Unique elements in first-appearance order → type IDs
     let elem_order = frame.unique_elements();
@@ -89,7 +94,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path) -> Result<()> {
 
     for (i, atom) in frame.atoms().enumerate() {
         let tp = elem_to_type[atom.element];
-        let q = atom.charge.unwrap_or(0.0);
+        let q = if use_charge { atom.charge.unwrap_or(0.0) } else { 0.0 };
 
         // Transform position to LAMMPS coordinate frame
         let pos = match &frame.cell {
@@ -174,7 +179,7 @@ mod tests {
     fn test_roundtrip() {
         let path = std::env::temp_dir().join("bcc_rt.lammps");
         let p = &path;
-        write_lammps_data(&bcc_traj(), p).unwrap();
+        write_lammps_data(&bcc_traj(), p, false).unwrap();
 
         let loaded = read_lammps_data(p, AtomStyle::Full).unwrap();
         let f = loaded.first().unwrap();
@@ -192,7 +197,7 @@ mod tests {
         f.add_atom(Atom::new("H", Vector3::new(1.76, 2.59, 3.0)));
         f.add_atom(Atom::new("H", Vector3::new(0.24, 2.59, 3.0)));
         let path = std::env::temp_dir().join("ferro_data_cellless.lammps");
-        write_lammps_data(&Trajectory::from_frame(f.clone()), &path).unwrap();
+        write_lammps_data(&Trajectory::from_frame(f.clone()), &path, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         for (lo, hi, tag) in [(-0.76, 2.76, "xlo xhi"), (1.0, 3.59, "ylo yhi"), (2.0, 4.0, "zlo zhi")] {
             let line = text.lines().find(|l| l.ends_with(tag)).unwrap();
@@ -209,7 +214,7 @@ mod tests {
     #[test]
     fn test_orthogonal_cell_from_angles_is_not_triclinic() {
         let path = std::env::temp_dir().join("ferro_data_ortho.lammps");
-        write_lammps_data(&bcc_traj(), &path).unwrap();
+        write_lammps_data(&bcc_traj(), &path, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("xy xz yz"), "正交盒不应写倾斜量：\n{text}");
     }
@@ -223,7 +228,7 @@ mod tests {
         let dst = std::env::temp_dir().join("ferro_data_origin_out.lammps");
         std::fs::write(&src, text).unwrap();
         let a = read_lammps_data(&src, AtomStyle::Full).unwrap();
-        write_lammps_data(&a, &dst).unwrap();
+        write_lammps_data(&a, &dst, false).unwrap();
         let b = read_lammps_data(&dst, AtomStyle::Full).unwrap();
         let (fa, fb) = (&a.frames[0], &b.frames[0]);
         let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());

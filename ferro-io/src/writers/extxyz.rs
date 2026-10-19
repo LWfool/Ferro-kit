@@ -23,20 +23,33 @@ pub enum StressKey {
 
 /// 写 extxyz 格式，多帧轨迹写为连续 block。
 pub fn write_extxyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
-    write_extxyz_with(trajectory, path, StressKey::Stress)
+    write_extxyz_with(trajectory, path, StressKey::Stress, false)
 }
 
-/// [`write_extxyz`] with a choice of stress key; see [`StressKey`].
+/// [`write_extxyz`] with a choice of stress key (see [`StressKey`]), and whether a
+/// charge / magnetic-moment column only some atoms carry is left out rather than
+/// refused (see `partial_column`).
 pub fn write_extxyz_with(
     trajectory: &Trajectory,
     path: &Path,
     stress_key: StressKey,
+    drop_partial: bool,
 ) -> Result<()> {
     let path_ = path.display();
+    // 电荷 / 磁矩列写不写，先对全部帧判定再建文件，免得报错后留下半个文件
+    let columns: Vec<(bool, bool)> = trajectory.frames.iter().enumerate().map(|(fi, frame)| {
+        let n = frame.n_atoms();
+        let count = |has: fn(&ferro_core::AtomRef) -> bool| frame.atoms().filter(|a| has(a)).count();
+        Ok((
+            super::partial_column("charge", count(|a| a.charge.is_some()), n, fi, drop_partial)?,
+            super::partial_column("magnetic moment", count(|a| a.magmom.is_some()), n, fi, drop_partial)?,
+        ))
+    }).collect::<Result<_>>()?;
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     for (fi, frame) in trajectory.frames.iter().enumerate() {
+        let (has_charge, has_magmom) = columns[fi];
         // Line 1: atom count
         writeln!(w, "{}", frame.n_atoms())?;
 
@@ -67,9 +80,7 @@ pub fn write_extxyz_with(
         let has_mass = frame.velocities().is_some() || frame.atoms().any(|a| a.mass.is_some());
         if has_mass { prop_spec.push_str(":masses:R:1"); }
         if frame.velocities().is_some() { prop_spec.push_str(":momenta:R:3"); }
-        let has_charge = frame.atoms().any(|a| a.charge.is_some());
         if has_charge { prop_spec.push_str(":charges:R:1"); }
-        let has_magmom = frame.atoms().any(|a| a.magmom.is_some());
         if has_magmom { prop_spec.push_str(":magmoms:R:1"); }
         // extxyz 的列是自描述的,故位点标签走自己的一列,species 保持纯元素。
         // 这是与 LAMMPS dump 的区别:那边没地方放第二个名字,只能折进 element 列
@@ -293,7 +304,7 @@ mod tests {
                                  0.003, 0.004, 0.03);
         traj.frames[0].stress = Some(-sigma);       // σ_ferro = -σ_ase
         let path = std::env::temp_dir().join("virial_key.extxyz");
-        write_extxyz_with(&traj, &path, StressKey::Virial).unwrap();
+        write_extxyz_with(&traj, &path, StressKey::Virial, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let line = text.lines().nth(1).unwrap();
         assert!(line.contains("virial="), "{line}");
@@ -320,7 +331,7 @@ mod tests {
         traj.frames[0].cell = None;
         traj.frames[0].stress = Some(Matrix3::identity());
         let path = std::env::temp_dir().join("virial_nocell.extxyz");
-        let e = write_extxyz_with(&traj, &path, StressKey::Virial)
+        let e = write_extxyz_with(&traj, &path, StressKey::Virial, false)
             .unwrap_err();
         assert!(format!("{e:#}").contains("no cell"), "{e:#}");
     }

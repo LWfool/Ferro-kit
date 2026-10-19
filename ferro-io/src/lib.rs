@@ -3,7 +3,9 @@ mod format;
 mod readers;
 mod writers;
 
-pub use format::{is_deepmd_system, read, read_as, write, write_numbered, Format, ReadOptions, ReadReport};
+pub use format::{
+    is_deepmd_system, read, read_as, write, write_numbered, Format, ReadOptions, ReadReport, WriteOptions,
+};
 
 #[cfg(test)]
 pub(crate) mod testutil;

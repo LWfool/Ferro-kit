@@ -262,7 +262,7 @@ fn export_labelled(
     let path = out.join(&batch::product_name(&["network", "types", label], out.suffix.as_deref(), fmt.ext()));
     match fmt {
         // 同 convert：沿用读入时的 --units；没给而帧里有速度 / 力时由 writer 报错要求给出
-        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, units)?,
+        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, units, false)?,
         ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
     }
     if skipped > 0 {

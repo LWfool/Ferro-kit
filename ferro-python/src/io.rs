@@ -102,12 +102,14 @@ fn read(
 /// and data/lmp/lammps hold one structure, so several frames go to one file each, named
 /// as `ferro convert` names them (`conf.cif` -> `conf_0000.cif`, ...). The inputs and
 /// program outputs are read-only. A trajectory with velocities / forces written to a
-/// dump needs `units` ("real" / "metal").
+/// dump needs `units` ("real" / "metal"). A charge / magnetic-moment column that only
+/// some atoms of a frame carry is an error, never filled with 0; `drop_partial=True`
+/// leaves it out (LAMMPS data, whose charge column is mandatory, then writes 0 for all).
 #[pyfunction]
-#[pyo3(signature = (traj, path, units = None))]
-fn write(py: Python<'_>, traj: &PyTrajectory, path: &str, units: Option<&str>) -> PyResult<()> {
-    let units = parse_units(units)?;
-    py.detach(|| ferro_io::write(&traj.inner, Path::new(path), units)).map_err(pyerr)?;
+#[pyo3(signature = (traj, path, units = None, drop_partial = false))]
+fn write(py: Python<'_>, traj: &PyTrajectory, path: &str, units: Option<&str>, drop_partial: bool) -> PyResult<()> {
+    let opts = ferro_io::WriteOptions { units: parse_units(units)?, drop_partial };
+    py.detach(|| ferro_io::write(&traj.inner, Path::new(path), &opts)).map_err(pyerr)?;
     Ok(())
 }
 

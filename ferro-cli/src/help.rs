@@ -47,6 +47,9 @@ Parameters:
       --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
       --stride N          Take every Nth frame within [start, end]         [1]
       --number N          Take this many frames, spread evenly, both ends kept
+      --drop-partial      Leave out a charge / magnetic-moment column that only
+                          some atoms carry. Without it such a frame is an error:
+                          the missing values are never written as 0
 {READ_OPTS}
   -h, --help              Short parameter table (this page adds the formats)
  Formats -i / -o accept, recognised by file name:

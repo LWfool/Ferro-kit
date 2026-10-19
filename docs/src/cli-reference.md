@@ -231,6 +231,12 @@ boundary flags; set `boundary` in the LAMMPS input.
 drops the velocities, because plain XYZ has nowhere to put them.  Convert to `.extxyz` to keep them: they are
 written as ASE's `momenta` column with a `masses` column next to it, so ASE's `get_velocities()` returns them.
 
+**A charge or magnetic-moment column that only some atoms carry is refused** (extended XYZ, LAMMPS dump
+and data): a structure merged from a charged and an uncharged part would otherwise have the missing values
+written as 0, which reads back as "measured 0".  `--drop-partial` leaves the column out instead; LAMMPS data,
+whose charge column every atom must have, then writes every charge as 0.  A structure in which no atom has a
+charge is unaffected: extended XYZ and dumps write no charge column, LAMMPS data writes 0.
+
 ### Frame selection
 
 ```bash

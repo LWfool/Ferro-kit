@@ -154,7 +154,7 @@ fn write_as(
                 std::fs::create_dir_all(parent)
                     .with_context(|| format!("cannot create {}", parent.display()))?;
             }
-            write_extxyz_with(traj, &path, key)?;
+            write_extxyz_with(traj, &path, key, false)?;
             Ok(path)
         }
     }

@@ -327,7 +327,7 @@ Atoms # full
         assert_eq!(f.atom(0).mass, Some(15.999));
 
         let out = path.with_file_name("d2o_roundtrip.data");
-        crate::writers::lammps_data::write_lammps_data(&traj, &out).unwrap();
+        crate::writers::lammps_data::write_lammps_data(&traj, &out, false).unwrap();
         let back = read_lammps_data(&out, AtomStyle::Full).unwrap();
         assert!((back.first().unwrap().atom(1).effective_mass() - 2.014).abs() < 1e-9);
 
@@ -335,7 +335,7 @@ Atoms # full
         let mut mixed = traj.clone();
         mixed.frames[0].sites_mut()[2].mass = Some(1.008);
         let refused = path.with_file_name("d2o_mixed.data");
-        let err = crate::writers::lammps_data::write_lammps_data(&mixed, &refused).unwrap_err();
+        let err = crate::writers::lammps_data::write_lammps_data(&mixed, &refused, false).unwrap_err();
         assert!(err.to_string().contains("different masses"), "{err}");
         assert!(!refused.exists(), "a refused write must not leave a file");
     }

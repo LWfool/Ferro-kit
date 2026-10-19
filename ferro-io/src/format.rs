@@ -17,7 +17,8 @@ use crate::readers::{
     AtomStyle, LammpsUnits,
 };
 use crate::writers::{
-    index_width, indexed_path, write_cif, write_extxyz, write_lammps_data, write_lammps_dump,
+    index_width, indexed_path, write_cif, write_extxyz_with, write_lammps_data,
+    write_lammps_dump, StressKey,
     write_pdb, write_poscar, write_xyz,
 };
 
@@ -286,12 +287,22 @@ fn aimd_warnings(stats: &AimdStats) -> Vec<String> {
     out
 }
 
+/// Writing choices a trajectory cannot carry.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WriteOptions {
+    /// LAMMPS units of a dump's velocity / force columns; never guessed
+    pub units: Option<LammpsUnits>,
+    /// Leave out a charge / magnetic-moment column that only some atoms of a frame
+    /// carry (LAMMPS data: write every charge as 0), instead of refusing the frame
+    pub drop_partial: bool,
+}
+
 /// Writes `traj` to `path` in the format its name declares, returning the files
 /// written. A format that holds one structure gets one file per frame,
 /// `conf.cif` -> `conf_0000.cif`, `conf_0001.cif`, ...
-pub fn write(traj: &Trajectory, path: &Path, units: Option<LammpsUnits>) -> Result<Vec<PathBuf>> {
+pub fn write(traj: &Trajectory, path: &Path, opts: &WriteOptions) -> Result<Vec<PathBuf>> {
     let numbers: Vec<usize> = (0..traj.n_frames()).collect();
-    write_numbered(traj, path, units, &numbers)
+    write_numbered(traj, path, opts, &numbers)
 }
 
 /// [`write`], naming the per-frame files by `numbers` instead of by position —
@@ -299,12 +310,12 @@ pub fn write(traj: &Trajectory, path: &Path, units: Option<LammpsUnits>) -> Resu
 pub fn write_numbered(
     traj: &Trajectory,
     path: &Path,
-    units: Option<LammpsUnits>,
+    opts: &WriteOptions,
     numbers: &[usize],
 ) -> Result<Vec<PathBuf>> {
     let format = Format::for_output(path)?;
     if format.multi_frame() || traj.n_frames() <= 1 {
-        write_one(traj, path, format, units)?;
+        write_one(traj, path, format, opts)?;
         return Ok(vec![path.to_path_buf()]);
     }
     assert_eq!(numbers.len(), traj.n_frames(), "one number per frame");
@@ -313,22 +324,22 @@ pub fn write_numbered(
     for (&n, frame) in numbers.iter().zip(&traj.frames) {
         let one = Trajectory { frames: vec![frame.clone()], metadata: traj.metadata.clone() };
         let file = indexed_path(path, n, width);
-        write_one(&one, &file, format, units)
+        write_one(&one, &file, format, opts)
             .with_context(|| format!("writing frame {n} to {}", file.display()))?;
         written.push(file);
     }
     Ok(written)
 }
 
-fn write_one(traj: &Trajectory, path: &Path, format: Format, units: Option<LammpsUnits>) -> Result<()> {
+fn write_one(traj: &Trajectory, path: &Path, format: Format, opts: &WriteOptions) -> Result<()> {
     match format {
         Format::Xyz => write_xyz(traj, path),
-        Format::Extxyz => write_extxyz(traj, path),
+        Format::Extxyz => write_extxyz_with(traj, path, StressKey::Stress, opts.drop_partial),
         Format::Pdb => write_pdb(traj, path),
-        Format::LammpsDump => write_lammps_dump(traj, path, units),
+        Format::LammpsDump => write_lammps_dump(traj, path, opts.units, opts.drop_partial),
         Format::Cif => write_cif(traj, path),
         Format::Poscar => write_poscar(traj, path),
-        Format::LammpsData => write_lammps_data(traj, path),
+        Format::LammpsData => write_lammps_data(traj, path, opts.drop_partial),
         other => bail!("Unsupported output format: {}", other.name()),
     }
 }
@@ -387,7 +398,7 @@ mod tests {
         let p = dir.join("self.xyz");
         let mut src = one_atom_traj();
         src.frames[0].set_forces(Some(vec![Vector3::new(0.1, -0.2, 0.3)])).unwrap();
-        write_extxyz(&src, &p).unwrap();
+        crate::writers::write_extxyz(&src, &p).unwrap();
         let back = read_plain(&p).unwrap();
         assert!(back.frames[0].cell.is_some() && back.frames[0].forces().is_some(), "own extxyz must read back");
 
@@ -404,7 +415,7 @@ mod tests {
         let dir = tmp_dir("ro");
         for ext in ["inp", "restart", "in", "qe", "out", "xml"] {
             let path = dir.join(format!("t.{ext}"));
-            let err = write(&traj, &path, Some(LammpsUnits::Real)).unwrap_err();
+            let err = write(&traj, &path, &WriteOptions { units: Some(LammpsUnits::Real), ..Default::default() }).unwrap_err();
             assert!(err.to_string().contains("Unsupported output format"), ".{ext}: {err}");
             assert!(!path.exists(), ".{ext} must not leave a file");
         }
@@ -434,12 +445,12 @@ mod tests {
         traj.frames.push(traj.frames[0].clone());
         traj.frames.push(traj.frames[0].clone());
         let dir = tmp_dir("split");
-        let made = write(&traj, &dir.join("conf.cif"), None).unwrap();
+        let made = write(&traj, &dir.join("conf.cif"), &WriteOptions::default()).unwrap();
         assert_eq!(made, ["conf_0000.cif", "conf_0001.cif", "conf_0002.cif"].map(|n| dir.join(n)));
-        let made = write_numbered(&traj, &dir.join("POSCAR"), None, &[0, 50, 12345]).unwrap();
+        let made = write_numbered(&traj, &dir.join("POSCAR"), &WriteOptions::default(), &[0, 50, 12345]).unwrap();
         assert_eq!(made, ["POSCAR_00000", "POSCAR_00050", "POSCAR_12345"].map(|n| dir.join(n)));
         assert!(made.iter().all(|p| p.is_file()));
-        let one = write(&traj, &dir.join("all.extxyz"), None).unwrap();
+        let one = write(&traj, &dir.join("all.extxyz"), &WriteOptions::default()).unwrap();
         assert_eq!(read_plain(&one[0]).unwrap().n_frames(), 3);
     }
 
@@ -451,7 +462,7 @@ mod tests {
         let dir = tmp_dir("vasp");
         for name in ["t.vasp", "t.poscar", "t.pos", "T.VASP", "t.XYZ"] {
             let path = dir.join(name);
-            write(&traj, &path, Some(LammpsUnits::Real)).unwrap();
+            write(&traj, &path, &WriteOptions { units: Some(LammpsUnits::Real), ..Default::default() }).unwrap();
             let back = read_plain(&path).unwrap();
             assert_eq!(back.n_frames(), 1, "{name}");
             assert_eq!(back.frames[0].element(0), "Si", "{name}");
@@ -462,7 +473,7 @@ mod tests {
     fn unknown_extension_is_rejected_both_ways() {
         let traj = one_atom_traj();
         let path = tmp_dir("unknown").join("t.nosuchfmt");
-        assert!(write(&traj, &path, None).unwrap_err().to_string().contains("Unsupported output format"));
+        assert!(write(&traj, &path, &WriteOptions::default()).unwrap_err().to_string().contains("Unsupported output format"));
         std::fs::write(&path, "hello\n").unwrap();
         let err = format!("{:#}", read_plain(&path).unwrap_err());
         assert!(err.contains("Unsupported input format: .nosuchfmt"), "{err}");
@@ -476,7 +487,7 @@ mod tests {
         let dir = tmp_dir("data");
         for name in ["t.data", "t.lmp", "t.lammps"] {
             let path = dir.join(name);
-            write(&traj, &path, None).unwrap();
+            write(&traj, &path, &WriteOptions::default()).unwrap();
             let err = read_plain(&path).unwrap_err().to_string();
             assert!(err.contains("atom style"), "{name}: {err}");
             let full = ReadOptions { atom_style: Some(AtomStyle::Full), ..Default::default() };

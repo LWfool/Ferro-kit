@@ -45,7 +45,7 @@ pub fn write_all(
         .with_context(|| format!("cannot create {}", dir.display()))?;
 
     let trj = dir.join(format!("{name}.lammpstrj"));
-    write_lammps_dump(traj, &trj, Some(LammpsUnits::Metal))?;
+    write_lammps_dump(traj, &trj, Some(LammpsUnits::Metal), false)?;
 
     // 末帧而不是第 0 帧：第 0 帧是喂进 CP2K 的初始构型，用户手上本来就有；
     // 末帧才是这次 AIMD 产出的新东西，接着跑或做下一步 DFT 用的是它
@@ -53,7 +53,7 @@ pub fn write_all(
     let last = Trajectory::from_frame(
         traj.last().context("the trajectory has no frame")?.clone(),
     );
-    write_lammps_data(&last, &data)?;
+    write_lammps_data(&last, &data, false)?;
 
     let info = dir.join(format!("{name}_info.csv"));
     write_table(&info_table(traj, format, sources), &info, TableFormat::Csv)?;

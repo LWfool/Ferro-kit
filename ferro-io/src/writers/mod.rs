@@ -45,6 +45,33 @@ pub(crate) fn single_frame<'a>(trajectory: &'a Trajectory, format: &str) -> anyh
     }
 }
 
+/// Whether to write a per-atom column (charge, magnetic moment) that `with` of the
+/// frame's `n` atoms carry.
+///
+/// None: no column. All: the column. Some but not all is an error, unless
+/// `drop_partial`, which leaves the column out: filling the gaps with 0 (as the
+/// writers used to) passes "not known" off as "measured 0". Shared by the extxyz,
+/// LAMMPS dump and LAMMPS data writers.
+pub(crate) fn partial_column(
+    name: &str,
+    with: usize,
+    n: usize,
+    frame_no: usize,
+    drop_partial: bool,
+) -> anyhow::Result<bool> {
+    if with == 0 || with == n {
+        return Ok(with > 0);
+    }
+    if drop_partial {
+        return Ok(false);
+    }
+    anyhow::bail!(
+        "frame {frame_no}: {with} of {n} atoms have a {name}, the rest none; refusing to write \
+         0 for the missing ones (CLI: --drop-partial, Python: drop_partial=True leaves the \
+         column out)"
+    )
+}
+
 /// Zero-padded width for frame indices, at least 4 so `ls` sorts the products in
 /// frame order.
 pub fn index_width(max_index: usize) -> usize {
@@ -89,7 +116,7 @@ mod tests {
         let writers: [(&str, Writer); 3] = [
             ("x.vasp", write_poscar),
             ("x.cif", write_cif),
-            ("x.data", write_lammps_data),
+            ("x.data", |t, p| write_lammps_data(t, p, false)),
         ];
         for (name, write) in writers {
             let path = dir.join(name);
@@ -121,5 +148,38 @@ mod tests {
         assert_eq!(index_width(10000), 5);
         let w = index_width(12345);
         assert_eq!(indexed_path(Path::new("a.xyz"), 7, w), PathBuf::from("a_00007.xyz"));
+    }
+
+    /// A charge on some atoms only used to have the rest written as 0 by extxyz, the
+    /// dump and LAMMPS data alike. Refused, nothing written; `drop_partial` leaves the
+    /// column out (data: every charge 0).
+    #[test]
+    fn partial_charge_is_refused_unless_dropped() {
+        use crate::{write, WriteOptions};
+        let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        let mut na = Atom::new("Na", Vector3::zeros());
+        na.charge = Some(1.0);
+        frame.add_atom(na);
+        frame.add_atom(Atom::new("O", Vector3::new(2.0, 0.0, 0.0)));
+        let traj = Trajectory::from_frame(frame);
+        let dir = std::env::temp_dir().join(format!("ferro_partial_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["x.extxyz", "x.lammpstrj", "x.data"] {
+            let path = dir.join(name);
+            let _ = std::fs::remove_file(&path);
+            let err = write(&traj, &path, &WriteOptions::default()).unwrap_err().to_string();
+            assert!(err.contains("1 of 2 atoms have a charge"), "{name}: {err}");
+            assert!(!path.exists(), "{name}: nothing is written on refusal");
+            let opts = WriteOptions { drop_partial: true, ..Default::default() };
+            write(&traj, &path, &opts).unwrap();
+            let text = std::fs::read_to_string(&path).unwrap();
+            match name {
+                "x.extxyz" => assert!(!text.contains("charges"), "{text}"),
+                "x.lammpstrj" => assert!(!text.contains(" q"), "{text}"),
+                _ => assert!(text.lines().filter(|l| l.split_whitespace().count() == 7)
+                                 .all(|l| l.split_whitespace().nth(3) == Some("0.000000")), "{text}"),
+            }
+        }
     }
 }

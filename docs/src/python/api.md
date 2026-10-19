@@ -100,7 +100,7 @@ A dump without an element column reads its atoms as `X1`, `X2`, …; `type_map={
 names them, exactly as `--type-map` on the command line.  A type missing from the map, an
 unknown symbol, or `type_map` on anything but a dump is an error.
 
-### `write(traj, path, units=None)`
+### `write(traj, path, units=None, drop_partial=False)`
 
 Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR*`/`CONTCAR*`/`vasp`/`poscar`/`pos` (POSCAR format),
 `data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  QE input (`in`/`qe`) is read-only.  Writing velocities or forces to a dump requires `units`.
@@ -109,6 +109,11 @@ Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR*`/`CONTCAR*`/`vasp`/
 LAMMPS data hold one structure: a trajectory of several frames is written one file per frame,
 named as `ferro convert` names them — `conf.cif` gives `conf_0000.cif`, `conf_0001.cif`, …,
 and `POSCAR` gives `POSCAR_0000`, … (indices padded to at least four digits).
+
+A charge or magnetic-moment column that only some atoms of a frame carry (a structure merged
+from a charged and an uncharged one) is an error: the missing values are never written as 0.
+`drop_partial=True` leaves the column out instead; LAMMPS data, whose charge column every atom
+must have, then writes every charge as 0.
 
 ### `read_output(path) -> (Trajectory, dict)`
 
