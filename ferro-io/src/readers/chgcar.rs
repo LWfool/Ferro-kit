@@ -4,11 +4,9 @@
 //! Density values are stored as-is (`ρ × V_cell`), not normalized, per VASP convention.
 
 use std::path::Path;
-use ferro_core::{Atom, Cell, ChargeGrid, Frame};
-use nalgebra::{Matrix3, Vector3};
+use ferro_core::{ChargeGrid, Frame};
 use anyhow::{ensure, Context, Result};
-use super::util::floats;
-use super::vasp::potcar_symbol;
+use super::vasp::parse_poscar_header;
 
 /// Read a VASP CHGCAR file, returning the structural frame and charge density grid.
 pub fn read_chgcar(path: &Path) -> Result<(Frame, ChargeGrid)> {
@@ -19,73 +17,9 @@ pub fn read_chgcar(path: &Path) -> Result<(Frame, ChargeGrid)> {
 
 fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
     let mut lines = content.lines();
-    let mut next = |what: &str| -> Result<&str> {
-        lines.next().with_context(|| format!("unexpected EOF before {what}"))
-    };
-
     // ── POSCAR-style header ────────────────────────────────────────────────
-    let _comment = next("comment")?.trim().to_string();
-
-    let scale: f64 = next("scaling factor")?
-        .trim().parse().context("invalid scaling factor")?;
-    ensure!(scale > 0.0, "negative scaling factor is not supported");
-
-    let mut m = [[0.0_f64; 3]; 3];
-    for (i, row) in m.iter_mut().enumerate() {
-        let v = floats(next(&format!("lattice vector {i}"))?, 3)
-            .with_context(|| format!("invalid lattice vector {i}"))?;
-        *row = [v[0] * scale, v[1] * scale, v[2] * scale];
-    }
-    let cell = Cell::from_matrix(Matrix3::new(
-        m[0][0], m[0][1], m[0][2],
-        m[1][0], m[1][1], m[1][2],
-        m[2][0], m[2][1], m[2][2],
-    ));
-
-    // VASP4 vs VASP5 detection
-    let line5 = next("element/count line")?.trim();
-    // Parse line5 once as usize counts: Some ⇒ VASP4, None ⇒ VASP5.
-    // (Parsing directly as usize avoids the prior u64-check / usize-unwrap
-    // mismatch that could panic on 32-bit targets for large values.)
-    let line5_counts: Option<Vec<usize>> =
-        line5.split_whitespace().map(|t| t.parse::<usize>().ok()).collect();
-    let (elements, counts): (Vec<String>, Vec<usize>) =
-        if let Some(c) = line5_counts {
-            let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
-            (e, c)
-        } else {
-            // 元素行规则与 POSCAR 相同（含 6.4.2 的 `标签/哈希`），见 vasp.rs
-            let e: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
-            let c: Vec<usize> = next("atom counts")?
-                .split_whitespace()
-                .map(|s| s.parse().context("invalid count"))
-                .collect::<Result<_>>()?;
-            ensure!(e.len() == c.len(), "element/count length mismatch");
-            (e, c)
-        };
-
-    // Optional "Selective dynamics"
-    let mut coord_type = next("coordinate type")?;
-    if coord_type.trim().to_lowercase().starts_with('s') {
-        coord_type = next("coordinate type after Selective dynamics")?;
-    }
-    // VASP 的规则：首字符 C/c/K/k 为 Cartesian，其余一律 Direct（同 vasp.rs）
-    let is_direct = !coord_type.trim_start().starts_with(['C', 'c', 'K', 'k']);
-
-    // Atom positions
-    let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
-    let _total: usize = counts.iter().sum();
-    for (elem, &count) in elements.iter().zip(counts.iter()) {
-        for _ in 0..count {
-            let v = floats(next("coordinate")?, 3).context("invalid coordinate")?;
-            let pos = if is_direct {
-                cell.fractional_to_cartesian(Vector3::new(v[0], v[1], v[2]))
-            } else {
-                Vector3::new(v[0] * scale, v[1] * scale, v[2] * scale)
-            };
-            frame.add_atom(Atom::new(elem.as_str(), pos));
-        }
-    }
+    let (_comment, frame) = parse_poscar_header(&mut lines)?;
+    let cell = frame.cell.clone().expect("parse_poscar_header always sets the cell");
 
     // ── Charge density grid ────────────────────────────────────────────────
 

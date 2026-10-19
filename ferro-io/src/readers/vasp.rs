@@ -23,77 +23,8 @@ pub fn read_contcar(path: &Path) -> Result<Trajectory> {
 fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<String>)> {
     let mut warnings = Vec::new();
     let mut lines = content.lines();
-    let mut next = |what: &str| -> Result<&str> {
-        lines.next().with_context(|| format!("unexpected EOF before {what}"))
-    };
-
-    let comment = next("comment")?.trim().to_string();
-
-    let scale: f64 = next("scaling factor")?
-        .trim().parse().context("invalid scaling factor")?;
-    ensure!(scale > 0.0, "negative scaling factor (volume-based) is not supported");
-
-    // Lattice vectors — rows of the Cell matrix
-    let mut m = [[0.0_f64; 3]; 3];
-    for (i, row) in m.iter_mut().enumerate() {
-        let v = floats(next(&format!("lattice vector {i}"))?, 3)
-            .with_context(|| format!("invalid lattice vector {i}"))?;
-        *row = [v[0] * scale, v[1] * scale, v[2] * scale];
-    }
-    let cell = Cell::from_matrix(Matrix3::new(
-        m[0][0], m[0][1], m[0][2],
-        m[1][0], m[1][1], m[1][2],
-        m[2][0], m[2][1], m[2][2],
-    ));
-
-    // VASP4 vs VASP5 detection
-    let line5 = next("element/count line")?.trim();
-    // Parse line5 once as usize counts: Some ⇒ VASP4, None ⇒ VASP5.
-    // (Parsing directly as usize avoids the prior u64-check / usize-unwrap
-    // mismatch that could panic on 32-bit targets for large values.)
-    let line5_counts: Option<Vec<usize>> =
-        line5.split_whitespace().map(|t| t.parse::<usize>().ok()).collect();
-    let (elements, counts): (Vec<String>, Vec<usize>) =
-        if let Some(c) = line5_counts {
-            // VASP4: counts only
-            let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
-            (e, c)
-        } else {
-            // VASP5: element symbols + counts on next line。6.4.2 起（HDF5 编译）写成
-            // `POTCAR 标签/哈希`，如 `C_h/1e4d9ea6ed`、`Cs/`；5.4.4 等旧版只写 `Na`，
-            // 两者同一规则取元素：`/` 前、再 `_` 前（同 ASE vasp.py）。chgcar.rs 有同一份头部解析
-            let e: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
-            let c: Vec<usize> = next("atom counts")?
-                .split_whitespace()
-                .map(|s| s.parse().context("invalid count"))
-                .collect::<Result<_>>()?;
-            ensure!(e.len() == c.len(), "element/count length mismatch");
-            (e, c)
-        };
-
-    // Optional "Selective dynamics"
-    let mut coord_type = next("coordinate type")?;
-    if coord_type.trim().to_lowercase().starts_with('s') {
-        coord_type = next("coordinate type after Selective dynamics")?;
-    }
-    // VASP 的规则：首字符 C/c/K/k 为 Cartesian，其余（含 `Fractional`、空行）一律 Direct。
-    // 以前反过来只认 d 开头为 Direct，`Fractional` 之类被当 Cartesian 读
-    let is_direct = !coord_type.trim_start().starts_with(['C', 'c', 'K', 'k']);
-
-    // Atom positions
-    let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
-    let total: usize = counts.iter().sum();
-    for (elem, &count) in elements.iter().zip(counts.iter()) {
-        for _ in 0..count {
-            let v = floats(next("coordinate")?, 3).context("invalid coordinate")?;
-            let pos = if is_direct {
-                cell.fractional_to_cartesian(Vector3::new(v[0], v[1], v[2]))
-            } else {
-                Vector3::new(v[0] * scale, v[1] * scale, v[2] * scale)
-            };
-            frame.add_atom(Atom::new(elem.as_str(), pos));
-        }
-    }
+    let (comment, mut frame) = parse_poscar_header(&mut lines)?;
+    let total = frame.n_atoms();
 
     // 速度块（可选），口径同 VASP 文档与 ASE 的 read_vasp：
     // - 坐标之后一行是**模式行**，无论内容都占一行：空行或首字符 C/c/K/k = Cartesian
@@ -134,8 +65,88 @@ fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<String>)> {
 
 
 
+/// A POSCAR up to and including the coordinates: comment line, scale, lattice,
+/// element / count lines, `Selective dynamics`, coordinate mode and positions.
+/// Leaves `lines` at the first line after the coordinates.
+///
+/// A CHGCAR's header is a POSCAR by VASP's own specification, so `chgcar.rs`
+/// reads it through this same function (review D-3).
+pub(super) fn parse_poscar_header(lines: &mut std::str::Lines<'_>) -> Result<(String, Frame)> {
+    let mut next = |what: &str| -> Result<&str> {
+        lines.next().with_context(|| format!("unexpected EOF before {what}"))
+    };
+
+    let comment = next("comment")?.trim().to_string();
+
+    let scale: f64 = next("scaling factor")?
+        .trim().parse().context("invalid scaling factor")?;
+    ensure!(scale > 0.0, "negative scaling factor (volume-based) is not supported");
+
+    // Lattice vectors — rows of the Cell matrix
+    let mut m = [[0.0_f64; 3]; 3];
+    for (i, row) in m.iter_mut().enumerate() {
+        let v = floats(next(&format!("lattice vector {i}"))?, 3)
+            .with_context(|| format!("invalid lattice vector {i}"))?;
+        *row = [v[0] * scale, v[1] * scale, v[2] * scale];
+    }
+    let cell = Cell::from_matrix(Matrix3::new(
+        m[0][0], m[0][1], m[0][2],
+        m[1][0], m[1][1], m[1][2],
+        m[2][0], m[2][1], m[2][2],
+    ));
+
+    // VASP4 vs VASP5 detection
+    let line5 = next("element/count line")?.trim();
+    // Parse line5 once as usize counts: Some ⇒ VASP4, None ⇒ VASP5.
+    // (Parsing directly as usize avoids the prior u64-check / usize-unwrap
+    // mismatch that could panic on 32-bit targets for large values.)
+    let line5_counts: Option<Vec<usize>> =
+        line5.split_whitespace().map(|t| t.parse::<usize>().ok()).collect();
+    let (elements, counts): (Vec<String>, Vec<usize>) =
+        if let Some(c) = line5_counts {
+            // VASP4: counts only
+            let e = (1..=c.len()).map(|i| format!("X{i}")).collect();
+            (e, c)
+        } else {
+            // VASP5: element symbols + counts on next line。6.4.2 起（HDF5 编译）写成
+            // `POTCAR 标签/哈希`，如 `C_h/1e4d9ea6ed`、`Cs/`；5.4.4 等旧版只写 `Na`，
+            // 两者同一规则取元素：`/` 前、再 `_` 前（同 ASE vasp.py）。CHGCAR 的头部用同一个函数
+            let e: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
+            let c: Vec<usize> = next("atom counts")?
+                .split_whitespace()
+                .map(|s| s.parse().context("invalid count"))
+                .collect::<Result<_>>()?;
+            ensure!(e.len() == c.len(), "element/count length mismatch");
+            (e, c)
+        };
+
+    // Optional "Selective dynamics"
+    let mut coord_type = next("coordinate type")?;
+    if coord_type.trim().to_lowercase().starts_with('s') {
+        coord_type = next("coordinate type after Selective dynamics")?;
+    }
+    // VASP 的规则：首字符 C/c/K/k 为 Cartesian，其余（含 `Fractional`、空行）一律 Direct。
+    // 以前反过来只认 d 开头为 Direct，`Fractional` 之类被当 Cartesian 读
+    let is_direct = !coord_type.trim_start().starts_with(['C', 'c', 'K', 'k']);
+
+    // Atom positions
+    let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+    for (elem, &count) in elements.iter().zip(counts.iter()) {
+        for _ in 0..count {
+            let v = floats(next("coordinate")?, 3).context("invalid coordinate")?;
+            let pos = if is_direct {
+                cell.fractional_to_cartesian(Vector3::new(v[0], v[1], v[2]))
+            } else {
+                Vector3::new(v[0] * scale, v[1] * scale, v[2] * scale)
+            };
+            frame.add_atom(Atom::new(elem.as_str(), pos));
+        }
+    }
+    Ok((comment, frame))
+}
+
 /// 元素行的一项 → 元素符号：`Na_pv/6a2f546d` → `Na`，`Na` 原样
-pub(super) fn potcar_symbol(s: &str) -> String {
+fn potcar_symbol(s: &str) -> String {
     let label = s.split('/').next().unwrap_or(s);
     label.split('_').next().unwrap_or(label).to_string()
 }
