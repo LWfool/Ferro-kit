@@ -16,6 +16,10 @@ command line alike; regenerate it rather than migrating it.
 
 - DeePMD output (`dataset collect` / `filter` / `merge`): a frame periodic along some axes only
   (a slab, `pbc = T T F`) is an error; it used to be written as fully periodic.
+- Cube files written by `ferro map` start each z column on a new line, at most six
+  values a line, as Gaussian's cubegen does. The values are unchanged; only the line breaks
+  move. The data used to run on six a line, so a column spilled across lines whenever `nz`
+  was not a multiple of 6, which line-oriented readers misplace.
 
 ### Readers: fewer silent results
 

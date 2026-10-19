@@ -50,13 +50,17 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
         writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}  {:12.6}", z, 0.0, x, y, z_pos)?;
     }
 
-    // 体积数据：每行 6 个值，科学计数法
-    let data_flat = cube.data.as_slice();
-    for (i, val) in data_flat.iter().enumerate() {
-        if i > 0 && i % 6 == 0 { writeln!(w)?; }
-        write!(w, " {:12.5e}", val)?;
+    // 体积数据：科学计数法，每条 z 列（固定 ix、iy 的 nz 个值）从新行开始、每行至多 6 个 ——
+    // Gaussian cubegen 的版式。以前整块数据连续每 6 个一换行，nz 不是 6 的倍数时
+    // z 列跨行，按行读的工具会错位
+    for column in cube.data.chunks(nz.max(1)) {
+        for line in column.chunks(6) {
+            for val in line {
+                write!(w, " {:12.5e}", val)?;
+            }
+            writeln!(w)?;
+        }
     }
-    writeln!(w)?;
 
     Ok(())
 }
@@ -163,5 +167,22 @@ mod tests {
         let atom_line = content.lines().nth(6).unwrap();
         // C 的原子序数 = 6
         assert!(atom_line.trim_start().starts_with('6'), "Z=6 for C: {}", atom_line);
+    }
+
+    /// Each z column starts a new line, at most 6 values a line (Gaussian cubegen layout).
+    /// The data used to run on 6 a line regardless, so a column with nz = 8 spilled over.
+    #[test]
+    fn test_each_z_column_starts_a_line() {
+        let mut cube = make_test_cube();
+        cube.shape = [1, 2, 8];
+        cube.data = (0..16).map(|v| v as f64).collect();
+        let mut out = Vec::new();
+        write_cube_to(&mut out, &cube).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        // 2 注释 + 原点 + 3 轴 + 1 原子 = 7 行头，其后数据行
+        let counts: Vec<usize> = text.lines().skip(7).map(|l| l.split_whitespace().count()).collect();
+        assert_eq!(counts, [6, 2, 6, 2]);
+        let second_column = text.lines().nth(9).unwrap().split_whitespace().next().unwrap();
+        assert_eq!(second_column.parse::<f64>().unwrap(), 8.0);
     }
 }
