@@ -182,9 +182,6 @@ fn mode_name(m: &CubeCliMode) -> &'static str {
         CubeCliMode::Density  => "density",
         CubeCliMode::Velocity => "velocity",
         CubeCliMode::Force    => "force",
-        CubeCliMode::Radius   => "radius",
-        CubeCliMode::Sdf      => "sdf",
-        CubeCliMode::ChgSdf   => "chg_sdf",
     }
 }
 

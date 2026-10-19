@@ -356,12 +356,6 @@ impl Output {
             None => PathBuf::from(name),
         }
     }
-
-    /// [`Output::join`] as a `String`, for `ferro-io`'s writers — all nine of them take
-    /// `&str`. Widening that surface to `&Path` is tracked in `dev/plan.md`.
-    pub fn join_str(&self, name: &str) -> String {
-        self.join(name).to_string_lossy().into_owned()
-    }
 }
 
 /// The one naming rule for every product:

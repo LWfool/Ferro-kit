@@ -6,10 +6,6 @@ pub enum CubeCliMode {
     Density,
     Velocity,
     Force,
-    Radius,
-    Sdf,
-    /// Average charge density over aligned Qn clusters from QE pp.x cube files
-    ChgSdf,
 }
 
 impl From<CubeCliMode> for CubeMode {
@@ -18,10 +14,21 @@ impl From<CubeCliMode> for CubeMode {
             CubeCliMode::Density  => CubeMode::Density,
             CubeCliMode::Velocity => CubeMode::Velocity,
             CubeCliMode::Force    => CubeMode::Force,
-            // 以下三个走独立执行路径，不经此转换
-            CubeCliMode::Radius   => CubeMode::Density,
-            CubeCliMode::Sdf      => CubeMode::Density,
-            CubeCliMode::ChgSdf   => CubeMode::Density,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every CLI mode maps to the library mode of the same name; no placeholder arm
+    #[test]
+    fn each_mode_maps_to_its_namesake() {
+        for m in CubeCliMode::value_variants() {
+            let name = m.to_possible_value().unwrap().get_name().to_string();
+            assert_eq!(format!("{:?}", CubeMode::from(m.clone())).to_lowercase(), name);
+        }
+        assert_eq!(CubeCliMode::value_variants().len(), 3);
     }
 }
