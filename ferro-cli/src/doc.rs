@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn whole_pages_follow_the_summary() {
-        // python/ 的子页只由 `ferro-py doc` 收录,见 PAGES 里 "python" 一项的说明
+        // The python/ sub-pages belong to `ferro-py doc` only; see the "python" entry of PAGES
         let summary: Vec<&str> = include_str!("../../docs/src/SUMMARY.md")
             .lines()
             .filter_map(|l| Some(l.split_once("](")?.1.split_once(')')?.0))
