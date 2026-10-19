@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Readers: fewer silent results
+
+- A file in which no frame is found is an error (`no frame found — is this really a … file?`).
+  An empty `.xyz` / `.extxyz` / `.pdb` / `.lammpstrj`, or a file of another format under one of
+  those names, used to read as 0 frames with exit status 0.
+
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 
 - What ferro's Rust libraries report is raised as `ferro.FerroError`.  It is a subclass of
