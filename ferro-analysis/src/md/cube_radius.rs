@@ -20,7 +20,7 @@ use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use super::cube_density::cube_reference_frame;
-use super::util::par_map_in_order;
+use super::util::{par_map_in_order, select_atoms};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -179,6 +179,7 @@ pub fn calc_cube_radius(
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
         .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
+    let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
     let cells = check::periodic_cells(traj, Some(("radius", params.radius)))?;
 
     // Parallel over frames, summed in frame order
@@ -191,14 +192,6 @@ pub fn calc_cube_radius(
             n_frames += 1;
         }
     });
-
-    let n_atoms = ref_frame
-        .atoms()
-        .filter(|a| match &params.elements {
-            Some(elems) => elems.iter().any(|e| e == a.element),
-            None => true,
-        })
-        .count();
 
     // spacing: 每个 voxel 对应的晶格步长矩阵（行 i = 第 i 轴单步向量）
     let m = ref_cell.matrix;
@@ -451,5 +444,14 @@ mod tests {
             let max = data.iter().cloned().fold(0.0, f64::max);
             assert_eq!(max, 1.0, "{n}³：单原子单帧任一 voxel 至多计 1 次");
         }
+    }
+
+    /// An element filter that matches nothing is an error, not a grid of zeros
+    #[test]
+    fn an_empty_selection_is_an_error() {
+        let traj = make_traj(vec![(5.0, 5.0, 5.0)], vec!["Li"]);
+        let params = CubeRadiusParams { nx: 4, ny: 4, nz: 4, elements: Some(vec!["Na".into()]), ..Default::default() };
+        let err = calc_cube_radius(&traj, &params).err().unwrap().to_string();
+        assert!(err.contains("no atom matches the element filter"), "{err}");
     }
 }

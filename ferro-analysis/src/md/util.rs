@@ -65,6 +65,24 @@ pub(crate) fn par_map_in_order<T: Sync, R: Send>(
     }
 }
 
+/// Indices of the atoms of `frame` whose element is in `elements` (`None` = every atom).
+///
+/// Selection is made once, on one frame, and applied to the whole trajectory; callers
+/// check `same_atoms` first. An empty selection is an error: an analysis of no atoms
+/// would write zeros that look like a measurement.
+pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result<Vec<usize>> {
+    let picked: Vec<usize> = frame.atoms().enumerate()
+        .filter(|(_, a)| elements.is_none_or(|els| els.iter().any(|e| e == a.element)))
+        .map(|(i, _)| i)
+        .collect();
+    if picked.is_empty() {
+        return Err(ChemError::ValidationError(format!(
+            "no atom matches the element filter {:?}", elements.unwrap_or_default()
+        )));
+    }
+    Ok(picked)
+}
+
 pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
     let ref_f = traj.frames.first().unwrap();
     let n = ref_f.n_atoms();

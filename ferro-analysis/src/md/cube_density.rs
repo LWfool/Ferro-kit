@@ -21,7 +21,7 @@ use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
-use super::util::{build_avg_frame, par_map_in_order};
+use super::util::{build_avg_frame, par_map_in_order, select_atoms};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -179,6 +179,7 @@ pub fn calc_cube_density(
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
         .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
+    let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
 
     // Parallel over frames, summed in frame order
     let mut count = Array3::<f64>::zeros((nx, ny, nz));
@@ -211,14 +212,6 @@ pub fn calc_cube_density(
             },
         ),
     };
-
-    let n_atoms = ref_frame
-        .atoms()
-        .filter(|a| match &params.elements {
-            Some(elems) => elems.iter().any(|e| e == a.element),
-            None => true,
-        })
-        .count();
 
     // Spacing matrix: row i = cell.row(i) / ni  [Å]
     let m = ref_cell.matrix;
@@ -424,5 +417,14 @@ mod tests {
             assert!((x.position - y.position).norm() < 1e-12, "{:?} vs {:?}", x.position, y.position);
         }
         assert_eq!(a.cube.frame.positions()[2], Vector3::new(2.0, 2.0, 2.0));
+    }
+
+    /// An element filter that matches nothing is an error, not a grid of zeros
+    #[test]
+    fn an_empty_selection_is_an_error() {
+        let traj = make_traj(vec![(5.0, 5.0, 5.0)], vec!["Li"]);
+        let params = CubeDensityParams { nx: 4, ny: 4, nz: 4, elements: Some(vec!["Na".into()]), ..Default::default() };
+        let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
+        assert!(err.contains("no atom matches the element filter"), "{err}");
     }
 }

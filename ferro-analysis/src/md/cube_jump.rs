@@ -20,6 +20,7 @@ use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use rayon::prelude::*;
 use super::cube_density::cube_reference_frame;
+use super::util::select_atoms;
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -149,21 +150,7 @@ pub fn calc_cube_jump(
     let threshold2 = params.threshold * params.threshold;
 
     // 确定要处理的原子索引（以 ref_frame 为准）
-    let selected_atoms: Vec<usize> = ref_frame
-        .atoms()
-        .enumerate()
-        .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.iter().any(|e| e == a.element),
-            None => true,
-        })
-        .map(|(i, _)| i)
-        .collect();
-
-    if selected_atoms.is_empty() {
-        return Err(ChemError::ValidationError(format!(
-            "no atom matches the element filter {:?}", params.elements.as_deref().unwrap_or_default()
-        )));
-    }
+    let selected_atoms = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = selected_atoms.len();
 
     // 预提取所有帧的分数坐标和盒子矩阵转置（NPT：各帧用自身 cell）

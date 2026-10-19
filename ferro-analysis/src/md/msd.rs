@@ -11,7 +11,7 @@
 //! Parallelism: per atom (each atom's three series are independent).
 
 use crate::check;
-use super::util::check_frame_spacing;
+use super::util::{check_frame_spacing, select_atoms};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::{PeriodicCell, Table, Trajectory};
@@ -223,16 +223,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
     let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
     // 按第一帧筛选元素
     let ref_frame = &traj.frames[0];
-    let atom_indices: Vec<usize> = ref_frame.atoms().enumerate()
-        .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.iter().any(|e| e == a.element),
-            None => true,
-        })
-        .map(|(i, _)| i)
-        .collect();
-    if atom_indices.is_empty() {
-        return Err(ChemError::ValidationError("no atoms match the element filter".into()));
-    }
+    let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = atom_indices.len();
     let elements: Vec<String> = atom_indices.iter()
         .map(|&i| ref_frame.element(i).to_string())

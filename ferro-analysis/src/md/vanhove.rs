@@ -14,7 +14,7 @@
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use crate::check;
-use super::util::check_frame_spacing;
+use super::util::{check_frame_spacing, select_atoms};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::error::ChemError;
@@ -165,16 +165,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
 
     // 按第一帧筛选参与计算的原子下标
     let ref_frame = &traj.frames[0];
-    let atom_indices: Vec<usize> = ref_frame.atoms().enumerate()
-        .filter(|(_, a)| match &params.elements {
-            Some(elems) => elems.iter().any(|e| e == a.element),
-            None => true,
-        })
-        .map(|(i, _)| i)
-        .collect();
-    if atom_indices.is_empty() {
-        return Err(ChemError::ValidationError("no atoms match the element filter".into()));
-    }
+    let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = atom_indices.len();
 
     // None takes half the trajectory (as correlate.rs defaults max_lag) —
