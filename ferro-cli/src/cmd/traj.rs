@@ -615,7 +615,12 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
 
     batch::write_all(
         "rotcorr",
-        "Rotational Autocorrelation Function C(t) = <P2(cos theta)>",
+        // --legendre 1 used to be titled <P2> too
+        if c.legendre == 1 {
+            "Rotational Autocorrelation Function C(t) = <P1(cos theta)>"
+        } else {
+            "Rotational Autocorrelation Function C(t) = <P2(cos theta)>"
+        },
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,

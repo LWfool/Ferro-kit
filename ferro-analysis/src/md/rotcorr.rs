@@ -112,7 +112,7 @@ pub struct RotCorrResult {
     pub time: Vec<f64>,
     /// Rotational correlation function C_ℓ(t)
     pub rotcorr: Vec<f64>,
-    /// Running trapezoidal integral ∫₀ᵗ C₂ dτ \[fs\]
+    /// Running trapezoidal integral ∫₀ᵗ C_ℓ dτ \[fs\]
     pub integral: Vec<f64>,
     /// Frames in the trajectory
     pub n_frames: usize,
@@ -341,7 +341,10 @@ impl RotCorrResult {
             },
             "origins  = all: each lag averages every (molecule, origin) pair valid at both ends (FFT)".to_string(),
             format!("dt       = {} fs", p.dt),
-            "integral = running trapezoidal integral of c2 [fs]".to_string(),
+            format!("integral = running trapezoidal integral of {} [fs]", match p.legendre {
+                Legendre::P1 => "c1",
+                Legendre::P2 => "c2",
+            }),
         ]
     }
 }
@@ -583,6 +586,9 @@ mod tests {
             assert!((r.rotcorr[m] - want).abs() < 1e-10, "lag {m}: {} vs {want}", r.rotcorr[m]);
         }
         assert_eq!(r.to_tables()[0].1.names(), vec!["time", "c1", "integral"]);
+        // The header used to say "integral of c2" for P1 too
+        let meta = r.meta_lines().join("\n");
+        assert!(meta.contains("integral of c1") && !meta.contains("c2"), "{meta}");
     }
 
     #[test]
