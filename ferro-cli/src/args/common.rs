@@ -81,7 +81,8 @@ pub struct CommonArgs {
     pub mkdir: bool,
 
     /// Use only the last N frames (skip equilibration)
-    #[arg(long)]
+    // 0 is refused here: it used to read every file and then fail as "trajectory is empty".
+    #[arg(long, value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..))]
     pub last_n: Option<usize>,
 
     /// Parallel threads (default: all CPU cores)
@@ -242,6 +243,19 @@ mod tests {
         assert!(sel(None, None, None, None).resolve_pair().is_ok(), "两个都不给是合法的");
         let (_, pair) = sel(Some("P"), Some("O"), None, None).resolve_pair().unwrap();
         assert_eq!(pair, Some(("P".into(), "O".into())), "顺序原样保留,中心在前");
+    }
+
+    #[test]
+    fn last_n_must_be_at_least_one() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            common: CommonArgs,
+        }
+        let parse = |n: &str| Cli::try_parse_from(["ferro", "-i", "x.xyz", "--last-n", n]);
+        assert!(parse("0").is_err());
+        assert_eq!(parse("1").unwrap().common.last_n, Some(1));
     }
 
     #[test]

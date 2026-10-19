@@ -48,6 +48,8 @@ command line alike; regenerate it rather than migrating it.
 - A command typed with options but no input (`ferro traj gr --dr 0.1`, `ferro net --P-O=2.3`)
   is an error and exits 1; it used to print the help page and exit 0, so a script went on to its
   next step. The command name alone (`ferro traj gr`) still prints the page.
+- `--last-n 0` is refused as an invalid value before anything is read; it used to read every
+  input and then fail on each as "trajectory is empty".
 
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 
