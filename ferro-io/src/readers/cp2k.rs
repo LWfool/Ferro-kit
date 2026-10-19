@@ -73,7 +73,32 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
     let cell_end = find_end(subsys, cell_start).context("&END CELL not found")?;
     let cell_section: &[&str] = &subsys[cell_start..=cell_end];
 
-    let (cell, pbc) = parse_cell_section(cell_section)?;
+    let (unit_cell, pbc, cell_muc) = parse_cell_section(cell_section)?;
+
+    // MULTIPLE_UNIT_CELL（cell_methods.F:556、topology_multiple_unit_cell.F）：&CELL 的只放大晶胞，
+    // &TOPOLOGY 的只复制坐标；后者不是 1 1 1 时两者必须一致（CP2K 同样 abort）。只写 &CELL 的
+    // 那个是合法的 —— 坐标已按超胞给全。CP2K 写 restart 时两处都重置为 1 1 1、胞与坐标写全
+    let topo_muc = match subsys.iter().position(|l| l.eq_ignore_ascii_case("&topology")) {
+        Some(t) => {
+            let end = find_end(subsys, t).context("&END TOPOLOGY not found")?;
+            multiple_unit_cell(&subsys[t..=end])?
+        }
+        None => [1; 3],
+    };
+    if topo_muc != [1; 3] && topo_muc != cell_muc {
+        bail!("TOPOLOGY%MULTIPLE_UNIT_CELL {topo_muc:?} and CELL%MULTIPLE_UNIT_CELL {cell_muc:?} \
+               have to agree (as CP2K requires)");
+    }
+    let cell = if cell_muc == [1; 3] {
+        unit_cell.clone()
+    } else {
+        let mut m = unit_cell.matrix;
+        for (r, &n) in cell_muc.iter().enumerate() {
+            let row = m.row(r) * n as f64;
+            m.set_row(r, &row);
+        }
+        Cell::from_matrix(m)
+    };
 
     // ── &COORD ────────────────────────────────────────────────────────────────
     let coord_start = subsys.iter().position(|l| l.eq_ignore_ascii_case("&coord"))
@@ -119,17 +144,63 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
             .unwrap_or_else(|| extract_element(&label));
 
         let v = Vector3::new(x, y, z);
-        let position = if scaled { cell.fractional_to_cartesian(v) } else { v * coord_scale };
+        // SCALED 相对原胞（topology_cp2k.F:108 用的是 cell_muc，即 &CELL 写的 A B C 本身）
+        let position = if scaled { unit_cell.fractional_to_cartesian(v) } else { v * coord_scale };
 
         let mut atom = Atom::new(elem, position);
         atom.label = Some(label);
         frame.add_atom(atom);
     }
 
+    if topo_muc != [1; 3] {
+        // 复制顺序照 topology_multiple_unit_cell.F：k 外、j 中、i 内，每块按原子原序，平移用原胞矢量
+        let base = frame.clone();
+        let (a, b, c) = (unit_cell.matrix.row(0).transpose(), unit_cell.matrix.row(1).transpose(),
+                         unit_cell.matrix.row(2).transpose());
+        for k in 0..topo_muc[2] {
+            for j in 0..topo_muc[1] {
+                for i in 0..topo_muc[0] {
+                    if (i, j, k) == (0, 0, 0) { continue; }
+                    let shift = a * i as f64 + b * j as f64 + c * k as f64;
+                    for n in 0..base.n_atoms() {
+                        let mut atom = base.atom(n).to_atom();
+                        atom.position += shift;
+                        frame.add_atom(atom);
+                    }
+                }
+            }
+        }
+    }
+
     Ok(Trajectory::from_frame(frame))
 }
 
-fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3])> {
+/// `MULTIPLE_UNIT_CELL n1 n2 n3` at the top level of `section` (default 1 1 1);
+/// CP2K accepts integers greater than zero only.
+fn multiple_unit_cell(section: &[&str]) -> Result<[usize; 3]> {
+    let mut depth = 0usize;
+    for l in section {
+        let parts: Vec<&str> = l.split_whitespace().collect();
+        let Some(key) = parts.first().map(|s| s.to_lowercase()) else { continue };
+        if key.starts_with("&end") { depth = depth.saturating_sub(1); continue; }
+        if key.starts_with('&') { depth += 1; continue; }
+        if depth == 1 && key == "multiple_unit_cell" {
+            // regtest 常写 `${NREP}`：@SET 预处理变量本 reader 不展开，点名说清，免得读成原胞
+            if parts[1..].iter().any(|s| s.contains('$')) {
+                bail!("{l:?} uses a CP2K preprocessor variable; ferro does not expand @SET, \
+                       write the numbers in");
+            }
+            let n: Option<Vec<usize>> = parts[1..].iter().map(|s| s.parse().ok().filter(|&n| n > 0)).collect();
+            return match n.as_deref() {
+                Some(&[n1, n2, n3]) => Ok([n1, n2, n3]),
+                _ => bail!("invalid {l:?}: MULTIPLE_UNIT_CELL takes three integers greater than zero"),
+            };
+        }
+    }
+    Ok([1; 3])
+}
+
+fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3], [usize; 3])> {
     // Supports:
     //   A x y z / B x y z / C x y z  (explicit vectors)
     //   ABC a b c  (diagonal only, Angstrom)
@@ -200,7 +271,7 @@ fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3])> {
     } else {
         bail!("cannot parse &CELL: need A/B/C vectors or ABC lengths")
     };
-    Ok((cell, pbc))
+    Ok((cell, pbc, multiple_unit_cell(section)?))
 }
 
 /// 长度单位 → Å 的倍数。CP2K 认任意单位，这里只认 angstrom 与 bohr，其余报错 ——
@@ -420,5 +491,44 @@ mod tests {
         assert_eq!(pbc("PERIODIC Z"), [false, false, true]);
         assert_eq!(pbc("PERIODIC NONE"), [false; 3]);
         assert!(parse_cp2k(&si(&format!("{FCC}\nPERIODIC XYZW"), "", "1.0")).is_err());
+    }
+
+    /// `&SUBSYS` with the given `&CELL` / `&COORD` / `&TOPOLOGY` bodies.
+    fn muc_input(cell: &str, coord: &str, topology: &str) -> String {
+        format!("&FORCE_EVAL\n&SUBSYS\n&CELL\n{cell}\n&END CELL\n&COORD\n{coord}\n&END COORD\n\
+                 &TOPOLOGY\n{topology}\n&END TOPOLOGY\n&END SUBSYS\n&END FORCE_EVAL\n")
+    }
+
+    /// MULTIPLE_UNIT_CELL used to be ignored: one unit cell of atoms in a one-cell box.
+    #[test]
+    fn test_multiple_unit_cell_replicates_as_cp2k_does() {
+        let cell = "A 5.64 0 0\nB 0 5.64 0\nC 0 0 5.64\nMULTIPLE_UNIT_CELL 2 2 1";
+        let unit = "SCALED\nNa 0 0 0\nCl 0.5 0 0";
+        let f = parse_cp2k(&muc_input(cell, unit, "MULTIPLE_UNIT_CELL 2 2 1")).unwrap().frames.remove(0);
+        assert_eq!(f.cell.as_ref().unwrap().lengths(), [11.28, 11.28, 5.64]);
+        // 块序 i 内 j 外：(0,0) (1,0) (0,1) (1,1)；块内 Na、Cl 原序；SCALED 相对原胞
+        let want = [(0.0, 0.0), (2.82, 0.0), (5.64, 0.0), (8.46, 0.0),
+                    (0.0, 5.64), (2.82, 5.64), (5.64, 5.64), (8.46, 5.64)];
+        assert_eq!(f.n_atoms(), want.len());
+        for (n, &(x, y)) in want.iter().enumerate() {
+            let p = f.positions()[n];
+            assert!((p.x - x).abs() < 1e-12 && (p.y - y).abs() < 1e-12 && p.z.abs() < 1e-12, "{n}: {p:?}");
+            assert_eq!(f.atom(n).element, if n % 2 == 0 { "Na" } else { "Cl" });
+        }
+        // 只写 &CELL 的：胞放大，坐标照写（已按超胞给全），与上面逐原子一致
+        let full: String = want.iter().enumerate()
+            .map(|(n, (x, y))| format!("{} {x} {y} 0\n", if n % 2 == 0 { "Na" } else { "Cl" })).collect();
+        let g = parse_cp2k(&muc_input(cell, &full, "")).unwrap().frames.remove(0);
+        assert_eq!(g.cell.as_ref().unwrap().matrix, f.cell.as_ref().unwrap().matrix);
+        assert!(g.positions().iter().zip(f.positions()).all(|(p, q)| (p - q).norm() < 1e-12));
+    }
+
+    #[test]
+    fn test_multiple_unit_cell_must_agree_and_be_positive() {
+        let cell = "ABC 5.64 5.64 5.64";
+        let err = parse_cp2k(&muc_input(cell, "Na 0 0 0", "MULTIPLE_UNIT_CELL 2 1 1")).unwrap_err();
+        assert!(err.to_string().contains("have to agree"), "{err:#}");
+        let err = parse_cp2k(&muc_input(&format!("{cell}\nMULTIPLE_UNIT_CELL 2 0 1"), "Na 0 0 0", "")).unwrap_err();
+        assert!(format!("{err:#}").contains("greater than zero"), "{err:#}");
     }
 }

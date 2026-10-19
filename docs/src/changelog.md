@@ -37,6 +37,10 @@ command line alike; regenerate it rather than migrating it.
   "no charge", so converting such a file to extended XYZ now writes the `charges` column even
   when every charge is 0. A `Masses` comment that is not an element symbol (`# oxygen`) no
   longer becomes the element name: the element comes from the mass, with a warning.
+- CP2K input: `MULTIPLE_UNIT_CELL` is honoured as CP2K does — the `&CELL` one enlarges the cell,
+  the `&TOPOLOGY` one replicates the coordinates (both must agree when the latter is not
+  `1 1 1`). It used to be ignored, giving one unit cell of atoms. A value written as a
+  preprocessor variable (`${NREP}`) is an error: ferro does not expand `@SET`.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 
