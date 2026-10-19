@@ -286,15 +286,13 @@ pub fn split_pair_args(all: &[String]) -> (Vec<String>, Vec<String>) {
     let mut pairs = Vec::new();
     let mut clap  = Vec::new();
     for arg in all {
-        if is_pair_arg(arg) { pairs.push(arg.clone()); } else { clap.push(arg.clone()); }
+        // `--P-O=2.3`: an element symbol starts upper-case, no clap option does
+        let pair = arg
+            .strip_prefix("--")
+            .is_some_and(|inner| inner.starts_with(|c: char| c.is_ascii_uppercase()) && inner.contains('='));
+        if pair { pairs.push(arg.clone()); } else { clap.push(arg.clone()); }
     }
     (pairs, clap)
-}
-
-fn is_pair_arg(s: &str) -> bool {
-    if !s.starts_with("--") { return false; }
-    let inner = &s[2..];
-    inner.starts_with(|c: char| c.is_ascii_uppercase()) && inner.contains('=')
 }
 
 fn split_elems(s: Option<&str>) -> Vec<String> {
@@ -452,10 +450,10 @@ mod tests {
     #[test]
     fn test_split_pair_args_keeps_the_rest_for_clap() {
         let (pairs, rest) = split_pair_args(&args(&[
-            "ferro", "net", "-i", "a.dump", "--P-O=2.4", "--modifier", "Zn", "--Zn-O=2.6",
+            "ferro", "net", "-i", "a.dump", "--P-O=2.4", "--modifier", "Zn", "--Zn-O=2.6", "--qn=P", "--Si-O",
         ]));
         assert_eq!(pairs, args(&["--P-O=2.4", "--Zn-O=2.6"]));
-        assert_eq!(rest, args(&["ferro", "net", "-i", "a.dump", "--modifier", "Zn"]));
+        assert_eq!(rest, args(&["ferro", "net", "-i", "a.dump", "--modifier", "Zn", "--qn=P", "--Si-O"]));
     }
 
     #[test]
