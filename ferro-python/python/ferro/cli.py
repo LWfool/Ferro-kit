@@ -204,6 +204,15 @@ def run_config(argv):
     return 0
 
 
+def nonneg_int(text):
+    """argparse type for the frame selection: the binding takes unsigned numbers, so a
+    negative one would otherwise surface as an OverflowError traceback."""
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"{text} is negative; give a whole number >= 0")
+    return value
+
+
 def job_parser():
     # The input options (-i ... --mkdir) repeat in conv_parser. Two places, not merged (R6);
     # a third (`plot`) is the time to pull them into one add_input_options
@@ -222,10 +231,10 @@ def job_parser():
     p.add_argument("--ensemble")
     p.add_argument("--vary-cell", action="store_true")
     p.add_argument("--fine-grid", type=float)
-    p.add_argument("--start", type=int)
-    p.add_argument("--end", type=int)
-    p.add_argument("--stride", type=int)
-    p.add_argument("--number", type=int)
+    p.add_argument("--start", type=nonneg_int)
+    p.add_argument("--end", type=nonneg_int)
+    p.add_argument("--stride", type=nonneg_int)
+    p.add_argument("--number", type=nonneg_int)
     p.add_argument("--atom-style")
     p.add_argument("--units")
     p.add_argument("--type-map")
@@ -452,7 +461,7 @@ def conv_parser():
     p.add_argument("--kspacing", type=float)
     p.add_argument("--fine-grid", type=float)
     for name in ("--start", "--end", "--stride", "--number"):
-        p.add_argument(name, type=int)
+        p.add_argument(name, type=nonneg_int)
     p.add_argument("--atom-style")
     p.add_argument("--units")
     p.add_argument("--type-map")

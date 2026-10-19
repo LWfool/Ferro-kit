@@ -177,6 +177,17 @@ def test_job_parameter_errors_come_first(tmp_path, job, capsys, extra, message):
     assert message in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("command", ["job", "conv"])
+@pytest.mark.parametrize("option", ["--start", "--end", "--stride", "--number"])
+def test_negative_frame_selection_is_a_usage_error(tmp_path, monkeypatch, capsys, command, option):
+    monkeypatch.setenv("FERRO_CONFIG", str(tmp_path / "none.toml"))
+    head = ["-t", "sp"] if command == "job" else ["--scan", "encut=500,600"]
+    with pytest.raises(SystemExit) as e:
+        cli.main([command, "-s", "vasp", *head, "-i", str(NVT), "-o", str(tmp_path), option, "-1"])
+    assert e.value.code == 2
+    assert f"argument {option}: -1 is negative" in capsys.readouterr().err
+
+
 def test_job_needs_mkdir_without_terminal(tmp_path, job, capsys):
     assert job("-i", str(NVT), "-o", str(tmp_path / "new")) == 1
     assert "--mkdir" in capsys.readouterr().err
