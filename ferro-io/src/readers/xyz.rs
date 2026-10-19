@@ -15,7 +15,8 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
     let mut lines = super::util::text_lines(path)?.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
-    // 文件在末帧中途结束 = MD 写到一半被中断：丢掉末帧，前面的帧照常可用（同 dump reader）
+    // A file ending inside its last frame is an MD run cut off: drop that frame, keep the others
+    // (as the dump reader does)
     let truncated = |k: usize, start: usize, why: String| {
         format!("warning: last frame (frame {k}, line {start}) is incomplete and was dropped: {why}")
     };
@@ -54,7 +55,7 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
             let line = line.context("read error")?;
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() < 4 {
-                // 文件最后一行只写了一半，同样是截断
+                // The file's last line written only in part is a cut-off too
                 if lines.peek().is_none() {
                     warnings.push(truncated(k, count_no, format!("{i} of {n_atoms} atoms")));
                     break 'frames;
@@ -64,7 +65,8 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
             let x: f64 = parts[1].parse().context("invalid x")?;
             let y: f64 = parts[2].parse().context("invalid y")?;
             let z: f64 = parts[3].parse().context("invalid z")?;
-            // 首列是原子序数时转成元素符号（同 ASE）；以前 `8` 原样当元素名
+            // An atomic number in the first column becomes its symbol (as in ASE); `8` used to be the
+            // element name
             let element = match parts[0].parse::<u8>() {
                 Ok(z) => by_number(z)
                     .with_context(|| format!("line {line_no}: no element has atomic number {z}"))?
@@ -146,7 +148,7 @@ C  1.4  0.0  0.1
             assert_eq!(warnings.len(), 1, "{name}");
             assert!(warnings[0].contains("frame 1, line 5"), "{name}: {}", warnings[0]);
         }
-        // 中间帧不完整仍是报错
+        // An incomplete middle frame is still an error
         let path = write_tmp("trunc_middle.xyz", "2\nf0\nC 0 0 0\n2\nf1\nC 0 0 0\nC 1 0 0\n");
         assert!(read_xyz(&path).is_err());
     }

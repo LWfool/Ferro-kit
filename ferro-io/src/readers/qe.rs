@@ -44,8 +44,8 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     }
     let _ntyp: usize = sys.get("ntyp").and_then(|s| s.parse().ok()).unwrap_or(0);
 
-    // starting_magnetization 不读进 magmom：它是 -1..1 的比例（自旋极化 / 价电子数），不是 μB，
-    // 经 extxyz 导出后会被当成磁矩（2026-10-19 用户定）
+    // starting_magnetization is not read into magmom: it is a fraction in -1..1 (spin polarisation
+    // over valence electrons), not μB, and extxyz output took it for a moment (user's call, 2026-10-19)
 
     // ── ATOMIC_SPECIES card ───────────────────────────────────────────────────
     // label → element (first line word treated as label, second as mass (ignored), third as pseudo)
@@ -454,7 +454,7 @@ CELL_PARAMETERS {angstrom}
     fn test_blank_separated_namelist() {
         let fe = |sys: &str| read_qe_input(&tmp("fe_blank.qe", &CRYSTAL_POS
             .replace("  ibrav = 0,\n  nat = 2,\n  ntyp = 1,\n", sys)));
-        // 空白分隔：nat 校验生效；starting_magnetization 是比例不是 μB，不进 magmom
+        // Blank-separated: nat is checked; starting_magnetization is a fraction, not μB, so no magmom
         let traj = fe("  ibrav=0 nat=2 ntyp=1 starting_magnetization(1)=0.5\n").unwrap();
         assert_eq!(traj.first().unwrap().atom(0).magmom, None);
         let e = fe("  ibrav=0 nat=3 ntyp=1\n").unwrap_err();

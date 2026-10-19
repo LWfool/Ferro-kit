@@ -400,8 +400,8 @@ fn parse_symop_component(
     apply_term(&term, sign, row, rot, trans)
 }
 
-/// 认不出的项报错 —— 以前静默丢掉，`2x`、`x*1` 之类让该行旋转部分少一项，
-/// 展开出的原子落在错误位置
+/// A term not recognised is an error. It used to be dropped, so `2x` or `x*1` left the row's
+/// rotation one term short and the atoms it generated in the wrong place
 fn apply_term(term: &str, sign: f64, row: usize, rot: &mut Matrix3<f64>, trans: &mut Vector3<f64>) -> Result<()> {
     match term {
         "x" => rot[(row, 0)] += sign,
@@ -854,7 +854,7 @@ Cl1  Cl  0.5  0.5  0.5
             let err = parse_symop(bad).unwrap_err().to_string();
             assert!(err.contains("unrecognised term"), "{bad}: {err}");
         }
-        // 小数平移、平移写在前面仍认
+        // Decimal translations, and a translation written first, are still read
         let q = parse_symop("1/2+x,y-0.25,-z").unwrap().apply(Vector3::new(0.1, 0.5, 0.2));
         assert!((q - Vector3::new(0.6, 0.25, -0.2)).norm() < 1e-12);
     }

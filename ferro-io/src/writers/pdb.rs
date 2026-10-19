@@ -46,7 +46,8 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
         }
         for (i, atom) in frame.atoms().enumerate() {
             let p = to_std * atom.position;
-            // 坐标列是 8 位宽 3 位小数：超出 -999.999..9999.999 就挤进下一列，读回整行错位
+            // The coordinate fields are 8 wide with 3 decimals: outside -999.999..9999.999 a value pushes
+            // into the next field and the whole line reads back shifted
             if let Some(v) = p.iter().find(|v| !(-999.9995..9999.9995).contains(*v)) {
                 bail!("frame {}, atom {}: coordinate {v:.3} Å does not fit PDB's 8-column field \
                        (-999.999 to 9999.999)", model_idx, i + 1);
@@ -55,7 +56,7 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
                 writer,
                 "{:<6}{:>5} {:^4} {:3} {:1}{:>4}    {:>8.3}{:>8.3}{:>8.3}{:>6.2}{:>6.2}          {:>2}",
                 "ATOM",
-                // 序号列 5 位：超过 99999 循环（同 ASE 的 MAXNUM），否则挤歪后面每一列
+                // The serial field is 5 wide: past 99999 it wraps (ASE's MAXNUM), or every later field shifts
                 (i + 1) % 100_000,
                 atom.element,
                 "UNK",

@@ -30,7 +30,8 @@ pub fn dump_name<'a>(atom: AtomRef<'a>) -> &'a str {
 /// 写 LAMMPS dump 文件。
 /// 包含列：id type element x y z [vx vy vz] [fx fy fz] [q]
 /// `units` 为 `None` 时，带速度或力的轨迹报错：写出的数值取决于读它的 LAMMPS 用哪个 `units`。
-/// 只有部分原子带电荷的帧报错，`drop_partial` 时不写 q 列（见 `partial_column`）。
+/// A frame with charges on some atoms only is an error; with `drop_partial` the q column is
+/// left out (see `partial_column`).
 pub fn write_lammps_dump(
     trajectory: &Trajectory,
     path: &Path,

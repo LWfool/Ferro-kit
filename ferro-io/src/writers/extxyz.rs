@@ -36,7 +36,8 @@ pub fn write_extxyz_with(
     drop_partial: bool,
 ) -> Result<()> {
     let path_ = path.display();
-    // 电荷 / 磁矩列写不写，先对全部帧判定再建文件，免得报错后留下半个文件
+    // Whether to write the charge / moment columns is decided for every frame before the file is
+    // created, so a refusal leaves no half-written file
     let columns: Vec<(bool, bool)> = trajectory.frames.iter().enumerate().map(|(fi, frame)| {
         let n = frame.n_atoms();
         let count = |has: fn(&ferro_core::AtomRef) -> bool| frame.atoms().filter(|a| has(a)).count();
@@ -74,9 +75,11 @@ pub fn write_extxyz_with(
         let mut prop_spec = "species:S:1:pos:R:3".to_string();
         if frame.forces().is_some() { prop_spec.push_str(":forces:R:3"); }
         // 速度写成 ASE 认的 momenta（审查 A-2）：ASE 与 GPUMD 都不认 velocities 列。
-        // 带上换算所用的 masses，ASE 的 get_velocities 与本仓 reader 都按它除回，往返无损。
-        // 没有速度但有原子带显式质量（同位素、dump 的 mass 列）时也写 masses，否则转出即丢；
-        // 没设质量的原子写元素表质量，列总是写满
+        // The masses used go along; ASE's get_velocities and this repository's reader divide by them,
+        // so the round trip is lossless.
+        // Masses are written too without velocities when an atom carries an explicit one (an isotope,
+        // a dump mass column), or converting would drop it;
+        // atoms without one get the element's mass, so the column is always full
         let has_mass = frame.velocities().is_some() || frame.atoms().any(|a| a.mass.is_some());
         if has_mass { prop_spec.push_str(":masses:R:1"); }
         if frame.velocities().is_some() { prop_spec.push_str(":momenta:R:3"); }
@@ -349,9 +352,9 @@ mod tests {
         write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
         let back = read_extxyz(&path).unwrap().frames.remove(0);
         assert_eq!(back.atom(0).mass, Some(2.014));
-        // 没设质量的原子写元素表质量
+        // An atom without one gets the element's mass
         assert!((back.atom(1).mass.unwrap() - 15.999).abs() < 1e-3);
-        // 都没设质量、也没有速度时不写这一列
+        // No explicit mass and no velocities: no column
         let mut plain = Frame::new();
         plain.add_atom(Atom::new("O", Vector3::zeros()));
         write_extxyz(&Trajectory::from_frame(plain), &path).unwrap();

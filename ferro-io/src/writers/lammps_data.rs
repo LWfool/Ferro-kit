@@ -13,8 +13,9 @@ const CELLLESS_PAD: f64 = 1.0;
 /// 写 LAMMPS data 文件，atom_style full，real 单位（长度 Å）。
 /// 周期性帧写晶格信息；非周期性帧写最小包围盒。
 ///
-/// full 的电荷列每个原子都得有：没有原子带电荷时写 0（结构本就不带电荷），只有部分原子
-/// 带电荷时报错，`drop_partial` 时全部写 0（见 `partial_column`）。
+/// Every atom needs a value in the full style's charge column: with no charges at all it is 0
+/// (the structure carries none), with charges on some atoms only it is an error, and with
+/// `drop_partial` every charge is written as 0 (see `partial_column`).
 pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: bool) -> Result<()> {
     let path_ = path.display();
     let frame = super::single_frame(trajectory, "LAMMPS data")?;

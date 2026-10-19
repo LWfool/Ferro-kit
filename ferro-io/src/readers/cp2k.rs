@@ -76,9 +76,10 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
 
     let (unit_cell, pbc, cell_muc) = parse_cell_section(cell_section)?;
 
-    // MULTIPLE_UNIT_CELL（cell_methods.F:556、topology_multiple_unit_cell.F）：&CELL 的只放大晶胞，
-    // &TOPOLOGY 的只复制坐标；后者不是 1 1 1 时两者必须一致（CP2K 同样 abort）。只写 &CELL 的
-    // 那个是合法的 —— 坐标已按超胞给全。CP2K 写 restart 时两处都重置为 1 1 1、胞与坐标写全
+    // MULTIPLE_UNIT_CELL (cell_methods.F:556, topology_multiple_unit_cell.F): the &CELL one only enlarges
+    // the cell, the &TOPOLOGY one only replicates the coordinates; when the latter is not 1 1 1 the two
+    // must agree (CP2K aborts too). The &CELL one alone is legal: the coordinates already fill the
+    // supercell. CP2K's restart files reset both to 1 1 1 and write the full cell and coordinates
     let topo_muc = match subsys.iter().position(|l| l.eq_ignore_ascii_case("&topology")) {
         Some(t) => {
             let end = find_end(subsys, t).context("&END TOPOLOGY not found")?;
@@ -145,7 +146,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
             .unwrap_or_else(|| element_from_label(&label));
 
         let v = Vector3::new(x, y, z);
-        // SCALED 相对原胞（topology_cp2k.F:108 用的是 cell_muc，即 &CELL 写的 A B C 本身）
+        // SCALED is relative to the unit cell (topology_cp2k.F:108 uses cell_muc, the A B C as written)
         let position = if scaled { unit_cell.fractional_to_cartesian(v) } else { v * coord_scale };
 
         let mut atom = Atom::new(elem, position);
@@ -154,7 +155,8 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
     }
 
     if topo_muc != [1; 3] {
-        // 复制顺序照 topology_multiple_unit_cell.F：k 外、j 中、i 内，每块按原子原序，平移用原胞矢量
+        // Order as in topology_multiple_unit_cell.F: k outer, j, i inner; each block keeps the atom
+        // order; the shifts are unit-cell vectors
         let base = frame.clone();
         let (a, b, c) = (unit_cell.matrix.row(0).transpose(), unit_cell.matrix.row(1).transpose(),
                          unit_cell.matrix.row(2).transpose());
@@ -186,7 +188,8 @@ fn multiple_unit_cell(section: &[&str]) -> Result<[usize; 3]> {
         if key.starts_with("&end") { depth = depth.saturating_sub(1); continue; }
         if key.starts_with('&') { depth += 1; continue; }
         if depth == 1 && key == "multiple_unit_cell" {
-            // regtest 常写 `${NREP}`：@SET 预处理变量本 reader 不展开，点名说清，免得读成原胞
+            // Regtests often write `${NREP}`: this reader does not expand @SET variables, and says so
+            // rather than read one unit cell
             if parts[1..].iter().any(|s| s.contains('$')) {
                 bail!("{l:?} uses a CP2K preprocessor variable; ferro does not expand @SET, \
                        write the numbers in");
@@ -494,7 +497,8 @@ mod tests {
         let unit = "SCALED\nNa 0 0 0\nCl 0.5 0 0";
         let f = parse_cp2k(&muc_input(cell, unit, "MULTIPLE_UNIT_CELL 2 2 1")).unwrap().frames.remove(0);
         assert_eq!(f.cell.as_ref().unwrap().lengths(), [11.28, 11.28, 5.64]);
-        // 块序 i 内 j 外：(0,0) (1,0) (0,1) (1,1)；块内 Na、Cl 原序；SCALED 相对原胞
+        // Blocks i inner, j outer: (0,0) (1,0) (0,1) (1,1); Na, Cl in order within each; SCALED is
+        // relative to the unit cell
         let want = [(0.0, 0.0), (2.82, 0.0), (5.64, 0.0), (8.46, 0.0),
                     (0.0, 5.64), (2.82, 5.64), (5.64, 5.64), (8.46, 5.64)];
         assert_eq!(f.n_atoms(), want.len());
@@ -503,7 +507,8 @@ mod tests {
             assert!((p.x - x).abs() < 1e-12 && (p.y - y).abs() < 1e-12 && p.z.abs() < 1e-12, "{n}: {p:?}");
             assert_eq!(f.atom(n).element, if n % 2 == 0 { "Na" } else { "Cl" });
         }
-        // 只写 &CELL 的：胞放大，坐标照写（已按超胞给全），与上面逐原子一致
+        // The &CELL one alone: the cell is enlarged, the coordinates (the full supercell) taken as
+        // written; atom for atom the same as above
         let full: String = want.iter().enumerate()
             .map(|(n, (x, y))| format!("{} {x} {y} 0\n", if n % 2 == 0 { "Na" } else { "Cl" })).collect();
         let g = parse_cp2k(&muc_input(cell, &full, "")).unwrap().frames.remove(0);

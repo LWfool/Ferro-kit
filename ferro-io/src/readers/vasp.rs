@@ -95,15 +95,17 @@ pub(super) fn parse_poscar_header(lines: &mut std::str::Lines<'_>) -> Result<(St
         m[2][0], m[2][1], m[2][2],
     ));
 
-    // 元素行 + 计数行（VASP 5 起）。只有计数、没有元素行的是 VASP 4 格式，不再支持（2026-10-19
-    // 用户定）：以前给 `X1`、`X2` 占位元素，密度、质量、按元素的分析全都是错的却退出码 0
+    // An element line, then counts (VASP 5 on). Counts with no element line are the VASP 4 format,
+    // no longer read (user's call, 2026-10-19): its placeholder elements `X1`, `X2` made densities,
+    // masses and per-element analyses all wrong with exit status 0
     let line5 = next("element/count line")?.trim();
     if line5.split_whitespace().all(|t| t.parse::<usize>().is_ok()) {
         bail!("no element line above the atom counts ({line5:?}): this is the VASP 4 format, \
                which ferro does not read; add a line of element symbols (VASP 5+)");
     }
-    // 6.4.2 起（HDF5 编译）写成 `POTCAR 标签/哈希`，如 `C_h/1e4d9ea6ed`、`Cs/`；5.4.4 等旧版只写
-    // `Na`，两者同一规则取元素：`/` 前、再 `_` 前（同 ASE vasp.py）。CHGCAR 的头部用同一个函数
+    // From 6.4.2 (HDF5 builds) an entry is `POTCAR label/hash`, as in `C_h/1e4d9ea6ed`, `Cs/`; older
+    // versions such as 5.4.4 write `Na`. One rule takes the element from both: before `/`, then
+    // before `_` (as ASE vasp.py does). The CHGCAR header goes through this same function
     let elements: Vec<String> = line5.split_whitespace().map(potcar_symbol).collect();
     let counts: Vec<usize> = next("atom counts")?
         .split_whitespace()
@@ -202,7 +204,7 @@ Direct
         assert_eq!(elems("Fe_pv/6a2f546d Co/\n1 1\n"), ["Fe", "Co"]);
         // 手写的 POTCAR 标签
         assert_eq!(elems("Fe_sv_GW Co_h\n1 1\n"), ["Fe", "Co"]);
-        // VASP 4（无元素行，只有计数）报错，不再给 X1 X2
+        // VASP 4 (counts, no element line) is an error, no longer X1 X2
         let text = BCC_FE.replace("   Fe\n   2\n", "1 1\n");
         let err = format!("{:#}", parse_traj(&text).unwrap_err());
         assert!(err.contains("VASP 4 format"), "{err}");

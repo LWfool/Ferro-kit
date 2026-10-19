@@ -166,8 +166,8 @@ pub fn read_vasprun_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
                     "atominfo" => st.in_atominfo = false,
                     "array" => st.in_atoms_array = false,
                     "c" => st.in_c = false,
-                    // 空的 `<i name="e_fr_energy"></i>` 没有 Text 事件：不在这里清掉，下一个
-                    // 文本节点（别的量）会被当成能量收下（审查 10-03 A 轻）
+                    // An empty `<i name="e_fr_energy"></i>` has no Text event: unless cleared here, the next text
+                    // node (another quantity) is taken as the energy (review 10-03, A minor)
                     "i" => {
                         st.reading_energy_name = None;
                         st.reading_nelm = false;

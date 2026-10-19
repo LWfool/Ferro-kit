@@ -20,7 +20,7 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
     let mut current = Frame::new();
-    let mut open_model: Option<usize> = None; // MODEL 行号，未见 ENDMDL 时为 Some
+    let mut open_model: Option<usize> = None; // line of an open MODEL, until its ENDMDL
     let mut cell: Option<Cell> = None;
     let close = |frame: &mut Frame, cell: &Option<Cell>| {
         if let Some(c) = cell {
@@ -43,7 +43,8 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
             }
             "CRYST1" => {
                 cell = parse_cryst1(&line);
-                // PDB 规范：非晶体学测得的结构 CRYST1 写 1 1 1 90 90 90 占位（MDAnalysis 同样当无胞）
+                // PDB format: a structure not determined crystallographically carries the placeholder
+                // CRYST1 1 1 1 90 90 90 (MDAnalysis reads it as no cell too)
                 if cell.as_ref().is_some_and(is_placeholder_cell) {
                     if !warnings.iter().any(|w: &String| w.contains("CRYST1")) {
                         warnings.push(format!(
@@ -56,7 +57,7 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
             "MODEL" => open_model = Some(ln + 1),
             "ENDMDL" | "END" => {
                 open_model = None;
-                // MODEL … ENDMDL 之后的 END 不另成一帧
+                // An END after MODEL … ENDMDL makes no extra frame
                 if current.n_atoms() > 0 {
                     let mut frame = std::mem::replace(&mut current, Frame::new());
                     close(&mut frame, &cell);
@@ -75,9 +76,10 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
     if current.n_atoms() > 0 {
         let k = traj.n_frames();
         match open_model {
-            // 没有 MODEL / END 记录的单帧文件，正常
+            // A one-frame file with no MODEL / END record: fine
             None => {}
-            // 末个 MODEL 没写 ENDMDL：原子数与前一帧一致才可信，否则多半是写到一半
+            // A last MODEL with no ENDMDL: trusted only with the previous frame's atom count, otherwise
+            // most likely cut off
             Some(model_line) => {
                 let n = current.n_atoms();
                 match traj.frames.last().map(|f| f.n_atoms()) {
@@ -256,17 +258,17 @@ ENDMDL
     /// A last MODEL with no ENDMDL used to be dropped without a word.
     #[test]
     fn test_last_model_without_endmdl() {
-        // 原子数与前一帧相同：保留并告警
+        // Same atom count as the frame before: kept, with a warning
         let text = format!("MODEL 1\n{C1}{C2}ENDMDL\nMODEL 2\n{C1}{C2}");
         let (traj, w) = read_pdb_with_warnings(&write_tmp("test_noend.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert!(w.len() == 1 && w[0].contains("frame 1, line 5") && w[0].contains("kept"), "{w:?}");
-        // 原子数少了：写到一半，丢掉并告警
+        // Fewer atoms: cut off, dropped with a warning
         let text = format!("MODEL 1\n{C1}{C2}ENDMDL\nMODEL 2\n{C1}");
         let (traj, w) = read_pdb_with_warnings(&write_tmp("test_noend_cut.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert!(w.len() == 1 && w[0].contains("dropped"), "{w:?}");
-        // 只有一个 MODEL 且没写 ENDMDL：保留
+        // A single MODEL with no ENDMDL: kept
         let (traj, _) = read_pdb_with_warnings(&write_tmp("test_noend_one.pdb", &format!("MODEL 1\n{C1}"))).unwrap();
         assert_eq!(traj.n_frames(), 1);
     }
@@ -280,7 +282,7 @@ ENDMDL
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(traj.frames[1].n_atoms(), 2);
         assert!(w.is_empty(), "{w:?}");
-        // MODEL … ENDMDL 后再写 END 不多出一帧
+        // MODEL … ENDMDL followed by END gives no extra frame
         let (traj, _) = read_pdb_with_warnings(&write_tmp("test_model_end.pdb", MULTI_PDB_END)).unwrap();
         assert_eq!(traj.n_frames(), 2);
     }

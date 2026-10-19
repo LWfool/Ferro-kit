@@ -395,7 +395,7 @@ mod set_tests {
         t.frames[1].pbc = [true, true, false];
         let err = write_deepmd_npy(&t, &out_dir("ferro_dp_slab")).unwrap_err().to_string();
         assert!(err.contains("frame 1") && err.contains("some axes only"), "{err}");
-        // 三轴全不周期照旧写 nopbc
+        // Non-periodic along all three axes still writes nopbc
         let mut t = demo_traj();
         for f in &mut t.frames { f.pbc = [false; 3]; }
         let d = out_dir("ferro_dp_nopbc_all");

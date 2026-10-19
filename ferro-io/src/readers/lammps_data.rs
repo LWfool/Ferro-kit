@@ -146,8 +146,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
             let Some((tid, mass)) = entry else {
                 bail!("line {}: Masses entry '{line}' is not 'type mass'", k + 1);
             };
-            // 注释里的元素符号优先："# Fe" 或 "# Fe ..."。不是元素符号的注释（`# oxygen`、
-            // `# Ow`）以前原样当元素名收下，现在退回按质量推，并告警
+            // An element symbol in the comment wins: "# Fe" or "# Fe ...". A comment that is not one
+            // (`# oxygen`, `# Ow`) used to become the element name; the mass decides instead, with a warning
             let comment = raw.find('#')
                 .and_then(|p| raw[p+1..].split_whitespace().next());
             let from_comment = comment.and_then(|c| {
@@ -230,7 +230,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
             .unwrap_or_else(|| format!("X{tp}"));
         let mut atom = Atom::new(elem, pos);
         atom.mass = type_mass.get(&tp).copied();
-        // charge / full 的电荷列是测得的值，0 也是值；以前 0 转成 None，与「没有电荷列」混同
+        // A charge / full charge column holds values, and 0 is one; it used to become None, the same
+        // as having no charge column
         atom.charge = q;
         frame.add_atom(atom);
     }
@@ -541,7 +542,7 @@ Atoms # full
         let f = parse_lammps_data(&text, AtomStyle::Charge).unwrap().0.frames.remove(0);
         assert_eq!(f.atom(0).charge, Some(0.0));
         assert_eq!(f.atom(1).charge, Some(0.4));
-        // atomic 没有电荷列，仍是 None
+        // atomic has no charge column: still None
         let text = data_with("1 15.999  # O\n2 1.008  # H\n", "1 1 0 0 0\n2 2 1 0 0\n", "atomic");
         assert_eq!(parse_lammps_data(&text, AtomStyle::Atomic).unwrap().0.frames[0].atom(0).charge, None);
     }

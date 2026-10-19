@@ -204,9 +204,10 @@ fn parse_frame(
         _ => [true; 3],
     };
 
-    // general triclinic（`dump_modify triclinic/general yes`）：段头 `BOX BOUNDS abc origin`，三行
-    // `ax ay az ox` / `bx by bz oy` / `cx cy cz oz`。坐标与速度、力等向量列都已在这个框架下
-    // 写出（LAMMPS dump / dump_modify 手册），原样收下；缩放坐标仍相对 A B C
+    // General triclinic (`dump_modify triclinic/general yes`): the header is `BOX BOUNDS abc origin`,
+    // then `ax ay az ox` / `bx by bz oy` / `cx cy cz oz`. Coordinates and vector columns such as
+    // velocities and forces are written in that frame (LAMMPS dump / dump_modify manuals) and are
+    // taken as written; scaled coordinates are still relative to A B C
     let general = {
         let t: Vec<&str> = lines[bb].split_whitespace().collect();
         t.contains(&"abc") && t.contains(&"origin")
@@ -248,11 +249,12 @@ fn parse_frame(
         // already handled above: vals.len() >= 3 sets tilt
 
         let (xy, xz, yz) = (tilt[0], tilt[1], tilt[2]);
-        // 三斜时这六个数是 *_bound（倾斜后的外接盒），真实边长要把倾斜量减回去：
+        // For a triclinic box these six numbers are the *_bound (the box around the tilted cell); the
+        // real edges take the tilts back off:
         //   lx = (xhi_b - xlo_b) - |xy| - |xz|,  ly = (yhi_b - ylo_b) - |yz|
-        // 该式与规格的 MAX(0,xy,xz,xy+xz) - MIN(...) 在四个象限上恒等，
-        // 与 ase/io/lammpsrun.py::construct_cell 一致。正交时三个倾斜量为 0，
-        // 退化成 hi - lo，故这个分支对既有的正交轨迹逐位不变
+        // this equals the specification's MAX(0,xy,xz,xy+xz) - MIN(...) in all four quadrants,
+        // as in ase/io/lammpsrun.py::construct_cell. Orthogonal, the three tilts are 0 and it
+        // reduces to hi - lo, so orthogonal trajectories read bit for bit as before
         let lx = (hi[0] - lo[0]) - xy.abs() - xz.abs();
         let ly = (hi[1] - lo[1]) - yz.abs();
         let lz = hi[2] - lo[2];
@@ -271,8 +273,9 @@ fn parse_frame(
             ))
         };
 
-        // 缩放坐标按 LAMMPS 的定义 x = lo + s·L 还原，lo 是盒子真实原点而非 *_bound；
-        // 这样同一原子写成 x 或 xs 读出同一个值（ASE 3.29 的 xs 不加 lo，与它自己的 x 列不自洽）
+        // Scaled coordinates are restored by LAMMPS's definition x = lo + s·L, lo being the box's real
+        // origin, not the *_bound, so one atom written as x or as xs reads the same (ASE 3.29 does not
+        // add lo to xs, inconsistent with its own x)
         let origin = Vector3::new(
             lo[0] - 0.0_f64.min(xy).min(xz).min(xy + xz),
             lo[1] - 0.0_f64.min(yz),
@@ -280,7 +283,8 @@ fn parse_frame(
         );
         (cell, origin)
     };
-    // 原点随盒子带走，writer 写回 lo（审查 A-12：丢掉它往返后原子落到盒外）
+    // The origin travels with the box and the writer writes it back as lo (review A-12: losing it put
+    // atoms outside the box after a round trip)
     cell.origin = origin;
 
     // ITEM: ATOMS col1 col2 ...
@@ -349,8 +353,8 @@ fn parse_frame(
         let tp = get_col("type").map(int).transpose()?.unwrap_or(1);
 
         // element 列可能写的是位点类型标签（`O_b_P_P`、`Zn_f`），按第一个下划线
-        // 拆成 element + label；无下划线的普通符号原样通过。没有 element 列时用
-        // typelabel 列（LAMMPS 的 type label，由 labelmap 定义），拆法相同
+        // into element + label; a plain symbol without one passes as is. Without an element column the
+        // typelabel column (LAMMPS type labels, set by labelmap) is used, split the same way
         let raw = get_col("element").or_else(|| get_col("typelabel"))
             .and_then(|c| parts.get(c))
             .map(|s| s.to_string())
@@ -888,7 +892,7 @@ ITEM: ATOMS id type element x y z
     /// read as `lo hi tilt`, giving a nonsense box.
     #[test]
     fn test_general_triclinic_box() {
-        // A 沿 +y、B 沿 −x —— 不是下三角，当 restricted 读会错
+        // A along +y, B along −x: not lower-triangular, so reading it as restricted goes wrong
         let text = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\n\
                     ITEM: BOX BOUNDS abc origin pp pp ff\n0 4 0 1\n-4 0 0 2\n0 0 4 3\n\
                     ITEM: ATOMS id type element x y z\n1 1 O 1 4 3\n2 1 H 0 2 4\n";
@@ -899,12 +903,12 @@ ITEM: ATOMS id type element x y z
         assert_eq!(cell.origin, Vector3::new(1.0, 2.0, 3.0));
         assert_eq!(f.pbc, [true, true, false]);
         assert_eq!(f.positions()[1], Vector3::new(0.0, 2.0, 4.0), "x y z taken as written");
-        // 缩放坐标相对 A B C：origin + 0.5·A = (1, 4, 3)
+        // Scaled coordinates are relative to A B C: origin + 0.5·A = (1, 4, 3)
         let scaled = text.replace("x y z\n1 1 O 1 4 3", "xs ys zs\n1 1 O 0.5 0 0")
                          .replace("2 1 H 0 2 4", "2 1 H 0.5 0.25 0.25");
         let (traj, _) = parse_lammps_dump(&scaled, None).unwrap();
         assert!((traj.frames[0].positions()[0] - Vector3::new(1.0, 4.0, 3.0)).norm() < 1e-12);
-        // 少一个数报错
+        // One number short is an error
         let bad = text.replace("-4 0 0 2", "-4 0 0");
         let (traj, w) = parse_lammps_dump(&bad, None).unwrap();
         assert!(traj.frames.is_empty() && w[0].contains("abc origin line 2"), "{w:?}");
@@ -918,7 +922,7 @@ ITEM: ATOMS id type element x y z
         let f = parse_lammps_dump(text, None).unwrap().0.frames.remove(0);
         assert_eq!((f.atom(0).element, f.atom(0).label), ("O", Some("O_b")));
         assert_eq!((f.atom(1).element, f.atom(1).label), ("P", None));
-        // element 列优先
+        // The element column wins
         let both = text.replace("id typelabel x y z\n1 O_b", "id element typelabel x y z\n1 Si O_b")
                        .replace("2 P 1", "2 P P 1");
         assert_eq!(parse_lammps_dump(&both, None).unwrap().0.frames[0].atom(0).element, "Si");

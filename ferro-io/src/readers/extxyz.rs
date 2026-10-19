@@ -61,8 +61,9 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
     let mut lines = lines.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
-    // 文件在末帧中途结束 = MD 写到一半被中断：丢掉末帧，前面的帧照常可用（同 dump reader）。
-    // 中间帧不完整时，下一帧的原子数行会被当成原子行、按列数报错，走不到这里
+    // A file ending inside its last frame is an MD run cut off: drop that frame, keep the others
+    // (as the dump reader does). An incomplete middle frame never gets here: the next frame's
+    // count line is read as an atom line and fails its column count
     let truncated = |k: usize, start: usize, why: String| {
         format!("warning: last frame (frame {k}, line {start}) is incomplete and was dropped: {why}")
     };
@@ -163,7 +164,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
             };
             let cols: Vec<&str> = line.split_whitespace().collect();
             if cols.len() < ncols {
-                // 文件最后一行只写了一半，同样是截断
+                // The file's last line written only in part is a cut-off too
                 if lines.peek().is_none() {
                     warnings.push(truncated(frame_no, count_no, format!("{i} of {n} atoms")));
                     complete = false;
@@ -197,8 +198,9 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
             let pos = vec3("pos", pos_col)?;
 
             let mut atom = Atom::new(element, pos);
-            // ASE 写出时把计算得到的 `charges` 改名 `charge` 列，`initial_charges` 原名写（ase/io/extxyz.py
-            // PROPERTY_NAME_MAP）；三者都有时取最像「本帧的电荷」的那个
+            // ASE writes the calculator's `charges` as a `charge` column and `initial_charges` under its own
+            // name (ase/io/extxyz.py PROPERTY_NAME_MAP); with several, take the one most like this frame's
+            // charges
             let charge_col = ["charges", "charge", "initial_charges"].into_iter()
                 .find_map(|name| find(name).map(|c| (name, c)));
             if let Some((name, c)) = charge_col {
@@ -799,7 +801,7 @@ Si 0.0 0.0 0.0
             assert_eq!(warnings.len(), 1, "{what}");
             assert!(warnings[0].contains("frame 1, line 5"), "{what}: {}", warnings[0]);
         }
-        // 中间帧不完整仍是报错
+        // An incomplete middle frame is still an error
         let bad = format!("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\n{head}");
         assert!(parse_extxyz(&bad).is_err());
     }
@@ -813,7 +815,7 @@ Si 0.0 0.0 0.0
             Na 0.0 0.0 0.0 0.9\nCl 2.8 0.0 0.0 -0.9\n";
         let f = parse_extxyz(init).unwrap().frames.remove(0);
         assert_eq!(f.atom(0).charge, Some(0.9));
-        // 两列都有时取计算得到的 charge
+        // With both columns, the calculator's `charge` wins
         let calc = "2\nLattice=\"5.6 0.0 0.0 0.0 5.6 0.0 0.0 0.0 5.6\" \
             Properties=species:S:1:pos:R:3:initial_charges:R:1:charge:R:1 energy=-1.0 pbc=\"T T T\"\n\
             Na 0.0 0.0 0.0 0.0 0.8\nCl 2.8 0.0 0.0 0.0 -0.8\n";

@@ -50,9 +50,9 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
         writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}  {:12.6}", z, 0.0, x, y, z_pos)?;
     }
 
-    // 体积数据：科学计数法，每条 z 列（固定 ix、iy 的 nz 个值）从新行开始、每行至多 6 个 ——
-    // Gaussian cubegen 的版式。以前整块数据连续每 6 个一换行，nz 不是 6 的倍数时
-    // z 列跨行，按行读的工具会错位
+    // Volumetric data in scientific notation; each z column (the nz values of one ix, iy) starts a
+    // new line, at most 6 a line, as Gaussian's cubegen writes it. The data used to run on 6 a line,
+    // so with nz not a multiple of 6 a column spilled over and line-oriented readers misplaced it
     for column in cube.data.chunks(nz.max(1)) {
         for line in column.chunks(6) {
             for val in line {
@@ -179,7 +179,7 @@ mod tests {
         let mut out = Vec::new();
         write_cube_to(&mut out, &cube).unwrap();
         let text = String::from_utf8(out).unwrap();
-        // 2 注释 + 原点 + 3 轴 + 1 原子 = 7 行头，其后数据行
+        // 2 comments + origin + 3 axes + 1 atom = 7 header lines, then the data
         let counts: Vec<usize> = text.lines().skip(7).map(|l| l.split_whitespace().count()).collect();
         assert_eq!(counts, [6, 2, 6, 2]);
         let second_column = text.lines().nth(9).unwrap().split_whitespace().next().unwrap();
