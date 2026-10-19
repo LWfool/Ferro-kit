@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：814 个（全部通过，clippy 零警告；2026-10-17 实数）；另 ferro-python 152 个 pytest
+## 测试总数：864 个（全部通过，clippy 零警告；2026-10-19 实数）；另 ferro-python 180 个 pytest
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 84 |
-| ferro-io | 235（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
-| ferro-structure | 86 |
-| ferro-analysis | 257 |
+| ferro-core | 72 |
+| ferro-io | 277（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
+| ferro-structure | 81 |
+| ferro-analysis | 291 |
 | ferro-render | 30 |
-| ferro-cli（lib 111 + bin 3 + 集成 8） | 122 |
+| ferro-cli（lib 100 + bin 5 + 集成 8） | 113 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。0.4.0 这批的破坏性改动见 `overview.md`。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
