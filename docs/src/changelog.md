@@ -17,6 +17,11 @@ command line alike; regenerate it rather than migrating it.
 - A file in which no frame is found is an error (`no frame found — is this really a … file?`).
   An empty `.xyz` / `.extxyz` / `.pdb` / `.lammpstrj`, or a file of another format under one of
   those names, used to read as 0 frames with exit status 0.
+- XYZ and extended XYZ cut off in their last frame (an interrupted MD run) keep the complete
+  frames and drop the last one with a warning naming it, as LAMMPS dumps already did; the whole
+  file used to be rejected.
+- An atomic number in the first column of a plain XYZ file is read as that element (`8` → O),
+  as ASE does; it used to become an element named `8`.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

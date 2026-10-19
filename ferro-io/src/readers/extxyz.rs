@@ -6,6 +6,12 @@ use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
 pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
+    Ok(read_extxyz_with_warnings(path)?.0)
+}
+
+/// Reads extended XYZ, returning what the reader noticed alongside the frames: an
+/// incomplete last frame is dropped and named, as the LAMMPS dump reader does.
+pub fn read_extxyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
     parse_extxyz_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {path_}"))
 }
@@ -29,7 +35,7 @@ pub fn is_extxyz(path: &Path) -> Result<bool> {
 
 #[cfg(test)]
 fn parse_extxyz(content: &str) -> Result<Trajectory> {
-    parse_extxyz_lines(content.lines().map(|l| Ok(l.to_string())))
+    Ok(parse_extxyz_lines(content.lines().map(|l| Ok(l.to_string())))?.0)
 }
 
 /// Parses extended XYZ from its lines, one frame at a time (review C-1: the whole
@@ -37,7 +43,7 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 ///
 /// A read error ends the line stream and is reported in place of whatever the parse
 /// made of the shortened file — a "missing atom line" would name the wrong problem.
-fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<Trajectory> {
+fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, Vec<String>)> {
     let read_error = std::cell::RefCell::new(None);
     let lines = lines.map_while(|l| match l {
         Ok(l) => Some(l),
@@ -50,19 +56,25 @@ fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<Tra
     }
 }
 
-fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
+fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<String>)> {
     // 带上行号（从 1 起），解析失败时点名是文件哪一行
     let mut lines = lines.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
+    let mut warnings = Vec::new();
+    // 文件在末帧中途结束 = MD 写到一半被中断：丢掉末帧，前面的帧照常可用（同 dump reader）。
+    // 中间帧不完整时，下一帧的原子数行会被当成原子行、按列数报错，走不到这里
+    let truncated = |k: usize, start: usize, why: String| {
+        format!("warning: last frame (frame {k}, line {start}) is incomplete and was dropped: {why}")
+    };
 
     loop {
         // Skip blank lines between frames
         while lines.peek().map(|(_, l)| l.trim().is_empty()).unwrap_or(false) {
             lines.next();
         }
-        let count_line = match lines.next() {
+        let (count_no, count_line) = match lines.next() {
             None => break,
-            Some((_, l)) => l,
+            Some(l) => l,
         };
         let count_line = count_line.trim();
         if count_line.is_empty() { break; }
@@ -70,8 +82,11 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
         let n: usize = count_line.parse()
             .with_context(|| format!("expected atom count, got {count_line:?}"))?;
 
-        let (comment_no, comment) = lines.next().context("missing comment line")?;
         let frame_no = traj.n_frames();
+        let Some((comment_no, comment)) = lines.next() else {
+            warnings.push(truncated(frame_no, count_no, "no comment line".into()));
+            break;
+        };
         let kv = parse_comment(&comment)
             .with_context(|| format!("frame {frame_no} (line {comment_no}): bad comment line"))?;
 
@@ -137,11 +152,21 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
         let mut all_forces: Vec<Vector3<f64>> = Vec::new();
         let mut all_vels: Vec<Vector3<f64>> = Vec::new();
 
+        let mut complete = true;
         for i in 0..n {
-            let (line_no, line) = lines.next()
-                .with_context(|| format!("missing atom line {i}"))?;
+            let Some((line_no, line)) = lines.next() else {
+                warnings.push(truncated(frame_no, count_no, format!("{i} of {n} atoms")));
+                complete = false;
+                break;
+            };
             let cols: Vec<&str> = line.split_whitespace().collect();
             if cols.len() < ncols {
+                // 文件最后一行只写了一半，同样是截断
+                if lines.peek().is_none() {
+                    warnings.push(truncated(frame_no, count_no, format!("{i} of {n} atoms")));
+                    complete = false;
+                    break;
+                }
                 bail!("atom line {i}: expected {ncols} columns, got {}", cols.len());
             }
             // 解析失败一律报错：补 0 会冒充「测到了 0」，转成 None 会冒充「没有这一列」
@@ -200,6 +225,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
             }
         }
 
+        if !complete { break; }
         if all_forces.len() == n { frame.set_forces(Some(all_forces))?; }
         if all_vels.len() == n { frame.set_velocities(Some(all_vels))?; }
 
@@ -211,7 +237,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<Trajectory> {
         traj.add_frame(frame);
     }
 
-    Ok(traj)
+    Ok((traj, warnings))
 }
 
 // ─── Comment line parser ──────────────────────────────────────────────────────
@@ -748,4 +774,24 @@ Si 0.0 0.0 0.0
         }
     }
 
+    /// MD cut off mid-frame: the earlier frames stay, the cut one is dropped and named.
+    /// Used to reject the whole file, unlike the dump reader.
+    #[test]
+    fn test_truncated_last_frame_is_dropped() {
+        let head = "2\nProperties=species:S:1:pos:R:3\nC 0 0 0\nC 1.4 0 0\n";
+        for (what, tail) in [
+            ("atom lines", "2\nProperties=species:S:1:pos:R:3\nC 0 0 0.1\n"),
+            ("half a line", "2\nProperties=species:S:1:pos:R:3\nC 0 0 0.1\nC 1.4"),
+            ("comment line", "2\n"),
+        ] {
+            let lines = format!("{head}{tail}");
+            let (traj, warnings) = parse_extxyz_lines(lines.lines().map(|l| Ok(l.to_string()))).unwrap();
+            assert_eq!(traj.n_frames(), 1, "{what}");
+            assert_eq!(warnings.len(), 1, "{what}");
+            assert!(warnings[0].contains("frame 1, line 5"), "{what}: {}", warnings[0]);
+        }
+        // 中间帧不完整仍是报错
+        let bad = format!("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\n{head}");
+        assert!(parse_extxyz(&bad).is_err());
+    }
 }

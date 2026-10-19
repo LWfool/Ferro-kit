@@ -1,23 +1,34 @@
 use std::path::Path;
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
+use ferro_core::data::elements::by_number;
 
 /// 读取 XYZ 文件，支持多帧（多个连续 block）。
 pub fn read_xyz(path: &Path) -> Result<Trajectory> {
-    let mut lines = super::util::text_lines(path)?;
-    let mut traj = Trajectory::new();
+    Ok(read_xyz_with_warnings(path)?.0)
+}
 
-    loop {
+/// [`read_xyz`], returning what the reader noticed: an incomplete last frame is
+/// dropped and named, as the LAMMPS dump reader does.
+pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
+    let mut lines = super::util::text_lines(path)?.enumerate().map(|(i, l)| (i + 1, l)).peekable();
+    let mut traj = Trajectory::new();
+    let mut warnings = Vec::new();
+    // 文件在末帧中途结束 = MD 写到一半被中断：丢掉末帧，前面的帧照常可用（同 dump reader）
+    let truncated = |k: usize, start: usize, why: String| {
+        format!("warning: last frame (frame {k}, line {start}) is incomplete and was dropped: {why}")
+    };
+
+    'frames: loop {
         // 寻找下一个帧的原子数行，跳过空行
-        let count_line = loop {
+        let (count_no, count_line) = loop {
             match lines.next() {
-                None => return Ok(traj),
-                Some(l) => {
-                    let l = l.context("read error")?;
-                    let trimmed = l.trim().to_string();
+                None => break 'frames,
+                Some((no, l)) => {
+                    let trimmed = l.context("read error")?.trim().to_string();
                     if !trimmed.is_empty() {
-                        break trimmed;
+                        break (no, trimmed);
                     }
                 }
             }
@@ -27,28 +38,40 @@ pub fn read_xyz(path: &Path) -> Result<Trajectory> {
             .parse()
             .context(format!("expected atom count, got: {count_line:?}"))?;
 
-        let comment = lines
-            .next()
-            .context("missing comment line")?
-            .context("read error")?;
+        let k = traj.n_frames();
+        let Some((_, comment)) = lines.next() else {
+            warnings.push(truncated(k, count_no, "no comment line".into()));
+            break;
+        };
+        let comment = comment.context("read error")?;
 
         let mut frame = Frame::new();
         for i in 0..n_atoms {
-            let line = lines
-                .next()
-                .with_context(|| format!("missing atom line {}", i + 1))?
-                .context("read error")?;
+            let Some((line_no, line)) = lines.next() else {
+                warnings.push(truncated(k, count_no, format!("{i} of {n_atoms} atoms")));
+                break 'frames;
+            };
+            let line = line.context("read error")?;
             let parts: Vec<&str> = line.split_whitespace().collect();
-            anyhow::ensure!(
-                parts.len() >= 4,
-                "atom line {}: expected element + 3 coords, got {:?}",
-                i + 1,
-                line
-            );
+            if parts.len() < 4 {
+                // 文件最后一行只写了一半，同样是截断
+                if lines.peek().is_none() {
+                    warnings.push(truncated(k, count_no, format!("{i} of {n_atoms} atoms")));
+                    break 'frames;
+                }
+                bail!("line {line_no}: expected element + 3 coords, got {line:?}");
+            }
             let x: f64 = parts[1].parse().context("invalid x")?;
             let y: f64 = parts[2].parse().context("invalid y")?;
             let z: f64 = parts[3].parse().context("invalid z")?;
-            frame.add_atom(Atom::new(parts[0], Vector3::new(x, y, z)));
+            // 首列是原子序数时转成元素符号（同 ASE）；以前 `8` 原样当元素名
+            let element = match parts[0].parse::<u8>() {
+                Ok(z) => by_number(z)
+                    .with_context(|| format!("line {line_no}: no element has atomic number {z}"))?
+                    .symbol.to_string(),
+                Err(_) => parts[0].to_string(),
+            };
+            frame.add_atom(Atom::new(element, Vector3::new(x, y, z)));
         }
 
         if traj.n_frames() == 0 {
@@ -60,6 +83,7 @@ pub fn read_xyz(path: &Path) -> Result<Trajectory> {
 
         traj.add_frame(frame);
     }
+    Ok((traj, warnings))
 }
 
 #[cfg(test)]
@@ -106,5 +130,35 @@ C  1.4  0.0  0.1
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(traj.frame(0).unwrap().n_atoms(), 2);
         assert_eq!(traj.frame(1).unwrap().n_atoms(), 2);
+    }
+
+    /// MD cut off mid-frame: the earlier frames stay, the cut one is dropped and named.
+    #[test]
+    fn test_truncated_last_frame_is_dropped() {
+        for (name, tail) in [
+            ("trunc_atoms.xyz", "2\nframe 1\nC 0 0 0.1\n"),       // 1 of 2 atom lines
+            ("trunc_half.xyz", "2\nframe 1\nC 0 0 0.1\nC 1.4"),   // last line cut
+            ("trunc_comment.xyz", "2\n"),                         // only the count line
+        ] {
+            let path = write_tmp(name, &format!("2\nframe 0\nC 0 0 0\nC 1.4 0 0\n{tail}"));
+            let (traj, warnings) = read_xyz_with_warnings(&path).unwrap();
+            assert_eq!(traj.n_frames(), 1, "{name}");
+            assert_eq!(warnings.len(), 1, "{name}");
+            assert!(warnings[0].contains("frame 1, line 5"), "{name}: {}", warnings[0]);
+        }
+        // 中间帧不完整仍是报错
+        let path = write_tmp("trunc_middle.xyz", "2\nf0\nC 0 0 0\n2\nf1\nC 0 0 0\nC 1 0 0\n");
+        assert!(read_xyz(&path).is_err());
+    }
+
+    /// An atomic number in the first column is an element, as ASE reads it.
+    #[test]
+    fn test_atomic_number_column() {
+        let path = write_tmp("znum.xyz", "2\n\n8 0 0 0\n1 0.96 0 0\n");
+        let frame = read_xyz(&path).unwrap().frames.remove(0);
+        assert_eq!(frame.atom(0).element, "O");
+        assert_eq!(frame.atom(1).element, "H");
+        let path = write_tmp("znum_bad.xyz", "1\n\n200 0 0 0\n");
+        assert!(read_xyz(&path).unwrap_err().to_string().contains("atomic number 200"));
     }
 }
