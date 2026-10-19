@@ -252,7 +252,7 @@ pub fn stack<T>(
 
     let mut out = Vec::with_capacity(order.len());
     for (name, parts) in order.into_iter().zip(groups) {
-        let merged = Table::concat_union("file", parts).map_err(|e| anyhow::anyhow!(e))?;
+        let merged = Table::concat_union("file", parts)?;
         out.push((name, merged));
     }
     Ok(out)

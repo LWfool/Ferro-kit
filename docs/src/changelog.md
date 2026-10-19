@@ -30,6 +30,8 @@ command line alike; regenerate it rather than migrating it.
   radius_of_gyration_trajectory}` are removed. Nothing called them; they took no minimum image
   and did not unwrap, so `mean_squared_displacement` sat next to `calc_msd` giving a different
   answer. Use `calc_msd`, and `Cell::minimum_image` for distances.
+- Library: `Table::validate` and `Table::concat_union` return `ferro_core::Result`
+  (`ChemError::ValidationError`) instead of `Result<_, String>`.
 - The automatic first-shell cutoff (`net --A-B=auto`, `dataset filter --al6 auto`) smooths g(r)
   over the documented 0.10 Å; it was 0.14 Å (7 bins of 0.02 Å). Cutoffs on a shallow minimum
   move by a bin or two: on the test glasses Zn-O 2.631 → 2.651 and 2.611 → 2.571 Å, Al-O

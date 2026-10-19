@@ -1007,8 +1007,7 @@ fn run_filter(args: &FilterCmd) -> Result<usize> {
     if let Some(out) = &args.output {
         let mut tables = Vec::with_capacity(order.len());
         for (name, parts) in order.into_iter().zip(groups) {
-            let merged = ferro_core::Table::concat_union("system", parts)
-                .map_err(|e| anyhow::anyhow!(e))?;
+            let merged = ferro_core::Table::concat_union("system", parts)?;
             tables.push((name, merged));
         }
         let outp = crate::batch::Output {

@@ -9,6 +9,7 @@
 //! Shape conventions live with the producers, not here. A `Table` is just an ordered
 //! list of equal-length named columns plus a free-form metadata block.
 
+use crate::error::{ChemError, Result};
 use std::fmt::Write as _;
 
 /// One column of a [`Table`].
@@ -98,15 +99,15 @@ impl Table {
     ///
     /// Writers call this before touching the filesystem, so a ragged table fails loudly
     /// instead of producing a half-written file.
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<()> {
         let n = self.n_rows();
         for (name, col) in &self.cols {
             if col.len() != n {
-                return Err(format!(
+                return Err(ChemError::ValidationError(format!(
                     "column '{name}' has {} rows, expected {n} (from column '{}')",
                     col.len(),
                     self.cols[0].0
-                ));
+                )));
             }
         }
         Ok(())
@@ -122,7 +123,7 @@ impl Table {
     ///
     /// Errors if two parts disagree on a column's kind, which would otherwise write
     /// text into a numeric column.
-    pub fn concat_union(label: &str, parts: Vec<(String, Table)>) -> Result<Table, String> {
+    pub fn concat_union(label: &str, parts: Vec<(String, Table)>) -> Result<Table> {
         let mut names: Vec<String> = Vec::new();
         let mut is_text: Vec<bool> = Vec::new();
         for (_, t) in &parts {
@@ -130,7 +131,9 @@ impl Table {
                 let text = matches!(col, Column::Text(_));
                 match names.iter().position(|n| n == name) {
                     Some(i) if is_text[i] != text => {
-                        return Err(format!("column '{name}' is numeric in one input and text in another"));
+                        return Err(ChemError::ValidationError(format!(
+                            "column '{name}' is numeric in one input and text in another"
+                        )));
                     }
                     Some(_) => {}
                     None => {
@@ -241,6 +244,8 @@ mod tests {
         let mut t = sample();
         t.push_num("extra", vec![1.0]);
         let err = t.validate().unwrap_err();
+        assert!(matches!(err, ChemError::ValidationError(_)), "{err:?}");
+        let err = err.to_string();
         assert!(err.contains("'extra'"), "error should name the bad column: {err}");
     }
 
@@ -324,6 +329,8 @@ mod tests {
         let mut b = Table::new();
         b.push_text("x", vec!["one".into()]);
         let err = Table::concat_union("file", vec![("a".into(), a), ("b".into(), b)]).unwrap_err();
+        assert!(matches!(err, ChemError::ValidationError(_)), "{err:?}");
+        let err = err.to_string();
         assert!(err.contains("'x'"), "{err}");
     }
 
