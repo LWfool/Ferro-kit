@@ -527,6 +527,15 @@ def run_linkmap(frames, ctx, args):
 
 RUN = {"qn": run_qn, "cn": run_cn, "bridge": run_bridge, "linkmap": run_linkmap}
 
+# Columns each kind reads; checked up front so the wrong table names itself
+# instead of surfacing as a bare KeyError deep inside a plot
+NEEDS = {
+    "qn": {"file", "former", "qn", "count"},
+    "cn": {"file", "element", "cn", "count"},
+    "bridge": {"file", "ligand", "elem_a", "elem_b", "count"},
+    "linkmap": {"file", "ligand", "elem_a", "elem_b", "qn_a", "qn_b", "cn_a", "cn_b", "count"},
+}
+
 
 def main():
     ap = argparse.ArgumentParser(description="ferro net 发表级绘图")
@@ -542,6 +551,11 @@ def main():
     fp.use_style()
     frames = [(p, fp.read(p)) for p in expand(args.inputs)]
     print(f"Inputs: {len(frames)} file(s)")
+    for p, df in frames:
+        missing = NEEDS[args.kind] - set(df.columns)
+        if missing:
+            raise SystemExit(f"{p}: '{args.kind}' needs column(s) {', '.join(sorted(missing))}; "
+                             f"is this the right ferro net table?")
 
     # 组名只在多 csv 并排时显示，单 csv 时它退回整个 stem，登记进去只会弄脏 labels.csv
     groups = [fp.suffix_of(p) for p, _ in frames] if len(frames) > 1 else []
