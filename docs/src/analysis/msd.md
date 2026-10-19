@@ -27,7 +27,8 @@ over **all** of them:
 $$\text{MSD}(m) = \frac{1}{N_\text{atoms}} \sum_j \frac{1}{N-m} \sum_{t=0}^{N-1-m} \left|\mathbf{r}_j(t+m) - \mathbf{r}_j(t)\right|^2$$
 
 So short lags are averaged over almost $N$ origins and the longest lag over the fewest.  This is the
-"windowed" MSD of MDAnalysis and `gmx msd`.  There is no origin stride: every frame is an origin.
+"windowed" MSD of MDAnalysis.  There is no origin stride: every frame is an origin (`gmx msd`, by
+contrast, starts a new origin only every `-trestart`, 10 ps by default).
 
 ### Longest lag: `--max-lag`, default $N/2$
 
@@ -354,4 +355,4 @@ Up to 0.3.2 ferro followed `code1/msd.c`, and results are not comparable:
 - Cost: $O(N_\text{atoms}\,N\log N)$ for the FFT plus $O(N_\text{atoms}\,N)$ for the unwrap.  2004 atoms ×
   101 frames runs in about 0.05 s.
 - The FFT autocorrelation lives in `ferro-analysis/src/md/correlate.rs` (crate `rustfft`), shared with
-  the other time-correlation functions as they move over.
+  `vacf`, `rotcorr` and `bondlife`.

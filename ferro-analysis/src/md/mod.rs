@@ -6,6 +6,13 @@
 //!   - [`msd`]      — mean squared displacement (all origins via FFT, TOR unwrapping)
 //!   - [`angle`]    — bond angle distribution
 //!   - [`vanhove`]  — van Hove self-correlation function Gs(r, τ)
+//!   - [`vacf`]     — velocity autocorrelation and Green–Kubo diffusion
+//!   - [`rotcorr`]  — rotational autocorrelation of a bond / plane vector
+//!   - [`bondlife`] — intermittent and continuous bond lifetimes
+//!   - [`shell`]    — first-shell cutoffs from the first minimum of g(r)
+//!   - [`correlate`] — FFT autocorrelation shared by msd, vacf, rotcorr and bondlife
+//!   - [`scattering_data`] — X-ray form factors and neutron lengths for S(q)
+//!   - `cube_*`     — spatial maps written as Gaussian cube files
 //!
 pub mod gr;
 pub mod sq;

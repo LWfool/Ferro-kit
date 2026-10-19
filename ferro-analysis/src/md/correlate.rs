@@ -4,7 +4,7 @@
 //! zero-pad to at least `2N` so the circular correlation of the FFT equals the
 //! linear one, transform, take `|X|²`, transform back.
 //!
-//! Used by `msd`, `vacf` and `rotcorr`.
+//! Used by `msd`, `vacf`, `rotcorr` and `bondlife`.
 
 use std::sync::Arc;
 
