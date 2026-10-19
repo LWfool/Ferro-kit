@@ -14,6 +14,7 @@ use anyhow::{bail, Context, Result};
 ///
 /// `Csv` is the only format the analysis binaries emit. The enum exists so adding a
 /// second container is a new match arm rather than a new call path through the CLI.
+/// A one-variant enum was raised in the 2026-10-11 review; kept (user's call, 2026-10-19).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TableFormat {
     #[default]
