@@ -85,10 +85,22 @@ pub(crate) fn holds_a_bin(range: &str, lo: f64, hi: f64, step: &str, w: f64) -> 
 /// wrong. The tightest frame is reported so the user learns the usable limit.
 ///
 /// gr does not pass a cutoff: it clamps `r_max` to the bound, as the manual says.
+///
+/// Frames with a cell and frames without one in the same trajectory are an error: it
+/// is not one system. msd and vanhove used to refuse it on their own while rotcorr and
+/// bondlife switched to the plain Cartesian difference frame by frame.
 pub(crate) fn periodic_cells(
     traj: &Trajectory,
     cutoff: Option<(&str, f64)>,
 ) -> ferro_core::Result<Vec<Option<PeriodicCell>>> {
+    let with = traj.frames.iter().position(|f| f.cell.is_some());
+    let without = traj.frames.iter().position(|f| f.cell.is_none());
+    if let (Some(a), Some(b)) = (with, without) {
+        fail(format!(
+            "frame {a} has a cell and frame {b} has none: every frame of a trajectory must be \
+             periodic, or none"
+        ))?;
+    }
     let cells = traj.frames.iter().enumerate().map(|(i, f)| {
         f.cell.as_ref().map(|c| PeriodicCell::new(c, f.pbc).map_err(|e| match e {
             ChemError::ValidationError(m) => ChemError::ValidationError(format!("frame {i}: {m}")),
@@ -365,6 +377,29 @@ mod tests {
         for (who, r) in res {
             let msg = r.err().map(|e| e.to_string()).unwrap_or_default();
             assert!(msg.contains("steps 10 and 10"), "{who}: {msg:?}");
+        }
+    }
+
+    /// A cell in some frames only: rotcorr and bondlife used to switch to the plain
+    /// Cartesian difference for the cell-less frames without a word.
+    #[test]
+    fn frames_with_and_without_a_cell_are_refused() {
+        use crate::md::*;
+        use ferro_core::Cell;
+        let mut traj = singular_traj();
+        let good = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+        traj.frames[0].cell = Some(good.clone());
+        traj.frames[1].cell = Some(good);
+        traj.frames[2].cell = None;
+        traj.frames[2].pbc = [false; 3];
+        let rot = calc_rotcorr(&traj, &RotCorrParams {
+            center: "P".into(), neighbor: "O".into(), r_cut: 2.0, dt: 1.0, ..Default::default()
+        });
+        let bond = calc_bondlife(&traj, &BondLifeParams {
+            center: "P".into(), neighbor: "O".into(), r_bond: 2.0, dt: 1.0, ..Default::default()
+        });
+        for err in [rot.unwrap_err().to_string(), bond.unwrap_err().to_string()] {
+            assert!(err.contains("frame 0 has a cell and frame 2 has none"), "{err}");
         }
     }
 }
