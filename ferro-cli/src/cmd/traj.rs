@@ -686,8 +686,9 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     let (results, failures, out) = batch::drive(&c.common, Some(label), |_, traj| Ok(calc_vanhove(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &VanHoveResult| Ok(r.to_tables()))?;
-    // tau 逐文件相同,但 time = tau*dt 与 origins 值得横向看一眼；
-    // outside_fraction 是落在 [r_min, r_max) 外、没画进 p_r 的位移比例，逐文件不同
+    // tau differs per file under the N/2 default (and time = tau*dt with it), as do
+    // origins; outside_fraction is the share of displacements outside [r_min, r_max)
+    // that never made it into p_r
     let mut summary = Summary::new(&["tau_frames", "time_fs", "origins", "outside_fraction"]);
     for (input, r) in &results {
         summary.ok(

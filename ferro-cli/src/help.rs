@@ -484,7 +484,7 @@ pub fn print_vanhove() {
         r#"ferro traj vanhove — Van Hove Self-Correlation Function
 
   Gs(r, τ), the distribution of atomic displacements over a fixed time lag τ,
-  written as the radial density P(r) = 4πr²·Gs [1/Å], ∫P dr = 1.
+  written as the radial density P(r) = 4πr²·Gs [1/Å], ∫P dr = 1 − outside_fraction.
 
 Parameters:
       --tau       INT     Lag time in frames                             [N/2]

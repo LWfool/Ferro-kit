@@ -92,7 +92,7 @@ pub struct VanHoveResult {
     /// Number of time origins averaged
     pub n_origins: usize,
     pub params: VanHoveParams,
-    /// Element types included, sorted by atomic number
+    /// Element types included, sorted alphabetically
     pub elements: Vec<String>,
 }
 
