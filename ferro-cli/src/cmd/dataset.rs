@@ -3,9 +3,9 @@
 //! Three steps, deliberately separate commands rather than one pipeline flag,
 //! because the first one is expensive and its output is what gets backed up:
 //!
-//! - `collect` — AIMD output → DeePMD system directories (this file)
-//! - `filter`  — quality selection on an existing dataset (not implemented yet)
-//! - `merge`   — combine same-composition datasets, resize sets (not yet)
+//! - `collect` — AIMD output → DeePMD system directories
+//! - `filter`  — quality selection on an existing dataset
+//! - `merge`   — combine same-composition datasets, resize sets
 //!
 //! `collect` writes one system directory per input DIRECTORY: the `.out` files
 //! sitting together are the restart segments of one run, so putting them back

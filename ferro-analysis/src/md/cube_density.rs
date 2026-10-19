@@ -9,10 +9,8 @@
 //! Output is a [`CubeData`] that can be written directly via `ferro_io::write_cube`
 //! to produce a Gaussian cube file for visualisation in VESTA, VMD, etc.
 //!
-//! **CLI parameters** (for future ferro-cli integration):
-//!   `--elements Li,Na`              — include only specified elements (default: all)
-//!   `--grid 50 50 50`               — grid dimensions (default: 50×50×50)
-//!   `--mode density|velocity|force` — accumulation mode (default: density)
+//! **CLI**: `ferro map density|velocity|force` picks the mode; `--nx --ny --nz` set the
+//! grid (default 50 each) and `--elements Li,Na` the atoms (default: all).
 //!
 //! Parallelism: per-frame `par_iter`; each frame independently produces (count, value_sum) arrays, then reduced.
 
@@ -39,12 +37,12 @@ pub enum CubeMode {
 /// Parameters for spatial cube density calculation.
 ///
 /// CLI mapping:
-/// - `nx/ny/nz` ← `--grid nx ny nz`
+/// - `nx/ny/nz` ← `--nx --ny --nz`
 /// - `elements` ← `--elements Li,Na`
-/// - `mode`     ← `--mode density|velocity|force`
+/// - `mode`     ← the subcommand, `map density|velocity|force`
 #[derive(Debug, Clone)]
 pub struct CubeDensityParams {
-    /// Grid divisions along a axis (CLI: `--grid nx ...`)
+    /// Grid divisions along a axis (CLI: `--nx`)
     pub nx: usize,
     /// Grid divisions along b axis
     pub ny: usize,

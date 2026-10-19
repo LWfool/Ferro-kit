@@ -1,7 +1,7 @@
-//! `ferro traj` — the seven trajectory analyses that share one output pipeline.
+//! `ferro traj` — the eight trajectory analyses that share one output pipeline.
 //!
 //! Grouped together because they produce the **same product**: a long- or wide-format
-//! CSV with a `file` column plus an optional quick-look PNG. The old `fe-traj` /
+//! CSV with a `file` column. The old `fe-traj` /
 //! `fe-corr` split tried to separate "structural" from "dynamic", but `msd` is a time
 //! correlation and sat on the structural side, so the line never held.
 //!
