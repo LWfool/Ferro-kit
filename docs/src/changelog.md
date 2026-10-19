@@ -43,6 +43,12 @@ command line alike; regenerate it rather than migrating it.
   default `dt` to NaN, and `validate` / `calc_*` refuse it as "dt must be given"; the default of
   1.0 fs used to compute silently. The CLI and Python already required it.
 
+### Command line
+
+- A command typed with options but no input (`ferro traj gr --dr 0.1`, `ferro net --P-O=2.3`)
+  is an error and exits 1; it used to print the help page and exit 0, so a script went on to its
+  next step. The command name alone (`ferro traj gr`) still prints the page.
+
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 
 - The bin count is the range over the step **rounded up**, and the width used is the range over

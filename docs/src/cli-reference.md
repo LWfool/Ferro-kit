@@ -18,7 +18,8 @@ ferro doc   <topic>                                            → the manual (c
 The leaf commands `convert` / `info` / `bader` work the same way: without `-i` they print their own page.
 
 Two kinds of help coexist and each has its use: **the bare command** gives the rich page (format lists,
-output structure, warning notes), **`-h`** gives clap's short parameter table.
+output structure, warning notes), **`-h`** gives clap's short parameter table. Options given without
+an input (`ferro traj gr --dr 0.1`) are an error, not a request for the page: the command exits non-zero.
 
 | Old command (before 0.2.0) | New command |
 |---|---|
