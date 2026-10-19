@@ -7,7 +7,6 @@
 pub mod bader;
 pub mod convert;
 pub mod dataset;
-pub mod inspect;
 pub mod info;
 pub mod map;
 pub mod net;
