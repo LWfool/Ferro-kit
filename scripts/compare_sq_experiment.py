@@ -18,8 +18,9 @@ S(q) 定义里的 +1；ferro 与实验数据都是 q→∞ 趋于 1 的标准形
 本轨迹按 id 排序且帧间顺序完全稳定（5003/5003），bug 不触发，因此是一次干净的三方
 对照。脚本每次运行都会做这项自检并把结论打印出来。
 
-**0.2.0 的产物形状**（详见 ferrocmp.py 的模块 docstring）：the batch tag is `-s`
-and ferro runs with outdir as its working directory;sq 是宽表，按 `total_xrd` / `total_neutron` 取列。
+**Product shape** (see the ferrocmp.py module docstring): the batch tag is `-s` and
+ferro runs with outdir as its working directory; sq is a wide table, read by the
+`total_xrd` / `total_neutron` columns.
 
 用法:
     python compare_sq_experiment.py [--traj FILE] [--outdir DIR] [--raw]
