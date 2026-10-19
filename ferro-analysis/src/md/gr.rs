@@ -405,7 +405,6 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
-/// Write header lines shared by the `.dat` output.
 impl GrResult {
     /// Projects the result into the long-format table the writers consume.
     ///

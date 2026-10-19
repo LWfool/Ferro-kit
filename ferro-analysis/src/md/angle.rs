@@ -334,9 +334,6 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
-/// Write bond angle distribution to a tab-separated text file (`.angle`).
-///
-/// Each column (after the angle axis) contains the raw count histogram for one
 impl AngleResult {
     /// Projects the histogram into the long-format table the writers consume.
     ///
