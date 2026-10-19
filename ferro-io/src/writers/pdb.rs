@@ -3,7 +3,7 @@ use ferro_core::{Cell, Trajectory};
 use nalgebra::Matrix3;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 /// 将轨迹写入 PDB 文件。多帧使用 MODEL/ENDMDL 记录。
 pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
@@ -46,11 +46,17 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
         }
         for (i, atom) in frame.atoms().enumerate() {
             let p = to_std * atom.position;
+            // 坐标列是 8 位宽 3 位小数：超出 -999.999..9999.999 就挤进下一列，读回整行错位
+            if let Some(v) = p.iter().find(|v| !(-999.9995..9999.9995).contains(*v)) {
+                bail!("frame {}, atom {}: coordinate {v:.3} Å does not fit PDB's 8-column field \
+                       (-999.999 to 9999.999)", model_idx, i + 1);
+            }
             writeln!(
                 writer,
                 "{:<6}{:>5} {:^4} {:3} {:1}{:>4}    {:>8.3}{:>8.3}{:>8.3}{:>6.2}{:>6.2}          {:>2}",
                 "ATOM",
-                i + 1,
+                // 序号列 5 位：超过 99999 循环（同 ASE 的 MAXNUM），否则挤歪后面每一列
+                (i + 1) % 100_000,
                 atom.element,
                 "UNK",
                 "A",
@@ -160,5 +166,34 @@ mod tests {
             let got = c.cartesian_to_fractional(atom.position).unwrap();
             assert!((got - s).norm() < 1e-3, "读回分数坐标 {got:?}，应为 {s:?}");
         }
+    }
+
+    /// A coordinate wider than the 8-column field used to push every later column over.
+    #[test]
+    fn test_coordinate_out_of_field_is_an_error() {
+        let path = std::env::temp_dir().join("ferro_pdb_wide.pdb");
+        let one = |x: f64| {
+            let mut f = Frame::new();
+            f.add_atom(Atom::new("O", Vector3::new(x, 0.0, -999.999)));
+            write_pdb(&Trajectory::from_frame(f), &path)
+        };
+        one(9999.999).unwrap();
+        let err = one(12345.0).unwrap_err().to_string();
+        assert!(err.contains("atom 1") && err.contains("12345.000"), "{err}");
+        assert!(one(-1000.0).is_err());
+    }
+
+    /// Serial numbers wrap past 99999 (as ASE does) instead of widening the column.
+    #[test]
+    fn test_serial_wraps_at_100000() {
+        let mut f = Frame::new();
+        for _ in 0..100_001 { f.add_atom(Atom::new("H", Vector3::zeros())); }
+        let path = std::env::temp_dir().join("ferro_pdb_serial.pdb");
+        write_pdb(&Trajectory::from_frame(f), &path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let last = text.lines().rfind(|l| l.starts_with("ATOM")).unwrap();
+        assert_eq!(&last[6..11], "    1");
+        assert!(text.lines().filter(|l| l.starts_with("ATOM")).all(|l| l.len() == 78));
+        assert_eq!(read_pdb(&path).unwrap().frames[0].n_atoms(), 100_001);
     }
 }

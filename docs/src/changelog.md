@@ -20,6 +20,9 @@ command line alike; regenerate it rather than migrating it.
   values a line, as Gaussian's cubegen does. The values are unchanged; only the line breaks
   move. The data used to run on six a line, so a column spilled across lines whenever `nz`
   was not a multiple of 6, which line-oriented readers misplace.
+- PDB: a coordinate outside −999.999 … 9999.999 Å (wider than the 8-column field) is an error,
+  and atom serial numbers wrap past 99999 as ASE writes them; both used to shift every later
+  column of the line.
 
 ### Readers: fewer silent results
 
