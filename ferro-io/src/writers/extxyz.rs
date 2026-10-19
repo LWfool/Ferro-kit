@@ -61,8 +61,12 @@ pub fn write_extxyz_with(
         let mut prop_spec = "species:S:1:pos:R:3".to_string();
         if frame.forces().is_some() { prop_spec.push_str(":forces:R:3"); }
         // 速度写成 ASE 认的 momenta（审查 A-2）：ASE 与 GPUMD 都不认 velocities 列。
-        // 带上换算所用的 masses，ASE 的 get_velocities 与本仓 reader 都按它除回，往返无损
-        if frame.velocities().is_some() { prop_spec.push_str(":masses:R:1:momenta:R:3"); }
+        // 带上换算所用的 masses，ASE 的 get_velocities 与本仓 reader 都按它除回，往返无损。
+        // 没有速度但有原子带显式质量（同位素、dump 的 mass 列）时也写 masses，否则转出即丢；
+        // 没设质量的原子写元素表质量，列总是写满
+        let has_mass = frame.velocities().is_some() || frame.atoms().any(|a| a.mass.is_some());
+        if has_mass { prop_spec.push_str(":masses:R:1"); }
+        if frame.velocities().is_some() { prop_spec.push_str(":momenta:R:3"); }
         let has_charge = frame.atoms().any(|a| a.charge.is_some());
         if has_charge { prop_spec.push_str(":charges:R:1"); }
         let has_magmom = frame.atoms().any(|a| a.magmom.is_some());
@@ -122,11 +126,14 @@ pub fn write_extxyz_with(
             if let Some(f) = forces.get(i) {
                 line.push_str(&format!(" {} {} {}", fmt(f.x), fmt(f.y), fmt(f.z)));
             }
+            let m = atom.effective_mass();
+            if has_mass {
+                line.push_str(&format!(" {}", fmt(m)));
+            }
             if let Some(v) = vels.get(i) {
                 // Å/fs → amu·Å/(ASE 时间)
-                let m = atom.effective_mass();
                 let p = v * (m / ASE_FS);
-                line.push_str(&format!(" {} {} {} {}", fmt(m), fmt(p.x), fmt(p.y), fmt(p.z)));
+                line.push_str(&format!(" {} {} {}", fmt(p.x), fmt(p.y), fmt(p.z)));
             }
             if has_charge {
                 line.push_str(&format!(" {}", fmt(atom.charge.unwrap_or(0.0))));
@@ -318,4 +325,25 @@ mod tests {
         assert!(format!("{e:#}").contains("no cell"), "{e:#}");
     }
 
+    /// An explicit mass (deuterium here) used to be written only alongside velocities,
+    /// so converting a structure without them lost it.
+    #[test]
+    fn test_explicit_mass_survives_without_velocities() {
+        let mut frame = Frame::new();
+        let mut d = Atom::new("H", Vector3::zeros());
+        d.mass = Some(2.014);
+        frame.add_atom(d);
+        frame.add_atom(Atom::new("O", Vector3::new(0.96, 0.0, 0.0)));
+        let path = std::env::temp_dir().join("ferro_extxyz_mass.extxyz");
+        write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
+        let back = read_extxyz(&path).unwrap().frames.remove(0);
+        assert_eq!(back.atom(0).mass, Some(2.014));
+        // 没设质量的原子写元素表质量
+        assert!((back.atom(1).mass.unwrap() - 15.999).abs() < 1e-3);
+        // 都没设质量、也没有速度时不写这一列
+        let mut plain = Frame::new();
+        plain.add_atom(Atom::new("O", Vector3::zeros()));
+        write_extxyz(&Trajectory::from_frame(plain), &path).unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("masses"));
+    }
 }

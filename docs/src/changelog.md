@@ -23,6 +23,10 @@ command line alike; regenerate it rather than migrating it.
 - PDB: a coordinate outside −999.999 … 9999.999 Å (wider than the 8-column field) is an error,
   and atom serial numbers wrap past 99999 as ASE writes them; both used to shift every later
   column of the line.
+- Extended XYZ: a `masses` column is written whenever an atom carries an explicit mass (an
+  isotope, a LAMMPS data `Masses` entry, a dump `mass` column), not only alongside velocities;
+  atoms without one get the element's mass. Converting a LAMMPS data file to extended XYZ
+  therefore now carries its masses; they used to be dropped.
 
 ### Readers: fewer silent results
 
