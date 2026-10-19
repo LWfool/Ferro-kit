@@ -29,7 +29,8 @@
   D3 已做）；已随 10-17 八步修掉的条目（chg-sdf `--qn` 默认值、traj 总览漏 bondlife、`is_lammps_data` /
   `Format`、`classify_trajectory`、`find_clusters` 的 MIC、近邻 O(N²) 与 `minimum_image` 求逆、`CellList`）。
   10-03 口径里 CP2K / QE 的生成口径（TTF slab、force/md 不请求应力、PBE0 用 COULOMB、bands 用 gamma、MD 步长）
-  要对照 `ferro.jobs` 查一遍是否重犯，重犯的转为待修
+  已对照 `ferro.jobs` 核过，**无一重犯**：非 3D 周期报错（`base.py:194`）、三任务模板都写 `STRESS_TENSOR`、`--timestep`
+  对 QE 换算成 `dt`、模板无 HFX、无 bands / nscf 任务
 - **这次不做**：R1–R6 逐函数审计（09-27）、code1 / code2 引用扫描（留在低优先级）
 
 **用户定（2026-10-19）**：
@@ -55,7 +56,7 @@
 
 | 批 | 范围 |
 |---|---|
-| 0 | 复核与归档（本节） |
+| 0 ✅ | 复核与归档（本节；`e8e8ded`） |
 | 1 | io 读侧：extxyz 电荷列别名 / `count`、PDB ENDMDL 与 `CRYST1 1 1 1`、CIF symop、LAMMPS data 的 Masses 校验与段序、`MULTIPLE_UNIT_CELL`、xyz / extxyz 截断、dump general triclinic 与 `typelabel`、vasprun 空 `<i>`、空文件 / 垃圾文件、VASP4、xyz 原子序数、QE magmom |
 | 2 | io 写侧：extxyz 精度与缺省补 0、cube 换行、PDB 超宽、DeePMD writer 的文档与 slab |
 | 3 | io 布局：「字母前缀 → 元素」合并、cp2k_md / sp 互指注释、`thiserror`、死变量、`N_A` 与 `EV_TO_KCAL_MOL` |
