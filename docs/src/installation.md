@@ -17,16 +17,8 @@ The build produces **one** binary, `target/release/ferro`. (Before 0.2.0 there w
 eight `fe-*` binaries; they are gone, with no compatibility shims — see
 [CLI Reference](cli-reference.md) for the migration table.)
 
-| Command group | Purpose | Product |
-|---|---|---|
-| `ferro traj gr\|sq\|msd\|angle\|vacf\|rotcorr\|vanhove` | Trajectory analysis | one stacked CSV |
-| `ferro map density\|velocity\|force\|radius\|sdf\|chg-sdf` | 3-D spatial maps | one `.cube` per input |
-| `ferro net` | Glass network topology | six stacked CSVs + optional labelled trajectory |
-| `ferro bader` | Bader charge partitioning | ACF/BCF/AVF |
-| `ferro convert` / `info` | Structure I/O, info | files / stdout |
-
-Run `ferro` with no arguments for the overview, `ferro <group>` for that group's
-commands, and `ferro <group> <command>` without `-i` for its parameters.
+Run `ferro` with no arguments for the overview of every command, `ferro <group>` for
+that group's commands, and `ferro <group> <command>` without `-i` for its parameters.
 
 ## Python Bindings
 
