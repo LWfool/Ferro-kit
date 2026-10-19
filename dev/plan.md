@@ -10,6 +10,61 @@
 
 ## 优先级高
 
+### 2026-10-19 四次审查遗留清理（10-11 / 10-03 / 10-01 / 09-27；用户定，执行中）
+
+范围是下面四节里尚未修复的条目。涉及挂起组的条目只归类、不修。每批开工前先把逐条计划交用户审核；
+每条修复单独提交，并带回归测试。不改行为的提交，golden master 须逐字节一致。
+
+**归类（只改登记，不改代码）**：
+- **Bader 改写组**：D-8、D-9、D-10、refine_edge 的负号与真空哨兵相撞、Bader 参数校验与手册不符、`dev/bader.md`
+  过时与空断言、`bader_grid` 三份重复的后处理（G-7）、布局建议 5、C-D2、C-D3、Bader 归属的 MIC（口径）、
+  near-grid / off-grid 收敛测试、weight 方法 BCF 与 ACF 的一致性测试
+- **cube_sdf / chg_sdf 改写组**：B-3、B-4、B-6、B-10、D-11、`cube-sdf.md` 过时、chg_sdf 插值的 `rem_euclid` 越界、
+  chg_sdf 跨文件平均按体积加权、chg-sdf 的参数校验 / `-s STEM` 帮助 / 中文报错、`calc_chg_sdf` /
+  `calc_cluster_sdf` 返回 `Option`、≥8 个 P 的置换测试、**`NetworkGraph.former_qn` 同名不同义**（实为桥氧数，
+  与 `AtomType::Former.qn` 不是一个量；唯一使用方是 cube_sdf 的族名）
+- **`map jump` 入口组**：B-9
+- **作废**：依附已删的 `ferro-workflow` / `cmd/job.rs` / `spin.rs` / `writers/qe.rs` 的条目（10-03 D 轻级的 job /
+  CP2K / Gaussian 项、PBE0 待核实、QC 测试缺口，D-1）；英文 `//` 注释（10-17 规则已改）；09-27 第 2 条（第 6 步
+  D3 已做）；已随 10-17 八步修掉的条目（chg-sdf `--qn` 默认值、traj 总览漏 bondlife、`is_lammps_data` /
+  `Format`、`classify_trajectory`、`find_clusters` 的 MIC、近邻 O(N²) 与 `minimum_image` 求逆、`CellList`）。
+  10-03 口径里 CP2K / QE 的生成口径（TTF slab、force/md 不请求应力、PBE0 用 COULOMB、bands 用 gamma、MD 步长）
+  要对照 `ferro.jobs` 查一遍是否重犯，重犯的转为待修
+- **这次不做**：R1–R6 逐函数审计（09-27）、code1 / code2 引用扫描（留在低优先级）
+
+**用户定（2026-10-19）**：
+1. S(q) 默认 `q_min` 不改（已有告警），Lorch 窗归新功能（低优先级），做的时候再查文献
+2. map velocity / force 的空体素仍写 0，手册写明
+3. `EV_TO_KCAL_MOL` 改用 CODATA 2018 的值
+4. `merge --mode by-source` **每个体系内部也按 `--seed` 打乱**，再切 set（破坏性改动，改手册 `merge.md`）
+5. 删 `trajectory_analysis.rs` 和 `geometry.rs`（零调用；MSD 不解包裹，距离 / 角度不取最小镜像）
+6. dump：`element` 列优先，没有时用 `typelabel`；`ix iy iz` 不接
+7. QE 的 `starting_magnetization` 不再存进 `magmom`（它是比例，不是 μB）
+8. **不再支持 VASP4**：POSCAR / CHGCAR 没有元素行时报错；xyz 首列是原子序数时转成元素符号
+9. **CP2K `MULTIPLE_UNIT_CELL` 按 CP2K 的规则支持**（`cell_methods.F:556`、`topology_multiple_unit_cell.F`）：
+   `&CELL` 只放大晶胞，`&TOPOLOGY` 只复制坐标；后者不是 1 1 1 时两者必须一致，否则报错；
+   复制顺序 k 外 j 中 i 内，块内保持原子原序。`SCALED` 坐标相对哪个胞，实现前读源码确认
+10. **分箱统一按 MDAnalysis 的做法**（gr / vanhove / angle）：`n = round(range / dr)`，实际宽度取 `range / n`，末 bin
+    止于 `r_max`，文件头写实际宽度。gr 默认 `r_max` 来自盒子，默认产物的 r 网格会微变（破坏性改动）。依据：MDAnalysis
+    `InterRDF` 与 ASE `get_rdf` 用 bin 个数 + 范围，天然整除；GROMACS 的 bin 数取四舍五入，末 bin 可能越过 `r_max`；
+    ferro 原先 gr 向下取整、vanhove / angle 向上取整
+11. CN(r) 仍标在 bin 中心（与 MDAnalysis `get_cdf` 同口径；GROMACS `-cn` 标在上沿，二者差 dr/2），手册写明
+12. xyz / extxyz 末帧截断时对齐 dump：丢掉末帧并告警，告警点名帧号
+
+**分批**：
+
+| 批 | 范围 |
+|---|---|
+| 0 | 复核与归档（本节） |
+| 1 | io 读侧：extxyz 电荷列别名 / `count`、PDB ENDMDL 与 `CRYST1 1 1 1`、CIF symop、LAMMPS data 的 Masses 校验与段序、`MULTIPLE_UNIT_CELL`、xyz / extxyz 截断、dump general triclinic 与 `typelabel`、vasprun 空 `<i>`、空文件 / 垃圾文件、VASP4、xyz 原子序数、QE magmom |
+| 2 | io 写侧：extxyz 精度与缺省补 0、cube 换行、PDB 超宽、DeePMD writer 的文档与 slab |
+| 3 | io 布局：「字母前缀 → 元素」合并、cp2k_md / sp 互指注释、`thiserror`、死变量、`N_A` 与 `EV_TO_KCAL_MOL` |
+| 4 | analysis 数值与口径：分箱统一、shell 平滑窗、msd lag 0、vanhove `--tau`、`dt` 默认值、有胞 / 无胞不一致、rotcorr P1 头部、sq `to_tables`、diagnostics、并查集 |
+| 5 | analysis 布局：md/util 合并、同文件复用、删死代码与两个旧模块、doc 注释错位、过时注释 |
+| 6 | CLI / render / structure：`\frac`、doc 渲染、structure 遇 NaN 时 panic、只给选项不给 `-i`、`--last-n 0`、box_builder 可复现、by-source 打乱、`is_pair_arg`、`LagKnobs`、`collect -o`、`cmd/dataset.rs` 拆分 |
+| 7 | 文档与脚本 |
+| 8 | 测试缺口（含带速度的 dump fixture） |
+
 ### 2026-10-17 全盘架构审查（六路并行，只读；HEAD `5498e30`；2026-10-19 八步执行完，挂起组见下）
 
 六个子代理按领域审：A 分层与依赖 · B ferro-core 数据模型 · C ferro-io · D ferro-analysis · E ferro-cli ·
@@ -401,6 +456,8 @@ k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满�
 
 ### 2026-10-11 全库审查（六路并行；89 条，严重 4 条已在主会话复现；2026-10-14 修 15 条并归档、8 条挂起，余下未修）
 
+> **2026-10-19**：未修条目由「2026-10-19 四次审查遗留清理」一节统一处理，归类与分批见该节。
+
 **2026-10-14 处置（用户定）**：B-1、中级 7 条静默错数据（A-12 B-2 A-10 E-10 E-12 A-2 E-9）、D-4、A-17、
 文档 5 条（C-9 D-2 E-1 E-3 E-15）、A-7 已修，随 `v0.3.6` 发版，判据见归档「2026-10-11 全库审查：15 条已修」。
 **挂起**：D-8、D-9、D-10、D-11 随 Bader 重写（与 C-D2 / C-D3 同组）；A-13、D-1 随 QC 专项（与 D-M4、
@@ -516,6 +573,8 @@ traj / net 产物文件名与列名与手册一致；绘图脚本对当前产物
 带速度的 dump fixture（C 用合成数据验过 vacf，仓库里仍无）。
 
 ### 2026-10-03 四路审查发现（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码；严重 / 中两级 2026-10-09 处理完：39 条已修并归档，B-6、C-D2、C-D3 搁置，D-M4、D-M6–D-M12 挂起作 QC 专项；轻、口径、布局建议、测试缺口仍开着）
+
+> **2026-10-19**：未修条目由「2026-10-19 四次审查遗留清理」一节统一处理，归类与分批见该节。
 
 四个 Fable 5.1 子代理按领域只读审查（A 格式读写 · B 轨迹分析 · C network/dft/ml/core ·
 D cli/structure/workflow/跨 crate），对照库在 `~/.miniforge3/envs/deepmd`（ase 3.29、
@@ -681,6 +740,8 @@ CLI 集成测试只有 bader 与 npt；gr 三斜数值（可用 27 镜像暴力�
 
 ### 2026-10-01 全库审查发现（19 条，全部复核属实；表内 19 条均已修，表后「待定口径」仍开着）
 
+> **2026-10-19**：未修条目由「2026-10-19 四次审查遗留清理」一节统一处理，归类与分批见该节。
+
 子代理（Fable 5.1）只读审查，主会话用 debug 版 `ferro` 逐条复现。复现 fixture
 是一次性的，未进仓；每条的「复现」写到可以重做的程度。陷阱的一般化教训见
 `issues.md`「2026-10-01 审查：读写两侧的静默错误」。**每条修复单独提交并带回归测试**。
@@ -748,6 +809,8 @@ fixture；cube 往返只测零原点；cube_radius 无窗口超网格的用例�
 ferro-python 运行时。（`--metal-units` 全链路已随 2026-10-03 的 `--units` 改造走过一遍）
 
 ### 全仓规则合规扫描的遗留违规（2026-09-27 扫描）
+
+> **2026-10-19**：未修条目由「2026-10-19 四次审查遗留清理」一节统一处理，归类与分批见该节。
 
 对照 `CLAUDE.md` 逐条扫的结果。**已查无违规**：分层依赖、`clippy` 零警告、
 `as_slice()`、`Molecule`、`label()` 反解析、列并集补 NaN、手册页三处登记、
