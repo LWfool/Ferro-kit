@@ -159,14 +159,16 @@ pub fn build_network_graph(
     })
 }
 
-/// 通用并查集连通分量。
+/// Connected components by union-find.
 ///
-/// 返回 `(component_id_per_node, n_components)`。分量 ID 按节点 `0..n`
-/// 遍历时根节点首次出现的顺序分配，结果确定。
+/// Returns `(component_id_per_node, n_components)`. Component ids follow the order in
+/// which each component is first met walking the nodes `0..n`, so they do not depend
+/// on which node ends up the root.
 pub fn connected_components(n: usize, edges: &[(usize, usize)]) -> (Vec<usize>, usize) {
     let mut parent: Vec<usize> = (0..n).collect();
+    let mut size = vec![1usize; n];
     for &(a, b) in edges {
-        union(&mut parent, a, b);
+        union(&mut parent, &mut size, a, b);
     }
     let mut root_to_id: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     let mut next_id = 0usize;
@@ -183,19 +185,26 @@ pub fn connected_components(n: usize, edges: &[(usize, usize)]) -> (Vec<usize>, 
     (comp_id, next_id)
 }
 
-fn find(parent: &mut Vec<usize>, x: usize) -> usize {
-    if parent[x] != x {
-        parent[x] = find(parent, parent[x]);
+/// Iterative with path halving. The recursive form went O(n) deep on a chain (a long
+/// phosphate chain links formers one after another) and overflowed a rayon thread's
+/// stack, aborting the process.
+fn find(parent: &mut [usize], mut x: usize) -> usize {
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
     }
-    parent[x]
+    x
 }
 
-fn union(parent: &mut Vec<usize>, a: usize, b: usize) {
-    let ra = find(parent, a);
-    let rb = find(parent, b);
-    if ra != rb {
-        parent[ra] = rb;
+/// Union by size, so trees stay O(log n) deep.
+fn union(parent: &mut [usize], size: &mut [usize], a: usize, b: usize) {
+    let (ra, rb) = (find(parent, a), find(parent, b));
+    if ra == rb {
+        return;
     }
+    let (big, small) = if size[ra] >= size[rb] { (ra, rb) } else { (rb, ra) };
+    parent[small] = big;
+    size[big] += size[small];
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -272,5 +281,20 @@ mod tests {
         let g = build_network_graph(&frame, "P", "O", 2.3).unwrap();
         assert!(g.components.is_empty());
         assert_eq!(g.former_global.len(), 1);
+    }
+
+    /// A chain of a million nodes: the recursive find went that deep and overflowed
+    /// a thread's stack (2 MiB on rayon / spawned threads).
+    #[test]
+    fn long_chain_does_not_overflow_the_stack() {
+        let n = 1_000_000;
+        let edges: Vec<(usize, usize)> = (1..n).map(|i| (i - 1, i)).collect();
+        let (ids, count) = std::thread::Builder::new().stack_size(256 * 1024)
+            .spawn(move || connected_components(n, &edges)).unwrap().join().unwrap();
+        assert_eq!(count, 1);
+        assert!(ids.iter().all(|&c| c == 0));
+        // Ids follow the order each component is first met
+        let (ids, count) = connected_components(5, &[(3, 4), (1, 0)]);
+        assert_eq!((ids, count), (vec![0, 0, 1, 2, 2], 3));
     }
 }
