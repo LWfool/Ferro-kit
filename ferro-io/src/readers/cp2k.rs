@@ -1,5 +1,6 @@
 use std::path::Path;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
+use ferro_core::units::BOHR_TO_ANG;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
@@ -13,8 +14,6 @@ pub fn read_cp2k_inp(path: &Path) -> Result<Trajectory> {
 pub fn read_cp2k_restart(path: &Path) -> Result<Trajectory> {
     read_cp2k_inp(path)
 }
-
-const BOHR: f64 = 0.52917721; // Bohr → Å
 
 fn parse_cp2k(content: &str) -> Result<Trajectory> {
     let lines: Vec<&str> = content.lines().collect();
@@ -221,7 +220,7 @@ pub(crate) fn cp2k_periodic(v: &str) -> Option<[bool; 3]> {
 fn length_unit(u: &str) -> Result<f64> {
     match u.to_lowercase().as_str() {
         "angstrom" => Ok(1.0),
-        "bohr" => Ok(BOHR),
+        "bohr" => Ok(BOHR_TO_ANG),
         other => bail!("unsupported length unit {other:?} (supported: angstrom, bohr)"),
     }
 }
@@ -381,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_units() {
-        const B: f64 = 0.52917721;
+        const B: f64 = 0.529_177_210_903; // CODATA 2018
         // &COORD 的 UNIT；&CELL 的单位逐关键字写在 [] 里
         let (x, _) = x2_and_a1y(&si(FCC, "UNIT bohr", "2.0"));
         assert!((x - 2.0 * B).abs() < 1e-9, "UNIT bohr：{x}");
