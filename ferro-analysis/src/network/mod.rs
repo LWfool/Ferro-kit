@@ -325,10 +325,10 @@ impl NetworkResult {
     /// |---|---|---|
     /// | `qn` | Qn former × Qn | `label, former, qn` |
     /// | `qn_partner` | Qn former × Qn × partner split | `label, former, qn, m_<X>…` |
-    /// | `ligand_type` | ligand type × partner pair | `label, former_a, former_b` |
+    /// | `ligand_type` | ligand type × partner pair | `label, type, former_a, former_b` |
     /// | `coordination` | element × coordination number | `element, cn` |
-    /// | `average` | element | `element, mean_qn, mean_cn` |
-    /// | `linkage` | bridge × both site states | `linkage, ligand, elem_a, n_bridge_a, cn_a, …` |
+    /// | `composition` | species | `label, element` |
+    /// | `linkage` | bridge × both site states | `linkage, ligand, elem_a, qn_a, cn_a, …` |
     ///
     /// Every distribution table then carries `count, fraction, sd`.
     ///
@@ -339,7 +339,7 @@ impl NetworkResult {
     /// partner rows — the variance of a sum is not the sum of variances when the
     /// terms are correlated.  The three distributions have different value-column
     /// semantics, so merging them would make a `groupby` on the value column
-    /// meaningless, and `average` is one row per element rather than per value,
+    /// meaningless, and `composition` is one row per species rather than per value,
     /// a different granularity again.
     ///
     /// **`qn` and `coordination` are different quantities.**  `qn` counts only the

@@ -155,7 +155,7 @@ Note that Al is a **partner here, not a subject**: it has no row of its own, but
 
 The two are **two tables rather than one plus a `groupby`**: the plain Qn distribution is the primary output
 and must be readable the moment the file is opened, without an aggregation first.  This is the same
-criterion that made `average` a table of its own — a different granularity deserves a separate table.  `sd`
+criterion that makes `composition` a table of its own — a different granularity deserves a separate table.  `sd`
 likewise has to be accumulated separately rather than summed: the variance of a sum of correlated terms is
 not the sum of the variances.  Measured on the reference trajectory, the `qn=1` row of P has a correct `sd`
 of **0** (the P–O–P backbone does not change from frame to frame), while summing the `sd` of the four corresponding `qn_partner` rows gives **7.598e-3** — summing would forge a visible fluctuation for a quantity that does not move at all.  The components moving while their sum stays put is exactly what cancellation between correlated terms looks like.
@@ -284,7 +284,7 @@ The `label` column is the human-readable anchor; the numeric columns `former` / 
 filtering and plotting use — both are kept rather than one or the other, otherwise "select Qn ≥ 3" would mean slicing strings.
 
 The value columns of the distribution tables mean different things (Qn / type label / coordination number),
-so merging them would make `groupby` meaningless and each gets its own table.  `qn` vs `qn_partner`, and `average`, are all cases of **a different granularity deserving a separate table**.
+so merging them would make `groupby` meaningless and each gets its own table.  `qn` vs `qn_partner`, and `composition`, are all cases of **a different granularity deserving a separate table**.
 
 **When there is no Qn network former the first two files are not written at all**, and the reason is printed
 to the screen.  A CSV with nothing but a header reads as "measured, and the result was zero", while in fact nothing was measured.
