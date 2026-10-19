@@ -204,8 +204,8 @@ impl AtomType {
     /// Render as a site label.  **The only place a type becomes text.**
     pub fn label(&self) -> String {
         match self {
-            AtomType::Former { elem, qn, cn, .. } => {
-                format!("{elem}_{}", qn.unwrap_or(*cn))
+            AtomType::Former { elem, .. } => {
+                format!("{elem}_{}", self.site_digit().expect("every former has a site digit"))
             }
             AtomType::Ligand { elem, partners } => match partners.len() {
                 0 => format!("{elem}_f"),
@@ -223,7 +223,9 @@ impl AtomType {
     /// the sort order and the printed order cannot disagree.
     pub fn class_rank(&self) -> u8 {
         match self {
-            AtomType::Former { qn, cn, .. } => qn.unwrap_or(*cn).min(u8::MAX as u32) as u8,
+            AtomType::Former { .. } => {
+                self.site_digit().expect("every former has a site digit").min(u8::MAX as u32) as u8
+            }
             AtomType::Ligand { partners, .. } => partners.len().min(3) as u8,
             AtomType::Modifier { .. } | AtomType::Other { .. } => 0,
         }
@@ -675,6 +677,21 @@ mod tests {
 
         assert_eq!(types[1].label(), "O_b");
         assert_eq!(types[3].label(), "O_n");
+    }
+
+    /// The label, the sort rank and `site_digit` read one number, Qn former or not
+    #[test]
+    fn test_label_and_rank_show_the_site_digit() {
+        let former = |qn, cn| AtomType::Former {
+            elem: "Al".into(), qn, n_bo: 1, cn, bridges_to: BTreeMap::new(),
+        };
+        for t in [former(Some(3), 5), former(None, 5)] {
+            let d = t.site_digit().unwrap();
+            assert_eq!(t.label(), format!("Al_{d}"));
+            assert_eq!(t.class_rank() as u32, d);
+        }
+        assert_eq!(former(Some(3), 5).site_digit(), Some(3));
+        assert_eq!(former(None, 5).site_digit(), Some(5));
     }
 
     #[test]
