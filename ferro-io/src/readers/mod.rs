@@ -28,7 +28,7 @@ pub use cif::read_cif;
 pub use vasp::{read_poscar, read_poscar_with_warnings, read_contcar};
 pub use chgcar::read_chgcar;
 pub use extxyz::{is_extxyz, read_extxyz, read_extxyz_with_warnings};
-pub use lammps_data::{read_lammps_data, AtomStyle};
+pub use lammps_data::{read_lammps_data, read_lammps_data_with_warnings, AtomStyle};
 pub use lammps_dump::{read_lammps_dump, read_lammps_dump_with_warnings, apply_type_map, LammpsUnits};
 pub use cp2k::{read_cp2k_inp, read_cp2k_restart};
 pub use aimd::{read_aimd_as, read_aimd_with_stats, sniff, AimdFormat, AimdStats};

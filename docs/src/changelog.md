@@ -33,6 +33,10 @@ command line alike; regenerate it rather than migrating it.
   non-periodic with a warning; it used to become a periodic 1 Å box.
 - CIF: a symmetry operation with a term ferro does not recognise (`2x`, `y*1`) is an error
   naming the term; the term used to be dropped, misplacing the atoms it generated.
+- LAMMPS data: a charge of 0 in a `charge` / `full` file is kept as 0 instead of being read as
+  "no charge", so converting such a file to extended XYZ now writes the `charges` column even
+  when every charge is 0. A `Masses` comment that is not an element symbol (`# oxygen`) no
+  longer becomes the element name: the element comes from the mass, with a warning.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

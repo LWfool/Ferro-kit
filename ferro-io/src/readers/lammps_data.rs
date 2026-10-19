@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
+use ferro_core::data::elements::by_symbol;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 use super::util::floats;
@@ -43,14 +44,21 @@ impl std::fmt::Display for AtomStyle {
 }
 
 pub fn read_lammps_data(path: &Path, style: AtomStyle) -> Result<Trajectory> {
+    Ok(read_lammps_data_with_warnings(path, style)?.0)
+}
+
+/// [`read_lammps_data`], returning what the reader noticed: a Masses comment that is
+/// not an element symbol, for which the element came from the mass instead.
+pub fn read_lammps_data_with_warnings(path: &Path, style: AtomStyle) -> Result<(Trajectory, Vec<String>)> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_lammps_data(&content, style).with_context(|| format!("parsing {path_} as atom style {style}"))
 }
 
-fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
+fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec<String>)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
+    let mut warnings = Vec::new();
 
     let skip = |l: &str| -> bool { l.trim().is_empty() || l.trim().starts_with('#') };
 
@@ -138,10 +146,27 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
             let Some((tid, mass)) = entry else {
                 bail!("line {}: Masses entry '{line}' is not 'type mass'", k + 1);
             };
-            // 注释里的元素符号优先："# Fe" 或 "# Fe ..."
-            let elem = raw.find('#')
-                .and_then(|p| raw[p+1..].split_whitespace().next().map(|s| s.to_string()))
-                .unwrap_or_else(|| element_from_mass(mass).to_string());
+            // 注释里的元素符号优先："# Fe" 或 "# Fe ..."。不是元素符号的注释（`# oxygen`、
+            // `# Ow`）以前原样当元素名收下，现在退回按质量推，并告警
+            let comment = raw.find('#')
+                .and_then(|p| raw[p+1..].split_whitespace().next());
+            let from_comment = comment.and_then(|c| {
+                let mut ch = c.chars();
+                let sym: String = ch.next()?.to_uppercase().chain(ch.flat_map(char::to_lowercase)).collect();
+                by_symbol(&sym).map(|e| e.symbol.to_string())
+            });
+            let elem = match (from_comment, comment) {
+                (Some(e), _) => e,
+                (None, c) => {
+                    let e = element_from_mass(mass).to_string();
+                    if let Some(c) = c {
+                        warnings.push(format!(
+                            "warning: line {}: Masses comment {c:?} is not an element symbol; \
+                             atom type {tid} taken as {e} from its mass {mass}", k + 1));
+                    }
+                    e
+                }
+            };
             type_mass.insert(tid, mass);
             if type_element.insert(tid, elem).is_some() {
                 bail!("line {}: Masses gives atom type {tid} twice", k + 1);
@@ -205,13 +230,14 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<Trajectory> {
             .unwrap_or_else(|| format!("X{tp}"));
         let mut atom = Atom::new(elem, pos);
         atom.mass = type_mass.get(&tp).copied();
-        if let Some(q) = q.filter(|&q| q != 0.0) { atom.charge = Some(q); }
+        // charge / full 的电荷列是测得的值，0 也是值；以前 0 转成 None，与「没有电荷列」混同
+        atom.charge = q;
         frame.add_atom(atom);
     }
 
     let mut traj = Trajectory::from_frame(frame);
     if !comment.is_empty() { traj.metadata.title = Some(comment); }
-    Ok(traj)
+    Ok((traj, warnings))
 }
 
 fn strip_comment(l: &str) -> &str {
@@ -488,5 +514,44 @@ Atoms # full
         }
         // 只收这三种：molecular 与 charge 同为 6 列，收进来就得靠调用者分清
         assert!("molecular".parse::<AtomStyle>().is_err());
+    }
+
+    fn data_with(masses: &str, atoms: &str, style: &str) -> String {
+        format!("t\n\n2 atoms\n2 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n\
+                 Masses\n\n{masses}\nAtoms # {style}\n\n{atoms}")
+    }
+
+    /// A comment that is not an element symbol used to become the element name.
+    #[test]
+    fn test_masses_comment_must_be_an_element() {
+        let text = data_with("1 15.999  # oxygen\n2 1.008  # h\n",
+                             "1 1 0 0 0\n2 2 1 0 0\n", "atomic");
+        let (traj, w) = parse_lammps_data(&text, AtomStyle::Atomic).unwrap();
+        let f = &traj.frames[0];
+        assert_eq!(f.atom(0).element, "O", "falls back to the mass");
+        assert_eq!(f.atom(1).element, "H", "case is normalised");
+        assert!(w.len() == 1 && w[0].contains("\"oxygen\"") && w[0].contains("atom type 1"), "{w:?}");
+    }
+
+    /// A charge of 0 is a value: it used to read as no charge at all.
+    #[test]
+    fn test_zero_charge_is_kept() {
+        let text = data_with("1 15.999  # O\n2 1.008  # H\n",
+                             "1 1 0.0 0 0 0\n2 2 0.4 1 0 0\n", "charge");
+        let f = parse_lammps_data(&text, AtomStyle::Charge).unwrap().0.frames.remove(0);
+        assert_eq!(f.atom(0).charge, Some(0.0));
+        assert_eq!(f.atom(1).charge, Some(0.4));
+        // atomic 没有电荷列，仍是 None
+        let text = data_with("1 15.999  # O\n2 1.008  # H\n", "1 1 0 0 0\n2 2 1 0 0\n", "atomic");
+        assert_eq!(parse_lammps_data(&text, AtomStyle::Atomic).unwrap().0.frames[0].atom(0).charge, None);
+    }
+
+    /// LAMMPS does not order the sections; Atoms before Masses still gets the elements.
+    #[test]
+    fn test_atoms_before_masses() {
+        let text = "t\n\n2 atoms\n2 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n\
+                    Atoms # atomic\n\n1 1 0 0 0\n2 2 1 0 0\n\nMasses\n\n1 15.999  # O\n2 1.008  # H\n";
+        let f = parse_lammps_data(text, AtomStyle::Atomic).unwrap().0.frames.remove(0);
+        assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
     }
 }
