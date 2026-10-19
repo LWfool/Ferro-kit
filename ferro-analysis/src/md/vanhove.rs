@@ -14,7 +14,7 @@
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use crate::check;
-use super::util::{check_frame_spacing, select_atoms};
+use super::util::{check_frame_spacing, select_atoms, unwrap_lattice};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::error::ChemError;
@@ -115,14 +115,7 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
         .map(|j| frac.iter().map(|step| step[j]).collect())
         .collect();
 
-    by_atom.par_iter_mut().for_each(|coords| {
-        for i in 1..n_steps {
-            let (prev, curr_and_later) = coords.split_at_mut(i);
-            for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
-                *c -= (*c - *p).round();
-            }
-        }
-    });
+    by_atom.par_iter_mut().for_each(|coords| unwrap_lattice(coords));
 
     // 转置回 step-major
     for (i, step) in frac.iter_mut().enumerate() {

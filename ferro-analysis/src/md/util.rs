@@ -116,12 +116,29 @@ pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
     out
 }
 
+/// Lattice-view unwrap of one atom's fractional series, in place: each step is moved
+/// by the whole lattice vector that brings it nearest the previous one (`|Δ| > 0.5` is a
+/// boundary crossing). Shared by `vanhove` and `cube_jump`; `msd` uses the TOR scheme
+/// instead, which is the correct one under NPT — moving these two to it is on
+/// `dev/plan.md`.
+///
+/// [`unwrapped_frac_sum`] applies the same rule frame by frame while summing, so it never
+/// holds a whole series; it keeps its own loop for that reason.
+pub(crate) fn unwrap_lattice(frac: &mut [[f64; 3]]) {
+    for i in 1..frac.len() {
+        let (prev, curr_and_later) = frac.split_at_mut(i);
+        for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
+            *c -= (*c - *p).round();
+        }
+    }
+}
+
 /// Per-atom sum of the unwrapped fractional coordinates under `cell`, or `None` if the
 /// cell is singular (the caller then falls back to the Cartesian mean).
 ///
 /// Unwrapping is relative to the *previous* frame, not the first, so an atom that drifts
-/// across several periodic images stays continuous — the same scheme as
-/// [`super::cube_jump`]'s `unwrap_single`.
+/// across several periodic images stays continuous — the same rule as
+/// [`unwrap_lattice`], applied while summing.
 fn unwrapped_frac_sum(frames: &[&Frame], n: usize, cell: &Cell) -> Option<Vec<Vector3<f64>>> {
     let mut sum = vec![Vector3::<f64>::zeros(); n];
     let mut prev: Vec<Vector3<f64>> = Vec::with_capacity(n);
@@ -176,6 +193,18 @@ mod tests {
     use super::*;
     use ferro_core::Atom;
     use nalgebra::Matrix3;
+
+    /// A walk across the x face, twice, comes back continuous; y and z stay put
+    #[test]
+    fn unwrap_lattice_follows_an_atom_across_faces() {
+        let mut f = [[0.9, 0.5, 0.5], [0.1, 0.5, 0.5], [0.3, 0.5, 0.5], [0.1, 0.5, 0.5], [0.9, 0.5, 0.5]];
+        unwrap_lattice(&mut f);
+        let x: Vec<f64> = f.iter().map(|p| p[0]).collect();
+        for (got, want) in x.iter().zip([0.9, 1.1, 1.3, 1.1, 0.9]) {
+            assert!((got - want).abs() < 1e-12, "{x:?}");
+        }
+        assert!(f.iter().all(|p| p[1] == 0.5 && p[2] == 0.5));
+    }
 
     /// One atom sitting either side of the x = 0 face of a 10 Å cube.
     fn boundary_crosser(with_cell: bool) -> Trajectory {

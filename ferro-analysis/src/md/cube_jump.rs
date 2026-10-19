@@ -20,7 +20,7 @@ use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use rayon::prelude::*;
 use super::cube_density::cube_reference_frame;
-use super::util::select_atoms;
+use super::util::{select_atoms, unwrap_lattice};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -94,16 +94,6 @@ pub struct CubeJumpResult {
 }
 
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
-
-/// 原地 unwrap 单原子的分数坐标序列，消除 PBC 穿越引起的跳变。
-fn unwrap_single(frac: &mut [[f64; 3]]) {
-    for i in 1..frac.len() {
-        let (prev, curr_and_later) = frac.split_at_mut(i);
-        for (c, p) in curr_and_later[0].iter_mut().zip(prev[i - 1].iter()) {
-            *c -= (*c - *p).round();
-        }
-    }
-}
 
 /// 分数坐标折叠到 [0, 1) 并映射到 voxel 索引。
 fn voxel_idx(fx: f64, fy: f64, fz: f64, nx: usize, ny: usize, nz: usize) -> (usize, usize, usize) {
@@ -180,7 +170,7 @@ pub fn calc_cube_jump(
                 .map(|f| f[atom_idx])
                 .collect();
 
-            unwrap_single(&mut frac_atom);
+            unwrap_lattice(&mut frac_atom);
 
             let mut local = Array3::<f64>::zeros((nx, ny, nz));
             let mut local_jumps = 0usize;
