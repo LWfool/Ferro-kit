@@ -146,7 +146,16 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "vec" | "overrightarrow" => return format!("{}\u{20d7}", arg(i)),
         "frac" | "tfrac" | "dfrac" => {
             let (a, b) = (arg(i), arg(i));
-            return format!("{}/{}", grouped(&a), grouped(&b));
+            let frac = format!("{}/{}", grouped(&a), grouped(&b));
+            // A factor written right after the fraction would read as part of
+            // the denominator (`a/bc`), so the fraction itself gets brackets
+            // then; a space, a closing bracket or an operator ends it already.
+            let glued = match chars.get(*i) {
+                Some('\\') => chars.get(*i + 1).is_some_and(|c| c.is_ascii_alphabetic()),
+                Some(c) => c.is_alphanumeric() || matches!(c, '(' | '[' | '{' | '_' | '^'),
+                None => false,
+            };
+            return if glued { format!("({frac})") } else { frac };
         }
         "sqrt" => return format!("√{}", grouped(&arg(i))),
         _ => {
@@ -222,8 +231,12 @@ mod tests {
             (r"\sum(\text{bridges}) \neq 2 \times |\text{O\_b}|", "Σ(bridges) ≠ 2 × |O_b|"),
             (r"r_i = r_\text{min} + (i + \tfrac{1}{2})\Delta r", "rᵢ = r_{min} + (i + 1/2)Δr"),
             (r"[k\Delta\theta,\ (k{+}1)\Delta\theta)", "[kΔθ, (k+1)Δθ)"),
-            (r"\frac{4\pi\rho}{q}\sum_r r[g(r)-1]\sin(qr)\,\Delta r", "(4πρ)/qΣᵣ r[g(r)-1]sin(qr) Δr"),
+            (r"\frac{4\pi\rho}{q}\sum_r r[g(r)-1]\sin(qr)\,\Delta r", "((4πρ)/q)Σᵣ r[g(r)-1]sin(qr) Δr"),
             (r"r_\text{cut,AB}", "r_{cut,AB}"),
+            (r"\tfrac{1}{2}x", "(1/2)x"),
+            (r"\frac{a}{b}(c)", "(a/b)(c)"),
+            (r"\frac{1}{N} \sum_j", "1/N Σⱼ"),
+            (r"\frac{a}{b}\, c", "a/b c"),
             (r"\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T", "H = U Σ V^T"),
             (r"Q^n_m", "Qⁿₘ"),
             (r"w_{ij}", "wᵢⱼ"),
