@@ -15,7 +15,7 @@ macro_rules! read_opts {
     };
 }
 
-/// [`read_opts!`] as a value, for `convert` and `info`.
+/// `read_opts!` as a value, for `convert` and `info`.
 pub const READ_OPTS: &str = read_opts!();
 
 /// The options of `CommonArgs`, shared by `traj`, `map` and `net`.
