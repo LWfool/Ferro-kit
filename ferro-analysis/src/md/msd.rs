@@ -441,7 +441,7 @@ mod tests {
         // 末帧少原子（截断轨迹）此前在按第 0 帧原子下标取坐标时越界 panic
         let mut traj = make_traj_static(5);
         traj.frames[4].truncate_atoms(10);
-        let err = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).expect_err("原子数不一致应报错而不是 panic");
+        let err = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).expect_err("a changing atom count should be an error, not a panic");
         assert!(err.to_string().contains("frame 4 has 10 atoms"), "{err}");
     }
 
