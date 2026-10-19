@@ -68,6 +68,7 @@ mod tests {
     /// Pins the difference from `as_slice()` so nobody "simplifies" the helper
     /// away: nalgebra's own slice is the transpose of what files want.
     #[test]
+    #[allow(clippy::disallowed_methods)] // the one call clippy.toml lets through, on purpose
     fn nalgebra_as_slice_is_the_transpose() {
         let m = asymmetric();
         assert_eq!(

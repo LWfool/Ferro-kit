@@ -63,7 +63,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
   只经访问器读写（`atom(i)` / `atoms()` / `positions()` / `set_forces`…）；重排原子用 `Frame::permuted`
 - **矩阵一律行优先**：`ferro-core` 里行 = 晶格矢量 / 张量行；落盘取九个数走
   `matrix3_row_major()`，**禁止对 nalgebra 类型用 `as_slice()`**（它是列优先，
-  即转置；对称张量下这个错误完全静默）
+  即转置；对称张量下这个错误完全静默）。根目录 `clippy.toml` 的 `disallowed-methods` 守着这条
 
 内部单位（DeePMD-kit / VASP 约定）：长度 Å · 能量 eV · 力 eV/Å · 应力 eV/Å³ ·
 时间 fs · 质量 amu · 电荷 e · 温度 K。转换走 `units.rs` 的枚举，不引入 `uom`。

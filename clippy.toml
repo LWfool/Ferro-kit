@@ -1,0 +1,6 @@
+# nalgebra stores matrices column-major, so as_slice() on a cell or stress tensor
+# hands a file its transpose. Write row-major through ferro_core::matrix3_row_major
+# (see ferro-core/src/array_order.rs).
+disallowed-methods = [
+    { path = "nalgebra::Matrix::as_slice", reason = "column-major; use ferro_core::matrix3_row_major for I/O" },
+]
