@@ -1,7 +1,7 @@
 # Jump Distance Distribution
 
 > **Library function only, no CLI entry.** `ferro_analysis::calc_cube_jump` is fully implemented
-> (10 unit tests) and exported, but when 0.2.0 merged the eight `fe-*` binaries into a single
+> (with unit tests) and exported, but when 0.2.0 merged the eight `fe-*` binaries into a single
 > `ferro`, the `fe-cube -m jump` branch was never wired back into the `ferro map` subcommand
 > table.  The Rust API below works; command-line usage has to wait for `map jump`.
 
@@ -25,7 +25,9 @@ For each time window $[t,\, t+\tau]$, the unwrapped fractional displacement is:
 
 $$\Delta\mathbf{f} = \mathbf{f}^{(t+\tau)} - \mathbf{f}^{(t)}$$
 
-The true Cartesian displacement uses the average cell matrix of the two endpoint frames (consistent with the MSD NPT treatment):
+The Cartesian displacement uses the average cell matrix of the two endpoint frames.  Under NPT this is
+the lattice view, the same as `vanhove`; it is **not** what `msd` does any more (`msd` unwraps with the
+TOR scheme, see [MSD](msd.md)), and moving this analysis over is on hold together with `map jump`:
 
 $$\Delta\mathbf{r} = \overline{\mathbf{M}}^T\, \Delta\mathbf{f}, \quad \overline{\mathbf{M}} = \frac{\mathbf{M}^{(t)} + \mathbf{M}^{(t+\tau)}}{2}$$
 
@@ -103,4 +105,5 @@ println!("{} jump events recorded", result.n_jumps);
 - Parallelism: per-atom `par_iter`.  Each atom independently unwraps its fractional trajectory and accumulates jump events into a local grid; results are reduced by element-wise addition.
 - Fractional coordinates for all frames are pre-extracted into a `Vec<Vec<[f64;3]>>` before parallelisation (shared read-only, zero copying per thread).
 - For NPT trajectories, cell matrices are also cached per frame so that the average $\overline{\mathbf{M}}$ can be computed without locking.
-- Atoms absent from some frames (length-mismatch guard) are silently skipped.
+- A trajectory whose atom count or element order changes between frames is an error, as is a frame
+  without a periodic cell; atoms are never silently skipped.
