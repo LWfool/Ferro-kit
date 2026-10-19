@@ -26,6 +26,8 @@ command line alike; regenerate it rather than migrating it.
   cutting its sets; it ignored the seed and kept MD order, so a set was a run of consecutive
   frames. Set boundaries still fall on system edges, and `sets_source.txt` is unchanged, but
   which frames land in which set differs: regenerate if a split depends on it.
+- `dataset collect -o sys` with a single input directory writes `sys/<dir>.db/`, as it does with
+  several; it wrote `sys.db/` beside an empty `sys/`. Point the next `filter -i` at the new path.
 - `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
   atom is an error, as it is for `msd`, `vacf`, `vanhove` and `map jump`; it used to write a grid
   of zeros reporting "0 atoms". The error names the filter in every analysis.

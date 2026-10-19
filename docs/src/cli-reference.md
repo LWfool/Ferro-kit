@@ -823,7 +823,7 @@ The directory name is **what is left after the common ancestor is stripped**, ne
 | `/data/md/*.out` (no `-o`) | `/data/md.db/` |
 | `run*/*.out -o sets` | `sets/run1.db/`, `sets/run2.db/` |
 | `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`, `sets/b/md.db/` |
-| `*.out -o sys` (a single directory) | `sys.db/` itself |
+| `*.out -o sys`, run in `md/` (a single directory) | `sys/md.db/` |
 
 A common prefix carries no distinguishing information by definition, so what remains after stripping it is
 necessarily unique and a name collision is no longer an error — a collision is the definition of "these belong together".

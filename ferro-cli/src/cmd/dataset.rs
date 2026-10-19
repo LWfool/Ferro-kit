@@ -565,8 +565,11 @@ fn is_pjm_log(name: &str) -> bool {
 /// into the working directory; a default that follows the input cannot do that,
 /// which is why `-o` is no longer required.
 ///
-/// With `-o` the directory tree below the shared ancestor is rebuilt inside it.
-/// Either way the name carries `.db`, so a downstream `filter -i` sees one shape.
+/// With `-o` the directory tree below the shared ancestor is rebuilt inside it;
+/// a single group, whose path below the ancestor is empty, goes in under its
+/// directory's own name, so `-o` is the folder the systems go into whatever
+/// their number. Either way the name carries `.db`, so a downstream `filter -i`
+/// sees one shape.
 fn collect_dest(root: Option<&Path>, group: &Group) -> PathBuf {
     let with_suffix = |p: &Path| -> PathBuf {
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("system");
@@ -577,21 +580,21 @@ fn collect_dest(root: Option<&Path>, group: &Group) -> PathBuf {
             p.with_file_name(format!("{name}{COLLECT_SUFFIX}"))
         }
     };
+    // The path as the user wrote it, not canonicalized: the absolute path fills
+    // the screen and is hard to recognise. `with_file_name` swaps the last
+    // component, so beside it is exactly where the system lands. Only `.` / `..`
+    // (`-i *.out` in the current directory) have no last name and fall back.
+    let dir = if group.dir.file_name().is_some() {
+        group.dir.clone()
+    } else {
+        group.dir.canonicalize().unwrap_or_else(|_| group.dir.clone())
+    };
     match root {
-        // rel 为空表示只有一组，产物直接写进 -o 本身（既有语义，不动）
-        Some(r) if group.rel.as_os_str().is_empty() => with_suffix(r),
-        Some(r) => with_suffix(&r.join(&group.rel)),
-        None => {
-            // 用用户写下的路径，不 canonicalize —— 规范化后是绝对路径，刷屏且认不出。
-            // `with_file_name` 换掉末级组件，同级正是要的位置。只有 `.` / `..`
-            // 这类没有末级名字的（`-i *.out` 在当前目录）才回落到规范化
-            if group.dir.file_name().is_some() {
-                with_suffix(&group.dir)
-            } else {
-                let dir = group.dir.canonicalize().unwrap_or_else(|_| group.dir.clone());
-                with_suffix(&dir)
-            }
+        Some(r) if group.rel.as_os_str().is_empty() => {
+            with_suffix(&r.join(dir.file_name().unwrap_or("system".as_ref())))
         }
+        Some(r) => with_suffix(&r.join(&group.rel)),
+        None => with_suffix(&dir),
     }
 }
 
@@ -612,7 +615,7 @@ struct Group {
 /// `a/md` and `b/md`, and the file stem never enters the name at all.
 ///
 /// With a single group the shared ancestor is the whole path, so `rel` is empty
-/// and the system is written into `-o` itself — there is nothing to tell apart.
+/// and `collect_dest` names the system after its directory.
 fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
     // 分组键取规范化路径，`a/x.out` 与 `./a/y.out` 才落进同一组；
     // 显示与命名仍用规范化后的路径，两者一致
@@ -2043,7 +2046,7 @@ mod tests {
 
     #[test]
     fn a_single_directory_leaves_an_empty_name() {
-        // 只有一组时公共祖先就是整条路径，产物直接写进 -o 本身
+        // One group: the shared ancestor is the whole path; collect_dest names it
         assert_eq!(rels(&["/s/run1/a.out", "/s/run1/b.out"]), vec![""]);
     }
 
@@ -2152,10 +2155,11 @@ mod tests {
             collect_dest(Some(Path::new("out")), &g("data/md", "a/md")),
             PathBuf::from("out/a/md.db")
         );
-        // rel 为空 = 只有一组，写进 -o 本身
+        // An empty rel is a single group: it still goes inside -o, under its own name.
+        // It used to become `out.db` beside an empty `out/`.
         assert_eq!(
             collect_dest(Some(Path::new("out")), &g("data/md", "")),
-            PathBuf::from("out.db")
+            PathBuf::from("out/md.db")
         );
         // 已带 .db 的不叠加
         assert_eq!(collect_dest(None, &g("data/md.db", "")), PathBuf::from("data/md.db"));

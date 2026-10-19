@@ -5,8 +5,8 @@
 directories — the starting point for training a machine-learning potential.
 
 ```bash
-ferro dataset collect -i 'run*/*.out' -o data      # -> data/run1/, data/run2/
-ferro dataset collect -i '*.out' -o sys            # -> sys/   (one directory in)
+ferro dataset collect -i 'run*/*.out' -o data      # -> data/run1.db/, data/run2.db/
+ferro dataset collect -i 'md/*.out' -o sys         # -> sys/md.db/   (one directory in)
 ```
 
 Five sources are read: **CP2K MD output**, **CP2K single-point output**
@@ -326,15 +326,16 @@ stripping it is exactly what tells the systems apart:
 | `/data/md/*.out` (no `-o`) | `/data/md.db/` |
 | `run*/*.out -o sets` | `sets/run1.db/`, `sets/run2.db/` |
 | `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`, `sets/b/md.db/` |
-| `*.out -o sys` (one directory) | `sys.db/` itself |
+| `*.out -o sys`, run in `md/` (one directory) | `sys/md.db/` |
 | `a/total.out b/md/total.out -o sets` | `sets/a.db/`, `sets/b/md.db/` |
 | `md/x.out md/sub/y.out -o sets` | `sets/md.db/`, `sets/md/sub.db/` |
 | `total.out run1/a.out -o sets`, run in `md/` | `sets/md.db/`, `sets/md/run1.db/` |
 
 The file stem never enters the name — `total.out` and `PZA.out` in the same
 directory produce the same system. With only one input directory the shared
-ancestor is the whole path, `<name>` is empty, and the system is written into
-`-o` itself: there is nothing to tell apart. With several, an input directory
+ancestor is the whole path and nothing is left to strip, so the system is named
+after its own directory: `-o` is the folder the systems go into, one or many.
+With several, an input directory
 that *is* the shared ancestor would get an empty name and land in `sets.db/`,
 outside the `sets/` holding its siblings; the ancestor is taken one level up
 instead, so every system keeps a name and all of them nest under `-o`. A bare
