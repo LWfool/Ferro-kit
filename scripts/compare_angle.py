@@ -58,7 +58,7 @@ D_ANGLE = 0.1   # dump2analysis 固定 0.1°，ferro 显式对齐
 ALIGN_BINNING_MIN, ALIGN_BINNING_MAX = 0.05, 180.05
 
 TRIPLETS = [("O", "P", "O"), ("O", "Al", "O")]
-SUFFIX = "cmp"  # -o 的批次标记；三元组由文件名的 label 段区分，不必再进后缀
+SUFFIX = "cmp"  # the -s batch tag; the triplet is already in the label segment of the name
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "lammps" / "43Z43P15A_NPT.lammpstrj"

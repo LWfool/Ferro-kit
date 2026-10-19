@@ -43,7 +43,7 @@ DR = 0.01
 R_CUT = 2.3     # 仅 dump2analysis 的键长统计用，不影响曲线
 
 PAIRS = [("P", "O"), ("Al", "O")]
-SUFFIX = "cmp"  # -o 的批次标记；配对由文件名的 label 段区分，不必再进后缀
+SUFFIX = "cmp"  # the -s batch tag; the pair is already in the label segment of the name
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "lammps" / "43Z43P15A_NPT.lammpstrj"
@@ -56,7 +56,8 @@ def compute(traj, outdir, ferro_bin, d2a_bin):
         tag = f"{a}-{b}"
         print(f"[{tag}]")
 
-        # ferro：-a 是中心元素、-b 是近邻元素；-o 给的是后缀，产物落在 outdir 下。
+        # ferro: -a is the centre element, -b the neighbour; -s is the batch tag and the
+        # product lands in the working directory (= outdir).
         # 配对已经由 label 段进了文件名，故 -s 只留一个批次标记，不再重复 tag
         fe_out = fc.run_ferro(
             ferro_bin,

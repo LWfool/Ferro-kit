@@ -46,7 +46,7 @@ r"""把 `ferro net` 的产物画成发表级的网络拓扑图。
 
 ## 多 csv
 
-`-o` 的 suffix 落在文件名里，所以 `network_qn_CMD.csv` 与 `network_qn_MLMD.csv` 天然
+The `-s` batch tag of `ferro net` is the last segment of the name, so `network_qn_CMD.csv` 与 `network_qn_MLMD.csv` 天然
 区分。给多个 csv 就是**同一成分刻度下并排多根柱**，组标签取自 suffix（也可在
 `labels.csv` 里改名或隐藏）。
 

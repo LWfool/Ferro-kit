@@ -37,8 +37,8 @@
    dump2analysis 都给 0，只有 dump2sq 给出约 4.5。dump2analysis 每帧按元素重新
    选原子，不受影响。
 
-**0.2.0 的产物形状**（详见 ferrocmp.py 的模块 docstring）：`-o` 是文件名后缀不是
-路径，故以 outdir 为工作目录调用；sq 是宽表（`total_xrd` / `total_neutron` /
+**0.2.0 的产物形状**（详见 ferrocmp.py 的模块 docstring）：the batch tag is `-s`
+and ferro runs with outdir as its working directory;sq 是宽表（`total_xrd` / `total_neutron` /
 每对三列），gr 是长表（按 center/neighbor 选行）。
 
 用法:

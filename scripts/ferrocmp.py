@@ -8,9 +8,10 @@
 
 四处必须知道的形状变化（相对 0.1.15 的 `.dat`）：
 
-1. **`-o` 是文件名后缀，不是路径**。`ferro traj gr -o run1` 写出的是当前目录下的
-   `gr_run1.csv`。`run_ferro()` 因此以 outdir 为工作目录调用，并把输入路径转成绝对
-   路径 —— 否则产物会散落在脚本的启动目录里。
+1. **The batch tag is `-s`, and `-o` is the output directory** (since 0.3.3; in 0.2.0
+   `-o` was the tag). `ferro traj gr -s run1` writes `gr_all_run1.csv` into the current
+   directory. `run_ferro()` runs with outdir as the working directory and makes the
+   input paths absolute, so it does not need `-o`.
 
 2. **gr / angle 是长表**，类型在数据列里而不在列名里。取一条曲线是
    `df[(df.center == "P") & (df.neighbor == "O")]`，见 `pick()`。
