@@ -151,7 +151,8 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 /// - no atoms match the element filter
 /// - a later frame is missing the cell frame 0 has (periodic path only)
 ///
-/// `τ` beyond `n_frames − 1` is clamped, not an error.
+/// - `τ` is not within `1 ..= n_frames − 1` (as `--max-lag` is checked by the other
+///   time-correlation analyses; it used to be clamped to `n_frames − 1` without a word)
 pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Result<VanHoveResult> {
     params.validate()?;
     check_frame_spacing(traj)?;
@@ -176,9 +177,13 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     }
     let n_atoms = atom_indices.len();
 
-    // tau 不超过 n_steps-1；None 时取半条轨迹（同 correlate.rs 的 max_lag 默认）——
-    // 取 n_steps-1 只剩 1 个原点
-    let tau = params.tau.unwrap_or(n_steps / 2).min(n_steps - 1).max(1);
+    // None takes half the trajectory (as correlate.rs defaults max_lag) —
+    // n_steps - 1 would leave a single time origin
+    let tau = params.tau.unwrap_or((n_steps / 2).max(1));
+    if tau >= n_steps {
+        return Err(ChemError::ValidationError(format!(
+            "tau must be within 1..={} for {n_steps} frames, got {tau}", n_steps - 1)));
+    }
     let shift = params.shift.max(1);
 
     // 收集元素列表（用于输出文件头）
@@ -203,7 +208,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         .collect();
     let n_origins = p_values.len();
     if n_origins == 0 {
-        // tau 已截到 n_steps-1、shift >= 1，p = 0 恒可用；留着防将来改动
+        // tau <= n_steps - 1 and shift >= 1 make p = 0 always fit; kept against later changes
         return Err(ChemError::ValidationError(format!("no time origin fits tau = {tau} in {n_steps} frames")));
     }
 
@@ -551,5 +556,16 @@ mod tests {
         // Every sample is in the last bin: density × width = 1
         assert!((res.p_r[14] * w - 1.0).abs() < 1e-12, "{}", res.p_r[14] * w);
         assert!(res.meta_lines().join("\n").contains(&format!("dr      = {w} Ang")));
+    }
+
+    /// `--tau` past the last frame used to be clamped silently; the other time
+    /// correlations refuse `--max-lag` past it.
+    #[test]
+    fn test_tau_beyond_the_trajectory_is_an_error() {
+        let traj = make_linear_traj(50.0, 1.0, 10);
+        let p = |tau| VanHoveParams { tau: Some(tau), shift: 1, dt: 1.0, ..Default::default() };
+        let err = calc_vanhove(&traj, &p(10)).unwrap_err().to_string();
+        assert!(err.contains("tau must be within 1..=9 for 10 frames, got 10"), "{err}");
+        assert_eq!(calc_vanhove(&traj, &p(9)).unwrap().tau_frames, 9);
     }
 }

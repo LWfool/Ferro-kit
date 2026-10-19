@@ -55,7 +55,7 @@ normalised as a full one (`--r-max 1.0 --dr 0.07` read 3.5 times too low there).
 
 ```rust
 pub struct VanHoveParams {
-    pub tau: Option<usize>,            // lag [frames]; None = n_frames / 2
+    pub tau: Option<usize>,            // lag [frames], 1..=n_frames-1; None = n_frames / 2
     pub shift: usize,                  // origin spacing [frames]; default: 1
     pub dt: f64,                       // time step [fs]; default: 1.0
     pub r_min: f64,                    // default: 0.0 Å
@@ -65,7 +65,7 @@ pub struct VanHoveParams {
 }
 ```
 
-These are the library defaults.  On the command line `--dt` is required, and `r_min` is not exposed: `ferro traj vanhove` always uses $r_\min = 0$.
+These are the library defaults.  On the command line `--dt` is required, and `r_min` is not exposed: `ferro traj vanhove` always uses $r_\min = 0$.  A `--tau` of the frame count or more is an error, as `--max-lag` is for the other time correlations; it used to be cut to $n_\text{frames} - 1$ without a word.
 
 ## Output
 

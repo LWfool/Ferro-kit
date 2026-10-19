@@ -12,6 +12,12 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Analyses
+
+- `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,
+  `vacf`, `rotcorr` and `bondlife`; it used to be cut to the last frame without a word.
+- `traj msd` writes exactly 0 at lag 0 (it read about −1.7e-18, round-off).
+
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 
 - The bin count is the range over the step **rounded up**, and the width used is the range over
