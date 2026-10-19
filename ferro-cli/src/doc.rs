@@ -263,10 +263,16 @@ fn body(page: &Page) -> String {
     let level = head.chars().take_while(|c| *c == '#').count();
     let mut out = String::new();
     let mut inside = false;
+    // A `#` line inside a fence is a shell comment, not a heading.
+    let mut fenced = false;
     for line in page.text.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+        }
         if line == head {
             inside = true;
         } else if inside
+            && !fenced
             && line.starts_with('#')
             && line.chars().take_while(|c| *c == '#').count() <= level
         {
@@ -368,6 +374,17 @@ mod tests {
             );
             assert!(body(p).lines().count() > 5, "`{}` resolves to almost nothing", p.topic);
         }
+    }
+
+    #[test]
+    fn a_comment_in_a_fence_does_not_end_the_section() {
+        let page = Page {
+            topic: "t",
+            source: "t.md",
+            text: "## A\n\n```bash\n# a comment\nferro x\n```\n\nafter\n\n## B\n\nb\n",
+            section: Some("## A"),
+        };
+        assert_eq!(body(&page), "## A\n\n```bash\n# a comment\nferro x\n```\n\nafter\n\n");
     }
 
     #[test]
