@@ -17,6 +17,9 @@ command line alike; regenerate it rather than migrating it.
 - `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,
   `vacf`, `rotcorr` and `bondlife`; it used to be cut to the last frame without a word.
 - `traj msd` writes exactly 0 at lag 0 (it read about −1.7e-18, round-off).
+- Library: `MsdParams`, `VacfParams`, `RotCorrParams`, `BondLifeParams` and `VanHoveParams`
+  default `dt` to NaN, and `validate` / `calc_*` refuse it as "dt must be given"; the default of
+  1.0 fs used to compute silently. The CLI and Python already required it.
 
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 

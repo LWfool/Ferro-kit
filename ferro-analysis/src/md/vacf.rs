@@ -40,14 +40,14 @@ impl VacfParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
-        check::positive("dt", self.dt)?;
+        check::frame_interval(self.dt)?;
         check::at_least_one_if_given("max-lag", self.max_lag)
     }
 }
 
 impl Default for VacfParams {
     fn default() -> Self {
-        VacfParams { max_lag: None, dt: 1.0, elements: None }
+        VacfParams { max_lag: None, dt: f64::NAN, elements: None }
     }
 }
 
@@ -241,7 +241,7 @@ mod tests {
         let (n, na) = (33, 4);
         let traj = traj_from(|t, j| Vector3::new(jitter(3 * t + j), jitter(5 * t + 7 * j + 1), jitter(t * 11 + j + 3)),
             &["O"; 4], n);
-        let r = calc_vacf(&traj, &VacfParams { max_lag: Some(n - 1), ..Default::default() }).unwrap();
+        let r = calc_vacf(&traj, &VacfParams { max_lag: Some(n - 1), dt: 1.0, ..Default::default() }).unwrap();
         let v = |t: usize, j: usize| traj.frames[t].velocities().unwrap()[j];
         for m in 0..n {
             let mut want = [0.0; 3];
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_constant_velocity_is_flat_and_norm_is_one() {
         let traj = traj_from(|_, _| Vector3::new(2.0, 1.0, 0.5), &["Li", "Li"], 10);
-        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        let r = calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).unwrap();
         for (m, (&v, &nv)) in r.vacf.iter().zip(&r.vacf_norm).enumerate() {
             assert!((v - 5.25).abs() < 1e-10, "lag {m}: {v}");
             assert!((nv - 1.0).abs() < 1e-12, "lag {m}: vacf_norm {nv}");
@@ -274,7 +274,7 @@ mod tests {
     fn test_zero_velocity_gives_nan_norm_not_zero() {
         // C(0)=0 时归一化没有定义：给 NaN（空字段），不能冒充「测到了 0」
         let traj = traj_from(|_, _| Vector3::zeros(), &["Li"], 6);
-        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        let r = calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).unwrap();
         assert!(r.vacf.iter().all(|v| v.abs() < 1e-15));
         assert!(r.vacf_norm.iter().all(|v| v.is_nan()));
         assert!(r.diffusion.iter().all(|v| v.abs() < 1e-15));
@@ -298,7 +298,7 @@ mod tests {
         let traj = traj_from(|t, j| if j == 0 { Vector3::new(1.0, 0.0, 0.0) }
                                     else { Vector3::new((t as f64).cos(), (t as f64).sin(), 0.0) },
             &["Fe", "Li"], 10);
-        let r = calc_vacf(&traj, &VacfParams { elements: Some(vec!["Fe".into()]), ..Default::default() }).unwrap();
+        let r = calc_vacf(&traj, &VacfParams { elements: Some(vec!["Fe".into()]), dt: 1.0, ..Default::default() }).unwrap();
         assert_eq!(r.n_atoms, 1);
         assert_eq!(r.elements, vec!["Fe".to_string()]);
         assert!(r.vacf.iter().all(|v| (v - 1.0).abs() < 1e-10));
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn test_default_max_lag_and_origins() {
         let traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 11);
-        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        let r = calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).unwrap();
         assert_eq!(r.time.len(), 6);
         assert_eq!(r.min_origins, 6);
         assert_eq!(r.n_frames, 11);
@@ -317,14 +317,14 @@ mod tests {
     fn test_missing_velocities_names_the_frame() {
         let mut traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 4);
         traj.frames[2].set_velocities(None).unwrap();
-        let err = calc_vacf(&traj, &VacfParams::default()).unwrap_err().to_string();
+        let err = calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).unwrap_err().to_string();
         assert!(err.contains("frame 2"), "错误信息应指出是哪一帧：{err}");
     }
 
     #[test]
     fn test_to_tables_columns() {
         let traj = traj_from(|_, _| Vector3::new(1.0, 0.0, 0.0), &["Li"], 6);
-        let r = calc_vacf(&traj, &VacfParams::default()).unwrap();
+        let r = calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).unwrap();
         let (name, t) = r.to_tables().remove(0);
         assert_eq!(name, "vacf");
         assert_eq!(t.names(), vec!["time", "vacf", "vacf_norm", "vacf_x", "vacf_y", "vacf_z", "diffusion"]);

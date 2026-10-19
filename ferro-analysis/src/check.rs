@@ -23,6 +23,16 @@ pub(crate) fn same_atoms(traj: &Trajectory) -> Check {
     })
 }
 
+/// The stored frame interval of a time-correlation analysis [fs]. Its `Default` is NaN,
+/// so a library caller that never sets it is told so: a default of 1.0 used to compute
+/// silently in 1 fs steps, while the CLI and Python both require it.
+pub(crate) fn frame_interval(dt: f64) -> Check {
+    if dt.is_nan() {
+        return fail("dt (the stored frame interval [fs]) must be given".into());
+    }
+    positive("dt", dt)
+}
+
 /// 步长、截断、时间步：有限且 > 0（`inf` 的步长会得到 0 个 bin）
 pub(crate) fn positive(name: &str, v: f64) -> Check {
     if v > 0.0 && v.is_finite() { return Ok(()); }
@@ -159,17 +169,31 @@ mod tests {
                 )+
             }};
         }
+        // The time correlations have no valid default: `dt` must be given (review 10-11 C)
+        macro_rules! case_dt {
+            ($ty:ident, $( $field:ident : $bad:expr ),+ $(,)?) => {{
+                let err = $ty::default().validate().unwrap_err().to_string();
+                assert!(err.contains("must be given"), "{}: {err}", stringify!($ty));
+                let base = $ty { dt: 1.0, ..$ty::default() };
+                assert!(base.validate().is_ok(), "{} with dt is valid", stringify!($ty));
+                $(
+                    let p = $ty { $field: $bad, ..base.clone() };
+                    assert!(p.validate().is_err(), "{}.{} = {:?} should be refused",
+                            stringify!($ty), stringify!($field), $bad);
+                )+
+            }};
+        }
         case!(GrParams, r_min: -0.1, r_max: 0.0, dr: 0.0, dr: nan, dr: 20.0);
         let inf = f64::INFINITY;
         case!(SqParams, q_min: -1.0, q_min: 0.0, q_max: 0.0, q_max: inf, dq: 0.0, dq: nan);
-        case!(MsdParams, dt: 0.0, dt: nan, max_lag: Some(0),
+        case_dt!(MsdParams, dt: 0.0, dt: nan, max_lag: Some(0),
               fit_range: Some((0.8, 0.2)), fit_range: Some((0.0, 1.5)), fit_range: Some((nan, 0.5)));
         case!(AngleParams, r_cut_ab: 0.0, r_cut_bc: nan, angle_min: -1.0, angle_max: 0.0,
               angle_max: 181.0, d_angle: 0.0, d_angle: f64::INFINITY);
-        case!(VacfParams, dt: -1.0, max_lag: Some(0));
-        case!(RotCorrParams, r_cut: 0.0, dt: nan, max_lag: Some(0));
-        case!(BondLifeParams, r_bond: 0.0, r_bond: nan, r_break: Some(1.0), dt: 0.0, max_lag: Some(0));
-        case!(VanHoveParams, dt: 0.0, tau: Some(0), shift: 0, r_min: -1.0, dr: 0.0, r_max: 0.0,
+        case_dt!(VacfParams, dt: -1.0, max_lag: Some(0));
+        case_dt!(RotCorrParams, r_cut: 0.0, dt: nan, max_lag: Some(0));
+        case_dt!(BondLifeParams, r_bond: 0.0, r_bond: nan, r_break: Some(1.0), dt: 0.0, max_lag: Some(0));
+        case_dt!(VanHoveParams, dt: 0.0, tau: Some(0), shift: 0, r_min: -1.0, dr: 0.0, r_max: 0.0,
               r_max: inf);
         case!(CubeDensityParams, nx: 0, ny: 0, nz: 0);
         case!(CubeJumpParams, nx: 0, ny: 0, nz: 0, tau: 0, threshold: 0.0, threshold: nan,
@@ -203,7 +227,7 @@ mod tests {
     fn test_singular_cells_are_an_error_not_a_panic() {
         use crate::md::*;
         let traj = singular_traj();
-        let msg = calc_vanhove(&traj, &VanHoveParams::default()).err().map(|e| e.to_string());
+        let msg = calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).err().map(|e| e.to_string());
         assert!(msg.as_deref().is_some_and(|m| m.contains("singular") && m.contains("frame 0")),
             "vanhove 应报奇异胞并点名帧号：{msg:?}");
         let msg = calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).err().map(|e| e.to_string());
@@ -244,8 +268,8 @@ mod tests {
             vec![
                 ("angle", calc_angle(&traj, &AngleParams { r_cut_bc: r, ..Default::default() }).map(|_| ())),
                 ("bondlife", calc_bondlife(&traj, &BondLifeParams {
-                    r_bond: 1.0, r_break: Some(r), ..Default::default() }).map(|_| ())),
-                ("rotcorr", calc_rotcorr(&traj, &RotCorrParams { r_cut: r, ..Default::default() }).map(|_| ())),
+                    r_bond: 1.0, r_break: Some(r), dt: 1.0, ..Default::default() }).map(|_| ())),
+                ("rotcorr", calc_rotcorr(&traj, &RotCorrParams { r_cut: r, dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("network", net(r)),
                 ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
                     former: "Si".into(), ligand: "O".into(), former_ligand_cutoff: r, ..Default::default()
@@ -291,12 +315,12 @@ mod tests {
             let res: Vec<(&str, ferro_core::Result<()>)> = vec![
                 ("gr", calc_gr(&traj, &GrParams::default()).map(|_| ())),
                 ("angle", calc_angle(&traj, &AngleParams { r_cut_ab: 1.2, r_cut_bc: 1.2, ..Default::default() }).map(|_| ())),
-                ("msd", calc_msd(&traj, &MsdParams::default()).map(|_| ())),
+                ("msd", calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
-                    center: "P".into(), neighbor: "O".into(), r_cut: 1.2, ..Default::default() }).map(|_| ())),
+                    center: "P".into(), neighbor: "O".into(), r_cut: 1.2, dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("bondlife", calc_bondlife(&traj, &BondLifeParams {
-                    center: "O".into(), neighbor: "O".into(), r_bond: 1.2, ..Default::default() }).map(|_| ())),
-                ("vanhove", calc_vanhove(&traj, &VanHoveParams::default()).map(|_| ())),
+                    center: "O".into(), neighbor: "O".into(), r_bond: 1.2, dt: 1.0, ..Default::default() }).map(|_| ())),
+                ("vanhove", calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("map radius", calc_cube_radius(&traj, &CubeRadiusParams::default()).map(|_| ())),
                 ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
                     former: "P".into(), ligand: "O".into(), target_qn: 0, ..Default::default() }).map(|_| ())),
@@ -330,13 +354,13 @@ mod tests {
             traj.add_frame(f);
         }
         let res: Vec<(&str, ferro_core::Result<()>)> = vec![
-            ("msd", calc_msd(&traj, &MsdParams::default()).map(|_| ())),
-            ("vacf", calc_vacf(&traj, &VacfParams::default()).map(|_| ())),
+            ("msd", calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).map(|_| ())),
+            ("vacf", calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).map(|_| ())),
             ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
-                center: "P".into(), neighbor: "O".into(), r_cut: 2.0, ..Default::default() }).map(|_| ())),
+                center: "P".into(), neighbor: "O".into(), r_cut: 2.0, dt: 1.0, ..Default::default() }).map(|_| ())),
             ("bondlife", calc_bondlife(&traj, &BondLifeParams {
-                center: "P".into(), neighbor: "O".into(), r_bond: 2.0, ..Default::default() }).map(|_| ())),
-            ("vanhove", calc_vanhove(&traj, &VanHoveParams::default()).map(|_| ())),
+                center: "P".into(), neighbor: "O".into(), r_bond: 2.0, dt: 1.0, ..Default::default() }).map(|_| ())),
+            ("vanhove", calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).map(|_| ())),
         ];
         for (who, r) in res {
             let msg = r.err().map(|e| e.to_string()).unwrap_or_default();

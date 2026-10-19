@@ -187,7 +187,7 @@ and **$\text{msd} = \text{msd}_x + \text{msd}_y + \text{msd}_z$ exactly, for any
 ```rust
 pub struct MsdParams {
     pub max_lag: Option<usize>,       // longest lag [frames], 1..=N-1; None = N/2
-    pub dt: f64,                      // time step [fs]; default: 1.0
+    pub dt: f64,                      // time between stored frames [fs]; required (Default is NaN)
     pub elements: Option<Vec<String>>,// None = all atoms
     pub fit_range: Option<(f64, f64)>,// linear-fit window as fractions of the lag axis; None = no fit
 }

@@ -146,7 +146,7 @@ pub struct RotCorrParams {
     pub neighbor: String,         // neighbour element, e.g. "H"
     pub r_cut: f64,               // bond search cutoff [Å]; default: 1.2
     pub max_lag: Option<usize>,   // longest lag [frames], 1..=N-1; None = N/2
-    pub dt: f64,                  // time between stored frames [fs]; default: 1.0
+    pub dt: f64,                  // time between stored frames [fs]; required (Default is NaN)
     pub vector: RotVector,        // Sum (default) | Bond
     pub legendre: Legendre,       // P1 | P2 (default)
 }

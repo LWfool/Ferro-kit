@@ -40,7 +40,7 @@ impl MsdParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
-        check::positive("dt", self.dt)?;
+        check::frame_interval(self.dt)?;
         check::at_least_one_if_given("max-lag", self.max_lag)?;
         if let Some((fmin, fmax)) = self.fit_range {
             // 与 fit_diffusion 内的同一判据，提前到重计算（及 CLI 读文件）之前
@@ -56,7 +56,7 @@ impl MsdParams {
 
 impl Default for MsdParams {
     fn default() -> Self {
-        MsdParams { max_lag: None, dt: 1.0, elements: None, fit_range: None }
+        MsdParams { max_lag: None, dt: f64::NAN, elements: None, fit_range: None }
     }
 }
 
@@ -441,7 +441,7 @@ mod tests {
         // 末帧少原子（截断轨迹）此前在按第 0 帧原子下标取坐标时越界 panic
         let mut traj = make_traj_static(5);
         traj.frames[4].truncate_atoms(10);
-        let err = calc_msd(&traj, &MsdParams::default()).expect_err("原子数不一致应报错而不是 panic");
+        let err = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).expect_err("原子数不一致应报错而不是 panic");
         assert!(err.to_string().contains("frame 4 has 10 atoms"), "{err}");
     }
 
@@ -470,7 +470,7 @@ mod tests {
     fn test_msd_static_is_zero() {
         // 所有帧完全相同 → 所有 lag 的 MSD 应为 0
         let traj = make_traj_static(8);
-        let result = calc_msd(&traj, &MsdParams::default()).unwrap();
+        let result = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).unwrap();
         for &v in &result.msd {
             assert!(v.abs() < 1e-10, "static MSD should be 0, got {}", v);
         }
@@ -537,7 +537,7 @@ mod tests {
     fn test_fft_matches_brute_force_npt_triclinic() {
         // 盒子伸缩 + 三斜 + 跨边界：FFT 全原点平均必须与暴力求和逐点一致
         let traj = make_traj_npt_triclinic(40, 5);
-        let r = calc_msd(&traj, &MsdParams { max_lag: Some(39), ..MsdParams::default() }).unwrap();
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(39), dt: 1.0, ..MsdParams::default() }).unwrap();
         let reference = brute_msd(&tor_reference(&traj), 39);
         for (m, want) in reference.iter().enumerate() {
             for (axis, got) in [&r.msd_x, &r.msd_y, &r.msd_z].iter().enumerate() {
@@ -558,7 +558,7 @@ mod tests {
             }
             traj.add_frame(f);
         }
-        let r = calc_msd(&traj, &MsdParams { max_lag: Some(20), ..MsdParams::default() }).unwrap();
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(20), dt: 1.0, ..MsdParams::default() }).unwrap();
         let pos: Vec<Vec<Vector3<f64>>> = traj.frames.iter()
             .map(|f| f.atoms().map(|a| a.position).collect()).collect();
         for (m, want) in brute_msd(&pos, 20).iter().enumerate() {
@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn test_components_sum_to_total() {
         let traj = make_traj_npt_triclinic(20, 4);
-        let r = calc_msd(&traj, &MsdParams::default()).unwrap();
+        let r = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).unwrap();
         for m in 0..r.msd.len() {
             let s = r.msd_x[m] + r.msd_y[m] + r.msd_z[m];
             assert!((r.msd[m] - s).abs() < 1e-12, "lag {m}: 三斜盒子下分量之和也必须等于总量");
@@ -589,7 +589,7 @@ mod tests {
             f.add_atom(Atom::new("Li", cell.wrap_position(p).unwrap()));
             traj.add_frame(f);
         }
-        let r = calc_msd(&traj, &MsdParams { max_lag: Some(11), ..MsdParams::default() }).unwrap();
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(11), dt: 1.0, ..MsdParams::default() }).unwrap();
         for (m, &got) in r.msd.iter().enumerate() {
             let want = (v.norm() * m as f64).powi(2);
             assert!((got - want).abs() < 1e-9, "lag {m}: {got} vs {want}");
@@ -609,7 +609,7 @@ mod tests {
             fr.add_atom(Atom::new("Na", cell.fractional_to_cartesian(Vector3::new(fx, 0.5, 0.5))));
             traj.add_frame(fr);
         }
-        let r = calc_msd(&traj, &MsdParams { max_lag: Some(1), ..MsdParams::default() }).unwrap();
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(1), dt: 1.0, ..MsdParams::default() }).unwrap();
         // lag 1 的三个原点，x 位移 TOR: 1.0, 0.05, -0.05
         let tor = (1.0 + 0.05_f64.powi(2) * 2.0) / 3.0;
         let lattice = (1.0 + 1.05_f64.powi(2) * 2.0) / 3.0;
@@ -622,7 +622,7 @@ mod tests {
         // 单原子沿 x 匀速 v：每个原点的位移都是 v·m，全原点平均仍为 (v·m)²
         let v = 0.3;
         let traj = make_traj_linear(20.0, v, 6);
-        let r = calc_msd(&traj, &MsdParams { max_lag: Some(5), ..MsdParams::default() }).unwrap();
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(5), dt: 1.0, ..MsdParams::default() }).unwrap();
         for (m, (&tot, &x)) in r.msd.iter().zip(&r.msd_x).enumerate() {
             let want = (v * m as f64).powi(2);
             assert!((tot - want).abs() < 1e-9, "lag {m}: {tot}");
@@ -641,7 +641,7 @@ mod tests {
             frame.add_atom(Atom::new("Fe", Vector3::new(x_raw - (x_raw / a).floor() * a, 0.0, 0.0)));
             traj.add_frame(frame);
         }
-        let r = calc_msd(&traj, &MsdParams { max_lag: Some(4), ..MsdParams::default() }).unwrap();
+        let r = calc_msd(&traj, &MsdParams { max_lag: Some(4), dt: 1.0, ..MsdParams::default() }).unwrap();
         for (m, &got) in r.msd.iter().enumerate() {
             assert!((got - (v * m as f64).powi(2)).abs() < 1e-9, "lag {m}: {got}");
         }
@@ -659,7 +659,7 @@ mod tests {
             traj.add_frame(frame);
         }
         let r = calc_msd(&traj, &MsdParams {
-            max_lag: Some(4), elements: Some(vec!["Li".to_string()]), ..MsdParams::default()
+            max_lag: Some(4), elements: Some(vec!["Li".to_string()]), dt: 1.0, ..MsdParams::default()
         }).unwrap();
         assert_eq!(r.n_atoms, 1);
         assert_eq!(r.elements, vec!["Li".to_string()]);
@@ -683,16 +683,16 @@ mod tests {
     fn test_max_lag_out_of_range() {
         let traj = make_traj_static(6);
         for bad in [0, 6, 99] {
-            assert!(calc_msd(&traj, &MsdParams { max_lag: Some(bad), ..MsdParams::default() }).is_err(),
+            assert!(calc_msd(&traj, &MsdParams { max_lag: Some(bad), dt: 1.0, ..MsdParams::default() }).is_err(),
                 "max_lag = {bad} 应被拒绝");
         }
-        assert!(calc_msd(&traj, &MsdParams { max_lag: Some(5), ..MsdParams::default() }).is_ok());
+        assert!(calc_msd(&traj, &MsdParams { max_lag: Some(5), dt: 1.0, ..MsdParams::default() }).is_ok());
     }
 
     #[test]
     fn test_to_tables_columns() {
         let traj = make_traj_linear(10.0, 0.2, 5);
-        let result = calc_msd(&traj, &MsdParams::default()).unwrap();
+        let result = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).unwrap();
         let (name, t) = result.to_tables().remove(0);
         assert_eq!(name, "msd");
         assert_eq!(t.names(), vec!["time", "msd", "msd_x", "msd_y", "msd_z"]);
@@ -780,12 +780,12 @@ mod tests {
     fn test_calc_msd_populates_fit() {
         let traj = make_traj_static(10);
 
-        let none = calc_msd(&traj, &MsdParams::default()).unwrap();
+        let none = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).unwrap();
         assert!(none.fit.is_none());
 
         let with = calc_msd(&traj, &MsdParams {
             fit_range: Some((0.0, 1.0)),
-            ..MsdParams::default()
+            dt: 1.0, ..MsdParams::default()
         }).unwrap();
         assert!(with.fit.is_some());
         let f = with.fit.unwrap();
@@ -797,7 +797,7 @@ mod tests {
         let traj = make_traj_linear(10.0, 0.2, 6);
         let result = calc_msd(&traj, &MsdParams {
             fit_range: Some((0.0, 1.0)),
-            ..MsdParams::default()
+            dt: 1.0, ..MsdParams::default()
         }).unwrap();
         let meta = result.meta_lines().join("\n");
         assert!(meta.contains("fit      = [0.00, 1.00]"), "缺拟合窗口比例:\n{meta}");
@@ -806,7 +806,7 @@ mod tests {
         assert!(!meta.contains(&d), "D 的数值不该出现在共享区:\n{meta}");
         assert!(!meta.contains("atoms"), "原子数不该出现在共享区:\n{meta}");
 
-        let plain = calc_msd(&traj, &MsdParams::default()).unwrap();
+        let plain = calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).unwrap();
         assert!(plain.meta_lines().join("\n").contains("fit      = off"));
     }
 

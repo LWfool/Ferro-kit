@@ -61,7 +61,7 @@ impl BondLifeParams {
                     "r-break ({r_break}) must be >= r-bond ({})", self.r_bond)));
             }
         }
-        check::positive("dt", self.dt)?;
+        check::frame_interval(self.dt)?;
         check::at_least_one_if_given("max-lag", self.max_lag)
     }
 }
@@ -75,7 +75,7 @@ impl Default for BondLifeParams {
             r_break: None,
             intermittency: 0,
             max_lag: None,
-            dt: 1.0,
+            dt: f64::NAN,
         }
     }
 }
@@ -390,7 +390,7 @@ mod tests {
     }
 
     fn params() -> BondLifeParams {
-        BondLifeParams { r_bond: 2.0, ..Default::default() }
+        BondLifeParams { r_bond: 2.0, dt: 1.0, ..Default::default() }
     }
 
     /// 暴力参考：逐原点逐 lag 直接数
@@ -512,7 +512,7 @@ mod tests {
             traj.add_frame(f);
         }
         let r = calc_bondlife(&traj, &BondLifeParams {
-            center: "O".into(), neighbor: "O".into(), r_bond: 3.0, ..Default::default()
+            center: "O".into(), neighbor: "O".into(), r_bond: 3.0, dt: 1.0, ..Default::default()
         }).unwrap();
         assert_eq!(r.n_candidates, 1);
         assert_eq!(r.n_bonds[0], 1.0);

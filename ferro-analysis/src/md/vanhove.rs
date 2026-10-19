@@ -45,7 +45,7 @@ impl VanHoveParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
-        check::positive("dt", self.dt)?;
+        check::frame_interval(self.dt)?;
         check::at_least_one_if_given("tau", self.tau)?;
         check::at_least_one("shift", self.shift)?;
         check::non_negative("r-min", self.r_min)?;
@@ -57,7 +57,7 @@ impl VanHoveParams {
 impl Default for VanHoveParams {
     fn default() -> Self {
         VanHoveParams {
-            tau: None, shift: 1, dt: 1.0,
+            tau: None, shift: 1, dt: f64::NAN,
             r_min: 0.0, r_max: 10.0, dr: 0.01,
             elements: None,
         }
@@ -353,7 +353,7 @@ mod tests {
     fn test_vanhove_static_zero_displacement() {
         // 静态轨迹，所有位移 = 0 → 全部计数落在 bin 0（r ∈ [0, dr)）
         let traj = make_static_traj(10);
-        let params = VanHoveParams { tau: Some(3), shift: 1, dr: 0.01, ..Default::default() };
+        let params = VanHoveParams { tau: Some(3), shift: 1, dr: 0.01, dt: 1.0, ..Default::default() };
         let res = calc_vanhove(&traj, &params).unwrap();
 
         // bin 0 应包含所有计数：密度 = 1/dr
@@ -475,7 +475,7 @@ mod tests {
             traj.add_frame(frame);
         }
         let run = |r_max: f64, dr: f64| calc_vanhove(&traj, &VanHoveParams {
-            tau: Some(2), r_max, dr, ..Default::default()
+            tau: Some(2), r_max, dr, dt: 1.0, ..Default::default()
         }).unwrap();
 
         // 范围盖住全部位移：积分 = 1，无溢出；换 dr 后 r=0 处的密度按 1/dr 变，积分不变
@@ -496,7 +496,7 @@ mod tests {
     fn test_vanhove_n_origins() {
         // n=10, tau=3, shift=1 → p ∈ {0,1,...,6} → 7 origins
         let traj = make_static_traj(10);
-        let params = VanHoveParams { tau: Some(3), shift: 1, ..Default::default() };
+        let params = VanHoveParams { tau: Some(3), shift: 1, dt: 1.0, ..Default::default() };
         let res = calc_vanhove(&traj, &params).unwrap();
         // take_while(p+3 < 10) → p ∈ {0,1,2,3,4,5,6} → 7 origins
         assert_eq!(res.n_origins, 7);
@@ -509,11 +509,11 @@ mod tests {
         // 不给 tau 时取 n/2（同 correlate.rs 的 max_lag 默认与 gmx 的 -acflen），
         // 而不是 n-1 —— 后者只剩 1 个原点
         let traj = make_static_traj(10);
-        let res = calc_vanhove(&traj, &VanHoveParams::default()).unwrap();
+        let res = calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).unwrap();
         assert_eq!(res.tau_frames, 5, "默认 tau 应为 10/2");
         assert_eq!(res.n_origins, 5, "p ∈ {{0..4}} 满足 p+5 < 10");
         // 两帧时 n/2 = 1，仍有 1 个原点
-        let res = calc_vanhove(&make_static_traj(2), &VanHoveParams::default()).unwrap();
+        let res = calc_vanhove(&make_static_traj(2), &VanHoveParams { dt: 1.0, ..Default::default() }).unwrap();
         assert_eq!((res.tau_frames, res.n_origins), (1, 1));
     }
 
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn test_to_tables_columns() {
         let traj = make_static_traj(10);
-        let res = calc_vanhove(&traj, &VanHoveParams::default()).unwrap();
+        let res = calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).unwrap();
         let (name, t) = res.to_tables().remove(0);
         assert_eq!(name, "vanhove");
         assert_eq!(t.names(), vec!["r", "p_r"]);

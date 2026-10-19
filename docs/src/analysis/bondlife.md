@@ -129,7 +129,7 @@ pub struct BondLifeParams {
     pub r_break: Option<f64>,    // a bond survives while r <= r_break [Å]; None = r_bond
     pub intermittency: usize,    // fill breaks of <= k frames (S_C and events); 0 = off
     pub max_lag: Option<usize>,  // longest lag [frames], 1..=N-1; None = N/2
-    pub dt: f64,                 // time between stored frames [fs]
+    pub dt: f64,                 // time between stored frames [fs]; required (Default is NaN)
 }
 ```
 

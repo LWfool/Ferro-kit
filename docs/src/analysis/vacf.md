@@ -78,7 +78,7 @@ Then $C_v$ is in Å²/fs² and `diffusion` in Å²/fs.
 ```rust
 pub struct VacfParams {
     pub max_lag: Option<usize>,        // longest lag [frames], 1..=N-1; None = N/2
-    pub dt: f64,                       // time between stored frames [fs]; default: 1.0
+    pub dt: f64,                       // time between stored frames [fs]; required (Default is NaN)
     pub elements: Option<Vec<String>>, // None = all atoms
 }
 ```

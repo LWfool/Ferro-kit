@@ -57,7 +57,7 @@ normalised as a full one (`--r-max 1.0 --dr 0.07` read 3.5 times too low there).
 pub struct VanHoveParams {
     pub tau: Option<usize>,            // lag [frames], 1..=n_frames-1; None = n_frames / 2
     pub shift: usize,                  // origin spacing [frames]; default: 1
-    pub dt: f64,                       // time step [fs]; default: 1.0
+    pub dt: f64,                       // time between stored frames [fs]; required (Default is NaN)
     pub r_min: f64,                    // default: 0.0 Å
     pub r_max: f64,                    // default: 10.0 Å
     pub dr: f64,                       // bin width [Å]; default: 0.01
