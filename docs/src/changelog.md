@@ -22,6 +22,10 @@ command line alike; regenerate it rather than migrating it.
   Cartesian difference without a word.
 - `dataset filter`'s cutoff scan samples at most the 200 frames it promises (199 frames used to
   give 199 samples, anything up to 399 was possible), so its report can differ in the samples.
+- The automatic first-shell cutoff (`net --A-B=auto`, `dataset filter --al6 auto`) smooths g(r)
+  over the documented 0.10 Å; it was 0.14 Å (7 bins of 0.02 Å). Cutoffs on a shallow minimum
+  move by a bin or two: on the test glasses Zn-O 2.631 → 2.651 and 2.611 → 2.571 Å, Al-O
+  2.591 → 2.571 Å; P-O and the clean gaps do not move.
 - Library: `MsdParams`, `VacfParams`, `RotCorrParams`, `BondLifeParams` and `VanHoveParams`
   default `dt` to NaN, and `validate` / `calc_*` refuse it as "dt must be given"; the default of
   1.0 fs used to compute silently. The CLI and Python already required it.

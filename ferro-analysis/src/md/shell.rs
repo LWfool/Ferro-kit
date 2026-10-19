@@ -73,12 +73,15 @@ fn shell_from_curve(r: &[f64], g: &[f64]) -> Option<ShellCutoff> {
         }
     }
     let peak_g = g[ip];
-    // 峰后 3 Å 窗口内的最小值，在 0.10 Å 滑动平均后的曲线上找。帧少时峰尾是
-    // 一段稀疏采样的低尾巴，里面零星有恰好为 0 的格子；不平滑的话那些空格会被当成
-    // 「干净空隙」，g_min 报 0（实测 43Z43P15A 的 Al-O：原始曲线极小 g=0.000，
-    // 平滑后 0.027，CN 在 2.2–2.6 Å 间一直在涨）。真空隙平滑后仍是 0
+    // The trough within 3 Å behind the peak is searched on a 0.10 Å moving average.
+    // With few frames the peak tail is a sparsely sampled low tail with scattered
+    // bins that are exactly 0; unsmoothed, those would pass for a clean gap and report
+    // g_min = 0 (measured on 43Z43P15A Al-O: raw minimum 0.000, smoothed 0.027, while
+    // CN keeps rising between 2.2 and 2.6 Å). A real gap stays 0 after smoothing.
+    // The window is 2*half+1 bins, so half = round(0.10/dr)/2 gives exactly 5 bins at
+    // the 0.02 Å grid of `first_shell_cutoffs`.
     let dr = r[1] - r[0];
-    let half = ((0.05 / dr).round() as usize).max(1);
+    let half = ((0.10 / dr).round() as usize / 2).max(1);
     let g: Vec<f64> = (0..g.len())
         .map(|i| {
             let w = &g[i.saturating_sub(half)..(i + half + 1).min(g.len())];
@@ -204,5 +207,23 @@ mod tests {
         let s = shell_from_curve(&r, &g).unwrap();
         assert!(s.depth > 0.03, "稀疏尾巴不应报成干净空隙，depth = {}", s.depth);
         assert!((2.0..3.0).contains(&s.min_r), "极小应在尾巴里，得到 {}", s.min_r);
+    }
+
+    /// The moving average spans 0.10 Å (5 bins at 0.02 Å): a gap exactly that wide
+    /// reads as clean, which a wider window would blur into a nonzero minimum
+    #[test]
+    fn the_smoothing_window_is_a_tenth_of_an_angstrom() {
+        let r: Vec<f64> = (0..200).map(|i| i as f64 * 0.02).collect();
+        let g: Vec<f64> = (0..200)
+            .map(|i| match i {
+                0..=89 => 0.0,
+                90..=100 => 6.0,
+                120..=124 => 0.0,
+                _ => 0.5,
+            })
+            .collect();
+        let s = shell_from_curve(&r, &g).unwrap();
+        assert_eq!(s.depth, 0.0, "a 0.10 Å gap should read as clean");
+        assert!((s.min_r - 2.44).abs() < 1e-9, "trough at {}", s.min_r);
     }
 }
