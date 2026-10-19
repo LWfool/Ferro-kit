@@ -118,12 +118,8 @@ pub struct MsdCmd {
     #[command(flatten)]
     pub common: CommonArgs,
 
-    /// Time between stored frames [fs] = MD timestep × dump interval; required
-    #[arg(long)]
-    pub dt: Option<f64>,
-    /// Longest lag in frames (default: half the trajectory); every lag uses all time origins
-    #[arg(long)]
-    pub max_lag: Option<usize>,
+    #[command(flatten)]
+    pub time: LagKnobs,
     /// Track only these elements, e.g. Fe,O
     #[arg(long, value_delimiter = ',')]
     pub elements: Option<Vec<String>>,
@@ -413,8 +409,8 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         )),
     };
     let params = MsdParams {
-        dt: c.dt.ok_or_else(|| anyhow!("--dt is required for msd (run without -i to see help)"))?,
-        max_lag: c.max_lag,
+        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for msd (run without -i to see help)"))?,
+        max_lag: c.time.max_lag,
         elements: c.elements.clone(),
         fit_range,
     };
