@@ -4,6 +4,29 @@ use ferro_core::error::{ChemError, Result};
 use ferro_core::{Cell, Frame, Trajectory};
 use nalgebra::Vector3;
 
+/// The binning rule of every histogram analysis (CLAUDE.md, "Histogram bins"): the bin
+/// count is `ceil((hi - lo) / step)` and the width actually used is `(hi - lo) / count`,
+/// so the last bin ends exactly at `hi` and no bin is wider than requested. A ratio
+/// within 1e-9 (relative) of a whole number counts as that number, or `10.004 / 0.002`
+/// would round up to one bin too many.
+///
+/// The three analyses used to differ: gr dropped a partial last bin (floor), vanhove and
+/// angle kept it but normalised it as a full one, so with `--r-max 1.0 --dr 0.07` the
+/// last vanhove bin read 3.5 times too low. Returns 0 bins for `hi <= lo`.
+pub(crate) fn bins(lo: f64, hi: f64, step: f64) -> (usize, f64) {
+    let ratio = (hi - lo) / step;
+    if ratio.is_nan() || ratio <= 0.0 {
+        return (0, step);
+    }
+    let n = (ratio - ratio * 1e-9).ceil().max(1.0) as usize;
+    // A whole number of steps keeps the request as given: (hi - lo) / n would be one ulp
+    // off (0.0020000000000000005)
+    if (ratio - n as f64).abs() <= ratio * 1e-9 {
+        return (n, step);
+    }
+    (n, (hi - lo) / n as f64)
+}
+
 /// Build a time-averaged representative frame for the cube file header.
 ///
 /// Frames whose atom count differs from the first frame are skipped rather than
@@ -202,5 +225,20 @@ mod tests {
         assert!(dup.contains("frames 1 and 2") && dup.contains("duplicated"), "重启点写两次应点名帧，实际 {dup}");
         let uneven = format!("{:#}", check_frame_spacing(&frames_with_steps(&[0, 100, 200, 400])).unwrap_err());
         assert!(uneven.contains("not evenly spaced") && uneven.contains("frames 2 and 3"), "改过 dump 间隔应点名帧，实际 {uneven}");
+    }
+
+    #[test]
+    fn bins_round_up_and_end_on_the_upper_bound() {
+        // A whole number: no extra bin (the float quotient 10.004 / 0.002 is just above 5002)
+        let (n, w) = bins(0.001, 10.005, 0.002);
+        assert_eq!(n, 5002);
+        assert_eq!(w, 0.002, "a whole number of steps keeps the request exactly");
+        // Not a whole number: round up, narrowing the width to end exactly at the bound
+        let (n, w) = bins(0.0, 1.0, 0.07);
+        assert_eq!(n, 15);
+        assert!((w * 15.0 - 1.0).abs() < 1e-15 && w < 0.07);
+        // Less than one step still gives one bin; an empty range none
+        assert_eq!(bins(0.0, 0.05, 0.07).0, 1);
+        assert_eq!(bins(1.0, 1.0, 0.1).0, 0);
     }
 }

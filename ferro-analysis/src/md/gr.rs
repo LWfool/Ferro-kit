@@ -171,7 +171,9 @@ pub struct GrResult {
     pub rho: f64,
     /// `r_max` after the minimum-image clamp: the range actually covered, per input
     pub r_max_used: f64,
-    /// Parameters as requested (`r_max` is the request; see `r_max_used`)
+    /// Parameters as requested, except `dr`: the bin width actually used, the request
+    /// narrowed so whole bins end at `r_max_used` (`md/util.rs::bins`). `r_max` is the
+    /// request; see `r_max_used`
     pub params: GrParams,
 }
 
@@ -207,10 +209,13 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     }
     let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };
 
-    let n_bins = ((r_max - params.r_min) / params.dr).floor() as usize;
+    let (n_bins, dr) = super::util::bins(params.r_min, r_max, params.dr);
     if n_bins == 0 {
         return Err(ChemError::ValidationError("r range produces zero bins".into()));
     }
+    // Everything downstream (histogram, normalisation, header, the S(q) integral) uses
+    // the width actually used
+    let params = &GrParams { dr, ..params.clone() };
 
     // ── 分组类型列表（元素或位点标签），按 (Z, 字符串) 升序 ──────────────
     let first_frame = traj.frames.first()

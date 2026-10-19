@@ -188,11 +188,13 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         set.into_iter().collect()
     };
 
-    let n_bins = ((params.r_max - params.r_min) / params.dr).ceil() as usize;
+    let (n_bins, dr) = super::util::bins(params.r_min, params.r_max, params.dr);
     if n_bins == 0 {
         // validate 已要求 dr 有限且 > 0、r_max > r_min，这里只是防御
         return Err(ChemError::ValidationError(format!("dr = {} leaves no bin", params.dr)));
     }
+    // Everything downstream (histogram, normalisation, header) uses the width actually used
+    let params = &VanHoveParams { dr, ..params.clone() };
 
     // origin 起始帧：访问 cart[p] 和 cart[p+tau]，均需 < n_steps
     let p_values: Vec<usize> = (0..)
@@ -530,5 +532,24 @@ mod tests {
         assert!(t.validate().is_ok());
         // tau 目前是元信息而非列（见 dev/plan.md 搁置项）
         assert!(res.meta_lines().join("\n").contains("tau"));
+    }
+
+    /// `--r-max 1.0 --dr 0.07` used to give 15 bins of 0.07, the last one [0.98, 1.05)
+    /// collecting only up to 1.0 but normalised as a full bin: 3.5 times too low.
+    #[test]
+    fn test_uneven_range_has_no_partial_last_bin() {
+        // A displacement of 0.99 Å falls in the last bin
+        let traj = make_linear_traj(50.0, 0.33, 20);
+        let params = VanHoveParams {
+            tau: Some(3), shift: 1, dt: 1.0, r_min: 0.0, r_max: 1.0, dr: 0.07, elements: None,
+        };
+        let res = calc_vanhove(&traj, &params).unwrap();
+        assert_eq!(res.p_r.len(), 15);
+        let w = res.params.dr;
+        assert!((w * 15.0 - 1.0).abs() < 1e-12, "width {w}");
+        assert!(*res.r.last().unwrap() < 1.0, "last centre inside r_max");
+        // Every sample is in the last bin: density × width = 1
+        assert!((res.p_r[14] * w - 1.0).abs() < 1e-12, "{}", res.p_r[14] * w);
+        assert!(res.meta_lines().join("\n").contains(&format!("dr      = {w} Ang")));
     }
 }

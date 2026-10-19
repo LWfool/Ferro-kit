@@ -12,6 +12,21 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
+
+- The bin count is the range over the step **rounded up**, and the width used is the range over
+  that count: the last bin ends exactly at the upper bound and no bin is wider than asked. When
+  the range holds a whole number of steps the step is used as given, so the default `gr`
+  (0.001–10.005 Å, 0.002 Å) is unchanged. The `dr` / `d_angle` header line reports the width used.
+- Before, `gr` dropped a partial last bin while `vanhove` and `angle` kept it but normalised it as
+  a full one (`vanhove --r-max 1.0 --dr 0.07` read 3.5 times too low in its last bin).
+- What changes: `sq` with its defaults (its $g(r)$ starts at 0, and 10.005 is not a whole number
+  of 0.002 steps from 0) now has 5003 bins of 0.0019998 Å up to 10.005 Å instead of 5002 of
+  0.002 Å stopping at 10.004 Å. On the 43Z43P15A test glass the totals moved by at most
+  $3 \times 10^{-4}$ for $q \ge 0.63$ Å⁻¹ and $3 \times 10^{-3}$ below it, where the truncation of
+  $g(r)$ dominates anyway (the `q_trunc` warning). Also changed: `gr` whose `r_max` is cut to a
+  small cell's minimum-image bound, and any run whose range is not a whole number of steps.
+
 ### Units
 
 - kcal/mol uses the CODATA 2018 value, 1 eV = 23.06054783 kcal/mol (was 23.0605419, CODATA

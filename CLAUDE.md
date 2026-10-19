@@ -64,6 +64,11 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 - **矩阵一律行优先**：`ferro-core` 里行 = 晶格矢量 / 张量行；落盘取九个数走
   `matrix3_row_major()`，**禁止对 nalgebra 类型用 `as_slice()`**（它是列优先，
   即转置；对称张量下这个错误完全静默）。根目录 `clippy.toml` 的 `disallowed-methods` 守着这条
+- **直方图分箱一律走 `ferro-analysis/src/md/util.rs::bins`**（2026-10-19 用户定）：bin 数取
+  `ceil((上界 − 下界) / 步长)`（相对 1e-9 内的整数商视为整除），实际宽度取 `范围 / bin 数`
+  —— 末 bin 正好止于上界、宽度只窄不宽、整除时原样用请求的步长；结果与文件头报实际宽度。
+  新增任何按距离 / 角度 / 位移分 bin 的分析都调它，**不许自己写 `floor` / `ceil`**。起因：
+  gr 向下取整丢尾巴、vanhove / angle 向上取整却把残缺末 bin 按整格归一，三处口径不一
 
 内部单位（DeePMD-kit / VASP 约定）：长度 Å · 能量 eV · 力 eV/Å · 应力 eV/Å³ ·
 时间 fs · 质量 amu · 电荷 e · 温度 K。转换走 `units.rs` 的枚举，不引入 `uom`。

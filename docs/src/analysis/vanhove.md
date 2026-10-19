@@ -46,6 +46,11 @@ $\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 > 0$ indicates fat tails (
    Accumulate into histogram bin $\lfloor (r - r_\min) / \Delta r \rfloor$ if $r_\min \le r < r_\max$.
 5. Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms} \cdot \Delta r)$.
 
+$\Delta r$ is `--dr` when $[r_\min, r_\max]$ holds a whole number of bins, otherwise slightly
+narrower, $(r_\max - r_\min) / \lceil (r_\max - r_\min) / \texttt{dr} \rceil$, so the last bin ends
+exactly at $r_\max$; the `dr` header line reports the width used. A partial last bin used to be
+normalised as a full one (`--r-max 1.0 --dr 0.07` read 3.5 times too low there).
+
 ## Parameters
 
 ```rust

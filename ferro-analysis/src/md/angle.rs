@@ -195,8 +195,10 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 
     // 校验所有帧都有 cell
 
-    // 窗口与步长已由 validate 保证 angle_min < angle_max、d_angle > 0，ceil 至少为 1
-    let n_bins = ((params.angle_max - params.angle_min) / params.d_angle).ceil() as usize;
+    // validate guarantees angle_min < angle_max and d_angle > 0, so at least one bin.
+    // Everything downstream (histogram, bin centres, header) uses the width actually used
+    let (n_bins, d_angle) = super::util::bins(params.angle_min, params.angle_max, params.d_angle);
+    let params = &AngleParams { d_angle, ..params.clone() };
     let n_frames = traj.frames.len();
 
     // 类型列表（元素或位点标签），按 (Z, 字符串) 排序：字符串二级比较使同 Z 的

@@ -90,6 +90,12 @@ to set it from the first frame.
 Bin $i$ covers $[r_\text{min} + i\,\Delta r,\ r_\text{min} + (i{+}1)\Delta r)$ and is labelled
 at its centre, $r_i = r_\text{min} + (i + \tfrac{1}{2})\Delta r$.
 
+$\Delta r$ is the width actually used, which the `dr` header line reports: `--dr` itself when
+$[r_\text{min}, r_\text{max}]$ holds a whole number of bins, otherwise
+$(r_\text{max} - r_\text{min}) / \lceil (r_\text{max} - r_\text{min}) / \texttt{dr} \rceil$, slightly
+narrower, so the last bin ends exactly at $r_\text{max}$ (after the minimum-image clamp). No bin is
+wider than asked and none is cut short. `traj vanhove` and `traj angle` bin the same way.
+
 To land on the same grid as `code1/gr.c` and `code2/dump2sq.c`, pass the same values on both
 sides — e.g. `--r-min 0.005 --dr 0.01` here against `--rmin 0.005 --dr 0.01` there puts bin
 centres at 0.01, 0.02, … for both.  The defaults are deliberately finer than that.

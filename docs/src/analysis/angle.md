@@ -46,8 +46,10 @@ For each triplet, the key `"ElemA-ElemCenter-ElemC"` is assigned with $Z(\text{E
 
 ### Histogram Range
 
-Counts land in bins of width `d_angle` starting at `angle_min`; bin $i$ is labelled at its
-centre, $\theta_i = \text{angle\_min} + (i + \tfrac{1}{2})\,\Delta\theta$. The upper edge is
+Counts land in bins of width $\Delta\theta$ starting at `angle_min`; bin $i$ is labelled at its
+centre, $\theta_i = \text{angle\_min} + (i + \tfrac{1}{2})\,\Delta\theta$. $\Delta\theta$ is `d_angle`
+when the window holds a whole number of bins, otherwise slightly narrower so the last bin ends
+exactly at `angle_max`; the `d_angle` header line reports the width used. The upper edge is
 **closed**: a perfectly collinear triplet gives $\arccos(-1) = 180.0$ exactly, which a
 half-open interval would discard entirely.
 
