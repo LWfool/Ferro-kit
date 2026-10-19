@@ -295,9 +295,7 @@ fn build_xrd_weights_at_q(
     gr_gr: &BTreeMap<String, Vec<f64>>,
 ) -> BTreeMap<String, f64> {
     let f: Vec<f64> = elems.iter().map(|(_, _, z)| form_factor_xrd(*z, q)).collect();
-    let f_avg: f64 = elems.iter().zip(f.iter()).map(|((_, c, _), fi)| c * fi).sum();
-    let denom = f_avg * f_avg;
-    weights_from_factors(elems, &f, denom, gr_gr)
+    weights_from_factors(elems, &f, gr_gr)
 }
 
 /// Build q-independent neutron weights w_ij.
@@ -306,18 +304,19 @@ fn build_neutron_weights(
     gr_gr: &BTreeMap<String, Vec<f64>>,
 ) -> BTreeMap<String, f64> {
     let b: Vec<f64> = elems.iter().map(|(_, _, z)| neutron_bcoh(*z)).collect();
-    let b_avg: f64 = elems.iter().zip(b.iter()).map(|((_, c, _), bi)| c * bi).sum();
-    let denom = b_avg * b_avg;
-    weights_from_factors(elems, &b, denom, gr_gr)
+    weights_from_factors(elems, &b, gr_gr)
 }
 
-/// Shared weight builder given per-element factor values and denominator.
+/// Shared weight builder given per-element factor values (`f(q)` or `b`): the
+/// Faber-Ziman denominator `<factor>² = (Σ cᵢ·factorᵢ)²` is formed here, so both
+/// radiations normalise the same way.
 fn weights_from_factors(
     elems: &[(&str, f64, usize)],
     factors: &[f64],
-    denom: f64,
     gr_gr: &BTreeMap<String, Vec<f64>>,
 ) -> BTreeMap<String, f64> {
+    let avg: f64 = elems.iter().zip(factors).map(|((_, c, _), fi)| c * fi).sum();
+    let denom = avg * avg;
     let mut w: BTreeMap<String, f64> = BTreeMap::new();
     if denom.abs() < 1e-30 { return w; }
     // 上三角遍历（ib 从 ia 起），每个对称对只访问一次，异种对乘 (2−δᵢⱼ)。
@@ -561,6 +560,19 @@ mod tests {
                 (e.as_str(), c, elem_z_local(e))
             })
             .collect()
+    }
+
+    /// The denominator is `(Σ cᵢ·factorᵢ)²`, formed from the factors given: c = ½, ½ and
+    /// factors 1, 3 give <f>² = 4, so w = 1/16, 2·3/16, 9/16
+    #[test]
+    fn test_weights_from_factors_forms_the_denominator() {
+        let elems = [("A", 0.5, 0), ("B", 0.5, 0)];
+        let gr: BTreeMap<String, Vec<f64>> =
+            ["A-A", "A-B", "B-B"].iter().map(|k| (k.to_string(), vec![])).collect();
+        let w = weights_from_factors(&elems, &[1.0, 3.0], &gr);
+        for (k, want) in [("A-A", 0.0625), ("A-B", 0.375), ("B-B", 0.5625)] {
+            assert!((w[k] - want).abs() < 1e-15, "{k}: {}", w[k]);
+        }
     }
 
     #[test]
