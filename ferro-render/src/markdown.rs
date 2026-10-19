@@ -66,7 +66,7 @@ pub fn render(md: &str, width: usize, style: Style) -> String {
     let blocks: Vec<String> = split_blocks(md)
         .iter()
         .map(|b| match b {
-            Block::Heading { level, text } => render_heading(*level, text, style),
+            Block::Heading { level, text } => render_heading(*level, text, text_width, style),
             Block::Para { indent, text } => render_para(*indent, text, text_width, style),
             Block::Code { indent, lines } => render_code(*indent, lines),
             Block::Quote(lines) => render_quote(lines, text_width, style),
@@ -554,22 +554,34 @@ fn rule(c: char, width: usize) -> String {
     std::iter::repeat_n(c, width).collect()
 }
 
-fn render_heading(level: usize, text: &str, style: Style) -> String {
+fn render_heading(level: usize, text: &str, width: usize, style: Style) -> String {
     let spans = inline(text);
     let bold: Vec<Span> = spans
         .iter()
         .map(|s| Span { text: s.text.clone(), look: s.look.or(Look { bold: true, ..Look::default() }) })
         .collect();
-    let mut line: String = bold.iter().map(|s| paint(s, style)).collect();
-    let n = visible_len(&bold, style);
+    // 没有粗体可用时,三级以下标题靠原有的 # 与正文区分
+    let marked = level > 2 && !style.ansi;
+    let pad = if marked { level + 1 } else { 0 };
+    let lines = wrap(&bold, width.saturating_sub(pad).max(20), style);
+    // The underline spans the longest wrapped line, not the unwrapped text.
+    let n = lines.iter().map(|l| screen_len(l)).max().unwrap_or(0);
+    let mut out = lines
+        .iter()
+        .enumerate()
+        .map(|(k, l)| match (marked, k) {
+            (false, _) => l.clone(),
+            (true, 0) => format!("{} {l}", "#".repeat(level)),
+            (true, _) => format!("{}{l}", " ".repeat(pad)),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     match level {
-        1 => write!(line, "\n{}", rule(if style.unicode { '═' } else { '=' }, n)).unwrap(),
-        2 => write!(line, "\n{}", rule(if style.unicode { '─' } else { '-' }, n)).unwrap(),
-        // 没有粗体可用时,三级以下标题靠原有的 # 与正文区分
-        _ if !style.ansi => line = format!("{} {line}", "#".repeat(level)),
+        1 => write!(out, "\n{}", rule(if style.unicode { '═' } else { '=' }, n)).unwrap(),
+        2 => write!(out, "\n{}", rule(if style.unicode { '─' } else { '-' }, n)).unwrap(),
         _ => {}
     }
-    line
+    out
 }
 
 fn render_para(indent: usize, text: &str, width: usize, style: Style) -> String {
@@ -1030,5 +1042,18 @@ mod tests {
         let out = render("# T\n\n- **a** `b` $\\alpha$\n\n> q\n\n| a |\n|---|\n| b |\n\n---\n", 80, PLAIN);
         assert!(out.is_ascii(), "Windows 路径不能出现非 ASCII 字符:\n{out}");
         assert!(!out.contains('\x1b'));
+    }
+
+    #[test]
+    fn a_long_heading_wraps_and_its_underline_follows() {
+        let long = "word ".repeat(10);
+        assert_eq!(
+            render(&format!("## {long}\n"), 20, PLAIN),
+            "word word word word\nword word word word\nword word\n-------------------\n"
+        );
+        assert_eq!(
+            render(&format!("### {long}\n"), 24, PLAIN),
+            "### word word word word\n    word word word word\n    word word\n"
+        );
     }
 }
