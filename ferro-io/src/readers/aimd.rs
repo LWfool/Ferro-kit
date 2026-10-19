@@ -120,6 +120,8 @@ impl AimdStats {
 fn run_type(head: &str) -> Option<String> {
     head.lines()
         .find(|l| {
+            // token-prefix match; the readers' copies stay unshared (review D-2,
+            // reason on cp2k_sp.rs::starts_with_tokens)
             let mut it = l.split_whitespace();
             ["GLOBAL|", "Run", "type"].iter().all(|t| it.next() == Some(*t))
         })

@@ -75,6 +75,9 @@ type Sites = Vec<(String, Vector3<f64>)>;
 const VERIFIED_MAJORS: &[&str] = &["7"];
 
 /// True when the line's leading tokens match `tokens`.
+///
+/// Also in `cp2k_sp.rs`, `cp2k_md.rs` and `aimd.rs`, unshared on purpose; the
+/// reason is on `cp2k_sp.rs::starts_with_tokens` (review D-2).
 fn starts_with_tokens(line: &str, tokens: &[&str]) -> bool {
     let mut it = line.split_whitespace();
     tokens.iter().all(|t| it.next() == Some(*t))
@@ -217,6 +220,8 @@ fn read_stress(lines: &[&str], head: usize) -> Option<Matrix3<f64>> {
     Some(s)
 }
 
+// Judges QE releases; the two CP2K readers' `version_note`s judge CP2K ones, so
+// the three change for different reasons and stay apart (review D-4).
 fn version_note(version: Option<&str>) -> Option<String> {
     let Some(v) = version else {
         return Some("no `Program PWSCF v.X` banner, so the release could not be checked".into());

@@ -119,6 +119,10 @@ const VERIFIED_MAJORS: &[&str] = &["2025", "2026"];
 /// The verdict travels out through [`AimdStats`] instead of being printed here:
 /// a library that prints cannot be silenced by the one command that already
 /// knows the answer, and `collect` reads dozens of files in a row.
+///
+/// `cp2k_sp.rs` and `qe_out.rs` each have their own `version_note`: each judges
+/// its own reader's verified releases, so they change for different reasons
+/// and stay apart (review D-4).
 fn version_note(version: Option<&str>) -> Option<String> {
     let Some(v) = version else {
         return Some(
@@ -140,6 +144,9 @@ fn version_note(version: Option<&str>) -> Option<String> {
 }
 
 /// True when the line's leading tokens match any of `candidates`.
+///
+/// Also in `cp2k_sp.rs`, `qe_out.rs` and `aimd.rs`, unshared on purpose; the
+/// reason is on `cp2k_sp.rs::starts_with_tokens` (review D-2).
 fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
     candidates.iter().any(|tokens| {
         let mut it = line.split_whitespace();

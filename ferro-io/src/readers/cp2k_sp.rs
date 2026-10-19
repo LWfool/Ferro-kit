@@ -80,6 +80,9 @@ const SUPPORTED_GENERATIONS: &str = "2023-2024 and 2025-2026";
 ///
 /// Travels out through [`AimdStats`] rather than being printed here: `collect`
 /// reads dozens of files in a row and a library that prints cannot be silenced.
+///
+/// Not shared with `cp2k_md.rs` / `qe_out.rs`: each judges its own reader's
+/// verified releases (review D-4).
 fn version_note(version: Option<&str>) -> Option<String> {
     let Some(v) = version else {
         return Some(format!(
@@ -100,6 +103,11 @@ fn version_note(version: Option<&str>) -> Option<String> {
 }
 
 /// True when the line's leading tokens match `tokens`.
+///
+/// Same three lines as `qe_out.rs::starts_with_tokens`, `cp2k_md.rs::line_matches`
+/// and the loop in `aimd.rs::run_type`; left unshared on purpose (review D-2):
+/// cp2k_md / cp2k_sp share no code by the user's 2026-09-22 decision, and a
+/// three-line helper is not worth a cross-file dependency.
 fn starts_with_tokens(line: &str, tokens: &[&str]) -> bool {
     let mut it = line.split_whitespace();
     tokens.iter().all(|t| it.next() == Some(*t))
