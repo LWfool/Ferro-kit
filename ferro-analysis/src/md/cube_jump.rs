@@ -19,8 +19,7 @@ use ferro_core::{CubeData, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 use rayon::prelude::*;
-use super::cube_density::cube_reference_frame;
-use super::util::{select_atoms, unwrap_lattice};
+use super::util::{cube_from_grid, select_atoms, unwrap_lattice};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -208,22 +207,7 @@ pub fn calc_cube_jump(
             |(mut a, ja), (b, jb)| { a += &b; (a, ja + jb) },
         );
 
-    let m = ref_cell.matrix;
-    let spacing = Matrix3::new(
-        m[(0, 0)] / nx as f64, m[(0, 1)] / nx as f64, m[(0, 2)] / nx as f64,
-        m[(1, 0)] / ny as f64, m[(1, 1)] / ny as f64, m[(1, 2)] / ny as f64,
-        m[(2, 0)] / nz as f64, m[(2, 1)] / nz as f64, m[(2, 2)] / nz as f64,
-    );
-
-    let cube = CubeData {
-        // 特例：参考结构折回盒内，见 cube_density::cube_reference_frame
-        frame: cube_reference_frame(traj),
-        data: data.into_iter().collect(),
-        shape: [nx, ny, nz],
-        // 值属于体素中心，cube 规范的第 i 点在 origin + i·spacing，故 origin 取半个体素（审查 B-2）
-        origin: spacing.transpose() * Vector3::repeat(0.5),
-        spacing,
-    };
+    let cube = cube_from_grid(traj, ref_cell, data);
 
     Ok(CubeJumpResult { cube, n_frames, n_atoms, n_jumps, params: params.clone() })
 }

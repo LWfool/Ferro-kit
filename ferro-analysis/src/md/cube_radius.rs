@@ -17,10 +17,9 @@
 use crate::check;
 use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::Vector3;
 use ndarray::Array3;
-use super::cube_density::cube_reference_frame;
-use super::util::{par_map_in_order, select_atoms};
+use super::util::{cube_from_grid, par_map_in_order, select_atoms};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -193,23 +192,7 @@ pub fn calc_cube_radius(
         }
     });
 
-    // spacing: 每个 voxel 对应的晶格步长矩阵（行 i = 第 i 轴单步向量）
-    let m = ref_cell.matrix;
-    let spacing = Matrix3::new(
-        m[(0, 0)] / nx as f64, m[(0, 1)] / nx as f64, m[(0, 2)] / nx as f64,
-        m[(1, 0)] / ny as f64, m[(1, 1)] / ny as f64, m[(1, 2)] / ny as f64,
-        m[(2, 0)] / nz as f64, m[(2, 1)] / nz as f64, m[(2, 2)] / nz as f64,
-    );
-
-    let cube = CubeData {
-        // 特例：参考结构折回盒内，见 cube_density::cube_reference_frame
-        frame: cube_reference_frame(traj),
-        data: data.into_iter().collect(),
-        shape: [nx, ny, nz],
-        // 值属于体素中心，cube 规范的第 i 点在 origin + i·spacing，故 origin 取半个体素（审查 B-2）
-        origin: spacing.transpose() * Vector3::repeat(0.5),
-        spacing,
-    };
+    let cube = cube_from_grid(traj, ref_cell, data);
 
     Ok(CubeRadiusResult { cube, n_frames, n_atoms, params: params.clone() })
 }

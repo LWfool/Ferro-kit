@@ -1,8 +1,9 @@
 //! Helpers shared by more than two `md` analyses.
 
 use ferro_core::error::{ChemError, Result};
-use ferro_core::{Cell, Frame, Trajectory};
-use nalgebra::Vector3;
+use ferro_core::{Cell, CubeData, Frame, Trajectory};
+use nalgebra::{Matrix3, Vector3};
+use ndarray::Array3;
 
 /// The binning rule of every histogram analysis (CLAUDE.md, "Histogram bins"): the bin
 /// count is `ceil((hi - lo) / step)` and the width actually used is `(hi - lo) / count`,
@@ -81,6 +82,40 @@ pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result
         )));
     }
     Ok(picked)
+}
+
+/// Packs a grid accumulated on `ref_cell` into a cube file: voxel `i` along an axis is
+/// `cell row / n` wide, and the values sit at voxel centres, so the origin is half a
+/// voxel in (the cube format places point `i` at `origin + i·spacing`; review B-2).
+/// Shared by `cube_density`, `cube_radius` and `cube_jump`.
+///
+/// The reference structure is the time-averaged frame with atoms that left the cell
+/// along a periodic axis folded back into `[0, 1)`. **This is a special case: only cube
+/// output does it** (review M5, user decision 2026-10-02). Everywhere else Ferro keeps
+/// the coordinates the reader produced, neither shifted nor folded — folding on read
+/// perturbs an NPT MSD (a ΔL-sized residue under TOR unwrapping) and subtracting `lo`
+/// per frame adds a spurious drift, see `dev/issues.md`. A cube differs: the grid always
+/// spans `[0, L)` from origin 0 and voxels are assigned from folded fractional
+/// coordinates, so an unfolded reference would draw atoms outside the grid whenever a
+/// LAMMPS box has `lo ≠ 0` (659 of them in `tests/70Z30P00A_NVT_5`). Densities are
+/// unaffected.
+pub(crate) fn cube_from_grid(traj: &Trajectory, ref_cell: &Cell, data: Array3<f64>) -> CubeData {
+    let [nx, ny, nz] = [data.dim().0, data.dim().1, data.dim().2];
+    let m = ref_cell.matrix;
+    let spacing = Matrix3::new(
+        m[(0, 0)] / nx as f64, m[(0, 1)] / nx as f64, m[(0, 2)] / nx as f64,
+        m[(1, 0)] / ny as f64, m[(1, 1)] / ny as f64, m[(1, 2)] / ny as f64,
+        m[(2, 0)] / nz as f64, m[(2, 1)] / nz as f64, m[(2, 2)] / nz as f64,
+    );
+    let mut frame = build_avg_frame(traj);
+    frame.wrap_all();
+    CubeData {
+        frame,
+        data: data.into_iter().collect(),
+        shape: [nx, ny, nz],
+        origin: spacing.transpose() * Vector3::repeat(0.5),
+        spacing,
+    }
 }
 
 pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
@@ -193,6 +228,24 @@ mod tests {
     use super::*;
     use ferro_core::Atom;
     use nalgebra::Matrix3;
+
+    /// Spacing rows are the cell rows over the grid counts, and the origin sits half a
+    /// voxel in along each — checked on a triclinic cell, where the two differ per axis
+    #[test]
+    fn cube_from_grid_puts_values_at_voxel_centres() {
+        let cell = Cell::from_matrix(Matrix3::new(8.0, 0.0, 0.0, 2.0, 6.0, 0.0, 1.0, 1.0, 5.0));
+        let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+        frame.add_atom(Atom::new("O", Vector3::new(9.0, 1.0, 1.0)));
+        let mut traj = Trajectory::new();
+        traj.frames.push(frame);
+        let cube = cube_from_grid(&traj, &cell, Array3::zeros((2, 4, 5)));
+        assert_eq!(cube.shape, [2, 4, 5]);
+        let want = Matrix3::new(4.0, 0.0, 0.0, 0.5, 1.5, 0.0, 0.2, 0.2, 1.0);
+        assert!((cube.spacing - want).norm() < 1e-12, "{}", cube.spacing);
+        assert!((cube.origin - Vector3::new(2.35, 0.85, 0.5)).norm() < 1e-12, "{}", cube.origin);
+        // the reference atom past the a face is folded back into the cell
+        assert!((cube.frame.positions()[0] - Vector3::new(1.0, 1.0, 1.0)).norm() < 1e-12);
+    }
 
     /// A walk across the x face, twice, comes back continuous; y and z stay put
     #[test]

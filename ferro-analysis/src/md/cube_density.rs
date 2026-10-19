@@ -19,9 +19,9 @@
 use crate::check;
 use ferro_core::error::ChemError;
 use ferro_core::{CubeData, Frame, Trajectory};
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::Vector3;
 use ndarray::Array3;
-use super::util::{build_avg_frame, par_map_in_order, select_atoms};
+use super::util::{cube_from_grid, par_map_in_order, select_atoms};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -86,24 +86,6 @@ pub struct CubeDensityResult {
     /// Number of selected atoms per frame (counted from first valid frame)
     pub n_atoms: usize,
     pub params: CubeDensityParams,
-}
-
-// ─── cube 参考结构（特例）─────────────────────────────────────────────────────
-
-/// cube 文件里的参考结构：时间平均帧，再把周期方向上越出晶胞的原子折回 `[0, 1)`。
-///
-/// **特例：只有 cube 产物这样做，与 Ferro 其余各处不同**（审查 M5，用户裁定
-/// 2026-10-02）。别处一律保留 reader 读到的原始坐标、不平移也不折回 —— 读入时折回
-/// 会给 NPT 的 MSD 带来扰动（TOR 展开下额外折回留下 ΔL 量级残差），按帧减 lo 更会
-/// 引入虚假整体漂移，见 `dev/issues.md`。cube 不一样：网格恒铺在 `[0, L)`（原点 0），
-/// 体素归属也按折回后的分数坐标算，参考结构若不折回，LAMMPS 盒子 `lo ≠ 0` 时会有原子
-/// 画在网格外（`tests/70Z30P00A_NVT_5` 曾有 659 个）。密度数值不受影响。
-///
-/// `cube_density`、`cube_radius`、`cube_jump` 三处共用。
-pub(super) fn cube_reference_frame(traj: &Trajectory) -> Frame {
-    let mut frame = build_avg_frame(traj);
-    frame.wrap_all();
-    frame
 }
 
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
@@ -213,23 +195,7 @@ pub fn calc_cube_density(
         ),
     };
 
-    // Spacing matrix: row i = cell.row(i) / ni  [Å]
-    let m = ref_cell.matrix;
-    let spacing = Matrix3::new(
-        m[(0, 0)] / nx as f64, m[(0, 1)] / nx as f64, m[(0, 2)] / nx as f64,
-        m[(1, 0)] / ny as f64, m[(1, 1)] / ny as f64, m[(1, 2)] / ny as f64,
-        m[(2, 0)] / nz as f64, m[(2, 1)] / nz as f64, m[(2, 2)] / nz as f64,
-    );
-
-    let cube = CubeData {
-        // 特例：参考结构折回盒内，见 cube_reference_frame
-        frame: cube_reference_frame(traj),
-        data: data.into_iter().collect(),
-        shape: [nx, ny, nz],
-        // 值属于体素中心，cube 规范的第 i 点在 origin + i·spacing，故 origin 取半个体素（审查 B-2）
-        origin: spacing.transpose() * Vector3::repeat(0.5),
-        spacing,
-    };
+    let cube = cube_from_grid(traj, ref_cell, data);
 
     Ok(CubeDensityResult { cube, n_frames, n_atoms, params: params.clone() })
 }
