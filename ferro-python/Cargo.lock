@@ -164,7 +164,6 @@ dependencies = [
  "ndarray",
  "ndarray-npy",
  "quick-xml",
- "thiserror",
 ]
 
 [[package]]
@@ -193,7 +192,6 @@ dependencies = [
  "ferro-core",
  "nalgebra",
  "rand",
- "thiserror",
 ]
 
 [[package]]

@@ -10,4 +10,3 @@ license.workspace = true
 ferro-core = { path = "../ferro-core" }
 nalgebra   = { workspace = true }
 rand       = { workspace = true }
-thiserror  = { workspace = true }

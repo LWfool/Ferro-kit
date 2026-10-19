@@ -7,7 +7,6 @@ rust-version.workspace = true
 [dependencies]
 ferro-core = { path = "../ferro-core" }
 nalgebra.workspace = true
-thiserror.workspace = true
 anyhow.workspace = true
 ndarray.workspace = true
 ndarray-npy.workspace = true
