@@ -1,4 +1,4 @@
-"""``ferro-py``：ferro 的 Python 命令行。子命令 ``job``、``conv``、``config``、``doc``，以后加 ``plot``。
+"""``ferro-py``：ferro 的 Python 命令行。子命令 ``job``、``conv``、``config``、``plot``、``doc``。
 
 帮助页与 Rust 的 ``ferro`` 同为五段（用途 / Parameters / Output / Examples /
 Full documentation），手写在各子命令旁；``tests/test_cli.py`` 核对帮助页与
@@ -28,6 +28,7 @@ Commands:
   conv          Generate a convergence test (VASP / CP2K / QE cutoffs and grids)
   conv analyze  Compare its single points: energy, pressure, forces
   config init   Write a commented configuration template
+  plot          Publication figures from ferro's csv products (gr, sq, msd, net...)
   doc           Read the manual (`ferro-py doc job vasp`)
 
 Run `ferro-py <COMMAND> -h` for the parameters of one command.
@@ -218,7 +219,7 @@ def nonneg_int(text):
 
 def job_parser():
     # The input options (-i ... --mkdir) repeat in conv_parser. Two places, not merged (R6);
-    # a third (`plot`) is the time to pull them into one add_input_options
+    # `plot` reads csv products, not structures, and takes none of the reading options
     p = new_parser("ferro-py job")
     p.add_argument("-s", "--software", required=True)
     p.add_argument("-t", "--task", required=True)
@@ -571,6 +572,189 @@ def run_conv_analyze(argv):
     return 1 if failed else 0
 
 
+PLOT_HELP = """\
+ferro-py plot — Publication figures from ferro's csv products
+
+Usage:
+  ferro-py plot <FIGURE> -i CSV... [OPTIONS]
+
+Figures:
+  gr            g(r) and CN(r) of `ferro traj gr`, one panel per csv
+  sq            Neutron and X-ray S(Q) of `ferro traj sq`, one row per csv
+  angle         P(θ) of `ferro traj angle`, one panel per csv
+  msd           MSD(t) of `ferro traj msd` with the fitted D, one panel per csv
+  net           Network figures of `ferro net`: qn | cn | bridge | linkmap
+
+Run `ferro-py plot <FIGURE> -h` for the parameters of one figure.
+
+Full documentation:  ferro-py doc plot"""
+
+# The options every figure takes; each page below writes them through {PLOT_OPTS}
+PLOT_OPTS = """\
+  -i, --input CSV       Product(s) of ferro; quoted globs allowed  (required)
+  -o, --output DIR      Directory for the figure and labels.csv  [current dir]
+  -s, --suffix TAG      Last segment of the figure's name: <name>_<TAG>.pdf
+      --mkdir           Create -o without asking"""
+
+PLOT_OUTPUT = """\
+  <name>.pdf (the figure), <name>.png (a preview) and <name>_data.csv (the numbers
+  drawn, one row per point, to redraw it elsewhere). labels.csv in DIR, shared by all
+  figures: display names, order and visibility of the inputs; written on the first
+  run, new inputs appended. Needs matplotlib, pandas, scienceplots and LaTeX."""
+
+PLOT_HELPS = {
+    "gr": f"""\
+ferro-py plot gr — g(r) and CN(r)
+
+  One panel per csv, one curve per input of the ferro run, one colour per input in
+  every panel: g(r) solid on the left axis, CN(r) dashed on the right. A csv holding
+  more than one pair (gr_all.csv) is refused; select the pair with -a / -b.
+
+Parameters:
+{PLOT_OPTS}
+  -h, --help            This page
+
+Output:
+  <name> = gr[_<TAG>].
+{PLOT_OUTPUT}
+
+Examples:
+  ferro-py plot gr -i gr_P-O.csv gr_Al-O.csv -o figs
+  ferro-py plot gr -i 'gr_*.csv' -o figs -s rdf
+
+Full documentation:  ferro-py doc plot""",
+    "sq": f"""\
+ferro-py plot sq — Neutron and X-ray structure factors
+
+  One row of two panels per csv: S^N(Q) on the left, S^X(Q) on the right, one curve
+  per input. Only the two totals are drawn; the weighted partials stay in the csv.
+
+Parameters:
+{PLOT_OPTS}
+  -h, --help            This page
+
+Output:
+  <name> = sq[_<TAG>].
+{PLOT_OUTPUT}
+
+Examples:
+  ferro-py plot sq -i sq.csv -o figs
+
+Full documentation:  ferro-py doc plot""",
+    "angle": f"""\
+ferro-py plot angle — Bond-angle distributions
+
+  One panel per csv, one curve per input: P(θ). A csv holding more than one triplet
+  is refused; select it with -a / -b / -c.
+
+Parameters:
+{PLOT_OPTS}
+  -h, --help            This page
+
+Output:
+  <name> = angle[_<TAG>].
+{PLOT_OUTPUT}
+
+Examples:
+  ferro-py plot angle -i angle_O-P-O.csv angle_O-Al-O.csv -o figs
+
+Full documentation:  ferro-py doc plot""",
+    "msd": f"""\
+ferro-py plot msd — Mean square displacement and the fitted D
+
+  One panel per csv, one curve per input. Inputs fitted with --fit-range get the fit
+  line over the fit window and D ± its error in the legend; the fit is ferro's, read
+  from the csv, not redone here.
+
+Parameters:
+{PLOT_OPTS}
+      --components      Add the x / y / z components (they sum to the total)
+      --loglog          Log-log axes and a slope-1 guide: the fit window should lie
+                        on the diffusive, slope-1 part
+  -h, --help            This page
+
+Output:
+  <name> = msd[_<TAG>].
+{PLOT_OUTPUT}
+
+Examples:
+  ferro-py plot msd -i msd_all.csv msd_Zn.csv -o figs
+  ferro-py plot msd -i msd_all.csv --loglog -o figs -s loglog
+
+Full documentation:  ferro-py doc plot""",
+    "net": f"""\
+ferro-py plot net — Network topology of `ferro net`
+
+  TABLE picks the figure: qn (network_qn.csv, Qn of each former), cn
+  (network_coordination.csv, coordination of each element), bridge
+  (network_linkage.csv, ligand species and former–former linkages), linkmap
+  (network_linkage.csv, a map of the two ends' states per former pair). One stacked
+  bar per input along the x axis; several csv stand side by side, named by their -s.
+
+Parameters:
+  TABLE                 qn | cn | bridge | linkmap  (required)
+{PLOT_OPTS}
+      --element E,...   cn: only these elements  [those with more than one CN]
+  -h, --help            This page
+
+Output:
+  <name> = net_<TABLE>[_<TAG>].
+{PLOT_OUTPUT}
+
+Examples:
+  ferro-py plot net qn -i network_qn.csv -o figs
+  ferro-py plot net cn -i network_coordination.csv --element Al,Zn -o figs
+  ferro-py plot net qn -i network_qn_CMD.csv network_qn_MLMD.csv -o figs
+  ferro-py plot net linkmap -i network_linkage.csv -o figs
+
+Full documentation:  ferro-py doc plot""",
+}
+
+NET_TABLES = ("qn", "cn", "bridge", "linkmap")
+
+
+def plot_parser(figure):
+    p = new_parser(f"ferro-py plot {figure}")
+    if figure == "net":
+        p.add_argument("table", choices=NET_TABLES)
+    p.add_argument("-i", "--input", nargs="+", required=True)
+    p.add_argument("-o", "--output")
+    p.add_argument("-s", "--suffix")
+    p.add_argument("--mkdir", action="store_true")
+    if figure == "msd":
+        p.add_argument("--components", action="store_true")
+        p.add_argument("--loglog", action="store_true")
+    if figure == "net":
+        p.add_argument("--element")
+    return p
+
+
+def run_plot(argv):
+    import importlib
+
+    if not argv or argv[0] in ("-h", "--help"):
+        print(PLOT_HELP)
+        return 0
+    figure = argv[0]
+    if figure not in PLOT_HELPS:
+        raise UsageError(f"unknown figure '{figure}'; one of {', '.join(PLOT_HELPS)}")
+    args = parse(plot_parser(figure), PLOT_HELPS[figure], argv[1:])
+    files = expand_inputs(args.input)
+    extra = {}
+    if figure == "msd":
+        extra = {"components": args.components, "loglog": args.loglog}
+    if figure == "net":
+        extra = {"table": args.table, "elements": args.element and
+                 [e.strip() for e in args.element.split(",") if e.strip()]}
+    if args.output is not None:
+        ensure_dir(args.output, args.mkdir)
+    module = importlib.import_module(f"ferro.plot.{figure}")
+    print(f"Inputs: {len(files)} file(s)")
+    for path in module.plot(files, outdir=args.output, suffix=args.suffix, **extra):
+        print(f"Wrote: {path}")
+    return 0
+
+
 DOC_HELP = """\
 ferro-py doc — Read the manual of ferro-py
 
@@ -636,7 +820,7 @@ def run_doc(argv):
     return 0
 
 
-COMMANDS = {"config": run_config, "job": run_job, "conv": run_conv, "doc": run_doc}
+COMMANDS = {"config": run_config, "job": run_job, "conv": run_conv, "plot": run_plot, "doc": run_doc}
 
 PROGRAM = "ferro-py"
 
