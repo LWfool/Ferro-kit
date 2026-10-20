@@ -166,13 +166,14 @@ These return text for a calculation input; atoms are written in the order they a
 Analysis functions return `dict[str, list[float]]` (PyO3 converts the Rust
 `HashMap<String, Vec<f64>>` automatically — no NumPy dependency).
 
-### `gr_pair(traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005)`
-### `gr_all(traj, by="element", r_max=None, dr=0.01, r_min=0.005)`
+### `gr_pair(traj, a, b, by="element", r_max=None, dr=0.002, r_min=0.001)`
+### `gr_all(traj, by="element", r_max=None, dr=0.002, r_min=0.001)`
 
 Radial distribution function and coordination number.  `gr_pair` computes one
 named pair, `gr_all` every ordered pair in a single pass.  `r_max=None`
 auto-selects the minimum-image bound (half the smallest **interplanar spacing**,
-not the shortest cell vector — the two differ for non-orthogonal cells).
+not the shortest cell vector — the two differ for non-orthogonal cells).  `dr` and `r_min` default to
+those of `ferro traj gr` (`--dr 0.002`, `--r-min 0.001`), so the two give the same grid.
 
 `by="element"` groups on `Atom::element`, `by="label"` on `Atom::label`.
 

@@ -36,6 +36,12 @@ command line alike; regenerate it rather than migrating it.
 - An atom read as a bare `X` (a CIF label with no leading letter) is named as having no
   element, instead of failing later as `no POTCAR for X`.
 
+### Python `gr_pair` / `gr_all`: the defaults of `ferro traj gr`
+
+- `dr` defaults to 0.002 Å and `r_min` to 0.001 Å, as `--dr` / `--r-min` of `ferro traj gr`; they were
+  0.01 / 0.005, so a call without them gave a coarser, shifted grid than the command line. Pass
+  `dr=0.01, r_min=0.005` to keep the old grid.
+
 ### Analyses
 
 - `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,

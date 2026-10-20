@@ -136,3 +136,13 @@ def test_partial_charge_column_needs_drop_partial(tmp_path):
     atoms = (tmp_path / "m.data").read_text().split("Atoms # full\n\n")[1].splitlines()[:4]
     assert [line.split()[3] for line in atoms] == ["0.000000"] * 4, \
         "LAMMPS data must have a charge column: every charge written as 0"
+
+
+def test_gr_defaults_are_those_of_the_cli():
+    # ferro traj gr: --r-min 0.001, --dr 0.002; the bin centres start at r_min + dr/2.
+    # r_max - r_min is a whole number of bins, so the width is not narrowed (md/util.rs::bins)
+    t = ferro.read(str(NVT)).subset([0])
+    g = ferro.gr_pair(t, "P", "O", r_max=3.001)
+    assert g["r"][0] == pytest.approx(0.002) and g["r"][1] - g["r"][0] == pytest.approx(0.002)
+    assert g == ferro.gr_pair(t, "P", "O", r_max=3.001, dr=0.002, r_min=0.001)
+    assert ferro.gr_all(t, r_max=3.001)["r"] == g["r"]

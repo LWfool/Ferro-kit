@@ -16,7 +16,7 @@ use crate::types::PyTrajectory;
 /// 返回字典：`"r"` → bin 中心；`"<a>-<b>_gr"`；`"<a>-<b>_cn"`。
 /// `r_max=None` 时按首帧的最小镜像上界（最小面间距的一半）自动确定。
 #[pyfunction]
-#[pyo3(signature = (traj, a, b, by="element", r_max=None, dr=0.01, r_min=0.005))]
+#[pyo3(signature = (traj, a, b, by="element", r_max=None, dr=0.002, r_min=0.001))]
 fn gr_pair(
     traj: &PyTrajectory,
     a: &str,
@@ -47,7 +47,7 @@ fn gr_pair(
 /// 返回字典：`"r"`，以及每个有序对的 `"<A>-<B>_gr"` / `"<A>-<B>_cn"`。
 /// n 个类型给出 n² 个配对；`gr` 对称（`A-B` 与 `B-A` 相同），`cn` 有向。
 #[pyfunction]
-#[pyo3(signature = (traj, by="element", r_max=None, dr=0.01, r_min=0.005))]
+#[pyo3(signature = (traj, by="element", r_max=None, dr=0.002, r_min=0.001))]
 fn gr_all(
     traj: &PyTrajectory,
     by: &str,
