@@ -7,8 +7,8 @@ The spatial density map divides the simulation box into an $n_x \times n_y \time
 | Mode | Accumulated quantity | Unit |
 |---|---|---|
 | `Density` | atomic number density | atoms/Å³ |
-| `Velocity` | mean atomic speed $|\mathbf{v}|$ | Å/fs |
-| `Force` | mean atomic force magnitude $|\mathbf{f}|$ | eV/Å |
+| `Velocity` | mean atomic speed $\lvert\mathbf{v}\rvert$ | Å/fs |
+| `Force` | mean atomic force magnitude $\lvert\mathbf{f}\rvert$ | eV/Å |
 
 The result is a Gaussian cube file that can be visualised directly in VESTA, VMD, or similar tools.
 
