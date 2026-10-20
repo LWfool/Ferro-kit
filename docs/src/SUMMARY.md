@@ -42,6 +42,7 @@
   - [Quantum ESPRESSO](python/job-qe.md)
   - [CP2K](python/job-cp2k.md)
 - [ferro-py conv: Convergence Tests](python/conv.md)
+- [ferro-py plot: Publication Figures](python/plot.md)
 
 # Reference
 

@@ -232,7 +232,7 @@ All output is **one** csv; multiple inputs are stacked into a single table with 
 comment block holds the shared parameters and the `[inputs]` list (`pandas.read_csv(comment="#")` drops
 it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
 
-Figures are made from this csv outside ferro; see [Plotting](../plotting.md).  `scripts/plot_msd.py`
+Figures are made from this csv outside ferro; see [Plotting](../plotting.md).  `ferro-py plot msd`
 draws the fitted line from the `[inputs]` columns.
 
 ## Usage
@@ -263,7 +263,7 @@ The fit is ordinary least squares $\text{MSD} = \text{slope}\cdot t + \text{inte
 $m \in [\operatorname{round}(f_\min\, m_\max),\ \operatorname{round}(f_\max\, m_\max)]$, the same model as
 `gmx msd`.  To convert from Å²/fs to cm²/s multiply by $0.1$ (1 Å² = $10^{-16}$ cm², 1 fs = $10^{-15}$ s).
 
-Check the window on a log-log plot (`scripts/plot_msd.py --loglog`): in the diffusive regime the MSD has
+Check the window on a log-log plot (`ferro-py plot msd --loglog`): in the diffusive regime the MSD has
 slope 1, and the window should sit inside that stretch — past the ballistic start and before the poorly
 averaged tail.
 

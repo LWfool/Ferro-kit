@@ -473,7 +473,7 @@ columns `file, time, msd, msd_x, msd_y, msd_z` (Cartesian).  The conventions are
 
 Giving `--fit-range` computes $D = \text{slope}/6$, its error `d_err` and $R^2$, prints them, and adds
 `t_lo, t_hi, points, slope, intercept, d_ang2_per_fs, d_err, r2` to each input's row in the `[inputs]` list.
-Plot with `scripts/plot_msd.py`, which draws the fitted line from those columns.
+Plot with `ferro-py plot msd`, which draws the fitted line from those columns.
 
 ### `angle` — bond angle distribution
 
@@ -577,7 +577,7 @@ Columns: `file, r, p_r`
 
 ### Plotting
 
-ferro writes csv only; figures are made in Python. See [Plotting](plotting.md).
+ferro writes csv only; figures are made in Python by `ferro-py plot`. See [Plotting](plotting.md).
 
 ---
 

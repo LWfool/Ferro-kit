@@ -112,8 +112,8 @@ says what was analysed, so `traj gr -a P -b O` writes `gr_P-O.csv` and an unfilt
 writes `gr_all.csv`. Missing values under a column union are written as empty fields
 (`NaN` on read-back) — never as zero.
 
-ferro writes csv only and draws no figures; plots go through the Python scripts
-below (see `docs/src/plotting.md`).
+ferro writes csv only and draws no figures; publication figures are drawn by
+`ferro-py plot` (see `docs/src/python/plot.md`).
 
 ## What it computes
 
@@ -229,12 +229,10 @@ wrapped yet. See `docs/src/python/api.md`; the `ferro-py` commands are read with
 
 ## Python scripts
 
-`scripts/` holds two independent groups, each with its own shared layer:
-
-| Group | Shared layer | Scripts | Purpose |
-|---|---|---|---|
-| Cross-checking | `ferrocmp.py` | `compare_rdf` / `compare_angle` / `compare_sq` / `compare_sq_experiment` | Point-by-point comparison against the reference C implementations |
-| Plotting | `ferroplot.py` | `plot_gr` / `plot_angle` / `plot_sq` / `plot_net` | Publication-grade PDF (SciencePlots + LaTeX) |
+`scripts/` holds the cross-checks against the reference C implementations
+(`compare_rdf` / `compare_angle` / `compare_sq` / `compare_sq_experiment`, sharing
+`ferrocmp.py`) and the space-group table tools (`gen_spacegroups` / `crosscheck_spacegroups`).
+The publication figures moved into ferro-python as `ferro-py plot`.
 
 `trajcheck.py` records why one reference implementation's partial S(q) cannot be
 reproduced (its atom typing goes stale after frame 0) — read it before concluding that

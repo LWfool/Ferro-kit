@@ -27,7 +27,8 @@ def parser_options(parser):
 # 每个子命令：(argparse 构造函数, 帮助页)
 PAGES = [(cli.config_parser, cli.CONFIG_INIT_HELP), (cli.job_parser, cli.JOB_HELP),
          (cli.job_template_parser, cli.JOB_TEMPLATE_HELP), (cli.conv_parser, cli.CONV_HELP),
-         (cli.conv_analyze_parser, cli.CONV_ANALYZE_HELP), (cli.doc_parser, cli.DOC_HELP)]
+         (cli.conv_analyze_parser, cli.CONV_ANALYZE_HELP), (cli.doc_parser, cli.DOC_HELP)] + \
+        [(lambda figure=figure: cli.plot_parser(figure), text) for figure, text in cli.PLOT_HELPS.items()]
 
 
 @pytest.mark.parametrize("make_parser, text", PAGES)
@@ -54,7 +55,7 @@ MANUAL = Path(__file__).resolve().parents[2] / "docs" / "src"
 def test_every_help_page_points_at_a_manual_page():
     # 同 ferro doc 的 PAGES 登记：帮助页末行的 `ferro-py doc X` 必须真有那一页
     topics = {topic for topic, _, _ in ferro._ferro._doc_pages()}
-    for text in [cli.OVERVIEW] + [text for _, text in PAGES]:
+    for text in [cli.OVERVIEW, cli.PLOT_HELP] + [text for _, text in PAGES]:
         asked = text.rsplit("Full documentation:  ferro-py doc", 1)[1].strip()
         assert asked == "" or asked in topics, f"帮助页指向不存在的手册页 `{asked}`"
 
@@ -206,3 +207,57 @@ def test_job_errors_name_the_frame(tmp_path, job, capsys):
     ferro.write(ferro.read(str(NVT)).tail(1), str(tmp_path / "mol.xyz"))
     assert job("-i", str(tmp_path / "mol.xyz"), "-o", str(tmp_path)) == 1
     assert "mol.xyz frame 0: only periodic systems" in capsys.readouterr().err
+
+
+# -- ferro-py plot -----------------------------------------------------------
+
+def test_plot_overview_and_unknown_figure(capsys):
+    assert cli.main(["plot"]) == 0
+    assert "net" in capsys.readouterr().out
+    assert cli.main(["plot", "rdf", "-i", "x.csv"]) == 1
+    assert "unknown figure 'rdf'; one of gr, sq, angle, msd, net" in capsys.readouterr().err
+
+
+GR_CSV = """\
+# ferro gr
+file,r,center,neighbor,gr,cn
+a,1.0,P,O,0.0,0.0
+a,1.5,P,O,2.0,1.0
+b,1.0,P,O,0.0,0.0
+b,1.5,P,O,3.0,2.0
+"""
+
+
+def can_plot():
+    import importlib.util
+    import shutil
+    return shutil.which("latex") is not None and all(
+        importlib.util.find_spec(m) for m in ("matplotlib", "pandas", "scienceplots"))
+
+
+@pytest.mark.skipif(not can_plot(), reason="needs matplotlib, pandas, scienceplots and LaTeX")
+def test_plot_gr_writes_figure_data_and_labels(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    (tmp_path / "gr_P-O.csv").write_text(GR_CSV)
+    out = tmp_path / "figs"
+    assert cli.main(["plot", "gr", "-i", str(tmp_path / "gr_*.csv"), "-o", str(out)]) == 1, \
+        "a missing -o needs --mkdir without a terminal"
+    capsys.readouterr()
+    assert cli.main(["plot", "gr", "-i", str(tmp_path / "gr_*.csv"), "-o", str(out), "--mkdir",
+                     "-s", "run1"]) == 0
+    printed = capsys.readouterr()
+    assert sorted(p.name for p in out.iterdir()) == \
+        ["gr_run1.pdf", "gr_run1.png", "gr_run1_data.csv", "labels.csv"], "-s is the last segment"
+    assert f"Wrote: {out / 'gr_run1_data.csv'}" in printed.out
+    assert f"{out / 'labels.csv'}: FerroNote: written" in printed.err, "notes in the CLI's layout"
+    assert (out / "labels.csv").read_text() == "key,label,show\na,a,1\nb,b,1\n"
+    data = (out / "gr_run1_data.csv").read_text().splitlines()
+    assert data[0] == "panel,file,label,quantity,x,y" and len(data) == 1 + 2 * 2 * 2, \
+        "two inputs x (gr, cn) x two points"
+
+
+@pytest.mark.skipif(not can_plot(), reason="needs matplotlib, pandas, scienceplots and LaTeX")
+def test_plot_net_names_the_wrong_table(tmp_path, capsys):
+    (tmp_path / "gr.csv").write_text(GR_CSV)
+    assert cli.main(["plot", "net", "qn", "-i", str(tmp_path / "gr.csv"), "-o", str(tmp_path)]) == 1
+    assert "'qn' needs column(s) count, former, qn" in capsys.readouterr().err

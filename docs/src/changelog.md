@@ -12,6 +12,30 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro-py plot` replaces `scripts/plot_*.py`
+
+- The publication figures moved into the Python package: `ferro-py plot gr | sq | angle | msd |
+  net` and `ferro.plot.<figure>.plot(...)`, with the optional dependencies
+  `pip install 'ferro[plot]'` (plus LaTeX, as before). `scripts/ferroplot.py` and
+  `scripts/plot_gr.py`, `plot_sq.py`, `plot_angle.py`, `plot_msd.py`, `plot_net.py` are gone.
+- Command lines change: the csv files go to `-i`; `--outdir DIR` is now `-o DIR`; the old
+  `-o STEM` is `-s TAG`, which ends the name instead of replacing it (`-o rdf` → `-s rdf` writes
+  `gr_rdf.pdf`); `plot_net.py qn …` is `ferro-py plot net qn -i …`. Figures, `labels.csv` and
+  `<name>_data.csv` are the same as the scripts made.
+- Messages follow the `ferro-py` layout: `Wrote: <path>` per file, notes as
+  `<source>: FerroNote: …` on stderr, errors as `ferro-py: FerroError: …` with exit code 1.
+
+### `ferro-py job`: PREC and variable-cell cutoffs
+
+- VASP `PREC` must be `Normal` or `Accurate`; `Low`, `Medium`, `High`, `Single` and `SingleN`
+  are errors (`High` raised the default ENCUT to 1.3 × ENMAX, which the fine grid missed).
+- A varying cell needs a tested cutoff, as VASP's `ENCUT` already did: QE `opt --vary-cell`
+  needs `ecutwfc` in the template; CP2K `--vary-cell` and `--ensemble npt_i|npt_f` need your own
+  template with `&MGRID CUTOFF` — the built-in one (`CUTOFF 400`) is refused.
+- QE: when no UPF header suggests an `ecutrho`, it is 4 × `ecutwfc` instead of an error.
+- An atom read as a bare `X` (a CIF label with no leading letter) is named as having no
+  element, instead of failing later as `no POTCAR for X`.
+
 ### Analyses
 
 - `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,

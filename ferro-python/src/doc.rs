@@ -20,6 +20,7 @@ const PAGES: &[(&str, &str, &str)] = &[
     ("job qe", "python/job-qe.md", include_str!("../../docs/src/python/job-qe.md")),
     ("job cp2k", "python/job-cp2k.md", include_str!("../../docs/src/python/job-cp2k.md")),
     ("conv", "python/conv.md", include_str!("../../docs/src/python/conv.md")),
+    ("plot", "python/plot.md", include_str!("../../docs/src/python/plot.md")),
 ];
 
 /// 全部手册页：[(主题, 源文件, 全文)]。
