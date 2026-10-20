@@ -145,7 +145,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
         .collect();
 
     let rho = gr.rho;
-    let dr = gr.params.dr;
+    let dr = gr.dr_used;
     let pi4 = 4.0 * std::f64::consts::PI;
 
     // 规范半边：gr.elements 已排序，取 i ≤ j

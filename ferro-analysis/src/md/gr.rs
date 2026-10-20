@@ -171,9 +171,10 @@ pub struct GrResult {
     pub rho: f64,
     /// `r_max` after the minimum-image clamp: the range actually covered, per input
     pub r_max_used: f64,
-    /// Parameters as requested, except `dr`: the bin width actually used, the request
-    /// narrowed so whole bins end at `r_max_used` (`md/util.rs::bins`). `r_max` is the
-    /// request; see `r_max_used`
+    /// The bin width actually used, per input: the requested `dr` narrowed so whole
+    /// bins end at `r_max_used` (`md/util.rs::bins`)
+    pub dr_used: f64,
+    /// Parameters as requested; the per-input values are `r_max_used` and `dr_used`
     pub params: GrParams,
 }
 
@@ -213,9 +214,8 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     if n_bins == 0 {
         return Err(ChemError::ValidationError("r range produces zero bins".into()));
     }
-    // Everything downstream (histogram, normalisation, header, the S(q) integral) uses
-    // the width actually used
-    let params = &GrParams { dr, ..params.clone() };
+    // Everything downstream (histogram, normalisation, the S(q) integral) uses `dr`, the
+    // width actually used, never `params.dr`, the request
 
     // ── 分组类型列表（元素或位点标签），按 (Z, 字符串) 升序 ──────────────
     let first_frame = traj.frames.first()
@@ -302,7 +302,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
                 for (j, r_val, _) in cl.neighbors_of(i) {
                     if j <= i { continue; }
                     if r_val < params.r_min { continue; }
-                    let bin = ((r_val - params.r_min) / params.dr) as usize;
+                    let bin = ((r_val - params.r_min) / dr) as usize;
                     if bin >= n_bins { continue; }
                     let Some(&tj) = type_idx.get(group_key(frame.atom(j), by)) else { continue; };
                     cr[pair_lookup[ti][tj]][bin] += 1.0;
@@ -333,7 +333,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     let rho = n_total * volumes.iter().map(|v| 1.0 / v).sum::<f64>() / nf;
 
     let r_centers: Vec<f64> = (0..n_bins)
-        .map(|i| params.r_min + (i as f64 + 0.5) * params.dr)
+        .map(|i| params.r_min + (i as f64 + 0.5) * dr)
         .collect();
 
     let pi4 = 4.0 * std::f64::consts::PI;
@@ -366,7 +366,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
             let mut running = 0.0f64;
             for (i, &r_c) in r_centers.iter().enumerate() {
                 // 几何 + 计数因子，不含体积
-                let bunbo = pi4 * r_c * r_c * params.dr * n_neighbor * n_a;
+                let bunbo = pi4 * r_c * r_c * dr * n_neighbor * n_a;
                 if bunbo > 0.0 {
                     gr_vec[i] = ni * acc.vol_w[pidx][i] / (bunbo * nf);
                     rho_g_vec[i] = ni * n_total * acc.plain[pidx][i] / (bunbo * nf);
@@ -399,6 +399,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         volume_std,
         rho,
         r_max_used: r_max,
+        dr_used: dr,
         params: params.clone(),
     })
 }
@@ -466,7 +467,7 @@ impl GrResult {
     /// The analysis parameters, as `key = value` strings for the comment block.
     ///
     /// **Shared across a batch only.** Anything that varies per input — the composition,
-    /// the clamped `r_max` — belongs in the per-input summary instead, where it cannot
+    /// the clamped `r_max`, the bin width actually used — belongs in the per-input summary instead, where it cannot
     /// be mistaken for a global fact. Deliberately not machine-readable; anything a
     /// script must parse belongs in a column.
     pub fn meta_lines(&self) -> Vec<String> {
@@ -477,7 +478,7 @@ impl GrResult {
         vec![
             format!("r_min   = {} Ang", self.params.r_min),
             format!("r_max   = {} Ang (requested; clamped per input, see [inputs])", self.params.r_max),
-            format!("dr      = {} Ang", self.params.dr),
+            format!("dr      = {} Ang (requested; actual per input, see [inputs])", self.params.dr),
             format!("grouped by {what}"),
             "gr is symmetric; cn is directed (center -> neighbor)".to_string(),
         ]
@@ -869,6 +870,26 @@ mod tests {
         assert!(res.r.last().copied().unwrap() <= 3.0 + 1e-9);
         assert!(res.r_max_used <= 3.0 + 1e-9);
         assert_eq!(res.params.r_max, 10.0, "params 保留请求值，截断值走 r_max_used");
+    }
+
+    /// The width actually used depends on the clamped range, so it differs between
+    /// inputs; `params.dr` keeps the request for the shared header (review C-1)
+    #[test]
+    fn test_dr_used_is_per_input_and_params_keep_the_request() {
+        let res_in = |l: f64| {
+            let cell = Cell::from_lengths_angles(l, l, l, 90.0, 90.0, 90.0).unwrap();
+            let mut frame = Frame::with_cell(cell, [true; 3]);
+            frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
+            frame.add_atom(Atom::new("Fe", Vector3::new(1.5, 0.0, 0.0)));
+            let params = GrParams { r_min: 0.1, r_max: 10.0, dr: 0.007, ..Default::default() };
+            calc_gr(&Trajectory::from_frame(frame), &params).unwrap()
+        };
+        let (a, b) = (res_in(6.0), res_in(7.0));
+        assert_eq!((a.params.dr, b.params.dr), (0.007, 0.007));
+        assert!((a.dr_used - 2.9 / 415.0).abs() < 1e-15, "dr_used {}", a.dr_used);
+        assert!((b.dr_used - 3.4 / 486.0).abs() < 1e-15, "dr_used {}", b.dr_used);
+        assert!((a.r[1] - a.r[0] - a.dr_used).abs() < 1e-12, "r grid follows dr_used");
+        assert!(a.meta_lines().iter().any(|l| l.starts_with("dr      = 0.007 Ang (requested")));
     }
 
     #[test]

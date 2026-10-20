@@ -146,7 +146,8 @@ in `scripts/trajcheck.py`.
 The primary output is the two totals (one $q$ per row); the weighted partials $w_{ij}(q)\,S_{ij}(q)$ are a
 diagnostic decomposition that sums point by point back to the total.  Inputs with different element sets take the union of columns; **gaps stay empty (NaN), never interpolated, never padded with zeros**.
 
-The `[inputs]` block carries `r_max` (after clamping to the minimum-image bound) and
+The `[inputs]` block carries `r_max` (after clamping to the minimum-image bound), `dr` (the
+$g(r)$ bin width actually used, see [g(r)](gr.md)) and
 `q_trunc` $= 2\pi/r_{max}$, the low-$q$ bound described in [The low-$q$ limit](#the-low-q-limit).
 
 `sq` no longer writes a `gr` alongside; run `ferro traj gr` separately when $g(r)$ is needed.

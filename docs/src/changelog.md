@@ -17,6 +17,11 @@ command line alike; regenerate it rather than migrating it.
 - `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,
   `vacf`, `rotcorr` and `bondlife`; it used to be cut to the last frame without a word.
 - `traj msd` writes exactly 0 at lag 0 (it read about −1.7e-18, round-off).
+- `traj gr` / `traj sq`: the `dr` header line is the requested `--dr`; the width actually used,
+  which the minimum-image clamp makes differ between inputs, is a `dr` column of `[inputs]`. The
+  header used to print the first input's actual width as if it held for the whole batch. Data
+  columns are unchanged. Library: `GrResult.params.dr` is the request, `GrResult.dr_used` the
+  actual width (`params.dr` used to hold the actual width).
 - A trajectory with a cell in some frames and none in others is an error in every analysis that
   checks cells; `rotcorr` and `bondlife` used to measure the cell-less frames with the plain
   Cartesian difference without a word.

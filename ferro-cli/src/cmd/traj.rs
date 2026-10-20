@@ -315,7 +315,8 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
     let pair_ref = pair.as_ref().map(|(a, b)| (a.as_str(), b.as_str()));
     let tables = batch::stack(&results, |r: &GrResult| Ok(r.to_tables(pair_ref)?))?;
 
-    // r_max 逐文件 clamp 到各自盒子的最小面间距,值可能不同,所以进清单
+    // r_max is clamped per input to that box's minimum-image bound and dr narrowed to
+    // fit whole bins in it; both can differ between inputs, so they go in [inputs]
     let mut summary = Summary::new(&["volume", "volume_std", "r_max"]);
     for (input, r) in &results {
         let atoms: usize = r.element_counts.values().sum();
@@ -325,6 +326,9 @@ fn run_gr(c: &GrCmd) -> Result<usize> {
             atoms,
             &[r.avg_volume, r.volume_std, r.r_max_used],
         );
+        // Full precision, as the header used to print it: four digits would show the
+        // narrowed 0.0019994 as 0.0020
+        summary.note("dr", r.dr_used.to_string());
         summary.note("composition", r.composition());
     }
     summary.failed(&failures);
@@ -374,6 +378,7 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
             atoms,
             &[gr.avg_volume, gr.volume_std, gr.r_max_used, q_trunc],
         );
+        summary.note("dr", gr.dr_used.to_string());
         summary.note("composition", gr.composition());
         if c.q_min < q_trunc {
             crate::report::warn(input.path.display(), format!(
