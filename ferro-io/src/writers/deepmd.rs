@@ -113,29 +113,6 @@ pub fn write_deepmd_npy_bounds(
         bail!("some frames are periodic and some are not; a DeePMD system is either periodic or not");
     }
 
-    fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
-    // 重写时先清掉旧的 set.*，否则帧数变少会留下上一次的尾巴
-    for entry in fs::read_dir(dir)?.filter_map(|e| e.ok()) {
-        let p = entry.path();
-        if p.is_dir()
-            && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("set."))
-        {
-            fs::remove_dir_all(&p)?;
-        }
-    }
-
-    let type_raw: String = type_index.iter().map(|t| format!("{t}\n")).collect();
-    fs::write(dir.join("type.raw"), type_raw)?;
-    let map_raw: String = species.iter().map(|s| format!("{s}\n")).collect();
-    fs::write(dir.join("type_map.raw"), map_raw)?;
-
-    let nopbc = dir.join("nopbc");
-    if nopbc_frames == 0 {
-        let _ = fs::remove_file(&nopbc);
-    } else {
-        fs::write(&nopbc, "")?;
-    }
-
     let nf = frames.len();
     let covered: usize = bounds.iter().map(|(lo, hi)| hi.saturating_sub(*lo)).sum();
     if covered != nf {
@@ -189,6 +166,31 @@ pub fn write_deepmd_npy_bounds(
             virial.extend(matrix3_row_major(&v));
         }
         arrays.push(("virial".into(), virial, 9));
+    }
+
+    // Every refusal above comes before the directory is touched: clearing the old set.* first used
+    // to leave a rejected rewrite with nothing but type.raw
+    fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
+    // A rewrite clears the old set.* first, or fewer frames would leave the previous tail behind
+    for entry in fs::read_dir(dir)?.filter_map(|e| e.ok()) {
+        let p = entry.path();
+        if p.is_dir()
+            && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("set."))
+        {
+            fs::remove_dir_all(&p)?;
+        }
+    }
+
+    let type_raw: String = type_index.iter().map(|t| format!("{t}\n")).collect();
+    fs::write(dir.join("type.raw"), type_raw)?;
+    let map_raw: String = species.iter().map(|s| format!("{s}\n")).collect();
+    fs::write(dir.join("type_map.raw"), map_raw)?;
+
+    let nopbc = dir.join("nopbc");
+    if nopbc_frames == 0 {
+        let _ = fs::remove_file(&nopbc);
+    } else {
+        fs::write(&nopbc, "")?;
     }
 
     for (i, &(lo, hi)) in bounds.iter().enumerate() {
@@ -331,6 +333,30 @@ mod tests {
         t.frames[1].energy = None;
         let err = write_deepmd_npy(&t, &out_dir("ferro_dp_part")).unwrap_err().to_string();
         assert!(err.contains("partially labelled"), "{err}");
+    }
+
+    /// A refused rewrite used to clear the old set.* and write type.raw before the checks ran,
+    /// leaving a directory with nothing but type.raw; now the old system survives byte for byte.
+    #[test]
+    fn a_refused_rewrite_leaves_the_old_system_intact() {
+        let d = out_dir("ferro_dp_refused");
+        write_deepmd_npy(&demo_traj(), &d).unwrap();
+        let snapshot = |d: &Path| -> Vec<Vec<u8>> {
+            ["type.raw", "type_map.raw", "set.000/coord.npy", "set.000/energy.npy", "set.000/virial.npy"]
+                .iter().map(|f| fs::read(d.join(f)).unwrap()).collect()
+        };
+        let before = snapshot(&d);
+
+        let mut t = demo_traj();
+        t.frames[1].energy = None;
+        t.frames[0].sites_mut()[0].element = "N".to_string();
+        t.frames[1].sites_mut()[0].element = "N".to_string();
+        assert!(write_deepmd_npy(&t, &d).is_err());
+        assert_eq!(snapshot(&d), before);
+
+        let err = write_deepmd_npy_bounds(&demo_traj(), &d, &[(0, 1)]).unwrap_err().to_string();
+        assert!(err.contains("cover 1 frame(s)"), "{err}");
+        assert_eq!(snapshot(&d), before);
     }
 
     #[test]
