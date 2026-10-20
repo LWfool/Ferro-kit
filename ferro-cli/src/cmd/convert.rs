@@ -33,7 +33,7 @@ pub struct ConvertCmd {
     pub stride: Option<usize>,
 
     /// Take this many frames, spread evenly over [start, end], both ends included
-    #[arg(long, value_name = "N", conflicts_with = "stride")]
+    #[arg(short = 'N', long, value_name = "N", conflicts_with = "stride")]
     pub number: Option<usize>,
 
     /// Leave out a charge / magnetic-moment column only some atoms carry (refused otherwise)
@@ -251,6 +251,20 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `-N` is `--number`, as in `dataset filter` (review D-15)
+    #[test]
+    fn short_n_is_number() {
+        #[derive(clap::Parser, Debug)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: ConvertCmd,
+        }
+        use clap::Parser;
+        let w = Wrap::try_parse_from(["convert", "-i", "a.xyz", "-o", "b.xyz", "-N", "3"]).unwrap();
+        assert_eq!(w.cmd.number, Some(3));
+        assert!(Wrap::try_parse_from(["convert", "-i", "a.xyz", "-o", "b.xyz", "-N", "3", "--stride", "2"]).is_err());
     }
 
     /// 审查 D-M15：参数与目标格式错了，应在建 -o 的目录、读输入之前报错，不留空目录

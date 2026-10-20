@@ -46,7 +46,7 @@ Parameters:
       --start  N          First frame to take (0-based, inclusive)         [0]
       --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
       --stride N          Take every Nth frame within [start, end]         [1]
-      --number N          Take this many frames, spread evenly, both ends kept
+  -N, --number N          Take this many frames, spread evenly, both ends kept
       --drop-partial      Leave out a charge / magnetic-moment column that only
                           some atoms carry. Without it such a frame is an error:
                           the missing values are never written as 0

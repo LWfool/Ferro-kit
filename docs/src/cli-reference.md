@@ -289,7 +289,7 @@ ferro convert -i traj.dump -o conf.lmp --number 20              # 20 frames at e
 | `--start N` | `0` | first frame, **0-based, inclusive** |
 | `--end N` | last frame | last frame, **0-based, inclusive** |
 | `--stride N` | `1` | take one frame every N within `[start, end]` |
-| `--number N` | — | take **N frames at even intervals** within `[start, end]`, both ends included; mutually exclusive with `--stride` |
+| `-N, --number N` | — | take **N frames at even intervals** within `[start, end]`, both ends included; mutually exclusive with `--stride` (the same short name as `dataset filter`) |
 
 Three points of semantics to remember:
 
