@@ -1,9 +1,8 @@
 use std::path::Path;
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
-use anyhow::{bail, Context, Result};
-use ferro_core::data::elements::by_number;
-use super::util::drop_truncated;
+use anyhow::{anyhow, bail, Context, Result};
+use super::util::{drop_truncated, species_element};
 
 /// 读取 XYZ 文件，支持多帧（多个连续 block）。
 pub fn read_xyz(path: &Path) -> Result<Trajectory> {
@@ -89,14 +88,7 @@ fn parse_atom_line(line: &str, line_no: usize, last: bool) -> Result<Option<Atom
             Err(_) => bail!("line {line_no}: invalid {name} {:?}", parts[k + 1]),
         }
     }
-    // An atomic number in the first column becomes its symbol (as in ASE); `8` used to be the
-    // element name
-    let element = match parts[0].parse::<u8>() {
-        Ok(z) => by_number(z)
-            .with_context(|| format!("line {line_no}: no element has atomic number {z}"))?
-            .symbol.to_string(),
-        Err(_) => parts[0].to_string(),
-    };
+    let element = species_element(parts[0]).map_err(|e| anyhow!("line {line_no}: {e}"))?;
     Ok(Some(Atom::new(element, Vector3::from(xyz))))
 }
 

@@ -30,6 +30,18 @@ pub(crate) fn drop_truncated(warnings: &mut Vec<String>, k: usize, line: usize, 
     Ok(())
 }
 
+/// A species column entry: an element symbol, kept as written, or an atomic number, which
+/// becomes its symbol (as ASE reads both). `8` used to be the element name. Shared by the xyz
+/// and extxyz readers; extxyz's `Z` column, a number by definition, does not come here.
+pub(crate) fn species_element(token: &str) -> Result<String> {
+    match token.parse::<u8>() {
+        Ok(z) => Ok(ferro_core::data::elements::by_number(z)
+            .ok_or_else(|| anyhow!("no element has atomic number {z}"))?
+            .symbol.to_string()),
+        Err(_) => Ok(token.to_string()),
+    }
+}
+
 /// The element a site label names: its leading letters, capitalised as a symbol
 /// (`fe2` -> `Fe`, `O1` -> `O`, `CA` -> `Ca`); `X` when it starts with no letter.
 ///

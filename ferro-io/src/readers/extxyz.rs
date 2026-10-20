@@ -4,7 +4,7 @@ use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
 use ferro_core::units::ASE_FS;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
-use super::util::drop_truncated;
+use super::util::{drop_truncated, species_element};
 
 /// One parsed atom line: the atom, and its force and velocity when the file has them.
 type AtomLine = (Atom, Option<Vector3<f64>>, Option<Vector3<f64>>);
@@ -184,7 +184,11 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
 
                 // species, or else ASE's atomic-number column Z (checked above that one exists)
                 let element = match find("species") {
-                    Some(c) => cols[c].to_string(),
+                    // An atomic number here becomes its symbol, as the xyz reader takes it (scan B-5)
+                    Some(c) => match species_element(cols[c]) {
+                        Ok(e) => e,
+                        Err(e) => return Ok(Err(anyhow::anyhow!("frame {frame_no}, line {line_no}: {e}"))),
+                    },
                     None => {
                         let c = find("z").unwrap_or_default(); // names are lowercased
                         let z: u8 = cols[c].parse().with_context(|| format!(
@@ -836,6 +840,18 @@ Si 0.0 0.0 0.0
         // The only frame cut off leaves nothing: an error, not an empty trajectory
         let err = format!("{:#}", parse_extxyz("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\nC 1").unwrap_err());
         assert!(err.contains("only frame"), "{err}");
+    }
+
+    /// An atomic number in the species column is an element, as the xyz reader takes it; the
+    /// same file used to read as O/H when named .xyz and as elements `8`/`1` when .extxyz (scan B-5).
+    #[test]
+    fn test_atomic_number_in_species_column() {
+        let f = parse_extxyz("2\nProperties=species:S:1:pos:R:3\n8 0 0 0\n1 0.96 0 0\n")
+            .unwrap().frames.remove(0);
+        assert_eq!(f.atom(0).element, "O");
+        assert_eq!(f.atom(1).element, "H");
+        let err = format!("{:#}", parse_extxyz("1\nProperties=species:S:1:pos:R:3\n200 0 0 0\n").unwrap_err());
+        assert!(err.contains("line 3: no element has atomic number 200"), "{err}");
     }
 
     /// ASE 3.29 output, verbatim: it writes initial charges as `initial_charges` and the
