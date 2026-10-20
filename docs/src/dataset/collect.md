@@ -54,7 +54,7 @@ they drop a different number of them.
 
 Reach for it when the banner cannot answer — a log that was trimmed from the
 top, a layout ferro has not seen, a file whose head was rewritten by a job
-scheduler. **The banner is still read**, for two things: a one-line `NOTE:`
+scheduler. **The banner is still read**, for two things: a one-line `FerroNote`
 when it disagrees with what you asked (silence would make a typo and a
 deliberate override look identical), and the one-format-per-directory check
 below, which has nothing else to compare once `--format` fixes every file to
@@ -72,7 +72,7 @@ Two generations are implemented, differing in two blocks:
 | coordinates, kind block, `CELL\|` | identical | identical |
 
 **2025 – 2026 is read silently**; 2026 carried the 2025 layout forward
-unchanged. **2024 and earlier gets a `NOTE:` line** naming its version and is
+unchanged. **2024 and earlier gets a `FerroNote` line** naming its version and is
 then read anyway — the note is a prompt to spot-check one frame, not a refusal.
 It exists because ferro has no *single-point* output from those releases to
 test against; the block shapes were read off real 2023.1 / 2023.2 / 2024.1 AIMD
@@ -451,7 +451,7 @@ count towards exit code 1 — burying the files that are really broken. `collect
 therefore removes them **before** grouping and says so in one line:
 
 ```
-NOTE: excluded 2 PJM job log(s) matching x<N>-<job>.<id>.out
+ferro: FerroNote: excluded 2 PJM job log(s) matching x<N>-<job>.<id>.out
 ```
 
 The match is strict: `x`, digits, `-`, a non-empty job name (which may itself
@@ -621,7 +621,7 @@ If a large fraction of frames is dropped, that is a signal about the run, not
 about ferro — a 5000-frame trajectory reduced to 2000 usually means the SCF
 settings need attention.
 
-A `WARNING: … frame(s) print their blocks at a different offset than the first`
+A `FerroWarning: … frame(s) print their blocks at a different offset than the first`
 means extra output is interleaved between the blocks. Nothing was necessarily
 lost — the scan is offset-independent — but it is worth checking a few frames by
 hand.

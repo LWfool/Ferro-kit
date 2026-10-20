@@ -73,7 +73,7 @@ are the exception: the input stem has to be part of the file name, otherwise the
 
 The `file` column and those file names use the input's **stem**.  When two inputs share a stem
 (`runs/700K/prod.lammpstrj`, `runs/900K/prod.lammpstrj`), the second and later become `prod_2`, `prod_3`, … in
-input order, and ferro prints a `Note` naming each renamed file.  Stems are compared ignoring case
+input order, and ferro prints a `FerroNote` naming each renamed file.  Stems are compared ignoring case
 (`Prod` and `prod` clash), because the macOS and Windows file systems do.
 
 ### Output naming
@@ -122,6 +122,37 @@ the two totals, and the partials are a diagnostic decomposition that adds back t
 ($\sum w_{ij}S_{ij} = \mathrm{total}$); keeping only one pair would hide exactly that closure, and selecting
 columns in pandas is enough to look at one pair.  Partials resolved by label went with them — the atom
 count behind a single site label is usually too small for its partial to show any signal.  `GroupBy::Label` in the library is untouched.
+
+---
+
+## Messages
+
+Everything ferro says outside its products is **one line on stderr**, in the layout of Python's warnings:
+
+```
+<source>[:<line>]: <category>: <message>
+```
+
+```
+traj.pdb:57: FerroWarning: last MODEL (frame 2) has no ENDMDL; kept
+sets/a.db: FerroNote: no virial; the default stress criterion is off for it
+runs/b/prod.lammpstrj: FerroError: trajectory is empty; skipped
+ferro: FerroError: 1 input(s) failed; see the messages above
+```
+
+| Part | Meaning |
+|---|---|
+| source | the input path as you typed it (a product's path when the message is about the file being written), or `ferro` for a message about no file in particular |
+| line | the line of that file the message is about, when there is one |
+| `FerroNote` | worth knowing; nothing looks wrong |
+| `FerroWarning` | something may be wrong with the input or the result; read it before using the numbers |
+| `FerroError` | failed: one input skipped in a batch, or the whole run stopped (exit code 1) |
+
+stdout carries only the results and progress (`[2/5] runs/b/prod.lammpstrj`, the tables of `info` and
+`dataset`), so `> log.txt` keeps the run's report and `2> messages.txt` its messages, and
+`grep FerroWarning` finds every warning of a batch.  A message is never split over several lines.
+`ferro-py` prints the same layout; from Python the notes and warnings arrive as `ferro.FerroNote` /
+`ferro.FerroWarning` (see the Python API page).
 
 ---
 
@@ -350,7 +381,12 @@ Two edge cases for the density:
 
   ```
   Density: 0.0765 g/cm³
-           WARNING: 2 atom(s) not in the element table (Xx×2) counted as 1 amu — the density is too low
+  ```
+
+  and on stderr
+
+  ```
+  box.xyz: FerroWarning: 2 atom(s) not in the element table (Xx×2) counted as 1 amu — the density is too low
   ```
 
   **When the warning is there, do not use that number.**
@@ -872,7 +908,7 @@ Forces are the only quantity with no unit annotation and fall back to a.u.
 **CP2K versions**: two generations are implemented — **2023–2024** (`energy [a.u.]:` plus the
 `ATOMIC FORCES` table) and **2025–2026** (`energy [hartree]` plus the `FORCES|` block); the coordinate
 table, the kind block and `CELL|` have the same shape in both.  2025–2026 is read silently; **2024 and
-earlier get one extra `NOTE:` line per file naming the version, and are then extracted as usual** — the
+earlier get one extra `FerroNote` line per file naming the version, and are then extracted as usual** — the
 note asks for a spot-check of one frame, it is not a refusal.  The parenthesised energy and the unprefixed stress block of pre-8.1 versions are still recognised, but those versions are out of scope.
 
 **CP2K kind names**: with several kinds per element (`Fe1`/`Fe2`), `element` takes the real element and

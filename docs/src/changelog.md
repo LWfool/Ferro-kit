@@ -59,6 +59,26 @@ command line alike; regenerate it rather than migrating it.
 - `--last-n 0` is refused as an invalid value before anything is read; it used to read every
   input and then fail on each as "trajectory is empty".
 
+### Messages: one layout, on stderr
+
+- Every note, warning and error is one stderr line, `<source>[:<line>]: <category>: <message>`, with
+  the categories `FerroNote`, `FerroWarning` and `FerroError` (see "Messages" in the CLI
+  reference).  The prefixes `[ferro]`, `warning:`, `WARNING:`, `NOTE:`, `Note:`, `Note  :`,
+  `note:`, `SKIP` and `skipped:` are gone, and a message spread over several lines is now one.
+- Moved from stdout to stderr: the renamed / duplicate input notes, the `net` notes (no Qn former,
+  labels written as elements), the `info` density warning, `dataset collect`'s version note and
+  block-offset warning, `dataset filter`'s no-virial / no-forces notes and shallow Al-O warning,
+  and the notes of `ferro-py job` / `conv`.  stdout keeps results and progress only.
+- A fatal error is `ferro: FerroError: <error: cause: ...>` on one line (`ferro-py: FerroError: ...`),
+  instead of `Error:` followed by a `Caused by:` block.  The exit codes are unchanged.
+- `dataset collect` lists the files that are in no system one `FerroError` line each, at the end.
+- Python: what a reader noticed is raised as `ferro.FerroWarning` or `ferro.FerroNote`, both
+  subclasses of `UserWarning` (a `UserWarning` filter still catches them).  The text starts with
+  the path and line, so reading several files that trigger the same notice gives one warning per
+  file; it used to give one in all.  The instance carries `source`, `line` and `detail`.
+- Rust library: the `_with_warnings` readers and `ReadReport::warnings` return
+  `Vec<ferro_io::Notice>` (`level`, `line`, `message`) instead of `Vec<String>`.
+
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 
 - The bin count is the range over the step **rounded up**, and the width used is the range over

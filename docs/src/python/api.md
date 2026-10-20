@@ -94,7 +94,11 @@ Format auto-detected from the file name / extension (any case), with the same ta
 
 What the reader noticed on the way — a dropped incomplete last frame, a dump's element column
 split into element and site label, frames dropped from a program output — arrives as a Python
-`UserWarning` (filter or capture it with the `warnings` module); nothing is printed.
+warning of category `ferro.FerroWarning` (may be wrong) or `ferro.FerroNote` (worth knowing), both
+subclasses of `UserWarning`; filter or capture them with the `warnings` module, nothing is printed.
+The text starts with the path and, when there is one, the line (`traj.pdb:57: last MODEL (frame 2) has
+no ENDMDL; kept`), so the same message from two files is two warnings; the instance also carries
+`source`, `line` (an int or `None`) and `detail` (the message alone).
 
 A dump without an element column reads its atoms as `X1`, `X2`, …; `type_map={1: "Zr", 2: "O"}`
 names them, exactly as `--type-map` on the command line.  A type missing from the map, an
