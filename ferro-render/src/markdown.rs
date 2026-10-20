@@ -560,7 +560,7 @@ fn render_heading(level: usize, text: &str, width: usize, style: Style) -> Strin
         .iter()
         .map(|s| Span { text: s.text.clone(), look: s.look.or(Look { bold: true, ..Look::default() }) })
         .collect();
-    // 没有粗体可用时,三级以下标题靠原有的 # 与正文区分
+    // Without bold, headings below level 2 keep their `#` marks to stand out from the text
     let marked = level > 2 && !style.ansi;
     let pad = if marked { level + 1 } else { 0 };
     let lines = wrap(&bold, width.saturating_sub(pad).max(20), style);
