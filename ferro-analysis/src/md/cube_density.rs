@@ -98,7 +98,7 @@ fn voxel_idx(frac: Vector3<f64>, nx: usize, ny: usize, nz: usize) -> (usize, usi
 
 /// Process one frame into (count, value_sum) accumulator arrays.
 ///
-/// Returns `None` if the frame lacks the required data for the chosen mode.
+/// The entry has checked that every frame carries the data the mode needs.
 fn process_frame(
     frame: &Frame,
     pc: &PeriodicCell,
@@ -106,13 +106,7 @@ fn process_frame(
     nx: usize,
     ny: usize,
     nz: usize,
-) -> Option<(Array3<f64>, Array3<f64>)> {
-    match params.mode {
-        CubeMode::Velocity if frame.velocities().is_none() => return None,
-        CubeMode::Force if frame.forces().is_none() => return None,
-        _ => {}
-    }
-
+) -> (Array3<f64>, Array3<f64>) {
     let mut count = Array3::<f64>::zeros((nx, ny, nz));
     let mut value_sum = Array3::<f64>::zeros((nx, ny, nz));
 
@@ -127,18 +121,18 @@ fn process_frame(
                 count[[ix, iy, iz]] += 1.0;
             }
             CubeMode::Velocity => {
-                let v = frame.velocities().unwrap()[i];
+                let v = frame.velocities().expect("checked at the entry")[i];
                 value_sum[[ix, iy, iz]] += v.norm();
                 count[[ix, iy, iz]] += 1.0;
             }
             CubeMode::Force => {
-                let f = frame.forces().unwrap()[i];
+                let f = frame.forces().expect("checked at the entry")[i];
                 value_sum[[ix, iy, iz]] += f.norm();
                 count[[ix, iy, iz]] += 1.0;
             }
         }
     }
-    Some((count, value_sum))
+    (count, value_sum)
 }
 
 
@@ -147,7 +141,9 @@ fn process_frame(
 /// Calculate spatial distribution on a voxel grid from a trajectory.
 ///
 /// Errors if a parameter is out of range, a frame's cell is not 3-D periodic, no frame
-/// has a periodic cell, or no frame carries the velocities / forces the mode needs.
+/// has a periodic cell, or a frame lacks the velocities / forces the mode needs (one
+/// such frame is enough, as in vacf: averaging over the frames that have them would
+/// silently measure a different stretch of the run).
 pub fn calc_cube_density(
     traj: &Trajectory,
     params: &CubeDensityParams,
@@ -163,26 +159,26 @@ pub fn calc_cube_density(
     let ref_frame = &traj.frames[0];
     let ref_cell = ref_frame.cell.as_ref().expect("every frame has a cell");
     let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
+    let missing = match params.mode {
+        CubeMode::Density => None,
+        CubeMode::Velocity => traj.frames.iter().position(|f| f.velocities().is_none()).map(|k| (k, "velocities")),
+        CubeMode::Force => traj.frames.iter().position(|f| f.forces().is_none()).map(|k| (k, "forces")),
+    };
+    if let Some((k, what)) = missing {
+        return Err(ChemError::ValidationError(format!(
+            "frame {k} has no {what}; mode {:?} needs {what} in every frame", params.mode
+        )));
+    }
 
     // Parallel over frames, summed in frame order
     let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(pcs).collect();
     let mut count = Array3::<f64>::zeros((nx, ny, nz));
     let mut value_sum = Array3::<f64>::zeros((nx, ny, nz));
-    let mut n_frames = 0usize;
-    par_map_in_order(&pairs, |(f, pc)| process_frame(f, pc, params, nx, ny, nz), |r| {
-        if let Some((dc, dv)) = r {
-            count += &dc;
-            value_sum += &dv;
-            n_frames += 1;
-        }
+    let n_frames = pairs.len();
+    par_map_in_order(&pairs, |(f, pc)| process_frame(f, pc, params, nx, ny, nz), |(dc, dv)| {
+        count += &dc;
+        value_sum += &dv;
     });
-
-    if n_frames == 0 {
-        let what = if matches!(params.mode, CubeMode::Velocity) { "velocities" } else { "forces" };
-        return Err(ChemError::ValidationError(format!(
-            "no frame with a periodic cell carries {what}, which mode {:?} needs", params.mode
-        )));
-    }
 
     let voxel_vol = ref_cell.volume() / (nx * ny * nz) as f64;
 
@@ -350,7 +346,21 @@ mod tests {
             ..Default::default()
         };
         let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
-        assert!(err.contains("carries velocities"), "{err}");
+        assert!(err.contains("frame 0 has no velocities; mode Velocity needs velocities in every frame"), "{err}");
+    }
+
+    /// One frame without forces is an error naming it, as in vacf; it used to be skipped
+    /// and the map averaged the other frames without a word (review C-13)
+    #[test]
+    fn test_force_mode_frame_without_forces_is_an_error() {
+        let mut traj = make_traj(vec![(2.5, 2.5, 2.5)], vec!["O"]);
+        traj.frames[0].set_forces(Some(vec![Vector3::new(0.0, 3.0, 4.0)])).unwrap();
+        traj.frames.push(traj.frames[0].clone());
+        traj.frames.push(traj.frames[0].clone());
+        traj.frames[1].set_forces(None).unwrap();
+        let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, mode: CubeMode::Force, ..Default::default() };
+        let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
+        assert!(err.contains("frame 1 has no forces; mode Force needs forces in every frame"), "{err}");
     }
 
     #[test]

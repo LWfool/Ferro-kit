@@ -129,5 +129,5 @@ write_cube("li_density.cube", &result.cube).unwrap();
 
 - Parallelism: per-frame `par_iter`.  Each frame independently produces `(count, value_sum)` arrays; results are reduced by element-wise addition.
 - Fractional coordinates are folded with `rem_euclid(1.0)` to handle atoms outside the nominal box (e.g. from NPT fluctuations or wrapped dump files).
-- `Velocity` mode requires `frame.velocities` to be populated; `Force` mode requires `frame.forces`.  Frames missing the required data are silently skipped.
+- `Velocity` mode requires `frame.velocities` in every frame; `Force` mode requires `frame.forces`.  A frame missing them is an error naming the frame, as in `traj vacf`.
 - For NPT trajectories the spacing matrix is taken from the first periodic frame; the density is therefore referenced to that cell geometry.
