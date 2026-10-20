@@ -61,10 +61,178 @@
 | 2 ✅ | `3f25c5e` `b1d780d` `f040e11` `792238c` `2ac91ab`（2026-10-19）。用户定：extxyz 的 `{:.10}` **不改**（ASE 写 8 位小数），手册写明精度；部分原子带电荷 / 磁矩时**报错**，`convert --drop-partial` / `ferro.write(drop_partial=True)` 强制通过时整列不写（LAMMPS data 的电荷列必须有，全部写 0）。实现上与计划的出入：同一规则也用到 dump 与 data writer（三处同一变化原因，共用 `writers::partial_column`）；`ferro_io::write` 改收 `&WriteOptions`，与 `ReadOptions` 对称。cube 换行后 `map density` 产物新旧逐数值一致；golden master 只有 LAMMPS data 转 extxyz 多出 `masses` 列（2.2 的预期）。原条目：io 写侧：extxyz 精度与缺省补 0、cube 换行、PDB 超宽、DeePMD writer 的文档与 slab |
 | 3 ✅ | `b3d3efe` `38e8fea` `f53a195` `1f70f4e` `0ce9c03` `26b8e01` `e6b481c`（2026-10-19）。用户定：**单位名 → 单位的对照表下沉 core**（`LengthUnit` / `EnergyUnit` / `PressureUnit::from_name`，固定不变的事实），提取规则（方括号、数值前一个 token、QE 的 `alat` / `crystal`）仍留在各 reader，cp2k_md / sp 补互指注释；`TableFormat` 单变体**保留**（公开 API、扩展点），注释记下。实现上与计划的出入：LAMMPS dump 的 reader / writer 自带 `0.04336410` 的 kcal 常数（布局建议 2 点名的那处，计划时被截断的 grep 漏看，误报为已改），并入 3.6 改调 `units.rs`；`chgcar.rs` 的 `_total` 与 io_dispatch 的测试注释已不存在。golden master 每步逐字节一致。原条目：io 布局：「字母前缀 → 元素」合并、cp2k_md / sp 互指注释、`thiserror`、死变量、`N_A` 与 `EV_TO_KCAL_MOL` |
 | 4 ✅ | **4.1 ✅** `0f6cbb1`：分箱规则（bin 数向上取整、宽度收窄止于上界、整除时原样用步长）写进 CLAUDE.md；sq 保持 g(r) 从 0 积分、默认 10.005（用户定，不为整格改默认值）。`95666ae`：第 1–3 批新写的中文注释改英文。4.3–4.10 ✅ `5074c0d` `2dbf7e9` `99b5c8f` `f15a982` `a729723` `34e5f4d` `d427c82` `5f99a34`（msd lag 0 写 0、vanhove `--tau` 超出报错、五个时间相关 Params 的 `dt` 默认 NaN 须显式给、`periodic_cells` 统一拒混用胞、rotcorr P1 文件头、sq `to_tables` 去参数、截断扫描采样不超上限、并查集迭代 + 按大小合并）。分析层 golden master 每步只出现预告的差异。**4.2 ✅** `791a74e`（用户选改代码）：平滑窗由实际 7 格 = 0.14 Å 改为记录所定的 5 格 = 0.10 Å；测试玻璃上 Zn-O / Al-O 的自动截断移动一两格（0.02–0.04 Å），P-O 与干净空隙不动。原条目：analysis 数值与口径：分箱统一、shell 平滑窗、msd lag 0、vanhove `--tau`、`dt` 默认值、有胞 / 无胞不一致、rotcorr P1 头部、sq `to_tables`、diagnostics、并查集 |
-| 5 ✅ | `9a9d2aa` `835c8d8` `8131363` `4473c1d` `3c3e285` `15ebf2a` `b1ee971` `6ed8046` `a4942a8` `6e68261` `353842f`（2026-10-19）。5.1 `--elements` 选原子 6 处并为 `md/util::select_atoms`；**用户定**：map density / velocity / force / radius 选不到原子改为报错（原写全 0 格点、「0 atoms」）。5.2 vanhove / cube_jump 的格点视图解包裹并为 `unwrap_lattice`，`unwrapped_frac_sum` 边读边求和、互指注明不合；**用户定：暂不换 TOR**（NPT 下 vanhove / map jump 仍是格点视图，待用户了解后再定）。5.3 三个 cube 分析的 spacing / origin / 参考帧并为 `cube_from_grid`（`cube_reference_frame` 的特例说明随之搬入）。5.4 `label` / `class_rank` 改调 `site_digit`。5.5 `Trajectory::select` = `subset(select_indices(..))`。5.6 sq 的 Faber-Ziman 分母移进 `weights_from_factors`；两个包装函数与 `elem_z_local` 各有 2–3 处调用，按 R1 保留（与审查建议不同）。5.7 删 `CubeCliMode` 三个未构造变体与 `Output::join_str`。5.8 删 `trajectory_analysis.rs` / `geometry.rs`（库 API 移除，changelog 已记）。5.9 gr / angle 挂在 impl 上的残留 doc 注释。5.10 `Table::validate` / `concat_union` 返回 `ferro_core::Result`。5.11 过时注释（traj 分析数与 PNG、cube_density `--grid` / `--mode`、dataset「未实现」、util 文件头）。已不存在、只销账：`ml/geometry` 测试顺序、`map.rs` 的 `--outdir`、`qe.rs` 的 `fe-job`、`fmt_means` 文档错挂。除 5.1 外分析层 golden master 逐字节一致（比对脚本新增 map radius / density 带 `--elements` / force 三例）。顺带发现、归第 7 批：`cargo doc -p ferro-analysis` 有 10 条既有 rustdoc 警告（私有项链接、`[Å]` 被当链接）。原条目：analysis 布局：md/util 合并、同文件复用、删死代码与两个旧模块、doc 注释错位、过时注释 |
+| 5 ✅ | `9a9d2aa` `835c8d8` `8131363` `4473c1d` `3c3e285` `15ebf2a` `b1ee971` `6ed8046` `a4942a8` `6e68261` `353842f`（2026-10-19）。5.1 `--elements` 选原子 6 处并为 `md/util::select_atoms`；**用户定**：map density / velocity / force / radius 选不到原子改为报错（原写全 0 格点、「0 atoms」）。5.2 vanhove / cube_jump 的格点视图解包裹并为 `unwrap_lattice`，`unwrapped_frac_sum` 边读边求和、互指注明不合；**用户定：暂不换 TOR**（NPT 下 vanhove / map jump 仍是格点视图，待用户了解后再定）。5.3 三个 cube 分析的 spacing / origin / 参考帧并为 `cube_from_grid`（`cube_reference_frame` 的特例说明随之搬入）。5.4 `label` / `class_rank` 改调 `site_digit`。5.5 `Trajectory::select` = `subset(select_indices(..))`。5.6 sq 的 Faber-Ziman 分母移进 `weights_from_factors`；两个包装函数与 `elem_z_local` 各有 2–3 处调用，按 R1 保留（与审查建议不同）。5.7 删 `CubeCliMode` 三个未构造变体与 `Output::join_str`。5.8 删 `trajectory_analysis.rs` / `geometry.rs`（库 API 移除，changelog 已记）。5.9 gr / angle 挂在 impl 上的残留 doc 注释。5.10 `Table::validate` / `concat_union` 返回 `ferro_core::Result`。5.11 过时注释（traj 分析数与 PNG、cube_density `--grid` / `--mode`、dataset「未实现」、util 文件头）。已不存在、只销账：`ml/geometry` 测试顺序、`map.rs` 的 `--outdir`、`qe.rs` 的 `fe-job`、`fmt_means` 文档错挂（**2026-10-20 扫描更正：仍在**，`cmd/net.rs:194` 的 doc 叠在 `warn_edge_sharing` 上，见下节 D-7）。除 5.1 外分析层 golden master 逐字节一致（比对脚本新增 map radius / density 带 `--elements` / force 三例）。顺带发现、归第 7 批：`cargo doc -p ferro-analysis` 有 10 条既有 rustdoc 警告（私有项链接、`[Å]` 被当链接）。原条目：analysis 布局：md/util 合并、同文件复用、删死代码与两个旧模块、doc 注释错位、过时注释 |
 | 6 ✅ | `cbf5ddc` `157bc8c` `7bd62b2` `886e009` `57b9f29` `ec28a30` `10fae81` `5a64260` `66c3198` `67c925f` `3e1f89d` `82597bb` `156a2b9` `7963f8f`（2026-10-19）。6.1 `\frac` 后紧跟因子（字母数字、`(` `[` `{` `_` `^`、命令）时整个分式加括号：`((4πρ)/q)Σᵣ`；后面是空格、右括号、运算符时不加。6.2a 标题超宽折行、下划线按最长行；6.2b `ferro doc` 截取小节时跳过代码块（现有三节行数不变，潜在问题，单测覆盖）。6.3 PAGES 按 SUMMARY 排序并加测试钉住（cube-jump 移到 density 后）、补 vanhove / vacf / rotcorr / bondlife 别名、过时的 208 KB / 863 行改为不会再过时的说法；**python/ 子页不收**：doc.rs 既有说明写明只由 `ferro-py doc` 收录（两处收录会走样），与计划时的推荐相反，按既有设计。6.4 `find_supercell_dims` / `build_box` / `estimate_box_length` 拒 NaN 与 ∞。6.5 带选项缺输入报错退出 1（判据看剥离 `--P-O=` 前的 argv）；**与计划不同**：帮助页不改走 stderr（要改 25 个 print 函数），只打一行错误指向帮助页。6.6 `--last-n` 用 `RangedU64ValueParser` 要求 ≥ 1。6.7 `build_box` 加 `seed`（ChaCha12，同 ml/merge）、元素计数 BTreeMap。6.8 **用户定**：by-source 每个体系内按 `--seed` 打乱再切 set，新增 `ml::merge::shuffle_within`（一条流依次打乱各段）；merge.md / cli-reference / 帮助页同步，changelog 记破坏性。6.9 `is_pair_arg` 内联（R3）。6.10 `MsdCmd` 嵌 `LagKnobs`（`--help` 逐字节一致）。6.11 采用推荐 (a)：`collect -o sys` 单组写 `sys/<目录名>.db/`，与多组一致，不再留空 `sys/`；手册两处矛盾说法统一。6.12 `cmd/dataset.rs` 拆为 `cmd/dataset/{mod,collect,filter,merge,inspect}.rs`，纯搬移：105 个测试名一致，dataset 13 例 / 159 个产物文件拆分前后逐字节一致（临时 worktree 构建旧二进制对比）。收尾：Rust 895 个测试、clippy 0、io 与分析 golden master 0 差异；ferro-python clippy 0、pytest 180。原条目：CLI / render / structure：`\frac`、doc 渲染、structure 遇 NaN 时 panic、只给选项不给 `-i`、`--last-n 0`、box_builder 可复现、by-source 打乱、`is_pair_arg`、`LagKnobs`、`collect -o`、`cmd/dataset.rs` 拆分 |
-| 7 ✅ | `4a04bc2` `846b2bb` `b31a2f5` `7b5e2e2` `3160856` `bb01233` `6a5c60a` `0f54e80` `2bc2243` `5d9d60f` `e49f5b8` `cbc756e` `dc55d39` `487bc16` `956e5d3`（2026-10-19）。7.1 data-model 被拆散的 pbc 说明合回 Frame 之后；cli-reference 删去「PDB 短行退化成 X」（现在报错）。7.2 gr / sq 库示例改用 `to_tables` + `write_table`（临时 example 编译通过后删除），sq.rs 文件头同步。7.3 md/mod.rs 模块清单补全、correlate 使用者补 bondlife、msd.md 改正 gmx msd 无原点间隔（默认 `-trestart` 10 ps）。7.4 vanhove `elements` 是字母序、tau 在 N/2 默认下逐文件不同、帮助页 `∫P dr = 1 − outside_fraction`。7.5 gr / angle 帮助页 Output 列名对齐实际表头。7.6 network 的 `average` 表换成 `composition`，顺带 ligand_type / linkage 列名。7.7 cube-jump.md：NPT 不再说与 msd 一致（msd 已 TOR）、原子数变化报错而非跳过；挂起的 `map jump` 入口不动。7.8 cli-reference 的 dataset 三张表补齐 `--format` / `--mkdir` / `--type` / `--ratio`，collect.md 的 `merge --mode shuffle`。7.9 **用户定**：installation.md 的命令表删除，改为指向 `ferro` 总览。7.10 对拍脚本与 plot_net 的说明不再说 `-o` 是后缀（批次标记是 `-s`）。7.11 plot_net 按图种查列，错表报文件名与缺列（四种图对错各跑一次）。7.12 根 Cargo.toml 写明 ferro-python 是独立 workspace。7.13 io / analysis / render 的 rustdoc 警告逐条修（含 chg_sdf.rs 一处跨 crate 链接，只改文档）。7.14 **用户定**：ferro-cli crate 级 `allow(rustdoc::broken_intra_doc_links, rustdoc::invalid_html_tags)` 并写明原因（clap doc 即 `--help`），14 个子命令 `--help` 逐字节不变；workspace `RUSTDOCFLAGS=-D warnings cargo doc` 为 0，检查脚本加入此项。7.15 销账：inspect 温度说明已按读取器判断且有测试、batch.rs「writer 收 `&str`」注释已不在、DeePMD energy 形状与 GrParams / SqParams 手册已一致。收尾：Rust 895 个测试、clippy 0、rustdoc 0、io 与分析 golden master 0 差异；ferro-python 未改动，未重跑 pytest。原条目：文档与脚本 |
-| 8 | 测试缺口（含带速度的 dump fixture） |
+| 7 ✅ | `4a04bc2` `846b2bb` `b31a2f5` `7b5e2e2` `3160856` `bb01233` `6a5c60a` `0f54e80` `2bc2243` `5d9d60f` `e49f5b8` `cbc756e` `dc55d39` `487bc16` `956e5d3`（2026-10-19）。7.1 data-model 被拆散的 pbc 说明合回 Frame 之后；cli-reference 删去「PDB 短行退化成 X」（现在报错）。7.2 gr / sq 库示例改用 `to_tables` + `write_table`（临时 example 编译通过后删除），sq.rs 文件头同步。7.3 md/mod.rs 模块清单补全、correlate 使用者补 bondlife、msd.md 改正 gmx msd 无原点间隔（默认 `-trestart` 10 ps）。7.4 vanhove `elements` 是字母序、tau 在 N/2 默认下逐文件不同、帮助页 `∫P dr = 1 − outside_fraction`。7.5 gr / angle 帮助页 Output 列名对齐实际表头。7.6 network 的 `average` 表换成 `composition`，顺带 ligand_type / linkage 列名。7.7 cube-jump.md：NPT 不再说与 msd 一致（msd 已 TOR）、原子数变化报错而非跳过；挂起的 `map jump` 入口不动。7.8 cli-reference 的 dataset 三张表补齐 `--format` / `--mkdir` / `--type` / `--ratio`，collect.md 的 `merge --mode shuffle`。7.9 **用户定**：installation.md 的命令表删除，改为指向 `ferro` 总览。7.10 对拍脚本与 plot_net 的说明不再说 `-o` 是后缀（批次标记是 `-s`）。7.11 plot_net 按图种查列，错表报文件名与缺列（四种图对错各跑一次）。7.12 根 Cargo.toml 写明 ferro-python 是独立 workspace。7.13 io / analysis / render 的 rustdoc 警告逐条修（含 chg_sdf.rs 一处跨 crate 链接，只改文档）。7.14 **用户定**：ferro-cli crate 级 `allow(rustdoc::broken_intra_doc_links, rustdoc::invalid_html_tags)` 并写明原因（clap doc 即 `--help`），14 个子命令 `--help` 逐字节不变；workspace `RUSTDOCFLAGS=-D warnings cargo doc` 为 0，检查脚本加入此项。7.15 销账：inspect 温度说明已按读取器判断且有测试、batch.rs「writer 收 `&str`」注释已不在（**2026-10-20 扫描更正：仍在** `batch.rs:433`，见下节 D-6）、DeePMD energy 形状与 GrParams / SqParams 手册已一致。收尾：Rust 895 个测试、clippy 0、rustdoc 0、io 与分析 golden master 0 差异；ferro-python 未改动，未重跑 pytest。原条目：文档与脚本 |
+| 8 | 测试缺口（含带速度的 dump fixture）；**暂缓**（2026-10-20 用户定，先做第 9–16 批） |
+| 9–16 | 2026-10-20 全库扫描的全部条目，见下节 |
+
+### 2026-10-20 全库扫描（六路并行，只读；HEAD `41c9fa4`；用户定全部等级逐条修，接在遗留清理第 8 批之后）
+
+六个子代理按领域扫四类问题：① 过时 ② 重复 ③ 违规（CLAUDE.md 硬约束）④ 多重标准（同一类事各处口径不一）。
+A core + structure · B io · C analysis · D cli + render · E python + scripts · F 文档与代码漂移。plan.md 已登记的不重报，
+挂起组（Bader、cube_sdf / chg_sdf、map jump）不报。高、中两级由主会话读码确认，无误报；完整报告（含证据）在
+会话 scratchpad，未进仓。**第 1–7 批引入或漏改的**：B-1、B-2、B-3、B-5、B-7、C-1、D-4、A-1、A-5、A-7、A-8、F-3、F-9、
+E-4、E-5、D-6、D-7。
+
+**用户定（2026-10-20）**：
+1. E-2：QE / CP2K 的变胞任务也要求模板写截断能（Pulay 应力），同 VASP
+2. E-1：VASP 的 PREC **只收 `Normal` 与 `Accurate`**（High 等已淘汰），其余写法报错
+3. 输出口径统一为 Python 风格 `<来源>[:<行号>]: <类别>: <消息>`，一律走 stderr，三个类别合并管理：
+   `FerroNote`（说明）、`FerroWarning`（可能有问题）、`FerroError`（错误）。例：
+   `traj.pdb:57: FerroWarning: last MODEL (frame 2) has no ENDMDL; kept`、
+   `sets/a.db: FerroNote: no virial.npy; stress criterion switched off`
+4. A-3：查不到质量的元素名**报错**并点名，由用户改输入（不回退 1 amu、不按前缀猜）
+5. C-2：**只登记**，有 Python 入口时再补（见下）
+6. 全部等级逐条修；每批开工前逐条计划交用户审，每条单独提交并带回归测试
+
+**分批**：
+
+| 批 | 范围 | 条目 |
+|---|---|---|
+| 9.0 ✅ | 登记（本节）、更正第 5 / 7 批两处失实销账 | — |
+| 9 | io 读侧 | B-1、B-2、B-5、B-6、B-7、B-8、B-9、B-10、B-11、B-12、B 附 |
+| 10 | io 写侧 | B-3、B-4、B-13（导出部分） |
+| 11 | 输出口径统一（用户定 3） | B-13、D-3、E-12 |
+| 12 | core / structure | A-1、A-3 – A-18 |
+| 13 | analysis | C-1、C-3 – C-15 |
+| 14 | cli / render | D-1、D-2、D-4 – D-16 |
+| 15 | python / scripts | E-1 – E-14 |
+| 16 | 文档 / dev | F-1 – F-22、A-2 |
+
+**登记不修**：**C-2** `ml/filter.rs` 的 `FilterParams` 与 `network/classify.rs` 的 `TypeParams` 没有 `validate`，范围检查只在
+CLI（`cmd/dataset/filter.rs:92-117`、`cmd/net.rs:430`）。库调用方传 NaN 时：`f_max` / `s_max` / `oo_min` 的判据静默关闭，
+`al6_rcut = NaN` 删光全部帧，`TypeParams` 截断为 NaN 则零成键。**有 Python 入口时补，走 `check.rs`**。
+
+#### 高
+
+- **B-1** `readers/pdb.rs:80`：用 END 分帧的轨迹，末块截断且无 MODEL 时走 `None => {}`，残帧静默收下（实测 3 帧、末帧
+  1 原子、退出码 0）。末个 MODEL 缺 ENDMDL 时却会比原子数。修：已有帧时同样比原子数（第 1 批引入）
+
+#### 中
+
+- **B-2** 末行截在数字中间：xyz（`xyz.rs:65`，且不点名行号）/ extxyz（`:173`）/ pdb（`:68`）报错，dump 丢帧告警。
+  用户定 12「对齐 dump」只对齐了列数不足。修：末行出错一律按截断
+- **B-3** `writers/pdb.rs:11/52`：坐标超宽在 `File::create` 之后才 `bail!`，留半个文件；帧号 `:52` 0 起、`:34` 1 起（2.5 引入）
+- **B-4** `writers/deepmd.rs:116-180`：先删旧 `set.*`、写 `type.raw`，再查 `covered` / `all_or_none`；被拒后目录只剩 `type.raw`
+- **B-5** `readers/extxyz.rs:187`：`species` 列不做原子序数转换，同一内容 `.xyz` 读出 O/H、`.extxyz` 读出 `8`/`1`（1.3 漏）
+- **B-6** `readers/pdb.rs:116`：`parse_cryst1` 坏值返回 None，静默成非周期；ATOM 坏值却报错
+- **B-7** `readers/lammps_dump.rs:62,68,71`：io 报错写 CLI 名 `--type-map`，Python 用户也看到（bc7341f）
+- **A-1** `cell.rs:146` `interplanar_spacings`：NaN 胞 `try_inverse` 仍成功、NaN 范数落进 ∞ 分支，返回 `Ok([inf;3])`；
+  `PeriodicCell::new` 对同一胞报错。`find_supercell_dims` 实测给 `[1,1,1]` / `[50,1,1]`，Python kmesh 同受影响（6.4 漏）
+- **A-3** `atom.rs:66` `effective_mass` 只精确查表、缺则 1 amu，`symbol_to_z` 却有前缀回退；extxyz momenta 换算两侧与
+  lammps_data 的 Masses 静默用 1 amu。按用户定 4 改为报错
+- **C-1** `md/gr.rs:480` 表头 `dr` 写请求值、CLI 只取 `results[0].meta_lines()`；分箱统一后实际宽度逐输入不同（三斜 fixture
+  0.001999425），手册 `gr.md:93` 说表头报实际宽度；sq 同受影响。修：`dr` 进 `[inputs]`（4.1 引入）
+- **D-1** `cmd/dataset/filter.rs:83-120`：`--stride 0`、`-N 0`、`--start > --end` 不在读文件前查（实测退出码 0），`convert` 查
+- **D-2** `cmd/dataset/inspect.rs:41`：手抄目录检查，E2-11 的「目标是普通文件」洞仍在，且读完全部输入才查。改调 `ensure_writable`
+- **D-3 + B-13** 告警前缀与通道十余种（`[ferro]` / `warning:` / `WARNING:` / `NOTE:` / `Note:` / `Note  :` / `note:`，stdout 与 stderr
+  混用）；io lib 只导出 poscar / dump / deepmd 的 `_with_warnings`，库调用 xyz / extxyz / pdb / data 时截断告警被丢。按用户定 3
+- **E-1** `jobs/vasp.py:247`：模板无 ENCUT 时按 enmax 推细网格，PREC=High 下偏小。按用户定 2 收紧 `PREC_VALUES`
+- **E-2** `jobs/qe.py:266`、`jobs/cp2k.py:354`：变胞不查截断能，只有 VASP（`vasp.py:218`）查。按用户定 1
+- **E-3** `ferro-python/README.md`：仍列 `charge(frame)` / `multiplicity(frame)`；msd 键写 `msd_a/b/c`；`write` 漏 `drop_partial`；
+  `read_output` 漏 pw.x
+- **F-1** `cli-reference.md:276`：`.cif` 列为一个多帧文件、只读的 `.in` / `.qe` 列为可写
+- **F-2** `dataset/filter.md:37,48,54`：应力阈值仍写已删的 `-s`
+- **F-3** `analysis/angle.md:145,154`：示例用不存在的 `write_angle`（7.2 漏）
+- **F-4** `cube-density.md:125`、`cube-radius.md:78`：`write_cube` 参数顺序与类型写错
+- **A-2 + F-5 + F-13** `dev/progress.md` 多节是重构前布局：core 的 `cluster.rs` / `network_type.rs` / `data/compounds.rs` /
+  `qn_elements.rs` / `group_number` 等、structure 的 `classify_trajectory` / `find_clusters`、`ml::merge::sort_atoms`、
+  `io_dispatch::out_format`、`-s` 当 `--s-max`、merge `--suffix`、`job` 接管 `-h`、bader 产物名、「`ferro job` 只用第 0 帧」、
+  cube_jump 漏导出、network.md 467 行
+- **F-6** `CLAUDE.md:111`：`cmd/dataset.rs` → `cmd/dataset/filter.rs`
+- **F-7 + D-14** `--seed` 在 cli-reference:923 与 clap 文字只写「for --shuffle」，实际 `--ratio` 也用；filter 的 `--set-size`
+  写字面量 400，merge 用 `DEFAULT_SET_SIZE`
+- **F-8 + D-13** `args/common.rs:75` `-s` 说明缺 `<input>` 段、只写 `.csv`，与 `batch::product_name` 不一致；cli-reference
+  的「label」一处指选择、一处指输入名
+
+#### 低
+
+io（B）：
+- **B-8** `readers/qe.rs:8` 自带 `BOHR`（第 8 步只改了 cp2k.rs）
+- **B-9** `lammps_dump.rs:389`、`writers/lammps_dump.rs:152,358` metal 速度换算写字面量 `1e-3` / `1000.0`
+- **B-10** doc 挂错：`lammps_dump.rs:430` `site_map_warnings` 的 doc 叠在 `LabelSplit` 上；`cp2k.rs:281` `length_unit` 的叠在
+  `cp2k_periodic` 上
+- **B-11** `lammps_dump.rs:248` 空话注释、`:485` 告警只说 element 列（typelabel 也可能）；`qe.rs:45` 死变量 `_ntyp`
+- **B-12** 改过段落的中文：`writers/lammps_dump.rs:31`、`readers/xyz.rs:7,25`、`readers/pdb.rs:7`
+- **B 附** 元素大小写规范化三份：`readers/util.rs::element_from_label`、`pdb.rs:164 capitalize`、`lammps_data.rs:155`；按 R6 评估
+  合并或互指
+
+core / structure（A）：
+- **A-4** 已删字段的文档残留：`supercell.rs:88-94`、`merge.rs:34`、`vacuum.rs:15,70`（bonds / charge / multiplicity）
+- **A-5** `units.rs:24` 注释「旧值 23.0605419 是 CODATA 2014」出处错（2014 为 23.0605480，3.6 引入）
+- **A-6** `units.rs` 常数精度不一（`EV_TO_KJ_MOL`、`EV_TO_WAVENUMBER` 截断，与 kcal 之比不再恰为 4.184）；`EnergyUnit::{KcalPerMol,
+  KJPerMol, Wavenumber}` 等零调用且不在零调用清单；清单说 `convert_energy` 零调用已过时
+- **A-7** `box_builder.rs:193` 手写 `1e24 / AVOGADRO`，core 有 `AMU_ANG3_TO_G_CM3`（3.5 漏）
+- **A-8** `box_builder.rs:227` `BTreeMap` 使原子按字母序，不是 `canonical_cmp`（6.7 引入）
+- **A-9** 改过段落的中文：`box_builder.rs:224,248`、`supercell.rs:41`
+- **A-10** `box_builder.rs:18` `Component.compound` 文档没说查不到时按化学式解析
+- **A-11** `box_builder.rs:264` `relax` 达不到 `min_dist` 不报告（20 步实测 57 对 < 1.35 Å）
+- **A-12** `box_builder.rs:396` `rem_euclid(L)` 对 -1e-17 返回 L，违反 [0, L)
+- **A-13** 奇异 / 非有限胞判据五处不一（`PeriodicCell::new`、`cell.rs:117`、`vacuum.rs:48`、`merge.rs:79`、supercell）；
+  vacuum 放过 NaN 胞
+- **A-14** `merge.rs:57` 判据拒非有限值，报错只写「gap must be >= 0」
+- **A-15** MIC 区间文档：`cell.rs:196` 写 [-0.5,0.5)、`periodic.rs:62` 写 [-0.5,0.5]，实为闭区间
+- **A-16** 折回三套：`Cell::wrap_position`、`Frame::wrap_all`（`frame.rs:398`，不认 origin）、`merge.rs:119`（相对 origin）；
+  已到 Rule of Three，评估合并或互指
+- **A-17** 零调用且不在清单：`Frame::center_of_mass` / `center` / `velocities_mut`；`find_supercell_dims` / `build_box` /
+  `estimate_box_length` 只有测试调用
+- **A-18** `ferro-core/src/lib.rs:6` 层次图仍是 `Frame └── Atom`（B15 后是 `Site` 表 + 数组）
+
+analysis（C）：
+- **C-3** `md/sq.rs:142` q 网格 `floor` 无容差，120 组常见参数里 20 组丢 `q_max` 端点
+- **C-4** `msd.rs:30`、`vacf.rs:33`、`rotcorr.rs:71`、`vanhove.rs:32` rustdoc 仍写 `dt` 默认 1.0
+- **C-5** `md/util.rs:32` `build_avg_frame` 的 doc 并给了 `par_map_in_order`（5.9 漏）
+- **C-6** `angle.rs:19` 仍说同 gr 的 `fold().reduce()`；`:196` 孤立注释
+- **C-7** `dev/issues.md:884` 指向已并入 `cube_from_grid` 的 `cube_reference_frame`
+- **C-8** `periodic_cells` 拒混用后的死分支：`msd.rs:138`、`vanhove.rs:145,202`、`rotcorr.rs:157,164,178`、`cube_density.rs:123,159`、
+  `cube_radius.rs:178`；`cube_density` 逐原子 `cartesian_to_fractional` 且 `.ok()?` 静默跳帧，不走入口建好的 `PeriodicCell`
+- **C-9** `vanhove.rs:152-171` 重写了 `correlate::resolve_max_lag`
+- **C-10** `angle.rs:36,49,249` 手写三份 (Z, 字符串) 比较，core 有 `canonical_cmp`
+- **C-11** 「范围不足一个步长」：gr `validate` 拒，vanhove / angle 不拒；gr 被 MIC 钳制后自己也会落到 1 个窄 bin
+- **C-12** `md/shell.rs:47,294` 请求 0.02 Å 不整除，实际 0.0199967，注释仍说 0.02 Å 网格
+- **C-13** `cube_density.rs:109` map velocity / force 静默跳过缺速度 / 力的帧，vacf 报错（手册已写明）
+- **C-14** `scattering_data.rs:4` 改过的中文段落（7.13）
+- **C-15** `rotcorr.rs:132` 函数文档只说 C₂
+
+cli / render（D）：
+- **D-4** `ferro-render/src/latex.rs:153` `\right` / `\cdot` 等命令被当成紧贴因子，vanhove / angle / sdf 公式多一层括号（6.1 引入）
+- **D-5** `cube-density.md:10` 表格单元里 `$|\mathbf{v}|$` 的竖线被切成列
+- **D-6** `batch.rs:433` 注释「writer 路径统一是 &str」过时（7.15 误销账）
+- **D-7** `cmd/net.rs:194` `fmt_means` 的 doc 叠在 `warn_edge_sharing` 上（第 5 批误销账）
+- **D-8** `cmd/dataset/mod.rs:180-200` 两段 doc 叠在 `without_collect_suffix` 上
+- **D-9** `dataset/mod.rs:251`、`collect.rs:225`、`io_dispatch.rs:51` 注释与代码相反或是 `fe-*` 时代说法
+- **D-10** `cmd/bader.rs:81` 按扩展名分派 cube / CHGCAR（违反「格式识别只在 format.rs」）；`--method` 用 String 手写 match
+- **D-11 + F-19 + F-22** `help.rs:470` bondlife、`:637` sdf 多 family 的产物名漏 `[_<suffix>]`；`:737` dataset 总览三行仍挂「(implemented)」
+- **D-12** `ferro-render/src/markdown.rs:563` 改过段落的中文
+- **D-15** filter 有 `-N, --number`，convert 的 `--number` 无短名
+- **D-16** traj 总览与 rotcorr 页只写 C₂，未提 `--legendre 1`
+
+python / scripts（E）：
+- **E-4** `scripts/ferroplot.py:128,261`、`compare_sq.py:95` 仍说 `-o` 是批次标记 / 后缀（7.10 漏）
+- **E-5** `compare_rdf.py:59-61,19`、`plot_net.py:49-52` 段落中英混写、小标题未改（7.10 漏）
+- **E-6** `scripts/ferrocmp.py:1,9` 仍写「ferro 0.2.0」「四处」下列五条
+- **E-7** `jobs/base.py:196` 注释说 `X<type>` 来自 vasp.rs（VASP4 已报错）；`X\d+` 认不出裸 `X`，报成 `no POTCAR for X`
+- **E-8** `jobs/qe.py:222` UPF 全无 `rho_cutoff` 时报错，使 `:232` 的 4×ecutwfc 兜底走不到
+- **E-9** `ferro-python/src/io.rs:150` `write_table` docstring 说 NaN 写成空格（实为空字段）
+- **E-10** `docs/src/python/api.md`、README 只说 QE 只读；CP2K `inp` / `restart` 与 DeePMD 目录同样不可写
+- **E-11** `drop_partial` 与部分原子带电荷报错无 pytest
+- **E-12** Python 告警按（文本, 位置）去重，reader 告警不带文件名，多 `-i` 时只显示一次（随第 11 批）
+- **E-13** `scripts/plot_net.py:177`、`ferroplot.py:132` 出图组手拼产物名
+- **E-14** `scripts/plot_gr.py:120` 的 `expand` 被四个出图脚本横向导入，应进 `ferroplot.py`
+
+文档（F）：
+- **F-9** `cli-reference.md:374`「Seven trajectory analyses」应为 8（第 6 批漏）
+- **F-10** `cli-reference.md:1001`、`progress.md:427` 仍写「24 页 208 KB」「863 行」
+- **F-11** `cli-reference.md:10-14` 命令树仍列 `job`、漏 `dataset`
+- **F-12** dump 的 `typelabel` 与 general triclinic 未进手册（`cli-reference.md:299-305` 及 51 / 316 / 367 / 694 行、`data-model.md:213`）
+- **F-14** `introduction.md:27-31` 架构图写 `ml/ (future)`、缺 network / ferro-render
+- **F-15** `cli-reference.md:411` sq 参数表中间空行，`--r-max` / `--dr` 脱表
+- **F-16** changelog 未记 a729723（rotcorr `--legendre 1` 文件头）
+- **F-17** `changelog.md:168` Unicode 公式「ħ²/2mₑ」应写 LaTeX
+- **F-18** `CLAUDE.md:13` fixture 描述过时，改为指向 `progress.md` 的 fixture 表
+- **F-20** Python `gr_pair` / `gr_all` 默认 `dr = 0.01`、`r_min = 0.005`，CLI 是 0.002 / 0.001，手册未说明
+- **F-21** `ferro-analysis/src/lib.rs:10` `pub mod ml` 是 CLAUDE.md「子模块私有」的例外，CLAUDE.md 未写
 
 ### 2026-10-17 全盘架构审查（六路并行，只读；HEAD `5498e30`；2026-10-19 八步执行完，挂起组见下）
 
