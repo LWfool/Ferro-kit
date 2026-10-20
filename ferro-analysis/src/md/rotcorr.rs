@@ -68,7 +68,7 @@ pub struct RotCorrParams {
     pub r_cut: f64,
     /// Longest lag in frames, `1 ..= n_frames − 1` (`None` = `n_frames / 2`)
     pub max_lag: Option<usize>,
-    /// Time step per frame \[fs\] (default: 1.0)
+    /// Time step per frame \[fs\]. No default: `Default` leaves it NaN and the entry rejects that
     pub dt: f64,
     /// Orientation vector (default: `Sum`)
     pub vector: RotVector,

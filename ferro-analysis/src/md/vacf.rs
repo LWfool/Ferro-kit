@@ -30,7 +30,7 @@ use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
 pub struct VacfParams {
     /// Longest lag in frames, `1 ..= n_frames − 1` (`None` = `n_frames / 2`)
     pub max_lag: Option<usize>,
-    /// Time step per frame \[fs\] (default: 1.0)
+    /// Time step per frame \[fs\]. No default: `Default` leaves it NaN and the entry rejects that
     pub dt: f64,
     /// Elements to include (`None` = all atoms)
     pub elements: Option<Vec<String>>,

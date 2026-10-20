@@ -29,7 +29,7 @@ pub struct VanHoveParams {
     pub tau: Option<usize>,
     /// Time shift between origins in frames (default: 1)
     pub shift: usize,
-    /// Time step per frame \[fs\] (default: 1.0)
+    /// Time step per frame \[fs\]. No default: `Default` leaves it NaN and the entry rejects that
     pub dt: f64,
     /// Minimum displacement for histogram \[Å\] (default: 0.0)
     pub r_min: f64,
