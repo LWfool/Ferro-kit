@@ -52,23 +52,26 @@ pub fn read_lammps_dump_with_warnings(
     parse_dump_lines(super::util::text_lines(path)?, units).with_context(|| format!("parsing {path_}"))
 }
 
-/// 无 element 列的 dump 读出的占位元素 `X<type>` 按 `map`（类型号 → 元素符号）换成元素。
+/// Replaces the placeholder `X<type>` that a dump with no element column reads as, by `map`
+/// (type number → element symbol).
 ///
-/// 只认本 reader 自己生成的 `X<type>`：dump 已有 element 列时报错，不让两份来源互相
-/// 覆盖；映射缺某个出现了的类型、或给了不认识的元素符号，同样报错
+/// Only this reader's own `X<type>` is taken: a dump that already names elements in an element
+/// or typelabel column is an error, so two sources never overwrite each other; so are a type the
+/// map leaves out and a symbol that is no element. The messages name no option: the CLI's
+/// `--type-map` and Python's `type_map=` reach this alike (`dev/issues.md`, scan B-7)
 pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()> {
     for (_, sym) in map {
         anyhow::ensure!(ferro_core::data::elements::by_symbol(sym).is_some(),
-                        "--type-map: unknown element symbol {sym:?}");
+                        "type map: unknown element symbol {sym:?}");
     }
     for frame in &mut traj.frames {
         for atom in frame.sites_mut() {
             let tp: u32 = atom.element.strip_prefix('X').and_then(|n| n.parse().ok())
                 .with_context(|| format!(
-                    "--type-map given, but the dump already names elements ({:?}) in its element or typelabel column",
+                    "a type map was given, but the dump already names elements ({:?}) in its element or typelabel column",
                     atom.element))?;
             let (_, sym) = map.iter().find(|(t, _)| *t == tp)
-                .with_context(|| format!("atom type {tp} is missing from --type-map"))?;
+                .with_context(|| format!("atom type {tp} is missing from the type map"))?;
             atom.element = sym.clone();
         }
     }

@@ -41,7 +41,7 @@ def test_type_map_matches_element_column(tmp_path, nvt):
     mapped = ferro.read(str(path), type_map=mapping)
     for i in range(len(nvt)):
         assert mapped.symbols(i) == nvt.symbols(i), f"第 {i} 帧映射结果应与 element 列相同"
-    with pytest.raises(RuntimeError, match="missing from --type-map"):
+    with pytest.raises(RuntimeError, match="missing from the type map"):
         ferro.read(str(path), type_map={1: "P"})
     with pytest.raises(RuntimeError, match="LAMMPS dump input only"):
         ferro.read(str(FIXTURES / "cp2k_sp_v61.out"), type_map={1: "P"})
