@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 use anyhow::{bail, Context, Result};
 use ferro_core::data::elements::by_symbol;
 
-/// 读取 PDB 文件，支持多模型（MODEL/ENDMDL 记录）。
+/// Reads a PDB file, multi-model (MODEL / ENDMDL records).
 pub fn read_pdb(path: &Path) -> Result<Trajectory> {
     Ok(read_pdb_with_warnings(path)?.0)
 }
@@ -159,8 +159,9 @@ fn parse_atom_record(line: &str, last: bool) -> Result<Option<Atom>> {
         if last { return Ok(None); }
         bail!("invalid or missing coordinates in columns 31-54");
     };
-    // 第 77–78 列是规范的元素位，RCSB 写大写（`FE`）—— 规范成 `Fe`，不另校验
-    // （元素表只到 Rn，校验会误拒 U 之类）。空着时从原子名推
+    // Columns 77-78 are the standard element field; RCSB writes it upper-case (`FE`) — made `Fe`,
+    // not checked further (the element table stops at Rn, a check would refuse U and the like).
+    // When blank, the atom name gives it
     let sym = col(line, 76, 78).trim();
     let element = if sym.is_empty() { element_from_atom_name(col(line, 12, 16))? } else { capitalize(sym) };
     Ok(Some(Atom::new(element, Vector3::new(x, y, z))))

@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 use anyhow::{anyhow, bail, Context, Result};
 use super::util::{drop_truncated, species_element};
 
-/// 读取 XYZ 文件，支持多帧（多个连续 block）。
+/// Reads an XYZ file, multi-frame (consecutive blocks).
 pub fn read_xyz(path: &Path) -> Result<Trajectory> {
     Ok(read_xyz_with_warnings(path)?.0)
 }
@@ -17,7 +17,7 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
     let mut warnings = Vec::new();
 
     'frames: loop {
-        // 寻找下一个帧的原子数行，跳过空行
+        // Find the next frame's atom-count line, skipping blank lines
         let (count_no, count_line) = loop {
             match lines.next() {
                 None => break 'frames,
