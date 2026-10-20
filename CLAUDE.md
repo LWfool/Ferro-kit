@@ -23,7 +23,7 @@ cd ferro-python && cargo check                # 独立 workspace，主 workspace
 `cargo fmt` **不要全仓跑**：本仓未纳入 rustfmt 管理，全仓格式化会改动约 80 文件
 （含 22k 行生成代码），淹没真实 diff。见 `dev/issues.md`「构建 / 工具链陷阱」。
 
-测试 fixture：`tests/`（两条 5 帧 LAMMPS 轨迹，一 NPT 一 NVT）。
+测试 fixture：`tests/`，清单与来源见 `dev/progress.md` 的 fixture 表。
 
 ## 分层铁律
 
