@@ -110,17 +110,29 @@ impl Cell {
         self.matrix.determinant().abs()
     }
 
-    /// The volume, or an error for a zero-volume cell — the guard of the stress /
-    /// virial conversion, which divides or multiplies by it.
-    pub(crate) fn nonzero_volume(&self) -> Result<f64> {
+    /// The volume of a cell that can serve as a 3-D box: all nine numbers finite and
+    /// a volume above 1e-12 Å³; `what` names the cell in the error.
+    ///
+    /// The one test behind [`crate::PeriodicCell::new`], [`Self::interplanar_spacings`],
+    /// the stress / virial conversion and `ferro-structure`'s vacuum, merge and
+    /// supercell (review A-13: five tests before, and the one in `interplanar_spacings`
+    /// let a NaN cell through as infinite spacings).
+    pub fn check(&self, what: &str) -> Result<f64> {
+        if !self.matrix.iter().all(|v| v.is_finite()) {
+            return Err(ChemError::ValidationError(format!("{what} is not finite")));
+        }
         let v = self.volume();
         if v > 1e-12 {
             Ok(v)
         } else {
-            Err(ChemError::ValidationError(format!(
-                "the cell volume is {v}: no conversion between stress and virial"
-            )))
+            Err(ChemError::ValidationError(format!("{what} is singular (volume {v:e} Å³)")))
         }
+    }
+
+    /// The volume, or an error for a zero-volume cell — the guard of the stress /
+    /// virial conversion, which divides or multiplies by it.
+    pub(crate) fn nonzero_volume(&self) -> Result<f64> {
+        self.check("the cell (needed to convert between stress and virial)")
     }
 
     /// The stress (eV/Å³) a virial (eV) stands for in this cell: `virial / V`, no
@@ -142,8 +154,9 @@ impl Cell {
     /// convention: MIC is valid only for `r < min(d)/2`. For non-orthogonal cells
     /// `d < L`, so using `lengths()` overestimates the usable cutoff.
     ///
-    /// Returns `Err` when the cell matrix is singular.
+    /// Returns `Err` when the cell is refused by [`Self::check`].
     pub fn interplanar_spacings(&self) -> Result<[f64; 3]> {
+        self.check("cell matrix")?;
         let inv = self.matrix.transpose().try_inverse()
             .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
         let d = |i: usize| {
@@ -342,5 +355,24 @@ mod tests {
         let diff = Vector3::new(9.0, 0.0, 0.0);
         let mic = cell.minimum_image(diff).unwrap();
         assert!((mic.x + 1.0).abs() < 1e-10);
+    }
+
+    // Review A-1 / A-13: a NaN cell used to pass `interplanar_spacings` as [inf; 3]
+    #[test]
+    fn check_refuses_non_finite_and_singular_cells() {
+        let cubic = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
+        assert!((cubic.check("cell").unwrap() - 1000.0).abs() < 1e-9);
+        for bad in [f64::NAN, f64::INFINITY] {
+            let mut c = cubic.clone();
+            c.matrix[(0, 1)] = bad;
+            let e = c.check("cell").unwrap_err().to_string();
+            assert!(e.contains("cell is not finite"), "{e}");
+            assert!(c.interplanar_spacings().is_err(), "{bad}");
+            assert!(c.minimum_image_cutoff().is_err(), "{bad}");
+        }
+        let mut flat = cubic.clone();
+        flat.matrix[(2, 2)] = 0.0;
+        assert!(flat.check("cell").unwrap_err().to_string().contains("cell is singular"));
+        assert!(flat.interplanar_spacings().is_err());
     }
 }

@@ -324,7 +324,7 @@ mod tests {
             5.0, 0.0, 0.0, 0.0, 6.0, 0.0, 0.0, 0.0, 0.0,
         ])));
         let err = format!("{:#}", write_deepmd_npy(&t, &out_dir("ferro_dp_flat")).unwrap_err());
-        assert!(err.contains("frame 1") && err.contains("volume is 0"), "{err}");
+        assert!(err.contains("frame 1") && err.contains("singular (volume 0"), "{err}");
     }
 
     #[test]

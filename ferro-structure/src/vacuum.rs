@@ -19,7 +19,8 @@ use ferro_core::frame::Frame;
 /// - `ValidationError` if the frame has no cell.
 /// - `ValidationError` if `axis` is not "x"/"y"/"z".
 /// - `ValidationError` if `thickness` is not a finite number > 0.
-/// - `ValidationError` if the cell is singular (e.g. c = 0, the ASE convention for 2D materials).
+/// - `ValidationError` if the cell is singular (e.g. c = 0, the ASE convention for 2D materials)
+///   or not finite (`Cell::check`).
 pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
     let axis_idx = match axis {
         "x" => 0,
@@ -44,13 +45,9 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
     let cell = frame.cell.as_ref().ok_or_else(|| {
         ChemError::ValidationError("add_vacuum requires a periodic frame with a cell".into())
     })?;
-    // 奇异胞（ASE 二维材料的 c=0 约定）的面间距是 0/0；按原子跨度补出 c 是另一项功能
-    if cell.matrix.determinant().abs() < 1e-12 {
-        return Err(ChemError::ValidationError(
-            "add_vacuum: the cell is singular (e.g. c = 0 for a 2D material); \
-             give the frame a full 3D cell first".into(),
-        ));
-    }
+    // A singular cell (ASE's c = 0 for a 2D material) has spacing 0/0; filling c in
+    // from the atoms' extent is a feature of its own
+    cell.check("add_vacuum: the cell (a 2D material needs a full 3D cell first)")?;
 
     // 沿该晶格矢量拉长，使它对面的面间距（两个相邻晶面的垂直距离）增加 thickness。
     // 以前是让矢量长度增加 thickness，c 轴倾斜时实际真空间隙只有 thickness·cosθ。
@@ -243,5 +240,14 @@ mod tests {
     fn test_error_negative_thickness() {
         let frame = cubic_frame(10.0);
         assert!(add_vacuum(&frame, "z", -1.0).is_err());
+    }
+
+    // Review A-13: a NaN cell passed the determinant test (NaN < 1e-12 is false)
+    #[test]
+    fn test_error_non_finite_cell() {
+        let mut frame = cubic_frame(10.0);
+        frame.cell.as_mut().unwrap().matrix[(0, 1)] = f64::NAN;
+        let e = add_vacuum(&frame, "z", 5.0).unwrap_err().to_string();
+        assert!(e.contains("not finite"), "{e}");
     }
 }

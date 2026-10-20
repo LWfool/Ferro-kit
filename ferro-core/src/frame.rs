@@ -471,7 +471,7 @@ mod tests {
         assert_eq!(cell.stress_from_virial(&v).unwrap(), s);
 
         let flat = Cell::from_matrix(Matrix3::new(2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0));
-        assert!(flat.stress_from_virial(&v).unwrap_err().to_string().contains("volume is 0"));
+        assert!(flat.stress_from_virial(&v).unwrap_err().to_string().contains("singular (volume 0"));
         f.cell = Some(flat);
         assert!(f.virial().is_err());
         f.cell = None;

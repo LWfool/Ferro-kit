@@ -27,7 +27,7 @@ use ferro_core::frame::Frame;
 ///    Incrementing the thinnest axis keeps the box as isotropic as possible.
 ///
 /// # Errors
-/// - `ValidationError` if the cell matrix is singular.
+/// - `ValidationError` if the cell is singular or not finite (`Cell::check`).
 /// - `ValidationError` if `min_length` is NaN or infinite.
 pub fn find_supercell_dims(
     cell: &Cell,
@@ -79,7 +79,8 @@ pub fn find_supercell_dims(
 /// three lattice vectors.
 ///
 /// # Errors
-/// - `ValidationError` if the frame has no cell (`cell` is `None`).
+/// - `ValidationError` if the frame has no cell (`cell` is `None`), or one refused by
+///   `Cell::check` (singular or not finite).
 /// - `ValidationError` if any of `nx`, `ny`, `nz` is zero.
 ///
 /// # Notes
@@ -104,6 +105,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
             "make_supercell requires a periodic frame with a cell".into(),
         )
     })?;
+    cell.check("make_supercell: the cell")?;
 
     // ── 新格子矩阵（各行独立缩放）────────────────────────────────────────────
     let m = &cell.matrix;
@@ -322,6 +324,24 @@ mod tests {
         let cell = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
         for bad in [f64::NAN, f64::INFINITY] {
             assert!(find_supercell_dims(&cell, 4, bad, 0).is_err(), "{bad}");
+        }
+    }
+
+    // Review A-1: a NaN cell gave [1, 1, 1] or [50, 1, 1] instead of an error
+    #[test]
+    fn a_cell_that_is_not_finite_or_singular_is_an_error() {
+        let ok = Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
+        let mut nan = ok.clone();
+        nan.matrix[(0, 1)] = f64::NAN;
+        let mut flat = ok.clone();
+        flat.matrix[(2, 2)] = 0.0;
+        for cell in [nan, flat] {
+            assert!(find_supercell_dims(&cell, 4, 12.0, 0).is_err());
+            assert!(find_supercell_dims(&cell, 4, 0.0, 50).is_err());
+            let mut frame = Frame::with_cell(cell, [true; 3]);
+            frame.add_atom(Atom::new("Fe", Vector3::zeros()));
+            let e = make_supercell(&frame, 2, 1, 1).unwrap_err().to_string();
+            assert!(e.contains("make_supercell: the cell is"), "{e}");
         }
     }
 }

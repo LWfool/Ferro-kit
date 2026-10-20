@@ -35,7 +35,8 @@ use ferro_core::frame::Frame;
 /// `velocities` are set to `None`. `charge` = sum of both. `multiplicity` = 1.
 ///
 /// # Errors
-/// - `ValidationError` if either frame has no cell, or a singular one.
+/// - `ValidationError` if either frame has no cell, or one refused by `Cell::check`
+///   (singular or not finite).
 /// - `ValidationError` if `axis` is not "x"/"y"/"z".
 /// - `ValidationError` if `gap < 0`.
 /// - `ValidationError` if the two interfaces are not parallel (normals more than
@@ -68,23 +69,22 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
         ChemError::ValidationError("merge_frames: frame_b has no cell".into())
     })?;
 
+    cell_a.check("merge_frames: frame_a's cell")?;
+    cell_b.check("merge_frames: frame_b's cell")?;
+
     let (p, q) = ((join + 1) % 3, (join + 2) % 3);
     let rows = |c: &Cell| -> [Vector3<f64>; 3] { [0, 1, 2].map(|i| c.matrix.row(i).transpose()) };
     let (ra, rb) = (rows(cell_a), rows(cell_b));
 
     // 界面法向朝拼接矢量一侧；h = 拼接矢量在法向上的投影 = 面间距
-    let normal = |r: &[Vector3<f64>; 3]| -> Result<(Vector3<f64>, f64)> {
+    // Both cells passed `Cell::check`, so h = V / |face| is finite and > 0
+    let normal = |r: &[Vector3<f64>; 3]| -> (Vector3<f64>, f64) {
         let n = r[p].cross(&r[q]);
         let h = n.dot(&r[join]) / n.norm();
-        if h.is_nan() || h.abs() <= 1e-8 {
-            return Err(ChemError::ValidationError(
-                "merge_frames: a cell is singular".into(),
-            ));
-        }
-        Ok((n.normalize() * h.signum(), h.abs()))
+        (n.normalize() * h.signum(), h.abs())
     };
-    let (n_a, h_a) = normal(&ra)?;
-    let (n_b, h_b) = normal(&rb)?;
+    let (n_a, h_a) = normal(&ra);
+    let (n_b, h_b) = normal(&rb);
     if n_a.dot(&n_b) < 1f64.to_radians().cos() {
         return Err(ChemError::ValidationError(format!(
             "merge_frames: the two interfaces are not parallel ({:.2}° apart along axis {axis}); \
@@ -407,5 +407,20 @@ mod tests {
         let a = cubic_frame(10.0, vec![("Fe", 0.0, 0.0, 0.0)]);
         let b = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
         assert!(merge_frames(&a, &b, "z", -1.0).is_err());
+    }
+
+    // Review A-13: the merge's own singularity test now goes through `Cell::check`,
+    // which names the frame and also refuses a non-finite cell
+    #[test]
+    fn test_error_singular_or_non_finite_cell() {
+        let a = cubic_frame(10.0, vec![("Fe", 0.0, 0.0, 0.0)]);
+        let mut flat = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
+        flat.cell.as_mut().unwrap().matrix[(0, 0)] = 0.0;
+        let e = merge_frames(&a, &flat, "z", 1.0).unwrap_err().to_string();
+        assert!(e.contains("frame_b's cell is singular"), "{e}");
+        let mut nan = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
+        nan.cell.as_mut().unwrap().matrix[(0, 1)] = f64::NAN;
+        let e = merge_frames(&nan, &a, "z", 1.0).unwrap_err().to_string();
+        assert!(e.contains("frame_a's cell is not finite"), "{e}");
     }
 }

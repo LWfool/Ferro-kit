@@ -23,8 +23,8 @@ pub struct PeriodicCell {
 }
 
 impl PeriodicCell {
-    /// Validates `cell` and `pbc`: the matrix must be finite and invertible and
-    /// all three directions periodic.
+    /// Validates `cell` and `pbc`: the cell must pass [`Cell::check`] and all three
+    /// directions be periodic.
     pub fn new(cell: &Cell, pbc: [bool; 3]) -> Result<Self> {
         if pbc != [true; 3] {
             let flag = |p: bool| if p { 'T' } else { 'F' };
@@ -33,9 +33,7 @@ impl PeriodicCell {
                 flag(pbc[0]), flag(pbc[1]), flag(pbc[2])
             )));
         }
-        if !cell.matrix.iter().all(|v| v.is_finite()) {
-            return Err(ChemError::ValidationError("cell matrix is not finite".into()));
-        }
+        cell.check("cell matrix")?;
         let mt = cell.matrix.transpose();
         let inv = mt
             .try_inverse()
