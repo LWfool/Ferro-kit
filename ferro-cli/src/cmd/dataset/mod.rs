@@ -117,6 +117,9 @@ const TRAIN_SUFFIX: &str = ".train";
 /// `run1.db` filters to `run1.train` rather than `run1.db.train`.
 const COLLECT_SUFFIX: &str = ".db";
 
+/// Frames per set unless told otherwise, for `filter` and `merge` alike.
+const DEFAULT_SET_SIZE: usize = 400;
+
 /// Appends a split suffix to the last component of a path.
 fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
     if suffix.is_empty() {

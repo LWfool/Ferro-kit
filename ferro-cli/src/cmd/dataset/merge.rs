@@ -54,9 +54,6 @@ pub struct MergeCmd {
     pub ratio: Option<String>,
 }
 
-/// Frames per set unless told otherwise.
-const DEFAULT_SET_SIZE: usize = 400;
-
 pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
     let Some(out_root) = &args.output else {
         bail!("merge needs an output directory (-o DIR)");

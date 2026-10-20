@@ -955,7 +955,7 @@ this is the head of the pipeline and everything downstream reads it, so precisio
 | `--stride <N>` | 1 | take one out of every N surviving frames |
 | `-N, --number <N>` | | take this many frames at even intervals, both ends included; mutually exclusive with `--stride` |
 | `--shuffle` | off | shuffle before writing, **after every criterion and after the frame sampling** |
-| `--seed <N>` | 666 | the seed for `--shuffle`; giving it without `--shuffle` errors out |
+| `--seed <N>` | 666 | the seed for `--shuffle` and for the `--ratio` split; giving it with neither errors out |
 | `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
 | `--type <WHAT>` | deepmd | `deepmd` (system directory) \| `nep` (one `.xyz` per system, stress as `virial=`) \| `extxyz` (one `.xyz`, stress as `stress=`) |
 | `--ratio <A:B:C>` | | split each system train:valid:test (`8:1:1`) or train:test (`9:1`); weights, not fractions |

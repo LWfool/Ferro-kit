@@ -58,12 +58,12 @@ pub struct FilterCmd {
     #[arg(long)]
     pub shuffle: bool,
 
-    /// Seed for --shuffle                                        [default: 666]
+    /// Seed for --shuffle and for --ratio                        [default: 666]
     #[arg(long, value_name = "N")]
     pub seed: Option<u64>,
 
     /// Frames per output set; 0 keeps everything in one set
-    #[arg(long, value_name = "N", default_value_t = 400)]
+    #[arg(long, value_name = "N", default_value_t = DEFAULT_SET_SIZE)]
     pub set_size: usize,
 
     /// Allow writing into an existing non-empty output directory
