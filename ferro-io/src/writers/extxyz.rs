@@ -1,6 +1,7 @@
 use std::path::Path;
 use ferro_core::Trajectory;
 use ferro_core::units::ASE_FS;
+use nalgebra::Matrix3;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -36,21 +37,42 @@ pub fn write_extxyz_with(
     drop_partial: bool,
 ) -> Result<()> {
     let path_ = path.display();
-    // Whether to write the charge / moment columns is decided for every frame before the file is
-    // created, so a refusal leaves no half-written file
-    let columns: Vec<(bool, bool)> = trajectory.frames.iter().enumerate().map(|(fi, frame)| {
+    // Whether to write the charge / moment columns, and the stress tensor to write, are decided for
+    // every frame before the file is created, so a refusal leaves no half-written file
+    type Columns = (bool, bool, Option<(&'static str, Matrix3<f64>)>);
+    let columns: Vec<Columns> = trajectory.frames.iter().enumerate().map(|(fi, frame)| {
         let n = frame.n_atoms();
         let count = |has: fn(&ferro_core::AtomRef) -> bool| frame.atoms().filter(|a| has(a)).count();
+        // Only ever one key: two keys are two facts that may contradict each other (the reader
+        // cross-checks them for that reason), so there is no call to produce such a file.
+        //   stress= is ASE's convention (positive = tension), hence negated
+        //   virial= is eV with positive = compression, hence times the volume, sign kept
+        let stress = match (&frame.stress, stress_key) {
+            (None, _) => None,
+            (Some(s), StressKey::Stress) => Some(("stress", -s)),
+            (Some(_), StressKey::Virial) => {
+                if frame.cell.is_none() {
+                    bail!(
+                        "frame {fi} has a stress but no cell; virial= is eV and needs \
+                         the volume. Write stress= instead"
+                    );
+                }
+                let v = frame.virial()
+                    .with_context(|| format!("frame {fi}: cannot write virial="))?
+                    .expect("the frame has a stress");
+                Some(("virial", v))
+            }
+        };
         Ok((
             super::partial_column("charge", count(|a| a.charge.is_some()), n, fi, drop_partial)?,
             super::partial_column("magnetic moment", count(|a| a.magmom.is_some()), n, fi, drop_partial)?,
+            stress,
         ))
     }).collect::<Result<_>>()?;
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
-    for (fi, frame) in trajectory.frames.iter().enumerate() {
-        let (has_charge, has_magmom) = columns[fi];
+    for (frame, &(has_charge, has_magmom, stress)) in trajectory.frames.iter().zip(&columns) {
         // Line 1: atom count
         writeln!(w, "{}", frame.n_atoms())?;
 
@@ -96,26 +118,7 @@ pub fn write_extxyz_with(
         // 输入是 DeePMD npy 系统,那里根本没有温度,开了这个键之后产物里有没有
         // `Temperature=` 就取决于数据走的哪条路 —— 产物形态随来源而变,正是
         // issues.md 反复记的那类静默差异。等 convert 能直读 AIMD 输出时再一起开
-        // 恒只写一个键 —— 两个键就是两处可能互相矛盾的事实,读侧为此专门做了
-        // 交叉校验,没有理由自己生产这种文件。
-        //   stress= 是 ASE 约定(正 = 拉伸),故变号
-        //   virial= 是 eV 且正 = 压缩,故乘体积、不变号
-        if let Some(s) = &frame.stress {
-            let (key, t) = match stress_key {
-                StressKey::Stress => ("stress", -s),
-                StressKey::Virial => {
-                    if frame.cell.is_none() {
-                        bail!(
-                            "frame {fi} has a stress but no cell; virial= is eV and needs \
-                             the volume. Write stress= instead"
-                        );
-                    }
-                    let v = frame.virial()
-                        .with_context(|| format!("frame {fi}: cannot write virial="))?
-                        .expect("the frame has a stress");
-                    ("virial", v)
-                }
-            };
+        if let Some((key, t)) = stress {
             parts.push(format!(
                 "{key}=\"{} {} {} {} {} {} {} {} {}\"",
                 fmt(t[(0,0)]), fmt(t[(0,1)]), fmt(t[(0,2)]),
@@ -334,9 +337,12 @@ mod tests {
         traj.frames[0].cell = None;
         traj.frames[0].stress = Some(Matrix3::identity());
         let path = std::env::temp_dir().join("virial_nocell.extxyz");
+        let _ = std::fs::remove_file(&path);
         let e = write_extxyz_with(&traj, &path, StressKey::Virial, false)
             .unwrap_err();
         assert!(format!("{e:#}").contains("no cell"), "{e:#}");
+        // The refusal used to come after File::create and leave a half-written file
+        assert!(!path.exists(), "a refused write must not leave a file");
     }
 
     /// An explicit mass (deuterium here) used to be written only alongside velocities,
