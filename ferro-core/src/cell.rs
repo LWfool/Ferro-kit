@@ -206,15 +206,17 @@ impl Cell {
         Ok(self.fractional_to_cartesian(wrapped))
     }
 
-    /// 对位移向量应用最小镜像约定，使每个分量落在 [-0.5, 0.5)。
+    /// Minimum-image form of a displacement: each fractional component in [-0.5, 0.5],
+    /// both ends included (`c - c.round()`, and `round` takes ±0.5 away from zero), as
+    /// [`crate::PeriodicCell::minimum_image`].
     ///
-    /// 用法示例：计算两原子的周期性最短距离
+    /// Example: the shortest periodic distance between two atoms
     /// ```ignore
     /// let diff = atom_b.position - atom_a.position;
     /// let mic_diff = cell.minimum_image(diff)?;
     /// let dist = mic_diff.norm();
     /// ```
-    /// 晶胞矩阵奇异时返回 `Err`。
+    /// Returns `Err` when the cell matrix is singular.
     pub fn minimum_image(&self, diff: Vector3<f64>) -> Result<Vector3<f64>> {
         let frac = self.cartesian_to_fractional(diff)?;
         let mic_frac = Vector3::new(
