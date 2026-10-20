@@ -204,8 +204,12 @@ pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64
 /// 4. Soft-core relaxation to remove overlaps.
 ///
 /// - `min_dist`: minimum allowed distance between atoms (Å). Suggested: 1.5.
-/// - `relax_steps`: number of relaxation steps. Suggested: 100.
+/// - `relax_steps`: number of relaxation steps. Suggested: 500 (measured on water and
+///   `Ca3(PO4)2` boxes of 15-1500 atoms: 100 steps can leave pairs short of `min_dist`).
 /// - `seed`: the same seed gives the same box, atom for atom.
+///
+/// `Err` when pairs closer than `min_dist` remain after `relax_steps` (review A-11:
+/// such a box used to be returned without a word).
 pub fn build_box(
     components: &[Component],
     density: f64,
@@ -266,7 +270,13 @@ pub fn build_box(
     }
 
     // ── 步骤 4：软核弛豫 ─────────────────────────────────────────────────────
-    relax(&mut atoms, box_len, min_dist, relax_steps);
+    let close = relax(&mut atoms, box_len, min_dist, relax_steps);
+    if close > 0 {
+        return Err(ChemError::ValidationError(format!(
+            "{close} atom pair(s) still closer than min_dist = {min_dist} Å after {relax_steps} \
+             relaxation step(s); raise relax_steps, or lower the density or min_dist"
+        )));
+    }
 
     let mut frame = Frame::with_cell(cell, [true; 3]);
     frame.set_atoms(atoms);
@@ -356,10 +366,11 @@ fn minimum_image_ortho(diff: &Vector3<f64>, box_len: f64) -> Vector3<f64> {
     )
 }
 
-/// 软核弛豫：最速下降法消除原子重叠。
-fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) {
+/// Soft-core relaxation: steepest descent removes overlaps. Returns the number of
+/// pairs still closer than `min_dist` at the end.
+fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> usize {
     if atoms.is_empty() {
-        return;
+        return 0;
     }
     let cutoff = min_dist * 1.5; // cell list 截断略大于 min_dist
     let step_size = min_dist * 0.05;
@@ -408,6 +419,19 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) {
             break;
         }
     }
+
+    // Pairs still too close. The early stop leaves pairs a hair inside min_dist (the
+    // repulsion vanishes at min_dist: a step under 1e-6 Å means d > min_dist - 2e-5 Å),
+    // so "too close" allows 1e-3 relative
+    cl.rebuild(atoms);
+    let limit = min_dist * (1.0 - 1e-3);
+    (0..n)
+        .map(|i| {
+            cl.neighbors(atoms, i).into_iter().filter(|&j| {
+                j > i && minimum_image_ortho(&(atoms[j].position - atoms[i].position), box_len).norm() < limit
+            }).count()
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -547,7 +571,7 @@ mod tests {
     fn test_build_box_accepts_formula_outside_database() {
         // 端到端：库外带括号公式一路走到建盒
         let comps = vec![Component { compound: "Ca3(PO4)2".to_string(), n_molecules: 8 }];
-        let frame = build_box(&comps, 3.0, 1.5, 20, 7).unwrap();
+        let frame = build_box(&comps, 3.0, 1.5, 500, 7).unwrap();
         assert_eq!(frame.atoms().filter(|a| a.element == "Ca").count(), 24);
         assert_eq!(frame.atoms().filter(|a| a.element == "P").count(), 16);
         assert_eq!(frame.atoms().filter(|a| a.element == "O").count(), 64);
@@ -625,7 +649,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 10,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 50, 7).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 500, 7).unwrap();
         // 10 个 H2O = 30 个原子
         assert_eq!(frame.n_atoms(), 30);
     }
@@ -636,7 +660,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 5,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 50, 7).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 500, 7).unwrap();
         assert_eq!(frame.count_element("H"), 10);
         assert_eq!(frame.count_element("O"), 5);
     }
@@ -647,7 +671,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 5,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 50, 7).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 500, 7).unwrap();
         assert!(frame.is_periodic());
         assert_eq!(frame.pbc, [true; 3]);
     }
@@ -658,7 +682,7 @@ mod tests {
             compound: "water".into(),
             n_molecules: 20,
         }];
-        let frame = build_box(&comps, 1.0, 1.5, 100, 7).unwrap();
+        let frame = build_box(&comps, 1.0, 1.5, 500, 7).unwrap();
         let box_len = frame.cell.as_ref().unwrap().lengths()[0];
         for atom in frame.atoms() {
             assert!(atom.position.x >= 0.0 && atom.position.x < box_len);
@@ -674,7 +698,7 @@ mod tests {
             n_molecules: 20,
         }];
         let min_dist = 1.5;
-        let frame = build_box(&comps, 0.5, min_dist, 200, 7).unwrap();
+        let frame = build_box(&comps, 0.5, min_dist, 500, 7).unwrap();
         let box_len = frame.cell.as_ref().unwrap().lengths()[0];
         let n = frame.n_atoms();
         // 检查所有原子对的最小距离
@@ -707,7 +731,7 @@ mod tests {
                 n_molecules: 3,
             },
         ];
-        let frame = build_box(&comps, 0.8, 1.5, 50, 7).unwrap();
+        let frame = build_box(&comps, 0.8, 1.5, 500, 7).unwrap();
         // 5×3 + 3×6 = 33 个原子
         assert_eq!(frame.n_atoms(), 33);
     }
@@ -719,7 +743,7 @@ mod tests {
             Component { compound: "methanol".into(), n_molecules: 3 },
         ];
         let atoms = |seed| -> Vec<(String, [f64; 3])> {
-            let frame = build_box(&comps, 0.8, 1.5, 20, seed).unwrap();
+            let frame = build_box(&comps, 0.8, 1.5, 500, seed).unwrap();
             frame.atoms().map(|a| (a.element.to_string(), a.position.into())).collect()
         };
         assert_eq!(atoms(7), atoms(7));
@@ -763,8 +787,17 @@ mod tests {
     #[test]
     fn test_atoms_come_in_canonical_element_order() {
         let comps = vec![Component { compound: "NaCl".into(), n_molecules: 4 }];
-        let frame = build_box(&comps, 2.0, 1.0, 0, 7).unwrap();
+        let frame = build_box(&comps, 2.0, 1.0, 500, 7).unwrap();
         let order: Vec<&str> = frame.atoms().map(|a| a.element).collect();
         assert_eq!(order, ["Na", "Na", "Na", "Na", "Cl", "Cl", "Cl", "Cl"]);
+    }
+
+    // Review A-11: 20 steps left 57 pairs under 1.35 A and the box came back as if fine
+    #[test]
+    fn test_pairs_left_too_close_are_an_error() {
+        let comps = vec![Component { compound: "water".into(), n_molecules: 50 }];
+        let e = build_box(&comps, 1.0, 1.5, 0, 7).unwrap_err().to_string();
+        assert!(e.contains("still closer than min_dist = 1.5") && e.contains("after 0"), "{e}");
+        assert!(build_box(&comps, 1.0, 1.5, 500, 7).is_ok());
     }
 }
