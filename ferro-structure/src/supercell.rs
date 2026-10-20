@@ -39,11 +39,12 @@ pub fn find_supercell_dims(
     if !min_length.is_finite() {
         return Err(ChemError::ValidationError(format!("min_length must be finite, got {min_length}")));
     }
-    // 用面间距而非矢量长度：「满足最小镜像截断」要的是垂直厚度，三斜胞里 d < |a|，
-    // 按长度算会给出不够大的超胞。扩 n 倍后面间距恰好也是 n·d
+    // Interplanar spacings, not vector lengths: a minimum-image cutoff needs the
+    // perpendicular thickness, and in a triclinic cell d < |a|, so lengths would give
+    // too small a supercell. Repeating n times makes the spacing exactly n·d
     let lengths = cell.interplanar_spacings()?;
 
-    // 步骤 1：用长度约束确定每轴最小倍数
+    // Step 1: the smallest multiple per axis that meets min_length
     let ceil_dim = |l: f64| -> usize {
         if min_length > 0.0 {
             ((min_length / l).ceil() as usize).max(1)
@@ -53,14 +54,15 @@ pub fn find_supercell_dims(
     };
     let mut n = [ceil_dim(lengths[0]), ceil_dim(lengths[1]), ceil_dim(lengths[2])];
 
-    // 步骤 2：递增最短轴直到原子数满足要求
+    // Step 2: grow the thinnest axis until there are enough atoms
     while n[0] * n[1] * n[2] * n_atoms.max(1) < min_atoms {
         let super_lengths = [
             n[0] as f64 * lengths[0],
             n[1] as f64 * lengths[1],
             n[2] as f64 * lengths[2],
         ];
-        // 找最薄轴（f64 partial_cmp 不会 panic：面间距有限或为 +∞，不会是 NaN）
+        // The thinnest axis (partial_cmp cannot panic: the cell passed `Cell::check`,
+        // so every spacing is finite)
         let shortest = super_lengths
             .iter()
             .enumerate()
@@ -91,7 +93,7 @@ pub fn find_supercell_dims(
 ///   structure.
 /// - `pbc` and the box origin are kept; replicas extend along +a / +b / +c.
 pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<Frame> {
-    // ── 输入校验 ──────────────────────────────────────────────────────────────
+    // ── Input checks ─────────────────────────────────────────────────────────
     if nx == 0 || ny == 0 || nz == 0 {
         return Err(ChemError::ValidationError(
             format!("supercell dimensions must be ≥ 1, got ({nx}, {ny}, {nz})"),

@@ -225,7 +225,7 @@ pub fn build_box(
         )));
     }
 
-    // ── 步骤 1：解析化学式，统计各元素原子数 ─────────────────────────────────
+    // ── Step 1: parse the formulas, count the atoms of each element ──────────
     // Ordered by element: a HashMap's order changes from run to run, and with it
     // which random draw each atom gets.
     let mut element_counts: BTreeMap<String, usize> = BTreeMap::new();
@@ -250,11 +250,11 @@ pub fn build_box(
     let mut element_counts: Vec<(String, usize)> = element_counts.into_iter().collect();
     element_counts.sort_by(|a, b| elements::canonical_cmp(&a.0, &b.0));
 
-    // ── 步骤 2：估算盒子尺寸 ─────────────────────────────────────────────────
+    // ── Step 2: estimate the box size ────────────────────────────────────────
     let box_len = estimate_box_length(components, density)?;
     let cell = Cell::from_lengths_angles(box_len, box_len, box_len, 90.0, 90.0, 90.0)?;
 
-    // ── 步骤 3：随机放置原子 ─────────────────────────────────────────────────
+    // ── Step 3: place the atoms at random ────────────────────────────────────
     // ChaCha12, not StdRng: rand may change StdRng's algorithm between versions (as ml/merge).
     let mut rng = chacha20::ChaCha12Rng::seed_from_u64(seed);
     let mut atoms: Vec<Atom> = Vec::new();
@@ -269,7 +269,7 @@ pub fn build_box(
         }
     }
 
-    // ── 步骤 4：软核弛豫 ─────────────────────────────────────────────────────
+    // ── Step 4: soft-core relaxation ─────────────────────────────────────────
     let close = relax(&mut atoms, box_len, min_dist, relax_steps);
     if close > 0 {
         return Err(ChemError::ValidationError(format!(
@@ -379,7 +379,7 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
     if atoms.is_empty() {
         return 0;
     }
-    let cutoff = min_dist * 1.5; // cell list 截断略大于 min_dist
+    let cutoff = min_dist * 1.5; // the cell list's cutoff, a little above min_dist
     let step_size = min_dist * 0.05;
     let n = atoms.len();
 
@@ -388,12 +388,12 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
     for _step in 0..max_steps {
         cl.rebuild(atoms);
 
-        // 计算每个原子的斥力
+        // The repulsion on each atom
         let mut forces = vec![Vector3::zeros(); n];
         for i in 0..n {
             for j in cl.neighbors(atoms, i) {
                 if j <= i {
-                    continue; // 避免重复计算
+                    continue; // each pair once
                 }
                 let diff = minimum_image_ortho(&(atoms[j].position - atoms[i].position), box_len);
                 let dist = diff.norm();
@@ -406,7 +406,7 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
             }
         }
 
-        // 更新位置
+        // Move the atoms
         let mut max_disp = 0.0_f64;
         for i in 0..n {
             let disp = forces[i] * step_size;
@@ -418,7 +418,7 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
             atoms[i].position = atoms[i].position.map(|x| wrap_into(x, box_len));
         }
 
-        // 早停：位移足够小
+        // Early stop: the moves are small enough
         if max_disp < 1e-6 {
             break;
         }
