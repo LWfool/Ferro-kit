@@ -244,9 +244,6 @@ fn parse_frame(
             }
         }
 
-        // User request C: also detect triclinic by value count (≥3 values per line)
-        // already handled above: vals.len() >= 3 sets tilt
-
         let (xy, xz, yz) = (tilt[0], tilt[1], tilt[2]);
         // For a triclinic box these six numbers are the *_bound (the box around the tilted cell); the
         // real edges take the tilts back off:
@@ -482,7 +479,7 @@ fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<Str
         .filter(|(raw, elem)| raw.as_str() != elem.as_str())
         .collect();
     if !split.is_empty() {
-        let mut msg = String::from("LAMMPS dump: element column carries site labels, split into element + label:");
+        let mut msg = String::from("LAMMPS dump: element / typelabel column carries site labels, split into element + label:");
         for (raw, elem) in &split {
             msg.push_str(&format!("\n  {raw:<12} -> element {elem:<4} label {raw}"));
         }

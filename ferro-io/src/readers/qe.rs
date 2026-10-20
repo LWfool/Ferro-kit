@@ -42,8 +42,6 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     if ibrav != 0 {
         bail!("ibrav={ibrav} is not supported; use ibrav=0 with explicit CELL_PARAMETERS");
     }
-    let _ntyp: usize = sys.get("ntyp").and_then(|s| s.parse().ok()).unwrap_or(0);
-
     // starting_magnetization is not read into magmom: it is a fraction in -1..1 (spin polarisation
     // over valence electrons), not μB, and extxyz output took it for a moment (user's call, 2026-10-19)
 
