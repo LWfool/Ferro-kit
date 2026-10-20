@@ -150,8 +150,20 @@ fn command(chars: &[char], i: &mut usize) -> String {
             // A factor written right after the fraction would read as part of
             // the denominator (`a/bc`), so the fraction itself gets brackets
             // then; a space, a closing bracket or an operator ends it already.
+            // A command counts as a factor unless it renders as one of those: a
+            // closing delimiter (`\right)`), an operator or relation (`\cdot`, `\le`)
+            // or spacing (`\quad`).
+            const NOT_A_FACTOR: [&str; 27] = [
+                "right", "rvert", "rangle", "rfloor", "rceil", "bigr",
+                "cdot", "times", "pm", "to", "rightarrow", "leftarrow", "in", "propto", "sim",
+                "parallel", "wedge", "bmod", "neq", "ne", "leq", "le", "geq", "ge", "approx",
+                "quad", "qquad",
+            ];
             let glued = match chars.get(*i) {
-                Some('\\') => chars.get(*i + 1).is_some_and(|c| c.is_ascii_alphabetic()),
+                Some('\\') => {
+                    let next: String = chars[*i + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
+                    !next.is_empty() && !NOT_A_FACTOR.contains(&next.as_str())
+                }
                 Some(c) => c.is_alphanumeric() || matches!(c, '(' | '[' | '{' | '_' | '^'),
                 None => false,
             };
@@ -237,6 +249,12 @@ mod tests {
             (r"\frac{a}{b}(c)", "(a/b)(c)"),
             (r"\frac{1}{N} \sum_j", "1/N Σⱼ"),
             (r"\frac{a}{b}\, c", "a/b c"),
+            // Commands that end a factor rather than start one (review D-4)
+            (r"\left(\frac{a}{b}\right)", "(a/b)"),
+            (r"\frac{a}{b}\cdot c", "a/b· c"),
+            (r"\frac{a}{b}\le c", "a/b≤ c"),
+            (r"\frac{1}{2}\alpha", "(1/2)α"),
+            (r"\frac{1}{2}\sqrt{x}", "(1/2)√x"),
             (r"\mathbf{H} = \mathbf{U} \boldsymbol{\Sigma} \mathbf{V}^T", "H = U Σ V^T"),
             (r"Q^n_m", "Qⁿₘ"),
             (r"w_{ij}", "wᵢⱼ"),
