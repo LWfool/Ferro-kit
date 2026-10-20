@@ -131,15 +131,8 @@ type Series = Vec<[Vec<f64>; 3]>;
 /// is the minimum image in frame `i+1`'s cell, taken in fractional coordinates as
 /// `f − ⌊f + 1/2⌋`. A step is far below half a cell, so this is exact for any
 /// cell shape.
-fn unwrap_tor(
-    traj: &Trajectory,
-    cells: &[Option<PeriodicCell>],
-    atom_indices: &[usize],
-) -> ferro_core::Result<Series> {
-    let boxes = cells.iter().map(|c| c.as_ref().ok_or_else(|| ChemError::ValidationError(
-        "all frames must have a periodic cell for MSD".into()))).collect::<ferro_core::Result<Vec<_>>>()?;
-
-    Ok(atom_indices.par_iter().map(|&i| {
+fn unwrap_tor(traj: &Trajectory, boxes: &[&PeriodicCell], atom_indices: &[usize]) -> Series {
+    atom_indices.par_iter().map(|&i| {
         let n = traj.n_frames();
         let mut s = [Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n)];
         let mut w_prev = traj.frames[0].positions()[i];
@@ -159,7 +152,7 @@ fn unwrap_tor(
             }
         }
         s
-    }).collect())
+    }).collect()
 }
 
 /// MSD summed over atoms, per axis: `out[axis][m]`, `m = 0 ..= max_lag`, each lag
@@ -232,14 +225,14 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
         .collect();
 
     let cells = check::periodic_cells(traj, None)?;
-    let series: Series = if ref_frame.cell.is_some() {
-        unwrap_tor(traj, &cells, &atom_indices)?
-    } else {
-        atom_indices.iter().map(|&i| {
+    // periodic_cells rejects a mix, so either every frame has a cell or none does
+    let series: Series = match cells.iter().map(Option::as_ref).collect::<Option<Vec<_>>>() {
+        Some(boxes) => unwrap_tor(traj, &boxes, &atom_indices),
+        None => atom_indices.iter().map(|&i| {
             let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.positions()[i]).collect();
             [p.iter().map(|v| v.x).collect(), p.iter().map(|v| v.y).collect(),
              p.iter().map(|v| v.z).collect()]
-        }).collect()
+        }).collect(),
     };
 
     let [sx, sy, sz] = msd_sums(&series, max_lag);

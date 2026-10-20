@@ -154,16 +154,16 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
             "no {} atom in the first frame", params.center)));
     }
 
-    let has_cell = ref_frame.cell.is_some();
     let r_cut2 = params.r_cut * params.r_cut;
 
-    // 当帧的键矢量：周期体系取最小镜像
+    // The bond vector in frame k, minimum image when periodic (periodic_cells rejects a
+    // mix, so cells[k] is Some for every frame or for none)
     let bond = |k: usize, from: usize, to: usize| {
         let frame = &traj.frames[k];
         let d = frame.positions()[to] - frame.positions()[from];
-        match (&cells[k], has_cell) {
-            (Some(pc), true) => pc.minimum_image(d),
-            _ => d,
+        match &cells[k] {
+            Some(pc) => pc.minimum_image(d),
+            None => d,
         }
     };
     let is_neighbor = |i: usize, ci: usize| -> bool {
@@ -175,11 +175,8 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         RotVector::Sum => traj.frames.iter().enumerate().map(|(k, frame)| {
             // Candidates come from a neighbour list in a periodic frame, sorted by index
             // like the full scan, so the bond vectors are summed in the same order
-            let nl = match (&cells[k], has_cell) {
-                (Some(pc), true) => Some(NeighborList::build(frame.positions(), pc, params.r_cut)
-                    .expect("r_cut checked against every frame's bound at the entry")),
-                _ => None,
-            };
+            let nl = cells[k].as_ref().map(|pc| NeighborList::build(frame.positions(), pc, params.r_cut)
+                .expect("r_cut checked against every frame's bound at the entry"));
             center_indices.iter().map(|&ci| {
                 let mut u = [0.0_f64; 3];
                 let mut len_sum = 0.0;

@@ -142,7 +142,7 @@ fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
 /// - a parameter is out of range ([`VanHoveParams::validate`])
 /// - the trajectory has fewer than 2 frames, or its frames hold different atoms
 /// - no atoms match the element filter
-/// - a later frame is missing the cell frame 0 has (periodic path only)
+/// - some frames have a cell and others do not
 ///
 /// - `τ` is not within `1 ..= n_frames − 1` (as `--max-lag` is checked by the other
 ///   time-correlation analyses; it used to be clamped to `n_frames − 1` without a word)
@@ -196,12 +196,11 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         return Err(ChemError::ValidationError(format!("no time origin fits tau = {tau} in {n_steps} frames")));
     }
 
-    // 构建绝对 Cartesian 坐标数组（周期系统经过 unwrap）
-    let cart: Vec<Vec<[f64; 3]>> = if ref_frame.cell.is_some() {
-        // 周期系统：分数坐标 unwrap 后转回绝对坐标
-        let pcs: Vec<&PeriodicCell> = cells.iter().map(Option::as_ref).collect::<Option<_>>()
-            .ok_or_else(|| ChemError::ValidationError("frame 0 has a cell but a later frame does not".into()))?;
-
+    // Absolute Cartesian positions, unwrapped when periodic. periodic_cells rejects a
+    // trajectory mixing frames with and without a cell, so either every frame has one or none
+    let cart: Vec<Vec<[f64; 3]>> = match cells.iter().map(Option::as_ref).collect::<Option<Vec<&PeriodicCell>>>() {
+        // Periodic: unwrap in fractional coordinates, then back to Cartesian
+        Some(pcs) => {
         let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&pcs).map(|(frame, pc)| {
             atom_indices.iter().map(|&i| {
                 let f = pc.to_fractional(frame.positions()[i]);
@@ -210,7 +209,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         }).collect();
         unwrap_frac(&mut frac);
 
-        // 用各帧自身的 cell 矩阵将分数坐标转回绝对坐标（NPT 自然支持）
+        // Back to Cartesian through each frame's own cell matrix (NPT works as is)
         frac.iter().zip(traj.frames.iter())
             .map(|(step_frac, frame)| {
                 let m = &frame.cell.as_ref().unwrap().matrix;
@@ -220,14 +219,14 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
                     fa * m[(0,2)] + fb * m[(1,2)] + fc * m[(2,2)],
                 ]).collect()
             }).collect()
-    } else {
-        // 非周期：直接使用 Cartesian 坐标，无需 unwrap
-        traj.frames.iter().map(|frame| {
+        }
+        // Not periodic: the Cartesian positions as they are, nothing to unwrap
+        None => traj.frames.iter().map(|frame| {
             atom_indices.iter().map(|&i| {
                 let p = &frame.positions()[i];
                 [p.x, p.y, p.z]
             }).collect()
-        }).collect()
+        }).collect(),
     };
 
     // 并行计算各 origin 的局部直方图，reduce 合并

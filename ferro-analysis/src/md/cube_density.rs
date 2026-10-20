@@ -16,7 +16,7 @@
 
 use crate::check;
 use ferro_core::error::ChemError;
-use ferro_core::{CubeData, Frame, Trajectory};
+use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
 use nalgebra::Vector3;
 use ndarray::Array3;
 use super::util::{cube_from_grid, par_map_in_order, select_atoms};
@@ -98,15 +98,15 @@ fn voxel_idx(frac: Vector3<f64>, nx: usize, ny: usize, nz: usize) -> (usize, usi
 
 /// Process one frame into (count, value_sum) accumulator arrays.
 ///
-/// Returns `None` if the frame has no cell or lacks the required data for the chosen mode.
+/// Returns `None` if the frame lacks the required data for the chosen mode.
 fn process_frame(
     frame: &Frame,
+    pc: &PeriodicCell,
     params: &CubeDensityParams,
     nx: usize,
     ny: usize,
     nz: usize,
 ) -> Option<(Array3<f64>, Array3<f64>)> {
-    let cell = frame.cell.as_ref()?;
     match params.mode {
         CubeMode::Velocity if frame.velocities().is_none() => return None,
         CubeMode::Force if frame.forces().is_none() => return None,
@@ -120,7 +120,7 @@ fn process_frame(
         if let Some(elems) = &params.elements {
             if !elems.iter().any(|e| e == atom.element) { continue; }
         }
-        let frac = cell.cartesian_to_fractional(atom.position).ok()?;
+        let frac = pc.to_fractional(atom.position);
         let (ix, iy, iz) = voxel_idx(frac, nx, ny, nz);
         match params.mode {
             CubeMode::Density => {
@@ -153,19 +153,23 @@ pub fn calc_cube_density(
     params: &CubeDensityParams,
 ) -> ferro_core::Result<CubeDensityResult> {
     params.validate()?;
-    check::periodic_cells(traj, None)?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
-    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
+    // periodic_cells rejects a mix, so either every frame has a cell or none does
+    let cells = check::periodic_cells(traj, None)?;
+    let pcs: Vec<&PeriodicCell> = cells.iter().map(Option::as_ref).collect::<Option<Vec<_>>>()
+        .filter(|pcs| !pcs.is_empty())
         .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
-    let ref_cell = ref_frame.cell.as_ref().unwrap();
+    let ref_frame = &traj.frames[0];
+    let ref_cell = ref_frame.cell.as_ref().expect("every frame has a cell");
     let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
 
     // Parallel over frames, summed in frame order
+    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(pcs).collect();
     let mut count = Array3::<f64>::zeros((nx, ny, nz));
     let mut value_sum = Array3::<f64>::zeros((nx, ny, nz));
     let mut n_frames = 0usize;
-    par_map_in_order(&traj.frames, |f| process_frame(f, params, nx, ny, nz), |r| {
+    par_map_in_order(&pairs, |(f, pc)| process_frame(f, pc, params, nx, ny, nz), |r| {
         if let Some((dc, dv)) = r {
             count += &dc;
             value_sum += &dv;
@@ -227,6 +231,27 @@ mod tests {
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
         assert!(err.contains("no frame has a periodic cell"), "{err}");
+    }
+
+    /// The cells come from the entry's periodic_cells, not each frame on its own: an empty
+    /// trajectory or a mix of frames with and without a cell is an error, not a panic or a
+    /// silently skipped frame (review C-8)
+    #[test]
+    fn test_empty_or_mixed_cells_are_errors() {
+        let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
+        let err = calc_cube_density(&Trajectory::new(), &params).err().unwrap().to_string();
+        assert!(err.contains("no frame has a periodic cell"), "{err}");
+
+        let mut traj = make_traj(vec![(1.0, 1.0, 1.0)], vec!["H"]);
+        let mut bare = Frame::default();
+        bare.add_atom(Atom::new("H", Vector3::new(1.0, 1.0, 1.0)));
+        traj.frames.push(bare);
+        let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
+        assert!(err.contains("frame 0 has a cell and frame 1 has none"), "{err}");
+        let err = crate::calc_cube_radius(&traj, &crate::CubeRadiusParams {
+            nx: 2, ny: 2, nz: 2, ..Default::default()
+        }).err().unwrap().to_string();
+        assert!(err.contains("frame 0 has a cell and frame 1 has none"), "{err}");
     }
 
     #[test]

@@ -175,22 +175,20 @@ pub fn calc_cube_radius(
     params.validate()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
-    let ref_frame = traj.frames.iter().find(|f| f.cell.is_some())
-        .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
-    let ref_cell = ref_frame.cell.as_ref().unwrap();
-    let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
+    // periodic_cells rejects a mix, so either every frame has a cell or none does
     let cells = check::periodic_cells(traj, Some(("radius", params.radius)))?;
+    let pcs: Vec<&PeriodicCell> = cells.iter().map(Option::as_ref).collect::<Option<Vec<_>>>()
+        .filter(|pcs| !pcs.is_empty())
+        .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
+    let ref_frame = &traj.frames[0];
+    let ref_cell = ref_frame.cell.as_ref().expect("every frame has a cell");
+    let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
 
     // Parallel over frames, summed in frame order
-    let pairs: Vec<(&Frame, &Option<PeriodicCell>)> = traj.frames.iter().zip(&cells).collect();
+    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(pcs).collect();
     let mut data = Array3::<f64>::zeros((nx, ny, nz));
-    let mut n_frames = 0usize;
-    par_map_in_order(&pairs, |(f, c)| c.as_ref().map(|c| process_frame(f, c, params)), |rho| {
-        if let Some(rho) = rho {
-            data += &rho;
-            n_frames += 1;
-        }
-    });
+    let n_frames = pairs.len();
+    par_map_in_order(&pairs, |(f, pc)| process_frame(f, pc, params), |rho| data += &rho);
 
     let cube = cube_from_grid(traj, ref_cell, data);
 
