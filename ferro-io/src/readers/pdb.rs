@@ -10,8 +10,8 @@ pub fn read_pdb(path: &Path) -> Result<Trajectory> {
 }
 
 /// [`read_pdb`], returning what the reader noticed: a `CRYST1` placeholder taken as no
-/// cell, and a last MODEL with no `ENDMDL` (kept when it has the atom count of the
-/// frame before it, dropped otherwise).
+/// cell, and a last MODEL with no `ENDMDL` or last END-split block with no `END`
+/// (kept when it has the atom count of the frame before it, dropped otherwise).
 ///
 /// A frame ends at `ENDMDL` or at `END`: CP2K and VMD write trajectories as blocks
 /// closed by `END` with no MODEL records (as ASE reads them). Those used to run
@@ -77,7 +77,20 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
         let k = traj.n_frames();
         match open_model {
             // A one-frame file with no MODEL / END record: fine
-            None => {}
+            None if k == 0 => {}
+            // Frames split by END (CP2K / VMD write no MODEL): a last block with no END is held to the
+            // frame before, as a last MODEL with no ENDMDL is below
+            None => {
+                let n = current.n_atoms();
+                let prev = traj.frames[k - 1].n_atoms();
+                if prev != n {
+                    warnings.push(format!(
+                        "warning: last block (frame {k}) has no END and {n} atoms where the frame \
+                         before has {prev}; dropped as incomplete"));
+                    return Ok((traj, warnings));
+                }
+                warnings.push(format!("warning: last block (frame {k}) has no END; kept"));
+            }
             // A last MODEL with no ENDMDL: trusted only with the previous frame's atom count, otherwise
             // most likely cut off
             Some(model_line) => {
@@ -285,6 +298,21 @@ ENDMDL
         // MODEL … ENDMDL followed by END gives no extra frame
         let (traj, _) = read_pdb_with_warnings(&write_tmp("test_model_end.pdb", MULTI_PDB_END)).unwrap();
         assert_eq!(traj.n_frames(), 2);
+    }
+
+    /// The last END-split block cut short used to be kept as a frame of fewer atoms,
+    /// with no warning (scan B-1).
+    #[test]
+    fn test_last_end_block_without_end() {
+        let text = format!("{C1}{C2}END\n{C1}{C2}END\n{C1}");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_end_cut.pdb", &text)).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        assert!(w.len() == 1 && w[0].contains("frame 2") && w[0].contains("dropped"), "{w:?}");
+        // Same atom count as the frame before: kept, with a warning
+        let text = format!("{C1}{C2}END\n{C1}{C2}");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_end_noend.pdb", &text)).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        assert!(w.len() == 1 && w[0].contains("frame 1") && w[0].contains("kept"), "{w:?}");
     }
 
     const MULTI_PDB_END: &str = "\
