@@ -227,6 +227,12 @@ class QeGenerator(Generator):
         for key, i in (("ecutwfc", 2), ("ecutrho", 3)):
             if qe.get("system", key) is None:
                 suggested = max(p[i] for p in chosen.values())
+                if suggested <= 0 and key == "ecutrho":
+                    # no rho suggestion: pw.x's own default, 4 x ecutwfc (set just above)
+                    suggested = 4 * _fortran_float(qe.get("system", "ecutwfc"))
+                    qe.set("system", key, suggested)
+                    notes.append(f"ecutrho = {suggested:g} Ry (4 x ecutwfc; the UPF headers suggest none)")
+                    continue
                 if suggested <= 0:
                     raise JobError(f"the UPF headers suggest no {key}: write {key} in the template")
                 qe.set("system", key, suggested)

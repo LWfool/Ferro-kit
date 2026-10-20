@@ -169,6 +169,12 @@ def test_cutoffs_needed(cfg, traj, tmp_path):
     tpl.write_text(QeGenerator.builtin_template("sp").replace("  ibrav = 0\n", "  ibrav = 0\n  ecutwfc = 60\n  ecutrho = 480\n"))
     qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["pw.in"])
     assert qe.get("system", "ecutwfc") == "60", "模板写了截断就沿用"
+    # wfc suggested, rho not: ecutrho falls back to 4 x ecutwfc instead of an error
+    (tmp_path / "upf" / "O.pbe-n-kjpaw_psl.0.1.UPF").write_text(upf_v2("O", 6, 50, 0))
+    s = QeGenerator(cfg).generate(traj, 0, JobOptions("sp"))
+    qe = QeInput.from_str(s.files["pw.in"])
+    assert (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho")) == ("50.0", "200.0")
+    assert "ecutrho = 200 Ry (4 x ecutwfc; the UPF headers suggest none)" in s.notes
 
 
 @pytest.mark.parametrize("written, rho, note", [

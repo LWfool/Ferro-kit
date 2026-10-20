@@ -35,7 +35,7 @@ The functional is the one of the UPF files: the template does not set
 | `&CONTROL` | `pseudo_dir` | always | `[qe] pseudo_dir` |
 | `&SYSTEM` | `nat`, `ntyp` | always | from the structure |
 | `&SYSTEM` | `ibrav` | always | 0; `celldm(1..6)`, `A`, `B`, `C`, `cosAB`, `cosAC`, `cosBC` are removed |
-| `&SYSTEM` | `ecutwfc`, `ecutrho` | the template does not set it | the largest suggestion among the UPF files, each key on its own; `ecutrho` at least 4 × `ecutwfc` |
+| `&SYSTEM` | `ecutwfc`, `ecutrho` | the template does not set it | the largest suggestion among the UPF files, each key on its own; `ecutrho` at least 4 × `ecutwfc`, and 4 × `ecutwfc` when no UPF suggests one |
 | `&SYSTEM` | `tot_charge` | always | `--charge` |
 | `&SYSTEM` | `nspin`, `tot_magnetization` | multiplicity above 1 | 2, multiplicity − 1 |
 | `&SYSTEM` | `tot_magnetization` | `--multiplicity 1` given and the template has `nspin = 2` | 0 |
@@ -71,7 +71,8 @@ converged value:
 
 The charge density $\lvert\psi\rvert^2$ needs 4 × `ecutwfc`. When `ecutrho` comes
 from the UPF headers and their suggestion is below 4 × `ecutwfc`, the job writes
-4 × `ecutwfc` (pw.x's own default when `ecutrho` is not given) and says so. An
+4 × `ecutwfc` (pw.x's own default when `ecutrho` is not given) and says so; the
+same when no UPF header suggests an `ecutrho` at all. An
 `ecutrho` written in the template is kept: below 4 × `ecutwfc` the job prints a
 note (pw.x only warns), at or below `ecutwfc` it is an error (pw.x stops).
 
