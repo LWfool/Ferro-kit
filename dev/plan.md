@@ -97,7 +97,7 @@ E-4、E-5、D-6、D-7。
 | 12 | core / structure | A-1、A-3 – A-18 |
 | 13 | analysis | C-1、C-3 – C-15 |
 | 14 | cli / render | D-1、D-2、D-4 – D-16 |
-| 15 | python / scripts | E-1 – E-14 |
+| 15 | python / scripts | E-1 – E-14。**用户定（2026-10-20）**：`scripts/` 的绘图功能（`ferroplot.py`、`plot_*.py`、`compare_*.py` 等）**迁移进 ferro-python**，迁移的范围与形态到这批开工时再定；第 11 批因此不改 scripts 里的 `Note  :` 输出（plot_net 4 处、ferroplot 2 处），随迁移一起按统一口径重写。E-4 / E-5 / E-6 / E-13 / E-14 是否还需单独修，也随迁移计划一起判断 |
 | 16 | 文档 / dev | F-1 – F-22、A-2 |
 
 **登记不修**：**C-2** `ml/filter.rs` 的 `FilterParams` 与 `network/classify.rs` 的 `TypeParams` 没有 `validate`，范围检查只在
