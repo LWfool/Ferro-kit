@@ -1,4 +1,5 @@
 use std::path::Path;
+use crate::Notice;
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
 use anyhow::{anyhow, bail, Context, Result};
@@ -11,7 +12,7 @@ pub fn read_xyz(path: &Path) -> Result<Trajectory> {
 
 /// [`read_xyz`], returning what the reader noticed: an incomplete last frame is
 /// dropped and named, as the LAMMPS dump reader does.
-pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
+pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let mut lines = super::util::text_lines(path)?.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
@@ -151,7 +152,7 @@ C  1.4  0.0  0.1
             let (traj, warnings) = read_xyz_with_warnings(&path).unwrap();
             assert_eq!(traj.n_frames(), 1, "{name}");
             assert_eq!(warnings.len(), 1, "{name}");
-            assert!(warnings[0].contains("frame 1, line 5"), "{name}: {}", warnings[0]);
+            assert!(warnings[0].line == Some(5) && warnings[0].message.contains("frame 1"), "{name}: {:?}", warnings[0]);
         }
         // An incomplete middle frame is still an error
         let path = write_tmp("trunc_middle.xyz", "2\nf0\nC 0 0 0\n2\nf1\nC 0 0 0\nC 1 0 0\n");

@@ -1,4 +1,5 @@
 use std::path::Path;
+use crate::Notice;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ferro_core::data::elements::by_symbol;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
@@ -47,7 +48,7 @@ pub fn read_lammps_dump(path: &Path, units: Option<LammpsUnits>) -> Result<Traje
 pub fn read_lammps_dump_with_warnings(
     path: &Path,
     units: Option<LammpsUnits>,
-) -> Result<(Trajectory, Vec<String>)> {
+) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     parse_dump_lines(super::util::text_lines(path)?, units).with_context(|| format!("parsing {path_}"))
 }
@@ -79,7 +80,7 @@ pub fn apply_type_map(traj: &mut Trajectory, map: &[(u32, String)]) -> Result<()
 }
 
 #[cfg(test)]
-fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<(Trajectory, Vec<String>)> {
+fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<(Trajectory, Vec<Notice>)> {
     parse_dump_lines(content.lines().map(|l| Ok(l.to_string())), units)
 }
 
@@ -93,7 +94,7 @@ fn parse_lammps_dump(content: &str, units: Option<LammpsUnits>) -> Result<(Traje
 fn parse_dump_lines(
     mut lines: impl Iterator<Item = Result<String>>,
     units: Option<LammpsUnits>,
-) -> Result<(Trajectory, Vec<String>)> {
+) -> Result<(Trajectory, Vec<Notice>)> {
     let is_step = |l: &str| l.trim().starts_with("ITEM: TIMESTEP");
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
@@ -473,25 +474,25 @@ fn split_element_label(s: &str) -> LabelSplit<'_> {
 ///
 /// Empty for ordinary trajectories where every element column entry is already
 /// a plain chemical symbol.
-fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) -> Vec<String> {
+fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) -> Vec<Notice> {
     let mut out = Vec::new();
-    let split: Vec<(&String, &String)> = site_map.iter()
+    let split: Vec<String> = site_map.iter()
         .filter(|(raw, elem)| raw.as_str() != elem.as_str())
+        .map(|(raw, elem)| format!("{raw} -> {elem}"))
         .collect();
     if !split.is_empty() {
-        let mut msg = String::from("LAMMPS dump: element / typelabel column carries site labels, split into element + label:");
-        for (raw, elem) in &split {
-            msg.push_str(&format!("\n  {raw:<12} -> element {elem:<4} label {raw}"));
-        }
-        out.push(msg);
+        // One line, as every message is: the label is the raw string, so `raw -> element` says it all
+        out.push(Notice::note(None, format!(
+            "element / typelabel column carries site labels, split into element + label (label = the whole \
+             string): {}", split.join(", "))));
     }
     if !unknown.is_empty() {
         let list: Vec<&str> = unknown.iter().map(|s| s.as_str()).collect();
-        out.push(format!(
-            "warning: underscore present but prefix is not a known element, \
+        out.push(Notice::warning(None, format!(
+            "underscore present but prefix is not a known element, \
              kept as element verbatim: {}",
             list.join(", ")
-        ));
+        )));
     }
     out
 }
@@ -588,12 +589,13 @@ ITEM: ATOMS id type element x y z
         let cut: String = DUMP_ORTHO.lines().take(21).map(|l| format!("{l}\n")).collect();
         let (traj, w) = parse_lammps_dump(&cut, None).unwrap();
         assert_eq!(traj.n_frames(), 1);
-        assert!(w.len() == 1 && w[0].contains("last frame (frame 1"), "{w:?}");
+        assert!(w.len() == 1 && w[0].message.contains("last frame (frame 1"), "{w:?}");
 
         let labelled = DUMP_ORTHO.replace(" 1 Fe ", " 1 Fe_a ");
         let (_, w) = parse_lammps_dump(&labelled, None).unwrap();
-        assert!(w.len() == 1 && w[0].contains("Fe_a") && w[0].contains("element Fe"), "{w:?}");
-        assert!(!w[0].contains("-a/-b/-c"), "CLI option names stay out of the library: {w:?}");
+        assert!(w.len() == 1 && w[0].level == crate::Level::Note
+            && w[0].message.contains("Fe_a -> Fe"), "{w:?}");
+        assert!(!w[0].message.contains("-a/-b/-c"), "CLI option names stay out of the library: {w:?}");
     }
 
     #[test]

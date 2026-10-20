@@ -24,9 +24,9 @@ pub(crate) fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
 /// warning and the frames before it stand. When it was the only frame nothing is left, and
 /// reading on would hand back an empty trajectory with no error, so that is an error.
 /// Shared by the xyz, extxyz, PDB and LAMMPS dump readers.
-pub(crate) fn drop_truncated(warnings: &mut Vec<String>, k: usize, line: usize, why: &str) -> Result<()> {
+pub(crate) fn drop_truncated(warnings: &mut Vec<crate::Notice>, k: usize, line: usize, why: &str) -> Result<()> {
     ensure!(k > 0, "the only frame (line {line}) is incomplete: {why}");
-    warnings.push(format!("warning: last frame (frame {k}, line {line}) is incomplete and was dropped: {why}"));
+    warnings.push(crate::Notice::warning(Some(line), format!("last frame (frame {k}) is incomplete and was dropped: {why}")));
     Ok(())
 }
 

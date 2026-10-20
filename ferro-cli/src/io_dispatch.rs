@@ -37,12 +37,7 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
         type_map: opts.type_map.as_ref().map(|m| m.0.clone()),
     };
     let (traj, report) = ferro_io::read(path, &options)?;
-    // One `[ferro] ` prefix per line, as the readers printed it before they stopped printing
-    for w in &report.warnings {
-        for line in w.lines() {
-            eprintln!("[ferro] {line}");
-        }
-    }
+    crate::report::notices(path, &report.warnings);
     Ok(traj)
 }
 

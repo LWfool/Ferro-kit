@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use ferro_core::Trajectory;
+use crate::Notice;
 
 use crate::readers::{
     apply_type_map, is_extxyz, read_aimd_as, read_cif, read_cp2k_inp, read_cp2k_restart,
@@ -206,7 +207,7 @@ pub struct ReadOptions {
 #[derive(Debug, Clone, Default)]
 pub struct ReadReport {
     /// Messages for the caller to show; the readers never print
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Notice>,
     /// Drop counts and version of a program output, when one was read
     pub aimd: Option<AimdStats>,
 }
@@ -226,7 +227,7 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
         bail!("a type map applies to LAMMPS dump input only, not {}", path.display());
     }
     let mut report = ReadReport::default();
-    let mut warned = |(traj, w): (Trajectory, Vec<String>)| {
+    let mut warned = |(traj, w): (Trajectory, Vec<Notice>)| {
         report.warnings.extend(w);
         traj
     };
@@ -271,18 +272,18 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
 }
 
 /// The drop counts and version note of a program output, as messages.
-fn aimd_warnings(stats: &AimdStats) -> Vec<String> {
+fn aimd_warnings(stats: &AimdStats) -> Vec<Notice> {
     let mut out = Vec::new();
     if stats.n_dropped() > 0 {
-        out.push(format!(
-            "warning: {} of {} step(s) dropped ({} SCF not converged ({}), {} incomplete, \
+        out.push(Notice::warning(None, format!(
+            "{} of {} step(s) dropped ({} SCF not converged ({}), {} incomplete, \
              {} composition, {} no cell line)",
             stats.n_dropped(), stats.n_steps, stats.n_scf_failed, stats.format.convergence_rule(),
             stats.n_incomplete, stats.n_bad_composition, stats.n_no_cell
-        ));
+        )));
     }
     if let Some(note) = &stats.version_note {
-        out.push(format!("warning: {note}"));
+        out.push(Notice::note(None, note.clone()));
     }
     out
 }

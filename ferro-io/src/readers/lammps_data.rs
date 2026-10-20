@@ -1,4 +1,5 @@
 use std::path::Path;
+use crate::Notice;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use ferro_core::data::elements::by_symbol;
@@ -49,13 +50,13 @@ pub fn read_lammps_data(path: &Path, style: AtomStyle) -> Result<Trajectory> {
 
 /// [`read_lammps_data`], returning what the reader noticed: a Masses comment that is
 /// not an element symbol, for which the element came from the mass instead.
-pub fn read_lammps_data_with_warnings(path: &Path, style: AtomStyle) -> Result<(Trajectory, Vec<String>)> {
+pub fn read_lammps_data_with_warnings(path: &Path, style: AtomStyle) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_lammps_data(&content, style).with_context(|| format!("parsing {path_} as atom style {style}"))
 }
 
-fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec<String>)> {
+fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec<Notice>)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut i = 0;
     let mut warnings = Vec::new();
@@ -157,9 +158,9 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
                 (None, c) => {
                     let e = element_from_mass(mass).to_string();
                     if let Some(c) = c {
-                        warnings.push(format!(
-                            "warning: line {}: Masses comment {c:?} is not an element symbol; \
-                             atom type {tid} taken as {e} from its mass {mass}", k + 1));
+                        warnings.push(Notice::warning(Some(k + 1), format!(
+                            "Masses comment {c:?} is not an element symbol; \
+                             atom type {tid} taken as {e} from its mass {mass}")));
                     }
                     e
                 }
@@ -528,7 +529,7 @@ Atoms # full
         let f = &traj.frames[0];
         assert_eq!(f.atom(0).element, "O", "falls back to the mass");
         assert_eq!(f.atom(1).element, "H", "case is normalised");
-        assert!(w.len() == 1 && w[0].contains("\"oxygen\"") && w[0].contains("atom type 1"), "{w:?}");
+        assert!(w.len() == 1 && w[0].message.contains("\"oxygen\"") && w[0].message.contains("atom type 1"), "{w:?}");
     }
 
     /// A charge of 0 is a value: it used to read as no charge at all.

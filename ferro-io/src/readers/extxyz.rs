@@ -1,4 +1,5 @@
 use std::path::Path;
+use crate::Notice;
 use std::collections::HashMap;
 use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
 use ferro_core::units::ASE_FS;
@@ -15,7 +16,7 @@ pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
 
 /// Reads extended XYZ, returning what the reader noticed alongside the frames: an
 /// incomplete last frame is dropped and named, as the LAMMPS dump reader does.
-pub fn read_extxyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
+pub fn read_extxyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     parse_extxyz_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {path_}"))
 }
@@ -47,7 +48,7 @@ fn parse_extxyz(content: &str) -> Result<Trajectory> {
 ///
 /// A read error ends the line stream and is reported in place of whatever the parse
 /// made of the shortened file — a "missing atom line" would name the wrong problem.
-fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, Vec<String>)> {
+fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, Vec<Notice>)> {
     let read_error = std::cell::RefCell::new(None);
     let lines = lines.map_while(|l| match l {
         Ok(l) => Some(l),
@@ -60,7 +61,7 @@ fn parse_extxyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
     }
 }
 
-fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<String>)> {
+fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<Notice>)> {
     // 带上行号（从 1 起），解析失败时点名是文件哪一行
     let mut lines = lines.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
@@ -824,7 +825,7 @@ Si 0.0 0.0 0.0
             let (traj, warnings) = parse_extxyz_lines(lines.lines().map(|l| Ok(l.to_string()))).unwrap();
             assert_eq!(traj.n_frames(), 1, "{what}");
             assert_eq!(warnings.len(), 1, "{what}");
-            assert!(warnings[0].contains("frame 1, line 5"), "{what}: {}", warnings[0]);
+            assert!(warnings[0].line == Some(5) && warnings[0].message.contains("frame 1"), "{what}: {:?}", warnings[0]);
         }
         // An incomplete middle frame is still an error
         let bad = format!("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\n{head}");

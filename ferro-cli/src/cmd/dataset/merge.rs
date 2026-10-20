@@ -116,9 +116,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
     for sys in &systems {
         match read_deepmd_npy_with_warnings(sys) {
             Ok((traj, warns)) => {
-                for w in warns {
-                    eprintln!("WARNING: {w}");
-                }
+                crate::report::notices(sys, &warns);
                 groups.entry(composition_key(&traj)).or_default().push((sys.clone(), traj));
             }
             Err(e) => {

@@ -291,9 +291,7 @@ fn filter_one(
     params: &FilterParams,
 ) -> Result<FilterOne> {
     let (traj, warnings) = read_deepmd_npy_with_warnings(sys)?;
-    for w in &warnings {
-        eprintln!("WARNING: {w}");
-    }
+    crate::report::notices(sys, &warnings);
 
     // --al6 不带值：从这个 system 自己的 Al-O RDF 取第一壳层的外沿。
     // 逐 system 各算各的 —— 成分不同，壳层位置本来就不同

@@ -12,10 +12,14 @@ use crate::types::PyTrajectory;
 
 /// Raises each reader warning as a Python `UserWarning`, the channel a Python caller
 /// filters and captures; the Rust readers never print.
-fn emit_warnings(py: Python<'_>, warnings: &[String]) -> PyResult<()> {
+fn emit_warnings(py: Python<'_>, warnings: &[ferro_io::Notice]) -> PyResult<()> {
     let category = py.get_type::<pyo3::exceptions::PyUserWarning>();
     for w in warnings {
-        let msg = std::ffi::CString::new(w.as_str()).map_err(pyerr)?;
+        let text = match w.line {
+            Some(n) => format!("line {n}: {}", w.message),
+            None => w.message.clone(),
+        };
+        let msg = std::ffi::CString::new(text).map_err(pyerr)?;
         PyErr::warn(py, &category, &msg, 1)?;
     }
     Ok(())

@@ -11,3 +11,4 @@ pub mod doc;
 pub mod help;
 pub mod io_dispatch;
 pub mod outpath;
+pub mod report;

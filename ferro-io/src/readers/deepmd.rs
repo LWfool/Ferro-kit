@@ -23,6 +23,7 @@
 //! `volume.npy`. Reading a virial without a box is an error — there is nothing
 //! to divide by.
 
+use crate::Notice;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -44,7 +45,7 @@ pub fn read_deepmd_npy(dir: &Path) -> Result<Trajectory> {
 /// Keys such as `atom_ener.npy` have no home in `Frame`; they are named in the
 /// warnings rather than dropped in silence, because a lost label looks exactly
 /// like a label that was never computed.
-pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<String>)> {
+pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let types = read_type_indices(&dir.join("type.raw"))?;
     let type_map = read_lines_tokens(&dir.join("type_map.raw"))?;
     let natoms = types.len();
@@ -113,10 +114,11 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Stri
         }
 
         for name in extra_keys(set)? {
-            warnings.push(format!(
-                "{}: {name}.npy is not carried by Frame and will be lost if this dataset is written back",
-                set.display()
-            ));
+            // The source shown is the system directory, so name the set relative to it
+            let set_name = set.file_name().unwrap_or_default().to_string_lossy();
+            warnings.push(Notice::warning(None, format!(
+                "{set_name}/{name}.npy is not carried by Frame and will be lost if this dataset is written back"
+            )));
         }
 
         for k in 0..nf {
@@ -348,7 +350,7 @@ mod tests {
         write_npy(d.join("set.000").join("atom_ener.npy"), &a).unwrap();
         let (_, warn) = read_deepmd_npy_with_warnings(&d).unwrap();
         assert_eq!(warn.len(), 1);
-        assert!(warn[0].contains("atom_ener"), "{warn:?}");
+        assert!(warn[0].message.contains("atom_ener"), "{warn:?}");
     }
 
     #[test]

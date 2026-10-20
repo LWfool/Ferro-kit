@@ -4,7 +4,7 @@
 
 use ferro_io::{
     read_extxyz_with_warnings, read_lammps_data_with_warnings, read_pdb_with_warnings,
-    read_xyz_with_warnings, write_pdb, AtomStyle,
+    read_xyz_with_warnings, write_pdb, AtomStyle, Level,
 };
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
@@ -21,7 +21,8 @@ fn xyz_truncated_last_frame_is_reported() {
     let p = tmp("ferro_export_trunc.xyz", "2\nc\nO 0 0 0\nH 1 0 0\n2\nc\nO 0 0 0\n");
     let (traj, w) = read_xyz_with_warnings(&p).unwrap();
     assert_eq!(traj.n_frames(), 1);
-    assert!(w.iter().any(|m| m.contains("1 of 2 atoms")), "{w:?}");
+    assert!(w.iter().any(|m| m.level == Level::Warning && m.line == Some(5)
+        && m.message.contains("1 of 2 atoms")), "{w:?}");
 }
 
 #[test]
@@ -31,7 +32,8 @@ fn extxyz_truncated_last_frame_is_reported() {
                 &format!("{block}2\nProperties=species:S:1:pos:R:3\nO 0 0 0\n"));
     let (traj, w) = read_extxyz_with_warnings(&p).unwrap();
     assert_eq!(traj.n_frames(), 1);
-    assert!(w.iter().any(|m| m.contains("1 of 2 atoms")), "{w:?}");
+    assert!(w.iter().any(|m| m.level == Level::Warning && m.line == Some(5)
+        && m.message.contains("1 of 2 atoms")), "{w:?}");
 }
 
 #[test]
@@ -44,7 +46,7 @@ fn pdb_last_block_without_end_is_reported() {
     let p = tmp("ferro_export_noend.pdb", &format!("{one}{}", one.trim_end_matches("END\n")));
     let (traj, w) = read_pdb_with_warnings(&p).unwrap();
     assert_eq!(traj.n_frames(), 2);
-    assert!(w.iter().any(|m| m.contains("no END")), "{w:?}");
+    assert!(w.iter().any(|m| m.level == Level::Warning && m.message.contains("no END")), "{w:?}");
 }
 
 #[test]
@@ -54,5 +56,5 @@ fn lammps_data_masses_comment_is_reported() {
     let p = tmp("ferro_export_masses.data", text);
     let (traj, w) = read_lammps_data_with_warnings(&p, AtomStyle::Atomic).unwrap();
     assert_eq!(traj.frames[0].atom(0).element, "O");
-    assert!(w.iter().any(|m| m.contains("\"Ow\"")), "{w:?}");
+    assert!(w.iter().any(|m| m.line == Some(12) && m.message.contains("\"Ow\"")), "{w:?}");
 }

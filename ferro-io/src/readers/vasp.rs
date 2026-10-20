@@ -1,4 +1,5 @@
 use std::path::Path;
+use crate::Notice;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, ensure, Context, Result};
@@ -10,7 +11,7 @@ pub fn read_poscar(path: &Path) -> Result<Trajectory> {
 
 /// Reads a POSCAR / CONTCAR, returning what the reader noticed alongside it
 /// (a velocity block shorter than the atom count, which is dropped).
-pub fn read_poscar_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> {
+pub fn read_poscar_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_poscar(&content).with_context(|| format!("parsing {path_}"))
@@ -20,7 +21,7 @@ pub fn read_contcar(path: &Path) -> Result<Trajectory> {
     read_poscar(path)
 }
 
-fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<String>)> {
+fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<Notice>)> {
     let mut warnings = Vec::new();
     let mut lines = content.lines();
     let (comment, mut frame) = parse_poscar_header(&mut lines)?;
@@ -51,10 +52,10 @@ fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<String>)> {
         if vels.len() == total {
             frame.set_velocities(Some(vels))?;
         } else {
-            warnings.push(format!(
-                "warning: velocity block has {} of {total} lines; velocities dropped",
+            warnings.push(Notice::warning(None, format!(
+                "velocity block has {} of {total} lines; velocities dropped",
                 vels.len()
-            ));
+            )));
         }
     }
 
@@ -276,7 +277,7 @@ Direct
         let text = format!("{ASE_HEAD}Cartesian\n  0.1 0 0\n  0.2 0 0\n");
         assert_eq!(vel_x(&text), None);
         let (_, w) = parse_poscar(&text).unwrap();
-        assert!(w.len() == 1 && w[0].contains("2 of 3 lines"), "{w:?}");
+        assert!(w.len() == 1 && w[0].message.contains("2 of 3 lines"), "{w:?}");
         assert!(parse_poscar(BCC_FE).unwrap().1.is_empty());
     }
 

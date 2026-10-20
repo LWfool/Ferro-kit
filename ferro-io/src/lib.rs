@@ -1,11 +1,14 @@
 // One public path per item (review A-12): everything is reached from the crate root
 mod format;
+mod notice;
 mod readers;
 mod writers;
 
 pub use format::{
     is_deepmd_system, read, read_as, write, write_numbered, Format, ReadOptions, ReadReport, WriteOptions,
 };
+
+pub use notice::{Level, Notice};
 
 #[cfg(test)]
 pub(crate) mod testutil;
