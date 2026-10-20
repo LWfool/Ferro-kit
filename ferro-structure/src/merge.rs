@@ -31,8 +31,9 @@ use ferro_core::frame::Frame;
 /// (relative to `Cell::origin`) along its periodic axes; the box may start anywhere,
 /// as a LAMMPS box with `xlo ≠ 0` does.
 ///
-/// `bonds` are not merged (indices shift). `energy`, `forces`, `stress`,
-/// `velocities` are set to `None`. `charge` = sum of both. `multiplicity` = 1.
+/// The atoms of `frame_a` come first, then those of `frame_b`, each with its label,
+/// mass, magnetic moment and charge. The result takes `frame_a`'s `pbc` and a box origin
+/// of 0; `energy`, `forces`, `stress`, `velocities`, `temperature` and `step` are `None`.
 ///
 /// # Errors
 /// - `ValidationError` if either frame has no cell, or one refused by `Cell::check`

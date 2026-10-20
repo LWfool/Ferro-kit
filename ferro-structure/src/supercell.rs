@@ -86,13 +86,10 @@ pub fn find_supercell_dims(
 /// # Notes
 /// - Per-atom scalar fields (`label`, `mass`, `magmom`, `charge`) are
 ///   copied verbatim to every replica.
-/// - Intra-cell bonds (if present) are remapped; cross-cell bonds are not
-///   added (periodic images are handled by the cell geometry itself).
-/// - `energy`, `forces`, `stress`, `velocities` are **not** copied: they
-///   belong to a specific calculation result, not to the structure.
-/// - Frame `charge` scales linearly with the number of replicas.
-/// - Frame `multiplicity` is reset to 1 (supercells are typically used as
-///   MD starting structures where spin is re-specified separately).
+/// - `energy`, `forces`, `stress`, `velocities`, `temperature` and `step` are
+///   **not** copied: they belong to a specific calculation result, not to the
+///   structure.
+/// - `pbc` and the box origin are kept; replicas extend along +a / +b / +c.
 pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<Frame> {
     // ── 输入校验 ──────────────────────────────────────────────────────────────
     if nx == 0 || ny == 0 || nz == 0 {

@@ -12,8 +12,9 @@ use ferro_core::frame::Frame;
 ///   Atoms are not moved or centred: a slab crossing the cell boundary is split by the gap.
 ///
 /// Returns a new `Frame` with the cell expanded along the given axis.
-/// Atomic positions, `pbc`, `bonds`, `charge`, and `multiplicity` are preserved.
-/// `energy`, `forces`, `stress`, `velocities` are set to `None`.
+/// Atoms (positions and per-atom label, mass, magnetic moment, charge), `pbc` and the
+/// cell origin are preserved. `energy`, `forces`, `stress`, `velocities`, `temperature`
+/// and `step` are set to `None`.
 ///
 /// # Errors
 /// - `ValidationError` if the frame has no cell.
@@ -64,7 +65,7 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
         new_m[(axis_idx, j)] *= scale;
     }
 
-    // Same atoms and bonds; the results of the old box do not carry over
+    // Same atoms; the results of the old box do not carry over
     let mut out = frame.clone();
     // Only one lattice vector stretches; the box origin stays (review A-12)
     out.cell = Some(Cell { matrix: new_m, origin: cell.origin });
