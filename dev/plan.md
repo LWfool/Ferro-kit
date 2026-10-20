@@ -1229,6 +1229,7 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 | 基础访问器 | `Frame::geometric_center` / `atom_mut` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames` / `time_at`、`Atom::distance_to`、`Table::n_cols`、`compounds::with_density`、`ClusterResult::ids`、`ml/diagnostics.rs:182 all_frames_have_cells`、`:187 cell_of`、`filter::is_clean`、`qn_elements::has_qn`、`charge_grid::lat_dist_i` | ~50 |
 | ~~未使用依赖~~ | ~~`ferro-workflow` 的 `serde`~~ —— 2026-09-26 随 serde 整体移除 | — |
 | 2026-10-11 重扫新增（审查 G-2） | `Cell::wrap_position`（只有测试用；`Frame::wrap_all` 自己按 pbc 逐轴实现）；`cube_sdf.rs:141-142 ClusterSnapshot::anchor_idx`（`#[allow(dead_code)]` 压住的只写字段）；`ferro-cli/src/args/mod.rs:2 pub mod corr`（只为 `CorrMode` 存在，删时连 mod 行一起删）。**已失效**：`Frame::wrap_all` 自 `48bf11e`（审查 M5）起被 `cube_reference_frame` 调用，已移出基础访问器行 | — |
+| 2026-10-20 扫描新增（A-17） | `Frame::center_of_mass` / `center`（前者只被后者与测试调用）、`Frame::velocities_mut` 生产零调用；`ferro-structure` 的 `find_supercell_dims` / `build_box` / `estimate_box_length` 只有测试调用（无 CLI / Python 入口，同 `cube_jump` 属「需求在、入口没接」）。第 12 批改了其中四个（A-1、A-3、A-8、A-11、A-12），行为由测试钉住 | — |
 
 **方法上要记住的一条**：`cargo clippy` 零警告不说明没有死代码 —— 库 crate 里
 `pub` 项不触发 `dead_code` lint，上面全部躲过了它。查零调用要按名字逐个 grep
