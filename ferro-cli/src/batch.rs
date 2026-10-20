@@ -72,8 +72,8 @@ pub fn unique_labels(inputs: &[PathBuf]) -> Vec<String> {
             if used.insert(cand.to_lowercase()) { break cand; }
             k += 1;
         };
-        println!("Note  : {} shares the name '{stem}' with an earlier input, labelled '{label}'",
-                 path.display());
+        crate::report::note(path.display(),
+                            format!("shares the name '{stem}' with an earlier input, labelled '{label}'"));
         out.push(label);
     }
     out
@@ -152,7 +152,7 @@ fn expand_with(
     }
 
     if duplicates > 0 {
-        println!("Note  : {duplicates} duplicate input(s) skipped");
+        crate::report::note(crate::report::PROGRAM, format!("{duplicates} duplicate input(s) skipped"));
     }
     Ok(out)
 }
@@ -178,8 +178,8 @@ pub fn map_inputs<T>(
             Ok(v) => ok.push((input, v)),
             Err(e) => {
                 // 跳过而非中止:跑一晚上的批量不该因为第 7 个文件丢掉前 6 个的结果。
-                // 走 stderr，与 dataset 的 SKIP 一致（审查 E2-8）
-                eprintln!("        skipped: {e:#}");
+                // On stderr, as dataset's are (review E2-8)
+                crate::report::error(input.path.display(), format!("{e:#}; skipped"));
                 failed.push(Failure {
                     path: input.path,
                     label: input.label,

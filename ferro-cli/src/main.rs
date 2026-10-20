@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use ferro::cmd;
 use ferro::doc;
 use ferro::help;
+use ferro::report;
 
 #[derive(Parser)]
 #[command(
@@ -69,7 +70,15 @@ enum Command {
     },
 }
 
-fn main() -> Result<()> {
+fn main() {
+    // One line in the shared layout, instead of anyhow's `Error:` and `Caused by:` block; exit code 1 as before
+    if let Err(e) = run() {
+        report::error(report::PROGRAM, format!("{e:#}"));
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<()> {
     // `--P-O=2.3` 这类 cutoff 的元素对写在**参数名**里，clap 无法建模，
     // 所以在解析前先从 argv 剥离，剩下的交给 clap（只有 `net` 用得到）
     let argv: Vec<String> = std::env::args().collect();
@@ -166,7 +175,7 @@ fn main() -> Result<()> {
         // 不承诺失败原因在哪个文件里：`[inputs]` 块只有分析命令的 csv 才有，
         // 而 dataset 的产物是目录。原因每个 SKIP 行都已经说过了，这句的
         // 唯一职责是解释退出码 —— 指错地方比不指路更糟
-        eprintln!("{failures} input(s) failed; see the messages above");
+        report::error(report::PROGRAM, format!("{failures} input(s) failed; see the messages above"));
         std::process::exit(1);
     }
     Ok(())
