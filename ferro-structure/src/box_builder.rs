@@ -366,6 +366,13 @@ fn minimum_image_ortho(diff: &Vector3<f64>, box_len: f64) -> Vector3<f64> {
     )
 }
 
+/// `x` folded into `[0, l)`. `rem_euclid` alone returns `l` itself for a tiny negative
+/// `x` such as -1e-17 (the sum rounds up), which is outside the box (review A-12).
+fn wrap_into(x: f64, l: f64) -> f64 {
+    let w = x.rem_euclid(l);
+    if w < l { w } else { 0.0 }
+}
+
 /// Soft-core relaxation: steepest descent removes overlaps. Returns the number of
 /// pairs still closer than `min_dist` at the end.
 fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> usize {
@@ -408,10 +415,7 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
                 max_disp = d;
             }
             atoms[i].position += disp;
-            // wrap 回盒子
-            atoms[i].position.x = atoms[i].position.x.rem_euclid(box_len);
-            atoms[i].position.y = atoms[i].position.y.rem_euclid(box_len);
-            atoms[i].position.z = atoms[i].position.z.rem_euclid(box_len);
+            atoms[i].position = atoms[i].position.map(|x| wrap_into(x, box_len));
         }
 
         // 早停：位移足够小
@@ -799,5 +803,15 @@ mod tests {
         let e = build_box(&comps, 1.0, 1.5, 0, 7).unwrap_err().to_string();
         assert!(e.contains("still closer than min_dist = 1.5") && e.contains("after 0"), "{e}");
         assert!(build_box(&comps, 1.0, 1.5, 500, 7).is_ok());
+    }
+
+    // Review A-12: rem_euclid(-1e-17, L) is L, outside [0, L)
+    #[test]
+    fn test_wrap_into_stays_in_half_open_box() {
+        assert_eq!((-1e-17_f64).rem_euclid(10.0), 10.0, "the case this guards against");
+        assert_eq!(wrap_into(-1e-17, 10.0), 0.0);
+        assert_eq!(wrap_into(10.0, 10.0), 0.0);
+        assert_eq!(wrap_into(-0.5, 10.0), 9.5);
+        assert_eq!(wrap_into(3.25, 10.0), 3.25);
     }
 }
