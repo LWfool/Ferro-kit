@@ -198,6 +198,13 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         volumes.push(frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume());
     }
     let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };
+    // validate checked the requested range; the clamp can leave less than one bin, which
+    // `bins` would turn into a single bin narrower than asked
+    if r_max < params.r_max {
+        check::holds_a_bin(
+            "r range (r-max clamped to the minimum-image bound)", params.r_min, r_max, "dr", params.dr,
+        )?;
+    }
 
     let (n_bins, dr) = super::util::bins(params.r_min, r_max, params.dr);
     if n_bins == 0 {
@@ -861,6 +868,18 @@ mod tests {
         assert!(res.r.last().copied().unwrap() <= 3.0 + 1e-9);
         assert!(res.r_max_used <= 3.0 + 1e-9);
         assert_eq!(res.params.r_max, 10.0, "params 保留请求值，截断值走 r_max_used");
+    }
+
+    /// The minimum-image clamp can leave less than one bin: an error naming the clamp,
+    /// as validate gives for a requested range that small (review C-11)
+    #[test]
+    fn test_clamped_range_narrower_than_one_bin_is_an_error() {
+        let cell = Cell::from_lengths_angles(6.0, 6.0, 6.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
+        let params = GrParams { r_min: 2.5, r_max: 10.0, dr: 1.0, ..Default::default() };
+        let err = calc_gr(&Trajectory::from_frame(frame), &params).unwrap_err().to_string();
+        assert!(err.contains("r range (r-max clamped to the minimum-image bound) [2.5, 3]"), "{err}");
     }
 
     /// The width actually used depends on the clamped range, so it differs between

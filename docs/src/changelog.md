@@ -22,6 +22,9 @@ command line alike; regenerate it rather than migrating it.
   header used to print the first input's actual width as if it held for the whole batch. Data
   columns are unchanged. Library: `GrResult.params.dr` is the request, `GrResult.dr_used` the
   actual width (`params.dr` used to hold the actual width).
+- `traj vanhove` / `traj angle` refuse a range narrower than one `--dr` / `--d-angle`, as `traj gr`
+  does; they wrote a single bin narrower than asked. `traj gr` gives the same error when the
+  minimum-image clamp leaves less than one bin.
 - `traj sq` ends the $q$ grid at `--q-max` whenever the range is a whole number of `--dq`; a
   quotient one rounding below the integer (`--q-min 0.3 --q-max 15 --dq 0.1`) used to drop the
   last point.

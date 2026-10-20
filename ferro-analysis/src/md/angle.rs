@@ -99,6 +99,7 @@ impl AngleParams {
         check::positive("d-angle", self.d_angle)?;
         check::non_negative("angle-min", self.angle_min)?;
         check::ordered("angle-min", self.angle_min, "angle-max", self.angle_max)?;
+        check::holds_a_bin("angle range", self.angle_min, self.angle_max, "d-angle", self.d_angle)?;
         // 写成「合法则放行」，NaN 落到报错分支（同 check.rs）
         if self.angle_max <= 180.0 { return Ok(()); }
         Err(ChemError::ValidationError(format!("angle-max must be <= 180, got {}", self.angle_max)))
@@ -441,6 +442,14 @@ mod tests {
         frame.add_atom(Atom::new("O",  Vector3::new( 1.6, 0.0, 0.0)));
         frame.add_atom(Atom::new("O",  Vector3::new(-1.6, 0.0, 0.0)));
         Trajectory::from_frame(frame)
+    }
+
+    /// A range narrower than one step is refused up front, as gr does (review C-11)
+    #[test]
+    fn test_range_narrower_than_one_bin_is_an_error() {
+        let p = AngleParams { angle_min: 100.0, angle_max: 100.5, d_angle: 1.0, ..Default::default() };
+        let err = p.validate().unwrap_err().to_string();
+        assert!(err.contains("angle range [100, 100.5] is narrower than one d-angle = 1 bin"), "{err}");
     }
 
     #[test]

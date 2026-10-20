@@ -51,7 +51,8 @@ impl VanHoveParams {
         check::at_least_one("shift", self.shift)?;
         check::non_negative("r-min", self.r_min)?;
         check::positive("dr", self.dr)?;
-        check::ordered("r-min", self.r_min, "r-max", self.r_max)
+        check::ordered("r-min", self.r_min, "r-max", self.r_max)?;
+        check::holds_a_bin("r range", self.r_min, self.r_max, "dr", self.dr)
     }
 }
 
@@ -327,6 +328,15 @@ mod tests {
             traj.add_frame(frame);
         }
         traj
+    }
+
+    /// A range narrower than one step is refused up front, as gr does (review C-11);
+    /// `bins` would otherwise make one bin narrower than asked
+    #[test]
+    fn test_range_narrower_than_one_bin_is_an_error() {
+        let p = VanHoveParams { r_min: 0.0, r_max: 0.05, dr: 0.1, dt: 1.0, ..Default::default() };
+        let err = p.validate().unwrap_err().to_string();
+        assert!(err.contains("r range [0, 0.05] is narrower than one dr = 0.1 bin"), "{err}");
     }
 
     #[test]
