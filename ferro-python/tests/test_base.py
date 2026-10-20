@@ -101,6 +101,14 @@ def test_generate_sorts_and_checks(tmp_path, user_templates):
     (tmp_path / "noelem.lammpstrj").write_text("\n".join(out) + "\n")
     with pytest.raises(JobError, match="X1, X2.*--type-map"):
         Echo(user_templates).generate(ferro.read(str(tmp_path / "noelem.lammpstrj")), 0, JobOptions("sp"))
+    # a CIF label with no leading letter reads as a bare `X`
+    (tmp_path / "x.cif").write_text(
+        "data_x\n_cell_length_a 5\n_cell_length_b 5\n_cell_length_c 5\n_cell_angle_alpha 90\n"
+        "_cell_angle_beta 90\n_cell_angle_gamma 90\n_symmetry_space_group_name_H-M 'P 1'\nloop_\n"
+        "_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\n"
+        "1 0 0 0\nO1 0.5 0.5 0.5\n")
+    with pytest.raises(JobError, match="atoms X have no element"):
+        Echo(user_templates).generate(ferro.read(str(tmp_path / "x.cif")), 0, JobOptions("sp"))
 
 
 def test_input_set_write_with_links(tmp_path):

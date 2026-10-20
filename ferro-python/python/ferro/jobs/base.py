@@ -193,13 +193,14 @@ class Generator:
         one = ferro.sort_atoms(traj.subset([frame]))
         if one.cell(0) is None or not all(one.pbc(0)):
             raise JobError("only periodic systems (a cell, periodic along a, b and c) are supported")
-        # `X<type>` is what the Rust readers name an atom whose element they do not know
-        # (ferro-io readers/lammps_dump.rs, lammps_data.rs, vasp.rs, ...)
-        placeholders = sorted(e for e in one.elements() if re.fullmatch(r"X\d+", e))
+        # `X<type>` / `X` is what the Rust readers name an atom whose element they do not know
+        # (ferro-io readers/lammps_dump.rs and lammps_data.rs `X<type>`, cube.rs `X<Z>`, a label
+        # with no leading letter in readers/util.rs `element_from_label` and cif.rs `X`)
+        placeholders = sorted(e for e in one.elements() if re.fullmatch(r"X\d*", e))
         if placeholders:
             raise JobError(
                 f"atoms {', '.join(placeholders)} have no element: a dump without an element "
-                "column needs --type-map (e.g. 1=Zr,2=O)"
+                "column needs --type-map (e.g. 1=Zr,2=O); a label needs a leading element symbol"
             )
         if template_text is None:
             template_text = self.template(options.task, template)
