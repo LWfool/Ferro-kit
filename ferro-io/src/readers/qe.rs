@@ -1,11 +1,11 @@
 use std::path::Path;
 use std::collections::HashMap;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
+use ferro_core::units::BOHR_TO_ANG;
 use nalgebra::{Matrix3, Vector3};
 use super::util::element_from_label;
 use anyhow::{bail, Context, Result};
 
-const BOHR: f64 = 0.52917721;
 
 pub fn read_qe_input(path: &Path) -> Result<Trajectory> {
     let path_ = path.display();
@@ -77,7 +77,7 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         }
     };
     let alat: Option<f64> = match lat("celldm(1)")? {
-        Some(c) => Some(c * BOHR),
+        Some(c) => Some(c * BOHR_TO_ANG),
         None => lat("a")?,
     };
 
@@ -90,10 +90,10 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
              parameter is given twice (pw.x rejects this too)"
         ),
         "angstrom" => 1.0,
-        "bohr" => BOHR,
+        "bohr" => BOHR_TO_ANG,
         "alat" => alat.context("CELL_PARAMETERS alat needs celldm(1) or A in &SYSTEM")?,
         // pw.x 的旧默认：有 celldm(1)/A 按 alat，否则按 bohr（ASE 同）
-        "" => alat.unwrap_or(BOHR),
+        "" => alat.unwrap_or(BOHR_TO_ANG),
         other => bail!("unknown CELL_PARAMETERS option {other:?} (expected alat, bohr or angstrom)"),
     };
 
@@ -119,7 +119,7 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     let to_cart = |v: Vector3<f64>| -> Vector3<f64> {
         match pos_opt.as_str() {
             "angstrom" => v,
-            "bohr" => v * BOHR,
+            "bohr" => v * BOHR_TO_ANG,
             "crystal" => cell.fractional_to_cartesian(v),
             _ => v * pos_alat, // alat 或未写（pw.x 的默认）
         }
