@@ -139,7 +139,13 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
             "S(q) needs g(r) computed from r = 0, got r_min = {} Ang", gr.params.r_min
         )));
     }
-    let n_q = ((params.q_max - params.q_min) / params.dq).floor() as usize + 1;
+    // Sample points q_min, q_min + dq, ... up to q_max inclusive. The quotient of a whole
+    // number of steps can land an ulp below the integer ((15 - 0.3) / 0.1 =
+    // 146.99999999999997), and a bare floor then drops q_max; the same relative 1e-9 as
+    // `util::bins` counts it as whole. Not `bins` itself: these are points, not bins, and
+    // dq is never narrowed
+    let ratio = (params.q_max - params.q_min) / params.dq;
+    let n_q = (ratio + ratio * 1e-9).floor() as usize + 1;
     let q_vals: Vec<f64> = (0..n_q)
         .map(|i| params.q_min + i as f64 * params.dq)
         .collect();
@@ -888,6 +894,25 @@ mod tests {
             let sum: f64 = parts.iter().map(|p| p[i]).sum();
             assert!((sum - total[i]).abs() < 1e-9, "q index {i}: {sum} != {}", total[i]);
         }
+    }
+
+    #[test]
+    fn test_q_grid_keeps_q_max_when_the_quotient_rounds_down() {
+        // (15 - 0.3) / 0.1 = 146.99999999999997: a bare floor ended the grid at 14.9 (review C-3)
+        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let gr = calc_gr(&traj, &GrParams {
+            r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
+        }).unwrap();
+        let sq = calc_sq_from_gr(&gr, &SqParams {
+            q_min: 0.3, q_max: 15.0, dq: 0.1, ..Default::default()
+        }).unwrap();
+        assert_eq!(sq.q.len(), 148);
+        assert!((sq.q.last().unwrap() - 15.0).abs() < 1e-9, "last q {}", sq.q.last().unwrap());
+        // A step that does not divide the range still stops at or below q_max
+        let sq = calc_sq_from_gr(&gr, &SqParams {
+            q_min: 0.3, q_max: 15.05, dq: 0.1, ..Default::default()
+        }).unwrap();
+        assert!((sq.q.last().unwrap() - 15.0).abs() < 1e-9);
     }
 
     #[test]

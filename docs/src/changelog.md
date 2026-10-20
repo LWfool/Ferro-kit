@@ -22,6 +22,9 @@ command line alike; regenerate it rather than migrating it.
   header used to print the first input's actual width as if it held for the whole batch. Data
   columns are unchanged. Library: `GrResult.params.dr` is the request, `GrResult.dr_used` the
   actual width (`params.dr` used to hold the actual width).
+- `traj sq` ends the $q$ grid at `--q-max` whenever the range is a whole number of `--dq`; a
+  quotient one rounding below the integer (`--q-min 0.3 --q-max 15 --dq 0.1`) used to drop the
+  last point.
 - A trajectory with a cell in some frames and none in others is an error in every analysis that
   checks cells; `rotcorr` and `bondlife` used to measure the cell-less frames with the plain
   Cartesian difference without a word.
