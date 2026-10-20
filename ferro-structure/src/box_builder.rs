@@ -240,6 +240,11 @@ pub fn build_box(
             "no atoms to place".into(),
         ));
     }
+    // Atoms go in canonical element order (by Z), the order collect / merge write and
+    // the partial g(r) columns follow; the map's own order is alphabetical, which put
+    // Cl before Na (review A-8)
+    let mut element_counts: Vec<(String, usize)> = element_counts.into_iter().collect();
+    element_counts.sort_by(|a, b| elements::canonical_cmp(&a.0, &b.0));
 
     // ── 步骤 2：估算盒子尺寸 ─────────────────────────────────────────────────
     let box_len = estimate_box_length(components, density)?;
@@ -752,5 +757,14 @@ mod tests {
         let mut atoms: Vec<Atom> = Vec::new();
         relax(&mut atoms, 10.0, 1.5, 100);
         assert!(atoms.is_empty());
+    }
+
+    // Review A-8: alphabetical order put Cl before Na
+    #[test]
+    fn test_atoms_come_in_canonical_element_order() {
+        let comps = vec![Component { compound: "NaCl".into(), n_molecules: 4 }];
+        let frame = build_box(&comps, 2.0, 1.0, 0, 7).unwrap();
+        let order: Vec<&str> = frame.atoms().map(|a| a.element).collect();
+        assert_eq!(order, ["Na", "Na", "Na", "Na", "Cl", "Cl", "Cl", "Cl"]);
     }
 }
