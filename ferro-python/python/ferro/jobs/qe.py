@@ -203,6 +203,11 @@ class QeGenerator(Generator):
     def build(self, one, options, template_text):
         qe = QeInput.from_str(template_text)
         qe.head = []   # 模板头注释是写给改模板的人看的，不带进生成的 pw.in
+        # A fixed basis under a varying cell gives Pulay stress: the cutoff comes from a
+        # convergence test, not from the UPF suggestion (user decision, as VASP's ENCUT)
+        if options.task == "opt" and options.vary_cell and qe.get("system", "ecutwfc") is None:
+            raise JobError("--vary-cell needs ecutwfc in the template (Pulay stress): find it with "
+                           "`ferro-py conv -s qe --scan ecutwfc=...` and write it there")
         notes = []
         elements = one.elements()
         symbols = one.symbols(0)

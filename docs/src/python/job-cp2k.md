@@ -2,8 +2,8 @@
 
 ```bash
 ferro-py job -s cp2k -t sp   -i POSCAR -o sp/
-ferro-py job -s cp2k -t opt  -i POSCAR --vary-cell -o relax/
-ferro-py job -s cp2k -t aimd -i md.lammpstrj --number 20 --ensemble npt_i -o md/
+ferro-py job -s cp2k -t opt  -i POSCAR --vary-cell --template my_opt.inp -o relax/
+ferro-py job -s cp2k -t aimd -i md.lammpstrj --number 20 --ensemble npt_i --template my_md.inp -o md/
 ```
 
 Each job directory holds one `cp2k.inp`. What is common to the three programs —
@@ -99,6 +99,12 @@ the finer grid is probably unnecessary.
 ## Optimisation
 
 `opt` runs `GEO_OPT`; with `--vary-cell`, `CELL_OPT` with the analytic stress.
+
+**A varying cell — `--vary-cell` or an NpT ensemble — needs your own template
+with `&MGRID CUTOFF`**; the built-in template (`CUTOFF 400`, a generic guess) and
+a template without `CUTOFF` are errors. The cell changes under a fixed grid, so
+too low a cutoff gives Pulay stress and a cell that comes out too small. Find the
+value with `ferro-py conv -s cp2k --scan cutoff=…` (`ferro-py doc conv`).
 The template's `&CELL_OPT` has **no `TYPE` keyword**: CP2K 2026.2 removed it
 (direct cell optimisation, the old default, is the only mode left) and aborts
 when it is present.
@@ -106,8 +112,9 @@ when it is present.
 ## MD
 
 `aimd` offers NVT, NPT_I (isotropic cell) and NPT_F (fully flexible cell).
-For NpT the analytic stress is switched on and, when the template has no
-`&BAROSTAT`, one is added at 1.01325 bar with a 1000 fs time constant. NPT_F
+For NpT the cutoff must come from your template (see Optimisation), the analytic
+stress is switched on and, when the template has no `&BAROSTAT`, one is added at
+1.01325 bar with a 1000 fs time constant. NPT_F
 couples all cell directions; to restrict them, set `VIRIAL` in the template's
 `&BAROSTAT`.
 

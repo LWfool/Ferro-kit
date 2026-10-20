@@ -2,7 +2,7 @@
 
 ```bash
 ferro-py job -s qe -t sp   -i POSCAR -o sp/
-ferro-py job -s qe -t opt  -i 'cifs/*.cif' --vary-cell -o relax/
+ferro-py job -s qe -t opt  -i 'cifs/*.cif' --vary-cell --template my_relax.in -o relax/
 ferro-py job -s qe -t aimd -i POSCAR --temperature 1000 --timestep 1 -o md/
 ```
 
@@ -77,6 +77,11 @@ note (pw.x only warns), at or below `ecutwfc` it is an error (pw.x stops).
 
 Test `ecutwfc` with `ferro-py conv -s qe --scan ecutwfc=…` (`ferro-py doc conv`)
 and write the tested values into your template.
+
+**`opt --vary-cell` (vc-relax) needs `ecutwfc` in the template**; without it the
+job is an error. The cell relaxes with a fixed set of plane waves, so too low a
+cutoff gives Pulay stress and a cell that comes out too small; the UPF suggestion
+is not a tested value. `ecutrho` may still be left out and is filled in as above.
 
 ## MD
 

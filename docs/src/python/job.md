@@ -7,7 +7,7 @@ ESPRESSO (pw.x) and CP2K — a single point (`sp`), a geometry optimisation
 ```bash
 ferro-py job -s vasp -t sp -i POSCAR -o sp/
 ferro-py job -s cp2k -t aimd -i traj.lammpstrj --number 20 --temperature 1500 -o md/
-ferro-py job -s qe -t opt -i 'cifs/*.cif' --vary-cell -o relax/
+ferro-py job -s qe -t opt -i 'cifs/*.cif' --vary-cell --template my_relax.in -o relax/
 ```
 
 It is meant for the common calculation, done reliably: a periodic structure,
@@ -62,8 +62,8 @@ is deliberately missing (the parallel settings — they belong to your machine).
 | Multiplicity | `--multiplicity M`  [by parity] | below |
 | k-point mesh | `--kspacing K`  [template, else 0.5 Å⁻¹] | below |
 | Temperature, steps, time step | `--temperature`, `--steps`, `--timestep` (fs) | `aimd` only; otherwise the template's |
-| Ensemble | `--ensemble nvt\|npt_i\|npt_f` | `aimd` only; NpT is CP2K only |
-| Variable cell | `--vary-cell` | `opt` only |
+| Ensemble | `--ensemble nvt\|npt_i\|npt_f` | `aimd` only; NpT is CP2K only and, like `--vary-cell`, needs the cutoff in your template |
+| Variable cell | `--vary-cell` | `opt` only; the template must set the cutoff (Pulay stress), see the program pages |
 | Fine grid | `--fine-grid F` | VASP and CP2K; see their pages |
 
 A quantity given on the command line overrides the template; one not given

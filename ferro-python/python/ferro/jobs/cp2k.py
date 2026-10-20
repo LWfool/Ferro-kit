@@ -312,7 +312,7 @@ class Cp2kGenerator(Generator):
             notes.append("USE_FINER_GRID on (the --fine-grid factor is not used by CP2K)"
                          + ("" if mgga else "; not a meta-GGA, the finer grid is probably unnecessary"))
         self._kpoints(one, options, dft, notes)
-        self._motion(root, force_eval, options, notes)
+        self._motion(root, force_eval, options, notes, template_text)
         notes.append("parallel settings are not in cp2k.inp: set MPI ranks and OMP_NUM_THREADS in the run command")
         return InputSet({"cp2k.inp": root.to_str()}, notes=notes)
 
@@ -349,9 +349,21 @@ class Cp2kGenerator(Generator):
         else:
             notes.append(f"kspacing {spacing:g} -> mesh {' x '.join(map(str, mesh))}")
 
-    def _motion(self, root, force_eval, options, notes):
+    def _check_cell_cutoff(self, force_eval, template_text, task, run):
+        """A fixed basis under a varying cell gives Pulay stress: CUTOFF comes from a
+        convergence test, so the built-in template (CUTOFF 400, a guess) is refused (user
+        decision, as VASP's ENCUT)."""
+        mgrid = force_eval.section("DFT/MGRID")
+        if template_text.strip() == self.builtin_template(task).strip() or mgrid is None \
+                or mgrid.get("CUTOFF") is None:
+            raise JobError(f"{run} needs your own template with &MGRID CUTOFF (Pulay stress): find "
+                           "it with `ferro-py conv -s cp2k --scan cutoff=...` and pass the template "
+                           "with --template")
+
+    def _motion(self, root, force_eval, options, notes, template_text):
         glob = root.section("GLOBAL", create=True)
         if options.task == "opt" and options.vary_cell:
+            self._check_cell_cutoff(force_eval, template_text, options.task, "--vary-cell")
             glob.set("RUN_TYPE", "CELL_OPT")
             root.section("MOTION/CELL_OPT", create=True)
             force_eval.set("STRESS_TENSOR", "ANALYTICAL")
@@ -368,6 +380,7 @@ class Cp2kGenerator(Generator):
             md.set("ENSEMBLE", options.ensemble.upper())
         ensemble = md.get("ENSEMBLE", "NVE").split()[0].upper()
         if ensemble.startswith("NPT"):
+            self._check_cell_cutoff(force_eval, template_text, options.task, ensemble)
             # NPT 要解析应力（md_run.F 不给就报错，审查 D-M4）与一个压浴
             force_eval.set("STRESS_TENSOR", "ANALYTICAL")
             if md.section("BAROSTAT") is None:

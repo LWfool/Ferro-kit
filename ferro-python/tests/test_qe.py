@@ -97,7 +97,13 @@ def test_explicit_singlet_with_spin_polarised_template(cfg, traj, tmp_path):
 
 
 def test_vary_cell_and_kpoints(cfg, traj, tmp_path):
-    qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True)).files["pw.in"])
+    with pytest.raises(JobError, match="--vary-cell needs ecutwfc in the template"):
+        QeGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True))
+    tpl = tmp_path / "opt.in"
+    tpl.write_text(QeGenerator.builtin_template("opt").replace("&SYSTEM", "&SYSTEM\n  ecutwfc = 70"))
+    qe = QeInput.from_str(QeGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True), tpl).files["pw.in"])
+    assert qe.get("system", "ecutwfc") == "70" and float(qe.get("system", "ecutrho")) >= 280, \
+        "ecutwfc from the template; ecutrho still falls back (UPF suggestion, at least 4 x ecutwfc)"
     assert qe.get("control", "calculation") == "'vc-relax'" and qe.get("cell", "cell_dynamics") == "'bfgs'"
     assert list(qe.namelists).index("cell") > list(qe.namelists).index("ions"), "&CELL 在 &IONS 之后"
     (tmp_path / "small.vasp").write_text(

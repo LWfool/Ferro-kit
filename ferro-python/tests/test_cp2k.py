@@ -169,9 +169,13 @@ def test_kpoints_switch_ot_to_diagonalisation(cfg, tmp_path):
     assert scf.section("DIAGONALIZATION") is not None and scf.section("MIXING").get("METHOD") == "BROYDEN_MIXING"
 
 
-def test_md_ensembles(cfg, traj):
-    s = Cp2kGenerator(cfg).generate(traj, 0, JobOptions("aimd", temperature=1500, steps=10,
-                                                        timestep=0.5, ensemble="npt_f"))
+def test_md_ensembles(cfg, traj, tmp_path):
+    npt = JobOptions("aimd", temperature=1500, steps=10, timestep=0.5, ensemble="npt_f")
+    with pytest.raises(JobError, match="NPT_F needs your own template with &MGRID CUTOFF"):
+        Cp2kGenerator(cfg).generate(traj, 0, npt)
+    tpl = tmp_path / "md.inp"
+    tpl.write_text(Cp2kGenerator.builtin_template("aimd").replace("CUTOFF 400", "CUTOFF 600"))
+    s = Cp2kGenerator(cfg).generate(traj, 0, npt, tpl)
     root = Section.from_str(s.files["cp2k.inp"])
     md = root.section("MOTION/MD")
     assert (md.get("ENSEMBLE"), md.get("TEMPERATURE"), md.get("STEPS"), md.get("TIMESTEP")) == \
@@ -184,7 +188,17 @@ def test_md_ensembles(cfg, traj):
 
 
 def test_vary_cell_and_errors(cfg, traj, tmp_path):
-    root = Section.from_str(Cp2kGenerator(cfg).generate(traj, 0, JobOptions("opt", vary_cell=True)).files["cp2k.inp"])
+    cell_opt = JobOptions("opt", vary_cell=True)
+    tpl = tmp_path / "opt.inp"
+    builtin = Cp2kGenerator.builtin_template("opt")
+    for text in (None, builtin, builtin.replace("CUTOFF 400", "NGRIDS 4")):
+        if text is not None:
+            tpl.write_text(text)
+        with pytest.raises(JobError, match="--vary-cell needs your own template with &MGRID CUTOFF"):
+            Cp2kGenerator(cfg).generate(traj, 0, cell_opt, tpl if text is not None else None)
+    tpl.write_text(builtin.replace("CUTOFF 400", "CUTOFF 600"))
+    root = Section.from_str(Cp2kGenerator(cfg).generate(traj, 0, cell_opt, tpl).files["cp2k.inp"])
+    assert root.section("FORCE_EVAL/DFT/MGRID").get("CUTOFF").split()[0] == "600"
     assert root.section("GLOBAL").get("RUN_TYPE") == "CELL_OPT"
     assert root.section("MOTION/CELL_OPT").get("TYPE") is None, \
         "CP2K 2026.2 删了 CELL_OPT/TYPE，写了即中止（不变胞的 GEO_OPT 也一样，因为节总在）"

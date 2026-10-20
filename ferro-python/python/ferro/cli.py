@@ -80,9 +80,11 @@ Parameters:
       --temperature T   aimd: temperature in K  [the template's]
       --steps N         aimd: number of MD steps  [the template's]
       --timestep FS     aimd: time step in fs  [the template's]
-      --ensemble E      aimd: nvt | npt_i | npt_f (npt_* CP2K only)  [the template's]
-      --vary-cell       opt: relax the cell too; vasp needs ENCUT written in the
-                        template  [cell fixed]
+      --ensemble E      aimd: nvt | npt_i | npt_f (npt_* CP2K only, with your own
+                        template setting CUTOFF)  [the template's]
+      --vary-cell       opt: relax the cell too; the template must set the cutoff
+                        (vasp ENCUT, qe ecutwfc, cp2k CUTOFF in your own template)
+                        [cell fixed]
       --fine-grid F     vasp: NGXF/NGYF/NGZF = F x NGX/NGY/NGZ  [2 with METAGGA, else
                         unset]; cp2k: USE_FINER_GRID on; qe: ignored (no separate grid)
       --start N         First frame to take  (0-based, inclusive)  [0]
