@@ -5,8 +5,45 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
 
-/// 将轨迹写入 PDB 文件。多帧使用 MODEL/ENDMDL 记录。
+/// Writes a trajectory as PDB; several frames go in MODEL/ENDMDL records.
 pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
+    // Every check runs before the file is created, so a refusal leaves no half-written file.
+    // Frame numbers in the messages are 0-based, as in the other writers.
+    let mut to_std_all = Vec::with_capacity(trajectory.n_frames());
+    for (k, frame) in trajectory.frames.iter().enumerate() {
+        // CRYST1 holds only a b c α β γ; the reader rebuilds the cell with a along x and b in the
+        // xy plane (ASE's standard_form), so coordinates are mapped to that orientation through
+        // fractional coordinates, or a cell in another orientation reads back shifted
+        let mut to_std = Matrix3::identity();
+        if let Some(cell) = &frame.cell {
+            let m = &cell.matrix;
+            // Already standard (a LAMMPS cell always is): leave it, since the 1e-16 noise of M⁻¹·S
+            // pushes a coordinate sitting at x.xxx5 across the 3-decimal rounding point
+            let standard = m[(0, 1)] == 0.0 && m[(0, 2)] == 0.0 && m[(1, 2)] == 0.0
+                && m[(0, 0)] > 0.0 && m[(1, 1)] > 0.0 && m[(2, 2)] > 0.0;
+            if !standard {
+                let [a, b, c] = cell.lengths();
+                let [al, be, ga] = cell.angles();
+                let std_cell = Cell::from_lengths_angles(a, b, c, al, be, ga)
+                    .with_context(|| format!("frame {k}: cell cannot be written as CRYST1"))?;
+                let inv = m.try_inverse()
+                    .with_context(|| format!("frame {k}: cell is singular"))?;
+                // Row vectors: p_std = p · M⁻¹ · S, i.e. (M⁻¹ S)ᵀ p for column vectors
+                to_std = (inv * std_cell.matrix).transpose();
+            }
+        }
+        for (i, atom) in frame.atoms().enumerate() {
+            let p = to_std * atom.position;
+            // The coordinate fields are 8 wide with 3 decimals: outside -999.999..9999.999 a value pushes
+            // into the next field and the whole line reads back shifted
+            if let Some(v) = p.iter().find(|v| !(-999.9995..9999.9995).contains(*v)) {
+                bail!("frame {k}, atom {}: coordinate {v:.3} Å does not fit PDB's 8-column field \
+                       (-999.999 to 9999.999)", i + 1);
+            }
+        }
+        to_std_all.push(to_std);
+    }
+
     let path_ = path.display();
     let file = File::create(path).context(format!("cannot create {path_}"))?;
     let mut writer = BufWriter::new(file);
@@ -17,28 +54,11 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
 
     let multi = trajectory.n_frames() > 1;
 
-    for (model_idx, frame) in trajectory.frames.iter().enumerate() {
-        // 逐帧写 CRYST1（NPT 每帧胞不同），放在 MODEL 之前，与 ASE 同序。
-        // CRYST1 只存 a b c α β γ，reader 按 a 沿 x、b 在 xy 平面重建胞（同 ASE
-        // standard_form），故坐标须经分数坐标映到该取向，否则非标准取向的胞读回后错位
-        let mut to_std = Matrix3::identity();
+    for (model_idx, (frame, to_std)) in trajectory.frames.iter().zip(&to_std_all).enumerate() {
+        // CRYST1 per frame (an NPT cell changes), before MODEL, in ASE's order
         if let Some(cell) = &frame.cell {
             let [a, b, c] = cell.lengths();
             let [al, be, ga] = cell.angles();
-            let m = &cell.matrix;
-            // 已是标准取向（LAMMPS 胞恒是）就不变换：M⁻¹·S 的 1e-16 噪声会把恰在
-            // x.xxx5 的坐标推过 3 位小数的舍入点
-            let standard = m[(0, 1)] == 0.0 && m[(0, 2)] == 0.0 && m[(1, 2)] == 0.0
-                && m[(0, 0)] > 0.0 && m[(1, 1)] > 0.0 && m[(2, 2)] > 0.0;
-            if !standard {
-                let frame_no = model_idx + 1;
-                let std_cell = Cell::from_lengths_angles(a, b, c, al, be, ga)
-                    .context(format!("frame {frame_no}: cell cannot be written as CRYST1"))?;
-                let inv = m.try_inverse()
-                    .with_context(|| format!("frame {frame_no}: cell is singular"))?;
-                // 行向量约定：p_std = p · M⁻¹ · S，列向量下即 (M⁻¹ S)ᵀ p
-                to_std = (inv * std_cell.matrix).transpose();
-            }
             writeln!(writer, "CRYST1{:>9.3}{:>9.3}{:>9.3}{:>7.2}{:>7.2}{:>7.2} P 1           1", a, b, c, al, be, ga)?;
         }
         if multi {
@@ -46,12 +66,6 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
         }
         for (i, atom) in frame.atoms().enumerate() {
             let p = to_std * atom.position;
-            // The coordinate fields are 8 wide with 3 decimals: outside -999.999..9999.999 a value pushes
-            // into the next field and the whole line reads back shifted
-            if let Some(v) = p.iter().find(|v| !(-999.9995..9999.9995).contains(*v)) {
-                bail!("frame {}, atom {}: coordinate {v:.3} Å does not fit PDB's 8-column field \
-                       (-999.999 to 9999.999)", model_idx, i + 1);
-            }
             writeln!(
                 writer,
                 "{:<6}{:>5} {:^4} {:3} {:1}{:>4}    {:>8.3}{:>8.3}{:>8.3}{:>6.2}{:>6.2}          {:>2}",
@@ -182,6 +196,20 @@ mod tests {
         let err = one(12345.0).unwrap_err().to_string();
         assert!(err.contains("atom 1") && err.contains("12345.000"), "{err}");
         assert!(one(-1000.0).is_err());
+    }
+
+    /// A refusal used to come after File::create and leave a half-written file; the frame number
+    /// in the message is 0-based like the other writers'.
+    #[test]
+    fn test_refusal_leaves_no_file() {
+        let path = std::env::temp_dir().join("ferro_pdb_refused.pdb");
+        let _ = std::fs::remove_file(&path);
+        let mut bad = cubic_frame(10.0);
+        bad.positions_mut()[0] = Vector3::new(1.0e5, 0.0, 0.0);
+        let traj = Trajectory { frames: vec![cubic_frame(10.0), bad], ..Default::default() };
+        let err = write_pdb(&traj, &path).unwrap_err().to_string();
+        assert!(err.starts_with("frame 1, atom 1:"), "{err}");
+        assert!(!path.exists(), "a refused write must not leave a file");
     }
 
     /// Serial numbers wrap past 99999 (as ASE does) instead of widening the column.
