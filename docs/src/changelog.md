@@ -34,6 +34,9 @@ command line alike; regenerate it rather than migrating it.
 - A trajectory with a cell in some frames and none in others is an error in every analysis that
   checks cells; `rotcorr` and `bondlife` used to measure the cell-less frames with the plain
   Cartesian difference without a word.
+- `dataset filter --stride 0`, `-N 0` and `--start` past `--end` are errors before any input is
+  read, as they are for `convert`; `--stride 0` used to run and write every frame with exit code 0,
+  the other two dropped every frame after reading the whole dataset.
 - `dataset filter`'s cutoff scan samples at most the 200 frames it promises (199 frames used to
   give 199 samples, anything up to 399 was possible), so its report can differ in the samples.
 - `dataset merge --mode by-source` shuffles each system with `--seed` (default 666) before

@@ -115,6 +115,20 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     if args.oo_min.is_some_and(|v| !(v.is_finite() && v > 0.0)) {
         bail!("--oo-min must be a finite positive number (omit the flag to switch the criterion off)");
     }
+    // The frame selection, checked as convert checks its own (`cmd/convert.rs`); two copies
+    // with different flags, below the Rule of Three, so not shared (R6). Left to the run,
+    // these dropped every frame or wrote nothing with exit code 0 (review D-1)
+    if let (Some(s), Some(e)) = (args.start, args.end) {
+        if s > e {
+            bail!("--start {s} is past --end {e} (both are 0-based and inclusive)");
+        }
+    }
+    if args.stride == Some(0) {
+        bail!("--stride must be at least 1");
+    }
+    if args.number == Some(0) {
+        bail!("--number must be at least 1");
+    }
 
     let params = FilterParams {
         f_max: args.f_max(),
@@ -439,6 +453,29 @@ mod tests {
             let w = Wrap::try_parse_from(&argv).unwrap_or_else(|e| panic!("{args}: {e}"));
             let err = format!("{:#}", run_filter(&w.cmd).expect_err(args));
             assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
+        }
+    }
+
+    /// `--stride 0`, `-N 0` and `--start` past `--end` fail before any input is read, as
+    /// they do in convert (review D-1)
+    #[test]
+    fn bad_frame_selection_fails_before_any_input_is_read() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        for (args, want) in [
+            ("--stride 0", "--stride must be at least 1"),
+            ("-N 0", "--number must be at least 1"),
+            ("--start 3 --end 1", "--start 3 is past --end 1"),
+        ] {
+            let mut argv = vec!["filter", "-i", "no_such_system_dir"];
+            argv.extend(args.split_whitespace());
+            let w = Wrap::try_parse_from(&argv).unwrap_or_else(|e| panic!("{args}: {e}"));
+            let err = format!("{:#}", run_filter(&w.cmd).expect_err(args));
+            assert!(err.contains(want), "{args}: expected `{want}`, got {err}");
         }
     }
 
