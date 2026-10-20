@@ -38,7 +38,7 @@ use ferro_core::frame::Frame;
 /// - `ValidationError` if either frame has no cell, or one refused by `Cell::check`
 ///   (singular or not finite).
 /// - `ValidationError` if `axis` is not "x"/"y"/"z".
-/// - `ValidationError` if `gap < 0`.
+/// - `ValidationError` if `gap` is negative or not finite.
 /// - `ValidationError` if the two interfaces are not parallel (normals more than
 ///   1° apart): a gap along the normal has no meaning then.
 /// - `ValidationError` if an atom lies outside its cell along a non-periodic axis.
@@ -57,7 +57,7 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
 
     if !(gap >= 0.0 && gap.is_finite()) {
         return Err(ChemError::ValidationError(format!(
-            "gap must be >= 0, got {}",
+            "gap must be a finite number >= 0, got {}",
             gap
         )));
     }
@@ -407,6 +407,11 @@ mod tests {
         let a = cubic_frame(10.0, vec![("Fe", 0.0, 0.0, 0.0)]);
         let b = cubic_frame(10.0, vec![("O", 0.0, 0.0, 0.0)]);
         assert!(merge_frames(&a, &b, "z", -1.0).is_err());
+        // Review A-14: the check refused NaN and infinity, the message only spoke of >= 0
+        for bad in [f64::NAN, f64::INFINITY] {
+            let e = merge_frames(&a, &b, "z", bad).unwrap_err().to_string();
+            assert!(e.contains("finite number >= 0"), "{e}");
+        }
     }
 
     // Review A-13: the merge's own singularity test now goes through `Cell::check`,
