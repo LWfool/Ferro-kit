@@ -36,7 +36,7 @@ pub enum TrajCmd {
     Angle(AngleCmd),
     /// Velocity autocorrelation function and Green-Kubo diffusion
     Vacf(VacfCmd),
-    /// Rotational correlation C₂(t) for molecular bond vectors
+    /// Rotational correlation C₂(t) / C₁(t) for molecular bond vectors
     Rotcorr(RotcorrCmd),
     /// Van Hove self-correlation Gs(r, τ)
     Vanhove(VanhoveCmd),

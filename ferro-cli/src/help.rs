@@ -151,7 +151,7 @@ Trajectory analysis      one stacked csv per run, `file` as a column
   traj msd       Mean square displacement + self-diffusion D
   traj angle     Bond angle distribution P(theta)
   traj vacf      Velocity autocorrelation + Green-Kubo diffusion
-  traj rotcorr   Rotational correlation C2(t)
+  traj rotcorr   Rotational correlation C2(t) / C1(t)
   traj vanhove   Van Hove self-correlation Gs(r,tau)
   traj bondlife  Bond lifetimes + bond formation / breaking per frame
 
@@ -208,7 +208,7 @@ Commands:
   msd       Mean square displacement MSD(t), time-shift averaged
   angle     Bond angle distribution P(theta) for A-B-C triplets
   vacf      Velocity autocorrelation function + Green-Kubo diffusion
-  rotcorr   Rotational correlation C2(t) for molecular bond vectors
+  rotcorr   Rotational correlation C2(t) / C1(t) for molecular bond vectors
   vanhove   Van Hove self-correlation Gs(r, tau)
   bondlife  Bond lifetimes + bond formation / breaking per frame
 
@@ -417,9 +417,10 @@ pub fn print_rotcorr() {
     println!(
         r#"ferro traj rotcorr — Rotational Correlation Function
 
-  C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors, over ALL time
-  origins (FFT); frames where a centre has no neighbour are left out. --center
-  and --neighbor are required: they define the bond direction.
+  C₂(t) = <P₂(û(t₀)·û(t₀+t))> for molecular bond vectors, or C₁(t) =
+  <û(t₀)·û(t₀+t)> with --legendre 1, over ALL time origins (FFT); frames where
+  a centre has no neighbour are left out. --center and --neighbor are
+  required: they define the bond direction.
 
 Parameters:
       --center    ELEM    Central atom element, e.g. O (required)
