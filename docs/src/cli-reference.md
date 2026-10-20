@@ -408,7 +408,7 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 
 ## `ferro traj`
 
-Seven trajectory analyses sharing one export pipeline: a single long or wide csv.
+Eight trajectory analyses sharing one export pipeline: a single long or wide csv.
 
 ```bash
 ferro traj <command> -i traj.lammpstrj [flags] [-o DIR] [-s SUFFIX]
@@ -446,7 +446,6 @@ ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -s run1
 | `--q-max` | 25.0 | maximum $q$ [Å⁻¹] |
 | `--dq` | 0.02 | $q$ bin width [Å⁻¹] |
 | `--weighting` | `both` | `none`, `xrd`, `neutron`, `both` |
-
 | `--r-max` | 10.005 | max radius of the transformed $g(r)$ [Å] |
 | `--dr` | 0.002 | $g(r)$ bin width [Å] |
 
