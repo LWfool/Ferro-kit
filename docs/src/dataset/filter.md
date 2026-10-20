@@ -33,8 +33,8 @@ all frames -> |F|max -> |σ|max -> min d(O-O) -> Al6 -> [start:end:stride|number
 
 | Criterion | Flag | Default | Quantity |
 |---|---|---|---|
-| force | `-f` | 20 eV/Å | largest force **vector magnitude** over the atoms of a frame |
-| stress | `-s` | 10 GPa | largest **absolute value among the 9 stress components** |
+| force | `-f`, `--f-max` | 20 eV/Å | largest force **vector magnitude** over the atoms of a frame |
+| stress | `--s-max` | 10 GPa | largest **absolute value among the 9 stress components** |
 
 A threshold of `0` switches that criterion off. An explicit zero says "do not
 judge", which no small positive number can express.
@@ -45,13 +45,13 @@ not one plus a redundancy. Whether that holds for *your* data is exactly what
 the report answers.
 
 Stress is recovered as `virial / volume` with the volume from `|det(box)|`; a
-DeePMD system carries no `volume.npy`. `-s` is given in GPa for convenience and
+DeePMD system carries no `volume.npy`. `--s-max` is given in GPa for convenience and
 converted internally to eV/Å³.
 
 A system without `virial.npy` (common for cluster or non-periodic data) cannot be
 judged on stress. Left at its default, the stress criterion is then switched off
-for that system alone, with a `Note`; the same goes for `-f` and a system without
-forces. Giving `-s` or `-f` explicitly means "judge this", so a system lacking the
+for that system alone, with a `FerroNote`; the same goes for `-f` and a system without
+forces. Giving `--s-max` or `-f` explicitly means "judge this", so a system lacking the
 label is then an error.
 
 ## The range counts survivors
