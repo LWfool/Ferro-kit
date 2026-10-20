@@ -248,8 +248,9 @@ pub fn run(topic: &[String]) -> Result<()> {
     match PAGES.iter().find(|p| p.topic == resolved) {
         Some(page) => page_out(&body(page)),
         None => {
-            // 猜错的主题名不该只说「没有」——列表就在手边,直接给出来
-            eprintln!("no manual page for `{asked}`\n");
+            // A mistyped topic gets the list, not just "no": it is right at hand
+            crate::report::error(crate::report::PROGRAM, format!("no manual page for `{asked}`"));
+            eprintln!();
             eprint!("{}", topic_list());
             std::process::exit(1);
         }

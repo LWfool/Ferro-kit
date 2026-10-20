@@ -120,7 +120,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
                 groups.entry(composition_key(&traj)).or_default().push((sys.clone(), traj));
             }
             Err(e) => {
-                eprintln!("SKIP {}: {e:#}", sys.display());
+                crate::report::error(sys.display(), format!("{e:#}; skipped"));
                 failures += 1;
             }
         }
@@ -128,12 +128,12 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
 
     for (_, members) in groups {
         if let Err(e) = merge_group(&members, out_root, args) {
-            eprintln!("SKIP group: {e:#}");
+            crate::report::error(crate::report::PROGRAM, format!("{e:#}; group skipped"));
             failures += 1;
         }
     }
     if failures > 0 {
-        eprintln!("\n{failures} failure(s)");
+        crate::report::error(crate::report::PROGRAM, format!("{failures} failure(s)"));
     }
     Ok(failures)
 }

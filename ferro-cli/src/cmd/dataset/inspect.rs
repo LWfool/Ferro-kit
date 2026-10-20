@@ -56,7 +56,7 @@ pub fn write_all(
     write_lammps_data(&last, &data, false)?;
 
     let info = dir.join(format!("{name}_info.csv"));
-    write_table(&info_table(traj, format, sources), &info, TableFormat::Csv)?;
+    write_table(&info_table(traj, format, sources, &info), &info, TableFormat::Csv)?;
 
     Ok(vec![trj, data, info])
 }
@@ -67,10 +67,10 @@ pub fn write_all(
 /// so, the same run read from another file gives numbers nobody can explain.
 /// Decided by the reader the frames came through, not by a metadata string, which
 /// no reader ever set to "vasprun.xml" (review B4).
-fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String]) -> Table {
+fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String], dest: &Path) -> Table {
     let (mut t, warnings) = frame_table(traj, sources);
     for w in &warnings {
-        eprintln!("WARNING: {w}");
+        crate::report::warn(dest.display(), w);
     }
     if format == AimdFormat::VaspXml && traj.frames.iter().any(|f| f.temperature.is_some()) {
         t.meta_line(
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn the_vasprun_temperature_note_follows_the_reader() {
         let traj = traj_of(&[Some(300.0), Some(310.0)], &[None, None]);
-        let note = |f| info_table(&traj, f, &["a".into(), "a".into()]).meta.join("\n");
+        let note = |f| info_table(&traj, f, &["a".into(), "a".into()], Path::new("info.csv")).meta.join("\n");
         assert!(note(AimdFormat::VaspXml).contains("derived from the ionic kinetic energy"));
         assert!(!note(AimdFormat::VaspOutcar).contains("derived"));
     }

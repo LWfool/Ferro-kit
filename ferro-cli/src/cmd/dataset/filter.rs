@@ -198,7 +198,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
                 }
             }
             Err(e) => {
-                eprintln!("SKIP {}: {e:#}", sys.display());
+                crate::report::error(sys.display(), format!("{e:#}; skipped"));
                 summary.failed_one(label.clone(), format!("{e:#}"));
                 failures += 1;
             }
@@ -242,7 +242,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     }
 
     if failures > 0 {
-        eprintln!("\n{failures} of {} system(s) failed", jobs.len());
+        crate::report::error(crate::report::PROGRAM, format!("{failures} of {} system(s) failed", jobs.len()));
     }
     Ok(failures)
 }
@@ -300,11 +300,11 @@ fn filter_one(
     // 只关掉这一条并说明；显式给了才交给 filter_frames 按「给了阈值却缺标签」报错
     if args.s_max.is_none() && params.s_max > 0.0 && traj.frames.iter().any(|f| f.stress.is_none()) {
         params.s_max = 0.0;
-        println!("  Note: {} has no virial; the default stress criterion is off for it", rel.display());
+        crate::report::note(sys.display(), "no virial; the default stress criterion is off for it");
     }
     if args.f_max.is_none() && params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces().is_none()) {
         params.f_max = 0.0;
-        println!("  Note: {} has no forces; the default force criterion is off for it", rel.display());
+        crate::report::note(sys.display(), "no forces; the default force criterion is off for it");
     }
     let mut derived = None;
     if args.al6.as_deref() == Some("auto") {
@@ -316,10 +316,10 @@ fn filter_one(
             shell.peak_r, shell.peak_g, shell.min_r, shell.depth
         );
         if shell.depth > 0.5 {
-            println!(
-                "  WARNING: that minimum is shallow (g={:.2}); Al-O may have no clear shell here",
-                shell.depth
-            );
+            crate::report::warn(sys.display(), format!(
+                "the Al-O g(r) minimum at {:.2} A is shallow (g={:.2}); Al-O may have no clear shell here",
+                shell.min_r, shell.depth
+            ));
         }
         params.al6_rcut = Some(shell.min_r);
         derived = Some(shell.min_r);

@@ -65,6 +65,18 @@ fn analysis_notes_and_warnings() {
             && err.lines().count() == 1, "{err}");
 }
 
+/// dataset collect's version note leaves the per-system report on stdout for stderr.
+#[test]
+fn dataset_note_is_sourced_to_the_file() {
+    let d = scratch("dataset");
+    let input = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/cp2k_sp_v61.out");
+    let out = ferro(&["dataset", "collect", "-i", input, "-o", d.join("db").to_str().unwrap(), "--mkdir"]);
+    assert!(out.status.success());
+    let err = text(&out.stderr);
+    assert!(err.starts_with(&format!("{input}: FerroNote: CP2K 6.1: ")) && err.lines().count() == 1, "{err}");
+    assert!(!text(&out.stdout).contains("NOTE"), "the note left stdout");
+}
+
 /// A fatal error is one line, not anyhow's `Error:` + `Caused by:` block.
 #[test]
 fn fatal_error_is_one_line() {

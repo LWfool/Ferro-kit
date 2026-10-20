@@ -92,7 +92,7 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
         match collect_group(group, &dest, args.overwrite, inspect, fmt, &mut skipped) {
             Ok(()) => {}
             Err(e) => {
-                eprintln!("SKIP {}: {e:#}", group.dir.display());
+                crate::report::error(group.dir.display(), format!("{e:#}; skipped"));
                 failures += 1;
             }
         }
@@ -101,14 +101,13 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
     if !skipped.is_empty() {
         // 合并语义下坏文件不毒化整个 system，但 system 目录看着是正常的，
         // 帧数少了却无从察觉 —— 所以这份清单要在最后再说一遍
-        eprintln!("\n{} file(s) skipped and NOT in any system:", skipped.len());
         for p in &skipped {
-            eprintln!("  {}", p.display());
+            crate::report::error(p.display(), "skipped above; NOT in any system");
         }
         failures += skipped.len();
     }
     if failures > 0 {
-        eprintln!("\n{failures} failure(s)");
+        crate::report::error(crate::report::PROGRAM, format!("{failures} failure(s)"));
     }
     Ok(failures)
 }
@@ -132,10 +131,10 @@ fn drop_pjm_logs(inputs: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     if kept.is_empty() {
         bail!("all {total} input(s) are PJM job logs (x<N>-<job>.<id>.out); nothing to collect");
     }
-    eprintln!(
-        "NOTE: excluded {} PJM job log(s) matching x<N>-<job>.<id>.out",
+    crate::report::note(crate::report::PROGRAM, format!(
+        "excluded {} PJM job log(s) matching x<N>-<job>.<id>.out",
         logs.len()
-    );
+    ));
     Ok(kept)
 }
 
@@ -326,13 +325,12 @@ fn collect_group(
         let fmt = match (format, &banner) {
             // 用户说了算，但手滑写错与有意覆盖长得一样，所以说一声
             (Some(asked), Ok(seen)) if *seen != asked => {
-                eprintln!(
-                    "NOTE: {} looks like {} but --format says {}; reading as {}",
-                    path.display(),
+                crate::report::note(path.display(), format!(
+                    "looks like {} but --format says {}; reading as {}",
                     seen.name(),
                     asked.name(),
                     asked.name()
-                );
+                ));
                 asked
             }
             (Some(asked), _) => asked,
@@ -340,7 +338,7 @@ fn collect_group(
                 Ok(f) => f,
                 Err(e) => {
                     // The banner check is ferro-io's, and knows nothing of this flag
-                    eprintln!("SKIP {}: {e:#} (--format reads it as a given program)", path.display());
+                    crate::report::error(path.display(), format!("{e:#} (--format reads it as a given program); skipped"));
                     skipped.push(path.clone());
                     continue;
                 }
@@ -349,7 +347,7 @@ fn collect_group(
         match read_aimd_as(path, fmt) {
             Ok((traj, stats)) => parts.push((path.clone(), traj.canonically_sorted(), stats)),
             Err(e) => {
-                eprintln!("SKIP {}: {e:#}", path.display());
+                crate::report::error(path.display(), format!("{e:#}; skipped"));
                 skipped.push(path.clone());
             }
         }
@@ -439,15 +437,16 @@ fn report_group(dest: &Path, parts: &[(PathBuf, Trajectory, AimdStats)], n_frame
             println!("    {} restart(s) concatenated within this file", st.n_restarts);
         }
         if st.n_layout_drift > 0 {
-            println!(
-                "    WARNING: {} frame(s) print their blocks at a different offset than the first;\n             extra output may be interleaved — check a few frames by hand",
+            crate::report::warn(path.display(), format!(
+                "{} frame(s) print their blocks at a different offset than the first; \
+                 extra output may be interleaved — check a few frames by hand",
                 st.n_layout_drift
-            );
+            ));
         }
         // 版本提示由 reader 判定、这里打印:库自己 print 就没人关得掉,
         // 而 collect 一次要读几十个文件
         if let Some(note) = &st.version_note {
-            println!("    NOTE: {note}");
+            crate::report::note(path.display(), note);
         }
     }
 }
