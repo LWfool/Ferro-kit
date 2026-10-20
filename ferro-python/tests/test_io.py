@@ -116,3 +116,23 @@ def test_errors_are_ferro_errors(tmp_path):
         ferro.read(str(tmp_path / "missing.xyz"))
     with pytest.raises(ferro.FerroError):
         ferro.read(str(NVT)).frame_indices(stride=0)
+
+
+def test_partial_charge_column_needs_drop_partial(tmp_path):
+    (tmp_path / "q.data").write_text(
+        "x\n\n2 atoms\n2 atom types\n\n0 5 xlo xhi\n0 5 ylo yhi\n0 5 zlo zhi\n\n"
+        "Masses\n\n1 65.38 # Zn\n2 15.999 # O\n\nAtoms # charge\n\n1 1 2.0 0 0 0\n2 2 -2.0 2.5 2.5 2.5\n")
+    (tmp_path / "POSCAR").write_text("ZnO\n1.0\n5 0 0\n0 5 0\n0 0 5\nZn O\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5\n")
+    merged = ferro.merge(ferro.read(str(tmp_path / "q.data"), atom_style="charge"),
+                         ferro.read(str(tmp_path / "POSCAR")), "z", 2.0)
+    for name in ("m.extxyz", "m.data"):
+        with pytest.raises(ferro.FerroError, match="2 of 4 atoms have a charge"):
+            ferro.write(merged, str(tmp_path / name))
+        assert not (tmp_path / name).exists(), "refused before the file is created"
+    ferro.write(merged, str(tmp_path / "m.extxyz"), drop_partial=True)
+    header = (tmp_path / "m.extxyz").read_text().splitlines()[1]
+    assert "Properties=" in header and "charge" not in header, "drop_partial leaves the column out"
+    ferro.write(merged, str(tmp_path / "m.data"), drop_partial=True)
+    atoms = (tmp_path / "m.data").read_text().split("Atoms # full\n\n")[1].splitlines()[:4]
+    assert [line.split()[3] for line in atoms] == ["0.000000"] * 4, \
+        "LAMMPS data must have a charge column: every charge written as 0"
