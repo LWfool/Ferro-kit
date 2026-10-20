@@ -306,8 +306,10 @@ Three points of semantics to remember:
 
 | Target format | Output |
 |---|---|
-| holds a trajectory (`.xyz` `.extxyz` `.pdb` `.cif` `.dump`) | **one** multi-frame file |
-| holds a single structure (`POSCAR` `.vasp`/`.poscar`/`.pos` `.lmp`/`.data` `.in`/`.qe`) | **one file per frame** |
+| holds a trajectory (`.xyz` `.extxyz` `.pdb` `.dump`/`.lammpstrj`) | **one** multi-frame file |
+| holds a single structure (`.cif` `POSCAR` `.vasp`/`.poscar`/`.pos` `.lmp`/`.data`/`.lammps`) | **one file per frame** |
+
+The inputs (QE `.in`/`.qe`, CP2K `.inp`/`.restart`), the program outputs and DeePMD systems are read-only.
 
 Writing 20 frames as POSCAR can only ever be 20 files, so there is no switch for the user to remember.
 
