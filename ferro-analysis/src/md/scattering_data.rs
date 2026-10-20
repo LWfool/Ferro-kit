@@ -1,15 +1,16 @@
-//! 散射因子数据表
+//! Scattering factor tables
 //!
-//! **Waasmaier-Kirfel X 射线原子形状因子**（5 项，来自 code2/coefficient.c；
-//! 原始来源：xcoeff/xcoeff.f，<https://www.szfki.hu/~nphys/rmc++/downloads.html>）
+//! **Waasmaier-Kirfel X-ray atomic form factors** (5 terms, from code2/coefficient.c;
+//! original source: xcoeff/xcoeff.f, <https://www.szfki.hu/~nphys/rmc++/downloads.html>)
 //!
 //!   f(q) = Σᵢ₌₀⁴ aᵢ·exp(−bᵢ·s²) + c,  s = q/(4π) [Å⁻¹]
 //!
-//! 数组格式：(a0,b0,a1,b1,a2,b2,a3,b3,a4,b4,c)，下标 = 原子序数 Z（0 为占位）。
+//! Row layout: (a0,b0,a1,b1,a2,b2,a3,b3,a4,b4,c), indexed by atomic number Z (0 is a placeholder).
 //!
-//! **中子相干散射长度 bcoh**（NIST，来自 code2/coefficient.c 及 fityk/atomtables.c，fm）
-//!   对复数散射长度（Cd、Sm、Eu、Gd、Dy 等）取实部；
-//!   未测量或数据缺失的元素设为 0.0。
+//! **Neutron coherent scattering lengths bcoh** (NIST, from code2/coefficient.c and
+//! fityk/atomtables.c, fm)
+//!   For complex scattering lengths (Cd, Sm, Eu, Gd, Dy, ...) the real part is taken;
+//!   elements with no measured value are set to 0.0.
 
 /// Waasmaier-Kirfel 5-Gaussian XRD form factor (a0,b0, a1,b1, a2,b2, a3,b3, a4,b4, c)
 type WkCoeff = (f64,f64, f64,f64, f64,f64, f64,f64, f64,f64, f64);
