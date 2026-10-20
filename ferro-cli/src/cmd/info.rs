@@ -6,7 +6,7 @@ use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::Frame;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Args, Debug)]
 pub struct InfoCmd {
@@ -37,11 +37,11 @@ pub fn run(args: &InfoCmd) -> Result<()> {
     println!("Frames: {n}");
 
     if let Some(frame) = traj.frames.first() {
-        print_frame_info(frame, 0);
+        print_frame_info(frame, 0, input);
     }
     if n > 1 {
         if let Some(frame) = traj.frames.last() {
-            print_frame_info(frame, n - 1);
+            print_frame_info(frame, n - 1, input);
         }
     }
 
@@ -69,7 +69,7 @@ fn frame_mass_amu(frame: &Frame) -> (f64, BTreeMap<&str, usize>) {
     (total, fallbacks)
 }
 
-fn print_frame_info(frame: &Frame, idx: usize) {
+fn print_frame_info(frame: &Frame, idx: usize, source: &Path) {
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for a in frame.atoms() {
         *counts.entry(a.element).or_insert(0) += 1;
@@ -95,11 +95,11 @@ fn print_frame_info(frame: &Frame, idx: usize) {
                 let n_atoms: usize = fallbacks.values().sum();
                 let listed: Vec<String> =
                     fallbacks.iter().map(|(e, n)| format!("{e}×{n}")).collect();
-                println!(
-                    "           WARNING: {n_atoms} atom(s) not in the element table \
+                crate::report::warn(source.display(), format!(
+                    "{n_atoms} atom(s) not in the element table \
                      ({}) counted as 1 amu — the density is too low",
                     listed.join(", ")
-                );
+                ));
             }
         }
     } else {

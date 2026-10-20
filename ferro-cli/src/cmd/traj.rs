@@ -376,14 +376,14 @@ fn run_sq(c: &SqCmd) -> Result<usize> {
         );
         summary.note("composition", gr.composition());
         if c.q_min < q_trunc {
-            eprintln!(
-                "        warning: {}: S(q) below q_trunc = 2π/r_max = {:.3} Å⁻¹ (r_max = {:.3} Å) \
+            crate::report::warn(input.path.display(), format!(
+                "S(q) below q_trunc = 2π/r_max = {:.3} Å⁻¹ (r_max = {:.3} Å) \
                  is dominated by the truncation of g(r); --q-min is {}",
-                input.label, q_trunc, gr.r_max_used, c.q_min
-            );
+                q_trunc, gr.r_max_used, c.q_min
+            ));
         }
         for w in &sq.warnings {
-            eprintln!("        warning: {}: {w}", input.label);
+            crate::report::warn(input.path.display(), w);
         }
     }
     summary.failed(&failures);
@@ -698,11 +698,10 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
             &[r.tau_frames as f64, r.time, r.n_origins as f64, r.outside_fraction],
         );
         if r.outside_fraction > 0.01 {
-            eprintln!(
-                "        warning: {}: {:.1}% of displacements exceed r_max = {} Å and are not in p_r; \
-                 raise --r-max",
-                input.label, r.outside_fraction * 100.0, c.r_max
-            );
+            crate::report::warn(input.path.display(), format!(
+                "{:.1}% of displacements exceed r_max = {} Å and are not in p_r; raise --r-max",
+                r.outside_fraction * 100.0, c.r_max
+            ));
         }
     }
     summary.failed(&failures);

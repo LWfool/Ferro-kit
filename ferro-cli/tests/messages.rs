@@ -45,6 +45,26 @@ fn batch_notes_and_failures() {
     assert!(!text(&out.stdout).contains("Note"), "notes left stdout");
 }
 
+/// The analysis commands' notes and warnings: one line each, sourced to the input or to `ferro`.
+#[test]
+fn analysis_notes_and_warnings() {
+    let d = scratch("analysis");
+    let o = d.to_str().unwrap();
+    let out = ferro(&["net", "-i", NPT, "--Zn-O=auto", "--Al-O=2.3", "-o", o, "--mkdir"]);
+    assert!(out.status.success());
+    let err = text(&out.stderr);
+    assert!(err.lines().any(|l| l.starts_with("ferro: FerroNote: no former is a Qn element (Al,Zn given")), "{err}");
+    assert!(err.lines().any(|l| l.starts_with(&format!("{NPT}: FerroWarning: "))
+        && l.contains("share 2+ ligands")), "{err}");
+    assert!(!text(&out.stdout).contains("note:"), "notes left stdout");
+
+    let out = ferro(&["traj", "vanhove", "-i", NPT, "--dt", "1", "--r-max", "0.3", "-o", o, "--mkdir"]);
+    assert!(out.status.success());
+    let err = text(&out.stderr);
+    assert!(err.starts_with(&format!("{NPT}: FerroWarning: ")) && err.contains("raise --r-max")
+            && err.lines().count() == 1, "{err}");
+}
+
 /// A fatal error is one line, not anyhow's `Error:` + `Caused by:` block.
 #[test]
 fn fatal_error_is_one_line() {

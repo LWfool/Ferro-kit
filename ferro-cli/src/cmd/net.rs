@@ -19,6 +19,7 @@ use clap::{Args, ValueEnum};
 use ferro_analysis::{first_shell_cutoffs, ShellCutoff};
 use ferro_analysis::{calc_network, calc_network_typed, AtomType, NetworkResult, TypeParams};
 use ferro_core::Trajectory;
+use std::path::Path;
 use ferro_io::{dump_name, write_extxyz, write_lammps_dump, LammpsUnits};
 use ferro_structure::apply_type_labels;
 use std::collections::BTreeMap;
@@ -90,7 +91,7 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     // net 没有类型选择,故无 label 段
     let out = cmd.common.out(None);
     let (results, failures, out) = batch::drive(&cmd.common, None, |inp, traj| {
-        let (params, shells) = resolve_auto(&params, &auto, traj)?;
+        let (params, shells) = resolve_auto(&params, &auto, traj, &inp.path)?;
         let result = match cmd.export_traj {
             // One classification feeds both the statistics and the labelled trajectory
             Some(fmt) => {
@@ -183,12 +184,11 @@ fn print_label_scheme(params: &TypeParams) {
 /// and the answer was zero".
 fn note_missing_qn_tables(params: &TypeParams) {
     if !params.qn_formers().is_empty() { return; }
-    println!(
-        "        note: no former is a Qn element ({} given, default list is B,P,Si), \n\
-         \x20             so network_qn.csv and network_qn_partner.csv are not written.\n\
-         \x20             Use --qn <ELEM> to report one of them as a Qn speciation.",
+    crate::report::note(crate::report::PROGRAM, format!(
+        "no former is a Qn element ({} given, default list is B,P,Si), so network_qn.csv and \
+         network_qn_partner.csv are not written; use --qn <ELEM> to report one of them as a Qn speciation",
         params.formers().join(",")
-    );
+    ));
 }
 
 /// `Zn=3.98 P=4.00` — per-input, so it belongs in the `[inputs]` block rather than
@@ -202,11 +202,10 @@ fn note_missing_qn_tables(params: &TypeParams) {
 fn warn_edge_sharing(results: &[(batch::Input, Resolved)]) {
     for (input, (r, _)) in results {
         if r.n_edge_sharing == 0 { continue; }
-        eprintln!(
-            "warning: {}: {} former pair(s) share 2+ ligands (edge-sharing).\n\
-             \x20        Qn assumes corner sharing, so one neighbour here yields two bridges.\n\
-             \x20        Edge sharing is very rare in phosphates — check the cutoffs first.",
-            input.label.clone(), r.n_edge_sharing);
+        crate::report::warn(input.path.display(), format!(
+            "{} former pair(s) share 2+ ligands (edge-sharing); Qn assumes corner sharing, so one \
+             neighbour here yields two bridges. Edge sharing is very rare in phosphates — check the \
+             cutoffs first", r.n_edge_sharing));
     }
 }
 
@@ -266,10 +265,9 @@ fn export_labelled(
         ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
     }
     if skipped > 0 {
-        println!(
-            "        note: {skipped} label(s) not of the form <element>_<suffix>; \
-             wrote the element instead"
-        );
+        crate::report::note(path.display(), format!(
+            "{skipped} label(s) not of the form <element>_<suffix>; wrote the element instead"
+        ));
     }
     println!("        traj -> {}", path.display());
     Ok(())
@@ -366,6 +364,7 @@ fn resolve_auto(
     template: &TypeParams,
     auto: &[(String, String)],
     traj: &Trajectory,
+    source: &Path,
 ) -> Result<(TypeParams, Vec<Option<ShellCutoff>>)> {
     if auto.is_empty() {
         return Ok((template.clone(), Vec::new()));
@@ -399,12 +398,12 @@ fn resolve_auto(
         );
         // 阈值与 dataset filter --al6 的同一条告警相同（cmd/dataset.rs filter_one）
         if s.depth > 0.5 {
-            eprintln!(
-                "warning: {a}-{b}: the g(r) minimum at {:.2} A is shallow (g = {:.2}); \
+            crate::report::warn(source.display(), format!(
+                "{a}-{b}: the g(r) minimum at {:.2} A is shallow (g = {:.2}); \
                  there is no clean gap behind the first shell, so the coordination \
                  numbers depend on where inside the trough the cutoff falls",
                 s.min_r, s.depth
-            );
+            ));
         }
         *slot = s.min_r;
         shells.push(Some(s));
@@ -574,7 +573,7 @@ mod tests {
     #[test]
     fn test_resolve_auto_fills_the_cutoff_from_the_gap_behind_the_first_shell() {
         let (p, auto) = build_params(&args(&["--P-O=auto"]), None, None).unwrap();
-        let (p, shells) = resolve_auto(&p, &auto, &phosphate_box()).unwrap();
+        let (p, shells) = resolve_auto(&p, &auto, &phosphate_box(), Path::new("box")).unwrap();
         let rc = p.cutoffs[&("P".to_string(), "O".to_string())];
         assert!(rc > 1.6 && rc < 4.6, "截断应落在 1.5 Å 壳层之后的空隙里，得到 {rc}");
         let s = shells[0].expect("P-O 有第一壳层");
@@ -586,7 +585,7 @@ mod tests {
     fn test_resolve_auto_skips_a_pair_absent_from_the_input() {
         // 不含 Al 的样品照常分析：与给了定值截断时的行为一致，而不是整个文件失败
         let (p, auto) = build_params(&args(&["--P-O=auto", "--Al-O=auto"]), None, None).unwrap();
-        let (p, shells) = resolve_auto(&p, &auto, &phosphate_box()).unwrap();
+        let (p, shells) = resolve_auto(&p, &auto, &phosphate_box(), Path::new("box")).unwrap();
         assert!(shells[0].is_none(), "Al-O 不存在，应记为 None");
         assert_eq!(p.cutoffs[&("Al".to_string(), "O".to_string())], 0.0);
         assert!(p.cutoffs.values().all(|c| c.is_finite()), "NaN 不能留到 calc_network");
