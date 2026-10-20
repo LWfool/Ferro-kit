@@ -1,7 +1,7 @@
 use std::path::Path;
 use crate::readers::lammps_dump::LammpsUnits;
 use ferro_core::{AtomRef, Trajectory};
-use ferro_core::units::EV_TO_KCAL_MOL;
+use ferro_core::units::{convert_time, TimeUnit, EV_TO_KCAL_MOL};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -146,10 +146,11 @@ pub fn write_lammps_dump(
                     .copied()
                     .unwrap_or_default();
                 let v = to_lammps(v)?;
-                // real: Å/fs (no-op), metal: Å/fs → Å/ps (×1000)
-                // units 为 None 时开头已拒绝了带速度/力的轨迹
+                // real: Å/fs (no-op), metal: Å/fs → Å/ps by the factor that turns 1 ps into fs (×1000),
+                // the reader's inverse. With units None a trajectory with velocities or forces was
+                // refused at the start
                 let vscale = match units {
-                    Some(LammpsUnits::Metal) => 1000.0,
+                    Some(LammpsUnits::Metal) => convert_time(1.0, TimeUnit::Picosecond, TimeUnit::Femtosecond),
                     _ => 1.0,
                 };
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale));

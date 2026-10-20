@@ -2,7 +2,7 @@ use std::path::Path;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ferro_core::data::elements::by_symbol;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
-use ferro_core::units::KCAL_MOL_TO_EV;
+use ferro_core::units::{convert_time, TimeUnit, KCAL_MOL_TO_EV};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
@@ -382,10 +382,11 @@ fn parse_frame(
         // LAMMPS 的 mass 在 real 与 metal 下都是 g/mol，即 amu
         atom.mass = get_col("mass").map(num).transpose()?;
 
-        // Velocity: real Å/fs (internal), metal Å/ps → ×1e-3
-        // units 为 None 时上面已拒绝了含速度/力列的文件，这里 None 分支不会被用到
+        // Velocity: real Å/fs (internal), metal Å/ps. A velocity in Å/ps is per ps, so it becomes
+        // Å/fs by the factor that turns 1 fs into ps (×1e-3). With units None a file with velocity or
+        // force columns was refused above, so the None arm is never used here
         let vscale = match units {
-            Some(LammpsUnits::Metal) => 1e-3,
+            Some(LammpsUnits::Metal) => convert_time(1.0, TimeUnit::Femtosecond, TimeUnit::Picosecond),
             _ => 1.0,
         };
         let vel = triple("vx", "vy", "vz").map(vec3).transpose()?.map(|v| v * vscale);
