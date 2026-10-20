@@ -43,7 +43,7 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
                 }
             }
             "CRYST1" => {
-                cell = parse_cryst1(&line);
+                cell = Some(parse_cryst1(&line).with_context(|| format!("line {}: {line:?}", ln + 1))?);
                 // PDB format: a structure not determined crystallographically carries the placeholder
                 // CRYST1 1 1 1 90 90 90 (MDAnalysis reads it as no cell too)
                 if cell.as_ref().is_some_and(is_placeholder_cell) {
@@ -133,15 +133,17 @@ fn col(line: &str, a: usize, b: usize) -> &str {
 }
 
 /// CRYST1 format: CRYST1  a  b  c  α  β  γ  sgroup  z
-fn parse_cryst1(line: &str) -> Option<Cell> {
-    if line.len() < 54 { return None; }
-    let a:  f64 = col(line, 6, 15).trim().parse().ok()?;
-    let b:  f64 = col(line, 15, 24).trim().parse().ok()?;
-    let c:  f64 = col(line, 24, 33).trim().parse().ok()?;
-    let al: f64 = col(line, 33, 40).trim().parse().ok()?;
-    let be: f64 = col(line, 40, 47).trim().parse().ok()?;
-    let ga: f64 = col(line, 47, 54).trim().parse().ok()?;
-    Cell::from_lengths_angles(a, b, c, al, be, ga).ok()
+///
+/// A record that does not give a cell is an error (as in ASE): it used to read as no cell, so
+/// the file went on as non-periodic without a word (scan B-6).
+fn parse_cryst1(line: &str) -> Result<Cell> {
+    let field = |name: &str, a: usize, b: usize| -> Result<f64> {
+        let s = col(line, a, b).trim();
+        s.parse().with_context(|| format!("CRYST1 {name} in columns {}-{b} is {s:?}, not a number", a + 1))
+    };
+    let (a, b, c) = (field("a", 6, 15)?, field("b", 15, 24)?, field("c", 24, 33)?);
+    let (al, be, ga) = (field("alpha", 33, 40)?, field("beta", 40, 47)?, field("gamma", 47, 54)?);
+    Ok(Cell::from_lengths_angles(a, b, c, al, be, ga)?)
 }
 
 /// One ATOM / HETATM line → an atom. Bad coordinates or a line shorter than 54 columns are
@@ -363,5 +365,17 @@ END
             &cryst("   10.000   10.000   10.000"))).unwrap();
         assert!(traj.frames[0].cell.is_some());
         assert!(w.is_empty());
+    }
+
+    /// A CRYST1 that gives no cell used to read as non-periodic, silently (scan B-6).
+    #[test]
+    fn test_bad_cryst1_is_an_error_naming_the_line() {
+        let text = format!("HEADER    x\nCRYST1   1o.000   10.000   10.000  90.00  90.00  90.00 P 1           1\n{C1}END\n");
+        let err = format!("{:#}", read_pdb(&write_tmp("test_cryst_bad.pdb", &text)).unwrap_err());
+        assert!(err.contains("line 2") && err.contains("CRYST1 a in columns 7-15"), "{err}");
+        // Cut before gamma
+        let text = format!("CRYST1   10.000   10.000   10.000  90.00  90.00\n{C1}END\n");
+        let err = format!("{:#}", read_pdb(&write_tmp("test_cryst_short.pdb", &text)).unwrap_err());
+        assert!(err.contains("gamma"), "{err}");
     }
 }
