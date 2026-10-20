@@ -72,7 +72,8 @@ pub struct CommonArgs {
     #[arg(short, long, value_name = "DIR")]
     pub output: Option<PathBuf>,
 
-    /// Batch tag appended to every product name: <command>[_<table>][_<label>]_<suffix>.csv
+    /// Batch tag, the last segment of every product name:
+    /// <command>[_<table>][_<selection>][_<input>]_<suffix>.<ext>
     #[arg(short, long, value_name = "SUFFIX")]
     pub suffix: Option<String>,
 

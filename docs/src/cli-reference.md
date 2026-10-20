@@ -43,7 +43,7 @@ Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`conv
 |---|---|
 | `-i <FILE>...` | input files; takes **several values** and expands glob patterns itself (quote them so the shell leaves them alone) |
 | `-o <DIR>` | the output goes into this directory, the current directory by default.  When it does not exist ferro **asks first** (`[y/N]`, on stderr); `--mkdir` skips the question |
-| `-s <SUFFIX>` | batch marker, appended to the output name: `<command>[_<table>][_<label>]_<suffix>.csv` |
+| `-s <SUFFIX>` | batch marker, the last segment of every product name: `<command>[_<table>][_<selection>][_<input>]_<suffix>.<ext>` |
 | `--mkdir` | create the `-o` directory without asking.  **Required in non-interactive environments (scripts, CI)**, which otherwise error out |
 | `--last-n N` | use only the last N frames (skipping the equilibration stage) |
 | `--ncore N` | number of parallel threads (all cores by default) |
@@ -79,13 +79,15 @@ input order, and ferro prints a `FerroNote` naming each renamed file.  Stems are
 ### Output naming
 
 ```
-<-o directory>/<command>[_<table>][_<label>]_<suffix>.csv
+<-o directory>/<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>
 ```
 
-`label` says **what was computed** and is filled in by the type selection; `-s` is the batch marker.  The
-label comes before the suffix, so `ls gr_P-O_*` lists the results for one pair across all batches.
+`selection` says **what was computed** and is filled in by the type selection; `input` names the input
+file and appears only in per-input products (`ferro map`, `net --export-traj`, `bader`); `-s` is the batch
+marker.  The selection comes before the suffix, so `ls gr_P-O_*` lists the results for one pair across all
+batches.
 
-| Command | Where the label comes from | Example |
+| Command | Where the selection comes from | Example |
 |---|---|---|
 | `traj gr` | `-a/-b` or `-x/-y` | `gr_P-O.csv`, `gr_P_3-O_b.csv`, `gr_all.csv` with no selection |
 | `traj angle` | `-a/-b/-c` or `-x/-y/-z` | `angle_O-P-O.csv`, `angle_all.csv` with no selection |
@@ -582,9 +584,9 @@ ferro writes csv only; figures are made in Python. See [Plotting](plotting.md).
 ## `ferro map`
 
 3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table.
-Every name carries its input's label, a single input included (`density_<label>.cube`), so that none
+Every name carries its input's name, a single input included (`density_<input>.cube`), so that none
 overwrites another and the name does not depend on how many files a glob matched.  `-s TAG` comes last:
-`density_<label>_TAG.cube`.  All products follow one rule,
+`density_<input>_TAG.cube`.  All products follow one rule,
 `<mode>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.
 
 ```bash

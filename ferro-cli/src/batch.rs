@@ -375,7 +375,7 @@ pub fn product_name(segments: &[&str], suffix: Option<&str>, ext: &str) -> Strin
     format!("{}.{ext}", parts.join("_"))
 }
 
-/// A stacked table's path: `<-o dir>/<mode>[_<table>][_<label>][_<suffix>].csv`.
+/// A stacked table's path: `<-o dir>/<mode>[_<table>][_<selection>][_<suffix>].csv`.
 ///
 /// The table name is dropped when it merely repeats the mode (the single-table case).
 pub fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
