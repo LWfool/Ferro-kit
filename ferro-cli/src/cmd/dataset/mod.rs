@@ -177,11 +177,6 @@ fn split_suffix_of(name: &str) -> Option<&'static str> {
     SPLIT_SUFFIXES.iter().copied().find(|s| name.ends_with(s))
 }
 
-/// Strips a trailing `.train` so the parts of a split can be named afresh.
-///
-/// Only `.train` is stripped, and only the split path reaches this: `.valid` / `.test`
-/// inputs are refused before any file is read, because slicing a training set out of a
-/// held-out set is a mistake, not a workflow.
 /// Strips a trailing `.db` so a collected system can be renamed by filter / merge.
 ///
 /// Applied before the split logic: `.db` is not one of the split suffixes, so
@@ -197,6 +192,11 @@ fn without_collect_suffix(base: &Path) -> PathBuf {
     }
 }
 
+/// Strips a trailing `.train` so the parts of a split can be named afresh.
+///
+/// Only `.train` is stripped, and only the split path reaches this: `.valid` / `.test`
+/// inputs are refused before any file is read, because slicing a training set out of a
+/// held-out set is a mistake, not a workflow.
 fn without_train_suffix(base: &Path) -> PathBuf {
     let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
         return base.to_path_buf();
