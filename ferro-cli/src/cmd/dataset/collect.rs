@@ -220,8 +220,9 @@ struct Group {
 /// With a single group the shared ancestor is the whole path, so `rel` is empty
 /// and `collect_dest` names the system after its directory.
 fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
-    // 分组键取规范化路径，`a/x.out` 与 `./a/y.out` 才落进同一组；
-    // 显示与命名仍用规范化后的路径，两者一致
+    // The grouping key is the canonical path, so `a/x.out` and `./a/y.out` land in one
+    // group; the names (`rel`) come from it too. The path shown is the one as written
+    // (see `as_written` below), not the canonical one.
     // A bare `a.out` has parent `Some("")`, which canonicalize rejects: read it as `.`.
     let dir_of = |p: &Path| -> PathBuf {
         match p.parent() {

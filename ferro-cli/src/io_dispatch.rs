@@ -43,8 +43,8 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
 
 /// Reads a trajectory and keeps only its last `n` frames when `last_n` is given.
 ///
-/// The `--last-n` skip-equilibration step every analysis binary performs, in one place
-/// so the batch loop stays a one-liner in each of them.
+/// The `--last-n` skip-equilibration step every analysis subcommand performs, in one
+/// place so the batch loop stays a one-liner in each of them.
 pub fn read_trajectory_tail(
     path: &Path,
     opts: &ReadArgs,

@@ -248,7 +248,8 @@ fn write_split(
     Ok(())
 }
 
-/// True when `ferro dataset collect` was typed with no input.
+/// True when a `ferro dataset` subcommand (collect, filter or merge) was typed with no
+/// input, so its help page is shown instead of running.
 pub fn wants_help(cmd: &DatasetCmd) -> bool {
     match cmd {
         DatasetCmd::Collect(c) => c.input.is_empty(),
