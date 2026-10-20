@@ -43,7 +43,7 @@ def test_overview_and_unknown_command(capsys):
     assert cli.main([]) == 0
     assert "config init" in capsys.readouterr().out
     assert cli.main(["plott"]) == 1
-    assert "unknown command 'plott'" in capsys.readouterr().err
+    assert "ferro-py: FerroError: unknown command 'plott'" in capsys.readouterr().err
 
 
 # ── ferro-py doc ─────────────────────────────────────────────────────────────
@@ -134,8 +134,10 @@ def test_job_trajectory_shares_potcar(tmp_path, job, capsys):
     assert link.is_symlink() and str(link.readlink()) == "../POTCAR", "子目录里是相对路径的链接"
     assert (out / "POTCAR").read_text() == link.read_text()
     assert (out / dirs[0] / "in.txt").read_text() != (out / dirs[1] / "in.txt").read_text()
-    printed = capsys.readouterr().out
-    assert "POTCAR->../POTCAR" in printed and "task sp" in printed
+    printed = capsys.readouterr()
+    assert "POTCAR->../POTCAR" in printed.out
+    # A generator's notes are messages, in the CLI's layout on stderr
+    assert f"{out / dirs[0]}: FerroNote: task sp" in printed.err.splitlines()
 
 
 def test_job_single_structure(tmp_path, job):

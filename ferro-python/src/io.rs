@@ -10,17 +10,30 @@ use pyo3::prelude::*;
 use crate::pyerr;
 use crate::types::PyTrajectory;
 
-/// Raises each reader warning as a Python `UserWarning`, the channel a Python caller
-/// filters and captures; the Rust readers never print.
-fn emit_warnings(py: Python<'_>, warnings: &[ferro_io::Notice]) -> PyResult<()> {
-    let category = py.get_type::<pyo3::exceptions::PyUserWarning>();
-    for w in warnings {
-        let text = match w.line {
-            Some(n) => format!("line {n}: {}", w.message),
-            None => w.message.clone(),
+/// Raises each reader notice as a `ferro.FerroWarning` / `ferro.FerroNote`, the channel a
+/// Python caller filters and captures; the Rust readers never print.
+///
+/// The text starts with `source[:line]: `, so the same notice from two files is two warnings:
+/// Python shows a warning once per (text, category, caller line), and without the path a
+/// loop over several files showed only the first (scan E-12). `source`, `line` and `detail`
+/// ride on the instance for ferro-py's `_show_warning`, which renders the CLI's layout.
+fn emit_warnings(py: Python<'_>, source: &str, notices: &[ferro_io::Notice]) -> PyResult<()> {
+    let warn = py.import("warnings")?.getattr("warn")?;
+    for n in notices {
+        let category = match n.level {
+            ferro_io::Level::Note => py.get_type::<crate::FerroNote>(),
+            ferro_io::Level::Warning => py.get_type::<crate::FerroWarning>(),
         };
-        let msg = std::ffi::CString::new(text).map_err(pyerr)?;
-        PyErr::warn(py, &category, &msg, 1)?;
+        let place = match n.line {
+            Some(l) => format!("{source}:{l}"),
+            None => source.to_string(),
+        };
+        let w = category.call1((format!("{place}: {}", n.message),))?;
+        w.setattr("source", source)?;
+        w.setattr("line", n.line)?;
+        w.setattr("detail", &n.message)?;
+        // stacklevel 1 is the Python line that called into ferro: there is no Python frame here
+        warn.call1((w, py.None(), 1))?;
     }
     Ok(())
 }
@@ -62,7 +75,8 @@ fn check_selection(
 /// data/lmp/lammps (LAMMPS data). A file whose name says nothing (OUTCAR, vasprun.xml,
 /// a CP2K / pw.x `.out`) is read by its program banner, dropping unconverged frames;
 /// a directory holding `type.raw` is a DeePMD system. What the reader noticed (a
-/// dropped frame, a site-label split) arrives as `UserWarning`s.
+/// dropped frame, a site-label split) arrives as `ferro.FerroWarning` / `ferro.FerroNote`
+/// (both `UserWarning`s), the path at the front of the text.
 ///
 /// A LAMMPS dump with velocity / force columns needs `units` ("real" / "metal"): the
 /// dump does not record them, and they are never guessed. LAMMPS data needs
@@ -96,7 +110,7 @@ fn read(
     };
     // Reading is the long part; other Python threads run meanwhile
     let (traj, report) = py.detach(|| ferro_io::read(p, &options)).map_err(pyerr)?;
-    emit_warnings(py, &report.warnings)?;
+    emit_warnings(py, path, &report.warnings)?;
     Ok(PyTrajectory::new(traj))
 }
 

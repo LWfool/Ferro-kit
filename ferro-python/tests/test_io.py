@@ -1,5 +1,6 @@
 """read / write 的扩展名分派与 CLI 的 io_dispatch 一致。"""
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,37 @@ def test_reader_warnings_are_python_warnings(tmp_path):
     with pytest.warns(UserWarning, match="last frame"):
         t = ferro.read(str(path))
     assert len(t) == len(starts) - 1
+
+
+def test_reader_notices_name_their_file(tmp_path):
+    # The same notice from two files is two warnings: the path leads the text, so Python's
+    # once-per-(text, line) rule no longer folds a loop over inputs into one (scan E-12)
+    paths = []
+    for name in ("a.xyz", "b.xyz"):
+        p = tmp_path / name
+        p.write_text("2\nc\nO 0 0 0\nH 1 0 0\n2\nc\nO 0 0 0\n")
+        paths.append(str(p))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("default")
+        for p in paths:
+            ferro.read(p)
+    got = [w.message for w in caught]
+    assert [w.category for w in caught] == [ferro.FerroWarning, ferro.FerroWarning]
+    assert [(m.source, m.line) for m in got] == [(paths[0], 5), (paths[1], 5)]
+    assert str(got[0]) == f"{paths[0]}:5: {got[0].detail}" and "1 of 2 atoms" in got[0].detail
+    assert issubclass(ferro.FerroNote, UserWarning) and issubclass(ferro.FerroWarning, UserWarning)
+
+
+def test_cli_shows_notices_in_the_cli_layout(tmp_path, capsys):
+    from ferro import cli
+    w = ferro.FerroWarning("x.pdb:57: last MODEL (frame 2) has no ENDMDL; kept")
+    w.source, w.line, w.detail = "x.pdb", 57, "last MODEL (frame 2) has no ENDMDL; kept"
+    cli._show_warning(w, ferro.FerroWarning, "caller.py", 1)
+    n = ferro.FerroNote("sets/a.db: no virial")
+    n.source, n.line, n.detail = "sets/a.db", None, "no virial"
+    cli._show_warning(n, ferro.FerroNote, "caller.py", 1)
+    assert capsys.readouterr().err == ("x.pdb:57: FerroWarning: last MODEL (frame 2) has no ENDMDL; kept\n"
+                                       "sets/a.db: FerroNote: no virial\n")
 
 
 def test_read_uses_the_same_format_table_as_convert(tmp_path):

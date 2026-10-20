@@ -10,6 +10,7 @@ import glob
 import math
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import ferro
@@ -368,7 +369,7 @@ def report_batch(built, paths):
         listing = " ".join(f"{f}->{os.readlink(path / f)}" if (path / f).is_symlink() else f for f in s.files)
         print(f"Wrote: {path}/  {listing}")
         for note in s.notes:
-            print(f"  {note}")
+            print(f"{path}: FerroNote: {note}", file=sys.stderr)
 
 
 CONV_HELP = """\
@@ -635,8 +636,24 @@ def run_doc(argv):
 
 COMMANDS = {"config": run_config, "job": run_job, "conv": run_conv, "doc": run_doc}
 
+PROGRAM = "ferro-py"
+
+
+def _show_warning(message, category, filename, lineno, file=None, line=None, _default=warnings.showwarning):
+    """ferro's notices in the CLI's layout, `source[:line]: FerroWarning: detail`, on stderr.
+
+    The same layout as the Rust CLI's `ferro-cli/src/report.rs`: two implementations of one
+    format, too small to share across the language boundary. Any other warning keeps Python's.
+    """
+    if isinstance(message, (ferro.FerroWarning, ferro.FerroNote)):
+        place = message.source if message.line is None else f"{message.source}:{message.line}"
+        print(f"{place}: {category.__name__}: {message.detail}", file=sys.stderr if file is None else file)
+    else:
+        _default(message, category, filename, lineno, file, line)
+
 
 def main(argv=None):
+    warnings.showwarning = _show_warning
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] in ("-h", "--help"):
         print(OVERVIEW)
@@ -647,7 +664,7 @@ def main(argv=None):
             raise UsageError(f"unknown command '{argv[0]}'; run `ferro-py -h` for the list")
         return command(argv[1:])
     except (UsageError, ValueError, ferro.FerroError, OSError) as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"{PROGRAM}: FerroError: {e}", file=sys.stderr)
         return 1
 
 

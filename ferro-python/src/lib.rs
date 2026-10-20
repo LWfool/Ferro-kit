@@ -28,6 +28,23 @@ pyo3::create_exception!(
      A subclass of RuntimeError, so `except RuntimeError` written before it existed still catches it."
 );
 
+pyo3::create_exception!(
+    ferro,
+    FerroWarning,
+    pyo3::exceptions::PyUserWarning,
+    "Something ferro noticed that may be wrong (a frame dropped as cut off, a placeholder cell). \
+     Carries `source` (the path as given), `line` (int or None) and `detail` (the message alone); \
+     str() is `source[:line]: detail`. A subclass of UserWarning."
+);
+
+pyo3::create_exception!(
+    ferro,
+    FerroNote,
+    pyo3::exceptions::PyUserWarning,
+    "Something ferro noticed that is worth knowing and looks fine (an old program version, site \
+     labels split off). Same attributes as FerroWarning. A subclass of UserWarning."
+);
+
 /// Turns any displayable error (anyhow::Error, ferro_core::ChemError, ...) into a `ferro.FerroError`:
 /// its own class, so a caller catches what ferro reports without swallowing Python's own RuntimeErrors.
 pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
@@ -39,6 +56,8 @@ pub(crate) fn pyerr<E: std::fmt::Display>(e: E) -> PyErr {
 fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::PyTrajectory>()?;
     m.add("FerroError", m.py().get_type::<FerroError>())?;
+    m.add("FerroWarning", m.py().get_type::<FerroWarning>())?;
+    m.add("FerroNote", m.py().get_type::<FerroNote>())?;
     io::register(m)?;
     jobs::register(m)?;
     structure::register(m)?;

@@ -93,7 +93,7 @@ def test_qe_ecutwfc_scan_keeps_ecutrho_at_least_four_times(tmp_path, monkeypatch
         cut[value] = (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho"))
         assert qe.get("control", "calculation") == "'scf'", "收敛测试用 sp 模板"
     assert cut == {"80": ("80.0", "400.0"), "120": ("120.0", "480.0")}, "UPF 建议的 ecutrho 低于 4 × ecutwfc 的档提上去"
-    assert "ecutrho = 480 Ry (4 x ecutwfc" in capsys.readouterr().out
+    assert "FerroNote: ecutrho = 480 Ry (4 x ecutwfc" in capsys.readouterr().err
     assert json.loads((out / conv.MANIFEST).read_text())["unit"] == "Ry"
 
 
