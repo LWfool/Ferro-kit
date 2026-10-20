@@ -300,12 +300,11 @@ fn collect_group(
     format: Option<AimdFormat>,
     skipped: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    // inspect 那条路自己查，因为它的目录是 ferro_inspect/ 而不是 system 目录。
-    // 复用 ensure_writable 而不是手抄（审查 E2-11）：手抄的那份漏了「dest 是普通文件」，
-    // 报出来的是 read_dir 的 io 错误
-    if !inspect {
-        ensure_writable(dest, overwrite)?;
-    }
+    // Checked before any file is read, for both kinds: `dest` is the system directory or,
+    // for inspect, `ferro_inspect/`. ensure_writable rather than a hand-made copy (review
+    // E2-11, D-2): the copy inspect had missed a plain file in the way, which surfaced as
+    // the raw io error of listing it, and it only ran after every input had been read
+    ensure_writable(dest, overwrite)?;
 
     // 先全部读进来，坏文件跳过而不毒化整个 system —— 与 reader 对坏帧的态度一致。
     //
@@ -384,7 +383,7 @@ fn collect_group(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "run".to_string());
-        for p in super::inspect::write_all(&all, parts[0].2.format, dest, &name, &sources, overwrite)? {
+        for p in super::inspect::write_all(&all, parts[0].2.format, dest, &name, &sources)? {
             println!("  -> {}", p.display());
         }
     } else {
@@ -541,6 +540,21 @@ mod tests {
         let group = Group { dir: dir.clone(), rel: PathBuf::new(), files: vec![dir.join("a.out")] };
         let err = collect_group(&group, &dest, false, false, None, &mut Vec::new()).unwrap_err();
         assert!(format!("{err:#}").contains("--overwrite"), "{err:#}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The same for `--type inspect`, and before any input is read: the file listed in
+    /// the group does not exist, so reading first would fail differently (review D-2)
+    #[test]
+    fn a_file_in_the_way_of_the_inspect_directory_is_refused_before_reading() {
+        let dir = std::env::temp_dir().join("ferro_collect_inspect_in_the_way");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join(super::super::inspect::DIR_NAME);
+        std::fs::write(&dest, "occupied").unwrap();
+        let group = Group { dir: dir.clone(), rel: PathBuf::new(), files: vec![dir.join("missing.out")] };
+        let err = collect_group(&group, &dest, false, true, None, &mut Vec::new()).unwrap_err();
+        assert!(format!("{err:#}").contains("exists and is not empty (pass --overwrite)"), "{err:#}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

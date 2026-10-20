@@ -36,11 +36,8 @@ pub fn write_all(
     dir: &Path,
     name: &str,
     sources: &[String],
-    overwrite: bool,
 ) -> Result<Vec<PathBuf>> {
-    if !overwrite && dir.exists() && std::fs::read_dir(dir)?.next().is_some() {
-        anyhow::bail!("{} exists and is not empty (pass --overwrite)", dir.display());
-    }
+    // `collect_group` has checked `dir` with ensure_writable before reading any input
     std::fs::create_dir_all(dir)
         .with_context(|| format!("cannot create {}", dir.display()))?;
 
