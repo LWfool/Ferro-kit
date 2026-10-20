@@ -15,6 +15,10 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 
+[project.optional-dependencies]
+# `ferro-py plot` / `ferro.plot`; also needs a LaTeX installation (text is set with usetex)
+plot = ["matplotlib", "pandas", "scienceplots"]
+
 [project.scripts]
 ferro-py = "ferro.cli:main"
 
