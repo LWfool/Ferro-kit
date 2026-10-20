@@ -38,9 +38,11 @@ pub struct ShellCutoff {
 /// it is the expensive part. `None` for a pair the trajectory does not contain or whose
 /// g(r) never rises above 1.
 ///
-/// Uses a coarse 0.02 Å bin on purpose: the default 0.002 Å of `GrParams` gives
-/// a noisy curve whose local minima are sampling artefacts rather than
-/// structure. The minimum is then located on a 0.10 Å moving average, so a few empty
+/// Uses a coarse bin of about 0.02 Å on purpose: the default 0.002 Å of `GrParams`
+/// gives a noisy curve whose local minima are sampling artefacts rather than
+/// structure. "About": `calc_gr` narrows the request so whole bins fill the range, and
+/// [0.001, 6] Å holds 299.95 steps of 0.02, so the width is 5.999 / 300 = 0.0199967 Å;
+/// a box whose minimum-image bound clamps r_max below 6 Å narrows it again. The minimum is then located on a 0.10 Å moving average, so a few empty
 /// bins in a sparsely sampled tail do not pass for a clean gap.
 pub fn first_shell_cutoffs(
     traj: &ferro_core::Trajectory,
@@ -78,8 +80,9 @@ fn shell_from_curve(r: &[f64], g: &[f64]) -> Option<ShellCutoff> {
     // bins that are exactly 0; unsmoothed, those would pass for a clean gap and report
     // g_min = 0 (measured on 43Z43P15A Al-O: raw minimum 0.000, smoothed 0.027, while
     // CN keeps rising between 2.2 and 2.6 Å). A real gap stays 0 after smoothing.
-    // The window is 2*half+1 bins, so half = round(0.10/dr)/2 gives exactly 5 bins at
-    // the 0.02 Å grid of `first_shell_cutoffs`.
+    // The window is 2*half+1 bins, so half = round(0.10/dr)/2 gives exactly 5 bins on
+    // the ~0.02 Å grid of `first_shell_cutoffs` (0.10 / 0.0199967 rounds to 5 all the
+    // same; the grid is read from `r`, not assumed).
     let dr = r[1] - r[0];
     let half = ((0.10 / dr).round() as usize / 2).max(1);
     let g: Vec<f64> = (0..g.len())
