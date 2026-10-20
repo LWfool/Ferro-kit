@@ -191,11 +191,19 @@ impl Cell {
 
     // ── 周期性处理 ────────────────────────────────────────────────────────────
 
-    /// 将 Cartesian 坐标折叠回 [0, 1) 的分数坐标范围内（周期性包裹）。
+    /// Folds a Cartesian position into the cell, fractional coordinates in [0, 1) along
+    /// all three axes.
     ///
-    /// `rem_euclid(1.0)` 保证输出严格在 [0, 1)，避免 `cartesian_to_fractional`
-    /// 矩阵求逆引入的 ~1e-15 误差在 `floor` 处触发边界跳变。
-    /// 晶胞矩阵奇异时返回 `Err`。
+    /// `rem_euclid(1.0)` keeps the output strictly in [0, 1), so the ~1e-15 error of the
+    /// matrix inverse cannot make `floor` jump at a boundary.
+    /// Returns `Err` when the cell matrix is singular.
+    ///
+    /// One of three folds, kept apart (review A-16): this one ignores `pbc` and
+    /// `origin` and round-trips every position through fractions; [`crate::Frame::wrap_all`]
+    /// follows `pbc`, moves only atoms outside by whole lattice vectors and folds about
+    /// 0 (the cube grid it serves starts there); `ferro-structure`'s `merge_frames`
+    /// folds about `origin` and refuses an atom outside along a non-periodic axis.
+    /// Three contracts, three callers that need each.
     pub fn wrap_position(&self, cart: Vector3<f64>) -> Result<Vector3<f64>> {
         let frac = self.cartesian_to_fractional(cart)?;
         let wrapped = Vector3::new(

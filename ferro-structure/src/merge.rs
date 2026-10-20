@@ -113,9 +113,12 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
     };
     let (shift_a, shift_b) = (shift(cell_a, &ra, 0.0, h_a), shift(cell_b, &rb, h_a + gap, h_b));
 
-    // 放置按胞面算，故原子先相对盒子原点折回胞内，否则不在胞内的原子跟着块平移后
-    // 落进另一块（审查 E-10：gap 2 Å 实测最近距离 0.18 Å）。非周期方向越界的原子
-    // 没有合理的折回方式，报错而不是让两块重叠
+    // Placement goes by the cell faces, so atoms are first folded into the cell about
+    // the box origin; otherwise an atom outside moves with its block into the other one
+    // (review E-10: gap 2 Å, nearest distance 0.18 Å measured). An atom outside along a
+    // non-periodic axis has no sensible fold: an error rather than two blocks overlapping.
+    // Not `Frame::wrap_all` (folds about 0, skips non-periodic axes silently) nor
+    // `Cell::wrap_position` (ignores pbc and origin); see the latter (review A-16)
     const WRAP_TOL: f64 = 1e-10;
     let moved = |frame: &Frame, cell: &Cell, t: Vector3<f64>, name: &str| -> Result<Vec<Atom>> {
         let mut atoms = Vec::with_capacity(frame.n_atoms());

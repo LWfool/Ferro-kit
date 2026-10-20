@@ -394,6 +394,10 @@ impl Frame {
     /// rounding on every atom, inside ones included. "Outside" allows `WRAP_TOL`, so
     /// an atom at exactly 0 whose fraction comes out -1e-17 is not sent to the far
     /// side. Does nothing without a cell or with a singular one.
+    ///
+    /// Folds about 0, not `Cell::origin`, on purpose: its one caller is the cube
+    /// reference frame, whose grid starts at 0. Not merged with [`Cell::wrap_position`]
+    /// or `merge_frames`' fold, which differ in pbc / origin handling (see there; review A-16).
     pub fn wrap_all(&mut self) {
         const WRAP_TOL: f64 = 1e-10;
         let Some(cell) = self.cell.as_ref() else { return };
