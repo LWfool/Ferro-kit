@@ -41,6 +41,8 @@ command line alike; regenerate it rather than migrating it.
 - `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,
   `vacf`, `rotcorr` and `bondlife`; it used to be cut to the last frame without a word.
 - `traj msd` writes exactly 0 at lag 0 (it read about −1.7e-18, round-off).
+- `traj rotcorr --legendre 1`: the header line describing the `integral` column names `c1`; it said
+  `c2` whatever the order. Data columns are unchanged.
 - `traj gr` / `traj sq`: the `dr` header line is the requested `--dr`; the width actually used,
   which the minimum-image clamp makes differ between inputs, is a `dr` column of `[inputs]`. The
   header used to print the first input's actual width as if it held for the whole batch. Data
@@ -269,7 +271,7 @@ command line alike; regenerate it rather than migrating it.
   that is not a whole number is named in the error.
 - A negative `--start`, `--end`, `--stride` or `--number` to `ferro-py job` / `conv` is a usage
   error (exit 2), not an `OverflowError` traceback.
-- The VASP fine grid (`NGXF`…) is predicted with VASP's own ħ²/2mₑ, 3.81002 eV·Å² (`HSQDTM`),
+- The VASP fine grid (`NGXF`…) is predicted with VASP's own $\hbar^2/2m_e$, 3.81002 eV·Å² (`HSQDTM`),
   instead of the CODATA 3.80998; only a cell that sits right on a grid-size boundary changes.
 
 ### Readers
