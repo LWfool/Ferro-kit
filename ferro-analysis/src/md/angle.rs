@@ -16,7 +16,9 @@
 //! `code1/dump2analysis` enumerates ordered end pairs instead, so its histogram is exactly
 //! twice this one whenever both ends are the same type; mean/std/peak positions are equal.
 //!
-//! Parallelism: per-frame `par_iter().fold().reduce()`, same pattern as gr.rs.
+//! Parallelism: per-frame `par_iter().fold().reduce()`. The histograms are integer counts,
+//! so the thread schedule cannot change the sum; gr, which sums floats, goes through
+//! `util::par_map_in_order` instead.
 //! Algorithm reference: code1/angle.c (`EstimateAngle`).
 
 use crate::check;
@@ -192,8 +194,6 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     if traj.frames.is_empty() {
         return Err(ChemError::ValidationError("trajectory is empty".into()));
     }
-
-    // 校验所有帧都有 cell
 
     // validate guarantees angle_min < angle_max and d_angle > 0, so at least one bin.
     // Everything downstream (histogram, bin centres, header) uses the width actually used
