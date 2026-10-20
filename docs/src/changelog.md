@@ -145,6 +145,23 @@ command line alike; regenerate it rather than migrating it.
   masses, densities and per-element analyses were all wrong. Add the element line (VASP 5+).
 - QE input: `starting_magnetization` is no longer read into the per-atom magnetic moment. It
   is a fraction between −1 and 1, not μB, and was exported as a moment to extended XYZ.
+- PDB split by `END`: a last block with no `END` is held to the frame before, as a last `MODEL`
+  with no `ENDMDL` is — kept with a warning when the atom count matches, dropped with a warning
+  otherwise. A cut-off last block used to be kept as a frame of fewer atoms, silently.
+- XYZ, extended XYZ and PDB judge a cut-off file as LAMMPS dumps do: a last line that is too
+  short or cut inside a number drops the last frame with a warning; a bad number on any other
+  line is an error naming the line. A last line cut inside a number used to be an error.
+- A file whose only frame is cut off (XYZ, extended XYZ, PDB, LAMMPS dump) is an error saying
+  so; it used to read as 0 frames with a warning.
+- Extended XYZ: an atomic number in the `species` column is read as that element (`8` → O), as
+  plain XYZ already did; the same file used to read as O / H when named `.xyz` and as elements
+  `8` / `1` when named `.extxyz`.
+- PDB: a `CRYST1` record that gives no cell (a field that is not a number, a line cut before γ)
+  is an error naming the line and the field, as in ASE; the file used to read as non-periodic
+  without a word.
+- QE input: `bohr` and `alat` positions and cells use the CODATA 2018 Bohr radius ferro uses
+  everywhere else (0.529177210903 Å); a constant of 0.52917721 Å was used, so coordinates move
+  in the 9th significant digit.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

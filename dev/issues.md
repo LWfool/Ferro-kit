@@ -877,7 +877,7 @@ writer 时会再踩**的判据：
 | POSCAR 的速度块 | 跳过空行后把剩余行当速度 | 坐标之后**恒有一行模式行**（空行也算一行）：空行或 C/K 开头 = Cartesian Å/fs，其余 = Direct（需 POTIM，报错）；首字符 L 是 NPT CONTCAR 的晶格速度块（再跳 8 行）。滤掉空行会把 `Cartesian` 那一行当成第一条速度。ASE 的 `write_vasp(sort=True)` 也有「坐标重排、速度原序」的 bug —— 照抄参考实现前先看它有没有同病 |
 | ASE 当参考实现 | 以为它覆盖全部合法输入 | ASE 3.29.0 的 `read_espresso_in` 读不了 `A=`（namelist 键已转小写、却按 `'A'` 查）与 `1.026D+01` 这类 namelist 值，也不支持「无 celldm 时坐标 alat 取 \|a1\|」。对拍时 ASE 报错的情形回 pw.x 源码（`Modules/cell_base.f90`）手算，并在测试注释里写明来源 |
 | 格式的「可选提示」 | 按 `Atoms # full` 注释或列数推 LAMMPS data 的 style | 注释在 LAMMPS 里可选，列数有歧义（charge 与 molecular 同为 6 列；8 列的 atomic+image flag 按 full 读会把 image flag 当坐标）。用户裁定（2026-10-02）：style 必须显式给出，注释即使存在也不看；对不上的列数报错 |
-| 截断 vs 写错 | reader 把一帧读不成一律当「末帧被截断」丢掉 | 截断只会切在**文件最后一行**；别处的缺列、坏字段、缺坐标列是文件写错了，截断解释不了，恒报错。单帧文件尤其要分清：按截断处理会读出 0 帧且不报错（M2 修时实测踩到） |
+| 截断 vs 写错 | reader 把一帧读不成一律当「末帧被截断」丢掉 | 截断只会切在**文件最后一行**；别处的缺列、坏字段、缺坐标列是文件写错了，截断解释不了，恒报错。单帧文件尤其要分清：按截断处理会读出 0 帧且不报错（M2 修时实测踩到）。**2026-10-20 统一（扫描 B-2，用户定）**：最后一行「列数不足或数字读不出」才算截断，整行完整但内容错（原子序数查不到元素）恒报错；截断后一帧不剩改为报错。xyz / extxyz / pdb / dump 共用 `readers/util.rs::drop_truncated`，新 reader 照用 |
 | 缩放坐标 | `xs` 直接 `s·L` | LAMMPS 定义 `xs = (x - lo)/L`，还原要加真实 lo（三斜时由 `*_bound` 反推）。ASE 3.29 漏了 lo，与它自己的 `x` 列不自洽，此处不以 ASE 为准 |
 | 参数取值检查 | `if v <= 0.0 { 报错 }`，或只在计算里、读完文件才查 | 写成「合法则放行，否则报错」：NaN 与任何数比较为假，落到报错分支（反着写会放过 `--dr nan`；clippy 也不让写 `!(v > 0.0)`）。步长、截断还要 `is_finite`，`inf` 的步长得 0 个 bin。判据放 `XxxParams::validate`，CLI 在建 `-o`、读第一个文件前调，`calc_*` 入口再调一次给 Python |
 | 返回 `Option` 的计算 | 失败原因揉成一个 `None`，调用者去猜 | angle、vanhove 以前的报错「empty trajectory?」「trajectory too short?」都是猜错的。返回 `Result`，每种失败各自报 |
