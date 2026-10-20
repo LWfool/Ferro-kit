@@ -29,24 +29,6 @@ pub(crate) fn bins(lo: f64, hi: f64, step: f64) -> (usize, f64) {
     (n, (hi - lo) / n as f64)
 }
 
-/// Build a time-averaged representative frame for the cube file header.
-///
-/// Frames whose atom count differs from the first frame are skipped rather than
-/// truncated — a changed count means the trajectory is not one system.
-///
-/// Averaging happens in **unwrapped fractional coordinates**: an atom that crosses a
-/// periodic boundary has Cartesian components that jump between 0 and L, and averaging
-/// those puts it in the middle of the box.
-///
-/// Every frame is converted through the **reference frame's** cell, not its own.  That
-/// keeps this a pure bug fix: a fractional mean taken under one fixed matrix maps back to
-/// exactly the Cartesian mean, so atoms that never cross a boundary come out bit-for-bit
-/// unchanged and only the wrapped ones move.  Using each frame's own cell would also
-/// change what the average *means* under NPT — that is the open question recorded for
-/// `cube_density`'s reference-frame volume normalisation, and it is not settled here.
-///
-/// Without a cell there is no periodicity and nothing to unwrap, so that case keeps the
-/// plain Cartesian mean.
 /// Maps `items` in parallel and hands each result to `consume` in item order.
 ///
 /// The map runs in batches of a few items per thread, so only one batch of results
@@ -119,6 +101,24 @@ pub(crate) fn cube_from_grid(traj: &Trajectory, ref_cell: &Cell, data: Array3<f6
     }
 }
 
+/// Build a time-averaged representative frame for the cube file header.
+///
+/// Frames whose atom count differs from the first frame are skipped rather than
+/// truncated — a changed count means the trajectory is not one system.
+///
+/// Averaging happens in **unwrapped fractional coordinates**: an atom that crosses a
+/// periodic boundary has Cartesian components that jump between 0 and L, and averaging
+/// those puts it in the middle of the box.
+///
+/// Every frame is converted through the **reference frame's** cell, not its own.  That
+/// keeps this a pure bug fix: a fractional mean taken under one fixed matrix maps back to
+/// exactly the Cartesian mean, so atoms that never cross a boundary come out bit-for-bit
+/// unchanged and only the wrapped ones move.  Using each frame's own cell would also
+/// change what the average *means* under NPT — that is the open question recorded for
+/// `cube_density`'s reference-frame volume normalisation, and it is not settled here.
+///
+/// Without a cell there is no periodicity and nothing to unwrap, so that case keeps the
+/// plain Cartesian mean.
 pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
     let ref_f = traj.frames.first().unwrap();
     let n = ref_f.n_atoms();
