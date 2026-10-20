@@ -128,6 +128,8 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 
 - 两个 crate 的公开项只从 crate 根导出（`ferro_analysis::GrParams`、`ferro_io::read`），子模块私有；新加的公开项
   记得在根上 `pub use`，否则 dead_code 会报它（审查 A-12）
+  唯一例外是 `ferro_analysis::ml`（`pub mod`）：filter / merge / split 各是一组自成一体的 API，从根
+  平铺会把它们混成一片（`ferro-analysis/src/lib.rs` 注释）
 - 绝不从 `AtomType::label()` 的字符串反解析数字 —— 直接读字段。0.2.1 重构消灭的
   正是散在四个 crate 的五处这种解析
 - 列并集下缺失值填 `f64::NAN`（渲染为空字段），**绝不补零** —— 零是「测到了 0」
