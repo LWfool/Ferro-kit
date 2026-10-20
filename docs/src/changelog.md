@@ -96,8 +96,8 @@ command line alike; regenerate it rather than migrating it.
 
 ### Units
 
-- kcal/mol uses the CODATA 2018 value, 1 eV = 23.06054783 kcal/mol (was 23.0605419, CODATA
-  2014), the same set as the other constants. LAMMPS dumps in `real` units, read or written,
+- kcal/mol uses the CODATA 2018 value, 1 eV = 23.06054783 kcal/mol (was 23.0605419, which
+  no CODATA set gives), the same set as the other constants. LAMMPS dumps in `real` units, read or written,
   convert forces with it; their own `0.04336410` is gone. Forces change in the eighth digit.
 
 ### Masses: no 1 amu stand-in

@@ -21,7 +21,8 @@ pub const HARTREE_TO_EV: f64 = 27.211_386_245_988;
 pub const EV_TO_HARTREE: f64 = 1.0 / HARTREE_TO_EV;
 
 /// eV → kcal/mol, CODATA 2018: e·N_A / 4184 J (thermochemical calorie), both exact.
-/// Was 23.0605419 (CODATA 2014), 2.6e-7 off.
+/// Was 23.0605419, 2.6e-7 off; its source is unknown, no CODATA set gives it (2014 gives
+/// 23.0605480, 2010 23.0605489).
 pub const EV_TO_KCAL_MOL: f64 = 23.060_547_830_619_03;
 pub const KCAL_MOL_TO_EV: f64 = 1.0 / EV_TO_KCAL_MOL;
 
