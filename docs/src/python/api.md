@@ -100,7 +100,7 @@ The text starts with the path and, when there is one, the line (`traj.pdb:57: la
 no ENDMDL; kept`), so the same message from two files is two warnings; the instance also carries
 `source`, `line` (an int or `None`) and `detail` (the message alone).
 
-A dump without an element column reads its atoms as `X1`, `X2`, …; `type_map={1: "Zr", 2: "O"}`
+A dump without an `element` or `typelabel` column reads its atoms as `X1`, `X2`, …; `type_map={1: "Zr", 2: "O"}`
 names them, exactly as `--type-map` on the command line.  A type missing from the map, an
 unknown symbol, or `type_map` on anything but a dump is an error.
 

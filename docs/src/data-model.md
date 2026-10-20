@@ -211,7 +211,7 @@ any source, not only the ones `ferro net` writes.
 
 | Source | Notes |
 |---|---|
-| LAMMPS dump reader | an `element` column written as `P_3` is split into `element="P"` + `label="P_3"`; the mapping is printed once after reading |
+| LAMMPS dump reader | an `element` column (without one, a `typelabel` column) written as `P_3` is split into `element="P"` + `label="P_3"`; the mapping is reported once as a `FerroNote` |
 | extxyz reader | its own `label:S:1` column |
 | CIF / CP2K inp / QE reader | their own site names (`O1`, `Fe1`) — note these do **not** follow the `<element>_<suffix>` convention |
 | CP2K single-point out reader | the `&KIND` name (from the `ATOMIC KIND INFORMATION` block), filled **only when it differs from the element**.  Several kinds per element is common practice (`Fe1`/`Fe2` carrying two magnetic-moment guesses), and substituted systems have been seen where the kind name is simply another element symbol — so `element` always takes the real element from the coordinate table, and the kind name goes into `label` only |

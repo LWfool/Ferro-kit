@@ -90,7 +90,7 @@ pub struct VacfParams {
 | `--elements` | all | atoms averaged, chosen by element in the first frame |
 | `--last-n` | all | keep only the last N frames before anything else |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of the dump velocities (required for a dump) |
-| `--type-map <MAP>` | — | LAMMPS dump without an element column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that has an element column refuses it |
+| `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
 
 ## Output
 
