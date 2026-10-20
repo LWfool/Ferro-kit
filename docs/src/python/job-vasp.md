@@ -70,11 +70,13 @@ A Γ-only mesh can run with `vasp_gam`, which is faster than `vasp_std`.
 
 ## Precision
 
-`PREC` must be written **in full** — `Low`, `Medium`, `High`, `Normal`,
-`Single`, `SingleN` or `Accurate` (any case). An abbreviation such as `PREC = Acc`
-is an error: ferro-py computes the fine grid from `PREC` (below) and does not
-guess what a short form means. Without a `PREC` tag VASP's default `Normal` is
-assumed. The built-in templates use `Accurate`.
+`PREC` must be `Normal` or `Accurate`, written **in full** (any case). An
+abbreviation such as `PREC = Acc` is an error: ferro-py computes the fine grid from
+`PREC` (below) and does not guess what a short form means. `Low`, `Medium` and
+`High` are VASP 4.4 legacy settings — `High` also raises the default `ENCUT` to
+1.3 × ENMAX, which a fine grid computed from ENMAX would miss — and `Single` /
+`SingleN` are special-purpose; all of them are errors. Without a `PREC` tag VASP's
+default `Normal` is assumed. The built-in templates use `Accurate`.
 
 ## Variable-cell optimisation needs ENCUT
 
@@ -101,7 +103,7 @@ The fine grid is a factor $F$ times VASP's coarse FFT grid:
 
 $$N_i^{\mathrm{fine}} = \mathrm{good}\left(\lceil F \cdot N_i \rceil\right), \qquad N_i = \mathrm{good}\left(\mathrm{round}\left(\frac{k\, G_{\mathrm{cut}} |\mathbf a_i|}{2\pi}\right)\right), \qquad G_{\mathrm{cut}} = \sqrt{\frac{E_{\mathrm{cut}}}{\hbar^2/2m_e}}$$
 
-with $k = 4$ for `PREC = Accurate` or `High` and $k = 3$ otherwise,
+with $k = 4$ for `PREC = Accurate` and $k = 3$ for `Normal`,
 $\hbar^2/2m_e = 3.81002$ eV·Å² (VASP's own `HSQDTM`, not the CODATA 3.80998), $E_{\mathrm{cut}}$ the template's `ENCUT` (else
 the largest ENMAX), and $\mathrm{good}(n)$ the smallest even number $\geq n$
 whose only prime factors are 2, 3, 5, 7 — the sizes VASP itself picks.

@@ -26,7 +26,9 @@ RECOMMENDED_POTCAR = {
 }
 
 PARALLEL_KEYS = ("NCORE", "NPAR", "KPAR")
-PREC_VALUES = ("Low", "Medium", "High", "Normal", "Single", "SingleN", "Accurate")
+# Low / Medium / High are VASP 4.4 legacy settings (High also raises the default ENCUT to
+# 1.3 x ENMAX, which the ENMAX-based fine grid would not see); Single / SingleN are special-purpose
+PREC_VALUES = ("Normal", "Accurate")
 
 
 class IncarError(ValueError):
@@ -173,14 +175,14 @@ def _good_size(m):
 
 
 def fine_grid(cell, encut, factor, prec="Accurate"):
-    """粗网格 NGi（取 good size）与细网格 NGiF = factor·NGi。
+    """Coarse grid NGi (a good size) and fine grid NGiF = factor·NGi.
 
-    粗网格覆盖半径 2·G_cut（PREC = Accurate / High）或 3/2·G_cut（其余）的球，即
-    NGi = 4（或 3）·G_cut·|a_i|/2π。Accurate 与用户 ``make_vasp_label.py`` 同一规则
-    （那里另加了细网格间距上限，这里只按倍数）。
+    The coarse grid covers a sphere of radius 2·G_cut (PREC = Accurate) or 3/2·G_cut (Normal),
+    i.e. NGi = 4 (or 3)·G_cut·|a_i|/2π. Accurate follows the same rule as the user's
+    ``make_vasp_label.py`` (which also caps the fine-grid spacing; here only the factor is used).
     """
     gcut = math.sqrt(encut / HBAR2_2M)
-    k = 4 if prec.strip().upper() in ("ACCURATE", "HIGH") else 3
+    k = 4 if prec.strip().upper() == "ACCURATE" else 3
     coarse = [_good_size(round(k * gcut * math.sqrt(sum(x * x for x in a)) / (2 * math.pi))) for a in cell]
     return coarse, [_good_size(math.ceil(factor * n)) for n in coarse]
 
@@ -218,10 +220,11 @@ class VaspGenerator(Generator):
         if options.task == "opt" and options.vary_cell and "ENCUT" not in incar:
             raise JobError("--vary-cell needs ENCUT in the template (Pulay stress): find it with "
                            "`ferro-py conv -s vasp --scan encut=...` and write it there")
-        # PREC 决定细网格的粗网格倍数；缩写（Acc、A）不猜，要求写全（用户定）
+        # PREC sets the coarse-grid factor of the fine grid; abbreviations (Acc, A) are not
+        # guessed and only Normal / Accurate are taken (user decisions)
         prec = incar.get("PREC", "Normal").strip()
         if prec.upper() not in (p.upper() for p in PREC_VALUES):
-            raise JobError(f"PREC = {prec}: write PREC in full ({' | '.join(PREC_VALUES)})")
+            raise JobError(f"PREC = {prec}: write PREC in full as {' or '.join(PREC_VALUES)}")
         elements = one.elements()   # sort_atoms 之后即 POSCAR 的元素顺序
         symbols = one.symbols(0)
         counts = [symbols.count(e) for e in elements]

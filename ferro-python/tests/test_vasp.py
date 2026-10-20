@@ -80,9 +80,9 @@ def test_vary_cell(cfg, traj, tmp_path):
 
 def test_prec_in_full(cfg, traj, tmp_path):
     tpl = tmp_path / "INCAR"
-    for short in ("Acc", "A"):
+    for short in ("Acc", "A", "High", "Low", "Medium", "Single", "SingleN"):
         tpl.write_text(f"PREC = {short}\nMETAGGA = R2SCAN\n")
-        with pytest.raises(JobError, match="write PREC in full"):
+        with pytest.raises(JobError, match="write PREC in full as Normal or Accurate"):
             VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl)
     tpl.write_text("PREC = accurate  ! case does not matter\nMETAGGA = R2SCAN\n")
     incar = Incar.from_str(VaspGenerator(cfg).generate(traj, 0, JobOptions("sp"), tpl).files["INCAR"])
