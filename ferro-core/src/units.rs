@@ -26,12 +26,14 @@ pub const EV_TO_HARTREE: f64 = 1.0 / HARTREE_TO_EV;
 pub const EV_TO_KCAL_MOL: f64 = 23.060_547_830_619_03;
 pub const KCAL_MOL_TO_EV: f64 = 1.0 / EV_TO_KCAL_MOL;
 
-/// eV → kJ/mol
-pub const EV_TO_KJ_MOL: f64 = 96.485_332_1;
+/// eV → kJ/mol, CODATA 2018: e·N_A / 1000 J, both exact (was 96.4853321, cut at the
+/// 7th decimal, so kcal/kJ was not exactly 4.184; review A-6).
+pub const EV_TO_KJ_MOL: f64 = 96.485_332_123_310_02;
 pub const KJ_MOL_TO_EV: f64 = 1.0 / EV_TO_KJ_MOL;
 
-/// eV → cm⁻¹（波数）
-pub const EV_TO_WAVENUMBER: f64 = 8_065.544_0;
+/// eV → cm⁻¹ (wavenumber), CODATA 2018: e / (h·c·100 cm/m), all three exact (was
+/// 8065.5440, of unknown source and 6e-5 off; review A-6).
+pub const EV_TO_WAVENUMBER: f64 = 8_065.543_937_349_212;
 pub const WAVENUMBER_TO_EV: f64 = 1.0 / EV_TO_WAVENUMBER;
 
 /// eV/Å³ → GPa
@@ -265,6 +267,16 @@ mod tests {
     fn test_energy_hartree_ev() {
         let ev = convert_energy(1.0, EnergyUnit::Hartree, EnergyUnit::EV);
         assert!((ev - HARTREE_TO_EV).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_energy_constants_share_codata_2018() {
+        // Review A-6: kcal and kJ differ by the thermochemical calorie, exactly
+        assert!((EV_TO_KJ_MOL / EV_TO_KCAL_MOL - 4.184).abs() < 1e-15);
+        // e / (h c), from the three exact SI constants
+        let (e, h, c) = (1.602_176_634e-19, 6.626_070_15e-34, 299_792_458.0);
+        assert!((EV_TO_WAVENUMBER - e / (h * c * 100.0)).abs() < 1e-9);
+        assert!((EV_TO_KJ_MOL - e * AVOGADRO / 1000.0).abs() < 1e-12);
     }
 
     #[test]
