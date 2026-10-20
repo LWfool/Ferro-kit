@@ -3,6 +3,7 @@ use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::Vector3;
 use anyhow::{bail, Context, Result};
 use ferro_core::data::elements::by_symbol;
+use super::util::capitalize_symbol;
 
 /// Reads a PDB file, multi-model (MODEL / ENDMDL records).
 pub fn read_pdb(path: &Path) -> Result<Trajectory> {
@@ -163,7 +164,7 @@ fn parse_atom_record(line: &str, last: bool) -> Result<Option<Atom>> {
     // not checked further (the element table stops at Rn, a check would refuse U and the like).
     // When blank, the atom name gives it
     let sym = col(line, 76, 78).trim();
-    let element = if sym.is_empty() { element_from_atom_name(col(line, 12, 16))? } else { capitalize(sym) };
+    let element = if sym.is_empty() { element_from_atom_name(col(line, 12, 16))? } else { capitalize_symbol(sym) };
     Ok(Some(Atom::new(element, Vector3::new(x, y, z))))
 }
 
@@ -180,18 +181,11 @@ fn element_from_atom_name(name: &str) -> Result<String> {
         None => vec![],
     };
     candidates.into_iter()
-        .map(|c| capitalize(&c))
+        .map(|c| capitalize_symbol(&c))
         .find(|c| by_symbol(c).is_some())
         .with_context(|| format!(
             "no element in columns 77-78 and atom name {name:?} does not give one; \
              write the element symbol in columns 77-78"))
-}
-
-/// `FE` / `fe` → `Fe`
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    c.next().map(|f| f.to_ascii_uppercase().to_string() + &c.as_str().to_ascii_lowercase())
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

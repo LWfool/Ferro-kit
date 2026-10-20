@@ -49,10 +49,17 @@ pub(crate) fn species_element(token: &str) -> Result<String> {
 /// as written and leave validation to the analyses. Shared by the CP2K input, QE
 /// input / output and CIF readers.
 pub(crate) fn element_from_label(label: &str) -> String {
-    let mut letters = label.chars().take_while(|c| c.is_alphabetic());
-    match letters.next() {
-        None => "X".to_string(),
-        Some(first) => first.to_uppercase().chain(letters.flat_map(char::to_lowercase)).collect(),
+    let letters: String = label.chars().take_while(|c| c.is_alphabetic()).collect();
+    if letters.is_empty() { "X".to_string() } else { capitalize_symbol(&letters) }
+}
+
+/// An element symbol in the case the element table uses: `FE` / `fe` → `Fe`. Shared by
+/// [`element_from_label`] and the PDB and LAMMPS data readers (scan B, one case rule).
+pub(crate) fn capitalize_symbol(s: &str) -> String {
+    let mut ch = s.chars();
+    match ch.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().chain(ch.flat_map(char::to_lowercase)).collect(),
     }
 }
 

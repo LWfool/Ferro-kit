@@ -150,11 +150,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
             // (`# oxygen`, `# Ow`) used to become the element name; the mass decides instead, with a warning
             let comment = raw.find('#')
                 .and_then(|p| raw[p+1..].split_whitespace().next());
-            let from_comment = comment.and_then(|c| {
-                let mut ch = c.chars();
-                let sym: String = ch.next()?.to_uppercase().chain(ch.flat_map(char::to_lowercase)).collect();
-                by_symbol(&sym).map(|e| e.symbol.to_string())
-            });
+            let from_comment = comment
+                .and_then(|c| by_symbol(&super::util::capitalize_symbol(c)).map(|e| e.symbol.to_string()));
             let elem = match (from_comment, comment) {
                 (Some(e), _) => e,
                 (None, c) => {
