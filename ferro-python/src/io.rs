@@ -162,8 +162,9 @@ fn read_output(
     }
 }
 
-/// 写一张表，格式与 ferro 其他分析产物相同（`# ` 开头的元数据行、表头、数据；NaN 写成空格）。
-/// `columns` 为 `[(列名, 数值列表或字符串列表)]`，各列等长。
+/// Write a table in the format of ferro's other analysis products (`# ` metadata lines, a
+/// header, the data; NaN is written as an empty field). `columns` is
+/// `[(name, list of numbers or of strings)]`, all of the same length.
 #[pyfunction]
 #[pyo3(signature = (path, columns, meta = Vec::new()))]
 fn write_table(path: &str, columns: Vec<(String, Bound<'_, PyAny>)>, meta: Vec<String>) -> PyResult<()> {
