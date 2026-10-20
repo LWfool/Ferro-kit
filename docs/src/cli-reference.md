@@ -1034,8 +1034,9 @@ get sets that mix several sources, shuffle in filter when the dataset goes strai
 
 ## `ferro doc`
 
-Every page of this manual is compiled into the binary via `include_str!` (24 pages, 208 KB), so a ferro
-installed with `cargo install` carries it too.
+Every page of this manual is compiled into the binary via `include_str!`, so a ferro installed with
+`cargo install` carries it too. The `ferro-py` pages (`python/`) are compiled into ferro-py instead and
+read with `ferro-py doc`.
 
 ```bash
 ferro doc                          # list every topic
