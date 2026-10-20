@@ -162,6 +162,17 @@ command line alike; regenerate it rather than migrating it.
 - QE input: `bohr` and `alat` positions and cells use the CODATA 2018 Bohr radius ferro uses
   everywhere else (0.529177210903 Å); a constant of 0.52917721 Å was used, so coordinates move
   in the 9th significant digit.
+- Writers check everything before they touch the disk: PDB (a cell that cannot be written as
+  `CRYST1`, a coordinate too wide for its field), extended XYZ (`virial=` for a frame without a
+  cell or with a zero volume) and DeePMD (partly labelled properties, set boundaries, a stress
+  without a cell) used to refuse after the output was created. PDB and extended XYZ left a
+  half-written file; DeePMD had already cleared the old `set.*` and left a system holding only
+  `type.raw`, which now survives a refused rewrite unchanged.
+- PDB writer errors number frames from 0, as the other writers do; the two cell errors counted
+  from 1.
+- Rust library: `read_xyz_with_warnings`, `read_extxyz_with_warnings`, `read_pdb_with_warnings`
+  and `read_lammps_data_with_warnings` are exported from `ferro_io`; without them a library
+  caller lost the warnings of those four readers.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 

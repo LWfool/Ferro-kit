@@ -92,7 +92,7 @@ E-4、E-5、D-6、D-7。
 |---|---|---|
 | 9.0 ✅ | 登记（本节）、更正第 5 / 7 批两处失实销账 | — |
 | 9 ✅ | io 读侧 | `af8a0e5` `b7b0f1a` `e231d99` `b8324f5` `02cc4b4` `d361233` `a2bdf70` `6d35257` `7d7748c` `5fd1b05` `5315717`（2026-10-20）。**用户定**：截断后一帧不剩报错（四个 reader 共用 `util::drop_truncated`）；END 分帧的末块缺 END 但原子数一致时保留并告警。实现上与计划的出入：B-2 的判据收窄为「最后一行列数不足或数字读不出」才算截断，整行完整但内容错（原子序数 200）恒报错 —— 计划时没写，首版把它也当截断，测试当场抓到；dump 的 `test_general_triclinic_box` 原断言的正是「一帧不剩返回空轨迹」，改为断言报错；extxyz 原子行改走闭包（外层 Err 可截断、内层 Err 恒报错），块内中文注释同步改英文；B-7 连带改 ferro-python 一条 pytest 的文案断言。golden master（9 个 fixture 转 6 种格式 + 13 个边界文件，共 111 个输入的 info + convert）每步只出现预告差异：B-1 / B-2 / B-5 / B-6 各自的边界文件，B-8 的 bohr 输入第 9 位有效数字。Rust 测试与 clippy 每步全绿，ferro-python pytest 180 通过。原条目：B-1、B-2、B-5、B-6、B-7、B-8、B-9、B-10、B-11、B-12、B 附 |
-| 10 | io 写侧 | B-3、B-4、B-13（导出部分） |
+| 10 ✅ | io 写侧 | `6ebe0ae` `95fe99e` `944a39a` `e73d452`（2026-10-20）。10.1 B-3 pdb writer 两遍：先逐帧算 CRYST1 变换并查坐标宽度，全过才建文件；**用户定：报错帧号统一 0 起**（同 extxyz / dump / deepmd / `partial_column`，胞的两条原为 1 起）。10.2 B-4 DeePMD writer 只调顺序：set 边界、逐项全有全无、力个数、virial 全部算完才动目录，被拒的重写保住原系统（测试逐字节比 type.raw 与三个 npy）。10.3（读码新发现，与 B-3 同类）extxyz 的 `virial=` 换算并进建文件前的逐帧预检，原先「有应力无胞」/ 零体积在 create 之后才拒。10.4 B-13 导出部分：根上补 xyz / extxyz / pdb / lammps data 的 `_with_warnings`，新增 ferro-io 首个集成测试 `tests/warnings_export.rs`。写侧 golden master（12 个 fixture × 7 种格式经 convert + 8 个 AIMD 输出经 dataset collect 写 DeePMD）每步零差异；Rust 905 个测试、clippy 0；ferro-python clippy 0、pytest 180 通过。顺带注意到未修：`write_deepmd_npy_bounds` 的边界检查只比总帧数，重叠或越界的 bounds（如 `[(0,3),(5,7)]`，共 5 帧）能过检查后在切片处 panic；只有 CLI 内部生成 bounds，暂无外部入口。原条目：B-3、B-4、B-13（导出部分） |
 | 11 | 输出口径统一（用户定 3） | B-13、D-3、E-12 |
 | 12 | core / structure | A-1、A-3 – A-18 |
 | 13 | analysis | C-1、C-3 – C-15 |
