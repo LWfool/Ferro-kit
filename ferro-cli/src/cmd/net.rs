@@ -191,8 +191,6 @@ fn note_missing_qn_tables(params: &TypeParams) {
     ));
 }
 
-/// `Zn=3.98 P=4.00` — per-input, so it belongs in the `[inputs]` block rather than
-/// the shared parameter block.
 /// Warns when formers share two or more ligands (edge-sharing polyhedra).
 ///
 /// The conventional Qn analysis assumes an all-corner-sharing network.  Edge
@@ -209,6 +207,8 @@ fn warn_edge_sharing(results: &[(batch::Input, Resolved)]) {
     }
 }
 
+/// `Zn=3.98 P=4.00` — per-input, so it belongs in the `[inputs]` block rather than
+/// the shared parameter block.
 fn fmt_means<T>(
     means: &std::collections::HashMap<String, f64>,
     present: &std::collections::HashMap<String, T>,
