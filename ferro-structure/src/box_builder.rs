@@ -11,7 +11,7 @@ use crate::compounds;
 use ferro_core::data::elements;
 use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
-use ferro_core::units::AVOGADRO;
+use ferro_core::units::AMU_ANG3_TO_G_CM3;
 
 /// A component in a mixed-compound system.
 pub struct Component {
@@ -189,10 +189,10 @@ pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64
         ));
     }
 
-    // V (cm³) = total_mass (g/mol) / (density (g/cm³) × N_A (1/mol))
-    // V (Å³) = V (cm³) × 10^24
-    let volume_cm3 = total_mass / (density * AVOGADRO);
-    let volume_ang3 = volume_cm3 * 1e24;
+    // A molar mass in g/mol is the molecule's mass in amu, and density = m / V ×
+    // AMU_ANG3_TO_G_CM3, so V (Å³) = m / density × AMU_ANG3_TO_G_CM3 (review A-7: the
+    // constant was spelled out here as 1e24 / N_A)
+    let volume_ang3 = total_mass / density * AMU_ANG3_TO_G_CM3;
     Ok(volume_ang3.cbrt())
 }
 
@@ -559,6 +559,9 @@ mod tests {
         // 1000 × 18.015 / (1.0 × 6.022e23) = 2.992e-20 cm³ = 29920 Å³
         // L = 29920^(1/3) ≈ 31.04 Å
         assert!(box_len > 30.0 && box_len < 32.0, "box_len = {}", box_len);
+        // Review A-7: the shared constant gives the box the hand-written 1e24 / N_A gave
+        let old = (1000.0 * 18.015 / (1.0 * ferro_core::units::AVOGADRO) * 1e24).cbrt();
+        assert!((box_len - old).abs() < 1e-12 * old, "{box_len} vs {old}");
     }
 
     #[test]
