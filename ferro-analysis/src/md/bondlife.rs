@@ -168,7 +168,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
-    let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
+    let max_lag = resolve_max_lag("max-lag", n_frames, params.max_lag)?;
     let r_bond = params.r_bond;
     // 0 < r_bond <= r_break 已由 validate 查过
     let r_break = params.r_break.unwrap_or(r_bond);

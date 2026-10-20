@@ -96,7 +96,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
     check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
-    let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
+    let max_lag = resolve_max_lag("max-lag", n_frames, params.max_lag)?;
     if let Some(k) = traj.frames.iter().position(|f| f.velocities().is_none()) {
         return Err(ChemError::ValidationError(format!(
             "frame {k} has no velocities; VACF needs velocities in every frame"

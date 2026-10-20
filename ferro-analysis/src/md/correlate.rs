@@ -84,7 +84,10 @@ impl Autocorr {
 
 /// The longest lag to output: `max_lag`, or `n_frames / 2` when `None` (the
 /// default of GROMACS `-acflen`). Must lie in `1 ..= n_frames − 1`.
-pub fn resolve_max_lag(n_frames: usize, max_lag: Option<usize>) -> ferro_core::Result<usize> {
+///
+/// `name` is the option the error names: `max-lag` for the correlation functions,
+/// `tau` for vanhove, whose single lag follows the same rule.
+pub fn resolve_max_lag(name: &str, n_frames: usize, max_lag: Option<usize>) -> ferro_core::Result<usize> {
     if n_frames < 2 {
         return Err(ferro_core::error::ChemError::ValidationError(
             "trajectory requires at least 2 frames".into()));
@@ -92,7 +95,7 @@ pub fn resolve_max_lag(n_frames: usize, max_lag: Option<usize>) -> ferro_core::R
     let m = max_lag.unwrap_or(n_frames / 2);
     if m == 0 || m >= n_frames {
         return Err(ferro_core::error::ChemError::ValidationError(format!(
-            "max-lag must be within 1..={} for {n_frames} frames, got {m}", n_frames - 1)));
+            "{name} must be within 1..={} for {n_frames} frames, got {m}", n_frames - 1)));
     }
     Ok(m)
 }

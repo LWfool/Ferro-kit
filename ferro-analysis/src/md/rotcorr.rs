@@ -139,7 +139,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
-    let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
+    let max_lag = resolve_max_lag("max-lag", n_frames, params.max_lag)?;
     // 键矢量取最小镜像：r_cut 超过上界时更远镜像里的近邻被漏掉
     let cells = check::periodic_cells(traj, Some(("r-cut", params.r_cut)))?;
 

@@ -213,7 +213,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
     check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
-    let max_lag = resolve_max_lag(n_frames, params.max_lag)?;
+    let max_lag = resolve_max_lag("max-lag", n_frames, params.max_lag)?;
     // 按第一帧筛选元素
     let ref_frame = &traj.frames[0];
     let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;

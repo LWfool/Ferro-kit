@@ -14,6 +14,7 @@
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use crate::check;
+use super::correlate::resolve_max_lag;
 use super::util::{check_frame_spacing, select_atoms, unwrap_lattice};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
@@ -161,13 +162,9 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = atom_indices.len();
 
-    // None takes half the trajectory (as correlate.rs defaults max_lag) —
-    // n_steps - 1 would leave a single time origin
-    let tau = params.tau.unwrap_or((n_steps / 2).max(1));
-    if tau >= n_steps {
-        return Err(ChemError::ValidationError(format!(
-            "tau must be within 1..={} for {n_steps} frames, got {tau}", n_steps - 1)));
-    }
+    // The same rule as max-lag: None takes half the trajectory (n_steps - 1 would leave a
+    // single time origin), and τ must lie in 1 ..= n_steps − 1
+    let tau = resolve_max_lag("tau", n_steps, params.tau)?;
     let shift = params.shift.max(1);
 
     // 收集元素列表（用于输出文件头）
