@@ -142,7 +142,9 @@ ferro traj angle -a O -b P -c O -i traj.dump \
 ```
 
 ```rust
-use ferro_analysis::{AngleParams, calc_angle, write_angle};
+use ferro_analysis::{AngleParams, calc_angle};
+use ferro_io::{write_table, TableFormat};
+use std::path::Path;
 
 let params = AngleParams {
     r_cut_ab: 2.4,
@@ -151,7 +153,9 @@ let params = AngleParams {
     ..AngleParams::default()
 };
 let result = calc_angle(&traj, &params).unwrap();
-write_angle(&result, "output.angle").unwrap();
+for (name, table) in result.to_tables() {
+    write_table(&table, Path::new(&format!("output_{name}.csv")), TableFormat::Csv).unwrap();
+}
 ```
 
 ## Implementation Notes
