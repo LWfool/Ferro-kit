@@ -3,6 +3,7 @@ use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
 use anyhow::{bail, Context, Result};
 use ferro_core::data::elements::by_number;
+use super::util::drop_truncated;
 
 /// 读取 XYZ 文件，支持多帧（多个连续 block）。
 pub fn read_xyz(path: &Path) -> Result<Trajectory> {
@@ -15,11 +16,6 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
     let mut lines = super::util::text_lines(path)?.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
-    // A file ending inside its last frame is an MD run cut off: drop that frame, keep the others
-    // (as the dump reader does)
-    let truncated = |k: usize, start: usize, why: String| {
-        format!("warning: last frame (frame {k}, line {start}) is incomplete and was dropped: {why}")
-    };
 
     'frames: loop {
         // 寻找下一个帧的原子数行，跳过空行
@@ -41,7 +37,7 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
 
         let k = traj.n_frames();
         let Some((_, comment)) = lines.next() else {
-            warnings.push(truncated(k, count_no, "no comment line".into()));
+            drop_truncated(&mut warnings, k, count_no, "no comment line")?;
             break;
         };
         let comment = comment.context("read error")?;
@@ -49,31 +45,17 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
         let mut frame = Frame::new();
         for i in 0..n_atoms {
             let Some((line_no, line)) = lines.next() else {
-                warnings.push(truncated(k, count_no, format!("{i} of {n_atoms} atoms")));
+                drop_truncated(&mut warnings, k, count_no, &format!("{i} of {n_atoms} atoms"))?;
                 break 'frames;
             };
             let line = line.context("read error")?;
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() < 4 {
-                // The file's last line written only in part is a cut-off too
-                if lines.peek().is_none() {
-                    warnings.push(truncated(k, count_no, format!("{i} of {n_atoms} atoms")));
+            match parse_atom_line(&line, line_no, lines.peek().is_none())? {
+                Some(atom) => frame.add_atom(atom),
+                None => {
+                    drop_truncated(&mut warnings, k, count_no, &format!("{i} of {n_atoms} atoms"))?;
                     break 'frames;
                 }
-                bail!("line {line_no}: expected element + 3 coords, got {line:?}");
             }
-            let x: f64 = parts[1].parse().context("invalid x")?;
-            let y: f64 = parts[2].parse().context("invalid y")?;
-            let z: f64 = parts[3].parse().context("invalid z")?;
-            // An atomic number in the first column becomes its symbol (as in ASE); `8` used to be the
-            // element name
-            let element = match parts[0].parse::<u8>() {
-                Ok(z) => by_number(z)
-                    .with_context(|| format!("line {line_no}: no element has atomic number {z}"))?
-                    .symbol.to_string(),
-                Err(_) => parts[0].to_string(),
-            };
-            frame.add_atom(Atom::new(element, Vector3::new(x, y, z)));
         }
 
         if traj.n_frames() == 0 {
@@ -86,6 +68,36 @@ pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
         traj.add_frame(frame);
     }
     Ok((traj, warnings))
+}
+
+/// One atom line: element (or atomic number) and three coordinates.
+///
+/// `None` when the file's last line was written only in part — too short, or cut inside
+/// a number — which is an MD run cut off (as the dump reader judges it); anywhere else
+/// that is a bad file. A bad element is never a cut: the coordinates came after it.
+fn parse_atom_line(line: &str, line_no: usize, last: bool) -> Result<Option<Atom>> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 4 {
+        if last { return Ok(None); }
+        bail!("line {line_no}: expected element + 3 coords, got {line:?}");
+    }
+    let mut xyz = [0.0; 3];
+    for (k, name) in ["x", "y", "z"].into_iter().enumerate() {
+        match parts[k + 1].parse() {
+            Ok(v) => xyz[k] = v,
+            Err(_) if last => return Ok(None),
+            Err(_) => bail!("line {line_no}: invalid {name} {:?}", parts[k + 1]),
+        }
+    }
+    // An atomic number in the first column becomes its symbol (as in ASE); `8` used to be the
+    // element name
+    let element = match parts[0].parse::<u8>() {
+        Ok(z) => by_number(z)
+            .with_context(|| format!("line {line_no}: no element has atomic number {z}"))?
+            .symbol.to_string(),
+        Err(_) => parts[0].to_string(),
+    };
+    Ok(Some(Atom::new(element, Vector3::from(xyz))))
 }
 
 #[cfg(test)]
@@ -141,6 +153,7 @@ C  1.4  0.0  0.1
             ("trunc_atoms.xyz", "2\nframe 1\nC 0 0 0.1\n"),       // 1 of 2 atom lines
             ("trunc_half.xyz", "2\nframe 1\nC 0 0 0.1\nC 1.4"),   // last line cut
             ("trunc_comment.xyz", "2\n"),                         // only the count line
+            ("trunc_number.xyz", "2\nframe 1\nC 0 0 0.1\nC 1.4 0 -"), // last line cut inside a number
         ] {
             let path = write_tmp(name, &format!("2\nframe 0\nC 0 0 0\nC 1.4 0 0\n{tail}"));
             let (traj, warnings) = read_xyz_with_warnings(&path).unwrap();
@@ -151,6 +164,14 @@ C  1.4  0.0  0.1
         // An incomplete middle frame is still an error
         let path = write_tmp("trunc_middle.xyz", "2\nf0\nC 0 0 0\n2\nf1\nC 0 0 0\nC 1 0 0\n");
         assert!(read_xyz(&path).is_err());
+        // A bad number on a line that is not the last is a bad file, named by line (scan B-2)
+        let path = write_tmp("bad_number.xyz", "2\nf0\nC 0 0 0\nC 1 0 -\n2\nf1\nC 0 0 0\nC 1 0 0\n");
+        let err = format!("{:#}", read_xyz(&path).unwrap_err());
+        assert!(err.contains("line 4: invalid z"), "{err}");
+        // The only frame cut off leaves nothing: an error, not an empty trajectory
+        let path = write_tmp("trunc_only.xyz", "2\nf0\nC 0 0 0\nC 1 0 -");
+        let err = format!("{:#}", read_xyz(&path).unwrap_err());
+        assert!(err.contains("only frame"), "{err}");
     }
 
     /// An atomic number in the first column is an element, as ASE reads it.

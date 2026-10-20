@@ -4,6 +4,10 @@ use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
 use ferro_core::units::ASE_FS;
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
+use super::util::drop_truncated;
+
+/// One parsed atom line: the atom, and its force and velocity when the file has them.
+type AtomLine = (Atom, Option<Vector3<f64>>, Option<Vector3<f64>>);
 
 pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
     Ok(read_extxyz_with_warnings(path)?.0)
@@ -61,12 +65,9 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
     let mut lines = lines.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
-    // A file ending inside its last frame is an MD run cut off: drop that frame, keep the others
-    // (as the dump reader does). An incomplete middle frame never gets here: the next frame's
-    // count line is read as an atom line and fails its column count
-    let truncated = |k: usize, start: usize, why: String| {
-        format!("warning: last frame (frame {k}, line {start}) is incomplete and was dropped: {why}")
-    };
+    // A file ending inside its last frame is an MD run cut off: `drop_truncated` drops that frame,
+    // keeping the others (as the dump reader does). An incomplete middle frame never gets there: the
+    // next frame's count line is read as an atom line and fails its column count
 
     loop {
         // Skip blank lines between frames
@@ -85,7 +86,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
 
         let frame_no = traj.n_frames();
         let Some((comment_no, comment)) = lines.next() else {
-            warnings.push(truncated(frame_no, count_no, "no comment line".into()));
+            drop_truncated(&mut warnings, frame_no, count_no, "no comment line")?;
             break;
         };
         let kv = parse_comment(&comment)
@@ -158,78 +159,96 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
         let mut complete = true;
         for i in 0..n {
             let Some((line_no, line)) = lines.next() else {
-                warnings.push(truncated(frame_no, count_no, format!("{i} of {n} atoms")));
+                drop_truncated(&mut warnings, frame_no, count_no, &format!("{i} of {n} atoms"))?;
                 complete = false;
                 break;
             };
-            let cols: Vec<&str> = line.split_whitespace().collect();
-            if cols.len() < ncols {
-                // The file's last line written only in part is a cut-off too
-                if lines.peek().is_none() {
-                    warnings.push(truncated(frame_no, count_no, format!("{i} of {n} atoms")));
+            let last = lines.peek().is_none();
+            // Outer Err: a short line or a number that does not parse. On the file's last line that
+            // is a run cut off (as the dump reader judges it), anywhere else a bad file. Inner Err: a
+            // whole line that says something wrong, never a cut
+            let parsed = (|| -> Result<Result<AtomLine>> {
+                let cols: Vec<&str> = line.split_whitespace().collect();
+                if cols.len() < ncols {
+                    bail!("atom line {i}: expected {ncols} columns, got {}", cols.len());
+                }
+                // Every parse failure is an error: a 0 would pose as "measured 0", a None as "no such column"
+                let num = |name: &str, c: usize| -> Result<f64> {
+                    cols[c].parse().with_context(|| {
+                        format!("frame {frame_no}, line {line_no}: invalid {name} value {:?}", cols[c])
+                    })
+                };
+                let vec3 = |name: &str, c: usize| -> Result<Vector3<f64>> {
+                    Ok(Vector3::new(num(name, c)?, num(name, c + 1)?, num(name, c + 2)?))
+                };
+
+                // species, or else ASE's atomic-number column Z (checked above that one exists)
+                let element = match find("species") {
+                    Some(c) => cols[c].to_string(),
+                    None => {
+                        let c = find("z").unwrap_or_default(); // names are lowercased
+                        let z: u8 = cols[c].parse().with_context(|| format!(
+                            "frame {frame_no}, line {line_no}: invalid Z value {:?}", cols[c]))?;
+                        match ferro_core::data::elements::by_number(z) {
+                            Some(e) => e.symbol.to_string(),
+                            None => return Ok(Err(anyhow::anyhow!(
+                                "frame {frame_no}, line {line_no}: no element has atomic number {z}"))),
+                        }
+                    }
+                };
+
+                let pos = vec3("pos", pos_col)?;
+
+                let mut atom = Atom::new(element, pos);
+                // ASE writes the calculator's `charges` as a `charge` column and `initial_charges` under its own
+                // name (ase/io/extxyz.py PROPERTY_NAME_MAP); with several, take the one most like this frame's
+                // charges
+                let charge_col = ["charges", "charge", "initial_charges"].into_iter()
+                    .find_map(|name| find(name).map(|c| (name, c)));
+                if let Some((name, c)) = charge_col {
+                    atom.charge = Some(num(name, c)?);
+                }
+                if let Some(c) = find("masses") {
+                    atom.mass = Some(num("masses", c)?);
+                }
+                if let Some(c) = find("magmoms") {
+                    atom.magmom = Some(num("magmoms", c)?);
+                }
+                // The site label has a column of its own and species stays a plain element — unlike a
+                // LAMMPS dump there is nothing to split at an underscore, so nothing is guessed here
+                if let Some(c) = find("label") {
+                    atom.label = Some(cols[c].to_string());
+                }
+                let mass = atom.effective_mass();
+
+                let force = find("forces").or_else(|| find("force")).map(|c| vec3("forces", c)).transpose()?;
+                // Velocities (review A-2): velocities (ferro's old spelling), vel (GPUMD) and velo (QUIP)
+                // are all Å/fs. ASE knows only momenta = m·v in its own time unit: divide by the mass
+                // (masses column first, as ASE's get_velocities) and convert to Å/fs. Momenta used to be
+                // stored as velocities, off by m/ASE_FS
+                let vel = if let Some(c) = find("velocities").or_else(|| find("vel")).or_else(|| find("velo")) {
+                    Some(vec3("velocities", c)?)
+                } else if let Some(c) = find("momenta") {
+                    Some(vec3("momenta", c)? / mass * ASE_FS)
+                } else {
+                    None
+                };
+                Ok(Ok((atom, force, vel)))
+            })();
+
+            match parsed {
+                Ok(Ok((atom, force, vel))) => {
+                    frame.add_atom(atom);
+                    all_forces.extend(force);
+                    all_vels.extend(vel);
+                }
+                Ok(Err(e)) => return Err(e),
+                Err(_) if last => {
+                    drop_truncated(&mut warnings, frame_no, count_no, &format!("{i} of {n} atoms"))?;
                     complete = false;
                     break;
                 }
-                bail!("atom line {i}: expected {ncols} columns, got {}", cols.len());
-            }
-            // 解析失败一律报错：补 0 会冒充「测到了 0」，转成 None 会冒充「没有这一列」
-            let num = |name: &str, c: usize| -> Result<f64> {
-                cols[c].parse().with_context(|| {
-                    format!("frame {frame_no}, line {line_no}: invalid {name} value {:?}", cols[c])
-                })
-            };
-            let vec3 = |name: &str, c: usize| -> Result<Vector3<f64>> {
-                Ok(Vector3::new(num(name, c)?, num(name, c + 1)?, num(name, c + 2)?))
-            };
-
-            // species, or else ASE's atomic-number column Z (checked above that one exists)
-            let element = match find("species") {
-                Some(c) => cols[c].to_string(),
-                None => {
-                    let c = find("z").unwrap_or_default(); // names are lowercased
-                    cols[c].parse::<u8>().ok()
-                        .and_then(ferro_core::data::elements::by_number)
-                        .map(|e| e.symbol.to_string())
-                        .with_context(|| format!(
-                            "frame {frame_no}, line {line_no}: invalid Z value {:?}", cols[c]))?
-                }
-            };
-
-            let pos = vec3("pos", pos_col)?;
-
-            let mut atom = Atom::new(element, pos);
-            // ASE writes the calculator's `charges` as a `charge` column and `initial_charges` under its own
-            // name (ase/io/extxyz.py PROPERTY_NAME_MAP); with several, take the one most like this frame's
-            // charges
-            let charge_col = ["charges", "charge", "initial_charges"].into_iter()
-                .find_map(|name| find(name).map(|c| (name, c)));
-            if let Some((name, c)) = charge_col {
-                atom.charge = Some(num(name, c)?);
-            }
-            if let Some(c) = find("masses") {
-                atom.mass = Some(num("masses", c)?);
-            }
-            if let Some(c) = find("magmoms") {
-                atom.magmom = Some(num("magmoms", c)?);
-            }
-            // 位点标签走自己的一列,species 保持纯元素 —— 不像 LAMMPS dump
-            // 那样需要按下划线拆分,故这里不做任何猜测
-            if let Some(c) = find("label") {
-                atom.label = Some(cols[c].to_string());
-            }
-            let mass = atom.effective_mass();
-            frame.add_atom(atom);
-
-            if let Some(c) = find("forces").or_else(|| find("force")) {
-                all_forces.push(vec3("forces", c)?);
-            }
-            // 速度（审查 A-2）：velocities（ferro 旧写法）、vel（GPUMD）、velo（QUIP）都是 Å/fs。
-            // ASE 只认 momenta = m·v，时间单位是它自己的：除以质量（masses 列优先，同 ASE 的
-            // get_velocities）再换成 Å/fs。以前 momenta 直接当速度存，差 m/ASE_FS 倍
-            if let Some(c) = find("velocities").or_else(|| find("vel")).or_else(|| find("velo")) {
-                all_vels.push(vec3("velocities", c)?);
-            } else if let Some(c) = find("momenta") {
-                all_vels.push(vec3("momenta", c)? / mass * ASE_FS);
+                Err(e) => return Err(e),
             }
         }
 
@@ -777,7 +796,8 @@ Si 0.0 0.0 0.0
         ];
         for (from, to, field) in cases {
             let bad = good.replacen(from, to, 1);
-            let e = parse_extxyz(&format!("{good}{bad}")).unwrap_err();
+            // A good frame after it: a bad last line of the file reads as a cut-off run instead
+            let e = parse_extxyz(&format!("{good}{bad}{good}")).unwrap_err();
             let msg = format!("{e:#}");
             let line = if matches!(field, "energy" | "temperature") { "line 5" } else { "line 6" };
             assert!(msg.contains("frame 1") && msg.contains(line) && msg.contains(field),
@@ -794,6 +814,7 @@ Si 0.0 0.0 0.0
             ("atom lines", "2\nProperties=species:S:1:pos:R:3\nC 0 0 0.1\n"),
             ("half a line", "2\nProperties=species:S:1:pos:R:3\nC 0 0 0.1\nC 1.4"),
             ("comment line", "2\n"),
+            ("cut inside a number", "2\nProperties=species:S:1:pos:R:3\nC 0 0 0.1\nC 1.4 0 -"),
         ] {
             let lines = format!("{head}{tail}");
             let (traj, warnings) = parse_extxyz_lines(lines.lines().map(|l| Ok(l.to_string()))).unwrap();
@@ -804,6 +825,17 @@ Si 0.0 0.0 0.0
         // An incomplete middle frame is still an error
         let bad = format!("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\n{head}");
         assert!(parse_extxyz(&bad).is_err());
+        // A bad number on a line that is not the last is a bad file (scan B-2)
+        let bad = format!("{head}{head}").replacen("C 1.4 0 0", "C 1.4 0 -", 1);
+        let err = format!("{:#}", parse_extxyz(&bad).unwrap_err());
+        assert!(err.contains("line 4: invalid pos"), "{err}");
+        // A whole last line naming no element is not a cut
+        let z = "2\nProperties=Z:I:1:pos:R:3\n8 0 0 0\n200 1 0 0";
+        let err = format!("{:#}", parse_extxyz(z).unwrap_err());
+        assert!(err.contains("atomic number 200"), "{err}");
+        // The only frame cut off leaves nothing: an error, not an empty trajectory
+        let err = format!("{:#}", parse_extxyz("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\nC 1").unwrap_err());
+        assert!(err.contains("only frame"), "{err}");
     }
 
     /// ASE 3.29 output, verbatim: it writes initial charges as `initial_charges` and the

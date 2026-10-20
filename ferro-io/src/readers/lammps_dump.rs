@@ -129,11 +129,7 @@ fn parse_dump_lines(
                 if next.is_some() {
                     bail!("frame {k} (line {}) is incomplete: {why}", start + 1);
                 }
-                warnings.push(format!(
-                    "warning: last frame (frame {k}, line {}) is incomplete and was \
-                     dropped: {why}",
-                    start + 1
-                ));
+                super::util::drop_truncated(&mut warnings, k, start + 1, &why)?;
                 break;
             }
         }
@@ -908,10 +904,10 @@ ITEM: ATOMS id type element x y z
                          .replace("2 1 H 0 2 4", "2 1 H 0.5 0.25 0.25");
         let (traj, _) = parse_lammps_dump(&scaled, None).unwrap();
         assert!((traj.frames[0].positions()[0] - Vector3::new(1.0, 4.0, 3.0)).norm() < 1e-12);
-        // One number short is an error
+        // One number short is an error (it used to give an empty trajectory and a warning)
         let bad = text.replace("-4 0 0 2", "-4 0 0");
-        let (traj, w) = parse_lammps_dump(&bad, None).unwrap();
-        assert!(traj.frames.is_empty() && w[0].contains("abc origin line 2"), "{w:?}");
+        let err = format!("{:#}", parse_lammps_dump(&bad, None).unwrap_err());
+        assert!(err.contains("only frame") && err.contains("abc origin line 2"), "{err}");
     }
 
     /// A dump with a `typelabel` column and no `element` column used to give `X<type>`.

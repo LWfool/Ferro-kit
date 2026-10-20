@@ -29,7 +29,8 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
         }
     };
 
-    for (ln, line) in super::util::text_lines(path)?.enumerate() {
+    let mut lines = super::util::text_lines(path)?.enumerate().peekable();
+    while let Some((ln, line)) = lines.next() {
         let line = line?;
         let tag = col(&line, 0, 6);
 
@@ -65,9 +66,15 @@ pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<String>)> 
                 }
             }
             "ATOM" | "HETATM" => {
-                let atom = parse_atom_record(&line)
-                    .with_context(|| format!("line {}: {line:?}", ln + 1))?;
-                current.add_atom(atom);
+                let last = lines.peek().is_none();
+                match parse_atom_record(&line, last).with_context(|| format!("line {}: {line:?}", ln + 1))? {
+                    Some(atom) => current.add_atom(atom),
+                    None => {
+                        let why = "the last ATOM line is cut short";
+                        super::util::drop_truncated(&mut warnings, traj.n_frames(), ln + 1, why)?;
+                        return Ok((traj, warnings));
+                    }
+                }
             }
             _ => {}
         }
@@ -137,20 +144,24 @@ fn parse_cryst1(line: &str) -> Option<Cell> {
     Cell::from_lengths_angles(a, b, c, al, be, ga).ok()
 }
 
-/// ATOM / HETATM 一行 → 原子。坐标坏或行短于 54 列报错（同 ASE）—— 以前静默丢原子，
-/// 原子数少了却退出码 0
-fn parse_atom_record(line: &str) -> Result<Atom> {
+/// One ATOM / HETATM line → an atom. Bad coordinates or a line shorter than 54 columns are
+/// an error (as in ASE) — atoms used to be dropped silently, fewer atoms and exit code 0.
+///
+/// `None` when this is the file's last line and its coordinates are missing or cut inside a
+/// number: an MD run cut off, not a bad file (scan B-2, as the dump reader judges it).
+fn parse_atom_record(line: &str, last: bool) -> Result<Option<Atom>> {
     let xyz: Option<Vec<f64>> = [(30, 38), (38, 46), (46, 54)].iter()
         .map(|&(a, b)| col(line, a, b).trim().parse().ok())
         .collect();
     let Some(&[x, y, z]) = xyz.as_deref() else {
+        if last { return Ok(None); }
         bail!("invalid or missing coordinates in columns 31-54");
     };
     // 第 77–78 列是规范的元素位，RCSB 写大写（`FE`）—— 规范成 `Fe`，不另校验
     // （元素表只到 Rn，校验会误拒 U 之类）。空着时从原子名推
     let sym = col(line, 76, 78).trim();
     let element = if sym.is_empty() { element_from_atom_name(col(line, 12, 16))? } else { capitalize(sym) };
-    Ok(Atom::new(element, Vector3::new(x, y, z)))
+    Ok(Some(Atom::new(element, Vector3::new(x, y, z))))
 }
 
 /// 原子名（13–16 列）→ 元素，按 PDB 的列对齐约定：元素符号右对齐在 13–14 列，
@@ -239,13 +250,26 @@ ENDMDL
     #[test]
     fn test_bad_or_short_atom_line_is_an_error_naming_the_line() {
         for bad in [WATER_PDB.replace("0.763  -0.477", "abc    -0.477"),
-                    format!("{}ATOM      4  H   UNK A   1       0.000\n", WATER_PDB)] {
+                    WATER_PDB.replace("END\n", "ATOM      4  H   UNK A   1       0.000\nEND\n")] {
             let e = read_pdb(&write_tmp("test_bad.pdb", &bad)).unwrap_err();
             let msg = format!("{e:#}");
             assert!(msg.contains("line ") && msg.contains("coordinates"), "应点名行号：{msg}");
         }
         assert!(format!("{:#}", read_pdb(&write_tmp("test_bad.pdb",
             &WATER_PDB.replace("0.763  -0.477", "abc    -0.477"))).unwrap_err()).contains("line 3"));
+    }
+
+    /// The file's last ATOM line cut short is an MD run cut off: the frame it belongs to is
+    /// dropped, and when that was the only frame it is an error (scan B-2).
+    #[test]
+    fn test_cut_last_atom_line() {
+        let cut = format!("{WATER_PDB}ATOM      1  O   UNK A   1       0.000   0.0");
+        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_cut.pdb", &cut)).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+        assert!(w.len() == 1 && w[0].contains("frame 1, line 6"), "{w:?}");
+        let only = &WATER_PDB[..WATER_PDB.find("-0.763").unwrap() + 3]; // cut inside atom 3's y
+        let err = format!("{:#}", read_pdb(&write_tmp("test_cut_only.pdb", only)).unwrap_err());
+        assert!(err.contains("only frame"), "{err}");
     }
 
     #[test]
