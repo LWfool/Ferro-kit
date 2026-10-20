@@ -43,7 +43,7 @@ g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)
 # every ordered pair in one pass -> {"r", "<A>-<B>_gr", "<A>-<B>_cn", ...}
 ga = ferro.gr_all(t, by="label")
 
-d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
+d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_x/y/z"
 ```
 
 ### API surface
@@ -51,8 +51,8 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 | Function | Description |
 |---|---|
 | `read(path, units=None, atom_style=None, type_map=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style`, a dump with velocities/forces needs `units`; a dump without an element column takes `type_map={1: "Zr", 2: "O"}` |
-| `write(traj, path, units=None)` | Write by extension; velocities/forces to a dump need `units`; QE input is read-only |
-| `read_output(path)` | VASP OUTCAR / vasprun.xml, CP2K single-point / MD output → `(Trajectory, stats)`; frames carry energy, forces, stress; dropped frames (SCF not converged…) are counted in `stats` |
+| `write(traj, path, units=None, drop_partial=False)` | Write by extension; velocities/forces to a dump need `units`; a charge / magmom column only some atoms carry is an error unless `drop_partial=True`; QE / CP2K inputs, program outputs and DeePMD directories are read-only |
+| `read_output(path)` | VASP OUTCAR / vasprun.xml, CP2K single-point / MD output, pw.x output → `(Trajectory, stats)`; frames carry energy, forces, stress; dropped frames (SCF not converged…) are counted in `stats` |
 | `write_table(path, columns, meta=[])` | A CSV in ferro's table layout; `columns` = `[(name, numbers or strings)]` |
 | `sort_atoms(traj)` | Per frame, atoms in (Z, symbol) order — the order `ferro convert` writes |
 | `poscar_string(traj, frame_index=0, comment="ferro")` | POSCAR text of one frame |
@@ -67,9 +67,8 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_a/b/c"
 | `msd(traj, dt, max_lag=None, elements=None)` | MSD(t), time-origin averaged |
 
 `Trajectory` methods: `n_frames()`, `n_atoms()`, `elements()`,
-`positions(frame)`, `symbols(frame)`, `cell(frame)`, `pbc(frame)`, `charge(frame)`,
-`multiplicity(frame)`, `energy(frame)` [eV], `forces(frame)` [eV/Å], `stress(frame)` [eV/Å³, positive =
-compression], `tail(n)`, `subset(indices)`,
+`positions(frame)`, `symbols(frame)`, `cell(frame)`, `pbc(frame)`, `energy(frame)` [eV],
+`forces(frame)` [eV/Å], `stress(frame)` [eV/Å³, positive = compression], `tail(n)`, `subset(indices)`,
 `frame_indices(start=None, end=None, stride=None, number=None)` (the frame choice of
 `ferro convert`: 0-based, inclusive, all frames by default), `len()`, `repr()`.
 
