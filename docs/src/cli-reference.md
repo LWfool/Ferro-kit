@@ -9,7 +9,9 @@ ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife   → st
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                      → six stacked csv
                                                                  + optional labelled trajectory
-ferro bader | convert | info | job
+ferro bader                                                    → ACF / BCF / AVF tables (Henkelman's layout)
+ferro convert | info                                           → structure files / a summary
+ferro dataset collect | filter | merge                         → DeePMD system directories
 ferro doc   <topic>                                            → the manual (compiled into the binary)
 ```
 
