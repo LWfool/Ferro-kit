@@ -467,8 +467,10 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  bondlife_<C>-<N>.csv          time, c_int, s_cont
-  bondlife_events_<C>-<N>.csv   time, n_bonds, formed, broken (every frame)
+  bondlife_<C>-<N>[_<suffix>].csv
+                          time, c_int, s_cont
+  bondlife_events_<C>-<N>[_<suffix>].csv
+                          time, n_bonds, formed, broken (every frame)
   [inputs] lists both lifetimes: trapezoidal integral and 1/e crossing
 
 Examples:
@@ -634,9 +636,9 @@ Parameters:
 
 Output:
   sdf_<type>_<stem>[_<suffix>].cube per atom type, or
-  sdf_fam<N>_<type>_<stem>.cube with more than one family. Types are P0..P3
-  (former Qn), Of/On/Ob (free / non-bridging / bridging ligand) and the
-  element symbol for a modifier.
+  sdf_fam<N>_<type>_<stem>[_<suffix>].cube with more than one family.
+  Types are P0..P3 (former Qn), Of/On/Ob (free / non-bridging / bridging
+  ligand) and the element symbol for a modifier.
 
 Examples:
   ferro map sdf -i traj.dump --qn 3
@@ -734,9 +736,9 @@ pub fn print_dataset_overview() {
   Three steps kept as separate commands, because the first one is expensive and
   its output is the copy you back up:
 
-  collect    AIMD output -> DeePMD system directories        (implemented)
-  filter     quality selection on an existing dataset        (implemented)
-  merge      combine same-composition datasets, resize sets  (implemented)
+  collect    AIMD output -> DeePMD system directories
+  filter     quality selection on an existing dataset
+  merge      combine same-composition datasets, resize sets
 
 Run a subcommand with no -i for its full page:
   ferro dataset collect"#
