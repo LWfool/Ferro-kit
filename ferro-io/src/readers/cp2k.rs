@@ -278,11 +278,9 @@ fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3], [usize; 3])>
     Ok((cell, pbc, multiple_unit_cell(section)?))
 }
 
-/// 长度单位 → Å 的倍数。CP2K 认任意单位，这里只认 angstrom 与 bohr，其余报错 ——
-/// 此前非 bohr 一律当 Å，`UNIT nm` 会静默差 10 倍
-/// CP2K 的周期性取值（`&CELL PERIODIC`、输出头部的 `CELL| Periodicity`）→ 每轴 pbc。
-/// 取值表 X Y Z XY XZ YZ XYZ NONE（input_cp2k_subsys.F），大小写不敏感；认不出给 `None`。
-/// cp2k.rs、cp2k_sp.rs、cp2k_md.rs 三处共用。
+/// A CP2K periodicity value (`&CELL PERIODIC`, the output header's `CELL| Periodicity`) → pbc per
+/// axis. Values X Y Z XY XZ YZ XYZ NONE (input_cp2k_subsys.F), case-insensitive; `None` when not one
+/// of them. Shared by cp2k.rs, cp2k_sp.rs and cp2k_md.rs.
 pub(crate) fn cp2k_periodic(v: &str) -> Option<[bool; 3]> {
     let v = v.to_uppercase();
     match v.as_str() {
@@ -292,6 +290,8 @@ pub(crate) fn cp2k_periodic(v: &str) -> Option<[bool; 3]> {
     }
 }
 
+/// Length unit → its size in Å. CP2K takes any unit; only angstrom and bohr are read here, anything
+/// else is an error — every non-bohr unit used to be taken as Å, so `UNIT nm` was off tenfold, silently
 fn length_unit(u: &str) -> Result<f64> {
     let Some(unit) = LengthUnit::from_name(u) else {
         bail!("unsupported length unit {:?} (supported: angstrom, bohr)", u.to_lowercase());

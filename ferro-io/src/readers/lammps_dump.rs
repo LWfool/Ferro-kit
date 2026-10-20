@@ -427,11 +427,6 @@ fn parse_frame(
     Ok(frame)
 }
 
-/// The raw-string → element mapping, once per file, so a silently wrong split
-/// is visible rather than buried in the results.
-///
-/// Empty for ordinary trajectories where every element column entry is already
-/// a plain chemical symbol.
 /// Result of splitting a site string into a chemical element and an optional type label.
 ///
 /// See [`split_element_label`].
@@ -476,6 +471,11 @@ fn split_element_label(s: &str) -> LabelSplit<'_> {
     }
 }
 
+/// The raw-string → element mapping, once per file, so a silently wrong split
+/// is visible rather than buried in the results.
+///
+/// Empty for ordinary trajectories where every element column entry is already
+/// a plain chemical symbol.
 fn site_map_warnings(site_map: &BTreeMap<String, String>, unknown: &BTreeSet<String>) -> Vec<String> {
     let mut out = Vec::new();
     let split: Vec<(&String, &String)> = site_map.iter()
