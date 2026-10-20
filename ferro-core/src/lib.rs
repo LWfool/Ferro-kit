@@ -3,9 +3,13 @@
 //! Type hierarchy:
 //! ```text
 //! Trajectory (Vec<Frame>)
-//!   └── Frame  (atoms + cell + pbc + computed results)
-//!         └── Atom (element + position + optional properties)
-//!               └── data::elements (static element table, used for mass lookup)
+//!   └── Frame  (cell + pbc + per-frame results: energy, stress, temperature, step)
+//!         ├── Arc<Vec<Site>>  what each atom is (element, label, mass, magmom),
+//!         │                   one table shared by consecutive frames
+//!         └── per-atom arrays positions, charges, forces, velocities, the frame's own
+//! Atom     an owned atom, what a frame is built from (Frame::add_atom / set_atoms)
+//! AtomRef  the view of one atom a frame hands out (Frame::atom / atoms)
+//! data::elements  static element table (symbol, Z, mass)
 //! ```
 
 pub mod array_order;
