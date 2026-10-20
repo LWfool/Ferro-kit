@@ -75,6 +75,10 @@ command line alike; regenerate it rather than migrating it.
   next step. The command name alone (`ferro traj gr`) still prints the page.
 - `--last-n 0` is refused as an invalid value before anything is read; it used to read every
   input and then fail on each as "trajectory is empty".
+- `bader -m` with an unknown method is a usage error from the argument parser, listing the valid
+  names, exit code 2 (it was a `FerroError` with exit code 1). Case still does not matter.
+  Library: `ferro_io::read_charge_grid` reads a `.cube` or a CHGCAR by name, the choice `bader`
+  made on its own.
 
 ### Messages: one layout, on stderr
 

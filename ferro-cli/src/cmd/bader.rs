@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
-use clap::Args;
-use ferro_io::{read_chgcar, read_cube_as_chg};
+use clap::{Args, ValueEnum};
+use ferro_io::read_charge_grid;
 use ferro_analysis::{BaderAnalyzer, BaderMethod};
 use std::path::{Path, PathBuf};
 
@@ -11,9 +11,9 @@ pub struct BaderCmd {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Bader method: ongrid | neargrid | offgrid | weight
-    #[arg(short, long, default_value = "neargrid")]
-    pub method: String,
+    /// Bader method
+    #[arg(short, long, value_enum, ignore_case = true, default_value = "neargrid")]
+    pub method: MethodArg,
 
     /// Edge refinement: -1 = auto, -2 = single pass, N = N passes
     #[arg(short, long, default_value_t = -1)]
@@ -34,6 +34,17 @@ pub struct BaderCmd {
     /// Create the output directory without asking (required when there is no terminal)
     #[arg(long)]
     pub mkdir: bool,
+}
+
+/// `--method`, parsed by clap so a misspelt name fails before the (often huge) density
+/// is read, with the valid names listed (review D-10). `BaderMethod` stays clap-free in
+/// ferro-analysis.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum MethodArg {
+    Ongrid,
+    Neargrid,
+    Offgrid,
+    Weight,
 }
 
 /// True when `ferro bader` was typed with no input: print the help page rather
@@ -65,12 +76,11 @@ pub fn run(args: &BaderCmd) -> Result<()> {
     };
     // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等
     crate::batch::check_suffix(args.suffix.as_deref())?;
-    let method = match args.method.to_lowercase().as_str() {
-        "ongrid"   => BaderMethod::OnGrid,
-        "neargrid" => BaderMethod::NearGrid,
-        "offgrid"  => BaderMethod::OffGrid,
-        "weight"   => BaderMethod::Weight,
-        other => bail!("Unknown method: {other}.  Use ongrid|neargrid|offgrid|weight"),
+    let method = match args.method {
+        MethodArg::Ongrid => BaderMethod::OnGrid,
+        MethodArg::Neargrid => BaderMethod::NearGrid,
+        MethodArg::Offgrid => BaderMethod::OffGrid,
+        MethodArg::Weight => BaderMethod::Weight,
     };
 
     // 目录在读 CHGCAR 之前建好:几百 MB 读完才发现路径打不开是白等
@@ -78,17 +88,7 @@ pub fn run(args: &BaderCmd) -> Result<()> {
         crate::outpath::ensure_dir(dir, args.mkdir)?;
     }
 
-    let is_cube = input
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("cube"))
-        .unwrap_or(false);
-
-    let (frame, chg) = if is_cube {
-        read_cube_as_chg(input)?
-    } else {
-        read_chgcar(input)?
-    };
+    let (frame, chg) = read_charge_grid(input)?;
 
     println!("Bader analysis: method={:?}, refine={}, vacval={:.1e}", method, args.refine, args.vacval);
     println!("Grid: {} × {} × {} ({} points)", chg.shape[0], chg.shape[1], chg.shape[2], chg.nrho);
@@ -127,7 +127,7 @@ mod tests {
     fn cmd(input: Option<&str>) -> BaderCmd {
         BaderCmd {
             input: input.map(PathBuf::from),
-            method: "neargrid".into(),
+            method: MethodArg::Neargrid,
             refine: -1,
             vacval: 1e-3,
             output: None,
@@ -162,13 +162,21 @@ mod tests {
         assert_eq!(acf, PathBuf::from("reports/bader_ACF_CHGCAR_weight.dat"));
     }
 
-    /// 方法名在读文件**之前**校验：拿错方法名跑一个 GB 级 CHGCAR 再报错是白等
+    /// The method is checked before the file is read: clap parses it, so a misspelt name
+    /// never reaches a GB-sized CHGCAR. Case does not matter (review D-10)
     #[test]
-    fn test_unknown_method_is_rejected() {
-        let mut c = cmd(Some("no_such_CHGCAR"));
-        c.method = "nosuchmethod".into();
-        let err = run(&c).unwrap_err();
-        assert!(err.to_string().contains("Unknown method"), "{err}");
+    fn test_method_is_parsed_by_clap() {
+        #[derive(clap::Parser, Debug)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: BaderCmd,
+        }
+        use clap::Parser;
+        let w = Wrap::try_parse_from(["bader", "-i", "CHGCAR", "-m", "NearGrid"]).unwrap();
+        assert_eq!(w.cmd.method, MethodArg::Neargrid);
+        assert_eq!(Wrap::try_parse_from(["bader", "-i", "CHGCAR"]).unwrap().cmd.method, MethodArg::Neargrid);
+        let err = Wrap::try_parse_from(["bader", "-i", "CHGCAR", "-m", "nosuchmethod"]).unwrap_err().to_string();
+        assert!(err.contains("nosuchmethod") && err.contains("weight"), "{err}");
     }
 
     /// 审查 D-M13：-s 进文件名，读文件前拦下能把产物写到别处的字符

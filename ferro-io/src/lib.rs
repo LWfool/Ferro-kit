@@ -5,7 +5,8 @@ mod readers;
 mod writers;
 
 pub use format::{
-    is_deepmd_system, read, read_as, write, write_numbered, Format, ReadOptions, ReadReport, WriteOptions,
+    is_deepmd_system, read, read_as, read_charge_grid, write, write_numbered, Format, ReadOptions, ReadReport,
+    WriteOptions,
 };
 
 pub use notice::{Level, Notice};

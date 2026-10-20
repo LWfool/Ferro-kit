@@ -8,11 +8,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
-use ferro_core::Trajectory;
+use ferro_core::{ChargeGrid, Frame, Trajectory};
 use crate::Notice;
 
 use crate::readers::{
-    apply_type_map, is_extxyz, read_aimd_as, read_cif, read_cp2k_inp, read_cp2k_restart,
+    apply_type_map, is_extxyz, read_aimd_as, read_chgcar, read_cif, read_cp2k_inp, read_cp2k_restart, read_cube_as_chg,
     read_deepmd_npy_with_warnings, read_extxyz_with_warnings, read_lammps_data_with_warnings, read_lammps_dump_with_warnings,
     read_pdb_with_warnings, read_poscar_with_warnings, read_qe_input, read_xyz_with_warnings, sniff, AimdFormat, AimdStats,
     AtomStyle, LammpsUnits,
@@ -185,6 +185,17 @@ impl Format {
             None => bail!("Cannot determine format (no extension): {}", path.display()),
         }
     }
+}
+
+/// Reads a charge-density grid: a `.cube` file (Gaussian / QE pp.x), or a VASP CHGCAR
+/// for any other name (VASP writes `CHGCAR`, `AECCAR0`, `CHG` with no extension).
+///
+/// The grid formats are not rows of [`Format`]: they carry one structure plus a
+/// volumetric field and feed `bader` only, never [`read`] / `convert`. The extension
+/// test lives here all the same, so format recognition stays in this one file.
+pub fn read_charge_grid(path: &Path) -> Result<(Frame, ChargeGrid)> {
+    let is_cube = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("cube"));
+    if is_cube { read_cube_as_chg(path) } else { read_chgcar(path) }
 }
 
 /// Whether `dir` looks like a DeePMD system: a directory holding `type.raw`.
@@ -540,5 +551,21 @@ mod tests {
         assert_eq!(read_plain(&dir).unwrap().frames[0].element(0), "Si");
         let err = Format::detect(dir.join("set.000").as_path()).unwrap_err().to_string();
         assert!(err.contains("not a DeePMD system"), "{err}");
+    }
+
+    /// The name picks the reader: `.cube` in any case goes to the cube reader, anything
+    /// else to CHGCAR. The same CHGCAR text under a `.cube` name fails as a cube (review D-10)
+    #[test]
+    fn read_charge_grid_dispatches_on_the_extension() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/CHGCAR_2atoms");
+        let text = std::fs::read_to_string(&fixture).unwrap();
+        let (frame, chg) = read_charge_grid(&fixture).unwrap();
+        assert_eq!((frame.n_atoms(), chg.shape), (2, [8, 8, 8]));
+        for name in ["ferro_grid_dispatch.cube", "ferro_grid_dispatch.CUBE"] {
+            let as_cube = crate::testutil::write_tmp(name, &text);
+            assert!(read_charge_grid(&as_cube).is_err(), "{name} must go to the cube reader");
+        }
+        let as_chgcar = crate::testutil::write_tmp("ferro_grid_dispatch_AECCAR0", &text);
+        assert_eq!(read_charge_grid(&as_chgcar).unwrap().1.shape, [8, 8, 8]);
     }
 }
