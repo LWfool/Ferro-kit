@@ -92,7 +92,7 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
             str(traj)], d2sq_sq)
 
     print("[O-O g(r) 归因]")
-    # 配对已由 label 段进文件名，-o 与 S(q) 共用同一个批次标记
+    # The pair is in the file name (its label segment); -s is the same batch tag as S(q)'s
     fe_gr = fc.run_ferro(
         ferro_bin,
         ["traj", "gr", "-a", "O", "-b", "O", "-i", traj, "-s", "cmp",

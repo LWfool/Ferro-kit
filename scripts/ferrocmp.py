@@ -1,34 +1,38 @@
-"""读取 ferro 0.2.0 的分析产物、调用外部参考程序，供 compare_*.py 共用。
+"""Read ferro's analysis products and run the external reference programs; shared by
+compare_*.py.
 
-0.2.0 起每个分析模式只出**一份 csv**：顶部一个 `#` 注释块（版本、共享参数、
-`[inputs]` 逐输入清单），下面是带表头的数据行。注释块明确是给人看的，
-`pandas.read_csv(comment="#")` 会把它整块丢掉 —— 所以这里一律用 pandas 读，
-不再手写逐行 `float(x) for x in line.split()`（那正是旧脚本遇到 `file` 文本列
-直接 ValueError 的原因）。
+Since 0.2.0 every analysis writes **one csv**: a `#` comment block on top (version, shared
+parameters, the `[inputs]` list per input), then a header and the data rows. The comment block
+is for people, and `pandas.read_csv(comment="#")` drops it whole — so everything here is read
+with pandas, never line by line with `float(x) for x in line.split()` (which is how the old
+scripts died with a ValueError on the `file` text column).
 
-四处必须知道的形状变化（相对 0.1.15 的 `.dat`）：
+Five changes of shape to know (relative to the `.dat` of 0.1.15):
 
 1. **The batch tag is `-s`, and `-o` is the output directory** (since 0.3.3; in 0.2.0
    `-o` was the tag). `ferro traj gr -s run1` writes `gr_all_run1.csv` into the current
    directory. `run_ferro()` runs with outdir as the working directory and makes the
    input paths absolute, so it does not need `-o`.
 
-2. **gr / angle 是长表**，类型在数据列里而不在列名里。取一条曲线是
-   `df[(df.center == "P") & (df.neighbor == "O")]`，见 `pick()`。
-   sq 仍是宽表（主产物是两条 total，一行一个 q），两者读法不同。
+2. **gr / angle are long tables**: the species are in data columns, not in column names. One
+   curve is `df[(df.center == "P") & (df.neighbor == "O")]`, see `pick()`. sq is still a wide
+   table (the main products are the two totals, one row per q); the two are read differently.
 
-3. **多输入产物带 `file` 列**。这些对拍脚本都是单输入，`one_file()` 断言其唯一后
-   丢掉该列；悄悄取第一个文件是最难查的错。
+3. **A multi-input product has a `file` column.** These comparisons are all single-input;
+   `one_file()` asserts it is unique and drops the column — silently taking the first file is
+   the hardest mistake to find.
 
-4. 数值一律 `{:.6e}`，缺失值写成**空字段**（列并集下某输入没有的列）。pandas
-   读回来就是 NaN，不需要额外处理 —— 但不要把 NaN 当 0 参与统计。
+4. Numbers are `{:.6e}`; a missing value (a column another input lacks, under the column
+   union) is an **empty field**. pandas reads it back as NaN with no extra handling — but do
+   not count NaN as 0.
 
-5. **产物名带 label 段**（2026-08-13 起）：`gr.csv` → `gr_P-O.csv`，无筛选是
-   `gr_all.csv`。文件名一律用 `product_name()` 拼，不要在调用点手写字符串 ——
-   加 label 段那次，三个脚本因为各写各的名字同时断掉。
+5. **Product names carry a label segment** (since 2026-08-13): `gr.csv` → `gr_P-O.csv`,
+   `gr_all.csv` without a selection. Build every name with `product_name()`, never a string at
+   the call site — when the label segment came, three scripts broke at once, each having
+   written its own names.
 
-外部参考程序（dump2analysis / dump2sq）的输出格式没变，仍是空白分隔的数值表，
-由 `load_legacy()` / `legacy_header()` 读取。
+The external reference programs (dump2analysis / dump2sq) kept their output format,
+whitespace-separated numbers, read by `load_legacy()` / `legacy_header()`.
 """
 
 import os
