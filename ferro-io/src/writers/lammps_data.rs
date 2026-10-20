@@ -36,9 +36,11 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
     // One mass per type: atoms of one element that disagree cannot be written.
     // Checked before the file is created, so a refusal leaves nothing half-written.
     let type_masses = elem_order.iter().map(|elem| {
-        let mut masses = frame.atoms().filter(|a| a.element == *elem).map(|a| a.effective_mass());
-        let mass = masses.next().unwrap_or(1.0);
-        match masses.find(|m| (m - mass).abs() > 1e-6) {
+        // An element with no mass is an error (review A-3; it used to be written as 1 amu)
+        let masses = frame.atoms().filter(|a| a.element == *elem)
+            .map(|a| a.effective_mass()).collect::<ferro_core::Result<Vec<f64>>>()?;
+        let mass = masses[0]; // elem_order lists the frame's own elements
+        match masses.iter().copied().find(|m| (m - mass).abs() > 1e-6) {
             Some(other) => bail!("atoms of element {elem} carry different masses ({mass} and {other}); \
                                   LAMMPS data gives one mass per atom type"),
             None => Ok(mass),
@@ -188,6 +190,18 @@ mod tests {
         assert_eq!(f.atom(0).element, "Fe");
         let [a, ..] = f.cell.as_ref().unwrap().lengths();
         assert!((a - 2.87).abs() < 1e-4);
+    }
+
+    // Review A-3: the Masses section used to say 1.0 for an element with no mass
+    #[test]
+    fn test_element_with_no_mass_is_an_error() {
+        let mut traj = bcc_traj();
+        traj.frames[0].add_atom(Atom::new("Xx", Vector3::new(0.5, 0.5, 0.5)));
+        let path = std::env::temp_dir().join("ferro_data_nomass.lammps");
+        let _ = std::fs::remove_file(&path);
+        let e = write_lammps_data(&traj, &path, false).unwrap_err();
+        assert!(format!("{e:#}").contains("no mass for element 'Xx'"), "{e:#}");
+        assert!(!path.exists(), "a refused write must not leave a file");
     }
 
     // 审查 A3：无胞帧以前按包围盒尺寸写成 0..L、坐标不平移，原子落在盒外

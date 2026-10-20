@@ -148,8 +148,7 @@ fn run() -> Result<()> {
             0
         }
         Command::Info(c) => {
-            if cmd::info::wants_help(c) { page_or_fail(1)?; help::print_info() } else { cmd::info::run(c)? }
-            0
+            if cmd::info::wants_help(c) { page_or_fail(1)?; help::print_info(); 0 } else { cmd::info::run(c)? }
         }
         Command::Dataset { cmd: None } => {
             help::print_dataset_overview();

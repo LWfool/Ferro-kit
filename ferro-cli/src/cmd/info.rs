@@ -2,7 +2,6 @@ use anyhow::{bail, Result};
 use clap::Args;
 use crate::args::common::ReadArgs;
 use crate::io_dispatch::read_trajectory;
-use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::Frame;
 use std::collections::BTreeMap;
@@ -24,7 +23,9 @@ pub fn wants_help(args: &InfoCmd) -> bool {
     args.input.is_none()
 }
 
-pub fn run(args: &InfoCmd) -> Result<()> {
+/// Returns the number of failures: 1 when a density could not be computed, so the
+/// exit code says so while the rest is still printed (review A-3).
+pub fn run(args: &InfoCmd) -> Result<usize> {
     // input 为空由 main 分派到帮助页，这里的 bail 只是防御
     let Some(input) = &args.input else {
         bail!("info needs an input file: -i <FILE>");
@@ -36,40 +37,41 @@ pub fn run(args: &InfoCmd) -> Result<()> {
     println!("File:   {}", input.display());
     println!("Frames: {n}");
 
+    let mut ok = true;
     if let Some(frame) = traj.frames.first() {
-        print_frame_info(frame, 0, input);
+        ok &= print_frame_info(frame, 0, input);
     }
     if n > 1 {
         if let Some(frame) = traj.frames.last() {
-            print_frame_info(frame, n - 1, input);
+            ok &= print_frame_info(frame, n - 1, input);
         }
     }
 
-    Ok(())
+    Ok(usize::from(!ok))
 }
 
-/// Total mass of a frame in amu, plus the atoms whose element is missing from the
-/// element table.
+/// Total mass of a frame in amu, or the atoms with no mass counted per symbol.
 ///
-/// `Atom::effective_mass` falls back to 1 amu for an unknown symbol, which drags
-/// the density down with no other visible sign — so the fallbacks are counted per
-/// symbol here and reported next to the density. `collect --type inspect` counts the
-/// same fallback in `ferro_analysis::ml::diagnostics::frame_table`; two places, not
-/// merged (R6, review E2-12).
-fn frame_mass_amu(frame: &Frame) -> (f64, BTreeMap<&str, usize>) {
-    let mut fallbacks: BTreeMap<&str, usize> = BTreeMap::new();
+/// An atom has no mass when its element is missing from the element table and no
+/// mass was given (review A-3: it used to count as 1 amu, dragging the density down
+/// with no other sign). `collect --type inspect` lists the same atoms in
+/// `ferro_analysis::ml::diagnostics::frame_table`; two places, not merged (R6,
+/// review E2-12).
+fn frame_mass_amu(frame: &Frame) -> std::result::Result<f64, BTreeMap<&str, usize>> {
+    let mut missing: BTreeMap<&str, usize> = BTreeMap::new();
     let mut total = 0.0;
     for a in frame.atoms() {
-        total += a.effective_mass();
-        // 只有既无显式质量、元素表又查不到的才是回退：显式质量是用户给的，不算未知
-        if a.mass.is_none() && by_symbol(a.element).is_none() {
-            *fallbacks.entry(a.element).or_insert(0) += 1;
+        match a.effective_mass() {
+            Ok(m) => total += m,
+            Err(_) => *missing.entry(a.element).or_insert(0) += 1,
         }
     }
-    (total, fallbacks)
+    if missing.is_empty() { Ok(total) } else { Err(missing) }
 }
 
-fn print_frame_info(frame: &Frame, idx: usize, source: &Path) {
+/// Prints one frame; `false` when its density could not be computed.
+fn print_frame_info(frame: &Frame, idx: usize, source: &Path) -> bool {
+    let mut ok = true;
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     for a in frame.atoms() {
         *counts.entry(a.element).or_insert(0) += 1;
@@ -87,19 +89,22 @@ fn print_frame_info(frame: &Frame, idx: usize, source: &Path) {
         let volume = cell.volume();
         println!("  Volume: {volume:.4} Å³");
 
-        // 无体积就没有密度：宁可不打这一行，也不写占位符冒充「测到了」
+        // No volume or no mass, no density: the line is left out rather than filled
+        // with a placeholder posing as measured
         if volume > 0.0 {
-            let (mass, fallbacks) = frame_mass_amu(frame);
-            println!("  Density: {:.4} g/cm³", mass / volume * AMU_ANG3_TO_G_CM3);
-            if !fallbacks.is_empty() {
-                let n_atoms: usize = fallbacks.values().sum();
-                let listed: Vec<String> =
-                    fallbacks.iter().map(|(e, n)| format!("{e}×{n}")).collect();
-                crate::report::warn(source.display(), format!(
-                    "{n_atoms} atom(s) not in the element table \
-                     ({}) counted as 1 amu — the density is too low",
-                    listed.join(", ")
-                ));
+            match frame_mass_amu(frame) {
+                Ok(mass) => println!("  Density: {:.4} g/cm³", mass / volume * AMU_ANG3_TO_G_CM3),
+                Err(missing) => {
+                    let n_atoms: usize = missing.values().sum();
+                    let listed: Vec<String> =
+                        missing.iter().map(|(e, n)| format!("{e}×{n}")).collect();
+                    crate::report::error(source.display(), format!(
+                        "frame {idx}: no mass for {n_atoms} atom(s) ({}): not in the element \
+                         table and no mass given; density not computed",
+                        listed.join(", ")
+                    ));
+                    ok = false;
+                }
             }
         }
     } else {
@@ -118,6 +123,7 @@ fn print_frame_info(frame: &Frame, idx: usize, source: &Path) {
     if frame.velocities().is_some() {
         println!("  Velocities: yes");
     }
+    ok
 }
 
 #[cfg(test)]
@@ -138,7 +144,7 @@ mod tests {
     }
 
     fn density_g_cm3(frame: &Frame) -> f64 {
-        let (mass, _) = frame_mass_amu(frame);
+        let mass = frame_mass_amu(frame).unwrap();
         mass / frame.cell.as_ref().unwrap().volume() * AMU_ANG3_TO_G_CM3
     }
 
@@ -157,20 +163,17 @@ mod tests {
     fn test_explicit_mass_overrides_table_and_is_not_a_fallback() {
         let mut frame = cubic_frame(10.0, &["Si"]);
         frame.sites_mut()[0].mass = Some(100.0);
-        let (mass, fallbacks) = frame_mass_amu(&frame);
+        let mass = frame_mass_amu(&frame).expect("an explicit mass is the user's, not a missing one");
         assert!((mass - 100.0).abs() < 1e-12);
-        assert!(fallbacks.is_empty(), "显式质量是用户给的，不该算未知元素");
     }
 
+    // Review A-3: an unknown symbol used to count as 1 amu, a density too low and nothing else
     #[test]
-    fn test_unknown_element_falls_back_to_one_amu_and_is_counted() {
-        // 未知符号在 effective_mass 里静默变成 1 amu，密度会偏低而无其他征兆，
-        // 所以必须数出来告警 —— 这个测试钉住的正是那条告警的触发条件
+    fn test_unknown_element_has_no_mass_and_is_counted() {
         let frame = cubic_frame(10.0, &["Si", "Xx", "Xx"]);
-        let (mass, fallbacks) = frame_mass_amu(&frame);
-        assert!((mass - (28.085 + 2.0)).abs() < 1e-3);
-        assert_eq!(fallbacks.len(), 1);
-        assert_eq!(fallbacks["Xx"], 2);
+        let missing = frame_mass_amu(&frame).unwrap_err();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing["Xx"], 2);
     }
 
     #[test]

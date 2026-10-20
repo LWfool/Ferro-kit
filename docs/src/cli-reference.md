@@ -375,21 +375,18 @@ Two edge cases for the density:
 
 - **Without a cell the row is not printed at all**, and no `n/a` placeholder is written — no volume means
   no density, and a placeholder reads like a measurement.
-- **Unknown elements pull the density down.**  A symbol that is not in the element table (a stray site
-  label, or a placeholder such as `X` written by another program) falls back to 1 amu in `effective_mass()`,
-  with no symptom other than a smaller number.  The density row is therefore followed by a warning naming how many atoms and which symbols triggered the fallback:
+- **An atom with no mass leaves the row out.**  A symbol that is not in the element table (a stray site
+  label, or a placeholder such as `X` written by another program) has no mass unless the file gives one.
+  Ferro does not guess one (no 1 amu stand-in, no reading `Fe1` as Fe): the density row is left out, the
+  rest of the report is printed, an error names how many atoms and which symbols, and the exit code is 1:
 
   ```
-  Density: 0.0765 g/cm³
+  box.xyz: FerroError: frame 0: no mass for 2 atom(s) (Xx×2): not in the element table and no mass given; density not computed
   ```
 
-  and on stderr
-
-  ```
-  box.xyz: FerroWarning: 2 atom(s) not in the element table (Xx×2) counted as 1 amu — the density is too low
-  ```
-
-  **When the warning is there, do not use that number.**
+  Correct the element names in the input. The same atoms are an error wherever a mass is needed:
+  extended XYZ `momenta` on reading, the `masses` / `momenta` columns on writing, and the `Masses`
+  section of a LAMMPS data file.
 
 A different volume on the first and the last frame means an NPT trajectory, and the density drifts with it.
 For the mean ± σ over the whole trajectory, read `# volume = <mean> +/- <std>` from the header of any `ferro traj` output.

@@ -3,6 +3,8 @@
 
 use nalgebra::Vector3;
 
+use crate::error::{ChemError, Result};
+
 /// One atom, owned: what a reader or a structure operation builds a frame from.
 ///
 /// A frame does not store `Atom`s. It keeps what stays the same from frame to frame
@@ -39,8 +41,9 @@ impl Atom {
         }
     }
 
-    /// Effective mass \[amu\]: `mass` if set, otherwise the element table's, 1.0 if unknown.
-    pub fn effective_mass(&self) -> f64 {
+    /// Effective mass \[amu\]: `mass` if set, otherwise the element table's; `Err`
+    /// naming the element when it is in neither.
+    pub fn effective_mass(&self) -> Result<f64> {
         effective_mass(&self.element, self.mass)
     }
 
@@ -63,11 +66,18 @@ impl Atom {
     }
 }
 
-fn effective_mass(element: &str, mass: Option<f64>) -> f64 {
-    mass.unwrap_or_else(|| {
-        crate::data::elements::by_symbol(element)
-            .map(|e| e.atomic_mass)
-            .unwrap_or(1.0)
+/// No fallback (user decision 2026-10-20, review A-3): 1 amu used to stand in for an
+/// unknown symbol, silently dragging densities down and skewing momenta, and guessing
+/// from a prefix (`Fe1` -> Fe) would hide a typo. The user fixes the input instead.
+fn effective_mass(element: &str, mass: Option<f64>) -> Result<f64> {
+    if let Some(m) = mass {
+        return Ok(m);
+    }
+    crate::data::elements::by_symbol(element).map(|e| e.atomic_mass).ok_or_else(|| {
+        ChemError::ValidationError(format!(
+            "no mass for element '{element}': not in the element table and no mass given; \
+             correct the element name or give the mass"
+        ))
     })
 }
 
@@ -83,7 +93,7 @@ pub struct Site {
 
 impl Site {
     /// Effective mass \[amu\], as [`Atom::effective_mass`].
-    pub fn effective_mass(&self) -> f64 {
+    pub fn effective_mass(&self) -> Result<f64> {
         effective_mass(&self.element, self.mass)
     }
 }
@@ -104,7 +114,7 @@ pub struct AtomRef<'a> {
 
 impl AtomRef<'_> {
     /// Effective mass \[amu\], as [`Atom::effective_mass`].
-    pub fn effective_mass(&self) -> f64 {
+    pub fn effective_mass(&self) -> Result<f64> {
         effective_mass(self.element, self.mass)
     }
 
@@ -136,14 +146,26 @@ mod tests {
     #[test]
     fn test_effective_mass_from_table() {
         let atom = Atom::new("Fe", Vector3::zeros());
-        assert!((atom.effective_mass() - 55.845).abs() < 1e-3);
+        assert!((atom.effective_mass().unwrap() - 55.845).abs() < 1e-3);
     }
 
     #[test]
     fn test_effective_mass_override() {
         let mut atom = Atom::new("Fe", Vector3::zeros());
         atom.mass = Some(56.0);
-        assert!((atom.effective_mass() - 56.0).abs() < 1e-10);
+        assert!((atom.effective_mass().unwrap() - 56.0).abs() < 1e-10);
+    }
+
+    // Review A-3: an unknown symbol used to count as 1 amu
+    #[test]
+    fn test_effective_mass_unknown_element_is_an_error() {
+        let mut atom = Atom::new("Xx", Vector3::zeros());
+        let e = atom.effective_mass().unwrap_err().to_string();
+        assert!(e.contains("no mass for element 'Xx'"), "{e}");
+        // No guessing from a prefix either
+        assert!(Atom::new("Fe1", Vector3::zeros()).effective_mass().is_err());
+        atom.mass = Some(3.0);
+        assert_eq!(atom.effective_mass().unwrap(), 3.0);
     }
 
     #[test]

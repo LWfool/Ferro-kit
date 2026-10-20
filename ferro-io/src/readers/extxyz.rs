@@ -224,7 +224,6 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
                 if let Some(c) = find("label") {
                     atom.label = Some(cols[c].to_string());
                 }
-                let mass = atom.effective_mass();
 
                 let force = find("forces").or_else(|| find("force")).map(|c| vec3("forces", c)).transpose()?;
                 // Velocities (review A-2): velocities (ferro's old spelling), vel (GPUMD) and velo (QUIP)
@@ -234,6 +233,11 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
                 let vel = if let Some(c) = find("velocities").or_else(|| find("vel")).or_else(|| find("velo")) {
                     Some(vec3("velocities", c)?)
                 } else if let Some(c) = find("momenta") {
+                    // An element with no mass is a wrong line, not a cut (review A-3: it used to be 1 amu)
+                    let mass = match atom.effective_mass() {
+                        Ok(m) => m,
+                        Err(e) => return Ok(Err(anyhow::anyhow!("frame {frame_no}, line {line_no}: {e}"))),
+                    };
                     Some(vec3("momenta", c)? / mass * ASE_FS)
                 } else {
                     None
@@ -774,6 +778,18 @@ Si 0.0 0.0 0.0
         // p / m = 0.0491 Å/ase_t，乘 units.fs 得 Å/fs
         let want = 0.098_226_947_884_640_63 / 2.0 * 0.098_226_947_884_640_63;
         assert!((v.x - want).abs() < 1e-15, "实得 {}，应为 {want}", v.x);
+    }
+
+    // Review A-3: momenta of an element with no mass used to be divided by 1 amu
+    #[test]
+    fn test_momenta_of_an_element_with_no_mass_are_an_error() {
+        let text = "1\nProperties=species:S:1:pos:R:3:momenta:R:3\nXx 0 0 0 1 0 0\n";
+        let e = format!("{:#}", parse_extxyz(text).unwrap_err());
+        assert!(e.contains("line 3") && e.contains("no mass for element 'Xx'"), "{e}");
+        // A masses column gives it one; without momenta no mass is needed
+        let given = "1\nProperties=species:S:1:pos:R:3:masses:R:1:momenta:R:3\nXx 0 0 0 2.0 1 0 0\n";
+        assert!(parse_extxyz(given).is_ok());
+        assert!(parse_extxyz("1\nProperties=species:S:1:pos:R:3\nXx 0 0 0\n").is_ok());
     }
 
     #[test]

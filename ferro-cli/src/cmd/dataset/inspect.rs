@@ -61,16 +61,17 @@ pub fn write_all(
     Ok(vec![trj, data, info])
 }
 
-/// The per-frame table, plus the note a vasprun.xml run needs.
+/// The per-frame table, plus the note a vasprun.xml run needs. An atom with no mass
+/// leaves the density empty and is reported as an error (review A-3).
 ///
 /// vasprun.xml has no temperature field, so the column is derived; without saying
 /// so, the same run read from another file gives numbers nobody can explain.
 /// Decided by the reader the frames came through, not by a metadata string, which
 /// no reader ever set to "vasprun.xml" (review B4).
 fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String], dest: &Path) -> Table {
-    let (mut t, warnings) = frame_table(traj, sources);
-    for w in &warnings {
-        crate::report::warn(dest.display(), w);
+    let (mut t, errors) = frame_table(traj, sources);
+    for e in &errors {
+        crate::report::error(dest.display(), e);
     }
     if format == AimdFormat::VaspXml && traj.frames.iter().any(|f| f.temperature.is_some()) {
         t.meta_line(

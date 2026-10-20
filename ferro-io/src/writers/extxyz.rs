@@ -37,9 +37,9 @@ pub fn write_extxyz_with(
     drop_partial: bool,
 ) -> Result<()> {
     let path_ = path.display();
-    // Whether to write the charge / moment columns, and the stress tensor to write, are decided for
-    // every frame before the file is created, so a refusal leaves no half-written file
-    type Columns = (bool, bool, Option<(&'static str, Matrix3<f64>)>);
+    // Whether to write the mass / charge / moment columns, and the stress tensor to write, are decided
+    // for every frame before the file is created, so a refusal leaves no half-written file
+    type Columns = (bool, bool, bool, Option<(&'static str, Matrix3<f64>)>);
     let columns: Vec<Columns> = trajectory.frames.iter().enumerate().map(|(fi, frame)| {
         let n = frame.n_atoms();
         let count = |has: fn(&ferro_core::AtomRef) -> bool| frame.atoms().filter(|a| has(a)).count();
@@ -63,7 +63,20 @@ pub fn write_extxyz_with(
                 Some(("virial", v))
             }
         };
+        // The masses used go along; ASE's get_velocities and this repository's reader divide by them,
+        // so the round trip is lossless.
+        // Masses are written too without velocities when an atom carries an explicit one (an isotope,
+        // a dump mass column), or converting would drop it;
+        // atoms without one get the element's mass, so the column is always full. An element with
+        // neither is an error (review A-3; it used to be written as 1 amu)
+        let has_mass = frame.velocities().is_some() || frame.atoms().any(|a| a.mass.is_some());
+        if has_mass {
+            for a in frame.atoms() {
+                a.effective_mass().with_context(|| format!("frame {fi}: cannot write the masses column"))?;
+            }
+        }
         Ok((
+            has_mass,
             super::partial_column("charge", count(|a| a.charge.is_some()), n, fi, drop_partial)?,
             super::partial_column("magnetic moment", count(|a| a.magmom.is_some()), n, fi, drop_partial)?,
             stress,
@@ -72,7 +85,7 @@ pub fn write_extxyz_with(
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
-    for (frame, &(has_charge, has_magmom, stress)) in trajectory.frames.iter().zip(&columns) {
+    for (frame, &(has_mass, has_charge, has_magmom, stress)) in trajectory.frames.iter().zip(&columns) {
         // Line 1: atom count
         writeln!(w, "{}", frame.n_atoms())?;
 
@@ -97,12 +110,6 @@ pub fn write_extxyz_with(
         let mut prop_spec = "species:S:1:pos:R:3".to_string();
         if frame.forces().is_some() { prop_spec.push_str(":forces:R:3"); }
         // 速度写成 ASE 认的 momenta（审查 A-2）：ASE 与 GPUMD 都不认 velocities 列。
-        // The masses used go along; ASE's get_velocities and this repository's reader divide by them,
-        // so the round trip is lossless.
-        // Masses are written too without velocities when an atom carries an explicit one (an isotope,
-        // a dump mass column), or converting would drop it;
-        // atoms without one get the element's mass, so the column is always full
-        let has_mass = frame.velocities().is_some() || frame.atoms().any(|a| a.mass.is_some());
         if has_mass { prop_spec.push_str(":masses:R:1"); }
         if frame.velocities().is_some() { prop_spec.push_str(":momenta:R:3"); }
         if has_charge { prop_spec.push_str(":charges:R:1"); }
@@ -143,14 +150,15 @@ pub fn write_extxyz_with(
             if let Some(f) = forces.get(i) {
                 line.push_str(&format!(" {} {} {}", fmt(f.x), fmt(f.y), fmt(f.z)));
             }
-            let m = atom.effective_mass();
+            // Velocities imply has_mass; every mass was checked before the file was created
             if has_mass {
+                let m = atom.effective_mass()?;
                 line.push_str(&format!(" {}", fmt(m)));
-            }
-            if let Some(v) = vels.get(i) {
-                // Å/fs → amu·Å/(ASE 时间)
-                let p = v * (m / ASE_FS);
-                line.push_str(&format!(" {} {} {}", fmt(p.x), fmt(p.y), fmt(p.z)));
+                if let Some(v) = vels.get(i) {
+                    // Å/fs -> amu·Å/(ASE time unit)
+                    let p = v * (m / ASE_FS);
+                    line.push_str(&format!(" {} {} {}", fmt(p.x), fmt(p.y), fmt(p.z)));
+                }
             }
             if has_charge {
                 line.push_str(&format!(" {}", fmt(atom.charge.unwrap_or(0.0))));
@@ -342,6 +350,23 @@ mod tests {
             .unwrap_err();
         assert!(format!("{e:#}").contains("no cell"), "{e:#}");
         // The refusal used to come after File::create and leave a half-written file
+        assert!(!path.exists(), "a refused write must not leave a file");
+    }
+
+    // Review A-3: the masses / momenta columns used to take 1 amu for an element with no mass
+    #[test]
+    fn test_masses_column_of_an_element_with_no_mass_is_an_error() {
+        let mut frame = Frame::new();
+        frame.add_atom(Atom::new("O", Vector3::zeros()));
+        frame.add_atom(Atom::new("Xx", Vector3::new(1.0, 0.0, 0.0)));
+        let path = std::env::temp_dir().join("ferro_extxyz_nomass.extxyz");
+        let _ = std::fs::remove_file(&path);
+        // No velocities and no explicit mass: no masses column, nothing to look up
+        write_extxyz(&Trajectory::from_frame(frame.clone()), &path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        frame.set_velocities(Some(vec![Vector3::zeros(); 2])).unwrap();
+        let e = write_extxyz(&Trajectory::from_frame(frame), &path).unwrap_err();
+        assert!(format!("{e:#}").contains("frame 0") && format!("{e:#}").contains("'Xx'"), "{e:#}");
         assert!(!path.exists(), "a refused write must not leave a file");
     }
 

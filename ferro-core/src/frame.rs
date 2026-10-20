@@ -336,23 +336,22 @@ impl Frame {
 
     // ── Geometry ─────────────────────────────────────────────────────────────
 
-    /// Total mass \[amu\].
-    pub fn total_mass(&self) -> f64 {
+    /// Total mass \[amu\]; `Err` for an atom without a mass ([`Site::effective_mass`]).
+    pub fn total_mass(&self) -> Result<f64> {
         self.sites.iter().map(|s| s.effective_mass()).sum()
     }
 
-    /// Mass-weighted centre \[Å\].
-    pub fn center_of_mass(&self) -> Vector3<f64> {
+    /// Mass-weighted centre \[Å\]; `Err` as [`Self::total_mass`].
+    pub fn center_of_mass(&self) -> Result<Vector3<f64>> {
         if self.positions.is_empty() {
-            return Vector3::zeros();
+            return Ok(Vector3::zeros());
         }
-        let total = self.total_mass();
-        self.sites
-            .iter()
-            .zip(&self.positions)
-            .map(|(s, p)| p * s.effective_mass())
-            .fold(Vector3::zeros(), |acc, v| acc + v)
-            / total
+        let total = self.total_mass()?;
+        let mut sum = Vector3::zeros();
+        for (s, p) in self.sites.iter().zip(&self.positions) {
+            sum += p * s.effective_mass()?;
+        }
+        Ok(sum / total)
     }
 
     /// Unweighted centre \[Å\].
@@ -373,10 +372,11 @@ impl Frame {
         }
     }
 
-    /// Moves the centre of mass to the origin.
-    pub fn center(&mut self) {
-        let com = self.center_of_mass();
+    /// Moves the centre of mass to the origin; `Err` as [`Self::total_mass`].
+    pub fn center(&mut self) -> Result<()> {
+        let com = self.center_of_mass()?;
         self.translate(-com);
+        Ok(())
     }
 
     // ── Periodicity ──────────────────────────────────────────────────────────
@@ -524,8 +524,13 @@ mod tests {
         let mut f = Frame::new();
         f.add_atom(Atom::new("C", Vector3::new(0.0, 0.0, 0.0)));
         f.add_atom(Atom::new("C", Vector3::new(2.0, 0.0, 0.0)));
-        let com = f.center_of_mass();
+        let com = f.center_of_mass().unwrap();
         assert!((com.x - 1.0).abs() < 1e-10);
+        // Review A-3: no 1 amu stand-in for an element with no mass
+        f.add_atom(Atom::new("Xx", Vector3::new(4.0, 0.0, 0.0)));
+        assert!(f.total_mass().is_err());
+        assert!(f.center_of_mass().is_err());
+        assert!(f.center().is_err());
     }
 
     #[test]

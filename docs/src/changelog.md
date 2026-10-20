@@ -100,6 +100,17 @@ command line alike; regenerate it rather than migrating it.
   2014), the same set as the other constants. LAMMPS dumps in `real` units, read or written,
   convert forces with it; their own `0.04336410` is gone. Forces change in the eighth digit.
 
+### Masses: no 1 amu stand-in
+
+- An element that is not in the element table, with no mass given in the file, has no mass; it
+  used to count as 1 amu without a word. Where a mass is needed this is now an error naming the
+  element: extended XYZ `momenta` on reading, the `masses` / `momenta` columns of extended XYZ
+  and the `Masses` section of LAMMPS data on writing (nothing is written). `ferro info` leaves the
+  density row out, prints the rest and exits 1; `dataset collect --type inspect` leaves the
+  density column empty. No mass is guessed from a prefix (`Fe1` is not read as Fe here).
+- Library: `effective_mass()` (on `Atom`, `Site`, `AtomRef`), `Frame::total_mass` and
+  `Frame::center_of_mass` return `Result`, and `Frame::center` returns `Result<()>`.
+
 ### Writers: fewer silent results
 
 - DeePMD output (`dataset collect` / `filter` / `merge`): a frame periodic along some axes only
@@ -250,9 +261,9 @@ Also:
 - The `[inputs]` block lists a failed input in its place, not at the end, so it matches the
   `[k/N]` lines on screen.  The `skipped:` line of a failed input goes to stderr.
 - `ferro net` prints its label scheme before the `Inputs:` line.
-- `dataset collect --type inspect` warns, on screen and in the `#` block of the frame table, when
-  an element missing from the element table makes the density too low (it counts as 1 amu), as
-  `ferro info` does.  A plain file where a system directory should go is refused with the usual
+- `dataset collect --type inspect` leaves the density empty for an atom with no mass and says so,
+  on screen and in the `#` block of the frame table, as `ferro info` does (see *Masses* above).
+  A plain file where a system directory should go is refused with the usual
   `--overwrite` message.
 - The help pages share one layout and one block for the common options; `map chg-sdf` showed
   `--qn` defaulting to 2, it is 3.

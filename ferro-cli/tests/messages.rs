@@ -99,3 +99,20 @@ fn reader_notice_carries_source_and_line() {
                 input.display())
     );
 }
+
+/// An atom with no mass (review A-3): `info` prints everything but the density, says
+/// why in one FerroError line per frame shown, and exits 1.
+#[test]
+fn info_without_a_mass_leaves_out_the_density() {
+    let d = scratch("nomass");
+    let xyz = d.join("unknown.xyz");
+    std::fs::write(&xyz, "2\nLattice=\"5 0 0 0 5 0 0 0 5\" Properties=species:S:1:pos:R:3\nO 0 0 0\nXx 1 0 0\n").unwrap();
+    let out = ferro(&["info", "-i", xyz.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let (o, err) = (text(&out.stdout), text(&out.stderr));
+    assert!(o.contains("Volume: 125.0000") && !o.contains("Density"), "{o}");
+    let lines: Vec<&str> = err.lines().collect();
+    assert_eq!(lines[0], format!("{}: FerroError: frame 0: no mass for 1 atom(s) (Xx\u{d7}1): not in the \
+                                  element table and no mass given; density not computed", xyz.display()), "{err}");
+    assert_eq!(*lines.last().unwrap(), "ferro: FerroError: 1 input(s) failed; see the messages above");
+}
