@@ -15,7 +15,9 @@ use ferro_core::units::AMU_ANG3_TO_G_CM3;
 
 /// A component in a mixed-compound system.
 pub struct Component {
-    /// Compound name or formula, looked up in the COMPOUNDS database.
+    /// Compound name or formula, looked up in the COMPOUNDS database first; anything
+    /// not there is parsed as a chemical formula (`Ca3(PO4)2`) and its molar mass summed
+    /// from atomic weights (see `resolve_component`).
     pub compound: String,
     /// Number of molecules of this compound.
     pub n_molecules: usize,
