@@ -68,6 +68,7 @@ ferro map radius -i traj.dump --radius 1.0                   # -> radius_traj.cu
 ```rust
 use ferro_analysis::{CubeRadiusParams, calc_cube_radius};
 use ferro_io::write_cube;
+use std::path::Path;
 
 let params = CubeRadiusParams {
     nx: 100, ny: 100, nz: 100,
@@ -75,7 +76,7 @@ let params = CubeRadiusParams {
     elements: Some(vec!["Li".into()]),
 };
 let result = calc_cube_radius(&traj, &params).unwrap();
-write_cube("li_radius.cube", &result.cube).unwrap();
+write_cube(&result.cube, Path::new("li_radius.cube")).unwrap();
 ```
 
 ## Comparison with Density Mode

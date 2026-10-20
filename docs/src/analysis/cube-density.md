@@ -115,6 +115,7 @@ ferro map force -i traj.dump                                 # -> force_traj.cub
 ```rust
 use ferro_analysis::{CubeDensityParams, CubeMode, calc_cube_density};
 use ferro_io::write_cube;
+use std::path::Path;
 
 let params = CubeDensityParams {
     nx: 80, ny: 80, nz: 80,
@@ -122,7 +123,7 @@ let params = CubeDensityParams {
     mode: CubeMode::Density,
 };
 let result = calc_cube_density(&traj, &params).unwrap();
-write_cube("li_density.cube", &result.cube).unwrap();
+write_cube(&result.cube, Path::new("li_density.cube")).unwrap();
 ```
 
 ## Implementation Notes
