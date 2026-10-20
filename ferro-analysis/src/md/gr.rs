@@ -22,17 +22,6 @@ use super::util::par_map_in_order;
 
 // ─── 内部辅助 ────────────────────────────────────────────────────────────────
 
-/// Look up the atomic number for an element symbol or site label (e.g. "O_b_P_P", "P_0").
-///
-/// Matching strategy (tried in order):
-///   1. Exact match ("Fe" → 26, "O" → 8).
-///   2. First two bytes (uppercase + lowercase) as a chemical symbol ("Zn_f" → "Zn" → 30).
-///   3. First byte (uppercase letter) as a single-character element ("O_b_P_P" → "O" → 8).
-///   4. Unrecognised → 255 (sorted to end, with string secondary ordering).
-pub(super) fn elem_z(symbol: &str) -> u8 {
-    ferro_core::data::elements::symbol_to_z(symbol)
-}
-
 /// How atoms are grouped into the "types" that partial g(r) / CN are resolved over.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum GroupBy {
@@ -845,7 +834,9 @@ mod tests {
     }
 
     #[test]
-    fn test_elem_z_site_labels() {
+    fn test_symbol_to_z_on_site_labels() {
+        // The site labels gr groups by (--group-by label) resolve to their element
+        let elem_z = ferro_core::data::elements::symbol_to_z;
         assert_eq!(elem_z("O"), 8, "exact match");
         assert_eq!(elem_z("O_f"), 8, "free oxygen label");
         assert_eq!(elem_z("O_b_P_P"), 8, "bridging oxygen label");

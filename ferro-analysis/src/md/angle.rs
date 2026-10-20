@@ -27,39 +27,32 @@ use crate::neighbor::NeighborList;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use ferro_core::{Table, Trajectory};
-use super::gr::{GroupBy, elem_z, group_key, sorted_types};
+use super::gr::{GroupBy, group_key, sorted_types};
+use ferro_core::data::elements::canonical_cmp;
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
-/// Construct a canonical triplet key `"ElemA-ElemCenter-ElemC"` with Z(A) ≤ Z(C).
-/// When Z values are equal, lexicographic order is used to guarantee deterministic ordering for pseudo-element labels.
+/// Construct a canonical triplet key `"ElemA-ElemCenter-ElemC"` with A ≤ C in
+/// [`canonical_cmp`] order: by Z, then by string, so pseudo-element labels sharing a Z
+/// still order deterministically.
 pub(crate) fn canonical_triplet(a: &str, b: &str, c: &str) -> String {
-    // 先比较 Z，Z 相同时按字符串字典序决定顺序
-    let swap = match elem_z(a).cmp(&elem_z(c)) {
-        std::cmp::Ordering::Greater => true,
-        std::cmp::Ordering::Equal   => a > c,
-        std::cmp::Ordering::Less    => false,
-    };
-    if swap { format!("{}-{}-{}", c, b, a) } else { format!("{}-{}-{}", a, b, c) }
+    if canonical_cmp(a, c).is_gt() { format!("{}-{}-{}", c, b, a) } else { format!("{}-{}-{}", a, b, c) }
 }
 
-/// Sort triplet keys by (Z_center, center_label, Z_left, left_label, Z_right, right_label).
-/// Secondary string ordering ensures deterministic ordering for pseudo-element labels sharing the same Z.
+/// Sort triplet keys by centre, then left end, then right end, each in [`canonical_cmp`]
+/// order (Z, then string, so pseudo-element labels sharing a Z order deterministically).
 fn sort_triplet_keys(map: &BTreeMap<String, Vec<u64>>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
-    keys.sort_by(|ka, kb| {
-        // 格式 "A-B-C"：split_once('-') 得 (A, "B-C")，再 split_once('-') 得 (B, C)
-        // 使用 String 避免生命周期问题
-        let parse = |k: &str| -> (u8, String, u8, String, u8, String) {
-            if let Some((a, rest)) = k.split_once('-') {
-                if let Some((b, c)) = rest.split_once('-') {
-                    return (elem_z(b), b.to_string(), elem_z(a), a.to_string(),
-                            elem_z(c), c.to_string());
-                }
-            }
-            (255, k.to_string(), 255, String::new(), 255, String::new())
-        };
-        parse(ka).cmp(&parse(kb))
+    // "A-B-C": split_once('-') gives (A, "B-C"), a second one gives (B, C)
+    fn parts(k: &str) -> Option<(&str, &str, &str)> {
+        k.split_once('-').and_then(|(a, rest)| rest.split_once('-').map(|(b, c)| (a, b, c)))
+    }
+    keys.sort_by(|ka, kb| match (parts(ka), parts(kb)) {
+        (Some((a1, b1, c1)), Some((a2, b2, c2))) => canonical_cmp(b1, b2)
+            .then_with(|| canonical_cmp(a1, a2))
+            .then_with(|| canonical_cmp(c1, c2)),
+        // A key that is not A-B-C sorts last, by plain string
+        (x, y) => y.is_some().cmp(&x.is_some()).then_with(|| ka.cmp(kb)),
     });
     keys
 }
@@ -244,9 +237,9 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 
                         // 规范排序：低 Z 端 → rcut_ab，高 Z 端 → rcut_bc
                         // 相同元素两端使用 min(rcut_ab, rcut_bc)
-                        // 与 canonical_triplet 用同一套 (Z, 字符串) 比较，
-                        // 否则同 Z 不同标签的两端谁拿 r_cut_ab 取决于邻居枚举顺序
-                        let a_first = (elem_z(a_elem), a_elem) <= (elem_z(c_elem), c_elem);
+                        // The same canonical_cmp as canonical_triplet; otherwise which of
+                        // two same-Z labels gets r_cut_ab would follow neighbour order
+                        let a_first = canonical_cmp(a_elem, c_elem).is_le();
                         let (lo_elem, lo_dist, lo_vec, hi_elem, hi_dist, hi_vec) =
                             if a_first {
                                 (a_elem, a_dist, a_vec, c_elem, c_dist, c_vec)
