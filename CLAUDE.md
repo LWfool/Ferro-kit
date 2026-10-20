@@ -108,7 +108,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 目前无 CLI 入口（`box_builder` 也是库级）。
 
 **加数据集判据**：`ferro-analysis/src/ml/filter.rs` 的 `Criterion` 加变体（记得
-`ALL`、`name`、`bit`、`enabled` 四处）→ `FilterParams` 加参数 → `cmd/dataset.rs`
+`ALL`、`name`、`bit`、`enabled` 四处）→ `FilterParams` 加参数 → `cmd/dataset/filter.rs`
 接 CLI。判据一律表达成「符合条件则**删**」，四条同一语义交叉表才不用分裂。
 
 ## 代码导航
