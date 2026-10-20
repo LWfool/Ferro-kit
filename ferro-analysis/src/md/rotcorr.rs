@@ -129,7 +129,8 @@ pub struct RotCorrResult {
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
 
-/// Computes C₂(t), averaging each lag over all valid (molecule, origin) pairs.
+/// Computes C₂(t), or C₁(t) with `legendre: Legendre::P1` (see [`Legendre`]), averaging
+/// each lag over all valid (molecule, origin) pairs.
 ///
 /// Returns `Err` if the trajectory has fewer than 2 frames, `max_lag` is outside
 /// `1 ..= n_frames − 1`, no atom is of the center element, or no center has a
