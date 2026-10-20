@@ -23,10 +23,11 @@
 
 ```
 ferro-cli / ferro-python        ← only layer combining multiple crates
-    ├── ferro-core                ← Atom, Frame, Trajectory, Cell; static data; units; errors
-    ├── ferro-io        → core    ← format readers / writers
-    ├── ferro-structure → core    ← supercell, vacuum, merge, box estimation
-    └── ferro-analysis  → core    ← md/, dft/ (Bader, ChgSDF), ml/ (future)
+    ├── ferro-core                ← Frame, Trajectory, Cell, PeriodicCell, Table; static data; units; errors
+    ├── ferro-io        → core    ← format readers / writers; write_table, the one exit for analysis products
+    ├── ferro-structure → core    ← supercell, vacuum, merge, box building
+    ├── ferro-analysis  → core    ← md/, network/, dft/ (Bader, ChgSDF), ml/ (dataset filter, merge, split)
+    └── ferro-render              ← terminal rendering of `ferro doc` (markdown + LaTeX); no ferro crate
 ```
 
 ## Internal Units
