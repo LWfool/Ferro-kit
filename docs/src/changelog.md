@@ -77,6 +77,12 @@ command line alike; regenerate it rather than migrating it.
   which frames land in which set differs: regenerate if a split depends on it.
 - `dataset collect -o sys` with a single input directory writes `sys/<dir>.db/`, as it does with
   several; it wrote `sys.db/` beside an empty `sys/`. Point the next `filter -i` at the new path.
+- `dataset collect` given a bare file name in the current directory (`-i a.out`) writes
+  `../<current dir>.db`, not `./system.db`; with `-o` and inputs in subdirectories as well, every
+  system lands under `-o` (the current-directory group used to escape to its input's side).
+  When one group's directory is the common ancestor of the others, it is named after that
+  directory and nested like the rest: `-i md/x.out md/sub/y.out -o out` writes `out/md.db` and
+  `out/md/sub.db`, where it wrote `out.db` and `out/sub.db`.
 - `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
   atom is an error, as it is for `msd`, `vacf`, `vanhove` and the library's jump map; it used to write a grid
   of zeros reporting "0 atoms". The error names the filter in every analysis.
