@@ -249,10 +249,3 @@ Up to 0.3.2 (following `code1/rotcorr.c`):
   pairs enter the numerator and the denominator.
 - **Rectangular integral.**  The running integral was too large by $C_2(0)\,dt/2 = dt/2$.  Now
   trapezoidal.
-
-## Implementation Notes
-
-- Orientation vectors are computed for all frames first — `sum`: per frame a scan over all atoms for each
-  centre; `bond`: one pair search in frame 0, then one vector per pair and frame — then correlated per
-  unit in parallel.
-- FFT: `ferro-analysis/src/md/correlate.rs` (crate `rustfft`), seven autocorrelations per molecule.

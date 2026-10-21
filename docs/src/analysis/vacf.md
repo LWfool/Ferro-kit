@@ -171,8 +171,3 @@ Up to 0.3.2 (following `code1/velcorr.c`):
 $$g(\nu) \propto \int_0^\infty C_v(t) \cos(2\pi \nu t) \, dt$$
 
 ferro does not compute the vibrational density of states yet (`dev/plan.md`).
-
-## Implementation Notes
-
-- Parallelism: per atom; the FFT is planned once per trajectory length and shared, each thread owns its
-  buffers (`ferro-analysis/src/md/correlate.rs`, crate `rustfft`).

@@ -87,9 +87,3 @@ write_cube(&result.cube, Path::new("li_radius.cube")).unwrap();
 | Smoothing | None (point-like atoms) | Hard-sphere smearing |
 | Normalisation | atoms/Å³ | Raw counts |
 | Typical use | Structural analysis | Site visualisation |
-
-## Implementation Notes
-
-- Parallelism: per-frame `par_iter`.  Each frame independently produces a count array; results are reduced by element-wise addition.
-- The bounding-box optimisation reduces the inner loop from $O(n_x n_y n_z)$ to $O(s_x s_y s_z)$ per atom, giving roughly $10\times$ speedup at default settings.
-- Fractional coordinates are folded into $[0, 1)$ with `rem_euclid` before the bounding-box centre is computed, ensuring correct periodic wrapping.

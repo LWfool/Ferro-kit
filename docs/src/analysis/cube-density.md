@@ -37,6 +37,7 @@ For `Velocity` and `Force` modes the average magnitude is computed per voxel:
 $$\langle |\mathbf{q}| \rangle_{ijk} = \frac{\sum_{\text{visits}} |\mathbf{q}|}{\text{count}_{ijk}}$$
 
 where $\mathbf{q}$ is the velocity or force vector of the visiting atom.  Voxels with no visits are set to zero.
+`Velocity` mode requires velocities in every frame, `Force` mode forces; a frame missing them is an error naming the frame, as in `traj vacf`.
 
 ### Voxel Spacing Matrix
 
@@ -44,7 +45,7 @@ The output cube file encodes the voxel step vectors.  For a general triclinic ce
 
 $$\mathbf{S} = \begin{pmatrix} \mathbf{a}/n_x \\ \mathbf{b}/n_y \\ \mathbf{c}/n_z \end{pmatrix}$$
 
-This ensures correct spatial mapping for both orthogonal and triclinic simulation cells.
+This ensures correct spatial mapping for both orthogonal and triclinic simulation cells.  For NPT trajectories the spacing matrix is taken from the first periodic frame; the density is therefore referenced to that cell geometry.
 
 ### Time-Averaged Structure
 
@@ -125,10 +126,3 @@ let params = CubeDensityParams {
 let result = calc_cube_density(&traj, &params).unwrap();
 write_cube(&result.cube, Path::new("li_density.cube")).unwrap();
 ```
-
-## Implementation Notes
-
-- Parallelism: per-frame `par_iter`.  Each frame independently produces `(count, value_sum)` arrays; results are reduced by element-wise addition.
-- Fractional coordinates are folded with `rem_euclid(1.0)` to handle atoms outside the nominal box (e.g. from NPT fluctuations or wrapped dump files).
-- `Velocity` mode requires `frame.velocities` in every frame; `Force` mode requires `frame.forces`.  A frame missing them is an error naming the frame, as in `traj vacf`.
-- For NPT trajectories the spacing matrix is taken from the first periodic frame; the density is therefore referenced to that cell geometry.

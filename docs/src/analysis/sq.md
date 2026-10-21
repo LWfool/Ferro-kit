@@ -184,8 +184,3 @@ for (name, table) in sq.to_tables() {
     write_table(&table, Path::new(&format!("output_{name}.csv")), TableFormat::Csv).unwrap();
 }
 ```
-
-## Implementation Notes
-
-- The Fourier transform is parallelised over $q$ values with `rayon::par_iter`.
-- Scattering data (form factors and neutron lengths) are stored as static tables in `ferro-analysis` (`md/scattering_data.rs`).

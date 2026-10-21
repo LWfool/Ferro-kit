@@ -154,9 +154,4 @@ for (sig, family) in &result.families {
 | Broad `Ob` distribution | Flexible bridging-oxygen geometry |
 | Sharp `P3` peak | Rigid network-former backbone |
 
-## Implementation Notes
-
-- Cluster identification uses `petgraph` BFS on a bond graph constructed per frame.
-- The Kabsch algorithm is applied in the centred frame; the grid origin is positioned at the reference centroid minus `padding`.
-- Parallelism: cluster extraction is serial per frame (bond graph is not thread-safe to build in parallel); Gaussian accumulation is serial per cluster (grids are mutably borrowed by family).
-- For trajectories with many frames, performance is dominated by bond-graph construction ($O(N^2)$ per frame without a cell list).
+For trajectories with many frames, the run time is dominated by building the bond graph ($O(N^2)$ per frame, no cell list).

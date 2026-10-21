@@ -3,6 +3,32 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## 手册迁出（2026-10-21 瘦身 D 组）
+
+手册只写「是什么 / 怎么用」。下面是从 `docs/src/` 撤下、仍有留档价值的段落，**原文照搬**（英文），
+按来源页分小节。从代码能直接读出的实现细节（rayon 的 `par_iter` / `fold`、源文件路径、耗时）
+撤下时直接删了，没有搬。
+
+### `analysis/angle.md`「Implementation Notes」（D-5）
+
+> **Linked-Cell List.** Brute-force neighbour search is $O(N^2)$ per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.
+>
+> For each central atom B, only the 27 cells within ±1 cell in each direction are searched. The cell size is chosen so that a sphere of radius $r_\text{cut,max}$ fits within the search volume:
+>
+> $$n_k = \left\lfloor \frac{1}{r_\text{cut,max} \cdot \|({\mathbf{M}^T})^{-1}\|_k} \right\rfloor$$
+>
+> This is exact for triclinic cells.
+
+### `analysis/gr.md`「Implementation Notes」（D-5）
+
+> - Pseudo-element labels (e.g. `"P0"`, `"Ob"`) are supported: `elem_z` resolves them by stripping numeric/alphabetic suffixes.
+> - Column ordering uses atomic number Z as the primary sort key, with string labels as tiebreaker for deterministic ordering of pseudo-elements.
+
+**存疑，未处理**：`elem_z`（`md/gr.rs`）与 `elem_z_local`（`md/sq.rs`）都是从标签字符串剥后缀反推元素，
+与 CLAUDE.md「绝不从标签字符串反解析」的精神相冲（那条针对 `AtomType::label()` 的数字，这里是元素）。
+`Site` 本来就带 `element` 字段，排序可以直接读它。另外 g(r) 产物早已是长表，「Column ordering」的说法
+需要按现状核对。
+
 ## 瘦身 P4 的判据（2026-10-21）
 
 - **dpdata 不当 CP2K 的独立对照**（用户定，A-9）：dpdata 读 CP2K 输出靠 cp2kdata 插件，原作者已

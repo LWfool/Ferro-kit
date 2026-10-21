@@ -202,6 +202,8 @@ for m in range(N // 2 + 1):
 | very many `candidates` | `--r-bond` reaches into the second shell |
 | slow on a large system | every centre–neighbour pair is scanned in every frame (no cell list yet) |
 
+Not computed: angle (hydrogen-bond) criteria and the Luzar–Chandler rate constants $k$, $k'$.
+
 ## References
 
 - D. C. Rapaport, *Mol. Phys.* **50**, 1151 (1983) — continuous vs intermittent lifetimes.
@@ -209,12 +211,3 @@ for m in range(N // 2 + 1):
 - H. Yamamoto and A. Onuki, *Phys. Rev. E* **58**, 3515 (1998) — bond breakage with two thresholds,
   $\tau_b$ at $1/e$ (eqs 3.9–3.14).
 - GROMACS `gmx hbond -ac -contact`; MDAnalysis `lib.correlations.autocorrelation` with `intermittency`.
-
-## Implementation Notes
-
-- Two passes: every frame is scanned for pairs within `--r-bond` (parallel over frames), then each
-  candidate's distance series is built (parallel over candidates).
-- $C_I$: FFT autocorrelation of $h$ (`correlate.rs`), rounded back to integer counts; $S_C$: stretch
-  lengths, $O(\text{stretches} \times m_\max)$.
-- Not implemented: angle (hydrogen-bond) criteria, cell lists, the Luzar–Chandler rate constants
-  $k$, $k'$.

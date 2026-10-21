@@ -113,11 +113,6 @@ part** $G_d(r,\tau)$ — an atom against *other* atoms' earlier positions, which
 $\rho\,g(r)$ and describes how the neighbour shell relaxes — is not computed, so the full
 $G(r,\tau) = G_s + G_d$ is not available.  For $\tau = 0$ use `traj gr`.
 
-## Implementation Notes
+## Periodic boundaries
 
-- Parallelism: per-origin `par_iter`.
-- For non-periodic systems, raw Cartesian distances are used directly.
-
-### Periodic boundaries
-
-Periodic trajectories are unwrapped in the lattice view (step 2 above): fractional coordinates are unwrapped, then multiplied by the current cell.  **Under NVT this is identical to the TOR scheme of `msd`.**  Under NPT it is not: the barostat's rescaling moves an atom that has crossed $n$ boundaries by $n$ times the change in box length, which widens $G_s$ at long $\tau$.  The mechanism and a worked example are in the [MSD page](msd.md#why-tor-and-not-the-lattice-view).  Switching vanhove to TOR is planned.
+Periodic trajectories are unwrapped in the lattice view (step 2 above): fractional coordinates are unwrapped, then multiplied by the current cell.  **Under NVT this is identical to the TOR scheme of `msd`.**  Under NPT it is not: the barostat's rescaling moves an atom that has crossed $n$ boundaries by $n$ times the change in box length, which widens $G_s$ at long $\tau$.  The mechanism and a worked example are in the [MSD page](msd.md#why-tor-and-not-the-lattice-view).  Switching vanhove to TOR is planned.  For non-periodic systems, raw Cartesian distances are used directly.

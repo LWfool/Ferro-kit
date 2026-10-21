@@ -157,19 +157,3 @@ for (name, table) in result.to_tables() {
     write_table(&table, Path::new(&format!("output_{name}.csv")), TableFormat::Csv).unwrap();
 }
 ```
-
-## Implementation Notes
-
-### Linked-Cell List
-
-Brute-force neighbour search is $O(N^2)$ per frame.  ferro uses a linked-cell list to reduce this to O(N·k) where $k$ is the average number of atoms in the search volume.
-
-For each central atom B, only the 27 cells within ±1 cell in each direction are searched. The cell size is chosen so that a sphere of radius $r_\text{cut,max}$ fits within the search volume:
-
-$$n_k = \left\lfloor \frac{1}{r_\text{cut,max} \cdot \|({\mathbf{M}^T})^{-1}\|_k} \right\rfloor$$
-
-This is exact for triclinic cells.
-
-### Parallelism
-
-Computation is parallelised per frame with `rayon::par_iter().fold().reduce()`.

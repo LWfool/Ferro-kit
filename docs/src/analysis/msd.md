@@ -346,13 +346,3 @@ Up to 0.3.2 ferro followed `code1/msd.c`, and results are not comparable:
   the origin- and end-frame box matrices — a lattice-view scheme with the NPT problem described above.
 - **Components.**  `msd_a/b/c` were fractional displacements times the end-frame axis length; they did not
   add up to the total for a triclinic box.  They are replaced by `msd_x/y/z`.
-
-## Implementation Notes
-
-- Parallelism: per atom (`par_iter`).  Each worker thread plans nothing — the FFT is planned once for the
-  trajectory length and shared; each thread owns only its scratch buffers.
-- Unwrapping is also per atom: a step depends on the previous step of the same atom only.
-- Cost: $O(N_\text{atoms}\,N\log N)$ for the FFT plus $O(N_\text{atoms}\,N)$ for the unwrap.  2004 atoms ×
-  101 frames runs in about 0.05 s.
-- The FFT autocorrelation lives in `ferro-analysis/src/md/correlate.rs` (crate `rustfft`), shared with
-  `vacf`, `rotcorr` and `bondlife`.

@@ -166,9 +166,3 @@ The guard is not a limitation of the implementation but of the quantity: a
 partial g(r) normalises by $N_A N_B$, and a count that changes between frames
 has no single value to normalise by. Use `--last-n 1` for one frame, or select
 by element with `-a`/`-b`.
-
-## Implementation Notes
-
-- Parallelism: per-frame `par_iter` with `fold`/`reduce` accumulation.
-- Pseudo-element labels (e.g. `"P0"`, `"Ob"`) are supported: `elem_z` resolves them by stripping numeric/alphabetic suffixes.
-- Column ordering uses atomic number Z as the primary sort key, with string labels as tiebreaker for deterministic ordering of pseudo-elements.
