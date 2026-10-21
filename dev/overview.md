@@ -36,12 +36,12 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 **单二进制 `ferro`**，子命令按**产物**分组（不是按实现它的 crate）：
 
 ```
-ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → 堆叠 csv + 可选 PNG
+ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife → 堆叠 csv
 ferro map   density | velocity | force | radius | sdf | chg-sdf → 逐输入一个 .cube
 ferro net                                                      → 六张堆叠 csv
 ferro dataset collect | filter | merge                         → DeePMD system 目录
             collect --type inspect                             → 诊断三件套（不出数据集）
-ferro bader | convert | info | job
+ferro bader | convert | info
 ferro doc   <topic>                                            → 手册（编译在二进制里）
 ```
 
@@ -49,7 +49,7 @@ ferro doc   <topic>                                            → 手册（编�
 0.3.3 把这一条推成了全仓规则，它不再是例外。
 
 `-i` 恒为多值并自展开 glob；逐文件独立分析，结果堆叠成一份带 `file` 列的 csv。
-**`-o` 恒为路径**（0.3.3 起）：写多个产物的命令指目录，`convert` / `job` 指文件；
+**`-o` 恒为路径**（0.3.3 起）：写多个产物的命令指目录，`convert` 指文件（`--format EXT` 时指目录）；
 批次标记走 `-s/--suffix`。目录缺失时先问 `[y/N]`，非交互环境须给 `--mkdir`。
 
 参数与输出列结构见 `docs/src/cli-reference.md`。
@@ -130,7 +130,7 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 |---|---|
 | **落盘矩阵一律行优先**，取九个数走 `matrix3_row_major`，禁用 nalgebra 的 `as_slice()`（它是列优先，且对称张量下这个错误完全静默） | `array_order.rs` |
 | **`Frame::stress` 的符号 = 正为压缩**，与 CP2K/VASP/QE 输出一致、与 ASE/GPUMD 的 stress 相反；`virial = stress × V` 不变号 | `frame.rs` 字段文档 |
-| **单位从输出文本自读**，认不出报错不默认 —— CP2K 的 `STRESS_UNIT` 是输入关键字，单位不是版本的函数 | `readers/cp2k_out.rs` |
+| **单位从输出文本自读**，认不出报错不默认 —— CP2K 的 `STRESS_UNIT` 是输入关键字，单位不是版本的函数 | `readers/cp2k_md.rs` |
 | **AIMD 的能量取自由能**（CP2K 的 `FORCE_EVAL`、VASP 的 `free energy TOTEN`），不取 `sigma->0` —— 力是自由能对坐标的导数，配 `sigma->0` 等于给模型两半不同的泛函 | `readers/vasp_outcar.rs` |
 
 `v0.3.1` 是纯新增，故升 patch 位。
