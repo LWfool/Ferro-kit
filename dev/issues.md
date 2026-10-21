@@ -42,7 +42,7 @@
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| 连通性判据（原 `find_clusters`，2026-10-18 删；判据今后仍适用） | 用 `AtomType::is_bridging()` 当连通性判据 | 它是「**恰好**两个形成子」，三簇配体返回 `false` → 网络在连得最紧的节点处断开（实测 3 个 P 共享一个三簇氧报成 3 个团簇，应为 1 个）。连通性判据是 `partners.len() >= 2`，与 `LigandKind::Bridging`、与模块 doc 一致。`ferro-core::build_network_graph` 那份从一开始就是对的，两份实现不一致了很久 |
+| 连通性判据（原 `find_clusters` 与 `AtomType::is_bridging()`，分别于 2026-10-18 / 10-21 删；判据今后仍适用） | 用「配体恰好连两个形成子」当连通性判据 | 三簇配体（连三个）返回 `false` → 网络在连得最紧的节点处断开（实测 3 个 P 共享一个三簇氧报成 3 个团簇，应为 1 个）。连通性判据是 `partners.len() >= 2`，与 `LigandKind::Bridging`、与模块 doc 一致。`ferro-core::build_network_graph` 那份从一开始就是对的，两份实现不一致了很久 |
 | 按元素对取截断 | 按形成子元素取 `cutoffs.keys().find()` 的第一个 | 按 `(形成子, **该配体元素**)` 取。`BTreeMap` 序下 `("P","F") < ("P","O")`，双配体体系会拿 P-F 的 1.4 Å 去判 P-O 的 1.6 Å 键，桥氧整体判不出来。与 `LinkKey` 少一个配体元素维是同一类洞：参考体系只有 O，所以一直没暴露 |
 | `cif.rs` 坐标回退 | 依赖远处 `ensure!` 的 `.unwrap()` 脆弱 | 本地 `else if let (Some,Some,Some)` 守卫 + `bail!`，不变量自洽 |
 

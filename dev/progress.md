@@ -290,8 +290,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `Modifier{elem,cn}` / `Other`）；`classify_frame` 与 `build_network_graph` 入口查奇异胞并返回
   `Result`（2026-10-09）—— c=0 的 slab 此前在最小镜像的 `expect` 处 panic
   - **`label()` 是全项目唯一把类型渲染成文本的地方**；`class_rank()` 取代三个
-    `*_label_order` 与 `type_sort_key`；`display_rank()`、`is_bridging()` 目前无生产调用
-    （见 `plan.md` 零调用清单；2026-10-11 审查 G-15 勘误）
+    `*_label_order` 与 `type_sort_key`（零调用的 `display_rank()`、`is_bridging()` 2026-10-21 删）
   - `classify_frame_detailed` 另返回 ligand→former 邻接（`FrameTypes`）供 linkage 使用
 结果 `NetworkResult` 出六张长表（`composition` / `qn` / `qn_partner` / `ligand_type` /
 `coordination` / `linkage`），每张自带 `#` 头。

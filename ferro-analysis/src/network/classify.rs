@@ -230,30 +230,6 @@ impl AtomType {
             AtomType::Modifier { .. } | AtomType::Other { .. } => 0,
         }
     }
-
-    /// Sort rank when every role is printed in *one* table:
-    /// formers, then ligands (free → non-bridging → bridging → tricluster),
-    /// then modifiers, then everything else.
-    pub fn display_rank(&self) -> u8 {
-        match self {
-            AtomType::Former { .. } => 0,
-            AtomType::Ligand { partners, .. } => 1 + partners.len().min(3) as u8,
-            AtomType::Modifier { .. } => 5,
-            AtomType::Other { .. } => 6,
-        }
-    }
-
-    /// True for a ligand bridging **exactly two** formers.
-    ///
-    /// Not a connectivity test.  A tricluster joins three formers and is the most
-    /// strongly connected node in the network, yet it is `false` here — use
-    /// `partners.len() >= 2` (equivalently `LigandKind::Bridging`) when the
-    /// question is whether the ligand links formers at all.  Reach for this method
-    /// only when a true two-ended bridge is what is meant, such as separating the
-    /// pairwise `linkage` rows from the tricluster ones.
-    pub fn is_bridging(&self) -> bool {
-        matches!(self, AtomType::Ligand { partners, .. } if partners.len() == 2)
-    }
 }
 
 // ─── Public entry point ───────────────────────────────────────────────────────
@@ -570,43 +546,10 @@ mod tests {
         assert!(lig(2).class_rank() < lig(3).class_rank());
         assert_eq!(lig(3).class_rank(), lig(5).class_rank());
         assert_eq!(lig(4).label(), "O_t");
-    }
-
-    #[test]
-    fn test_display_rank_orders_all_roles() {
-        let former = former("P", 2, 4);
-        let lig = |n: usize| AtomType::Ligand {
-            elem: "O".into(),
-            partners: vec!["P".to_string(); n],
-        };
+        // The old scheme called an over-coordinated oxygen and an over-coordinated
+        // modifier both "X" and merged them into one row; O_t and Zn are now distinct
         let modif = AtomType::Modifier { elem: "Zn".into(), cn: 4 };
-        let other = AtomType::Other { elem: "Ar".into() };
-
-        let ranks = [
-            former.display_rank(),
-            lig(0).display_rank(), lig(1).display_rank(),
-            lig(2).display_rank(), lig(3).display_rank(),
-            modif.display_rank(),
-            other.display_rank(),
-        ];
-        assert!(ranks.windows(2).all(|w| w[0] < w[1]), "混排顺序必须严格递增: {ranks:?}");
-
-        // 旧方案里过配位氧与过配位修饰子都叫 "X" 而合并成一行；
-        // 现在 O_t 与 Zn 是两个标签,不再塌缩
         assert_ne!(lig(3).label(), modif.label());
-    }
-
-    #[test]
-    fn test_is_bridging_is_exactly_two_partners() {
-        let lig = |n: usize| AtomType::Ligand {
-            elem: "O".into(),
-            partners: vec!["P".to_string(); n],
-        };
-        assert!(!lig(0).is_bridging());
-        assert!(!lig(1).is_bridging());
-        assert!(lig(2).is_bridging());
-        // ≥3 渲染为 X，旧实现的 `starts_with("Ob_")` 同样不匹配
-        assert!(!lig(3).is_bridging());
     }
 
     // ─── Qn 与配位数的分叉 ────────────────────────────────────────────────────
