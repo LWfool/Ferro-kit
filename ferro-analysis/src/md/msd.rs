@@ -97,10 +97,6 @@ pub struct MsdResult {
 /// `D[cm²/s] = d_ang2_per_fs · 0.1`, `D[m²/s] = d_ang2_per_fs · 1e-5`.
 #[derive(Debug, Clone)]
 pub struct MsdFit {
-    /// Lower fraction of the lag-time axis used for the fit
-    pub frac_lo: f64,
-    /// Upper fraction of the lag-time axis used for the fit
-    pub frac_hi: f64,
     /// First time point of the fit window \[fs\]
     pub t_lo: f64,
     /// Last time point of the fit window \[fs\]
@@ -325,8 +321,6 @@ pub fn fit_diffusion(
     };
 
     Ok(MsdFit {
-        frac_lo: fmin,
-        frac_hi: fmax,
         t_lo: xs[0],
         t_hi: xs[xs.len() - 1],
         slope,
