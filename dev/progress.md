@@ -319,6 +319,9 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 
 ### ferro-analysis / ml
 
+2026-10-21 起 `ml` 按任务分命名空间（用户定），现有文件都在 `ml/dataset/`，公开项一律
+`ferro_analysis::ml::dataset::<项>` 一条路径，子模块 crate 内可见。
+
 `filter.rs`（2026-08-25）：数据集帧筛选，与 md/network/dft 并列，纯计算。
 `filter_frames(&Trajectory, &FilterParams) -> FilterResult`，判据 `Criterion`
 （力 / 应力，批 2 加 O-O 与 Al6）。
@@ -529,7 +532,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 `issues.md` |
 | `quick-xml` | 0.38 | ferro-io | vasprun.xml；净新增 1 个 crate，零传递依赖 |
 | `ndarray-npy` | 0.10 | workspace | DeePMD npy 读写 |
-| `chacha20` | 0.10 | workspace | 可复现的 RNG（`ml/merge`、`box_builder` 的 `--seed`） |
+| `chacha20` | 0.10 | workspace | 可复现的 RNG（`ml/dataset/merge`、`box_builder` 的 `--seed`） |
 | `glob` | 0.3 | workspace | `-i` 的通配展开 |
 | `libc` | 0.2 | ferro-render | 终端宽度 ioctl；经 rand → getrandom 已在编译图里，净新增 0 |
 | `clap` | 4.5 | ferro-cli | derive |

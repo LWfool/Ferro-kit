@@ -55,7 +55,7 @@ pub fn run(args: &InfoCmd) -> Result<usize> {
 /// An atom has no mass when its element is missing from the element table and no
 /// mass was given (review A-3: it used to count as 1 amu, dragging the density down
 /// with no other sign). `collect --type inspect` lists the same atoms in
-/// `ferro_analysis::ml::diagnostics::frame_table`; two places, not merged (R6,
+/// `ferro_analysis::ml::dataset::frame_table`; two places, not merged (R6,
 /// review E2-12).
 fn frame_mass_amu(frame: &Frame) -> std::result::Result<f64, BTreeMap<&str, usize>> {
     let mut missing: BTreeMap<&str, usize> = BTreeMap::new();

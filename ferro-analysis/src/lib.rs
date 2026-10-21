@@ -3,7 +3,7 @@
 mod check;
 mod neighbor;
 // One public path per item (review A-12): the analyses are reached from the crate
-// root; `ml` stays a module because its parts are an API of their own
+// root; `ml` is split by task (`ml::dataset`, ...), each task an API of its own
 mod md;
 mod network;
 mod dft;

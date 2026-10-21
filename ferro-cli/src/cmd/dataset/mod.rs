@@ -32,13 +32,11 @@ use anyhow::{bail, Context, Result};
 use clap::{Args, Subcommand};
 
 use crate::batch::expand_inputs;
-use ferro_analysis::ml::diagnostics::{filter_diagnostics, quantiles};
-use ferro_analysis::ml::merge::{
-    composition_key, group_name, shuffle_order, shuffle_within, stitch_segments, DEFAULT_SEED,
+use ferro_analysis::ml::dataset::{
+    composition_key, filter_diagnostics, filter_frames, group_name, quantiles, shuffle_order,
+    shuffle_within, stitch_segments, FilterParams, FilterResult, Split, DEFAULT_SEED,
 };
-use ferro_analysis::ml::Split;
 use ferro_analysis::first_shell_cutoffs;
-use ferro_analysis::ml::{filter_frames, FilterParams, FilterResult};
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{

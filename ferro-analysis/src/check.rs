@@ -287,7 +287,7 @@ mod tests {
                     former: "Si".into(), ligand: "O".into(), former_ligand_cutoff: r, ..Default::default()
                 }).map(|_| ())),
                 // Review D-A5: the scan reaches past the selection's own cutoff
-                ("cutoff scan", crate::ml::diagnostics::cutoff_scan(&traj, "Si", "O", 4, &[r - 0.6, r], 10)
+                ("cutoff scan", crate::ml::dataset::diagnostics::cutoff_scan(&traj, "Si", "O", 4, &[r - 0.6, r], 10)
                     .map(|_| ())),
             ]
         };
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn frames_that_are_not_3d_periodic_are_refused() {
         use crate::md::*;
-        use crate::ml::filter::{filter_frames, FilterParams};
+        use crate::ml::dataset::{filter_frames, FilterParams};
         use crate::network::{CutoffTable, TypeParams};
         use ferro_core::{Atom, Cell, Frame};
         use nalgebra::Vector3;

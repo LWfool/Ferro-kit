@@ -108,7 +108,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 **加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
 目前无 CLI 入口（`box_builder` 也是库级）。
 
-**加数据集判据**：`ferro-analysis/src/ml/filter.rs` 的 `Criterion` 加变体（记得
+**加数据集判据**：`ferro-analysis/src/ml/dataset/filter.rs` 的 `Criterion` 加变体（记得
 `ALL`、`name`、`bit`、`enabled` 四处）→ `FilterParams` 加参数 → `cmd/dataset/filter.rs`
 接 CLI。判据一律表达成「符合条件则**删**」，四条同一语义交叉表才不用分裂。
 
@@ -121,7 +121,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 | `ferro-analysis/src/network/` | `classify.rs`（`AtomType` / `TypeParams`）、`graph.rs`（形成子–配体图）、`qn_elements.rs`、`mod.rs`（六张表的统计） |
 | `ferro-analysis/src/` 顶层 | `neighbor.rs`（crate 内共用的 `NeighborList`）、`check.rs`（各 `validate` 共用的范围检查） |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
-| `ferro-analysis/src/ml/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表、inspect 逐帧表）、`merge`（分组、重启分段拼接、打乱）、`split`（`--ratio`） |
+| `ferro-analysis/src/ml/dataset/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表、inspect 逐帧表）、`merge`（分组、重启分段拼接、打乱）、`split`（`--ratio`） |
 | `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`outpath.rs`（`-o` 的目录创建与确认）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制） |
 | `ferro-render/src/` | `markdown.rs`（块切分、行内标记、折行、表格）、`latex.rs`（公式 → Unicode） |
 
@@ -129,8 +129,9 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 
 - 两个 crate 的公开项只从 crate 根导出（`ferro_analysis::GrParams`、`ferro_io::read`），子模块私有；新加的公开项
   记得在根上 `pub use`，否则 dead_code 会报它（审查 A-12）
-  唯一例外是 `ferro_analysis::ml`（`pub mod`）：filter / merge / split 各是一组自成一体的 API，从根
-  平铺会把它们混成一片（`ferro-analysis/src/lib.rs` 注释）
+  唯一例外是 `ferro_analysis::ml`：按任务分命名空间，目前只有 `ml::dataset`（`ferro dataset` 背后的
+  filter / merge / split / diagnostics），每项仍只有 `ml::dataset::<项>` 一条路径；将来的其他 ML 功能
+  在 `ml` 下并列加命名空间（用户定 2026-10-21）
 - 绝不从 `AtomType::label()` 的字符串反解析数字 —— 直接读字段。0.2.1 重构消灭的
   正是散在四个 crate 的五处这种解析
 - 列并集下缺失值填 `f64::NAN`（渲染为空字段），**绝不补零** —— 零是「测到了 0」

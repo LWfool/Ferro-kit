@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use ferro_core::table::Table;
-use ferro_analysis::ml::diagnostics::frame_table;
+use ferro_analysis::ml::dataset::frame_table;
 use ferro_core::Trajectory;
 use ferro_io::{write_lammps_data, write_lammps_dump, write_table, AimdFormat, LammpsUnits, TableFormat};
 

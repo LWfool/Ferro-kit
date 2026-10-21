@@ -107,7 +107,7 @@ impl Split {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ml::merge::DEFAULT_SEED;
+    use super::super::merge::DEFAULT_SEED;
 
     fn split_of(spec: &str) -> Split {
         Split::parse(spec, DEFAULT_SEED).unwrap()
