@@ -112,16 +112,6 @@ def file_label(*parts):
     return "-".join(parts)
 
 
-def set_label(parts=None):
-    """集合选择的 label（`--elements`）：排序去重后再拼。
-
-    `O,P` 与 `P,O` 选中同一批原子，是同一份数据，不能写成两个文件名。
-    """
-    if not parts:
-        return "all"
-    return file_label(*sorted(set(str(p) for p in parts)))
-
-
 def product_name(mode, label=None, suffix=None, table=None, input=None, ext="csv"):
     """ferro 的产物文件名：`<mode>[_<table>][_<label>][_<input>][_<suffix>].<ext>`。
 

@@ -114,9 +114,6 @@ class QeInput:
                 return
         self._cards.append([name] + lines)
 
-    def remove_card(self, name):
-        self._cards = [c for c in self._cards if c[0] != name.upper()]
-
     def to_str(self):
         out = ferro.write_namelists([(n, list(e.items())) for n, e in self.namelists.items()])
         body = self.head + [line for c in self._cards for line in c[1:]]
