@@ -6,7 +6,7 @@ what it is made of and why it is split the way it is. How to use it is in its ow
 manual, compiled into the package:
 
 ```bash
-ferro-py doc              # list of pages: api, config, job, job vasp|qe|cp2k, conv
+ferro-py doc              # list of pages: api, config, job, job vasp|qe|cp2k, conv, plot
 ```
 
 The pages are deliberately not repeated here — `ferro doc` and `ferro-py doc`
@@ -32,6 +32,7 @@ each carry their own manual, so neither can drift from a copy in the other.
 | Rust | `ferro-render` | renders the manual for `ferro-py doc`, as it does for `ferro doc` |
 | Rust | `pyo3` 0.29 (`abi3-py311`) | the Python binding |
 | Python, at run time | the standard library only (`tomllib`, `argparse`, `subprocess`, …) | clusters are offline; ASE, pymatgen and cp2k-input-tools all pull in SciPy, Matplotlib or pydantic |
+| Python, optional | `ferro[plot]`: matplotlib, pandas, scienceplots (plus a LaTeX installation) | only for `ferro-py plot` / `ferro.plot`; `import ferro` does not load them |
 | Build | `maturin` ≥ 1.0, < 2.0 | builds the mixed Rust / Python wheel |
 | Tests | `pytest` | development only, not a dependency of the wheel |
 
@@ -51,6 +52,7 @@ changes often and what users want to edit is in Python.**
 | reading program outputs: energy, forces, stress (`read_output`) and writing ferro's tables (`write_table`) | convergence tests and their analysis arithmetic (`ferro-py conv`) |
 | structure operations (`supercell`, `add_vacuum_layer`, `merge`) and analysis (`gr_pair`, `gr_all`, `msd`) | the configuration file, `~/.config/ferro/config.toml` |
 | the manual pages and their terminal rendering (`ferro-py doc`) | the `ferro-py` command line and its help pages |
+| | `ferro.plot`: figures from ferro's csv tables (`ferro-py plot`) |
 
 Input generation moved to Python because it is not performance-bound, changes
 more often than anything else, and a user can read and edit it without a Rust
@@ -61,7 +63,7 @@ laid out, how an OUTCAR is read — stays in the one Rust implementation that th
 ## Architecture
 
 ```
-  shell: ferro-py job | conv | config | doc        Python: import ferro
+  shell: ferro-py job | conv | config | plot | doc Python: import ferro
               │                                            │
               ▼                                            │
   ferro/cli.py ─── ferro/config.py                         │
@@ -73,6 +75,7 @@ laid out, how an OUTCAR is read — stays in the one Rust implementation that th
     vasp.py  qe.py  cp2k.py   one Generator per program    │
     conv.py     convergence tests                          │
     templates/  <program>/<task>/<input file>              │
+  ferro/plot/   gr sq angle msd net (optional matplotlib)  │
               │                                            │
               ▼                                            ▼
   ferro._ferro  (Rust, PyO3; ferro/__init__.py re-exports it)
@@ -99,3 +102,4 @@ laid out, how an OUTCAR is read — stays in the one Rust implementation that th
 | Configuration: POTCARs, UPF files, CP2K data | `ferro-py doc config` |
 | Generating inputs | `ferro-py doc job`, then `job vasp`, `job qe`, `job cp2k` |
 | Convergence tests | `ferro-py doc conv` |
+| Figures from ferro's tables | `ferro-py doc plot` |

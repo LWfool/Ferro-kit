@@ -31,7 +31,7 @@ maturin build --release                 # -> target/wheels/ferro-*.whl
 > suite. After changing a public API of `ferro-core`, `ferro-io` or
 > `ferro-analysis`, run `cd ferro-python && cargo check`.
 
-The command-line side — `ferro-py job`, `conv`, `config` — has its own pages:
+The command-line side — `ferro-py job`, `conv`, `config`, `plot` — has its own pages:
 run `ferro-py doc` for the list.
 
 ## Quick start
