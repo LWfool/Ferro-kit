@@ -1,14 +1,6 @@
 use clap::ValueEnum;
 use ferro_analysis::{RotVector, SqWeighting};
 
-#[derive(ValueEnum, Clone, Debug)]
-pub enum TrajMode {
-    Gr,
-    Sq,
-    Msd,
-    Angle,
-}
-
 /// CLI-side weighting enum; converts into `SqWeighting`.
 #[derive(ValueEnum, Clone, Debug, Default)]
 pub enum SqWeightingCli {
