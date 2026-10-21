@@ -778,32 +778,27 @@ ITEM: ATOMS id type element x y z
         assert!((vx - 0.002).abs() < 1e-12, "metal units: vx should be 0.002 Å/fs, got {vx}");
     }
 
-    /// 三斜盒子行是 `*_bound`，真实边长要把倾斜量减回去。
+    /// Triclinic box rows are `*_bound`; the true edge lengths subtract the tilts back out.
     ///
-    /// The numbers come from `tests/triclinic_2frames.lammpstrj`, whose cell was
-    /// cross-checked against `ase.io.read(..., format="lammps-dump-text")`:
-    /// lx/ly/lz = 10/12/14 with xy/xz/yz = 2/-3/1. Reading the bounds as xlo/xhi
-    /// would give lx = 15 and ly = 13 — plausible numbers, wrong cell.
+    /// Reads `tests/triclinic_2frames.lammpstrj`, whose cell was cross-checked against
+    /// `ase.io.read(..., format="lammps-dump-text")`: lx/ly/lz = 10/12/14 with
+    /// xy/xz/yz = 2/-3/1. Reading the bounds as xlo/xhi would give lx = 15 and ly = 13 —
+    /// plausible numbers, wrong cell.
     #[test]
     fn test_triclinic_bounds_are_not_xlo_xhi() {
-        const TRI: &str = "ITEM: TIMESTEP
-0
-ITEM: NUMBER OF ATOMS
-1
-ITEM: BOX BOUNDS xy xz yz pp pp pp
--3.0 12.0 2.0
-0.0 13.0 -3.0
-0.0 14.0 1.0
-ITEM: ATOMS id type element x y z
-1 1 Si 0.5 0.5 0.5
-";
-        let traj = read_lammps_dump(&tmp("tri.dump", TRI), Some(LammpsUnits::Metal)).unwrap().0;
-        let m = traj.first().unwrap().cell.as_ref().unwrap().matrix;
-        // 行优先：行 = 晶格矢量
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/triclinic_2frames.lammpstrj");
+        let traj = read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap().0;
+        assert_eq!(traj.n_frames(), 2);
+        // Row-major: rows are the lattice vectors
         let want = [[10.0, 0.0, 0.0], [2.0, 12.0, 0.0], [-3.0, 1.0, 14.0]];
-        for (i, row) in want.iter().enumerate() {
-            for (j, w) in row.iter().enumerate() {
-                assert!((m[(i, j)] - w).abs() < 1e-10, "cell[{i}][{j}]: got {}, want {w}", m[(i, j)]);
+        for (k, frame) in traj.frames.iter().enumerate() {
+            assert_eq!(frame.n_atoms(), 3);
+            let m = frame.cell.as_ref().unwrap().matrix;
+            for (i, row) in want.iter().enumerate() {
+                for (j, w) in row.iter().enumerate() {
+                    assert!((m[(i, j)] - w).abs() < 1e-10,
+                            "frame {k} cell[{i}][{j}]: got {}, want {w}", m[(i, j)]);
+                }
             }
         }
     }
