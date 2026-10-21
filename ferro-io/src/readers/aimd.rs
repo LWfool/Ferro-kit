@@ -205,11 +205,11 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
 /// holding a better answer than the banner — the user, typically — can say so.
 pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdStats)> {
     let (traj, stats) = match fmt {
-        AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md_with_stats(path),
-        AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp_with_stats(path),
-        AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar_with_stats(path),
-        AimdFormat::VaspXml => super::vasprun::read_vasprun_with_stats(path),
-        AimdFormat::QeOut => super::qe_out::read_qe_out_with_stats(path),
+        AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md(path),
+        AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp(path),
+        AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar(path),
+        AimdFormat::VaspXml => super::vasprun::read_vasprun(path),
+        AimdFormat::QeOut => super::qe_out::read_qe_out(path),
     }?;
     // At least one frame, for every format. CP2K and QE already refuse with a more
     // specific hint; the VASP readers returned an empty trajectory, which `collect`
@@ -225,7 +225,7 @@ pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdSta
 }
 
 /// Reads any recognised AIMD output, identifying the format by its banner.
-pub fn read_aimd_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_aimd(path: &Path) -> Result<(Trajectory, AimdStats)> {
     read_aimd_as(path, sniff(path)?)
 }
 
@@ -322,13 +322,13 @@ mod tests {
     #[test]
     #[ignore = "reads the multi-hundred-MB files under examples/"]
     fn the_full_files_agree_with_dpdata() {
-        let (o, os) = read_aimd_with_stats(
+        let (o, os) = read_aimd(
             std::path::Path::new("../examples/vasp/50Z50P_0.970_3000K.outcar")).unwrap();
         assert_eq!(o.n_frames(), 2000, "dpdata reads 2000 frames");
         assert_eq!(os.n_restarts, 1, "1..1575 then 1..425");
         assert_eq!(os.n_incomplete, 1, "step 1576 was cut off mid-run");
 
-        let (x, xs) = read_aimd_with_stats(
+        let (x, xs) = read_aimd(
             std::path::Path::new("../examples/vasp/vasprun.xml")).unwrap();
         assert_eq!(x.n_frames(), 425);
         assert_eq!(xs.n_dropped(), 0);

@@ -155,7 +155,7 @@ fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
 }
 
 /// Reads a CP2K MD output file and reports what was dropped.
-pub fn read_cp2k_md_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_cp2k_md(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
     parse_cp2k_md_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {path_}"))
 }
@@ -833,7 +833,7 @@ mod tests {
     #[test]
     fn reads_temperature_from_the_instantaneous_column() {
         let (traj, st) =
-            read_cp2k_md_with_stats(Path::new("../tests/cp2k_md_3frames.out")).unwrap();
+            read_cp2k_md(Path::new("../tests/cp2k_md_3frames.out")).unwrap();
         assert_eq!(traj.n_frames(), 3, "stats: {st:?}");
         let want = [964.909119, 866.567046, 724.603525];
         for (i, w) in want.iter().enumerate() {
@@ -860,7 +860,7 @@ mod tests {
     #[test]
     #[ignore]
     fn reads_the_reference_output() {
-        let (traj, st) = read_cp2k_md_with_stats(Path::new("../examples/cp2k/md/total.out")).unwrap();
+        let (traj, st) = read_cp2k_md(Path::new("../examples/cp2k/md/total.out")).unwrap();
         println!("{st:?}");
         println!("frames={} atoms={:?}", traj.n_frames(), traj.n_atoms());
         let f = &traj.frames[0];

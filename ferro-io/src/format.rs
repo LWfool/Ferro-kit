@@ -13,8 +13,8 @@ use crate::Notice;
 
 use crate::readers::{
     apply_type_map, is_extxyz, read_aimd_as, read_chgcar, read_cif, read_cp2k_inp, read_cp2k_restart, read_cube_as_chg,
-    read_deepmd_npy_with_warnings, read_extxyz_with_warnings, read_lammps_data_with_warnings, read_lammps_dump_with_warnings,
-    read_pdb_with_warnings, read_poscar_with_warnings, read_qe_input, read_xyz_with_warnings, sniff, AimdFormat, AimdStats,
+    read_deepmd_npy, read_extxyz, read_lammps_data, read_lammps_dump,
+    read_pdb, read_poscar, read_qe_input, read_xyz, sniff, AimdFormat, AimdStats,
     AtomStyle, LammpsUnits,
 };
 use crate::writers::{
@@ -243,11 +243,11 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
         traj
     };
     let traj = match format {
-        Format::Xyz => warned(read_xyz_with_warnings(path)?),
-        Format::Extxyz => warned(read_extxyz_with_warnings(path)?),
-        Format::Pdb => warned(read_pdb_with_warnings(path)?),
+        Format::Xyz => warned(read_xyz(path)?),
+        Format::Extxyz => warned(read_extxyz(path)?),
+        Format::Pdb => warned(read_pdb(path)?),
         Format::Cif => read_cif(path)?,
-        Format::Poscar => warned(read_poscar_with_warnings(path)?),
+        Format::Poscar => warned(read_poscar(path)?),
         Format::LammpsData => {
             let Some(style) = opts.atom_style else {
                 bail!(
@@ -256,10 +256,10 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
                     path.display()
                 );
             };
-            warned(read_lammps_data_with_warnings(path, style)?)
+            warned(read_lammps_data(path, style)?)
         }
         Format::LammpsDump => {
-            let mut traj = warned(read_lammps_dump_with_warnings(path, opts.units)?);
+            let mut traj = warned(read_lammps_dump(path, opts.units)?);
             if let Some(map) = &opts.type_map {
                 apply_type_map(&mut traj, map)?;
             }
@@ -268,7 +268,7 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
         Format::QeInput => read_qe_input(path)?,
         Format::Cp2kInput => read_cp2k_inp(path)?,
         Format::Cp2kRestart => read_cp2k_restart(path)?,
-        Format::Deepmd => warned(read_deepmd_npy_with_warnings(path)?),
+        Format::Deepmd => warned(read_deepmd_npy(path)?),
         Format::Aimd(fmt) => {
             let (traj, stats) = read_aimd_as(path, fmt)?;
             report.warnings.extend(aimd_warnings(&stats));

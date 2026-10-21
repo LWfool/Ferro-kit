@@ -55,7 +55,7 @@ mod tests {
         let original = make_traj();
         write_xyz(&original, path_str).unwrap();
 
-        let loaded = read_xyz(path_str).unwrap();
+        let loaded = read_xyz(path_str).unwrap().0;
         assert_eq!(loaded.n_frames(), 1);
         assert_eq!(loaded.first().unwrap().n_atoms(), 3);
         assert_eq!(loaded.metadata.title.as_deref(), Some("Water molecule"));

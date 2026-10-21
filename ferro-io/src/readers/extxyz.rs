@@ -10,13 +10,9 @@ use super::util::{drop_truncated, species_element};
 /// One parsed atom line: the atom, and its force and velocity when the file has them.
 type AtomLine = (Atom, Option<Vector3<f64>>, Option<Vector3<f64>>);
 
-pub fn read_extxyz(path: &Path) -> Result<Trajectory> {
-    Ok(read_extxyz_with_warnings(path)?.0)
-}
-
 /// Reads extended XYZ, returning what the reader noticed alongside the frames: an
 /// incomplete last frame is dropped and named, as the LAMMPS dump reader does.
-pub fn read_extxyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
+pub fn read_extxyz(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     parse_extxyz_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {path_}"))
 }
@@ -567,7 +563,7 @@ Properties=Z:I:1:pos:R:3
 8 0.0 0.0 0.0
 14 1.0 0.0 0.0
 ";
-        let traj = read_extxyz(&tmp("z_only.extxyz", Z_ONLY)).unwrap();
+        let traj = read_extxyz(&tmp("z_only.extxyz", Z_ONLY)).unwrap().0;
         let f = traj.first().unwrap();
         assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "Si"));
 
@@ -586,7 +582,7 @@ Properties=pos:R:3
 Lattice=\"3.0 0.0 0.0 0.0 3.0 0.0 0.0 0.0 3.0\" Properties=species:S:1:pos:R:3 Temperature=866.567046 energy=-1.0 pbc=\"T T T\"
 Si 0.0 0.0 0.0
 ";
-        let traj = read_extxyz(&tmp("temp.extxyz", T)).unwrap();
+        let traj = read_extxyz(&tmp("temp.extxyz", T)).unwrap().0;
         let t = traj.first().unwrap().temperature.expect("Temperature= should be read");
         assert!((t - 866.567046).abs() < 1e-9, "got {t}");
 
@@ -602,7 +598,7 @@ Si 0.0 0.0 0.0
 
     #[test]
     fn test_basic() {
-        let traj = read_extxyz(&tmp("bcc.extxyz", SINGLE)).unwrap();
+        let traj = read_extxyz(&tmp("bcc.extxyz", SINGLE)).unwrap().0;
         assert_eq!(traj.n_frames(), 1);
         let f = traj.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
@@ -614,7 +610,7 @@ Si 0.0 0.0 0.0
 
     #[test]
     fn test_forces() {
-        let traj = read_extxyz(&tmp("forces.extxyz", WITH_FORCES)).unwrap();
+        let traj = read_extxyz(&tmp("forces.extxyz", WITH_FORCES)).unwrap().0;
         let f = traj.first().unwrap();
         let forces = f.forces().unwrap();
         assert!((forces[0].x - 0.1).abs() < 1e-10);
@@ -623,7 +619,7 @@ Si 0.0 0.0 0.0
     #[test]
     fn test_stress_sign_from_ase() {
         // ASE 写的 stress= 是正 = 拉伸;Ferro 存正 = 压缩,故对角必须转负
-        let traj = read_extxyz(&tmp("ase_stress.extxyz", ASE_STRESS)).unwrap();
+        let traj = read_extxyz(&tmp("ase_stress.extxyz", ASE_STRESS)).unwrap().0;
         let f = traj.first().unwrap();
         assert_expect(f);
         assert!(f.stress.unwrap()[(0, 0)] < 0.0);
@@ -632,7 +628,7 @@ Si 0.0 0.0 0.0
     #[test]
     fn test_virial_matches_dpdata() {
         // virial= 是 eV 且正 = 压缩:除以体积、不变号,结果应与 stress fixture 相同
-        let traj = read_extxyz(&tmp("ase_virial.extxyz", ASE_VIRIAL)).unwrap();
+        let traj = read_extxyz(&tmp("ase_virial.extxyz", ASE_VIRIAL)).unwrap().0;
         assert_expect(traj.first().unwrap());
     }
 
@@ -641,7 +637,7 @@ Si 0.0 0.0 0.0
         let both = ASE_STRESS.replace(
             "energy=-1.5",
             "energy=-1.5 virial=\"-13.2 -2.64 -3.96 -2.64 -26.4 -5.28 -3.96 -5.28 -39.6\"");
-        let traj = read_extxyz(&tmp("both_ok.extxyz", &both)).unwrap();
+        let traj = read_extxyz(&tmp("both_ok.extxyz", &both)).unwrap().0;
         assert_expect(traj.first().unwrap());
     }
 
@@ -686,7 +682,7 @@ Si 0.0 0.0 0.0
         // GPUMD 的 train.xyz 用 force:R:3,ASE 用 forces:R:3,两种拼法都要收 ——
         // 只认复数时,读 NEP 数据集会一声不吭地把受力全丢了
         let nep = ASE_STRESS.replace("forces:R:3", "force:R:3");
-        let traj = read_extxyz(&tmp("nep_force.extxyz", &nep)).unwrap();
+        let traj = read_extxyz(&tmp("nep_force.extxyz", &nep)).unwrap().0;
         let f = traj.first().unwrap();
         let forces = f.forces().expect("force column not read");
         assert!((forces[0].x - 0.1).abs() < 1e-12);

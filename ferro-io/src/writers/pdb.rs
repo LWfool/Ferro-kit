@@ -118,7 +118,7 @@ mod tests {
         let original = make_traj();
         write_pdb(&original, path_str).unwrap();
 
-        let loaded = read_pdb(path_str).unwrap();
+        let loaded = read_pdb(path_str).unwrap().0;
         assert_eq!(loaded.n_frames(), 1);
         assert_eq!(loaded.first().unwrap().n_atoms(), 3);
     }
@@ -145,7 +145,7 @@ mod tests {
             .collect();
         assert_eq!(tags, ["CRYST1", "MODEL ", "CRYST1", "MODEL "], "每个 MODEL 前应有本帧的 CRYST1");
 
-        let loaded = read_pdb(&path).unwrap();
+        let loaded = read_pdb(&path).unwrap().0;
         for (f, l) in loaded.frames.iter().zip([10.0_f64, 11.0]) {
             let v = f.cell.as_ref().unwrap().volume();
             assert!((v - l.powi(3)).abs() / l.powi(3) < 1e-4, "读回体积 {v}，应为 {}", l.powi(3));
@@ -174,7 +174,7 @@ mod tests {
         let path = std::env::temp_dir().join("ferro_pdb_rotated_cell.pdb");
         write_pdb(&Trajectory::from_frame(frame), &path).unwrap();
 
-        let loaded = read_pdb(&path).unwrap();
+        let loaded = read_pdb(&path).unwrap().0;
         let f = loaded.first().unwrap();
         let c = f.cell.as_ref().unwrap();
         for (atom, s) in f.atoms().zip(&fracs) {
@@ -223,6 +223,6 @@ mod tests {
         let last = text.lines().rfind(|l| l.starts_with("ATOM")).unwrap();
         assert_eq!(&last[6..11], "    1");
         assert!(text.lines().filter(|l| l.starts_with("ATOM")).all(|l| l.len() == 78));
-        assert_eq!(read_pdb(&path).unwrap().frames[0].n_atoms(), 100_001);
+        assert_eq!(read_pdb(&path).unwrap().0.frames[0].n_atoms(), 100_001);
     }
 }

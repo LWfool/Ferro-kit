@@ -5,14 +5,9 @@ use nalgebra::Vector3;
 use anyhow::{anyhow, bail, Context, Result};
 use super::util::{drop_truncated, species_element};
 
-/// Reads an XYZ file, multi-frame (consecutive blocks).
-pub fn read_xyz(path: &Path) -> Result<Trajectory> {
-    Ok(read_xyz_with_warnings(path)?.0)
-}
-
-/// [`read_xyz`], returning what the reader noticed: an incomplete last frame is
-/// dropped and named, as the LAMMPS dump reader does.
-pub fn read_xyz_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
+/// Reads an XYZ file, multi-frame (consecutive blocks), returning what the reader
+/// noticed: an incomplete last frame is dropped and named, as the LAMMPS dump reader does.
+pub fn read_xyz(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let mut lines = super::util::text_lines(path)?.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
@@ -122,7 +117,7 @@ C  1.4  0.0  0.1
     #[test]
     fn test_single_frame() {
         let path = write_tmp("test_water.xyz", WATER_XYZ);
-        let traj = read_xyz(&path).unwrap();
+        let traj = read_xyz(&path).unwrap().0;
         assert_eq!(traj.n_frames(), 1);
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 3);
@@ -133,7 +128,7 @@ C  1.4  0.0  0.1
     #[test]
     fn test_multi_frame() {
         let path = write_tmp("test_multi.xyz", MULTI_XYZ);
-        let traj = read_xyz(&path).unwrap();
+        let traj = read_xyz(&path).unwrap().0;
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(traj.frame(0).unwrap().n_atoms(), 2);
         assert_eq!(traj.frame(1).unwrap().n_atoms(), 2);
@@ -149,7 +144,7 @@ C  1.4  0.0  0.1
             ("trunc_number.xyz", "2\nframe 1\nC 0 0 0.1\nC 1.4 0 -"), // last line cut inside a number
         ] {
             let path = write_tmp(name, &format!("2\nframe 0\nC 0 0 0\nC 1.4 0 0\n{tail}"));
-            let (traj, warnings) = read_xyz_with_warnings(&path).unwrap();
+            let (traj, warnings) = read_xyz(&path).unwrap();
             assert_eq!(traj.n_frames(), 1, "{name}");
             assert_eq!(warnings.len(), 1, "{name}");
             assert!(warnings[0].line == Some(5) && warnings[0].message.contains("frame 1"), "{name}: {:?}", warnings[0]);
@@ -171,7 +166,7 @@ C  1.4  0.0  0.1
     #[test]
     fn test_atomic_number_column() {
         let path = write_tmp("znum.xyz", "2\n\n8 0 0 0\n1 0.96 0 0\n");
-        let frame = read_xyz(&path).unwrap().frames.remove(0);
+        let frame = read_xyz(&path).unwrap().0.frames.remove(0);
         assert_eq!(frame.atom(0).element, "O");
         assert_eq!(frame.atom(1).element, "H");
         let path = write_tmp("znum_bad.xyz", "1\n\n200 0 0 0\n");

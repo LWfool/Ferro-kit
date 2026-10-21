@@ -6,19 +6,15 @@ use anyhow::{bail, Context, Result};
 use ferro_core::data::elements::by_symbol;
 use super::util::capitalize_symbol;
 
-/// Reads a PDB file, multi-model (MODEL / ENDMDL records).
-pub fn read_pdb(path: &Path) -> Result<Trajectory> {
-    Ok(read_pdb_with_warnings(path)?.0)
-}
-
-/// [`read_pdb`], returning what the reader noticed: a `CRYST1` placeholder taken as no
+/// Reads a PDB file, multi-model (MODEL / ENDMDL records), returning what the reader
+/// noticed: a `CRYST1` placeholder taken as no
 /// cell, and a last MODEL with no `ENDMDL` or last END-split block with no `END`
 /// (kept when it has the atom count of the frame before it, dropped otherwise).
 ///
 /// A frame ends at `ENDMDL` or at `END`: CP2K and VMD write trajectories as blocks
 /// closed by `END` with no MODEL records (as ASE reads them). Those used to run
 /// together into one frame holding every block's atoms.
-pub fn read_pdb_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
+pub fn read_pdb(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
     let mut current = Frame::new();
@@ -215,7 +211,7 @@ ENDMDL
     #[test]
     fn test_single_frame() {
         let path = write_tmp("test_water.pdb", WATER_PDB);
-        let traj = read_pdb(&path).unwrap();
+        let traj = read_pdb(&path).unwrap().0;
         assert_eq!(traj.n_frames(), 1);
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 3);
@@ -228,7 +224,7 @@ ENDMDL
         format!("ATOM      1 {name:<4} UNK A   1       0.000   0.000   0.119  1.00  0.00          {elem:>2}")
     }
     fn element_of(line: &str) -> String {
-        read_pdb(&write_tmp("test_elem.pdb", &format!("{line}\n"))).unwrap().frames[0].element(0).to_string()
+        read_pdb(&write_tmp("test_elem.pdb", &format!("{line}\n"))).unwrap().0.frames[0].element(0).to_string()
     }
 
     #[test]
@@ -262,7 +258,7 @@ ENDMDL
     #[test]
     fn test_cut_last_atom_line() {
         let cut = format!("{WATER_PDB}ATOM      1  O   UNK A   1       0.000   0.0");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_cut.pdb", &cut)).unwrap();
+        let (traj, w) = read_pdb(&write_tmp("test_cut.pdb", &cut)).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert!(w.len() == 1 && w[0].line == Some(6) && w[0].message.contains("frame 1"), "{w:?}");
         let only = &WATER_PDB[..WATER_PDB.find("-0.763").unwrap() + 3]; // cut inside atom 3's y
@@ -273,7 +269,7 @@ ENDMDL
     #[test]
     fn test_non_ascii_does_not_panic() {
         let text = WATER_PDB.replace("Water molecule", "水分子测试");
-        let traj = read_pdb(&write_tmp("test_utf8.pdb", &text)).unwrap();
+        let traj = read_pdb(&write_tmp("test_utf8.pdb", &text)).unwrap().0;
         assert_eq!(traj.metadata.title.as_deref(), Some("水分子测试"));
         // 坐标列里混进多字节字符：报错，不 panic
         let bad = WATER_PDB.replace("0.000   0.763", "0.000  水763");
@@ -283,7 +279,7 @@ ENDMDL
     #[test]
     fn test_multi_model() {
         let path = write_tmp("test_multi.pdb", MULTI_PDB);
-        let traj = read_pdb(&path).unwrap();
+        let traj = read_pdb(&path).unwrap().0;
         assert_eq!(traj.n_frames(), 2);
     }
 
@@ -295,17 +291,17 @@ ENDMDL
     fn test_last_model_without_endmdl() {
         // Same atom count as the frame before: kept, with a warning
         let text = format!("MODEL 1\n{C1}{C2}ENDMDL\nMODEL 2\n{C1}{C2}");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_noend.pdb", &text)).unwrap();
+        let (traj, w) = read_pdb(&write_tmp("test_noend.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert!(w.len() == 1 && w[0].line == Some(5) && w[0].message.contains("frame 1")
             && w[0].message.contains("kept"), "{w:?}");
         // Fewer atoms: cut off, dropped with a warning
         let text = format!("MODEL 1\n{C1}{C2}ENDMDL\nMODEL 2\n{C1}");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_noend_cut.pdb", &text)).unwrap();
+        let (traj, w) = read_pdb(&write_tmp("test_noend_cut.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert!(w.len() == 1 && w[0].message.contains("dropped"), "{w:?}");
         // A single MODEL with no ENDMDL: kept
-        let (traj, _) = read_pdb_with_warnings(&write_tmp("test_noend_one.pdb", &format!("MODEL 1\n{C1}"))).unwrap();
+        let (traj, _) = read_pdb(&write_tmp("test_noend_one.pdb", &format!("MODEL 1\n{C1}"))).unwrap();
         assert_eq!(traj.n_frames(), 1);
     }
 
@@ -314,12 +310,12 @@ ENDMDL
     #[test]
     fn test_end_separated_blocks_are_frames() {
         let text = format!("{C1}{C2}END\n{C1}{C2}END\n");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_end_blocks.pdb", &text)).unwrap();
+        let (traj, w) = read_pdb(&write_tmp("test_end_blocks.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(traj.frames[1].n_atoms(), 2);
         assert!(w.is_empty(), "{w:?}");
         // MODEL … ENDMDL followed by END gives no extra frame
-        let (traj, _) = read_pdb_with_warnings(&write_tmp("test_model_end.pdb", MULTI_PDB_END)).unwrap();
+        let (traj, _) = read_pdb(&write_tmp("test_model_end.pdb", MULTI_PDB_END)).unwrap();
         assert_eq!(traj.n_frames(), 2);
     }
 
@@ -328,12 +324,12 @@ ENDMDL
     #[test]
     fn test_last_end_block_without_end() {
         let text = format!("{C1}{C2}END\n{C1}{C2}END\n{C1}");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_end_cut.pdb", &text)).unwrap();
+        let (traj, w) = read_pdb(&write_tmp("test_end_cut.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert!(w.len() == 1 && w[0].message.contains("frame 2") && w[0].message.contains("dropped"), "{w:?}");
         // Same atom count as the frame before: kept, with a warning
         let text = format!("{C1}{C2}END\n{C1}{C2}");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_end_noend.pdb", &text)).unwrap();
+        let (traj, w) = read_pdb(&write_tmp("test_end_noend.pdb", &text)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert!(w.len() == 1 && w[0].message.contains("frame 1") && w[0].message.contains("kept"), "{w:?}");
     }
@@ -353,12 +349,12 @@ END
     #[test]
     fn test_cryst1_placeholder_is_no_cell() {
         let cryst = |abc: &str| format!("CRYST1{abc}  90.00  90.00  90.00 P 1           1\n{C1}END\n");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_cryst_1.pdb",
+        let (traj, w) = read_pdb(&write_tmp("test_cryst_1.pdb",
             &cryst("    1.000    1.000    1.000"))).unwrap();
         assert!(traj.frames[0].cell.is_none());
         assert_eq!(traj.frames[0].pbc, [false; 3]);
         assert!(w.len() == 1 && w[0].message.contains("placeholder"), "{w:?}");
-        let (traj, w) = read_pdb_with_warnings(&write_tmp("test_cryst_10.pdb",
+        let (traj, w) = read_pdb(&write_tmp("test_cryst_10.pdb",
             &cryst("   10.000   10.000   10.000"))).unwrap();
         assert!(traj.frames[0].cell.is_some());
         assert!(w.is_empty());

@@ -35,17 +35,12 @@ use ndarray_npy::read_npy;
 /// Keys this reader maps onto `Frame`; anything else in a set is reported.
 const KNOWN: &[&str] = &["coord", "box", "energy", "force", "virial"];
 
-/// Reads a DeePMD system directory, discarding the warnings.
-pub fn read_deepmd_npy(dir: &Path) -> Result<Trajectory> {
-    Ok(read_deepmd_npy_with_warnings(dir)?.0)
-}
-
 /// Reads a DeePMD system directory and reports data this reader cannot carry.
 ///
 /// Keys such as `atom_ener.npy` have no home in `Frame`; they are named in the
 /// warnings rather than dropped in silence, because a lost label looks exactly
 /// like a label that was never computed.
-pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
+pub fn read_deepmd_npy(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let types = read_type_indices(&dir.join("type.raw"))?;
     let type_map = read_lines_tokens(&dir.join("type_map.raw"))?;
     let natoms = types.len();
@@ -277,7 +272,7 @@ mod tests {
         let d = scratch("ferro_dp_rt");
         let a = demo();
         write_deepmd_npy(&a, &d).unwrap();
-        let (b, warn) = read_deepmd_npy_with_warnings(&d).unwrap();
+        let (b, warn) = read_deepmd_npy(&d).unwrap();
         assert!(warn.is_empty(), "{warn:?}");
         assert_eq!(b.n_frames(), a.n_frames());
         for (x, y) in a.frames.iter().zip(&b.frames) {
@@ -313,12 +308,12 @@ mod tests {
         write_deepmd_npy(&demo(), &a).unwrap();
         // 补上 nopbc 标记，即 dpdata 产出的团簇 system：有 box.npy，也有 nopbc
         std::fs::write(a.join("nopbc"), "").unwrap();
-        let t = read_deepmd_npy(&a).unwrap();
+        let t = read_deepmd_npy(&a).unwrap().0;
         assert!(t.frames.iter().all(|f| f.pbc == [false; 3]), "读入的 nopbc 体系应三向非周期");
         write_deepmd_npy(&t, &b).unwrap();
         assert!(b.join("nopbc").exists(), "写回后 nopbc 标记丢失，团簇变成了周期体系");
         assert!(b.join("set.000/box.npy").exists(), "box.npy 应照原样保留");
-        let u = read_deepmd_npy(&b).unwrap();
+        let u = read_deepmd_npy(&b).unwrap().0;
         assert!(u.frames.iter().all(|f| f.pbc == [false; 3]), "再读回应仍为非周期");
     }
 
@@ -339,7 +334,7 @@ mod tests {
         )
         .unwrap();
         write_npy(set.join("coord.npy"), &a).unwrap();
-        let t = read_deepmd_npy(&d).unwrap();
+        let t = read_deepmd_npy(&d).unwrap().0;
         assert_eq!(t.n_frames(), 3);
         assert_eq!(t.frames[2].positions()[0], Vector3::new(2.0, 0.5, 0.25));
     }
@@ -350,7 +345,7 @@ mod tests {
         write_deepmd_npy(&demo(), &d).unwrap();
         let a: Array2<f64> = Array2::zeros((3, 2));
         write_npy(d.join("set.000").join("atom_ener.npy"), &a).unwrap();
-        let (_, warn) = read_deepmd_npy_with_warnings(&d).unwrap();
+        let (_, warn) = read_deepmd_npy(&d).unwrap();
         assert_eq!(warn.len(), 1);
         assert!(warn[0].message.contains("atom_ener"), "{warn:?}");
     }

@@ -111,7 +111,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
         BTreeMap::new();
     let mut failures = 0usize;
     for sys in &systems {
-        match read_deepmd_npy_with_warnings(sys) {
+        match read_deepmd_npy(sys) {
             Ok((traj, warns)) => {
                 crate::report::notices(sys, &warns);
                 groups.entry(composition_key(&traj)).or_default().push((sys.clone(), traj));

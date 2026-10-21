@@ -227,7 +227,7 @@ mod tests {
         assert!(atom_line.starts_with("P "), "species 列仍是纯元素: {atom_line}");
         assert!(atom_line.ends_with("P_3"), "标签在自己的列里: {atom_line}");
 
-        let back = read_extxyz(p).unwrap();
+        let back = read_extxyz(p).unwrap().0;
         let atoms: Vec<_> = back.frames[0].atoms().collect();
         assert_eq!(atoms[0].element, "P");
         assert_eq!(atoms[0].label, Some("P_3"));
@@ -261,7 +261,7 @@ mod tests {
         }
         // 往返：ferro 自己读回的速度与写入的一致。writer 定点 {:.10}，momenta ~10 量级，
         // 故误差 ~1e-11，与以前直接写 Å/fs 速度同一量级
-        let back = read_extxyz(&path).unwrap().frames.remove(0).velocities().unwrap().to_vec();
+        let back = read_extxyz(&path).unwrap().0.frames.remove(0).velocities().unwrap().to_vec();
         for (a, b) in back.iter().zip(&v) {
             assert!((a - b).norm() < 1e-9, "往返速度 {a:?} ≠ {b:?}");
         }
@@ -274,7 +274,7 @@ mod tests {
         let orig = bcc_traj();
         write_extxyz(&orig, p).unwrap();
 
-        let loaded = read_extxyz(p).unwrap();
+        let loaded = read_extxyz(p).unwrap().0;
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");
@@ -325,7 +325,7 @@ mod tests {
         assert!(!line.contains("stress="), "{line}");
 
         // 读回:reader 对 virial= 除体积、不变号,应回到 σ_ferro
-        let back = read_extxyz(&path).unwrap();
+        let back = read_extxyz(&path).unwrap().0;
         let s = back.first().unwrap().stress.unwrap();
         for i in 0..3 {
             for j in 0..3 {
@@ -381,7 +381,7 @@ mod tests {
         frame.add_atom(Atom::new("O", Vector3::new(0.96, 0.0, 0.0)));
         let path = std::env::temp_dir().join("ferro_extxyz_mass.extxyz");
         write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
-        let back = read_extxyz(&path).unwrap().frames.remove(0);
+        let back = read_extxyz(&path).unwrap().0.frames.remove(0);
         assert_eq!(back.atom(0).mass, Some(2.014));
         // An atom without one gets the element's mass
         assert!((back.atom(1).mass.unwrap() - 15.999).abs() < 1e-3);

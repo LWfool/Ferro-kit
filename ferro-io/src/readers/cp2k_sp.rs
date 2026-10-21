@@ -346,7 +346,7 @@ fn read_stress(lines: &[&str], head: usize, hi: usize) -> Result<Option<Matrix3<
 }
 
 /// Reads a CP2K single-point output file and reports what was dropped.
-pub fn read_cp2k_sp_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_cp2k_sp(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_cp2k_sp(&content).with_context(|| format!("parsing {path_}"))
@@ -787,7 +787,7 @@ mod tests {
     /// triclinic cell, with two kinds sharing one element.
     #[test]
     fn the_old_layout_agrees_with_cp2kdata_on_a_real_file() {
-        let (traj, st) = read_cp2k_sp_with_stats(Path::new("../tests/cp2k_sp_v61.out")).unwrap();
+        let (traj, st) = read_cp2k_sp(Path::new("../tests/cp2k_sp_v61.out")).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_dropped(), 0);
         assert_eq!(st.version.as_deref(), Some("6.1"));
@@ -837,7 +837,7 @@ mod tests {
     #[test]
     fn reads_the_reference_single_point() {
         let (traj, st) =
-            read_cp2k_sp_with_stats(Path::new("../tests/5Al_0003_1500K_f394.out")).unwrap();
+            read_cp2k_sp(Path::new("../tests/5Al_0003_1500K_f394.out")).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_dropped(), 0);
         assert_eq!(st.version.as_deref(), Some("2025.2"));

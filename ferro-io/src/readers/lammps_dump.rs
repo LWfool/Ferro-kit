@@ -35,17 +35,14 @@ impl std::str::FromStr for LammpsUnits {
     }
 }
 
-/// `units` 为 `None` 时，含 `vx`/`fx` 等速度或力列的 dump 报错 —— 这些列的量纲取决于
-/// LAMMPS 的 `units` 命令，文件里看不出来。
-pub fn read_lammps_dump(path: &Path, units: Option<LammpsUnits>) -> Result<Trajectory> {
-    Ok(read_lammps_dump_with_warnings(path, units)?.0)
-}
-
 /// Reads a LAMMPS dump, returning what the reader noticed alongside the frames.
 ///
 /// The warnings name a dropped incomplete last frame and the element-column split
 /// (`P_3` -> element `P`, label `P_3`); the caller prints them, the library never does.
-pub fn read_lammps_dump_with_warnings(
+///
+/// With `units` `None`, a dump carrying velocity or force columns (`vx`, `fx`, ...) is an
+/// error: their dimensions depend on LAMMPS's `units` command, which the file does not record.
+pub fn read_lammps_dump(
     path: &Path,
     units: Option<LammpsUnits>,
 ) -> Result<(Trajectory, Vec<Notice>)> {
@@ -664,7 +661,7 @@ ITEM: ATOMS id type element x y z
 
     #[test]
     fn test_label_split_fills_element_and_label() {
-        let traj = read_lammps_dump(&tmp("labels.dump", DUMP_LABELS), Some(LammpsUnits::Real)).unwrap();
+        let traj = read_lammps_dump(&tmp("labels.dump", DUMP_LABELS), Some(LammpsUnits::Real)).unwrap().0;
         let f = traj.first().unwrap();
         let got: Vec<(&str, Option<&str>)> = f.atoms()
             .map(|a| (a.element, a.label))
@@ -681,7 +678,7 @@ ITEM: ATOMS id type element x y z
     #[test]
     fn test_plain_element_column_leaves_label_none() {
         // 普通轨迹不受拆分影响
-        let traj = read_lammps_dump(&tmp("plain.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap();
+        let traj = read_lammps_dump(&tmp("plain.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap().0;
         for atom in traj.first().unwrap().atoms() {
             assert_eq!(atom.element, "Fe");
             assert!(atom.label.is_none(), "plain symbol should not produce a label");
@@ -690,7 +687,7 @@ ITEM: ATOMS id type element x y z
 
     #[test]
     fn test_unknown_prefix_kept_verbatim_as_element() {
-        let traj = read_lammps_dump(&tmp("bad.dump", DUMP_BAD_LABEL), Some(LammpsUnits::Real)).unwrap();
+        let traj = read_lammps_dump(&tmp("bad.dump", DUMP_BAD_LABEL), Some(LammpsUnits::Real)).unwrap().0;
         let f = traj.first().unwrap();
         // Unknown prefix: the whole string is the element, label is None (the reader warns)
         assert_eq!(f.atom(0).element, "foo_bar");
@@ -700,7 +697,7 @@ ITEM: ATOMS id type element x y z
 
     #[test]
     fn test_multiframe() {
-        let traj = read_lammps_dump(&tmp("bcc.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap();
+        let traj = read_lammps_dump(&tmp("bcc.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap().0;
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(traj.first().unwrap().n_atoms(), 2);
         assert_eq!(traj.first().unwrap().atom(0).element, "Fe");
@@ -743,21 +740,21 @@ ITEM: ATOMS id type element x y z
 
     #[test]
     fn test_box_bounds() {
-        let traj = read_lammps_dump(&tmp("box.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap();
+        let traj = read_lammps_dump(&tmp("box.dump", DUMP_ORTHO), Some(LammpsUnits::Real)).unwrap().0;
         let [a, ..] = traj.first().unwrap().cell.as_ref().unwrap().lengths();
         assert!((a - 2.87).abs() < 1e-6);
     }
 
     #[test]
     fn test_velocity_real_units() {
-        let traj = read_lammps_dump(&tmp("vel_real.dump", DUMP_VEL), Some(LammpsUnits::Real)).unwrap();
+        let traj = read_lammps_dump(&tmp("vel_real.dump", DUMP_VEL), Some(LammpsUnits::Real)).unwrap().0;
         let vx = traj.first().unwrap().velocities().unwrap()[0].x;
         assert!((vx - 2.0).abs() < 1e-10, "real units: vx should be 2.0 Å/fs, got {vx}");
     }
 
     #[test]
     fn test_timestep_is_kept() {
-        let traj = read_lammps_dump(&tmp("steps.dump", DUMP_ORTHO), None).unwrap();
+        let traj = read_lammps_dump(&tmp("steps.dump", DUMP_ORTHO), None).unwrap().0;
         let steps: Vec<_> = traj.frames.iter().map(|f| f.step).collect();
         assert!(steps.iter().all(|s| s.is_some()), "每帧都应带上 TIMESTEP，实际 {steps:?}");
     }
@@ -769,13 +766,13 @@ ITEM: ATOMS id type element x y z
         let msg = format!("{err:#}");
         assert!(msg.contains("vx") && msg.contains("--units"), "错误信息应点名速度列与 --units，实际：{msg}");
         // 只有坐标的 dump 不受单位影响，None 照常读
-        let traj = read_lammps_dump(&tmp("plain_none.dump", DUMP_ORTHO), None).unwrap();
+        let traj = read_lammps_dump(&tmp("plain_none.dump", DUMP_ORTHO), None).unwrap().0;
         assert!(traj.first().unwrap().velocities().is_none());
     }
 
     #[test]
     fn test_velocity_metal_units() {
-        let traj = read_lammps_dump(&tmp("vel_metal.dump", DUMP_VEL), Some(LammpsUnits::Metal)).unwrap();
+        let traj = read_lammps_dump(&tmp("vel_metal.dump", DUMP_VEL), Some(LammpsUnits::Metal)).unwrap().0;
         let vx = traj.first().unwrap().velocities().unwrap()[0].x;
         // 2.0 Å/ps × 1e-3 = 0.002 Å/fs
         assert!((vx - 0.002).abs() < 1e-12, "metal units: vx should be 0.002 Å/fs, got {vx}");
@@ -800,7 +797,7 @@ ITEM: BOX BOUNDS xy xz yz pp pp pp
 ITEM: ATOMS id type element x y z
 1 1 Si 0.5 0.5 0.5
 ";
-        let traj = read_lammps_dump(&tmp("tri.dump", TRI), Some(LammpsUnits::Metal)).unwrap();
+        let traj = read_lammps_dump(&tmp("tri.dump", TRI), Some(LammpsUnits::Metal)).unwrap().0;
         let m = traj.first().unwrap().cell.as_ref().unwrap().matrix;
         // 行优先：行 = 晶格矢量
         let want = [[10.0, 0.0, 0.0], [2.0, 12.0, 0.0], [-3.0, 1.0, 14.0]];

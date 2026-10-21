@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use ferro_io::{AtomStyle, Format, LammpsUnits, ReadOptions, read_aimd_with_stats, TableFormat};
+use ferro_io::{AtomStyle, Format, LammpsUnits, ReadOptions, read_aimd, TableFormat};
 use ferro_core::Table;
 use pyo3::prelude::*;
 
@@ -143,7 +143,7 @@ fn read_output(
     py: Python<'_>,
     path: &str,
 ) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
-    let (traj, s) = py.detach(|| read_aimd_with_stats(Path::new(path))).map_err(pyerr)?;
+    let (traj, s) = py.detach(|| read_aimd(Path::new(path))).map_err(pyerr)?;
     {
         let mut stats = std::collections::BTreeMap::new();
         let mut put = |k: &str, v: Py<PyAny>| { stats.insert(k.to_string(), v); };

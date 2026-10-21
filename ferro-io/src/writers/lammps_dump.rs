@@ -276,7 +276,7 @@ mod tests {
         let orig = bcc_traj();
         write_lammps_dump(&orig, p, Some(LammpsUnits::Real), false).unwrap();
 
-        let loaded = read_lammps_dump(p, Some(LammpsUnits::Real)).unwrap();
+        let loaded = read_lammps_dump(p, Some(LammpsUnits::Real)).unwrap().0;
         assert_eq!(loaded.n_frames(), 2);
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
@@ -295,7 +295,7 @@ mod tests {
         }
         let path = std::env::temp_dir().join(format!("labels_rt_{}.dump", std::process::id()));
         write_lammps_dump(&traj, &path, Some(LammpsUnits::Real), false).unwrap();
-        let back = read_lammps_dump(&path, Some(LammpsUnits::Real)).unwrap();
+        let back = read_lammps_dump(&path, Some(LammpsUnits::Real)).unwrap().0;
         let f = back.first().unwrap();
         assert_eq!((f.atom(0).element, f.atom(0).label), ("Fe", Some("Fe_3")));
         assert_eq!((f.atom(1).element, f.atom(1).label), ("Fe", None));
@@ -432,7 +432,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS ff ff ff\n"), "无胞帧应写 ff ff ff：\n{text}");
 
-        let f = read_lammps_dump(&path, None).unwrap().frames.remove(0);
+        let f = read_lammps_dump(&path, None).unwrap().0.frames.remove(0);
         assert_eq!(f.pbc, [false; 3]);
         let [a, b, c] = f.cell.as_ref().unwrap().lengths();
         // 包围盒 1.52 × 0.59 × 0，每侧加 1 Å
@@ -466,7 +466,7 @@ mod tests {
         write_lammps_dump(&Trajectory::from_frame(f), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS pp pp ff\n"), "slab 应写 pp pp ff：\n{text}");
-        assert_eq!(read_lammps_dump(&path, None).unwrap().frames[0].pbc, [true, true, false]);
+        assert_eq!(read_lammps_dump(&path, None).unwrap().0.frames[0].pbc, [true, true, false]);
     }
     // 审查 A-12：盒子 lo ≠ 0 时往返丢原点，写出的盒子从 0 起而坐标保留原值，原子落到盒外
     #[test]
@@ -479,9 +479,9 @@ mod tests {
             let src = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_in.lammpstrj"));
             let dst = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_out.lammpstrj"));
             std::fs::write(&src, text).unwrap();
-            let a = read_lammps_dump(&src, None).unwrap();
+            let a = read_lammps_dump(&src, None).unwrap().0;
             write_lammps_dump(&a, &dst, None, false).unwrap();
-            let b = read_lammps_dump(&dst, None).unwrap();
+            let b = read_lammps_dump(&dst, None).unwrap().0;
             let (fa, fb) = (&a.frames[0], &b.frames[0]);
             let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());
             assert!((ca.origin - cb.origin).norm() < 1e-9, "{tag}: 原点应往返不变，{:?} → {:?}", ca.origin, cb.origin);
@@ -490,7 +490,7 @@ mod tests {
         }
         // 第一个盒子的原点就是 lo；三斜的原点是 lo_bound 减去倾斜外探量
         let src = std::env::temp_dir().join("ferro_dump_origin_ortho_in.lammpstrj");
-        let o = read_lammps_dump(&src, None).unwrap().frames[0].cell.as_ref().unwrap().origin;
+        let o = read_lammps_dump(&src, None).unwrap().0.frames[0].cell.as_ref().unwrap().origin;
         assert!((o - Vector3::new(1.5, -2.0, 3.0)).norm() < 1e-12, "正交盒原点应为 lo，实得 {o:?}");
     }
 }

@@ -60,7 +60,7 @@ struct State {
 }
 
 /// Reads a vasprun.xml and reports what was dropped.
-pub fn read_vasprun_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
     let file = std::fs::File::open(path).with_context(|| format!("cannot open {path_}"))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn derives_temperature_from_ionic_kinetic_energy() {
         let (traj, _) =
-            read_vasprun_with_stats(Path::new("../tests/vasp_vasprun_2frames.xml")).unwrap();
+            read_vasprun(Path::new("../tests/vasp_vasprun_2frames.xml")).unwrap();
         let n = traj.frames[0].n_atoms() as f64;
         for (i, f) in traj.frames.iter().enumerate() {
             let t = f.temperature.expect("temperature should be derived");
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn reads_two_real_frames() {
-        let (traj, stats) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, stats) = read_vasprun(Path::new(FIXTURE)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(stats.n_kept, 2);
         assert_eq!(stats.n_dropped(), 0);
@@ -319,14 +319,14 @@ mod tests {
     /// fails the completeness check and the file reads as empty.
     #[test]
     fn the_column_headers_are_not_mistaken_for_species() {
-        let (traj, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, _) = read_vasprun(Path::new(FIXTURE)).unwrap();
         assert_eq!(traj.first().unwrap().n_atoms(), 297);
     }
 
     /// Reference values from dpdata 1.0.2 on the same file.
     #[test]
     fn matches_dpdata_on_the_real_fixture() {
-        let (traj, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, _) = read_vasprun(Path::new(FIXTURE)).unwrap();
         let f0 = &traj.frames[0];
         assert!((f0.energy.unwrap() - -1929.96163538).abs() < 1e-8);
         assert!((traj.frames[1].energy.unwrap() - -1933.54154614).abs() < 1e-8);
@@ -382,7 +382,7 @@ mod tests {
         ];
         for (dir, e, a, i, pos, force, virial) in cases {
             let path = format!("../tests/vasp651_sp/{dir}/vasprun.xml");
-            let (traj, stats) = read_vasprun_with_stats(Path::new(&path)).unwrap();
+            let (traj, stats) = read_vasprun(Path::new(&path)).unwrap();
             assert_eq!((traj.n_frames(), stats.n_dropped()), (1, 0), "{dir}");
             let f = &traj.frames[0];
             assert_eq!(f.n_atoms(), 302, "{dir}");
@@ -412,7 +412,7 @@ mod tests {
     /// `dataset --type nep` path). Without the symmetrisation this fails.
     #[test]
     fn asymmetric_vasp_stress_round_trips_through_extxyz_virial() {
-        let (traj, _) = read_vasprun_with_stats(Path::new(
+        let (traj, _) = read_vasprun(Path::new(
             "../tests/vasp651_sp/frame_0011/vasprun.xml",
         ))
         .unwrap();
@@ -420,7 +420,7 @@ mod tests {
         use crate::writers::extxyz::{write_extxyz_with, StressKey};
         let p = std::env::temp_dir().join("ferro_vasprun_virial_roundtrip.xyz");
         write_extxyz_with(&traj, &p, StressKey::Virial, false).unwrap();
-        let back = read_extxyz(&p).unwrap();
+        let back = read_extxyz(&p).unwrap().0;
         let (s0, s1) = (traj.frames[0].stress.unwrap(), back.frames[0].stress.unwrap());
         assert!((s0 - s1).abs().max() < 1e-12, "往返后应力变了:{s0} vs {s1}");
     }
@@ -430,7 +430,7 @@ mod tests {
     /// is the answer. Nothing about the wrong choice looks wrong.
     #[test]
     fn the_energy_is_the_converged_one_not_the_first_scf_step() {
-        let (traj, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, _) = read_vasprun(Path::new(FIXTURE)).unwrap();
         let e = traj.frames[0].energy.unwrap();
         assert!(e < -1000.0 && e > -3000.0, "{e} looks like an SCF iterate");
     }
@@ -440,7 +440,7 @@ mod tests {
         let p = std::env::temp_dir().join("broken.xml");
         std::fs::write(&p, "<?xml version=\"1.0\"?><modeling><calculation>").unwrap();
         // 截断的 XML 要么报错、要么给出 0 帧,但绝不能装作读到了东西
-        match read_vasprun_with_stats(&p) {
+        match read_vasprun(&p) {
             Err(e) => assert!(format!("{e:#}").contains("atominfo") || format!("{e:#}").contains("XML")),
             Ok((t, _)) => assert_eq!(t.n_frames(), 0),
         }
@@ -456,8 +456,8 @@ mod tests {
         assert_eq!(text.matches(total).count(), 1);
         let edited = text.replacen(total, "<i name=\"kinetic\"></i>", 1);
         let path = crate::testutil::write_tmp("vasprun_empty_i.xml", &edited);
-        let (want, _) = read_vasprun_with_stats(Path::new(FIXTURE)).unwrap();
-        let (got, _) = read_vasprun_with_stats(&path).unwrap();
+        let (want, _) = read_vasprun(Path::new(FIXTURE)).unwrap();
+        let (got, _) = read_vasprun(&path).unwrap();
         assert!(got.frames[0].temperature.is_some());
         assert_eq!(got.frames[0].temperature, want.frames[0].temperature);
     }

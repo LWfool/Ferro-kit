@@ -40,7 +40,7 @@ use ferro_analysis::first_shell_cutoffs;
 use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
-    read_aimd_as, read_deepmd_npy_with_warnings, set_bounds, write_deepmd_npy,
+    read_aimd_as, read_deepmd_npy, set_bounds, write_deepmd_npy,
     write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdFormat, AimdStats,
     StressKey,
 };
@@ -377,7 +377,7 @@ mod test_ids {
     pub(super) fn check_ids(root: &Path) -> Vec<usize> {
         let mut seen = Vec::new();
         for sys in find_systems(root).unwrap() {
-            let (traj, _) = read_deepmd_npy_with_warnings(&sys).unwrap();
+            let (traj, _) = read_deepmd_npy(&sys).unwrap();
             for f in &traj.frames {
                 let g = (-f.energy.unwrap() - 1.0).round() as usize;
                 assert_eq!(f.cell.as_ref().unwrap().matrix, id_cell(g), "帧 {g} 的盒子错配");

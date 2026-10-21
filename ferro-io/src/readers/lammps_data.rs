@@ -44,13 +44,9 @@ impl std::fmt::Display for AtomStyle {
     }
 }
 
-pub fn read_lammps_data(path: &Path, style: AtomStyle) -> Result<Trajectory> {
-    Ok(read_lammps_data_with_warnings(path, style)?.0)
-}
-
-/// [`read_lammps_data`], returning what the reader noticed: a Masses comment that is
+/// Reads a LAMMPS data file, returning what the reader noticed: a Masses comment that is
 /// not an element symbol, for which the element came from the mass instead.
-pub fn read_lammps_data_with_warnings(path: &Path, style: AtomStyle) -> Result<(Trajectory, Vec<Notice>)> {
+pub fn read_lammps_data(path: &Path, style: AtomStyle) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_lammps_data(&content, style).with_context(|| format!("parsing {path_} as atom style {style}"))
@@ -303,7 +299,7 @@ Atoms # full
 
     #[test]
     fn test_water_full() {
-        let traj = read_lammps_data(&tmp("water.lammps", WATER_FULL), AtomStyle::Full).unwrap();
+        let traj = read_lammps_data(&tmp("water.lammps", WATER_FULL), AtomStyle::Full).unwrap().0;
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 6);
         assert_eq!(frame.atom(0).element, "O");
@@ -319,7 +315,7 @@ Atoms # full
     fn test_masses_are_kept_as_atom_masses() {
         let text = WATER_FULL.replace("2 1.008   # H", "2 2.014   # H");
         let path = tmp("d2o.data", &text);
-        let traj = read_lammps_data(&path, AtomStyle::Full).unwrap();
+        let traj = read_lammps_data(&path, AtomStyle::Full).unwrap().0;
         let f = traj.first().unwrap();
         assert_eq!(f.atom(1).element, "H");
         assert_eq!(f.atom(1).mass, Some(2.014));
@@ -327,7 +323,7 @@ Atoms # full
 
         let out = path.with_file_name("d2o_roundtrip.data");
         crate::writers::lammps_data::write_lammps_data(&traj, &out, false).unwrap();
-        let back = read_lammps_data(&out, AtomStyle::Full).unwrap();
+        let back = read_lammps_data(&out, AtomStyle::Full).unwrap().0;
         assert!((back.first().unwrap().atom(1).effective_mass().unwrap() - 2.014).abs() < 1e-9);
 
         // H and D in one frame share an element but not a mass: refuse, write nothing
@@ -416,7 +412,7 @@ Atoms # full
             (AtomStyle::Charge, ASE_CHARGE, [Some(-0.8), Some(0.4), Some(0.4)]),
             (AtomStyle::Full, ASE_FULL, [Some(-0.8), Some(0.4), Some(0.4)]),
         ] {
-            let traj = read_lammps_data(&tmp(&format!("ase_{style}.data"), text), style).unwrap();
+            let traj = read_lammps_data(&tmp(&format!("ase_{style}.data"), text), style).unwrap().0;
             let f = traj.first().unwrap();
             let elems: Vec<&str> = f.atoms().map(|a| a.element).collect();
             assert_eq!(elems, ["O", "H", "H"], "{style}");
@@ -466,7 +462,7 @@ Atoms # full
     fn test_sections_after_masses_are_not_masses() {
         let pairij = "\nPairIJ Coeffs # lj/cut\n\n1 1 0.15 3.15\n1 2 0.0 1.0\n2 2 0.0 1.0\n";
         let text = WATER_FULL.replace("2 1.008   # H\n", &format!("2 1.008   # H\n{pairij}"));
-        let traj = read_lammps_data(&tmp("pairij.data", &text), AtomStyle::Full).unwrap();
+        let traj = read_lammps_data(&tmp("pairij.data", &text), AtomStyle::Full).unwrap().0;
         let f = traj.first().unwrap();
         assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
     }
@@ -476,7 +472,7 @@ Atoms # full
     fn test_masses_after_atoms() {
         let masses = "Masses\n\n1 15.999  # O\n2 1.008   # H\n\n";
         let text = WATER_FULL.replace(masses, "") + "\n" + masses;
-        let traj = read_lammps_data(&tmp("late_masses.data", &text), AtomStyle::Full).unwrap();
+        let traj = read_lammps_data(&tmp("late_masses.data", &text), AtomStyle::Full).unwrap().0;
         let f = traj.first().unwrap();
         assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
     }
@@ -501,7 +497,7 @@ Atoms # full
     fn test_atoms_comment_is_ignored() {
         // 注释写 atomic，实际按调用者给的 full 读
         let text = WATER_FULL.replace("Atoms # full", "Atoms # atomic");
-        let traj = read_lammps_data(&tmp("comment.data", &text), AtomStyle::Full).unwrap();
+        let traj = read_lammps_data(&tmp("comment.data", &text), AtomStyle::Full).unwrap().0;
         assert_eq!(traj.first().unwrap().n_atoms(), 6);
     }
 

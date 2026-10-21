@@ -562,7 +562,7 @@ mod tests {
 
         export_labelled(&traj, &types, "box", &out, ExportFormat::Lammpstrj, Some(LammpsUnits::Metal)).unwrap();
         let path = dir.join("network_types_box.lammpstrj");
-        let back = ferro_io::read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap();
+        let back = ferro_io::read_lammps_dump(&path, Some(LammpsUnits::Metal)).unwrap().0;
         let got = back.frames[0].velocities().unwrap()[0];
         assert!((got - v).norm() < 1e-12, "按 metal 写出再按 metal 读回应不变，得到 {got:?}");
 

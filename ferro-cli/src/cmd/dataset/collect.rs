@@ -582,7 +582,7 @@ mod tests {
         collect_group(&group, &dest, false, false, None, &mut skipped).unwrap();
         assert!(skipped.is_empty());
 
-        let (traj, _) = read_deepmd_npy_with_warnings(&dest).unwrap();
+        let (traj, _) = read_deepmd_npy(&dest).unwrap();
         assert_eq!(traj.n_frames(), 2);
         // 规范序是 (Z, 符号)：O(8) 在前，Si(14) 在后 —— 与写出的顺序无关
         let elems: Vec<&str> = traj.frames[0].atoms().map(|a| a.element).collect();
@@ -622,7 +622,7 @@ mod tests {
         let dest = dir.join("out.db");
         let mut skipped = Vec::new();
         let read = collect_group(&group, &dest, false, false, None, &mut skipped)
-            .and_then(|_| Ok(read_deepmd_npy_with_warnings(&dest)?.0));
+            .and_then(|_| Ok(read_deepmd_npy(&dest)?.0));
         (dir, read)
     }
 
@@ -652,7 +652,7 @@ mod tests {
         let (dir, read) = collect_dir("ferro_collect_qe_md", &[("pw.out", fixture("qe75_md.out"))]);
         let md = read.unwrap();
         assert_eq!(md.n_frames(), 5);
-        let direct = ferro_io::read_qe_out(Path::new("../tests/qe75_md.out")).unwrap();
+        let direct = ferro_io::read_qe_out(Path::new("../tests/qe75_md.out")).unwrap().0;
         for (a, b) in md.frames.iter().zip(&direct.frames) {
             assert!((a.energy.unwrap() - b.energy.unwrap()).abs() < 1e-9);
             let ds = (a.stress.unwrap() - b.stress.unwrap()).abs().max();

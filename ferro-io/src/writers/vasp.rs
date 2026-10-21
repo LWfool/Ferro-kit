@@ -89,7 +89,7 @@ mod tests {
         let orig = bcc_traj();
         write_poscar(&orig, p).unwrap();
 
-        let loaded = read_poscar(p).unwrap();
+        let loaded = read_poscar(p).unwrap().0;
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");

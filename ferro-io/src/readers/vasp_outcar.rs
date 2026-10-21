@@ -88,7 +88,7 @@ struct Pending {
 }
 
 /// Reads a VASP OUTCAR and reports what was dropped.
-pub fn read_vasp_outcar_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
     let mut stats = AimdStats::new(AimdFormat::VaspOutcar);
 
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn reads_two_real_frames() {
-        let (traj, stats) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, stats) = read_vasp_outcar(Path::new(FIXTURE)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         assert_eq!(stats.n_kept, 2);
         assert_eq!(stats.n_dropped(), 0);
@@ -420,7 +420,7 @@ mod tests {
     /// implementation, not this reader's own round trip.
     #[test]
     fn matches_dpdata_on_the_real_fixture() {
-        let (traj, _) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, _) = read_vasp_outcar(Path::new(FIXTURE)).unwrap();
         let f0 = &traj.frames[0];
         assert!((f0.energy.unwrap() - -2041.07506914).abs() < 1e-8);
         assert!((traj.frames[1].energy.unwrap() - -2045.47272826).abs() < 1e-8);
@@ -476,7 +476,7 @@ mod tests {
         ];
         for (dir, e, a, i, pos, force, virial) in cases {
             let path = format!("../tests/vasp651_sp/{dir}/OUTCAR");
-            let (traj, stats) = read_vasp_outcar_with_stats(Path::new(&path)).unwrap();
+            let (traj, stats) = read_vasp_outcar(Path::new(&path)).unwrap();
             assert_eq!((traj.n_frames(), stats.n_dropped()), (1, 0), "{dir}");
             let f = &traj.frames[0];
             assert_eq!(f.n_atoms(), 302, "{dir}");
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn the_stress_is_symmetric_and_positive_for_compression() {
-        let (traj, _) = read_vasp_outcar_with_stats(Path::new(FIXTURE)).unwrap();
+        let (traj, _) = read_vasp_outcar(Path::new(FIXTURE)).unwrap();
         let s = traj.frames[0].stress.unwrap();
         for (i, j) in [(0, 1), (0, 2), (1, 2)] {
             assert!((s[(i, j)] - s[(j, i)]).abs() < 1e-15);
@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn every_frame_reads_its_own_cell() {
         let (traj, _) =
-            read_vasp_outcar_with_stats(&tmp("vc.outcar", VARIABLE_CELL)).unwrap();
+            read_vasp_outcar(&tmp("vc.outcar", VARIABLE_CELL)).unwrap();
         assert_eq!(traj.n_frames(), 2);
         let a = traj.frames[0].cell.as_ref().unwrap().matrix;
         let b = traj.frames[1].cell.as_ref().unwrap().matrix;
@@ -527,7 +527,7 @@ mod tests {
         // in kB = 10 20 30 1 2 3 → XX YY ZZ XY YZ ZX（不是 extxyz 规格的
         // XX YY ZZ YZ XZ XY）。搞混的话 xy 与 yz 会互换,而对角线看不出来
         let (traj, _) =
-            read_vasp_outcar_with_stats(&tmp("voigt.outcar", VARIABLE_CELL)).unwrap();
+            read_vasp_outcar(&tmp("voigt.outcar", VARIABLE_CELL)).unwrap();
         let s = traj.frames[0].stress.unwrap();
         let k = |kb: f64| convert_pressure(kb, PressureUnit::Kbar, PressureUnit::EVPerAng3);
         assert!((s[(0, 1)] - k(1.0)).abs() < 1e-15, "xy");
@@ -542,7 +542,7 @@ mod tests {
             "------------------------ aborting loop EDIFF was not reached ---",
         );
         let (traj, stats) =
-            read_vasp_outcar_with_stats(&tmp("unconv.outcar", &body)).unwrap();
+            read_vasp_outcar(&tmp("unconv.outcar", &body)).unwrap();
         assert_eq!(traj.n_frames(), 0);
         assert_eq!(stats.n_scf_failed, 2);
         assert_eq!(stats.n_kept, 0);
@@ -552,7 +552,7 @@ mod tests {
     fn a_truncated_last_frame_is_dropped_not_half_read() {
         let cut = VARIABLE_CELL.find("  free  energy   TOTEN  =       -20").unwrap();
         let (traj, stats) =
-            read_vasp_outcar_with_stats(&tmp("trunc.outcar", &VARIABLE_CELL[..cut])).unwrap();
+            read_vasp_outcar(&tmp("trunc.outcar", &VARIABLE_CELL[..cut])).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(stats.n_incomplete, 1);
     }
@@ -560,7 +560,7 @@ mod tests {
     #[test]
     fn fewer_species_than_ions_per_type_names_vasprun_as_the_way_out() {
         let body = VARIABLE_CELL.replace("   VRHFIN =O: 2s2 2p4\n", "");
-        let e = read_vasp_outcar_with_stats(&tmp("nospec.outcar", &body)).unwrap_err();
+        let e = read_vasp_outcar(&tmp("nospec.outcar", &body)).unwrap_err();
         let msg = format!("{e:#}");
         assert!(msg.contains("vasprun.xml"), "{msg}");
     }
@@ -576,7 +576,7 @@ mod tests {
                 "--------------------------------------- Iteration      1(   1){rest}"))
             .unwrap());
         let (traj, stats) =
-            read_vasp_outcar_with_stats(&tmp("restart.outcar", &body)).unwrap();
+            read_vasp_outcar(&tmp("restart.outcar", &body)).unwrap();
         assert_eq!(traj.n_frames(), 4);
         assert_eq!(stats.n_restarts, 1);
     }
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn reads_ion_temperature_not_the_lattice_one() {
         let (traj, _) =
-            read_vasp_outcar_with_stats(Path::new("../tests/vasp_OUTCAR_2frames")).unwrap();
+            read_vasp_outcar(Path::new("../tests/vasp_OUTCAR_2frames")).unwrap();
         assert_eq!(traj.n_frames(), 2);
         let got: Vec<f64> = traj.frames.iter().map(|f| f.temperature.unwrap()).collect();
         assert!((got[0] - 0.0).abs() < 1e-9, "frame 0: got {}", got[0]);

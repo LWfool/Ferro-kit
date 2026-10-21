@@ -231,13 +231,8 @@ fn version_note(version: Option<&str>) -> Option<String> {
     ))
 }
 
-/// Reads a pw.x output file, discarding the statistics.
-pub fn read_qe_out(path: &Path) -> Result<Trajectory> {
-    Ok(read_qe_out_with_stats(path)?.0)
-}
-
 /// Reads a pw.x output file and reports what was dropped.
-pub fn read_qe_out_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
+pub fn read_qe_out(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();
     parse_qe_out_lines(|| super::util::text_lines(path)).with_context(|| format!("parsing {path_}"))
 }

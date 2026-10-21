@@ -304,7 +304,7 @@ fn filter_one(
     args: &FilterCmd,
     params: &FilterParams,
 ) -> Result<FilterOne> {
-    let (traj, warnings) = read_deepmd_npy_with_warnings(sys)?;
+    let (traj, warnings) = read_deepmd_npy(sys)?;
     crate::report::notices(sys, &warnings);
 
     // --al6 不带值：从这个 system 自己的 Al-O RDF 取第一壳层的外沿。

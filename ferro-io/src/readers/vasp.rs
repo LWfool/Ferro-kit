@@ -5,13 +5,9 @@ use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, ensure, Context, Result};
 use super::util::floats;
 
-pub fn read_poscar(path: &Path) -> Result<Trajectory> {
-    Ok(read_poscar_with_warnings(path)?.0)
-}
-
 /// Reads a POSCAR / CONTCAR, returning what the reader noticed alongside it
 /// (a velocity block shorter than the atom count, which is dropped).
-pub fn read_poscar_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
+pub fn read_poscar(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let path_ = path.display();
     let content = super::util::read_text(path)?;
     parse_poscar(&content).with_context(|| format!("parsing {path_}"))
@@ -209,7 +205,7 @@ Direct
 
     #[test]
     fn test_bcc_fe() {
-        let traj = read_poscar(&tmp("bcc.poscar", BCC_FE)).unwrap();
+        let traj = read_poscar(&tmp("bcc.poscar", BCC_FE)).unwrap().0;
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 2);
         assert_eq!(frame.atom(0).element, "Fe");
@@ -280,7 +276,7 @@ Direct
 
     #[test]
     fn test_scaling_factor() {
-        let traj = read_poscar(&tmp("scale.poscar", SCALE_POSCAR)).unwrap();
+        let traj = read_poscar(&tmp("scale.poscar", SCALE_POSCAR)).unwrap().0;
         let [a, ..] = traj.first().unwrap().cell.as_ref().unwrap().lengths();
         assert!((a - 2.87).abs() < 1e-6);
     }

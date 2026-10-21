@@ -184,7 +184,7 @@ mod tests {
         let p = &path;
         write_lammps_data(&bcc_traj(), p, false).unwrap();
 
-        let loaded = read_lammps_data(p, AtomStyle::Full).unwrap();
+        let loaded = read_lammps_data(p, AtomStyle::Full).unwrap().0;
         let f = loaded.first().unwrap();
         assert_eq!(f.n_atoms(), 2);
         assert_eq!(f.atom(0).element, "Fe");
@@ -219,7 +219,7 @@ mod tests {
             let v: Vec<f64> = line.split_whitespace().take(2).map(|x| x.parse().unwrap()).collect();
             assert!((v[0] - lo).abs() < 1e-9 && (v[1] - hi).abs() < 1e-9, "{tag} 应为 {lo} {hi}，实得 {line}");
         }
-        let back = read_lammps_data(&path, AtomStyle::Full).unwrap().frames.remove(0);
+        let back = read_lammps_data(&path, AtomStyle::Full).unwrap().0.frames.remove(0);
         for (x, y) in back.atoms().zip(f.atoms()) {
             assert!((x.position - y.position).norm() < 1e-9, "坐标应原样写出");
         }
@@ -242,9 +242,9 @@ mod tests {
         let src = std::env::temp_dir().join("ferro_data_origin_in.lammps");
         let dst = std::env::temp_dir().join("ferro_data_origin_out.lammps");
         std::fs::write(&src, text).unwrap();
-        let a = read_lammps_data(&src, AtomStyle::Full).unwrap();
+        let a = read_lammps_data(&src, AtomStyle::Full).unwrap().0;
         write_lammps_data(&a, &dst, false).unwrap();
-        let b = read_lammps_data(&dst, AtomStyle::Full).unwrap();
+        let b = read_lammps_data(&dst, AtomStyle::Full).unwrap().0;
         let (fa, fb) = (&a.frames[0], &b.frames[0]);
         let (ca, cb) = (fa.cell.as_ref().unwrap(), fb.cell.as_ref().unwrap());
         assert!((ca.origin - Vector3::new(1.5, -2.0, 3.0)).norm() < 1e-12, "原点应为 lo，实得 {:?}", ca.origin);
