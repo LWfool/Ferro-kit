@@ -137,7 +137,7 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 
 ## `v0.4.0`（2026-10-17 打 tag，发版）
 
-输入生成迁到 ferro-python 收尾（`plan.md`「`ferro.jobs`」第 21 步）与 dataset 审查的修复。删了一个
+输入生成迁到 ferro-python 收尾（`decisions.md`「`ferro.jobs`」）与 dataset 审查的修复。删了一个
 子命令，用户定升次版本位 0.4.0。破坏性的：
 
 - **删除 `ferro job`**（及 `ferro doc job` / `ferro doc spin`）：输入生成只走 `ferro-py job`。Gaussian、
@@ -232,7 +232,7 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 
 起因是把 `private/cp2k_grep_strInfo.py` 的能力并进来。该脚本的九项能力里 Ferro
 已有六项且实现更稳健，真正合进来的是 **LAMMPS 导出 + 逐帧标量序列**；CP2K 的
-多文件布局与 DeePMD mixed type 明确划在范围外（仍在 `plan.md`）。
+多文件布局与 DeePMD mixed type 明确划在范围外（仍在 `plan/io.md`）。
 
 | 改动 | 影响 |
 |---|---|
@@ -361,7 +361,7 @@ system 打印一次映射表，照 LAMMPS dump reader 的先例。
 原子顺序不同而无法合并。`merge` 一直是无条件排的，collect 不排才是那个例外。
 
 **mixed type 是例外**：DeePMD 在那条路上明确不排序（`real_atom_types` 逐帧各异）。
-`plan.md` 的 mixed type 待办已记下这一条。
+`plan/io.md` 的 mixed type 待办已记下这一条。
 
 ### 为什么嗅探没有按最初的要求删掉
 
@@ -383,7 +383,7 @@ RMSE 一到两个数量级——**按矢量行读，不复杂化**。
 依赖精简。破坏性的只有一条：**`traj gr/sq/msd/angle` 的 `--plot` 移除**，传入即
 clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotters（Linux 构建
 需要系统 fontconfig/freetype 的那一个）与从未调用过的 serde derive。运行时依赖
-138 → 97。取舍与保留清单见 `plan.md` 归档「依赖精简」，用户侧说明见手册
+138 → 97。取舍与保留清单见 `decisions.md`「依赖精简」，用户侧说明见手册
 `plotting.md` 与 `changelog.md`。
 
 2026-09-27 追加（仍在同一个 0.3.3）：**`traj msd` 的头部只留共享参数**，逐文件的
@@ -392,7 +392,7 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 
 同日再追加（仍在 0.3.3）：**`traj msd` 数值全变** —— 全原点 FFT 平均、TOR 解包裹、
 `msd_x/y/z` 取代 `msd_a/b/c`、`--shift` → `--max-lag`。此前 CLI 的 MSD 只有 1 个时间
-原点。vacf / rotcorr / vanhove 同病待修（`plan.md`）。
+原点。vacf / rotcorr / vanhove 同病待修（`plan/analysis.md`）。
 
 同日第三次追加（仍在 0.3.3）：**`traj vacf` / `rotcorr` 数值全变** —— 全原点 FFT、
 梯形积分（旧的左矩形法使 D 偏大 C(0)dt/6）、rotcorr 只平均两端有效的配对；
@@ -453,7 +453,7 @@ clap 报 `unexpected argument`；csv 产物逐字节不变。连带删掉 plotte
 2026-10-09 打开发版 tag `v0.3.5-alpha`（中途锚点，不是发版点）。0.3.5 从未单独发版。
 
 2026-10-03 四路审查（对照 ASE / MDAnalysis / dpdata / pymatgen / CP2K 源码）严重与中两级的
-修复，39 条，逐条见 `plan.md` 归档。按以往惯例（`v0.3.2`、`v0.3.4`）走 patch 位，尽管含
+修复，39 条，逐条见 `decisions.md`「2026-10-03 四路审查：严重 / 中两级已修条目」。按以往惯例（`v0.3.2`、`v0.3.4`）走 patch 位，尽管含
 破坏性改动。用户可见的变化逐条写在 changelog 的 `Unreleased`。破坏性的：
 
 - **格式读写**：CIF 无 symop 时按空间群符号展开（此前当 P1，原子数会变）、无胞帧拒写 CIF；

@@ -63,9 +63,11 @@ pub fn read_deepmd_npy_with_warnings(dir: &Path) -> Result<(Trajectory, Vec<Noti
     let elements: Vec<&str> = types.iter().map(|t| type_map[*t].as_str()).collect();
 
     let sets = set_dirs(dir)?;
-    // mixed type 的 type.raw 是全 0 占位，真实类型在逐帧的 real_atom_types.npy；照读会
-    // 让所有原子静默成 type_map[0]。只拒不读：只读不写的话 filter 一趟会写回标准布局，
-    // 成了更隐蔽的坏数据（完整支持见 dev/plan.md「DeePMD mixed type 数据的读写」）
+    // In a mixed-type system type.raw is an all-zero placeholder and the real types are in
+    // each set's real_atom_types.npy; reading it as is would silently make every atom
+    // type_map[0]. Refuse rather than read: reading without writing would let one filter pass
+    // write it back in the standard layout, a better-hidden corruption (full support is on
+    // dev/plan/io.md, "DeePMD mixed type")
     if let Some(set) = sets.iter().find(|s| s.join("real_atom_types.npy").exists()) {
         bail!(
             "{}: real_atom_types.npy marks a mixed-type system (type.raw there is only a \

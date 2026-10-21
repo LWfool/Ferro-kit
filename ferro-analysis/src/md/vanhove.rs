@@ -525,7 +525,7 @@ mod tests {
         assert_eq!(t.names(), vec!["r", "p_r"]);
         assert_eq!(t.n_rows(), res.r.len());
         assert!(t.validate().is_ok());
-        // tau 目前是元信息而非列（见 dev/plan.md 搁置项）
+        // tau is metadata, not a column, for now (dev/plan/analysis.md, shelved items)
         assert!(res.meta_lines().join("\n").contains("tau"));
     }
 

@@ -628,7 +628,7 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 **1 索引**的（上方几行的注释自己写着 `volchg is 1-indexed`），`[nvols]` 于是指向
 最后一个 Bader 体积。`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]` —— 两份代码索引基准不同，
 而这个下标在两边长得一样。（2026-10-02 更正：原文称 grid 那边「是对的」，不成立 ——
-那里的 `volchg[nvols]` 是刚 push 的硬编码 0，真空电荷从未积分，见 `dev/plan.md` S-B。）
+那里的 `volchg[nvols]` 是刚 push 的硬编码 0，真空电荷从未积分，见 `dev/plan/suspended.md` S-B。）
 
 后果：ACF 末尾的 `Total` 行虚高一个体积的电荷。`tests/CHGCAR_2atoms` 上报
 158.98 e，网格实际只有 105.99 e（逐原子的 `ionchg` 是对的，只有 `vacchg` 被污染）。
@@ -639,13 +639,13 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 
 两轮审计的判据不同：第一轮找「死代码 / 重复」，第二轮按 `CLAUDE.md` 的
 R1–R6 逐个函数过。**这里只放下次改代码时会再踩的判据。** 已落地的改动翻
-git 历史（`8a8fe75`..`443d45c`），未定的留在 `plan.md`「零调用清单」。
+git 历史（`8a8fe75`..`443d45c`），未定的留在 `plan/zero-call.md`。
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | 全局 | 拿 `cargo clippy` 零警告当「没有死代码」 | **库 crate 里 `pub` 项不触发 `dead_code` lint**，零调用的那几百行全部躲过了它，其中两个整文件还被 `lib.rs` 的 `pub use ...::*` 再导出。查零调用要按名字逐个 grep 全仓，不能靠编译器 |
 | 全局 | 看见两处相似就合并 | **Rule of Three**：两处不动，第三处才评估，判据是「是否同一个变化原因」。2026-09-12 那轮按此把六条 ×2 的重复判为**有意保留**（见下） |
-| 「零调用 = 死代码」 | 直接删 | 本仓多数功能**还没进入实际使用**，「需求确定但 CLI 层没接」与「开发遗留」在代码里长得一样。`cube_jump` 就是前者（429 行 + 10 测试 + 手册页齐全，只缺 CLI 入口）。判据要靠人，清单见 `plan.md` |
+| 「零调用 = 死代码」 | 直接删 | 本仓多数功能**还没进入实际使用**，「需求确定但 CLI 层没接」与「开发遗留」在代码里长得一样。`cube_jump` 就是前者（429 行 + 10 测试 + 手册页齐全，只缺 CLI 入口）。判据要靠人，清单见 `plan/zero-call.md` |
 | `readers/` 的 `floats` 辅助 | 看见同名函数就全合成一个 | 合并后的 `readers/util.rs::floats` 是 `map_while`（**遇到非数字即停**，让行尾注释不中断解析）。`vasp_outcar.rs:57` 那个是 `filter_map`（**跳过非数字继续**，为了 `in kB` 这类行首带标签的行），**语义相反，不能并**。另：第四份曾藏在 `cube.rs` 叫 `parse_floats`，按名字 grep 找不到 |
 | `ml/geometry.rs:43 min_image` vs `Cell::minimum_image` | 语义相同，想合 | 前者把矩阵 transpose 与 inverse **提到 O(N²) 内循环之外**。合并等于把 `try_inverse()` 放回内循环。**2026-10-18 已合**：两边都改走构造时预存逆矩阵的 `PeriodicCell`，见文末「周期几何」节 |
 | `md/sq.rs` `elem_z_local` | `symbol_to_z` 的薄包装，想换成直调 | 未知符号给 0（sq 用 Z 当电子数，`symbol_to_z` 的 255 是荒谬值）。gr 原有的 `elem_z`（给 255 排到末尾）已随 `canonical_cmp` 删去（13.6） |
@@ -680,7 +680,7 @@ golden master 的差异失去唯一解释。
 
 **`bader` 已补上**（2026-09-20）：`tests/CHGCAR_2atoms` 是 8×8×8 的合成网格，
 三种方法 × 三份报告都能端到端对拍。它的密度处处高于真空阈值，故 `vacchg` 恒为 0
-—— 真空路径仍未覆盖，见 `plan.md` 的 weight 缺陷一条。
+—— 真空路径仍未覆盖，见 `plan/suspended.md` 的 weight 缺陷一条。
 
 
 ## network 重构（0.2.1）编码陷阱
@@ -853,7 +853,7 @@ ferro 按 `(Z, 符号)`，见 `writers/deepmd.rs`），所以比对逐原子的�
 
 ## 2026-10-01 审查：读写两侧的静默错误
 
-19 条发现与复现见 `plan.md`「2026-10-01 全库审查发现」。这里只记**下次写 reader /
+19 条发现的处置见 `decisions.md`「2026-10-01 全库审查」。这里只记**下次写 reader /
 writer 时会再踩**的判据：
 
 | 位置 | 陷阱 | 正确做法 |

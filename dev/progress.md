@@ -35,7 +35,7 @@ DeePMD npy 读写、`ml` 模块、`array_order`），没有破坏性变更 —�
 收进 `drive()`、`network` 的 `to_tables` 266 行拆成六个建表方法。
 
 这一轮**唯一改变输出的**是 `build_avg_frame` 的 PBC 解缠修复（见下）；
-其余八个提交的 93 个产物逐字节零差异。零调用清单整体搁置，见 `plan.md`。
+其余八个提交的 93 个产物逐字节零差异。零调用清单整体搁置，见 `plan/zero-call.md`。
 
 ## 锚点 tag
 
@@ -218,7 +218,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关。
   2026-10-17 加 `QeOut`：认 `Program PWSCF`；GIPAW、pp.x 等其他 QE 程序点名拒收
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
-- **2026-10-03 审查 A 组的修复**（判据见 `plan.md` 归档与 `issues.md`）：CIF 无 symop 时按
+- **2026-10-03 审查 A 组的修复**（判据见 `decisions.md` 与 `issues.md`）：CIF 无 symop 时按
   空间群符号展开（`spacegroup.rs` + spglib 生成的 530 条 Hall 设置表）、跳过无 `_atom_site_`
   的 block、无胞帧拒写；PDB 每个 MODEL 前写本帧 CRYST1，非标准取向先转坐标；LAMMPS 无胞帧盒子
   外扩 1 Å、近正交不写三斜、dump 边界按 pbc；extxyz 注释行按 ASE 规则切词；DeePMD 见
@@ -261,7 +261,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 | `vanhove.rs` `vacf.rs` `rotcorr.rs` | 自关联 / 速度自关联 / 转动相关 | |
 | `cube_density.rs` | 3D 密度/速度/力分布 | |
 | `cube_radius.rs` | 硬球占据图 | `ferro map radius` |
-| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 测试，2026-10-08 补 `validate()`，已从 crate 根导出（`calc_cube_jump` 等），但**没有 CLI 入口**。手册页与 `ferro doc cube-jump` 都在位。见 `plan.md`（挂起的 `map jump` 入口组） |
+| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 测试，2026-10-08 补 `validate()`，已从 crate 根导出（`calc_cube_jump` 等），但**没有 CLI 入口**。手册页与 `ferro doc cube-jump` 都在位。见 `plan/suspended.md`（挂起的 `map jump` 入口组） |
 | `cube_sdf.rs` | 团簇 SDF（Kabsch 对齐） | 用 crate 内的 `network::build_network_graph`，已去 petgraph |
 | `util.rs` | `build_avg_frame`（cube 文件头的时间平均帧）；`check_frame_spacing`（帧等间隔、不重复，2026-10-09 由 CLI 下沉，CLI 五个时间相关分析与 Python `msd` 共用） | 2026-09-12 由三份逐字相同的实现合并而来，同时修掉三份都带的 PBC bug：解缠在**参考帧 cell** 的分数坐标下做，故没跨边界的原子逐位不变 |
 | `scattering_data.rs` | X 射线 / 中子散射因子表 | 供 `sq.rs` 加权 |
@@ -477,7 +477,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   同一体系的原子顺序一致，像 POSCAR 那样同元素成块。走 `Trajectory::canonically_sorted`，
   **逐帧**各取置换。writer 未改 —— vasp / lammps_data 按首次出现分组，排完序后自然是 Z 序
 - `--version` 带 commit、构建日期、profile、target、rustc 与 features（2026-10-05）
-- **无绘图**：`--plot` 与 `plot.rs` 已于 2026-09-26 移除（理由见 `plan.md` 归档
+- **无绘图**：`--plot` 与 `plot.rs` 已于 2026-09-26 移除（理由见 `decisions.md`
   「依赖精简」与手册 `plotting.md`），出图走 `ferro-py plot`（2026-10-20 前是 `scripts/plot_*.py`）
 - **不留兼容层**：输出格式同期变更，留着 `fe-traj` 会让旧脚本「跑成功」却吐出自己
   解析不了的 csv —— 静默坏数据比命令消失难查
@@ -485,7 +485,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 ### ferro-python（PyO3 绑定 + `ferro.jobs`）
 
 计算输入只由这里生成：Rust 的 `ferro job`、`ferro-workflow` crate 与 `ferro-core` 的 `spin.rs`
-已于 2026-10-17 删除（`plan.md`「`ferro.jobs`」第 21 步）。
+已于 2026-10-17 删除（判据见 `decisions.md`「`ferro.jobs`」）。
 
 独立 workspace（pyo3 0.29，**abi3-py311**），maturin 的 Rust/Python 混合布局：Rust 扩展是
 `ferro._ferro`，`python/ferro/__init__.py` 整体再导出，`import ferro` 用法不变。
@@ -515,7 +515,7 @@ wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 
 CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它与 numpy 2 不兼容，运行时
 补 `numpy.cumproduct = numpy.cumprod` 再调；关键字表较旧，不认 `IGNORE_CONVERGENCE_FAILURE`
 与 `GAPW_ACCURATE_XCINT`）。三个程序的真实运行验收：超算冒烟 9/9 通过（2026-10-16 第二轮；VASP 6.5.1、QE 7.5、CP2K 2026.2；
-第一轮的两处失败与修复见 `plan.md`「`ferro.jobs`」第 20 步）。
+第一轮的两处失败与修复见 `decisions.md`「`ferro.jobs`」）。
 
 ---
 
@@ -550,7 +550,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入；
   无 CLI / Python 入口，只能作为库函数调用
 - **REPL / 脚本模式未实现**。`main.rs` 是可用的子命令分发器，裸 `ferro` 打印分类总览
-- 代码库未纳入 rustfmt 管理，格式为手工维护（含刻意的列对齐）；是否采用见 `plan.md`
+- 代码库未纳入 rustfmt 管理，格式为手工维护（含刻意的列对齐）；是否采用见 `plan/cli-python.md`
 - `cube_density.rs:188` 用参考帧体积归一化，NPT 下同类偏差；需先定义「NPT 下 3D 密度图
   指什么」再动（见 `issues.md`）。**2026-09-12 修 `build_avg_frame` 的 PBC 解缠时
   刻意没碰这个口径**：解缠一律走参考帧的 cell，于是没跨边界的原子逐位不变，
@@ -558,7 +558,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 - **按标签选型只在单帧成立**：`traj gr -x P_3 -y O_b` 对多帧标注轨迹会被 `calc_gr` 的
   逐类型粒子数守恒守卫拒绝（实测 `P_3`：149/152/150/150/150）。多帧请按元素选
 - `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
-  「一输入一产物」相反（待办见 `plan.md`）
+  「一输入一产物」相反（待办见 `plan/suspended.md`）
 - **`ferro bader` 的三个 `.dat` 默认写在输入文件旁边**（2026-09-20 起），名字是
   `bader_ACF_<输入stem>[_<-s 后缀>].dat`（BCF / AVF 同形，`batch::product_name` 的规则），`-o` 可改目录。这是全仓唯一不默认当前目录的
   命令：VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然互相覆盖

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 > **动手前先读 `dev/`**：`overview.md`（定位与版本）→ `progress.md`（各 crate 现状）
-> → `plan.md`（待办）→ `issues.md`（编码陷阱，**改代码前必查**）。
+> → `plan.md`（待办大纲；细节在 `plan/` 子文件，按需读）→ `issues.md`（编码陷阱，**改代码前必查**）。
 >
 > 本文件只放硬约束与导航。三份文档分工：
 > **`docs/src/`** = 怎么用（用户手册，mdBook）· **`dev/`** = 为什么这样定 + 现状 + 待办 ·
@@ -56,7 +56,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
   手册原本就是「公式 LaTeX、单位 Unicode」；② 代码块与行内代码；
   ③ `SUMMARY.md` 的目录标题（mdBook 侧边栏不过 MathJax，会字面显示）
 - 库 crate 用 `ferro_core::error::ChemError` / `Result<T>`；CLI 用 `anyhow::Result`。
-  **`ferro-io` 例外**，继续用 `anyhow`（用户定，理由见 `dev/plan.md`「库 crate 的错误类型」）
+  **`ferro-io` 例外**，继续用 `anyhow`（用户定，理由见 `dev/decisions.md`「库 crate 的错误类型」）
 - 顶层类型恒为 `Trajectory`，单帧文件也是（`frames: vec![frame_0]`）
 - **`Molecule` 类型不存在** —— `Frame` 覆盖分子与周期体系，由 `pbc: [bool; 3]` 区分
 - 原子索引是**隐式的**（在帧里的下标），不存 `index` 字段。`Frame` 是拓扑 / 坐标分离存储：
@@ -117,7 +117,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 | 位置 | 内容 |
 |---|---|
 | `ferro-core/src/` | `atom/cell/frame/trajectory`、`periodic.rs`（`PeriodicCell`）、`table.rs`、`data/elements.rs`（元素表、`canonical_cmp`） |
-| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `bondlife` `cube_density` `cube_radius` `cube_jump`（**无 CLI 入口**，见 `dev/plan.md`）`cube_sdf` `scattering_data`；共用的 `correlate`（FFT 自相关）、`shell`（g(r) 第一极小当截断）、`util` |
+| `ferro-analysis/src/md/` | `gr` `sq` `msd` `angle` `vacf` `rotcorr` `vanhove` `bondlife` `cube_density` `cube_radius` `cube_jump`（**无 CLI 入口**，见 `dev/plan/suspended.md`）`cube_sdf` `scattering_data`；共用的 `correlate`（FFT 自相关）、`shell`（g(r) 第一极小当截断）、`util` |
 | `ferro-analysis/src/network/` | `classify.rs`（`AtomType` / `TypeParams`）、`graph.rs`（形成子–配体图）、`qn_elements.rs`、`mod.rs`（六张表的统计） |
 | `ferro-analysis/src/` 顶层 | `neighbor.rs`（crate 内共用的 `NeighborList`）、`check.rs`（各 `validate` 共用的范围检查） |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
@@ -152,7 +152,8 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 | 类别 | 位置 | 放什么 | 什么时候读 |
 |---|---|---|---|
 | 规则 | 本文件 | 任何时候都要守、违反就出错的约束 | 每次会话自动加载 |
-| 状态 / 计划 | `dev/progress.md`、`dev/overview.md` / `dev/plan.md` | 已经完成了什么、版本批次；接下来按什么优先级做 | 问到进度时 |
+| 状态 / 计划 | `dev/progress.md`、`dev/overview.md` / `dev/plan.md`（大纲）+ `dev/plan/*.md`（细节） | 已经完成了什么、版本批次；接下来按什么优先级做 | 问到进度时；子文件按索引按需读 |
+| 判据 | `dev/decisions.md` | 已完成工作留下的设计判据、用户定、被实测推翻的原计划 | 改动涉及的主题被定过时 |
 | 记忆 | `dev/memory.md` | 被纠正过的协作做法、容易答错的工具语义 | 精简文档、动版本号、提交之前 |
 | 细节 | `dev/issues.md`、`dev/bader.md`、`dev/glossary.md` | 编码陷阱、算法规格、译名 | 改代码前 |
 | 技能 | `dev/skills/*/SKILL.md` | 反复做、步骤固定的操作 | 做对应操作时 |
