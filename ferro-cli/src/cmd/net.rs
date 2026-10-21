@@ -396,7 +396,7 @@ fn resolve_auto(
             "        {a}-{b} cutoff {:.3} A  (first shell peak {:.2} A, g(min) = {:.3})",
             s.min_r, s.peak_r, s.depth
         );
-        // 阈值与 dataset filter --al6 的同一条告警相同（cmd/dataset.rs filter_one）
+        // Same threshold as the matching warning in dataset filter --al6 (cmd/dataset/filter.rs filter_one)
         if s.depth > 0.5 {
             crate::report::warn(source.display(), format!(
                 "{a}-{b}: the g(r) minimum at {:.2} A is shallow (g = {:.2}); \

@@ -4,7 +4,7 @@
 //! within `radius` Å of the voxel centre.  Applies the minimum-image
 //! convention for periodic cells.
 //!
-//! Algorithm mirrors `examples/code1/cube_radius.c`:
+//! Algorithm mirrors `private/code1/cube_radius.c` (not in git):
 //! 1. voxel centre in fractional: `(ix+0.5)/nx`, …
 //! 2. fractional displacement atom → voxel, minimum-image applied
 //! 3. convert to Cartesian: `cart = matrix.transpose() * frac_disp`
@@ -89,11 +89,13 @@ fn search_range(
     (sx, sy, sz)
 }
 
-/// 一个轴上要遍历的 voxel 下标：以 `c` 为中心、半宽 `s`，周期折回 `[0, n)`。
+/// The voxel indices to visit along one axis: centred on `c`, half-width `s`, folded
+/// periodically into `[0, n)`.
 ///
-/// 窗口 `2s+1` 不小于 `n` 时直接取全部 `0..n`：否则 `rem_euclid` 会把几个偏移折到
-/// 同一 voxel，同一原子在那里被计多次（审查 M4）。窗口小于 `n` 时折回的下标互不相同，
-/// 与原来的遍历逐位一致。与 `angle.rs` CellList 的去重是同一个洞。
+/// A window `2s+1` of at least `n` takes all of `0..n`: otherwise `rem_euclid` folds
+/// several offsets onto one voxel and the same atom is counted there more than once
+/// (review M4). A window smaller than `n` folds to distinct indices, identical to the
+/// original loop. Same hole as the missing de-duplication in `box_builder`'s `CellList`.
 fn window(c: i64, s: i64, n: usize) -> Vec<usize> {
     if 2 * s + 1 >= n as i64 {
         return (0..n).collect();

@@ -154,12 +154,6 @@ fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
     })
 }
 
-/// Per-file account of what was parsed and what was thrown away.
-///
-/// Frame dropping happens inside the reader because every criterion needs the
-/// surrounding text (the SCF line above the anchor, the block line count, the
-/// first frame's composition); the counts travel out so the caller can report
-/// them instead of the reader printing behind its back.
 /// Reads a CP2K MD output file, discarding the statistics.
 pub fn read_cp2k_md(path: &Path) -> Result<Trajectory> {
     Ok(read_cp2k_md_with_stats(path)?.0)

@@ -201,7 +201,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     let by = params.group_by;
     let elements = sorted_types(first_frame, by);
 
-    // 截断超过最小镜像上界时 CellList 每轴只剩 1 格，每对原子只看最近的镜像，漏邻居
+    // Beyond the minimum-image bound each pair sees only its nearest image, so neighbours are missed
     let (rcut_name, max_rcut) = if params.r_cut_ab >= params.r_cut_bc {
         ("r-cut-ab", params.r_cut_ab)
     } else {

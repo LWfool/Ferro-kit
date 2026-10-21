@@ -295,7 +295,7 @@ fn missing_scattering_data(elems: &[(&str, f64, usize)]) -> Option<String> {
 /// Build Faber-Ziman XRD weights w_ij at a single q value.
 ///
 /// w_ij = (2−δᵢⱼ)·cᵢcⱼfᵢ(q)fⱼ(q) / <f(q)>²
-/// Keys are the symmetric pair labels present in `gr_keys`.
+/// Keys are the symmetric pair labels present in `gr_gr`.
 fn build_xrd_weights_at_q(
     elems: &[(&str, f64, usize)],
     q: f64,

@@ -187,9 +187,10 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         return Err(ChemError::ValidationError("trajectory is empty".into()));
     }
 
-    // 最小镜像有效上界 = 所有帧最小面间距的一半。r_max 超过它时 CellList 每轴退化为
-    // 单个 cell，最小镜像在该距离以上失效，会让 g(r) 尾部被错误压向 0。用面间距而非
-    // 边长：非正交晶胞 d < L，用边长会高估可用截断。
+    // The minimum-image bound is half the smallest interplanar spacing over all frames.
+    // Beyond it the minimum image no longer finds every neighbour and the g(r) tail is
+    // pushed towards 0. Use spacings, not edge lengths: d < L in a non-orthogonal cell,
+    // so edge lengths would overstate the usable cutoff.
     let mut mic_max = f64::INFINITY;
     let mut volumes: Vec<f64> = Vec::with_capacity(traj.frames.len());
     let cells = check::all_periodic_cells(traj, None)?;
@@ -855,8 +856,8 @@ mod tests {
 
     #[test]
     fn test_gr_rmax_clamped_to_minimum_image_cutoff() {
-        // 盒子 6 Å → MIC 上界 = 3.0。请求 r_max=10 时若不 clamp，CellList 每轴退化为
-        // 1 个 cell，最小镜像在 r > 3 失效，g(r) 尾部会被错误压向 0。
+        // A 6 Å box has a minimum-image bound of 3.0. Without the clamp, r_max = 10 would
+        // break the minimum image above r = 3 and push the g(r) tail towards 0.
         let cell = Cell::from_lengths_angles(6.0, 6.0, 6.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));

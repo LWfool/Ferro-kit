@@ -185,9 +185,7 @@ impl Trajectory {
     /// so `--end 4` selects the frame shown as `Frame 4`. `end` of `None` means the
     /// last frame. Out-of-range bounds clamp rather than panic; a `start` past the
     /// end yields an empty trajectory. A `stride` of 0 is treated as 1.
-    ///
-    /// Metadata is preserved unchanged — note that `timestep` then no longer
-    /// describes the spacing of the returned frames when `stride > 1`.
+    /// Metadata is preserved unchanged.
     pub fn select(&self, start: usize, end: Option<usize>, stride: usize) -> Trajectory {
         self.subset(&self.select_indices(start, end, stride))
     }
