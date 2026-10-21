@@ -203,10 +203,6 @@ any source, not only the ones `ferro net` writes.
 | `O_t` | three-coordinate ligand (bonded to ≥3, tricluster) |
 | `Zn`, `Na`… | modifier; bare element symbol, no role suffix |
 
-> The pre-0.2.1 formats (`P0` / `Of` / `On_P` / `Ob_P_P` / `X` / `Zn_f`) have all been replaced,
-> **with no read-compatibility layer**: rerunning `ferro net --export-traj` once produces the new
-> format, whereas guessing the format could misread a real element as an old label.
-
 ### What fills `label`
 
 | Source | Notes |

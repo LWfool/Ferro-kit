@@ -184,8 +184,7 @@ Returned keys:
 - `"<A>-<B>_cn"` — directed cumulative CN(A→B)
 
 `gr_all` gives $n^2$ ordered pairs for n types.  There is **no total**: an unweighted
-total is the degenerate `f_i ≡ 1` case, corresponds to no experimental probe, and
-was removed in 0.1.11.
+total is the degenerate `f_i ≡ 1` case and corresponds to no experimental probe.
 
 ```python
 g = ferro.gr_pair(t, "P", "O", r_max=8.0, dr=0.05)

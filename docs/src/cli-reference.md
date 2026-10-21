@@ -1,8 +1,7 @@
 # CLI Reference
 
 **One binary, `ferro`**, with the subcommands grouped by **output** rather than by the crate that
-implements them.  Since 0.2.0 the eight original `fe-*` binaries have all been removed, with no
-compatibility layer — the output formats changed at the same time, and keeping `fe-traj` would let an old script "succeed" while emitting a csv it cannot parse itself.  Silently bad data is harder to track down than a command that is gone.
+implements them.
 
 ```
 ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife   → stacked csv
@@ -22,17 +21,6 @@ The leaf commands `convert` / `info` / `bader` work the same way: without `-i` t
 Two kinds of help coexist and each has its use: **the bare command** gives the rich page (format lists,
 output structure, warning notes), **`-h`** gives clap's short parameter table. Options given without
 an input (`ferro traj gr --dr 0.1`) are an error, not a request for the page: the command exits non-zero.
-
-| Old command (before 0.2.0) | New command |
-|---|---|
-| `fe-traj -m gr` | `ferro traj gr` |
-| `fe-corr -m vacf` | `ferro traj vacf` |
-| `fe-cube -m density` | `ferro map density` |
-| `fe-cube -m chg_sdf` | `ferro map chg-sdf` |
-| `fe-network -m Qn` | `ferro net` |
-| `fe-network -m type` | `ferro net --export-traj` |
-| `fe-bader` / `fe-convert` / `fe-info` | `ferro bader` / `convert` / `info` |
-| `fe-job` | removed in 0.4.0; use `ferro-py job` |
 
 ---
 
@@ -252,9 +240,7 @@ Things that trip people up:
   uses `full`, so reading its output back takes `--atom-style full`.
 
 **LAMMPS dump with a triclinic cell**: the box lines carry LAMMPS's `*_bound` (the bounding box after
-tilting), not `xlo/xhi`.  Before 2026-09-21 ferro treated them as `xlo/xhi` on both read and write, which
-was self-consistent but handed OVITO / ASE / LAMMPS `read_dump` a box that was too small.
-**Orthorhombic output is unaffected** (with all three tilt factors 0 the two forms are bit-for-bit identical).
+tilting), not `xlo/xhi`; with all three tilt factors 0 the two forms are identical.
 
 **LAMMPS dump with a general triclinic cell** (`dump_modify triclinic/general yes`, header
 `ITEM: BOX BOUNDS abc origin`): the three box lines are the edge vectors $\mathbf{A}$, $\mathbf{B}$,

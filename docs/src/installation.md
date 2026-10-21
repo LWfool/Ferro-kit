@@ -13,9 +13,7 @@ cd ferro
 cargo build --release
 ```
 
-The build produces **one** binary, `target/release/ferro`. (Before 0.2.0 there were
-eight `fe-*` binaries; they are gone, with no compatibility shims — see
-[CLI Reference](cli-reference.md) for the migration table.)
+The build produces **one** binary, `target/release/ferro`.
 
 Run `ferro` with no arguments for the overview of every command, `ferro <group>` for
 that group's commands, and `ferro <group> <command>` without `-i` for its parameters.

@@ -20,10 +20,6 @@ composition of the glass at a glance, and go to the source tables when the partn
 > are characterised by coordination number** (written Al[4] / Al[5] / Al[6] in the literature).  They still
 > take part in the bridging-oxygen decision, in `ligand_type` and in `linkage` — what they leave is only the *rows* of those two tables.  `--qn` replaces this list as a whole.
 
-> **Command shape.** `ferro net qn` and `ferro net type` have been merged into the leaf command
-> `ferro net`; the export is now just the `--export-traj` switch.  The old labels (`P0` / `Of` / `On_P` /
-> `Ob_P_P` / `X` / `Zn_f`) have all been replaced, with no read-compatibility layer.
-
 ---
 
 ## Theory
@@ -120,16 +116,6 @@ $Q^n(m\mathrm{B})$ for borophosphates, and $P^n_{m\mathrm{Al},x\mathrm{B}}$ with
 > oxygens" is a **known misconception** in this field.  It arises because $n$ and $m$ come from two
 > different NMR experiments (homonuclear J / double-quantum vs heteronuclear REAPDOR / TRAPDOR /
 > HETCOR) and are two independent counts by nature.  Species with $m>n$ such as $Q^0(3\mathrm{B})$ and $Q^1(2\mathrm{Al})$ are real and common (the former is 29% at high boron content), and cannot be explained under the reading that "$m$ is a subset of $n$".
-
-`ferro net` has followed this statement since 2026-08.  Its effect on the reference trajectory `43Z43P15A`:
-
-| | Old statement (total bridges) | Literature statement |
-|---|---|---|
-| `mean_qn` | 2.40 | **0.95** (with $m_\mathrm{Al}$=1.45 alongside) |
-| `P-Q3` fraction | 40.4% | **0.27%** |
-
-A factor of 130.  Under the old statement a reader would take "`P-Q3` is 40%" to mean a highly
-cross-linked phosphate network, while the P in this glass carries on average only 0.95 P–O–P bridges — a structure dominated by dimers and short chains.
 
 **The total bridging-oxygen count is still available**: the `[inputs]` block gives `mean_n_bo` next to `mean_qn`.
 
@@ -315,7 +301,7 @@ file,label,element,count,fraction,sd
 
 > The `sd` of 0 on the four P rows is not a defect: the topology of the P–O–P backbone does not change
 > across these 5 frames.  All the fluctuation sits on the P–O–Al and coordination-number side (look at the
-> `sd` of `Al_*` and `Zn_*`).  The old statement mixed the rigid backbone and the fluctuation into one number, which is why these rows used to have a non-zero `sd`.
+> `sd` of `Al_*` and `Zn_*`).
 
 **The denominator is always the atom count of that element**: Q2 out of all P, `Al_4` out of all Al, `O_b`
 out of all O.  So **the `fraction` of each element sums to 1** — an identity that can be checked the moment the file is opened.
@@ -326,7 +312,7 @@ for the other formers and the modifiers, type for ligands.  P has no coordinatio
 The `O_b` row is aggregated from three rows of `ligand_type` (Al-Al / Al-P / P-P), and its `sd` is
 **re-accumulated frame by frame** rather than summed over the three — the variance of a sum of correlated terms is not the sum of the variances.
 
-The former `network_average.csv` has been removed.  Its two means are still in the `[inputs]` block of every file
+The means are in the `[inputs]` block of every file
 (`mean_qn P=0.95  mean_n_bo Al=4.12 P=2.40  mean_cn Al=4.12 P=4.00 Zn=4.10`),
 and can also be recomputed exactly from this table: $\sum_n n \cdot f_n = 0.946$.  Note that `mean_qn`
 (homonuclear connections) and `mean_n_bo` (bridging-oxygen count) are two different quantities; they are given side by side precisely to make the statement obvious.

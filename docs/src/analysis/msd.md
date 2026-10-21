@@ -323,19 +323,8 @@ msd = [((u[m:] - u[:N - m]) ** 2).sum(axis=2).mean() for m in range(max_lag + 1)
 | Symptom | First thing to check |
 |---|---|
 | MSD far smaller than expected, or flat after a jump | dump interval too long — atoms move half a box between frames (see [Conditions](#conditions-and-limits)) |
-| $D$ differs from ferro 0.3.2 or earlier | expected: earlier versions averaged a single time origin and used a lattice-view unwrap; see below |
+| $D$ differs from ferro 0.3.2 or earlier | expected: earlier versions averaged a single time origin and used a lattice-view unwrap; see the [changelog](../changelog.md#traj-msd-averages-every-origin---shift----max-lag-msd_xyz) |
 | `--fit-range` now covers a different time span | the fractions are of the lag axis, which now ends at $N/2$ |
 | `d_err` comparable to $D$ | window not in the linear regime, or glassy plateau with $D \approx 0$; look at `--loglog` |
 | `msd_x`+`msd_y`+`msd_z` ≠ `msd` | should not happen; report it |
 | an input fails with `max-lag must be within …` | `--max-lag` ≥ that input's frame count |
-
-## Differences from earlier versions
-
-Up to 0.3.2 ferro followed `code1/msd.c`, and results are not comparable:
-
-- **Origins.**  The CLI had no `--tau`, so the window was the whole trajectory and only **one** origin
-  (frame 0) fitted in it; every lag was a single displacement sample.  `--shift` had no effect.
-- **Unwrapping.**  Fractional coordinates were unwrapped, and each displacement converted with the mean of
-  the origin- and end-frame box matrices — a lattice-view scheme with the NPT problem described above.
-- **Components.**  `msd_a/b/c` were fractional displacements times the end-frame axis length; they did not
-  add up to the total for a triclinic box.  They are replaced by `msd_x/y/z`.

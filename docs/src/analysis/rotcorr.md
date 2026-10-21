@@ -228,16 +228,4 @@ for m in range(N // 2 + 1):
 | $C_2$ decays implausibly fast for a symmetric unit | with `sum`, the bonds nearly cancel and it measures distortion — use `--vector bond` |
 | a second run replaced the first | same file name for any `--vector` / `--legendre`; add `-s` |
 | empty `c2` at long lags | no molecule valid at both ends that far apart |
-| values differ from ferro 0.3.2 or earlier | expected — see below |
-
-## Differences from earlier versions
-
-Up to 0.3.2 (following `code1/rotcorr.c`):
-
-- **One origin.**  `--tau` defaulted to the whole trajectory, so only frame 0 was an origin; `--shift`
-  had no effect.  Now every lag averages all origins; `--shift` is gone and `--tau` became `--max-lag`.
-- **Invalid frames pulled $C_2$ down.**  Pairs without a vector were skipped, but the average was still
-  divided by the full number of origins, and an origin with no valid pair counted as 0.  Now only valid
-  pairs enter the numerator and the denominator.
-- **Rectangular integral.**  The running integral was too large by $C_2(0)\,dt/2 = dt/2$.  Now
-  trapezoidal.
+| values differ from ferro 0.3.2 or earlier | expected: earlier versions used one time origin; see the [changelog](../changelog.md#traj-vacf--rotcorr-average-every-origin-trapezoidal-integrals) |

@@ -48,8 +48,7 @@ $\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 > 0$ indicates fat tails (
 
 $\Delta r$ is `--dr` when $[r_\min, r_\max]$ holds a whole number of bins, otherwise slightly
 narrower, $(r_\max - r_\min) / \lceil (r_\max - r_\min) / \texttt{dr} \rceil$, so the last bin ends
-exactly at $r_\max$; the `dr` header line reports the width used. A partial last bin used to be
-normalised as a full one (`--r-max 1.0 --dr 0.07` read 3.5 times too low there).
+exactly at $r_\max$; the `dr` header line reports the width used.
 
 ## Parameters
 
@@ -65,7 +64,7 @@ pub struct VanHoveParams {
 }
 ```
 
-These are the library defaults.  On the command line `--dt` is required, and `r_min` is not exposed: `ferro traj vanhove` always uses $r_\min = 0$.  A `--tau` of the frame count or more is an error, as `--max-lag` is for the other time correlations; it used to be cut to $n_\text{frames} - 1$ without a word.
+These are the library defaults.  On the command line `--dt` is required, and `r_min` is not exposed: `ferro traj vanhove` always uses $r_\min = 0$.  A `--tau` of the frame count or more is an error, as `--max-lag` is for the other time correlations.
 
 ## Output
 

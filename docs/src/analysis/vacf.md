@@ -147,20 +147,9 @@ D = np.concatenate([[0], np.cumsum(0.5 * dt * (vacf[1:] + vacf[:-1]))]) / 3
 |---|---|
 | $C_v(0)$ far from $3k_BT/m$ | velocity unit: metal-unit dump read with `--units real` (factor $10^6$) |
 | `frame k has no velocities` | the dump lacks `vx vy vz`, or only some frames carry them |
-| $D$ differs from ferro 0.3.2 or earlier | expected — see below |
+| $D$ differs from ferro 0.3.2 or earlier | expected: earlier versions used one time origin and a rectangular integral; see the [changelog](../changelog.md#traj-vacf--rotcorr-average-every-origin-trapezoidal-integrals) |
 | `diffusion` never levels off | trajectory too short for $C_v$ to decay, or `--max-lag` too small |
 | `diffusion` drifts at long $t$ | tail noise; read the plateau, shorten `--max-lag` |
-
-## Differences from earlier versions
-
-Up to 0.3.2 (following `code1/velcorr.c`):
-
-- **One origin.**  `--tau` defaulted to the whole trajectory (the help page said half), so only frame 0
-  was an origin; `--shift` had no effect.  Now every lag averages all origins; `--shift` is gone and
-  `--tau` became `--max-lag`.
-- **Rectangular integral.**  $D(t) = \tfrac13\sum_{i\le n} C_v(i)\,dt$ counted the first point in full,
-  so $D$ was too large by $C_v(0)\,dt/6$ at every $t$.  Now trapezoidal.
-- New column `vacf_norm`.
 
 ## Not yet: VDOS
 

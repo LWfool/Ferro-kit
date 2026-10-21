@@ -27,10 +27,6 @@ named on the command line, `--r-cut-ab` goes to the atom given by `-a` / `-x` an
 ferro traj angle -a Zn -b O -c P -i traj.dump --r-cut-ab 2.5 --r-cut-bc 2.0
 ```
 
-> **Changed in v0.1.15.** Earlier versions handed the two cutoffs out by atomic number,
-> so the command above silently gave 2.5 to P (Z = 15 < Z(Zn) = 30) — the opposite of
-> what was written. Results are unaffected whenever the two cutoffs are equal.
-
 Without a named triplet (scanning every triplet at once) there is no user order to follow,
 so the canonical (Z, symbol) order is used: `r_cut_ab` → lower-Z end, `r_cut_bc` → higher-Z end.
 
