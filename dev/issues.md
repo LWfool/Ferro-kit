@@ -34,21 +34,17 @@
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `network_type.rs` `build_nf_map` | 若形成子元素同时也是配体元素（如 Si-O 且 O-O），同一原子会同时出现在 former 和 ligand 中 | 当前跳过 `fa_idx == la_idx`；实际体系不会出现，无需处理 |
+| `network/classify.rs` `build_nf_map` | 若形成子元素同时也是配体元素（如 Si-O 且 O-O），同一原子会同时出现在 former 和 ligand 中 | 当前跳过 `fa_idx == la_idx`；实际体系不会出现，无需处理 |
 | `classify_frame` 形成子标签 | 桥接数来自桥氧计数，桥氧定义为 NF 邻居数 ≥ 2（含三配位氧 `O_t`） | 0.2.1 起由 `AtomType::Former.bridging` 直接携带；**任何从标签字符串回推数字的写法都不要写**，这正是 0.2.1 重构消除的五处缺陷 |
 | `ferro-cli` 解构 `cli` | `let Some(x) = cli.field` 是部分移动，后续不能再借用 `cli` | 用 `let Cli { field1, field2, .. } = cli;` 一次性解构，再分别传参 |
-| `cluster.rs` Union-Find | `find()` 需要 `&mut Vec`，不能与 `local_cluster` 构建同时进行 | 先用 `(0..n).map(|li| find(...))` 收集，再组装 `Vec` |
 
 ## cluster / 审计 编码陷阱
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `ferro-structure::find_clusters` | 用 `AtomType::is_bridging()` 当连通性判据 | 它是「**恰好**两个形成子」，三簇配体返回 `false` → 网络在连得最紧的节点处断开（实测 3 个 P 共享一个三簇氧报成 3 个团簇，应为 1 个）。连通性判据是 `partners.len() >= 2`，与 `LigandKind::Bridging`、与模块 doc 一致。`ferro-core::build_network_graph` 那份从一开始就是对的，两份实现不一致了很久 |
-| `find_clusters` 的截断 | 按形成子元素取 `cutoffs.keys().find()` 的第一个 | 按 `(形成子, **该配体元素**)` 取。`BTreeMap` 序下 `("P","F") < ("P","O")`，双配体体系会拿 P-F 的 1.4 Å 去判 P-O 的 1.6 Å 键，桥氧整体判不出来。与 `LinkKey` 少一个配体元素维是同一类洞：参考体系只有 O，所以一直没暴露 |
-| `ferro-core::cluster` | ferro-analysis / ferro-structure 中间层不能互依赖 | 共享原语下沉 `ferro-core`（两者共同依赖）；ferro-analysis 已去 petgraph |
+| 连通性判据（原 `find_clusters`，2026-10-18 删；判据今后仍适用） | 用 `AtomType::is_bridging()` 当连通性判据 | 它是「**恰好**两个形成子」，三簇配体返回 `false` → 网络在连得最紧的节点处断开（实测 3 个 P 共享一个三簇氧报成 3 个团簇，应为 1 个）。连通性判据是 `partners.len() >= 2`，与 `LigandKind::Bridging`、与模块 doc 一致。`ferro-core::build_network_graph` 那份从一开始就是对的，两份实现不一致了很久 |
+| 按元素对取截断 | 按形成子元素取 `cutoffs.keys().find()` 的第一个 | 按 `(形成子, **该配体元素**)` 取。`BTreeMap` 序下 `("P","F") < ("P","O")`，双配体体系会拿 P-F 的 1.4 Å 去判 P-O 的 1.6 Å 键，桥氧整体判不出来。与 `LinkKey` 少一个配体元素维是同一类洞：参考体系只有 O，所以一直没暴露 |
 | `cif.rs` 坐标回退 | 依赖远处 `ensure!` 的 `.unwrap()` 脆弱 | 本地 `else if let (Some,Some,Some)` 守卫 + `bail!`，不变量自洽 |
-| `vasp.rs`/`chgcar.rs` VASP4 检测 | 守卫 `parse::<u64>` 而 unwrap `parse::<usize>`，32 位平台大值溢出 panic | 单次按 `usize` 解析为 `Option<Vec<usize>>`：`Some`→VASP4，`None`→VASP5 |
-| `extract_element` (cp2k/qe reader) | `it.next().unwrap()` | 安全：上方 2 行 `is_empty()` 局部守卫（局部不变量可接受，区别于 cif 的远处不变量）|
 
 ## ferro-python 编码陷阱
 
@@ -58,7 +54,7 @@
 | `Cargo.toml` | 不进主 workspace，但 `version.workspace=true` 需成员资格 | 显式 `version`/`edition` + 空 `[workspace]` 表使其独立 |
 | maturin 解释器 | 默认可能选到杂散 python3.9，wheel tag 不匹配当前 python | `maturin build --interpreter "$(which python)"` |
 | `pyproject.toml` | `readme="README.md"` 缺文件 → maturin 失败；失效 `python-source` | 必须有 README.md；无 python 覆盖层时删 `python-source` |
-| `pyproject.toml` 的版本号 | 手动同步 `[project] version` | **已漂移过一次**：0.3.0 发版时发现它还停在 `0.1.7`，落后四个版本，而 maturin 打 wheel 用的正是这个值——装出来的包会自称 0.1.7。已改用 `dynamic = ["version"]` 让 maturin 从 Cargo.toml 取，`[project]` 下不再写 `version`。**本机无 maturin，此改动未经构建验证**，首次 `maturin build` 时留意 |
+| `pyproject.toml` 的版本号 | 手动同步 `[project] version` | **已漂移过一次**：0.3.0 发版时发现它还停在 `0.1.7`，落后四个版本，而 maturin 打 wheel 用的正是这个值——装出来的包会自称 0.1.7。已改用 `dynamic = ["version"]` 让 maturin 从 Cargo.toml 取，`[project]` 下不再写 `version`（2026-10-16 起 maturin 实际构建验证过） |
 | `maturin develop` | 无激活 venv/conda 时报错 | 用 `maturin build` + `pip install <wheel>`，或先激活环境 |
 | `lib.rs` 的 `pyerr` | `e.to_string()` 转 anyhow 错误 | 只剩最外层 context：`conv analyze` 的状态只写 `unreadable (parsing FILE)`，原因（`1 SCF not converged`）丢了。用 `format!("{e:#}")` 带出整条链（2026-10-17 修） |
 
@@ -75,7 +71,7 @@
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `cmd/job.rs` 的 `-h` | 自己声明 `help` 字段接管 `-h/--help`，却没关掉 clap 自动生成的那个。**两个同名参数只在 debug 断言里报**：`cargo build` 通过、release 正常跑，而 **debug 版 `ferro job` 一跑就 panic**（`clap_builder/debug_asserts.rs:99`）。测试全绿也发现不了 —— 23 个 workflow 测试测的是 builder，从不经过 clap 解析 | `#[command(disable_help_flag = true)]`。2026-08-24 修。**任何自定义 `-h`/`-V` 都要同时关掉 clap 的自动版**；发现它的唯一途径是拿 debug 二进制真跑一次子命令 |
+| 自定义 `-h`（原 `cmd/job.rs`，已删；教训通用） | 自己声明 `help` 字段接管 `-h/--help`，却没关掉 clap 自动生成的那个。**两个同名参数只在 debug 断言里报**：`cargo build` 通过、release 正常跑，而 **debug 版 `ferro job` 一跑就 panic**（`clap_builder/debug_asserts.rs:99`）。测试全绿也发现不了 —— 23 个 workflow 测试测的是 builder，从不经过 clap 解析 | `#[command(disable_help_flag = true)]`。2026-08-24 修。**任何自定义 `-h`/`-V` 都要同时关掉 clap 的自动版**；发现它的唯一途径是拿 debug 二进制真跑一次子命令 |
 | `cargo fmt`（全仓） | 代码库未用 rustfmt 管理，全仓 `cargo fmt` 会改动 ~80 文件（含 22k 行生成的 `cp2k_basis_db.rs`），淹没特性 diff | 只对改动文件 `cargo fmt -- <file>`，或跳过格式化手工对齐周边风格；用 `cargo build`/`cargo clippy` 验证。若已误跑全仓，先提交真实改动再 `git checkout -- .` 丢弃格式化 |
 | CLI 的包名 | 目录叫 `ferro-cli`，包名是 **`ferro`**：`cargo build -p ferro-cli` 报错而 `target/` 里的旧二进制照跑，端到端检查拿旧结果当新的（2026-10-14 实测踩到） | `cargo build -p ferro` / `cargo test -p ferro`；端到端前看一眼二进制时间戳 |
 | Claude Code 的 shell 与非 ASCII 字符（2026-10-14 / 15 实测） | 命令行里的中文与「—」偶发被截成非法 UTF-8：`python - <<'PY'` 报 `Non-UTF-8 code`；`git commit -m` **提交成功但信息是乱码**（git 只警告）；`sed -i 's/…—…/'` 把坏字节写进 changelog，因手册经 `include_str!` 编进二进制，下一次 `cargo build` 才报 `not valid utf-8` | 命令行只放 ASCII：提交信息用 Write 写文件再 `git commit -F`；含非 ASCII 的替换用 Edit 工具或 Write 写的脚本 |
@@ -84,8 +80,8 @@
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `gr.rs` `calc_gr` | 默认 r_max=10.005 对小盒子超过 MIC 上界，CellList 每轴退化为 1 个 cell，最小镜像失效，g(r) 尾部被错误压向 0 | `calc_gr` 内把有效 r_max clamp 到 `Cell::minimum_image_cutoff()`（最小**面间距**的一半，非最短边长），并写回 `result.params.r_max`；`with_auto_rmax` 现由 ferro-python 使用，同样走该上界 |
-| `box_builder.rs` `CellList::neighbors` | 27-bin 遍历缺去重，小盒子（n_bins ≤ 2）同一 bin 被多次映射 → 近邻重复计入、弛豫斥力成倍累加 | 加 `seen` bin 去重（与分析层 `angle.rs::CellList` 语义一致） |
+| `gr.rs` `calc_gr` | 默认 r_max=10.005 对小盒子超过 MIC 上界，近邻格每轴退化为 1 个 cell，最小镜像失效，g(r) 尾部被错误压向 0 | `calc_gr` 内把有效 r_max clamp 到 `Cell::minimum_image_cutoff()`（最小**面间距**的一半，非最短边长），并写回 `result.params.r_max`；`with_auto_rmax` 现由 ferro-python 使用，同样走该上界 |
+| `box_builder.rs` `CellList::neighbors` | 27-bin 遍历缺去重，小盒子（n_bins ≤ 2）同一 bin 被多次映射 → 近邻重复计入、弛豫斥力成倍累加 | 加 `seen` bin 去重（分析层已改用 `neighbor.rs` 的 `NeighborList`） |
 | `bader_grid.rs` `bader_ongrid` | 曾有第一遍梯度上升结果被 `volnum=vec![0;..]` 立即清零重算（开发遗留），运行时翻倍 | 已删，只保留全路径追踪的单遍循环；改 on-grid 时勿再引入双重计算 |
 
 ## g(r) / S(q) 审查项处置（2026-08-08）
@@ -160,27 +156,28 @@ S(q) 一侧；g(r) 一侧基本是正确性洁癖。** 0.1.12 及更早跑出的
 ## element / label 分配规则（2026-08-08 查证）
 
 `calc_gr` / `calc_angle` 默认读 `atom.element`，`GroupBy::Label` 时读 `atom.label`
-（未设则回退 element）。除此之外 `atom.label` 的消费者只有
-`ferro-io/src/writers/cif.rs:65`。各 reader 的分配：
+（未设则回退 element）。除此之外 `atom.label` 的消费者是 writer：cif 写 `_atom_site_label`、
+extxyz 写 `label:S:1` 列、dump 经 `dump_name` 把 `<元素>_<后缀>` 形式的 label 折进 element 列。
+各 reader 的分配（「字母前缀」= `readers/util.rs::element_from_label`）：
 
 | Reader | `element` 来源 | `label` |
 |---|---|---|
-| `xyz.rs:54` | 第 1 列原样，不校验 | `None` |
-| `extxyz.rs:85` | `species` 列 | `None` |
+| `xyz.rs` | 第 1 列；是原子序数时转成元素符号 | `None` |
+| `extxyz.rs` | `species` 列；是原子序数时同样转换 | `label` 列（有则读） |
 | `pdb.rs` `parse_atom_record` | 第 77–78 列（大小写规范成 `Fe`）；空或行短时从原子名按列对齐推（13 列空格 → 14 列单字母，否则 13–14 列，非元素退 13 列单字母），推不出报错 | `None` |
-| `vasp.rs:41-81` | POSCAR 第 5/6 行符号 + 计数展开 | `None` |
-| `lammps_data.rs:94-100` | Masses 段注释 `# Fe`，无注释则按质量反查 | `None` |
-| `lammps_dump.rs` | dump 的 `element` 列按第一个下划线拆分后的元素前缀；**无该列 → `X{type}`**（`X1`/`X2`…） | 有下划线且前缀合法时为整串（`O_b_P_P`），否则 `None` |
-| `cif.rs:218` | `_atom_site_type_symbol`，缺失则从 label 取字母前缀 | `_atom_site_label` 原样 |
-| `cp2k.rs:97-120` | `&KIND` 映射，或 label 字母前缀 | 坐标段第 1 列原样 |
-| `qe.rs:113-129` | `ATOMIC_SPECIES` label 的字母前缀 | label 原样 |
+| `vasp.rs` | POSCAR 第 6 行元素符号 + 计数展开；没有元素行（VASP 4）报错 | `None` |
+| `lammps_data.rs` | Masses 段注释 `# Fe`，无注释则按质量反查 | `None` |
+| `lammps_dump.rs` | `element` 列，没有时用 `typelabel` 列，按第一个下划线拆分取元素前缀；**两列都没有 → `X{type}`**（`X1`/`X2`…），或按 `--type-map` | 有下划线且前缀合法时为整串（`O_b_P_P`），否则 `None` |
+| `cif.rs` | `_atom_site_type_symbol`，缺失则取 label 的字母前缀 | `_atom_site_label` 原样 |
+| `cp2k.rs` | `&KIND` 映射，或 label 的字母前缀 | 坐标段第 1 列原样 |
+| `qe.rs` / `qe_out.rs` | `ATOMIC_SPECIES` label 的字母前缀 | label 原样 |
 
 **陷阱**：
 
 | 位置 | 陷阱 | 说明 |
 |---|---|---|
 | `lammps_dump.rs` | dump 缺 `element` 列时元素名为 `X1`/`X2`，`symbol_to_z` 全部返回 255 | S(q) 的 XRD 系数与中子散射长度查表全部失败，`total_xrd`/`total_neutron` 无意义。0.1.11 起 `calc_sq_from_gr` 会打印告警（此前静默）。用 `-m sq` 前仍应确认 `ITEM: ATOMS` 头含 `element` |
-| 三处元素提取 | `symbol_to_z`（精确→两字节→首字节）与 `cp2k.rs:221`/`qe.rs:193` 的 `extract_element`、`cif.rs:463` 的 `element_from_label`（字母前缀 + 首字母大写）**规则不一致** | 对 `ZnA`：前者 → `Zn`，后者 → `Zna`。新增的下划线拆分规则只作用于 LAMMPS dump，不动这三处（它们处理 `Fe1`/`O2` 原生命名，字母前缀规则对其正确） |
+| 两套元素提取 | `symbol_to_z`（精确→两字节→首字节）与 `readers/util.rs::element_from_label`（字母前缀 + 首字母大写，CP2K / QE / CIF 共用）**规则不一致** | 对 `ZnA`：前者 → `Zn`，后者 → `Zna`。下划线拆分规则只作用于 LAMMPS dump，不动 `element_from_label`（它处理 `Fe1`/`O2` 原生命名，字母前缀规则对其正确） |
 | `symbol_to_z` 贪婪匹配 | `Pb`→铅(82)、`Po`→钋(84)、`Os`→锇(76) 会盖过"P bridging"这类伪标签意图 | 这是选择「按第一个下划线拆分」而非贪婪前缀匹配的主要理由 |
 | `typing.rs` | ~~`apply_type_labels` 把类型标签写进 **`element`** 字段而非 `label`~~ **已过时**（2026-10-03 核实）：现在写 `label`；折进 element 的是 dump writer 的 `dump_name`（2026-10-18 由 structure 的 `fold_labels` 移入 io，凡写 dump 都折） | 伪元素轨迹即由 `dump_name` 产生；`elem_z` 的前缀匹配就是为它服务的 |
 | `cif.rs` 位点 | `Fe1`/`Fe2` 的 `element` 均为 `Fe`，g(r) 无法分辨不等价位点 | 用 `-x/-y` 按 `label` 选（CIF reader 已填 `label`）。注意 `Fe1` 不合 `<元素>_<后缀>` 约定，导出 LAMMPS dump 时**不会**被折进 element 列（0.2.1 的守卫），走 extxyz 的 `label:S:1` 列才无损 |
@@ -281,7 +278,7 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 退出码 | dump2analysis / dump2sq 参数校验失败走 `exit(0)`，退出码不可信；**ferro 的可信**（批内失败也置 1） | 两种检查分开：C 程序只验产物，ferro 同时查 `returncode` |
 | 读长表 | 按列名取列的老写法在长表下取不到东西；直接 `df.iloc[:, 4]` 又会在列顺序变化时静默错位 | 按数据列选行（`center` / `neighbor` / `end_a`…），选空时把该表实际有的组合打印出来 |
 | `file` 列 | 单输入脚本遇到多输入产物时静默取第一个，后面所有数字都对不上且图上看不出来 | 断言 `df.file.nunique() == 1` 后再丢列 |
-| 产物名 | 在调用点手写 `f"gr_{tag}.csv"` | 用 `ferrocmp.product_name()` 拼（`batch::out_path` 的镜像）。2026-08-13 加 label 段时，三个脚本各写各的名字，同时断掉 |
+| 产物名 | 在调用点手写 `f"gr_{tag}.csv"` | 用 `ferrocmp.product_name()` 拼（`batch::product_name` 的镜像）。2026-08-13 加 label 段时，三个脚本各写各的名字，同时断掉 |
 | `-o` 与 label 重复 | 把配对同时塞进 `-o`（`-o P-O` → `gr_P-O_P-O.csv`） | 配对已由 label 段进文件名，`-o` 只留批次标记（`cmp`）。这正是加 label 段换来的东西 |
 | `--ferro` 传相对路径 | 直接交给 `subprocess` | `run_ferro` 以 outdir 为 cwd，`../target/release/ferro` 会 `FileNotFoundError`。含分隔符时先 `resolve()` |
 
@@ -293,12 +290,11 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 有序选择 vs 集合选择 | 用同一条规则拼名 | 分开：`gr`/`angle` 按写的顺序（`CN` 有向，`-a P -b O` 与 `-a O -b P` 是两份不同数据，必须两个文件）；`--elements` 排序去重（是集合，`O,P` 与 `P,O` 选中同一批原子，同一份数据不能落到两个文件名下）。统一成任何一种都会错一半 |
 | 用户串进文件名 | 直接拼 | 先校验 `[A-Za-z0-9_+-]`，**在读第一个文件之前**报错。选中的串会成为路径的一段，`-a 'P/2'` 不校验就写到别处去了 |
 | 非法字符的处理 | 替换成下划线 | 报错。替换会让 `-a P/2` 与 `-a P_2` 静默写进同一个文件 —— 与补零冒充「测到了 0」同一类错误 |
-| `--outdir` 的创建时机 | 写第一个文件时才建 | `Output::prepare()` 在读第一个输入**之前**调用，与「参数级错误快速失败」一致。否则跑完一小时分析才发现路径打不开 |
+| 输出目录（今 `-o`）的创建时机 | 写第一个文件时才建 | `Output::prepare()` 在读第一个输入**之前**调用，与「参数级错误快速失败」一致。否则跑完一小时分析才发现路径打不开 |
 | `rotcorr` 的「无选择」分支 | 以为 `--center`/`--neighbor` 可省 | 两者都是必填（`Option` 只为「不带 `-i` 时打帮助」，随后 `bail`）。它恒有 label，`rotcorr_all.csv` 走不到，别为它写代码 |
 | `write_all` 的参数个数 | 继续加位置参数 | 加到第 8 个时收进 `Output { dir, label, suffix }`。三个字段总是一起走，分开传只会让调用点一串 `None, Some(x), None` |
-| `ferro-io` 的 writer 路径 | 以为都收 `&Path` | ~~九个 writer 全收 `&str`~~ 2026-09-20 已统一成 `&Path`（2026-10-03 核实）；`Output::join_str` 随之零调用，见 `plan.md`「2026-10-03 四路审查」布局 7 |
 
-## 发表级绘图脚本编码陷阱（2026-08-13，`scripts/plot_*.py`）
+## 发表级绘图编码陷阱（2026-08-13；原 `scripts/plot_*.py`，2026-10-20 迁入 `ferro-python/python/ferro/plot/`）
 
 样式栈是 `['science','vibrant']` + `usetex`。三条实测结论先摆前面：
 
@@ -348,14 +344,11 @@ analysis（io 没理由认识它），跨层的只有它的可序列化投影。
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | `cmd/net.rs` | `--P-O=2.3` 把元素对写在**参数名**里，clap 无法建模成固定 flag 集 | `main` 在 `Cli::parse_from` 之前用 `split_pair_args` 从 argv 剥离，剩下的交给 clap |
-| `cmd/job.rs` | 原 `main` 按值消费 `args` 的各字段（`if let Some(m) = args.method`），改成 `&JobCmd` 后全是 E0507 | `#[derive(Clone)]` + 函数入口 `let args = args.clone();`，函数体一行不用改 |
-| `main.rs` 的 `Command` 枚举 | `JobCmd` 有 30+ 字段，clippy `large_enum_variant` 报变体大小差异 | 大的那个装箱：`Job(Box<JobCmd>)` |
 | 子命令帮助 | clap 的 `--help` 派生格式塞不下「输出列结构」「长表为什么长」这类段落 | 保留 `disable_help_flag` 风格的自定义 `help.rs`；`ferro traj gr` 无 `-i` 时打印富文本 |
 | 三级帮助的第一级 | clap 不支持给子命令**分组**显示 | 帮助本来就是手写的，`print_overview()` 自己排版分类 |
 
 > 已知限制清单见 `progress.md`。一条容易混淆的留在这里：
-> `ferro traj sq` 的 `--q-min` 只影响**输出 q 网格**，g(r) 的积分范围由 `--r-min` /
-> `--r-max` 决定。
+> `ferro traj sq` 的 `--q-min` 只影响**输出 q 网格**，g(r) 恒从 0 积分到 `--r-max`。
 
 ## 与实验对比偏差大时的排查清单（2026-08-20）
 
@@ -655,10 +648,9 @@ git 历史（`8a8fe75`..`443d45c`），未定的留在 `plan.md`「零调用清�
 | 「零调用 = 死代码」 | 直接删 | 本仓多数功能**还没进入实际使用**，「需求确定但 CLI 层没接」与「开发遗留」在代码里长得一样。`cube_jump` 就是前者（429 行 + 10 测试 + 手册页齐全，只缺 CLI 入口）。判据要靠人，清单见 `plan.md` |
 | `readers/` 的 `floats` 辅助 | 看见同名函数就全合成一个 | 合并后的 `readers/util.rs::floats` 是 `map_while`（**遇到非数字即停**，让行尾注释不中断解析）。`vasp_outcar.rs:57` 那个是 `filter_map`（**跳过非数字继续**，为了 `in kB` 这类行首带标签的行），**语义相反，不能并**。另：第四份曾藏在 `cube.rs` 叫 `parse_floats`，按名字 grep 找不到 |
 | `ml/geometry.rs:43 min_image` vs `Cell::minimum_image` | 语义相同，想合 | 前者把矩阵 transpose 与 inverse **提到 O(N²) 内循环之外**。合并等于把 `try_inverse()` 放回内循环。**2026-10-18 已合**：两边都改走构造时预存逆矩阵的 `PeriodicCell`，见文末「周期几何」节 |
-| `md/gr.rs:34 elem_z` vs `md/sq.rs:100 elem_z_local` | 两个 `symbol_to_z` 的薄包装，想统一 | **未知符号的回退值相反且都对**：`elem_z` 给 255（排到末尾），`elem_z_local` 给 0（sq 用 Z 当电子数，255 是荒谬值）。统一任何一个都会弄坏另一边 |
+| `md/sq.rs` `elem_z_local` | `symbol_to_z` 的薄包装，想换成直调 | 未知符号给 0（sq 用 Z 当电子数，`symbol_to_z` 的 255 是荒谬值）。gr 原有的 `elem_z`（给 255 排到末尾）已随 `canonical_cmp` 删去（13.6） |
 | `md/cube_sdf.rs:149 signature` | 当成第三套化学式渲染 | 它拼的是**原子类型**当 HashMap key（`Ob:6\|P_2:1`），不是化学式。骨架（BTreeMap 计数 → 拼串）像而已 |
 | 化学式渲染两套 | 当成不一致要统一 | `group_name` 省略计数 1（目录名，`ls` 里当名字读），`formula_of` 不省略（报错里与第二个化学式上下叠着读，补齐的下标才对得上列）。**用途相反，都对**。两处已互相指名 |
-| `set_bounds`（ferro-io）vs `set_spans`（ferro-cli） | 逐字相同的十四行，想合 | 两份不到 Rule of Three 门槛，不合；但「余数摊进各 set」是一条成文的跨模式规则，两处已加注释互指。改一处必须改另一处 |
 | `md/mod.rs` 的 `pub use` 与 `lib.rs` 的 `pub use md::{...}` | 以为加了模块就导出了 | **两处手写同一份清单**。`cube_jump` 在 `md/mod.rs` 导出了、在 `lib.rs` 漏了。加分析模块时两处都要看 |
 
 ### 修 bug 时顺手改口径（2026-09-12 实测踩到）
@@ -871,8 +863,8 @@ writer 时会再踩**的判据：
 | writer 换坐标系 | 只变换坐标 | 任何对坐标的变换（转到 LAMMPS 规范胞、按元素重排原子）都要对**全部逐原子旁路数组**做同一变换：速度、力，以及按原子编号的 `bonds`。与 `sort_atoms` 漏 velocities/bonds（2026-09-22）是同一族，这次在 writer 侧又出现两处 |
 | 输入格式的关键字写法 | 只认测试里写过的那一种（`{bohr}`、`.TRUE.`） | 查格式自己的解析规则：QE 卡片选项可写 `bohr`、`{bohr}`、`(bohr)`，大小写不敏感；CP2K 逻辑值单写关键字即真，`T` `TRUE` `.TRUE.` `YES` `ON` 均真。认不出的写法**报错**，绝不回落到一个默认单位 —— 回落 Å 的结果是键长 0.43 Å 的结构，全程零告警 |
 | 扩展名分派 | `.xyz` 就是纯 XYZ | ASE、GPUMD、CP2K 与 ferro 自己的 `--type nep` 都把 extxyz 写成 `.xyz`。按扩展名分派只能定「哪一族」，族内要看内容（第 2 行有无 `Lattice=` / `Properties=`） |
-| 多输入的产物名 | 只用 stem | `runs/*/prod.lammpstrj` 是常见布局。`collect` 早已按 `<父目录>_<stem>` + 仍撞报错处理（见上方 2026-08-25 那节），其余命令没有跟上；撞名必须在读第一个文件前判，事后覆盖是静默的 |
-| 周期网格的搜索窗 | `rem_euclid` 折叠后直接累加 | 窗口 `2s+1` 超过网格点数时多个偏移折到同一格，重复计数。与 `box_builder` CellList 缺去重同一个洞 —— 第三次出现，下次写周期网格遍历先想这一条。修法（M4）：每轴先算下标列表，窗口 ≥ 网格点数时取全部 `0..n`，否则折回（此时互不相同）—— 比 `seen` 去重便宜，且窗口小于网格时与原遍历逐位一致。现存的两处（`angle.rs` CellList、`cube_radius.rs`）都已处理 |
+| 多输入的产物名 | 只用 stem | `runs/*/prod.lammpstrj` 是常见布局。`collect` 已改为按目录分组，其余命令同名依次加 `_2`、`_3` 并打 Note（`batch.rs` 的批内标签，plan 10-03 审查 S7）；撞名必须在读第一个文件前判，事后覆盖是静默的 |
+| 周期网格的搜索窗 | `rem_euclid` 折叠后直接累加 | 窗口 `2s+1` 超过网格点数时多个偏移折到同一格，重复计数。与 `box_builder` CellList 缺去重同一个洞 —— 第三次出现，下次写周期网格遍历先想这一条。修法（M4）：每轴先算下标列表，窗口 ≥ 网格点数时取全部 `0..n`，否则折回（此时互不相同）—— 比 `seen` 去重便宜，且窗口小于网格时与原遍历逐位一致。现存的 `cube_radius.rs` 已处理（angle 已改用 `NeighborList`） |
 | `StdRng` | 当作可复现的 RNG | rand 文档明写不可移植、将来版本可换算法。要「同 seed 可归档复现」就直接用具体算法的 crate（`chacha20`）并固定版本 |
 | POSCAR 的速度块 | 跳过空行后把剩余行当速度 | 坐标之后**恒有一行模式行**（空行也算一行）：空行或 C/K 开头 = Cartesian Å/fs，其余 = Direct（需 POTIM，报错）；首字符 L 是 NPT CONTCAR 的晶格速度块（再跳 8 行）。滤掉空行会把 `Cartesian` 那一行当成第一条速度。ASE 的 `write_vasp(sort=True)` 也有「坐标重排、速度原序」的 bug —— 照抄参考实现前先看它有没有同病 |
 | ASE 当参考实现 | 以为它覆盖全部合法输入 | ASE 3.29.0 的 `read_espresso_in` 读不了 `A=`（namelist 键已转小写、却按 `'A'` 查）与 `1.026D+01` 这类 namelist 值，也不支持「无 celldm 时坐标 alat 取 \|a1\|」。对拍时 ASE 报错的情形回 pw.x 源码（`Modules/cell_base.f90`）手算，并在测试注释里写明来源 |
@@ -920,7 +912,7 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | `Table::meta` 经 `concat_union` 堆叠 | 只留第一份 meta（见上「network 重构」一节，那是为保住表的**自述**）。往表头写逐输入的数（O–O 分位、自动截断），多输入时第一个的值冒充整批（C-D6、B-7） | 表头只放与输入无关的说明；逐输入的数走 `Summary` 的列，进 `[inputs]`。同 `CLAUDE.md` 的 `meta_lines` 规则，只是落在 `Table::meta` 上 |
 | 峰值折叠 | `fold(0.0, f64::max)`：`f64::max` 遇 NaN 返回另一个数，NaN 被吞，再 `m > f_max` 对 NaN 为假，坏帧通过（C-D4） | 折叠时显式传播 NaN，判据写 `m.is_nan() \|\| m > max`（clippy 不让写 `!(m <= max)`）|
 | 只在 CLI 做的检查 | 帧间隔检查在 `cmd/traj.rs` 私有，Python `msd` 绕过，且默认 `dt=1.0`（D-M1） | 判据下沉到分析库（`md::check_frame_spacing`），CLI 与 Python 调同一个；会静默缩放时间轴的参数不给默认值 |
-| 公开函数里的最小镜像 | 内部 `minimum_image(..).expect("non-singular")`，CLI 入口查过，库的其他调用方（`find_clusters`、`classify_frame`）直调即 panic（D-M17） | 公开入口查一次（`interplanar_spacings()?` 恰在奇异时报错），返回 `Result`；内部 `expect` 写明**由谁查过**。只返回 `Option` 的（`chg_sdf`）入口返回 `None` 防 panic。2026-10-18 起入口改为构造 `PeriodicCell`（见文末「周期几何」节） |
+| 公开函数里的最小镜像 | 内部 `minimum_image(..).expect("non-singular")`，CLI 入口查过，库的其他调用方（如 `classify_frame`）直调即 panic（D-M17） | 公开入口查一次（`interplanar_spacings()?` 恰在奇异时报错），返回 `Result`；内部 `expect` 写明**由谁查过**。只返回 `Option` 的（`chg_sdf`）入口返回 `None` 防 panic。2026-10-18 起入口改为构造 `PeriodicCell`（见文末「周期几何」节） |
 | 倾斜胞的拼接 | 沿晶格矢量量 gap、沿**另一块自己的**单位矢量平移（D-M2）：正交胞上逐位正确，倾角一不同就错位且 gap 变小 | 高度用面间距（法向投影），平移在目标胞的坐标系里算；正交胞上新旧逐位相同，所以必须有倾斜胞的测试 |
 | clap 默认值 | doc 注释手写 `[default: x]` 又给 `default_value_t`，短帮助显示两遍 | 有 `default_value(_t)` 就不手写；`help_sync::a_clap_default_is_not_also_written_by_hand` 盯着 |
 | argv 预处理 | `--X-Y=v` 的剥离对所有子命令生效，`traj gr --P-O=2.3` 被吞、退出码 0（D-M16） | 预处理只对需要它的子命令（判据写在 `split_pair_args` 里）|
@@ -952,7 +944,7 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | 加格式 | 在 CLI 或 Python 里加扩展名分支 | 只改 `ferro-io/src/format.rs`：`Format` 加变体，`ALL` / `name` / `detected_by` / `can_write` / `multi_frame` / `from_name` / `read_as` / `write_one` 由编译器与 match 逼着补。CLI 的格式表由 `Format::ALL` 生成，Python 的 `read` / `write` 走同一张表 |
-| reader 里想提示用户 | `eprintln!` | 返回告警（`_with_warnings` 或进 `ReadReport.warnings`），CLI 在 `io_dispatch::read_trajectory` 统一加 `[ferro] ` 打印，Python 走 `warnings.warn`。告警文本不写 CLI 选项名（Python 用户没有 `-a/-b/-c`） |
+| reader 里想提示用户 | `eprintln!` | 返回 `Notice`（`_with_warnings` 或进 `ReadReport.warnings`），CLI 经 `report.rs` 打成 `<来源>[:<行号>]: FerroWarning: …`，Python 发 `ferro.FerroWarning` / `FerroNote`（第 11 批）。告警文本不写 CLI 选项名（Python 用户没有 `-a/-b/-c`） |
 | 带参数名的报错 | 搬进 io 后文案只剩一种说法 | `--atom-style` / `--type-map` 与 Python 的 `atom_style=` / `type_map=` 各自在读前检查、用自己的参数名；io 的 `read_as` 只留中性的防御性报错 |
 | 名字不说明格式的文件 | 一律报 Unsupported | 走 `sniff` 认横幅；`.out` / `.xml` / `.log` / 无扩展名时 sniff 的报错原样给出，其余扩展名才加「Unsupported input format」前缀 |
 | 往 dict / 结构里补字段 | 新键与已有键同名，静默覆盖（`read_output` 的 `steps` 计数被首末步号元组覆盖，`59d3469` 修） | 补字段前 grep 已有键；测试断言旧键的类型，不只断言新键存在 |
