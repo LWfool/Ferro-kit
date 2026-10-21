@@ -12,14 +12,13 @@ use anyhow::{anyhow, Result};
 use clap::{Args, Subcommand};
 use ferro_analysis::{
     calc_chg_sdf, calc_cluster_sdf, calc_cube_density, calc_cube_radius, ChgSdfParams,
-    ClusterSdfParams, CubeDensityParams, CubeRadiusParams,
+    ClusterSdfParams, CubeDensityParams, CubeMode, CubeRadiusParams,
 };
 use ferro_core::Trajectory;
 use ferro_io::{read_cube_as_chg, write_cube};
 use std::path::PathBuf;
 
 use crate::args::common::CommonArgs;
-use crate::args::cube::CubeCliMode;
 use crate::batch;
 use crate::help;
 
@@ -168,20 +167,12 @@ pub fn print_help(cmd: &MapCmd) {
 
 pub fn run(cmd: &MapCmd) -> Result<usize> {
     match cmd {
-        MapCmd::Density(c)  => run_grid(c, CubeCliMode::Density),
-        MapCmd::Velocity(c) => run_grid(c, CubeCliMode::Velocity),
-        MapCmd::Force(c)    => run_grid(c, CubeCliMode::Force),
+        MapCmd::Density(c)  => run_grid(c, CubeMode::Density, "density"),
+        MapCmd::Velocity(c) => run_grid(c, CubeMode::Velocity, "velocity"),
+        MapCmd::Force(c)    => run_grid(c, CubeMode::Force, "force"),
         MapCmd::Radius(c)   => run_radius(c),
         MapCmd::Sdf(c)      => run_sdf(c),
         MapCmd::ChgSdf(c)   => run_chg_sdf(c).map(|_| 0),
-    }
-}
-
-fn mode_name(m: &CubeCliMode) -> &'static str {
-    match m {
-        CubeCliMode::Density  => "density",
-        CubeCliMode::Velocity => "velocity",
-        CubeCliMode::Force    => "force",
     }
 }
 
@@ -198,20 +189,20 @@ fn drive(
     Ok(failures.len())
 }
 
-fn run_grid(c: &GridCmd, mode: CubeCliMode) -> Result<usize> {
+/// `name` is the subcommand, and the first segment of the product name.
+fn run_grid(c: &GridCmd, mode: CubeMode, name: &str) -> Result<usize> {
     let params = CubeDensityParams {
         nx: c.grid.nx,
         ny: c.grid.ny,
         nz: c.grid.nz,
         elements: c.grid.elements.clone(),
-        mode: mode.clone().into(),
+        mode,
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
     drive(&c.common, |traj, input, out| {
         let result = calc_cube_density(traj, &params)?;
 
-        let name = mode_name(&mode);
         let path = out.join(&batch::product_name(&[name, input], out.suffix.as_deref(), "cube"));
         write_cube(&result.cube, &path)?;
         println!(
