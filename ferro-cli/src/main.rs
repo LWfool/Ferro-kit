@@ -1,10 +1,8 @@
 //! `ferro` — the single entry point.
 //!
-//! One binary, subcommands grouped by what they produce. The old `fe-*` binaries are
-//! gone: they were separate front-ends over code that a future script/REPL mode has to
-//! link in anyway (a stateful `read` → `gr` → `sq` session cannot shell out to another
-//! process without re-reading the trajectory each time), so keeping them would have
-//! meant maintaining two copies of every command surface.
+//! One binary, subcommands grouped by what they produce. Not separate front-ends: a
+//! future script/REPL session (`read` → `gr` → `sq` without re-reading) needs every
+//! command in one process, and separate binaries would duplicate each command surface.
 
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
