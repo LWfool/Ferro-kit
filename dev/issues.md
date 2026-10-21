@@ -944,7 +944,7 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | 加格式 | 在 CLI 或 Python 里加扩展名分支 | 只改 `ferro-io/src/format.rs`：`Format` 加变体，`ALL` / `name` / `detected_by` / `can_write` / `multi_frame` / `from_name` / `read_as` / `write_one` 由编译器与 match 逼着补。CLI 的格式表由 `Format::ALL` 生成，Python 的 `read` / `write` 走同一张表 |
-| reader 里想提示用户 | `eprintln!` | 返回 `Notice`（`_with_warnings` 或进 `ReadReport.warnings`），CLI 经 `report.rs` 打成 `<来源>[:<行号>]: FerroWarning: …`，Python 发 `ferro.FerroWarning` / `FerroNote`（第 11 批）。告警文本不写 CLI 选项名（Python 用户没有 `-a/-b/-c`） |
+| reader 里想提示用户 | `eprintln!` | 返回 `Notice`（reader 返回 `(Trajectory, Vec<Notice>)`，经 `read` 进 `ReadReport.warnings`），CLI 经 `report.rs` 打成 `<来源>[:<行号>]: FerroWarning: …`，Python 发 `ferro.FerroWarning` / `FerroNote`（第 11 批）。告警文本不写 CLI 选项名（Python 用户没有 `-a/-b/-c`） |
 | 带参数名的报错 | 搬进 io 后文案只剩一种说法 | `--atom-style` / `--type-map` 与 Python 的 `atom_style=` / `type_map=` 各自在读前检查、用自己的参数名；io 的 `read_as` 只留中性的防御性报错 |
 | 名字不说明格式的文件 | 一律报 Unsupported | 走 `sniff` 认横幅；`.out` / `.xml` / `.log` / 无扩展名时 sniff 的报错原样给出，其余扩展名才加「Unsupported input format」前缀 |
 | 往 dict / 结构里补字段 | 新键与已有键同名，静默覆盖（`read_output` 的 `steps` 计数被首末步号元组覆盖，`59d3469` 修） | 补字段前 grep 已有键；测试断言旧键的类型，不只断言新键存在 |
@@ -966,7 +966,7 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| 新加公开项 | 在子模块里 `pub fn`，外部却够不着 | analysis / io 的子模块已私有（A-12），新公开项要在 crate 根 `pub use`；没导出又没调用的，dead_code 会报 —— 那正是它的用途 |
+| 新加公开项 | 在子模块里 `pub fn`，外部却够不着 | analysis / io 的子模块已私有（A-12），新公开项要在 crate 根 `pub use`；没导出又没调用的，dead_code 会报 —— 那正是它的用途。**只导出仓外真有调用的项**：`ferro-io` 根上曾再导出 30 个仓外零调用的 reader / writer，dead_code 因此形同虚设（A-2，P3 收口）；按格式的 reader 一律经 `read` 走，不上根 |
 | 库报错 | 把 CLI 语境写进库的错误（「this analysis follows atoms by index」放进 core） | core 只陈述事实（哪一帧、哪个原子），「为什么要紧」由调用方补：analysis 走 `check::same_atoms`，deepmd writer 自己补「一个 system 一种成分」 |
 | 闭包返回借用 | 把 `\|p\| (&p.0, &p.1)` 先绑到变量再传给 `impl Fn(&T) -> (&Path, …)`，报 lifetime may not live long enough | 闭包直接写在参数位置让签名从约束推断，或改写成 `fn` |
 | 重排 / 排序 | 以为排序在 `ml::merge` | 规范序是 `ferro_core::data::elements::canonical_cmp`，排原子是 `Trajectory::canonically_sorted`；type_map、gr 列序、merge 同一条规则 |

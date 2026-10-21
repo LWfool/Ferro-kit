@@ -3,6 +3,18 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## `ferro-io` 的公开面：告警随返回，按格式的 reader 不上根（2026-10-21，瘦身 P3，用户定）
+
+- **告警与统计是读取结果的一部分**，reader 只有一个名字，返回 `(Trajectory, Vec<Notice>)` 或
+  `(Trajectory, AimdStats)`。原先「原名丢弃告警 + `_with_warnings` / `_with_stats` 带告警」两套并存，
+  丢弃版本只在测试里有人调，库调用方却最容易顺手拿到它。
+- **根上只导出仓外真有调用的项**。按格式的 reader（xyz、pdb、poscar…）一律经 `read` / `read_as`
+  走，告警在 `ReadReport` 里；仓外在用的 `read_lammps_dump`、`read_deepmd_npy`、`read_qe_out`、
+  `read_aimd` 保留。`ReadReport` 出现在 `read` 的返回类型里，保留导出。
+- **撤回 B-13**：当时为让库调用方拿到 xyz / extxyz / pdb / lammps_data 的告警而导出了四个
+  `_with_warnings`；`read` 同样带出这些告警，两条路并存只会让 dead_code 失效。用户在 A（撤回）/
+  B（保留四个导出）之间选 A，`ferro-io/tests/warnings_export.rs` 改为经 `read` 断言。
+
 ## 2026-10-19 四次审查遗留清理（10-11 / 10-03 / 10-01 / 09-27）
 
 范围是下面四节里尚未修复的条目。涉及挂起组的条目只归类、不修。每批开工前先把逐条计划交用户审核；

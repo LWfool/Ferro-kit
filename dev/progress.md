@@ -212,7 +212,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   原样保留则导出 nep 的 `virial=` 被本仓 extxyz reader 拒收；与 dpdata 在该路差 ~1e-3 eV
 - **`aimd.rs`**（2026-08-27）：`AimdStats`（原 `Cp2kOutStats`）+ `AimdFormat` +
   `sniff`（读头 96 行认横幅）+ `read_aimd_as(path, fmt)` + 它的嗅探包装
-  `read_aimd_with_stats`。2026-09-22 拆成两个：调用方在自己更清楚格式时
+  `read_aimd`（2026-10-21 前叫 `read_aimd_with_stats`）。2026-09-22 拆成两个：调用方在自己更清楚格式时
   （`collect --format`）绕开嗅探。同日 `sniff` 的 CP2K 分支改为**读不到
   `GLOBAL| Run type` 就报错**并点名 `--format` —— 此前默认按 MD 走，
   一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关。

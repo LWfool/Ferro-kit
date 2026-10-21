@@ -135,7 +135,7 @@ command line alike; regenerate it rather than migrating it.
   subclasses of `UserWarning` (a `UserWarning` filter still catches them).  The text starts with
   the path and line, so reading several files that trigger the same notice gives one warning per
   file; it used to give one in all.  The instance carries `source`, `line` and `detail`.
-- Rust library: the `_with_warnings` readers and `ReadReport::warnings` return
+- Rust library: the per-format readers and `ReadReport::warnings` return
   `Vec<ferro_io::Notice>` (`level`, `line`, `message`) instead of `Vec<String>`.
 
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
@@ -180,9 +180,17 @@ No command-line behaviour changes; Rust callers change as follows.
   functions, `DEFAULT_SEED`, `frame_table`, `filter_diagnostics` and `quantiles`. The geometry
   helpers (`min_pair_distance`, `count_with_coordination`, `coordination_histogram`) and the
   remaining diagnostics functions are no longer public.
-- Removed, with no caller left: `ferro_io::{read_contcar, read_cp2k_md, read_cp2k_sp,
-  read_vasp_outcar, read_vasprun}` (use `read_poscar` or the `_with_stats` readers);
-  `ferro_analysis::VERSION`; `MsdFit::{frac_lo, frac_hi}` (the range is `MsdParams.fit_range`);
+- `ferro_io` readers return what they noticed alongside the frames, under the plain name: the
+  `_with_warnings` / `_with_stats` variants are gone, and `read_lammps_dump`, `read_deepmd_npy`
+  and `read_qe_out` return `(Trajectory, Vec<Notice>)` or `(Trajectory, AimdStats)` (take `.0`
+  for the frames alone). `read_aimd_with_stats` is `read_aimd`.
+- No longer reachable from `ferro_io`: `read_as`, `read_xyz`, `read_extxyz`, `read_pdb`,
+  `read_cif`, `read_poscar`, `read_contcar`, `read_lammps_data`, `read_cp2k_md`, `read_cp2k_sp`,
+  `read_vasp_outcar`, `read_vasprun`, `read_cp2k_inp`, `read_cp2k_restart`, `read_qe_input`,
+  `is_extxyz`, `apply_type_map`, `write_xyz`, `index_width`, `indexed_path`. Read any format
+  through `ferro_io::read` (its warnings and AIMD statistics are in `ReadReport`), or a program
+  output through `read_aimd` / `read_aimd_as`.
+- Removed, with no caller left: `ferro_analysis::VERSION`; `MsdFit::{frac_lo, frac_hi}` (the range is `MsdParams.fit_range`);
   `AtomType::{display_rank, is_bridging}`; `Frame::{geometric_center, center_of_mass, center,
   is_periodic, velocities_mut}`; `Trajectory::{frame_mut, iter_frames}`; `Atom::distance_to`;
   `Table::n_cols`; `FrameVerdict::is_clean` (test `flags == 0`).
@@ -277,9 +285,6 @@ No command-line behaviour changes; Rust callers change as follows.
   `type.raw`, which now survives a refused rewrite unchanged.
 - PDB writer errors number frames from 0, as the other writers do; the two cell errors counted
   from 1.
-- Rust library: `read_xyz_with_warnings`, `read_extxyz_with_warnings`, `read_pdb_with_warnings`
-  and `read_lammps_data_with_warnings` are exported from `ferro_io`; without them a library
-  caller lost the warnings of those four readers.
 
 ### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
 
