@@ -17,6 +17,6 @@
 | `5Al_0003_1500K_f394.out` | CP2K 2025.2 单点 | 新布局：`FORCES\|`、`STRESS\| … [bar]`、`CELL_TOP\|` 干扰项 |
 | `cp2k_sp_v61.out` | [cp2kdata][] 的 `tests/test_energy_force/v6.1/normal/output`（MIT） | 老布局：`energy (a.u.):`、`ATOMIC FORCES in [a.u.]`、无前缀的 ` STRESS TENSOR [GPa]`、`Fe1`/`Fe2` 两个 kind 名 |
 | `qe75_{sp,sp_spin,sp_noconv,md,vcmd}.out` | QE 7.5 pw.x，6 原子 AlPO₄（`exp_603719.cif`），PBE-D3，`verbosity = 'high'`；由 `ferro-python/scripts/qe_fixtures_hpc.sh` 在超算算出（2026-10-17），输入与作业脚本在 `examples/qe/pwx/` | 单点：总力后跟七组力分量；`nspin = 2`；`electron_maxstep = 3` 不收敛；SVR 5 步 md 与 5 步 vc-md 的「结构印在上一步末尾」 |
-| `Experiment.xlsx` | 实验数据 | 表格读取 |
+| `Experiment.xlsx` | 实验数据 | 不是测试 fixture：只被 `scripts/compare_sq_experiment.py` 当实验 S(q) 读来对照 |
 
 [cp2kdata]: https://github.com/robinzyb/cp2kdata
