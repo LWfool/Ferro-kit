@@ -118,12 +118,6 @@ const PAGES: &[Page] = &[
         section: None,
     },
     Page {
-        topic: "cube-jump",
-        source: "analysis/cube-jump.md",
-        text: include_str!("../../docs/src/analysis/cube-jump.md"),
-        section: None,
-    },
-    Page {
         topic: "map radius",
         source: "analysis/cube-radius.md",
         text: include_str!("../../docs/src/analysis/cube-radius.md"),

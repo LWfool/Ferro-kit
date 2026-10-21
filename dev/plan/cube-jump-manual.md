@@ -1,3 +1,6 @@
+<!-- 2026-10-21 瘦身 D-4：自 docs/src/analysis/cube-jump.md 原样移入（无 CLI 入口的功能不占手册页）。
+     补 `ferro map jump` 时搬回手册，见 dev/plan/suspended.md「`ferro map jump`：丢失的 CLI 入口」。 -->
+
 # Jump Distance Distribution
 
 > **Library function only, no CLI entry.** `ferro_analysis::calc_cube_jump` is fully implemented

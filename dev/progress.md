@@ -261,7 +261,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 | `vanhove.rs` `vacf.rs` `rotcorr.rs` | 自关联 / 速度自关联 / 转动相关 | |
 | `cube_density.rs` | 3D 密度/速度/力分布 | |
 | `cube_radius.rs` | 硬球占据图 | `ferro map radius` |
-| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 测试，2026-10-08 补 `validate()`，已从 crate 根导出（`calc_cube_jump` 等），但**没有 CLI 入口**。手册页与 `ferro doc cube-jump` 都在位。见 `plan/suspended.md`（挂起的 `map jump` 入口组） |
+| `cube_jump.rs` | 跳跃距离分布 | 实现完整 + 测试，2026-10-08 补 `validate()`，已从 crate 根导出（`calc_cube_jump` 等），但**没有 CLI 入口**。手册页 2026-10-21 撤出手册，原样存于 `plan/cube-jump-manual.md`。见 `plan/suspended.md`（挂起的 `map jump` 入口组） |
 | `cube_sdf.rs` | 团簇 SDF（Kabsch 对齐） | 用 crate 内的 `network::build_network_graph`，已去 petgraph |
 | `util.rs` | `build_avg_frame`（cube 文件头的时间平均帧）；`check_frame_spacing`（帧等间隔、不重复，2026-10-09 由 CLI 下沉，CLI 五个时间相关分析与 Python `msd` 共用） | 2026-09-12 由三份逐字相同的实现合并而来，同时修掉三份都带的 PBC bug：解缠在**参考帧 cell** 的分数坐标下做，故没跨边界的原子逐位不变 |
 | `scattering_data.rs` | X 射线 / 中子散射因子表 | 供 `sq.rs` 加权 |

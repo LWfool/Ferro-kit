@@ -20,7 +20,6 @@
 - [Rotational Correlation C₂(t)](analysis/rotcorr.md)
 - [Bond Lifetimes and Bond Events](analysis/bondlife.md)
 - [3-D Spatial Density Maps](analysis/cube-density.md)
-- [Jump Distance Distribution](analysis/cube-jump.md)
 - [Hard-Sphere Occupancy](analysis/cube-radius.md)
 - [Cluster SDF](analysis/cube-sdf.md)
 - [Averaged Charge-Density SDF](analysis/chg-sdf.md)

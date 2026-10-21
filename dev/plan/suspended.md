@@ -87,15 +87,19 @@ bug 修复的 diff 要能一眼说清「变的都该变」（判据同 `build_av
 也漏了它 —— 0.2.0 把八个 `fe-*` 合并成单个 `ferro` 时，`fe-cube -m jump` 没有
 跟着搬过来。
 
-**这不是死代码，是漏登记的待办**：`docs/src/analysis/cube-jump.md` 开头就写着
+**这不是死代码，是漏登记的待办**：原手册页 `docs/src/analysis/cube-jump.md` 开头就写着
 「仅库函数，没有 CLI 入口……待 `map jump` 补上」，`SUMMARY.md` 也挂着这一页，
 即手册已经对用户承诺了。此前 `plan.md` 里却没有这一条。
 
 补的时候按 `map` 现有形状走：`cmd/map.rs:223 run_grid` 的 `drive()` 已经把
 「一输入一 `.cube`」的遍历收好了，`calc_cube_jump` 的签名与
 `calc_cube_density` / `calc_cube_radius` 同形，接一个分支 + 一个 `JumpCmd`
-参数结构体即可。手册页与 `doc.rs` 的 `PAGES` **都已经在位**（`ferro doc cube-jump`
-现在就能打出来），缺的只有 `help.rs` 的帮助页与 `print_map_overview` 里的一行。
+参数结构体即可。缺 `help.rs` 的帮助页、`print_map_overview` 里的一行，以及手册页。
+
+**手册页 2026-10-21 撤出手册**（瘦身 D-4，用户定）：没有 CLI 入口的功能不占手册页。原页原样存在
+`dev/plan/cube-jump-manual.md`；补入口时按 `add-analysis` 技能把它搬回 `docs/src/analysis/`，
+topic 名改用 `map jump`，并改正其中过时的用法示例（`-o run1` 是 0.3.4 以前把 `-o` 当批次标记的写法，
+现在是 `-s`），再登记 `SUMMARY.md` 与 `doc.rs` 的 `PAGES`。
 
 ### `ferro map sdf` 导出旋转后结构：压缩 npz（2026-09-26 提出）
 
