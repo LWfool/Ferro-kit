@@ -219,9 +219,10 @@ any source, not only the ones `ferro net` writes.
 
 ### What writes `label` out
 
-**No writer folds `label` into the element column on its own.**  `ferro convert` writes clean element
-symbols whatever the labels are.  Only `ferro net --export-traj` folds, and only for LAMMPS dump — that
-format has just one name column to put a second name in; extxyz uses its own `label:S:1` column, lossless in both directions.
+**Only the LAMMPS dump writer folds `label` into the element column**, and only a label of the form
+`<element>_<suffix>` (`P_3`, `O_b`; the dump reader splits it back apart, so the round trip is exact).
+`Fe1`-style site names are not folded, and every other writer writes clean element symbols.  A dump
+has just one name column to put a second name in; extxyz uses its own `label:S:1` column, lossless in both directions.
 
 The fold has a guard: a label not of the form `<element>_…` is not folded, and those occurrences are
 counted and warned about.  A CIF `O1` folded in and read back would be a non-existent element `O1`.

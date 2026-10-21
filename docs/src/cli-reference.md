@@ -341,8 +341,9 @@ The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.
 `-i` currently accepts a **single file** only.  Several inputs plus frame selection would make the output
 names of different trajectories collide; that needs the input stem in the file name as well, which is a separate piece of work.
 
-**The element column always carries clean element symbols**, whatever `Atom::label` holds.  Only
-`ferro net --export-traj` folds the label into the element column of a LAMMPS dump.
+**The element column carries clean element symbols**, with one exception: the LAMMPS dump writer folds
+a label of the form `<element>_<suffix>` (`P_3`, `O_b`) into its element column, and the dump reader
+splits it back.  Labels such as `Fe1` are not folded.
 
 **Reading a LAMMPS dump, columns are taken by the names on the `ITEM: ATOMS` line**, in any order.
 Coordinates come from the first complete set of `x y z`, `xs ys zs`, `xu yu zu`, `xsu ysu zsu` (ASE's
@@ -798,8 +799,9 @@ ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 | `-m, --method` | `neargrid` | `ongrid` \| `neargrid` \| `offgrid` \| `weight` |
 | `-r, --refine` | `-1` | edge refinement: `-1` automatic, `-2` a single pass, `N` for N passes |
 | `-v, --vacval` | `1e-3` | vacuum density threshold [e/Å³] |
-
-**There is no `-o`**: the output file names are decided by the stem of the input file (see below).
+| `-o, --output <DIR>` | next to the input | directory for the three reports |
+| `-s, --suffix <SUFFIX>` | — | tag appended to the report names: `bader_ACF_<stem>_<suffix>.dat` |
+| `--mkdir` | — | create the output directory without asking (required when there is no terminal) |
 
 ### Choosing among the four methods
 
@@ -1060,7 +1062,7 @@ ferro doc net > net.md             # redirected output is not paged and is a cle
 **Topics carry the same names as the subcommand tree** (`dataset filter`, `traj gr`, `net`), so the
 `Full documentation:` line at the end of every help page is the next command to type rather than a path to
 go looking for.  Pages that do not correspond to a single command use flat names (`data-model`,
-`installation`, `python`, `cli-reference`).  Short forms such as `gr`, `filter` and `network` have aliases.
+`installation`, …); `ferro doc` with no argument lists every one.  Short forms such as `gr`, `filter` and `network` have aliases.
 
 `convert` / `info` / `bader` have no page of their own — they are **sections of this page**, and `ferro doc`
 addresses sections, taking that `##` heading up to the next one of the same level, so it prints a few dozen lines rather than the whole book.
