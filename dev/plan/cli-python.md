@@ -80,3 +80,10 @@ vanhove 的归一化就不除 dr，与 GROMACS / pymatgen 相差 1/dr（手册�
 
 若采用：单独一次纯格式提交（`style: adopt rustfmt`）+ 固定 `rustfmt.toml`，
 不要混进特性或依赖升级提交。
+
+## 2026-10-21 从各审查节归拢的条目（定级沿用原节，见各条）
+
+### ferro-py job 的遗留与存疑（2026-10-21 从「`ferro.jobs`」一节归拢）
+
+- **删 `ferro job` 时失去、ferro-py 尚未覆盖的**（用户接受，以后需要再补；功能类，低）：Gaussian 输入、CP2K freq、QE nscf / bands、CP2K `--atom-charge` / `--cube` / `--molden`、多重度推断（参考 `dev/decisions.md`「自旋多重度」）
+- **存疑（缺证据）**：CP2K 2025.2 的 k 点 `EXTRAPOLATION ASPC` 是否可用；`conv analyze` 取「最低一个满足阈值的档」，偏差不单调时可能报出其上仍有超阈值档的低档（判据选择，待定）

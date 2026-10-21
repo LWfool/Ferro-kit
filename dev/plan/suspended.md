@@ -112,3 +112,92 @@ feature**。选型依据：
 体积主要由精度决定而非算法：f64 坐标尾数近随机，deflate 只压 10–30%；**存 f32
 直接减半**（坐标误差 ~1e-5 Å，dpdata 默认也是 float32）。建议默认 f32 + 开关留
 f64。数组命名与形状在实现时定。
+
+## 历次审查登记的挂起条目（2026-10-21 从各审查节归拢，原文）
+
+### 归类（10-19 遗留清理）
+
+**归类（只改登记，不改代码）**：
+- **Bader 改写组**：D-8、D-9、D-10、refine_edge 的负号与真空哨兵相撞、Bader 参数校验与手册不符、`dev/bader.md`
+  过时与空断言、`bader_grid` 三份重复的后处理（G-7）、布局建议 5、C-D2、C-D3、Bader 归属的 MIC（口径）、
+  near-grid / off-grid 收敛测试、weight 方法 BCF 与 ACF 的一致性测试
+- **cube_sdf / chg_sdf 改写组**：B-3、B-4、B-6、B-10、D-11、`cube-sdf.md` 过时、chg_sdf 插值的 `rem_euclid` 越界、
+  chg_sdf 跨文件平均按体积加权、chg-sdf 的参数校验 / `-s STEM` 帮助 / 中文报错、`calc_chg_sdf` /
+  `calc_cluster_sdf` 返回 `Option`、≥8 个 P 的置换测试、**`NetworkGraph.former_qn` 同名不同义**（实为桥氧数，
+  与 `AtomType::Former.qn` 不是一个量；唯一使用方是 cube_sdf 的族名）
+- **`map jump` 入口组**：B-9
+
+### 2026-10-17 全盘架构审查
+
+| # | 级 | 位置 | 问题 | 修法 |
+|---|---|---|---|---|
+| A-3 | 轻 | `dft/bader.rs:165,194,217` | ACF / BCF / AVF 文本在 analysis 里拼，不走 `write_table` | 随 Bader 重写：改 `to_tables()`，或承认是外部格式搬 `ferro-io/src/writers/bader.rs` |
+| B7 | 中（实测） | `charge_grid.rs:54-55` | `ChargeGrid::new` 对退化胞 `expect` panic：第三晶格矢量为 0 的 CHGCAR 让 `ferro bader` 退出码 134。B-1 / D-M17 修了分析侧，漏了 core 构造器 | 返回 `Result` |
+| B8 | 轻（实测） | `readers/chgcar.rs:103-107` | CHGCAR 网格维数为 0 时 bader 输出 0 e、退出码 0（cube reader 已有此检查） | 「维数 ≥ 1」放进 `ChargeGrid::new`，一处守住两个 reader |
+| D-C1 | 中（实测） | `cube_sdf.rs:383,161-166,634-638,169-174`；`chg_sdf.rs:382-390` | 形成子硬编码「P」：`--former Si` 时族名仍 `P1`、cube 头里 Si 写 Z=15；`--modifier Pb` 时 Pb 写 Z=15，Q1 下 Pb 被 `p_indices` 当骨架参加 n! 置换（Pb 版 2 分 19 秒未完）；`--ligand` 非 O 时元素仍写 O | 并入 cube_sdf 改写组（下面 R-2 的结构化 `Site`） |
+| D-A3 | 中 | 各 `calc_*` | 返回类型四种：`Result`、`Option`（cube_density / cube_jump / chg_sdf，丢失败原因；`cube_jump.rs:136` 把 `check_same_atoms` 的错误 `.ok()?` 吞掉）、`Result<Option>`（cube_sdf）、不可失败（Bader；`BaderParams` 无 `validate`，`bader_grid.rs:722` 无胞帧 `unwrap` panic） | 统一 `Result<T>`，结果带 warnings（第 3 步） |
+
+D 组改写组的新结构（只给结构，条目见原组）：
+- **cube_sdf / chg_sdf（R-2）**：① 逐帧并行提取团簇，沿键 BFS 展开、检测逾渗（B-4）；位点用结构化枚举
+  `enum Site { Former{elem,qn}, Ligand{elem,kind}, Modifier{elem} }`（消 D-C1）② 按签名分族，族内确定性选参考
+  ③ 独立 `align.rs`，Kabsch 写对（S-A），置换限组内、组大时匈牙利 + Kabsch 迭代（B-6）④ 网格以参考结构为中心、
+  以 Å 定界（B-3），归一化定为「每团簇每 Å³ 数密度」（B-10）⑤ 告警进结果
+- **Bader（R-3）**：① 一个驱动 + 三种上升策略，真空先于上升标记（S-B），`refine_edge` 按方法分派、看 26 邻（D-8、
+  `max_neargrid`）② 体积编号用 `enum Basin { Unassigned, Vacuum, Vol(u32) }`，去掉 0 / nvols+1 / 负数三种哨兵 ——
+  C-D2、S-C、refine 撞真空哨兵三条都出在这里 ③ 四种方法共用一份后处理，守恒性断言 `Σionchg + vacchg == 网格总量`
+  ④ `BaderParams::validate`，`run()` 返回 `Result` ⑤ **`dev/bader.md` 写的参考实现 `examples/bader/` 本地不存在**，
+  重写前须把 Henkelman 源码或二进制放回作对拍基准
+
+- 10-17 第 3 步挂起：E2-1 与 D-A1 的 cube_sdf / chg_sdf 逐团簇告警、cube_sdf / chg_sdf / Bader 的返回类型（随改写组）
+- E 组 R-6（低）：`bader -i` 改收多文件走 `map_inputs`
+
+### 2026-10-11 全库审查
+
+| # | 位置 | 问题 | 复现 | 修法 |
+|---|---|---|---|---|
+| D-8 **挂起：Bader 重写** | `dft/bader_grid.rs:474`（refine_edge 内 `max_ongrid`）、`:439-449`（边缘只看 6 个面邻居） | **CLI 默认的 near-grid（`-r -1`）与 on-grid 逐位相同**：refine_edge 对边缘点跑 on-grid 上升，边缘判定也只看 6 邻（规格与 Henkelman 2009 为 26 邻、near-grid 时调 near-grid 上升）。即默认路径实际是 on-grid | 10 Å 立方胞两高斯（中心 (3.1,3.3,5.0) σ0.9 幅 1.0；(6.3,6.9,5.2) σ1.4 幅 0.6），N=60：on-grid 与 near-grid `-r -1` 均 11.91354，near-grid `-r 0` 11.88225；N=120 默认误差 0.024 e 且随加密几乎不降，`-r 0` 1e-4 | refine_edge 按方法分派，near-grid 调 `max_neargrid`（顺带解决「`max_neargrid` 被绕过」一节）；边缘判定改 26 邻；加收敛测试 |
+| D-9 **挂起：Bader 重写** | `dft/bader_grid.rs:658`（`grad_lat_1`）、`:736`（`start = [i+0.5, …]`） | off-grid 三线性插值的 $\partial\rho/\partial f_2$ 写成 x 向差分，起点偏半格 | 同 D-8 体系 `-m offgrid`：N=60 nvols **21918**（应 2）；N=30 3064；原子电荷误差 0.1–0.19 e | 改 `grad_lat_1`、起点 `[i,j,k]`；单测「线性密度 ρ=y 的梯度只有 y 分量」+ 收敛测试 |
+
+| # | 位置 | 问题 | 修法 |
+|---|---|---|---|
+| B-3 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:614-627 build_reference_frame` | `map sdf` 参考结构多加一次 `(min+max)/2` 平移，与密度网格错位；现被 S-A 掩盖（实测仅 0.04 Å），S-A 修后显形 | 直接用 `pos`，删 `center`/`box_size` 参数；随 S-A 修，测试「参考原子落在各自密度峰上」 |
+| B-4 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:401-404` | 以锚原子最小镜像取局部坐标，跨度超过半盒或逾渗的团簇被折断，无告警（推断，未构造算例） | BFS 展开 + 逾渗检测；结果计数被跳过的团簇。随 B-6 / S-A 一并做 |
+| D-10 **挂起：Bader 重写** | `dft/bader_weight.rs:107-113`、`:146-148` | S-C 的补充：weight 在等密度平台上 `tsum = 0` → 0/0 = NaN，电荷成片丢（floor=0.2 时 208.6 e 剩 97.2 e） | 随 S-C / Bader 重写；回归测试 Σionchg + vacchg == 网格总量 |
+| D-11 **挂起：Bader 重写** | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³ | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
+
+- **B-9**（挂到「`ferro map jump`：丢失的 CLI 入口」，补入口时一并定）：`cube_jump.rs:192-217` 滑窗重叠，τ > 1 时同一次
+  跳跃计 τ 次，手册却称「raw count of jump events」。二选一：窗口不重叠（步长 τ），或改称「超阈值窗口数」
+- **B-10**（挂到 B-6，cube_sdf 改写时一并定）：`cube_sdf.rs:607-609` 每张网格按全体体素均值 = 1 归一，含 padding 空体素，
+  `--padding` 3 → 6 Å 数值降为 1/2–1/3，不同类型不可横比。TRAVIS / VMD volmap 按每帧每团簇数密度或相对体相密度归一
+
+- `bader_grid.rs` 三条网格路的后处理逐段复制（`:161-`、`:508-`、`:719-`，15 个连续 6 行窗口相同；G-7），S-B 修法要改三遍 →
+  随 Bader 重写抽出
+
+- 10-11 轻级 D 中归 Bader 组的：refine_edge 取负标边缘，体积 1 取负后是 −1 与真空哨兵相撞、凭空多一个体积（`bader_grid.rs:478-487`，`ionchg` 不受影响）；Bader / chg-sdf 参数校验与手册零碎不符；`dev/bader.md` 过时处与 Bader 单测的空断言
+
+### 2026-10-03 四路审查
+
+| # | 位置 | 问题 | 复现 | 修法 |
+|---|---|---|---|---|
+| C-D2 **搁置**（2026-10-08 用户定：随 Bader 重写一并修，同 S-B / S-C）| `dft/bader.rs:205` vs `bader_weight.rs:98,145` | weight 的 `volchg` 是 1 索引，`bcf_text` 按 0 索引读，**BCF 电荷列整体错一位**。「bader weight 的真空电荷取错」一节只说了 vacchg，不完整 | `ferro bader -i tests/CHGCAR_2atoms -m weight`：BCF 体积 1 电荷 0、体积 2 为 53.000（实为体积 1 的）；`Vacuum charge` = 原子 2 电荷 52.99 | 建 `BaderResult` 前转 0 索引；或按布局建议 5 复用 grid 的函数 |
+
+| # | 位置 | 问题 / 复现 | 修法 |
+|---|---|---|---|
+| B-6 **搁置**（2026-10-08 用户定：该功能后续会更新，届时一并修；候选思路：组内枚举、匈牙利 + Kabsch 迭代如 ArbAlign、距离指纹配对）| `cube_sdf.rs:502` 起 `heap_permutations` | 同签名族对**全部 P** 做 n! 枚举，每排列一次 SVD；docstring（`:414`）说「组内」，代码不分组。10 元环 1.2 s、11 元 10.7 s、13 元外推约 28 min，偏磷酸盐 Q2 长链常见 | 只在同标签组内置换并设上限，超限退 Hungarian 并告警 |
+
+| # | 位置 | 问题 / 复现 | 修法 |
+|---|---|---|---|
+| C-D3 **搁置**（2026-10-08 用户定：随 Bader 重写一并修，同 C-D2）| `dft/bader.rs:174-178`；`cli-reference.md:800`、`dev/bader.md` §10 | ACF 的 `MinDist` 实为「极大值到原子距离」的最小值（原子 1 输出 0），不是 Henkelman 的「到 Bader 表面最小距离」；`bader.md` 称外部工具可按 Henkelman 格式解析，实测 ASE `attach_charges` 与 pymatgen `_parse_acf` 都失败（表头 `—` 非 ASCII、无 `----` 分隔、无 `VACUUM CHARGE:`） | 实现表面距离并恢复 Henkelman 版式；或改手册写明自有格式与列含义 |
+
+- chg_sdf 跨文件平均的是 ρ·V_cell，NPT 快照下是体积加权（推断）
+- `cluster.rs:56 NetworkGraph.former_qn` 是桥氧个数，`AtomType::Former.qn` 是同元素连接数，
+- Bader 归属原子的 MIC 用分数取整、不查上界，强三斜小胞取错镜像（推断，极少触发）
+
+5. **Bader weight 复用 grid**：`bader_weight.rs:236-262` 抄了 `assign_chg2atom` 与
+   `calc_atomic_vol`，改传 `&volchg[1..=nvols]` 复用（R6），同时消掉 C-D2 那一族索引错误
+
+### 2026-10-01 全库审查
+
+- **cube_*（除 `calc_cube_radius`，已随审查低 6 改 `Result`）、`calc_chg_sdf`、`calc_cluster_sdf` 仍返回 `Option`**（M3 未动；`calc_network` 已随 L2 改 `Result`）：
+  参数已在读文件前查过，剩下的 `None` 都是轨迹层面的（缺 cell、缺速度、没有团簇），
+  但 CLI 只能猜原因（`missing cell, velocities, or forces?`）。改 `Result` 是同一个做法

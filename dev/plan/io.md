@@ -109,3 +109,34 @@ CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/
 ### 深度学习工作流 I/O
 
 MACE/NequIP 兼容格式仍未开始。（DeePMD npy 读写与 GPUMD/NEP 的 `train.xyz` 导出已完成。）
+
+## 2026-10-21 从各审查节归拢的条目（定级沿用原节，见各条）
+
+### 测试缺口（遗留清理第 8 批，原属高；2026-10-20 用户定暂缓）
+
+历次审查登记的测试缺口原文如下，其中一部分可能已随后续修复补上，开工前逐条复核。带速度的 dump fixture 与下面「带速度的测试 fixture」是同一件事。
+
+- 10-11：（2026-10-14 删去已随修复补上的项）：Bader near-grid / off-grid 对解析密度的收敛；
+带速度的 dump fixture（C 用合成数据验过 vacf，仓库里仍无）。
+
+- 10-03：（2026-10-09 删去已随修复补上的项）：workflow 只有子串断言、无一条对照 CP2K / pw.x
+规则（M4–M12 全漏，随 QC 专项补）；`help_sync` 的 PAGES 不含 job 三页（约 35 个参数无防漂）；
+CLI 集成测试只有 bader 与 npt；gr 三斜数值（可用 27 镜像暴力对拍）；cube_sdf ≥8 P 的运行时上界与
+组内置换语义（随 B-6）；vanhove / angle 末 bin；rotcorr `--legendre 1` 头部；bondlife 对 MDA 定义
+钉死；spin 锕系 / 未知元素；weight BCF 与 ACF 一致性、ACF 用 ASE / pymatgen 回读（随 Bader 重写）；
+`wrap_position` 恰返 L；三斜下 `classify_frame`；dataset merge 乱序输入对 dpdata 端到端；
+`--last-n 0`；分派大小写、Python 写 CONTCAR；Python 绑定零测试（D-M1 只用临时 wheel 实测过）。
+
+- 10-01：（与上表对应）：dump writer 无「非下三角胞 + 力/速度」；POSCAR 无「元素交错 +
+速度」；QE / CP2K 只测了 `{}` 与 `.TRUE.`；lammps data 无「无注释 Atoms」；无截断 dump
+fixture；cube 往返只测零原点；cube_radius 无窗口超网格的用例。
+
+**审查未覆盖**：Bader 全套（已登记项之外）、`chg_sdf`、`cube_sdf` 聚类、`cube_jump`、
+`cp2k_sp`、pdb / cif writer、doc 渲染器、
+ferro-python 运行时。（`--metal-units` 全链路已随 2026-10-03 的 `--units` 改造走过一遍）
+
+### 其他 io 待办（2026-10-21 从各审查节归拢）
+
+- **`read_cube` 与 `read_cube_as_chg` 合并成一个 cube reader**（10-17 第 5 步用户定：`read_cube` 标记保留，以后合并）
+- **`write_deepmd_npy_bounds` 的边界检查只比总帧数**（第 10 批顺带注意到）：重叠或越界的 bounds（如 `[(0,3),(5,7)]`，共 5 帧）能过检查后在切片处 panic；只有 CLI 内部生成 bounds，暂无外部入口
+- **`ferro dataset` 审查（2026-10-17）未做的低级项**：D-5 filter 不重排原子（collect / merge 会），可写进手册；D-7 超过 1000 个 set 时目录按字典序；仍存疑：左手系晶胞
