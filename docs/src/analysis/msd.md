@@ -292,16 +292,9 @@ runs.
 
 ## Verification
 
-What has been checked, so a doubtful result can be narrowed down:
-
-| Check | Where | Agreement |
-|---|---|---|
-| FFT sum vs direct $O(N^2)$ sum, NPT triclinic box with boundary crossings | unit test `test_fft_matches_brute_force_npt_triclinic` | < $10^{-9}$ Å² per lag and axis |
-| same, non-periodic | `test_fft_matches_brute_force_nonperiodic` | < $10^{-9}$ Å² |
-| straight-line motion across a skewed triclinic face | `test_tor_crosses_skewed_axis` | $(v\,m)^2$ to $10^{-9}$, $v$ the speed |
-| TOR vs lattice view under a breathing box | `test_tor_does_not_follow_lattice_scaling` | the table above |
-| components add up to the total | `test_components_sum_to_total` | $10^{-12}$ |
-| two example LAMMPS trajectories (NPT, NVT) vs an independent numpy implementation | by hand, 2026-09-27 | within the csv's 7 significant digits |
+What has been checked, so a doubtful result can be narrowed down: the FFT sum against a direct $O(N^2)$ sum
+(NPT triclinic box with boundary crossings, and non-periodic; to $10^{-9}$ Å²), and two example LAMMPS
+trajectories (NPT, NVT) against an independent numpy implementation (within the csv's 7 significant digits).
 
 The independent check reads the dump with ASE, unwraps with TOR, and averages every origin directly —
 no FFT.  To repeat it on your own trajectory (`python` with numpy and ASE):

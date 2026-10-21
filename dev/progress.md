@@ -591,3 +591,55 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
   （`deepmd/utils/data.py` 的 `_make_idx_map`，默认 `sort_atoms=True`，
   非 mixed type 的 descriptor 要求如此）。ferro 排完之后 `type.raw` 单调不减，
   那个 lexsort 成为恒等置换
+
+## 时间相关分析的验证记录（2026-10-21 自手册迁入，瘦身 D-6）
+
+手册各页的「Verification」只留一句结论与给用户复现的 numpy 片段；逐项检查与测试名原文在此。
+「by hand」各行用的是当时的示例轨迹与独立 numpy 实现。
+
+### `msd`
+
+What has been checked, so a doubtful result can be narrowed down:
+
+| Check | Where | Agreement |
+|---|---|---|
+| FFT sum vs direct $O(N^2)$ sum, NPT triclinic box with boundary crossings | unit test `test_fft_matches_brute_force_npt_triclinic` | < $10^{-9}$ Å² per lag and axis |
+| same, non-periodic | `test_fft_matches_brute_force_nonperiodic` | < $10^{-9}$ Å² |
+| straight-line motion across a skewed triclinic face | `test_tor_crosses_skewed_axis` | $(v\,m)^2$ to $10^{-9}$, $v$ the speed |
+| TOR vs lattice view under a breathing box | `test_tor_does_not_follow_lattice_scaling` | the table above |
+| components add up to the total | `test_components_sum_to_total` | $10^{-12}$ |
+| two example LAMMPS trajectories (NPT, NVT) vs an independent numpy implementation | by hand, 2026-09-27 | within the csv's 7 significant digits |
+
+### `vacf`
+
+| Check | Where | Agreement |
+|---|---|---|
+| FFT vs direct all-origin sum, irregular velocities, per axis | unit test `test_fft_matches_brute_force` | $10^{-12}$ |
+| trapezoidal integral (constant $C_v$ gives $c\,t/3$, 0 at $t=0$) | `test_diffusion_is_trapezoidal` | $10^{-12}$ |
+| $C_v(0)=0$ leaves `vacf_norm` empty | `test_zero_velocity_gives_nan_norm_not_zero` | — |
+| synthetic AR(1) velocities, 30 atoms × 200 frames, vs an independent numpy implementation | by hand, 2026-09-27 | within the csv's 7 significant digits, all columns |
+
+### `rotcorr`
+
+| Check | Where | Agreement |
+|---|---|---|
+| FFT vs direct average, every frame valid (the `gmx rotacf` case) | unit test `test_fft_matches_brute_force_all_valid` | $10^{-10}$ |
+| same with one frame in five invalid per molecule | `test_fft_matches_brute_force_with_invalid_frames` | $10^{-10}$, NaN at the same lags |
+| lags with no valid pair are NaN | `test_lag_without_valid_pair_is_nan` | — |
+| trapezoidal integral | `test_integral_is_trapezoidal` | $10^{-10}$ |
+| rigid regular $PO_4$ rotating about $z$: `sum` reports cancellation, `bond` gives the analytic $C_2$ ($\cos = \tfrac13 + \tfrac23\cos\theta$ for every bond) | `test_sum_cancels_on_tetrahedron_bond_does_not` | $10^{-10}$ |
+| `bond` + $P_1$ vs direct average | `test_p1_bond_matches_brute_force` | $10^{-10}$ |
+| `bond` keeps following a bond stretched past $r_\text{cut}$ | `test_bond_is_followed_beyond_r_cut` | — |
+| example glass, P–O `bond` mode, $P_1$ and $P_2$ (1488 bonds = 372 P × 4), vs independent numpy | by hand, 2026-09-27 | $5\times10^{-8}$ |
+| example glass trajectory, P–O at $r_\text{cut}$ = 1.8 Å (all valid) and 1.52 Å (0.5 % invalid), vs an independent numpy implementation | by hand, 2026-09-27 | $5\times10^{-8}$ (csv precision), NaN positions identical |
+
+### `bondlife`
+
+| Check | Where | Agreement |
+|---|---|---|
+| $C_I$ and $S_C$ vs counting every origin directly, irregular bonding | unit test `test_both_functions_match_brute_force` | $10^{-12}$ |
+| break-and-reform counts for $C_I$, not for $S_C$ | `test_intermittent_counts_reformed_continuous_does_not` | exact |
+| hysteresis stops flicker; a free pair needs $r \le r_\text{bond}$ | `test_hysteresis_suppresses_flicker`, `test_hysteresis_needs_r_bond_to_form` | exact |
+| gap filling: $k$ filled, $k+1$ not, ends never | `test_fill_gaps_boundaries` | exact |
+| $n(t) = n(t-1) + \text{formed} - \text{broken}$ | `test_events_conserve_bond_count` | exact |
+| example glass, Zn–O (single threshold 2.4 Å; hysteresis 2.3/2.6 Å with intermittency 2) vs an independent numpy implementation | by hand, 2026-09-27 | $5\times10^{-8}$ (csv precision); events identical frame by frame |

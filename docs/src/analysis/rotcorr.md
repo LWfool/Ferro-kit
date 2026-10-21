@@ -199,17 +199,9 @@ let result = calc_rotcorr(&traj, &params)?;
 
 ## Verification
 
-| Check | Where | Agreement |
-|---|---|---|
-| FFT vs direct average, every frame valid (the `gmx rotacf` case) | unit test `test_fft_matches_brute_force_all_valid` | $10^{-10}$ |
-| same with one frame in five invalid per molecule | `test_fft_matches_brute_force_with_invalid_frames` | $10^{-10}$, NaN at the same lags |
-| lags with no valid pair are NaN | `test_lag_without_valid_pair_is_nan` | — |
-| trapezoidal integral | `test_integral_is_trapezoidal` | $10^{-10}$ |
-| rigid regular $PO_4$ rotating about $z$: `sum` reports cancellation, `bond` gives the analytic $C_2$ ($\cos = \tfrac13 + \tfrac23\cos\theta$ for every bond) | `test_sum_cancels_on_tetrahedron_bond_does_not` | $10^{-10}$ |
-| `bond` + $P_1$ vs direct average | `test_p1_bond_matches_brute_force` | $10^{-10}$ |
-| `bond` keeps following a bond stretched past $r_\text{cut}$ | `test_bond_is_followed_beyond_r_cut` | — |
-| example glass, P–O `bond` mode, $P_1$ and $P_2$ (1488 bonds = 372 P × 4), vs independent numpy | by hand, 2026-09-27 | $5\times10^{-8}$ |
-| example glass trajectory, P–O at $r_\text{cut}$ = 1.8 Å (all valid) and 1.52 Å (0.5 % invalid), vs an independent numpy implementation | by hand, 2026-09-27 | $5\times10^{-8}$ (csv precision), NaN positions identical |
+Checked against a direct average with and without invalid frames (to $10^{-10}$, NaN at the same lags),
+against the analytic $C_2$ of a rigid rotating $PO_4$ tetrahedron, and on an example glass trajectory against
+an independent numpy implementation ($5\times10^{-8}$, the csv precision; NaN positions identical).
 
 The numpy reference, given orientation vectors `U` of shape (frames, molecules, 3) with zero rows where
 there is no neighbour:

@@ -129,12 +129,8 @@ let result = calc_vacf(&traj, &params)?;
 
 ## Verification
 
-| Check | Where | Agreement |
-|---|---|---|
-| FFT vs direct all-origin sum, irregular velocities, per axis | unit test `test_fft_matches_brute_force` | $10^{-12}$ |
-| trapezoidal integral (constant $C_v$ gives $c\,t/3$, 0 at $t=0$) | `test_diffusion_is_trapezoidal` | $10^{-12}$ |
-| $C_v(0)=0$ leaves `vacf_norm` empty | `test_zero_velocity_gives_nan_norm_not_zero` | — |
-| synthetic AR(1) velocities, 30 atoms × 200 frames, vs an independent numpy implementation | by hand, 2026-09-27 | within the csv's 7 significant digits, all columns |
+Checked against a direct all-origin sum (to $10^{-12}$) and, on synthetic velocities, against an independent
+numpy implementation (within the csv's 7 significant digits, all columns).
 
 The numpy reference, for velocities `v` of shape (frames, atoms, 3) in Å/fs:
 

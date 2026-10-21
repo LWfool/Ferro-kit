@@ -165,14 +165,9 @@ ferro traj bondlife -i run.dump --center O --neighbor H --r-bond 1.25 --r-break 
 
 ## Verification
 
-| Check | Where | Agreement |
-|---|---|---|
-| $C_I$ and $S_C$ vs counting every origin directly, irregular bonding | unit test `test_both_functions_match_brute_force` | $10^{-12}$ |
-| break-and-reform counts for $C_I$, not for $S_C$ | `test_intermittent_counts_reformed_continuous_does_not` | exact |
-| hysteresis stops flicker; a free pair needs $r \le r_\text{bond}$ | `test_hysteresis_suppresses_flicker`, `test_hysteresis_needs_r_bond_to_form` | exact |
-| gap filling: $k$ filled, $k+1$ not, ends never | `test_fill_gaps_boundaries` | exact |
-| $n(t) = n(t-1) + \text{formed} - \text{broken}$ | `test_events_conserve_bond_count` | exact |
-| example glass, Zn–O (single threshold 2.4 Å; hysteresis 2.3/2.6 Å with intermittency 2) vs an independent numpy implementation | by hand, 2026-09-27 | $5\times10^{-8}$ (csv precision); events identical frame by frame |
+Checked against counting every origin directly (to $10^{-12}$), and on an example glass (Zn–O, single
+threshold and hysteresis with intermittency) against an independent numpy implementation ($5\times10^{-8}$,
+the csv precision; events identical frame by frame).
 
 The numpy reference, for distances `D` of shape (frames, candidate pairs):
 
