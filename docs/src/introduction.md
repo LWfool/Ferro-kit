@@ -3,8 +3,9 @@
 **ferro** is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:
 
 - **Structural analysis** — g(r), S(q), bond angle distributions, Qn speciation
-- **Dynamical analysis** — MSD, VACF, van Hove correlation, rotational correlation
-- **Spatial maps** — 3-D density/velocity/force grids, jump-distance maps, hard-sphere occupancy, cluster SDF
+- **Dynamical analysis** — MSD, VACF, van Hove correlation, rotational correlation, bond lifetimes
+- **Spatial maps** — 3-D density/velocity/force grids, hard-sphere occupancy, cluster SDF
+- **ML datasets** — collect AIMD output into DeePMD systems, filter bad frames, merge and split (`ferro dataset`)
 - **Charge analysis** — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF
 - **Input generation** — VASP, CP2K and Quantum ESPRESSO inputs (single point, optimisation, AIMD) and convergence tests, in the Python package (`ferro-py job`, `ferro-py conv`)
 - **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, Gaussian cube; CP2K and QE inputs read-only; CP2K, VASP and QE AIMD output into DeePMD datasets
@@ -14,7 +15,7 @@
 
 | Goal | Implementation |
 |---|---|
-| Correct periodic-boundary handling | Minimum-image convention; fractional-coordinate unwrapping for NPT |
+| Correct periodic-boundary handling | Minimum-image convention; TOR unwrapping for NPT (MSD) |
 | Multi-component support | Partial g(r), directed CN, per-element filters throughout |
 | Performance | Rayon data parallelism; linked-cell neighbour lists for O(N) searches |
 | Extensibility | Strict layered crate architecture; no cross-dependencies between middle layers |

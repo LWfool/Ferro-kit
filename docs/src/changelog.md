@@ -78,7 +78,7 @@ command line alike; regenerate it rather than migrating it.
 - `dataset collect -o sys` with a single input directory writes `sys/<dir>.db/`, as it does with
   several; it wrote `sys.db/` beside an empty `sys/`. Point the next `filter -i` at the new path.
 - `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
-  atom is an error, as it is for `msd`, `vacf`, `vanhove` and `map jump`; it used to write a grid
+  atom is an error, as it is for `msd`, `vacf`, `vanhove` and the library's jump map; it used to write a grid
   of zeros reporting "0 atoms". The error names the filter in every analysis.
 - Library: `ferro_analysis::{distance, angle, dihedral, radius_of_gyration, bounding_box,
   mean_squared_displacement, rmsd_to_first, center_of_mass_trajectory,
