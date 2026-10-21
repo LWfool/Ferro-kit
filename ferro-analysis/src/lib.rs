@@ -27,6 +27,3 @@ pub use md::{
     ShellCutoff, first_shell_cutoffs,
     JumpPosition, CubeJumpParams, CubeJumpResult, calc_cube_jump,
 };
-
-/// ferro-analysis version (from Cargo.toml)
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
