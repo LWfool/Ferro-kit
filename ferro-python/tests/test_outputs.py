@@ -1,12 +1,10 @@
 """读计算输出（能量、力、应力）与写表：收敛测试 ferro-py conv 依赖的 Rust 接口。"""
 
-from pathlib import Path
-
 import pytest
 
 import ferro
 
-FIXTURES = Path(__file__).resolve().parents[2] / "tests"
+from conftest import FIXTURES
 
 
 @pytest.mark.parametrize("path, fmt", [

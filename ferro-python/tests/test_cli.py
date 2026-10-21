@@ -102,7 +102,7 @@ def test_config_init(tmp_path, monkeypatch, capsys):
 
 # ── ferro-py job ─────────────────────────────────────────────────────────────
 
-NVT = Path(__file__).resolve().parents[2] / "tests" / "70Z30P00A_NVT_5.lammpstrj"
+from conftest import NVT
 
 
 class Fake(Generator):

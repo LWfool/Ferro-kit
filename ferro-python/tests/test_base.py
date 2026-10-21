@@ -1,14 +1,12 @@
 """生成器基类：选项校验、自旋奇偶、k 网格、模板查找、共有的结构检查、InputSet 落盘。"""
 
-from pathlib import Path
-
 import pytest
 
 import ferro
 from ferro import config
 from ferro.jobs.base import Generator, InputSet, JobError, JobOptions, kmesh, multiplicity, write_batch
 
-NVT = Path(__file__).resolve().parents[2] / "tests" / "70Z30P00A_NVT_5.lammpstrj"
+from conftest import NVT
 
 
 @pytest.mark.parametrize("n, charge, requested, expected", [

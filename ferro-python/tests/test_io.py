@@ -1,13 +1,12 @@
 """read / write 的扩展名分派与 CLI 的 io_dispatch 一致。"""
 
 import warnings
-from pathlib import Path
 
 import pytest
 
 import ferro
 
-NVT = Path(__file__).resolve().parents[2] / "tests" / "70Z30P00A_NVT_5.lammpstrj"
+from conftest import NVT
 
 
 @pytest.mark.parametrize("ext", ["data", "lmp", "lammps"])
@@ -136,6 +135,24 @@ def test_partial_charge_column_needs_drop_partial(tmp_path):
     atoms = (tmp_path / "m.data").read_text().split("Atoms # full\n\n")[1].splitlines()[:4]
     assert [line.split()[3] for line in atoms] == ["0.000000"] * 4, \
         "LAMMPS data must have a charge column: every charge written as 0"
+
+
+ZNO_POSCAR = "ZnO\n1.0\n5 0 0\n0 5 0\n0 0 5\nZn O\n1 1\nDirect\n0 0 0\n0.5 0.5 0.5\n"
+
+
+def test_supercell_smoke(tmp_path):
+    # The binding has no other caller in the package: a signature change would go unnoticed
+    (tmp_path / "POSCAR").write_text(ZNO_POSCAR)
+    sc = ferro.supercell(ferro.read(str(tmp_path / "POSCAR")), 2, 2, 2)
+    assert sc.n_atoms() == 16
+    assert sum(sc.cell(0), []) == pytest.approx([10, 0, 0, 0, 10, 0, 0, 0, 10])
+
+
+def test_add_vacuum_layer_smoke(tmp_path):
+    (tmp_path / "POSCAR").write_text(ZNO_POSCAR)
+    out = ferro.add_vacuum_layer(ferro.read(str(tmp_path / "POSCAR")), "z", 7.5)
+    assert out.n_atoms() == 2
+    assert sum(out.cell(0), []) == pytest.approx([5, 0, 0, 0, 5, 0, 0, 0, 12.5])
 
 
 def test_gr_defaults_are_those_of_the_cli():

@@ -1,7 +1,5 @@
 """参数块：INCAR、pw.x namelist + 卡片、CP2K 节树的解析、编辑与写回。"""
 
-from pathlib import Path
-
 import pytest
 
 import ferro
@@ -9,7 +7,7 @@ from ferro.jobs.cp2k import Cp2kInputError, Section
 from ferro.jobs.qe import QeInput, QeInputError, format_value, unquote
 from ferro.jobs.vasp import Incar, IncarError
 
-NVT = Path(__file__).resolve().parents[2] / "tests" / "70Z30P00A_NVT_5.lammpstrj"
+from conftest import NVT
 
 INCAR = """\
 # Parallel

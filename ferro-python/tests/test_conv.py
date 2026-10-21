@@ -3,7 +3,6 @@
 import json
 import math
 import shutil
-from pathlib import Path
 
 import pytest
 
@@ -15,8 +14,7 @@ from ferro.jobs.cp2k import Cp2kGenerator, Section
 from ferro.jobs.qe import QeInput
 from ferro.jobs.vasp import Incar, VaspGenerator
 
-FIXTURES = Path(__file__).resolve().parents[2] / "tests"
-NVT = FIXTURES / "70Z30P00A_NVT_5.lammpstrj"
+from conftest import FIXTURES, NVT
 SP = [FIXTURES / "vasp651_sp" / f"frame_{n}" / "OUTCAR" for n in ("0011", "0161", "0194")]
 
 

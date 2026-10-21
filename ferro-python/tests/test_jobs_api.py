@@ -3,19 +3,11 @@
 只用仓库 tests/ 下的 fixture（examples/ 不进 git，CI 上没有）。
 """
 
-from pathlib import Path
-
 import pytest
 
 import ferro
 
-FIXTURES = Path(__file__).resolve().parents[2] / "tests"
-NVT = FIXTURES / "70Z30P00A_NVT_5.lammpstrj"
-
-
-@pytest.fixture(scope="module")
-def nvt():
-    return ferro.read(str(NVT))
+from conftest import FIXTURES, NVT
 
 
 def dump_without_element_column(tmp_path):
