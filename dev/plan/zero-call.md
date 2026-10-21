@@ -27,6 +27,7 @@
 | ~~未使用依赖~~ | ~~`ferro-workflow` 的 `serde`~~ —— 2026-09-26 随 serde 整体移除 | — |
 | 2026-10-11 重扫新增（审查 G-2） | `Cell::wrap_position`（只有测试用；`Frame::wrap_all` 自己按 pbc 逐轴实现）；`cube_sdf.rs:141-142 ClusterSnapshot::anchor_idx`（`#[allow(dead_code)]` 压住的只写字段）；~~`pub mod corr`~~（2026-10-21 随 `CorrMode` 删）。**已失效**：`Frame::wrap_all` 自 `48bf11e`（审查 M5）起被 `cube_reference_frame` 调用，已移出基础访问器行 | — |
 | 2026-10-20 扫描新增（A-17） | ~~`Frame::center_of_mass` / `center` / `velocities_mut`~~（2026-10-21 删）；`ferro-structure` 的 `find_supercell_dims` / `build_box` / `estimate_box_length` 只有测试调用（无 CLI / Python 入口，同 `cube_jump` 属「需求在、入口没接」）。第 12 批改了其中四个（A-1、A-3、A-8、A-11、A-12），行为由测试钉住。**2026-10-21 用户定：box_builder 保留**（完整功能，缺的只是入口） | — |
+| 2026-10-21 瘦身扫描新增（A-12） | 只有其他 crate 的测试拿来造数据的 core 方法：`Frame::forces_mut`（`ferro-cli` dataset filter 测试 1 处）、`Frame::truncate_atoms`（msd 测试 1 处）、`Frame::set_charge`（structure 与 core 测试 5 处）。跨 crate 加不了 `#[cfg(test)]`，**保留** | — |
 
 **方法上要记住的一条**：`cargo clippy` 零警告不说明没有死代码 —— 库 crate 里
 `pub` 项不触发 `dead_code` lint，上面全部躲过了它。查零调用要按名字逐个 grep

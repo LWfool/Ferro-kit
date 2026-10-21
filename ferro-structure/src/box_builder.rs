@@ -359,7 +359,11 @@ impl CellList {
     }
 }
 
-/// 最小镜像位移（正交盒子）。
+/// Minimum-image displacement in a cubic box.
+///
+/// Not `PeriodicCell::minimum_image` (nor `Cell::minimum_image`): this runs in the relax
+/// inner loop, and switching would change the rounding, so the same seed would build a
+/// different box (slim scan A-11).
 fn minimum_image_ortho(diff: &Vector3<f64>, box_len: f64) -> Vector3<f64> {
     Vector3::new(
         diff.x - box_len * (diff.x / box_len).round(),

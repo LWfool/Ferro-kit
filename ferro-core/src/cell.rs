@@ -167,7 +167,8 @@ impl Cell {
     }
 
     /// Upper bound on a cutoff radius compatible with the minimum-image convention:
-    /// half the smallest interplanar spacing.
+    /// half the smallest interplanar spacing. Same formula as `PeriodicCell::mic_bound`
+    /// (slim scan A-11).
     pub fn minimum_image_cutoff(&self) -> Result<f64> {
         let d = self.interplanar_spacings()?;
         Ok(d[0].min(d[1]).min(d[2]) * 0.5)
@@ -225,6 +226,9 @@ impl Cell {
     /// let dist = mic_diff.norm();
     /// ```
     /// Returns `Err` when the cell matrix is singular.
+    ///
+    /// Hot loops use `PeriodicCell::minimum_image` (inverse cached); the callers left here
+    /// are in the suspended Bader / cube_sdf groups (slim scan A-11).
     pub fn minimum_image(&self, diff: Vector3<f64>) -> Result<Vector3<f64>> {
         let frac = self.cartesian_to_fractional(diff)?;
         let mic_frac = Vector3::new(

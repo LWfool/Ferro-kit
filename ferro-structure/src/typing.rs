@@ -5,12 +5,11 @@
 
 use ferro_core::Frame;
 
-/// Return a copy of `frame` with the type labels written to `Atom::label`.
+/// Return a copy of `frame` with the type labels written to `Site::label`.
 ///
-/// `Atom::element` is left alone: a `Frame` whose element field is not an element
+/// `Site::element` is left alone: a `Frame` whose element field is not an element
 /// cannot be used for anything else (its mass, its scattering factor, `-a`/`-b`
-/// selection all break), and the labelled frame stays usable in the same process —
-/// which the script/REPL mode will depend on.
+/// selection all break), and the labelled frame stays usable in the same process.
 ///
 /// Formats that have nowhere to put a second per-atom string fold the label into
 /// their element column at **write** time; see `ferro_io::dump_name`.

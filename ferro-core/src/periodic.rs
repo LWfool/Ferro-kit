@@ -59,6 +59,10 @@ impl PeriodicCell {
 
     /// Minimum-image form of a displacement: each fractional component in [-0.5, 0.5].
     /// Exact for distances below [`Self::mic_bound`].
+    ///
+    /// Kept apart from `Cell::minimum_image` (fallible, inverts per call) and
+    /// `box_builder::minimum_image_ortho` (cubic only) on purpose: the contracts differ
+    /// (slim scan A-11).
     pub fn minimum_image(&self, diff: Vector3<f64>) -> Vector3<f64> {
         let f = self.inv * diff;
         self.mt * f.map(|c| c - c.round())
@@ -75,7 +79,8 @@ impl PeriodicCell {
     }
 
     /// Largest distance the minimum image measures correctly: half the smallest
-    /// interplanar spacing.
+    /// interplanar spacing. Same formula as `Cell::minimum_image_cutoff`, whose one
+    /// production caller (`gr`) could move here (slim scan A-11).
     pub fn mic_bound(&self) -> f64 {
         let d = self.spacings();
         d[0].min(d[1]).min(d[2]) * 0.5
