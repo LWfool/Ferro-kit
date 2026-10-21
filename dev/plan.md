@@ -1219,14 +1219,13 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 
 | 类别 | 位置 | 行 |
 |---|---|---|
-| 整文件零引用 | `ferro-analysis/src/trajectory_analysis.rs`（文件头自称「旧接口，保持编译兼容」；4 个 `pub fn` 里 2 个连测试都没有，2 个只有自己的测试） | 113 |
-| 整文件零引用 | `ferro-analysis/src/geometry.rs`（`distance`/`angle`/`dihedral`/`radius_of_gyration`/`bounding_box`，3 个测试；`docs/src/` 零提及） | 104 |
+| ~~整文件零引用~~ | ~~`ferro-analysis/src/trajectory_analysis.rs`、`geometry.rs`~~ 2026-10-19 删（遗留清理 5.8，`6ed8046`） | — |
 | ~~整文件零引用~~ | ~~`ferro-workflow/src/templates.rs`（其中 `orca_sp_template` 是 Ferro 不支持的 ORCA）~~ 2026-10-17 随 crate 删除 | — |
 | 整文件零引用 | `ferro-cli/src/args/corr.rs`（`CorrMode`）· `args/traj.rs:5`（`TrajMode`），0.2.0 前 `--mode` 时代遗留 | 8 + 8 |
-| 单位转换链 | `ferro-core/src/units.rs` 的 `convert_length` / `convert_time` **生产零调用**（只有自己的测试），连带 4 个私有方法只服务它们。**2026-10-20 更正**：`convert_energy` 已活（cp2k_md / cp2k_sp 的能量单位，第 3 批），但 `EnergyUnit::{KcalPerMol, KJPerMol, Wavenumber}` 三个变体从不被构造（`from_name` 只出 `Hartree` / `EV`），连带 `KCAL_MOL_TO_EV` / `KJ_MOL_TO_EV` / `WAVENUMBER_TO_EV` 与 `EV_TO_KJ_MOL` / `EV_TO_WAVENUMBER` 只服务它们（`EV_TO_KCAL_MOL` 另有 LAMMPS real 单位在用）；`LengthUnit::{Nanometer, Picometer}` 同理 | ~55 |
+| 单位转换链 | **2026-10-21 更正**：`convert_length`（cp2k / qe_out reader）、`convert_time`（LAMMPS dump 读写）都已有生产调用，移出清单。`convert_energy` 已活（cp2k_md / cp2k_sp 的能量单位，第 3 批），但 `EnergyUnit::{KcalPerMol, KJPerMol, Wavenumber}` 三个变体从不被构造（`from_name` 只出 `Hartree` / `EV`），连带 `KCAL_MOL_TO_EV` / `KJ_MOL_TO_EV` / `WAVENUMBER_TO_EV` 与 `EV_TO_KJ_MOL` / `EV_TO_WAVENUMBER` 只服务它们（`EV_TO_KCAL_MOL` 另有 LAMMPS real 单位在用）；`LengthUnit::{Nanometer, Picometer}` 同理 | ~55 |
 | 被绕过的算法 | `ferro-analysis/src/dft/bader_grid.rs:375 max_neargrid` —— 见下一条 | 20 |
-| 取代方案只落实了一半 | `ferro-core/src/network_type.rs:233 display_rank` 生产零调用（`class_rank` 有 3 处）。`progress.md` 说两者一起取代了三个 `*_label_order`，实际只落实了一半。**2026-10-11 补**：`is_bridging`（`:251`）同样生产零调用（`ferro-structure/src/cluster.rs:68` 注释明说不能用它）；`site_digit`（`:194`）生产零调用，布局建议 6 做了它才活 | 8 |
-| 基础访问器 | `Frame::geometric_center` / `atom_mut` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames` / `time_at`、`Atom::distance_to`、`Table::n_cols`、`compounds::with_density`、`ClusterResult::ids`、`ml/diagnostics.rs:182 all_frames_have_cells`、`:187 cell_of`、`filter::is_clean`、`qn_elements::has_qn`、`charge_grid::lat_dist_i` | ~50 |
+| 取代方案只落实了一半 | `ferro-analysis/src/network/classify.rs:237 display_rank` 生产零调用（`class_rank` 有调用）。`progress.md` 说两者一起取代了三个 `*_label_order`，实际只落实了一半。**2026-10-11 补**：`is_bridging`（`:254`）同样生产零调用（不能当连通性判据，见 `issues.md`）。`site_digit` 已由 `label` / `class_rank` 调用（遗留清理 5.4），移出 | 8 |
+| 基础访问器 | `Frame::geometric_center` / `is_periodic`、`Trajectory::frame_mut` / `iter_frames`、`Atom::distance_to`、`Table::n_cols`、`ml/diagnostics.rs:198 all_frames_have_cells`、`:203 cell_of`、`filter::is_clean`、`charge_grid::lat_dist_i`（2026-10-21 复核：`atom_mut`、`time_at`、`with_density`、`ClusterResult::ids`、`has_qn` 已不存在，划去） | ~40 |
 | ~~未使用依赖~~ | ~~`ferro-workflow` 的 `serde`~~ —— 2026-09-26 随 serde 整体移除 | — |
 | 2026-10-11 重扫新增（审查 G-2） | `Cell::wrap_position`（只有测试用；`Frame::wrap_all` 自己按 pbc 逐轴实现）；`cube_sdf.rs:141-142 ClusterSnapshot::anchor_idx`（`#[allow(dead_code)]` 压住的只写字段）；`ferro-cli/src/args/mod.rs:2 pub mod corr`（只为 `CorrMode` 存在，删时连 mod 行一起删）。**已失效**：`Frame::wrap_all` 自 `48bf11e`（审查 M5）起被 `cube_reference_frame` 调用，已移出基础访问器行 | — |
 | 2026-10-20 扫描新增（A-17） | `Frame::center_of_mass` / `center`（前者只被后者与测试调用）、`Frame::velocities_mut` 生产零调用；`ferro-structure` 的 `find_supercell_dims` / `build_box` / `estimate_box_length` 只有测试调用（无 CLI / Python 入口，同 `cube_jump` 属「需求在、入口没接」）。第 12 批改了其中四个（A-1、A-3、A-8、A-11、A-12），行为由测试钉住 | — |
