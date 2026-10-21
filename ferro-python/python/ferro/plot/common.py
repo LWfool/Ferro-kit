@@ -167,6 +167,29 @@ def color_map(names):
     return {n: cycle[i % len(cycle)] for i, n in enumerate(names)}
 
 
+# ── Layout ───────────────────────────────────────────────────────────────────
+
+def panel_grid(n, cfg, wspace=None):
+    """A grid of ``n`` panels laid out by ``cfg`` (``ncols``, ``panel_w``, ``panel_h``,
+    ``wspace``, ``hspace``), the cells past ``n`` hidden; returns ``(fig, flat_axes)``.
+
+    ``ncols`` None puts every panel in one row. ``wspace`` overrides ``cfg["wspace"]``.
+    """
+    ncols = cfg["ncols"] or n
+    nrows = -(-n // ncols)
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(cfg["panel_w"] * ncols, cfg["panel_h"] * nrows),
+        squeeze=False,
+    )
+    fig.subplots_adjust(wspace=cfg["wspace"] if wspace is None else wspace,
+                        hspace=cfg["hspace"])
+    flat = axes.ravel()
+    for ax in flat[n:]:
+        ax.set_visible(False)
+    return fig, flat
+
+
 # ── Display names and export ─────────────────────────────────────────────────
 
 LABELS_FILE = "labels.csv"

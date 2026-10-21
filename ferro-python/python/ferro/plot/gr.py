@@ -4,8 +4,6 @@
 left axis, CN(r) dashed on the right, one colour per trajectory.
 """
 
-import matplotlib.pyplot as plt
-
 import ferro
 from ferro.plot import common
 
@@ -83,21 +81,9 @@ def build_panel(path, df, ax, ctx):
 
 def build_figure(frames, ctx):
     """frames: [(path, df)]; returns the figure."""
-    n = len(frames)
-    ncols = CFG["ncols"] or n
-    nrows = -(-n // ncols)
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(CFG["panel_w"] * ncols, CFG["panel_h"] * nrows),
-        squeeze=False,
-    )
-    fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
-
-    flat = axes.ravel()
+    fig, flat = common.panel_grid(len(frames), CFG)
     for ax, (path, df) in zip(flat, frames):
         build_panel(path, df, ax, ctx)
-    for ax in flat[n:]:
-        ax.set_visible(False)
 
     # One legend: the colours mean the same in every panel
     handles, labels = flat[0].get_legend_handles_labels()

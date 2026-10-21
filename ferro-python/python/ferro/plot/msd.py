@@ -17,7 +17,6 @@ first trajectory's fit window.
 import math
 
 import matplotlib.lines as mlines
-import matplotlib.pyplot as plt
 import numpy as np
 
 from ferro.plot import common
@@ -159,21 +158,9 @@ def add_slope_one(ax, first_fit, df, scale):
 
 def build_figure(frames, ctx, components, loglog):
     """frames: [(path, df)]; returns the figure."""
-    n = len(frames)
-    ncols = CFG["ncols"] or n
-    nrows = -(-n // ncols)
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(CFG["panel_w"] * ncols, CFG["panel_h"] * nrows),
-        squeeze=False,
-    )
-    fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
-
-    flat = axes.ravel()
+    fig, flat = common.panel_grid(len(frames), CFG)
     for ax, (path, df) in zip(flat, frames):
         build_panel(path, df, ax, ctx, components, loglog)
-    for ax in flat[n:]:
-        ax.set_visible(False)
     return fig
 
 

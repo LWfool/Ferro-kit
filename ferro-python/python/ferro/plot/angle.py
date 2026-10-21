@@ -6,8 +6,6 @@ identical lines. ``count`` is for comparing bin by bin with dump2analysis
 (``scripts/compare_angle.py``), not for a figure.
 """
 
-import matplotlib.pyplot as plt
-
 import ferro
 from ferro.plot import common
 
@@ -66,21 +64,9 @@ def build_panel(path, df, ax, ctx):
 
 
 def build_figure(frames, ctx):
-    n = len(frames)
-    ncols = CFG["ncols"] or n
-    nrows = -(-n // ncols)
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(CFG["panel_w"] * ncols, CFG["panel_h"] * nrows),
-        squeeze=False,
-    )
-    fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
-
-    flat = axes.ravel()
+    fig, flat = common.panel_grid(len(frames), CFG)
     for ax, (path, df) in zip(flat, frames):
         build_panel(path, df, ax, ctx)
-    for ax in flat[n:]:
-        ax.set_visible(False)
 
     handles, labels = flat[0].get_legend_handles_labels()
     flat[0].legend(handles, labels, loc=CFG["legend_loc"], ncol=CFG["legend_ncol"])

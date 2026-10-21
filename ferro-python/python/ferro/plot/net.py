@@ -293,16 +293,8 @@ def build_figure(panels, groups_of, ctx, panel_legend=False, palette_keys=None):
     follow it rather than the categories present in this batch — otherwise one missing category
     (no O_f) shifts a whole row of colours, and one category differs in colour between figures.
     """
-    n = len(panels)
-    ncols = CFG["ncols"] or n
-    nrows = -(-n // ncols)
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(CFG["panel_w"] * ncols, CFG["panel_h"] * nrows),
-        squeeze=False,
-    )
-    fig.subplots_adjust(wspace=CFG["wspace_panel_legend" if panel_legend else "wspace"],
-                        hspace=CFG["hspace"])
+    fig, flat = common.panel_grid(len(panels), CFG,
+                                  wspace=CFG["wspace_panel_legend"] if panel_legend else None)
 
     per_panel = [groups_of(key) for _, key in panels]
 
@@ -310,7 +302,6 @@ def build_figure(panels, groups_of, ctx, panel_legend=False, palette_keys=None):
         return sorted({k for groups in groups_list for _, segs in groups for _, k, _ in segs})
 
     shared = common.color_map(keys_of(per_panel)) if not panel_legend else None
-    flat = axes.ravel()
     handles, seen = [], set()
     for ax, (title, key), groups in zip(flat, panels, per_panel):
         if panel_legend:
@@ -324,8 +315,6 @@ def build_figure(panels, groups_of, ctx, panel_legend=False, palette_keys=None):
             hs = [h for _, h in sorted(handles, key=lambda kh: kh[0], reverse=True)]
             ax.legend(handles=hs, loc="upper left", bbox_to_anchor=CFG["panel_legend_bbox"],
                       frameon=False)
-    for ax in flat[n:]:
-        ax.set_visible(False)
     if not panel_legend:
         # Legend sorted by category value, the order of the bottom-up stacking
         handles = [h for _, h in sorted(handles, key=lambda kh: kh[0])]
