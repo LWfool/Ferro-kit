@@ -14,263 +14,161 @@ command line alike; regenerate it rather than migrating it.
 
 ### `ferro-py plot` replaces `scripts/plot_*.py`
 
-- The publication figures moved into the Python package: `ferro-py plot gr | sq | angle | msd |
-  net` and `ferro.plot.<figure>.plot(...)`, with the optional dependencies
-  `pip install 'ferro[plot]'` (plus LaTeX, as before). `scripts/ferroplot.py` and
-  `scripts/plot_gr.py`, `plot_sq.py`, `plot_angle.py`, `plot_msd.py`, `plot_net.py` are gone.
-- Command lines change: the csv files go to `-i`; `--outdir DIR` is now `-o DIR`; the old
-  `-o STEM` is `-s TAG`, which ends the name instead of replacing it (`-o rdf` → `-s rdf` writes
-  `gr_rdf.pdf`); `plot_net.py qn …` is `ferro-py plot net qn -i …`. Figures, `labels.csv` and
-  `<name>_data.csv` are the same as the scripts made.
-- Messages follow the `ferro-py` layout: `Wrote: <path>` per file, notes as
-  `<source>: FerroNote: …` on stderr, errors as `ferro-py: FerroError: …` with exit code 1.
+- Publication figures are drawn by `ferro-py plot gr | sq | angle | msd | net` and
+  `ferro.plot.<figure>.plot(...)`, after `pip install 'ferro[plot]'` (plus LaTeX).
+  `scripts/ferroplot.py` and `scripts/plot_*.py` are gone.
+- Command lines: the csv files go to `-i`; `--outdir DIR` is `-o DIR`; the old `-o STEM` is `-s TAG`,
+  which ends the name (`-s rdf` → `gr_rdf.pdf`); `plot_net.py qn …` is `ferro-py plot net qn -i …`.
+  Figures, `labels.csv` and `<name>_data.csv` are as before; messages follow the `ferro-py` layout.
 
 ### `ferro-py job`: PREC and variable-cell cutoffs
 
-- VASP `PREC` must be `Normal` or `Accurate`; `Low`, `Medium`, `High`, `Single` and `SingleN`
-  are errors (`High` raised the default ENCUT to 1.3 × ENMAX, which the fine grid missed).
-- A varying cell needs a tested cutoff, as VASP's `ENCUT` already did: QE `opt --vary-cell`
-  needs `ecutwfc` in the template; CP2K `--vary-cell` and `--ensemble npt_i|npt_f` need your own
-  template with `&MGRID CUTOFF` — the built-in one (`CUTOFF 400`) is refused.
-- QE: when no UPF header suggests an `ecutrho`, it is 4 × `ecutwfc` instead of an error.
-- An atom read as a bare `X` (a CIF label with no leading letter) is named as having no
-  element, instead of failing later as `no POTCAR for X`.
+- VASP `PREC` must be `Normal` or `Accurate`; the other values are errors.
+- A varying cell needs a tested cutoff: QE `opt --vary-cell` needs `ecutwfc` in the template; CP2K
+  `--vary-cell` and `--ensemble npt_i|npt_f` need your own template with `&MGRID CUTOFF`.
+- An atom read as a bare `X` (a CIF label with no leading letter) is named as having no element.
 
 ### Python `gr_pair` / `gr_all`: the defaults of `ferro traj gr`
 
-- `dr` defaults to 0.002 Å and `r_min` to 0.001 Å, as `--dr` / `--r-min` of `ferro traj gr`; they were
-  0.01 / 0.005, so a call without them gave a coarser, shifted grid than the command line. Pass
+- `dr` = 0.002 Å and `r_min` = 0.001 Å, as on the command line (they were 0.01 / 0.005). Pass
   `dr=0.01, r_min=0.005` to keep the old grid.
 
 ### Analyses
 
-- `traj vanhove --tau` of the frame count or more is an error, as `--max-lag` is for `msd`,
-  `vacf`, `rotcorr` and `bondlife`; it used to be cut to the last frame without a word.
-- `traj msd` writes exactly 0 at lag 0 (it read about −1.7e-18, round-off).
-- `traj rotcorr --legendre 1`: the header line describing the `integral` column names `c1`; it said
-  `c2` whatever the order. Data columns are unchanged.
-- `traj gr` / `traj sq`: the `dr` header line is the requested `--dr`; the width actually used,
-  which the minimum-image clamp makes differ between inputs, is a `dr` column of `[inputs]`. The
-  header used to print the first input's actual width as if it held for the whole batch. Data
-  columns are unchanged.
-- `map velocity` / `map force` with velocities / forces in some frames but not others is an error
-  naming the first frame without them, as `traj vacf` is; the frames without them used to be
-  skipped without a word, so the map averaged a different stretch of the run than asked.
-- `traj vanhove` / `traj angle` refuse a range narrower than one `--dr` / `--d-angle`, as `traj gr`
-  does; they wrote a single bin narrower than asked. `traj gr` gives the same error when the
-  minimum-image clamp leaves less than one bin.
-- `traj sq` ends the $q$ grid at `--q-max` whenever the range is a whole number of `--dq`; a
-  quotient one rounding below the integer (`--q-min 0.3 --q-max 15 --dq 0.1`) used to drop the
-  last point.
-- A trajectory with a cell in some frames and none in others is an error in every analysis that
-  checks cells; `rotcorr` and `bondlife` used to measure the cell-less frames with the plain
-  Cartesian difference without a word.
-- `dataset filter --stride 0`, `-N 0` and `--start` past `--end` are errors before any input is
-  read, as they are for `convert`; `--stride 0` used to run and write every frame with exit code 0,
-  the other two dropped every frame after reading the whole dataset.
-- `dataset filter`'s cutoff scan samples at most the 200 frames it promises (199 frames used to
-  give 199 samples, anything up to 399 was possible), so its report can differ in the samples.
-- `dataset merge --mode by-source` shuffles each system with `--seed` (default 666) before
-  cutting its sets; it ignored the seed and kept MD order, so a set was a run of consecutive
-  frames. Set boundaries still fall on system edges, and `sets_source.txt` is unchanged, but
-  which frames land in which set differs: regenerate if a split depends on it.
-- `dataset collect -o sys` with a single input directory writes `sys/<dir>.db/`, as it does with
-  several; it wrote `sys.db/` beside an empty `sys/`. Point the next `filter -i` at the new path.
-- `dataset collect` given a bare file name in the current directory (`-i a.out`) writes
-  `../<current dir>.db`, not `./system.db`; with `-o` and inputs in subdirectories as well, every
-  system lands under `-o` (the current-directory group used to escape to its input's side).
-  When one group's directory is the common ancestor of the others, it is named after that
-  directory and nested like the rest: `-i md/x.out md/sub/y.out -o out` writes `out/md.db` and
-  `out/md/sub.db`, where it wrote `out.db` and `out/sub.db`.
-- `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
-  atom is an error, as it is for `msd`, `vacf`, `vanhove` and the library's jump map; it used to write a grid
-  of zeros reporting "0 atoms". The error names the filter in every analysis.
-- The automatic first-shell cutoff (`net --A-B=auto`, `dataset filter --al6 auto`) smooths g(r)
-  over the documented 0.10 Å; it was 0.14 Å (7 bins of 0.02 Å). Cutoffs on a shallow minimum
-  move by a bin or two: on the test glasses Zn-O 2.631 → 2.651 and 2.611 → 2.571 Å, Al-O
-  2.591 → 2.571 Å; P-O and the clean gaps do not move.
+- New errors, where a result used to be computed without a word:
+  - `traj vanhove --tau` of the frame count or more (it was cut to the last frame);
+  - `traj vanhove` / `angle` / `gr` with a range narrower than one bin;
+  - a cell in some frames and none in others, in every analysis that checks cells;
+  - `map velocity` / `force` with velocities / forces in some frames only (the rest were skipped);
+  - a `map` `--elements` filter that matches no atom (it wrote a grid of zeros);
+  - `dataset filter --stride 0`, `-N 0`, or `--start` past `--end`, before any input is read.
+- `traj gr` / `sq`: the `dr` header line is the requested `--dr`; the width actually used, which
+  differs between inputs when the minimum-image bound clamps $r_\max$, is a `dr` column of `[inputs]`.
+- `traj sq` ends the $q$ grid at `--q-max` whenever the range is a whole number of `--dq`.
+- `traj msd` writes exactly 0 at lag 0; `traj rotcorr --legendre 1` names `c1` in its header.
+- The automatic first-shell cutoff (`net --A-B=auto`, `filter --al6`) smooths $g(r)$ over the
+  documented 0.10 Å (it was 0.14 Å): a cutoff on a shallow minimum moves by a bin or two (test glasses:
+  Zn-O 2.631 → 2.651 Å, Al-O 2.591 → 2.571 Å).
+- `dataset filter`'s cutoff scan samples at most 200 frames, so its report can differ.
+- `dataset merge --mode by-source` shuffles each system with `--seed` before cutting its sets: which
+  frames land in which set changes. Regenerate if a split depends on it.
+- `dataset collect` places systems by one rule: `-o sys` with one input directory writes
+  `sys/<dir>.db/` (it wrote `sys.db/`); `-i a.out` in the current directory writes `../<dir>.db`;
+  a group whose directory holds the others is nested like them (`-i md/x.out md/sub/y.out -o out` →
+  `out/md.db`, `out/md/sub.db`). Point the next `filter -i` at the new paths.
 
 ### Command line
 
-- A command typed with options but no input (`ferro traj gr --dr 0.1`, `ferro net --P-O=2.3`)
-  is an error and exits 1; it used to print the help page and exit 0, so a script went on to its
-  next step. The command name alone (`ferro traj gr`) still prints the page.
-- `--last-n 0` is refused as an invalid value before anything is read; it used to read every
-  input and then fail on each as "trajectory is empty".
-- `bader -m` with an unknown method is a usage error from the argument parser, listing the valid
-  names, exit code 2 (it was a `FerroError` with exit code 1). Case still does not matter.
+- A command given options but no input (`ferro traj gr --dr 0.1`) is an error, exit 1; it printed
+  the help page and exited 0. The bare command still prints the page.
+- `--last-n 0` is refused before anything is read.
+- `bader -m` with an unknown method is a usage error, exit 2 (it was exit 1).
 
 ### Messages: one layout, on stderr
 
 - Every note, warning and error is one stderr line, `<source>[:<line>]: <category>: <message>`, with
-  the categories `FerroNote`, `FerroWarning` and `FerroError` (see "Messages" in the CLI
-  reference).  The prefixes `[ferro]`, `warning:`, `WARNING:`, `NOTE:`, `Note:`, `Note  :`,
-  `note:`, `SKIP` and `skipped:` are gone, and a message spread over several lines is now one.
-- Moved from stdout to stderr: the renamed / duplicate input notes, the `net` notes (no Qn former,
-  labels written as elements), the `info` density warning, `dataset collect`'s version note and
-  block-offset warning, `dataset filter`'s no-virial / no-forces notes and shallow Al-O warning,
-  and the notes of `ferro-py job` / `conv`.  stdout keeps results and progress only.
-- A fatal error is `ferro: FerroError: <error: cause: ...>` on one line (`ferro-py: FerroError: ...`),
-  instead of `Error:` followed by a `Caused by:` block.  The exit codes are unchanged.
-- `dataset collect` lists the files that are in no system one `FerroError` line each, at the end.
-- Python: what a reader noticed is raised as `ferro.FerroWarning` or `ferro.FerroNote`, both
-  subclasses of `UserWarning` (a `UserWarning` filter still catches them).  The text starts with
-  the path and line, so reading several files that trigger the same notice gives one warning per
-  file; it used to give one in all.  The instance carries `source`, `line` and `detail`.
+  the categories `FerroNote`, `FerroWarning` and `FerroError` (see "Messages" in the CLI reference).
+  The old prefixes (`[ferro]`, `warning:`, `NOTE:`, `SKIP`, `skipped:` …) are gone: change scripts
+  that grep them.
+- Notes and warnings that were on stdout are on stderr; stdout keeps results and progress only.
+- A fatal error is `ferro: FerroError: <error: cause: ...>` on one line instead of an `Error:` /
+  `Caused by:` block. Exit codes are unchanged.
+- `dataset collect` lists the files that are in no system at the end, one `FerroError` line each.
+- Python: reader notices are raised as `ferro.FerroWarning` / `ferro.FerroNote` (subclasses of
+  `UserWarning`), one per file, carrying `source`, `line` and `detail`.
 
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 
-- The bin count is the range over the step **rounded up**, and the width used is the range over
-  that count: the last bin ends exactly at the upper bound and no bin is wider than asked. When
-  the range holds a whole number of steps the step is used as given, so the default `gr`
-  (0.001–10.005 Å, 0.002 Å) is unchanged. The `dr` / `d_angle` header line reports the width used.
-- Before, `gr` dropped a partial last bin while `vanhove` and `angle` kept it but normalised it as
-  a full one (`vanhove --r-max 1.0 --dr 0.07` read 3.5 times too low in its last bin).
-- What changes: `sq` with its defaults (its $g(r)$ starts at 0, and 10.005 is not a whole number
-  of 0.002 steps from 0) now has 5003 bins of 0.0019998 Å up to 10.005 Å instead of 5002 of
-  0.002 Å stopping at 10.004 Å. On the 43Z43P15A test glass the totals moved by at most
-  $3 \times 10^{-4}$ for $q \ge 0.63$ Å⁻¹ and $3 \times 10^{-3}$ below it, where the truncation of
-  $g(r)$ dominates anyway (the `q_trunc` warning). Also changed: `gr` whose `r_max` is cut to a
-  small cell's minimum-image bound, and any run whose range is not a whole number of steps.
+- The bin count is the range over the step rounded **up**, and the width used is the range over that
+  count: the last bin ends at the upper bound and no bin is wider than asked. The header reports
+  the width used.
+- Unchanged when the range holds a whole number of steps (the default `gr`). Changed: `sq` with its
+  defaults (5003 bins of 0.0019998 Å up to 10.005 Å; the totals move by at most $3 \times 10^{-4}$ for
+  $q \ge 0.63$ Å⁻¹), a `gr` clamped to a small cell, and the last bin of `vanhove` / `angle`, which
+  was normalised as a full bin.
 
 ### Units
 
-- kcal/mol uses the CODATA 2018 value, 1 eV = 23.06054783 kcal/mol (was 23.0605419, which
-  no CODATA set gives), the same set as the other constants. LAMMPS dumps in `real` units, read or written,
-  convert forces with it; their own `0.04336410` is gone. Forces change in the eighth digit.
+- kcal/mol uses CODATA 2018 (1 eV = 23.06054783 kcal/mol): LAMMPS `real` forces change in the eighth
+  digit. QE input in `bohr` / `alat` and CP2K input in bohr use the CODATA 2018 Bohr radius (ninth digit).
 
 ### Masses: no 1 amu stand-in
 
-- An element that is not in the element table, with no mass given in the file, has no mass; it
-  used to count as 1 amu without a word. Where a mass is needed this is now an error naming the
-  element: extended XYZ `momenta` on reading, the `masses` / `momenta` columns of extended XYZ
-  and the `Masses` section of LAMMPS data on writing (nothing is written). `ferro info` leaves the
-  density row out, prints the rest and exits 1; `dataset collect --type inspect` leaves the
-  density column empty. No mass is guessed from a prefix (`Fe1` is not read as Fe here).
+- An element not in the element table, with no mass in the file, has no mass; it counted as 1 amu.
+  Where a mass is needed this is an error naming the element: extended XYZ `momenta` on reading,
+  its `masses` / `momenta` columns and the LAMMPS data `Masses` section on writing. `ferro info`
+  leaves out the density row and exits 1; `collect --type inspect` leaves the density empty. No
+  mass is guessed from a prefix (`Fe1` is not Fe).
 
 ### Writers: fewer silent results
 
-- DeePMD output (`dataset collect` / `filter` / `merge`): a frame periodic along some axes only
-  (a slab, `pbc = T T F`) is an error; it used to be written as fully periodic.
-- Cube files written by `ferro map` start each z column on a new line, at most six
-  values a line, as Gaussian's cubegen does. The values are unchanged; only the line breaks
-  move. The data used to run on six a line, so a column spilled across lines whenever `nz`
-  was not a multiple of 6, which line-oriented readers misplace.
-- PDB: a coordinate outside −999.999 … 9999.999 Å (wider than the 8-column field) is an error,
-  and atom serial numbers wrap past 99999 as ASE writes them; both used to shift every later
-  column of the line.
-- Extended XYZ: a `masses` column is written whenever an atom carries an explicit mass (an
-  isotope, a LAMMPS data `Masses` entry, a dump `mass` column), not only alongside velocities;
-  atoms without one get the element's mass. Converting a LAMMPS data file to extended XYZ
-  therefore now carries its masses; they used to be dropped.
-- A charge or magnetic-moment column that only some atoms of a frame carry is an error in
-  extended XYZ, LAMMPS dump and LAMMPS data output, and nothing is written; the missing values
-  used to be written as 0. New `ferro convert --drop-partial` (Python:
-  `ferro.write(..., drop_partial=True)`) leaves the column out instead — LAMMPS data, whose
-  charge column is mandatory, then writes every charge as 0.
+- Errors, all checked before the disk is touched (a refused write no longer leaves a half-written
+  file, nor a DeePMD system with its sets cleared):
+  - DeePMD output of a frame periodic along some axes only (a slab), or a stress in a zero-volume cell;
+  - a charge or magnetic-moment column that only some atoms carry (extended XYZ, LAMMPS dump / data;
+    they were written as 0) — `convert --drop-partial` / `ferro.write(..., drop_partial=True)` leaves
+    the column out, LAMMPS data then writes every charge as 0;
+  - PDB coordinates outside −999.999 … 9999.999 Å;
+  - LAMMPS data with different masses for atoms of one element.
+- Cube files start each z column on a new line, six values a line (values unchanged).
+- PDB serial numbers wrap past 99999 as ASE writes them; writer errors number frames from 0.
+- Extended XYZ writes a `masses` column whenever an atom carries an explicit mass, so LAMMPS data →
+  extended XYZ keeps the masses.
+- The LAMMPS dump writer puts `<element>_<suffix>` site labels (`P_3`, `O_b`) into the element column,
+  so a labelled dump or extended XYZ keeps its labels through `convert` / `ferro.write`.
 
 ### Readers: fewer silent results
 
-- A file in which no frame is found is an error (`no frame found — is this really a … file?`).
-  An empty `.xyz` / `.extxyz` / `.pdb` / `.lammpstrj`, or a file of another format under one of
-  those names, used to read as 0 frames with exit status 0.
-- XYZ and extended XYZ cut off in their last frame (an interrupted MD run) keep the complete
-  frames and drop the last one with a warning naming it, as LAMMPS dumps already did; the whole
-  file used to be rejected.
-- An atomic number in the first column of a plain XYZ file is read as that element (`8` → O),
-  as ASE does; it used to become an element named `8`.
-- Extended XYZ: per-atom charges are also read from the `charge` and `initial_charges`
-  columns ASE writes (only `charges` was). A `Properties` count that is not a positive integer
-  is an error; it used to be taken as 1, shifting every later column.
-- PDB: blocks closed by `END` with no `MODEL` records (CP2K and VMD trajectories) are read as
-  one frame each; they used to merge into a single frame holding every block's atoms. A last
-  `MODEL` with no `ENDMDL` is kept with a warning when it has as many atoms as the frame
-  before it, and dropped with a warning otherwise; it used to vanish silently.
-  `CRYST1 1 1 1 90 90 90`, the PDB placeholder for a structure with no unit cell, is read as
-  non-periodic with a warning; it used to become a periodic 1 Å box.
-- CIF: a symmetry operation with a term ferro does not recognise (`2x`, `y*1`) is an error
-  naming the term; the term used to be dropped, misplacing the atoms it generated.
-- LAMMPS data: a charge of 0 in a `charge` / `full` file is kept as 0 instead of being read as
-  "no charge", so converting such a file to extended XYZ now writes the `charges` column even
-  when every charge is 0. A `Masses` comment that is not an element symbol (`# oxygen`) no
-  longer becomes the element name: the element comes from the mass, with a warning.
-- CP2K input: `MULTIPLE_UNIT_CELL` is honoured as CP2K does — the `&CELL` one enlarges the cell,
-  the `&TOPOLOGY` one replicates the coordinates (both must agree when the latter is not
-  `1 1 1`). It used to be ignored, giving one unit cell of atoms. A value written as a
-  preprocessor variable (`${NREP}`) is an error: ferro does not expand `@SET`.
-- LAMMPS dump: general triclinic boxes (`ITEM: BOX BOUNDS abc origin`, written under
-  `dump_modify triclinic/general yes`) are read — the three edge vectors and the origin, with
-  coordinates, velocities and forces taken as written. They used to be misread as
-  `lo hi tilt`. Without an `element` column, a `typelabel` column names the atoms (split into
-  element and site label as the `element` column is); it used to give `X<type>`.
-- vasprun.xml: an empty `<i>` element no longer makes the next value in the file (such as a
-  `<time>` entry) be read as the energy or kinetic energy.
-- **VASP 4 POSCAR / CHGCAR are no longer read.** A file with atom counts but no element line
-  above them is an error; it used to read with placeholder elements `X1`, `X2`, … whose
-  masses, densities and per-element analyses were all wrong. Add the element line (VASP 5+).
-- QE input: `starting_magnetization` is no longer read into the per-atom magnetic moment. It
-  is a fraction between −1 and 1, not μB, and was exported as a moment to extended XYZ.
-- PDB split by `END`: a last block with no `END` is held to the frame before, as a last `MODEL`
-  with no `ENDMDL` is — kept with a warning when the atom count matches, dropped with a warning
-  otherwise. A cut-off last block used to be kept as a frame of fewer atoms, silently.
-- XYZ, extended XYZ and PDB judge a cut-off file as LAMMPS dumps do: a last line that is too
-  short or cut inside a number drops the last frame with a warning; a bad number on any other
-  line is an error naming the line. A last line cut inside a number used to be an error.
-- A file whose only frame is cut off (XYZ, extended XYZ, PDB, LAMMPS dump) is an error saying
-  so; it used to read as 0 frames with a warning.
-- Extended XYZ: an atomic number in the `species` column is read as that element (`8` → O), as
-  plain XYZ already did; the same file used to read as O / H when named `.xyz` and as elements
-  `8` / `1` when named `.extxyz`.
-- PDB: a `CRYST1` record that gives no cell (a field that is not a number, a line cut before γ)
-  is an error naming the line and the field, as in ASE; the file used to read as non-periodic
-  without a word.
-- QE input: `bohr` and `alat` positions and cells use the CODATA 2018 Bohr radius ferro uses
-  everywhere else (0.529177210903 Å); a constant of 0.52917721 Å was used, so coordinates move
-  in the 9th significant digit.
-- Writers check everything before they touch the disk: PDB (a cell that cannot be written as
-  `CRYST1`, a coordinate too wide for its field), extended XYZ (`virial=` for a frame without a
-  cell or with a zero volume) and DeePMD (partly labelled properties, set boundaries, a stress
-  without a cell) used to refuse after the output was created. PDB and extended XYZ left a
-  half-written file; DeePMD had already cleared the old `set.*` and left a system holding only
-  `type.raw`, which now survives a refused rewrite unchanged.
-- PDB writer errors number frames from 0, as the other writers do; the two cell errors counted
-  from 1.
+- A file in which no frame is found is an error, as is one whose only frame is cut off.
+- XYZ, extended XYZ and PDB treat a cut-off end as LAMMPS dumps do: the last frame (a last `MODEL`
+  without `ENDMDL`, a last block without `END`) is kept with a warning when its atom count matches the
+  frame before and dropped with a warning otherwise; a bad number anywhere else is an error naming the line.
+- PDB: blocks closed by `END` without `MODEL` records (CP2K, VMD) are one frame each (they merged into
+  one); `CRYST1 1 1 1 90 90 90` is read as no cell, with a warning; a `CRYST1` that gives no cell is an error.
+- XYZ and extended XYZ read an atomic number in the species column as the element (`8` → O).
+- Extended XYZ: charges are also read from `charge` / `initial_charges`; a bad `Properties` count, or
+  no `pos` column, is an error; without a `species` column the `Z` column gives the element.
+- CIF: a symmetry-operation term ferro does not recognise (`2x`, `y*1`) is an error naming it.
+- LAMMPS data: the `Masses` section gives the atoms' masses (isotopes and coarse-grained masses survive);
+  a `Masses` comment that is not an element symbol gives the element from the mass, with a warning;
+  a charge of 0 stays 0, so extended XYZ output then writes the `charges` column.
+- LAMMPS dump: general triclinic boxes (`ITEM: BOX BOUNDS abc origin`) are read; without an `element`
+  column, a `typelabel` column names the atoms.
+- CP2K input: `MULTIPLE_UNIT_CELL` is honoured as CP2K does; a `${VAR}` value is an error. A CP2K
+  single point with no `SCF run` line (FIST) is read.
+- **VASP 4 POSCAR / CHGCAR are no longer read** (no element line above the counts): add the element line.
+- vasprun.xml: an empty `<i>` no longer shifts the next value into the energy.
+- QE input: `starting_magnetization` is not read as a magnetic moment.
+- Text that is not UTF-8 is an error naming the file, line, column and byte.
 
-### Python: `ferro.FerroError`, and `ferro-py` checks before it reads
+### Only 3-D periodic cells
 
-- What ferro's Rust libraries report is raised as `ferro.FerroError`.  It is a subclass of
-  `RuntimeError`, so `except RuntimeError` keeps working; `except ferro.FerroError` no longer
-  swallows Python's own errors.  `read`, `write`, `read_output`, `gr_pair`, `gr_all` and `msd`
-  release the GIL while they work.
-- `qe_structure_cards` returns `[(card name, text)]` instead of one text holding three cards.
-- New: `ferro.interplanar_spacings(cell)` and `ferro.EV_ANG3_TO_KBAR` (CODATA 2018; `conv
-  analyze` used the 2014 value, a difference in the ninth digit).
-- `ferro-py job` / `conv` report a bad frame selection, `--units` or `--atom-style` before they
-  read the first file, and make `-o` only once every input has been read and generated: with
-  `--mkdir`, a failed run no longer leaves an empty directory behind.
-- `ferro-py job -s qe --timestep` converts with QE's own Rydberg time unit (0.0483776865 fs,
-  was 0.048378): `dt` for 2 fs is now 41.3414, was 41.3411.
-- A UPF in `pseudo_dir` whose element neither its header nor its name gives is skipped, not a
-  traceback; it is named when an element then has no pseudopotential.  A template's `nraise`
-  that is not a whole number is named in the error.
-- A negative `--start`, `--end`, `--stride` or `--number` to `ferro-py job` / `conv` is a usage
-  error (exit 2), not an `OverflowError` traceback.
-- The VASP fine grid (`NGXF`…) is predicted with VASP's own $\hbar^2/2m_e$, 3.81002 eV·Å² (`HSQDTM`),
-  instead of the CODATA 3.80998; only a cell that sits right on a grid-size boundary changes.
+- A frame with a cell but `pbc` other than `T T T` (extended XYZ `pbc="F F F"` / `"T T F"`, a LAMMPS
+  `f` / `s` boundary, CP2K `PERIODIC XY` / `NONE`, DeePMD `nopbc`) fails in `traj`, `map`, `net` and the
+  geometric criteria of `dataset filter` with `only 3-D periodic cells are supported`. Fully periodic
+  results are unchanged byte for byte.
+- `dataset filter --al6` diagnostics and `map sdf --cutoff-fl` / `--cutoff-ml` are checked against the
+  minimum-image bound.
 
-### Readers
+### Python
 
-- A CP2K single-point output with no `SCF run` line at all (FIST and other runs without SCF) is
-  read, as the MD reader already did; before, every frame was dropped as unconverged.
-- CP2K input coordinates and cells given in bohr convert with CODATA 2018 (0.5291772109 Å), as
-  everywhere else in ferro; they moved in the ninth significant digit.
+- Errors from ferro's libraries are `ferro.FerroError`, a subclass of `RuntimeError`. `read`,
+  `write`, `read_output`, `gr_pair`, `gr_all` and `msd` release the GIL.
+- `read` / `write` use the format table of `ferro convert`; `write` of several frames to CIF,
+  POSCAR or LAMMPS data writes one file per frame (`conf_0000.cif`, …).
+- `read_output` also returns `version_note`, `step_range`, `layout_drift` and `restarts`.
+- `qe_structure_cards` returns `[(card name, text)]`. New: `ferro.interplanar_spacings(cell)`,
+  `ferro.EV_ANG3_TO_KBAR`. Gone: `Trajectory.charge(frame)` / `multiplicity(frame)`.
+- `ferro-py job` / `conv` check the frame selection, `--units` and `--atom-style` before reading, make
+  `-o` only once every input is generated, and treat negative selection values as usage errors.
+- `ferro-py job -s qe --timestep` uses QE's Rydberg time unit (2 fs → `dt` 41.3414, was 41.3411); the
+  VASP fine grid is predicted with VASP's own $\hbar^2/2m_e$; a UPF whose element cannot be told is
+  skipped and named; a non-integer `nraise` is named.
 
 ### One naming rule for every product
 
-Every product is now named `<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.  The
-stacked csv files of `traj` and `net` keep their names; the per-input products change, and a
-single input now carries its input name too, so the name no longer depends on how many files a
-glob matched:
+Every product is `<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`; a per-input product
+carries its input name even for one input:
 
 | Command | Before | Now |
 |---|---|---|
@@ -280,145 +178,40 @@ glob matched:
 | `net --export-traj` | `<input>_types[_<s>].<ext>` | `network_types_<input>[_<s>].<ext>` |
 | `bader` | `<input>_ACF[_<s>].dat` | `bader_ACF_<input>[_<s>].dat` (also BCF, AVF) |
 
-`-s` is the batch tag everywhere, so two `dataset` options that used the name differently are
-renamed:
+- `dataset filter -s` is gone; write `--s-max` (`filter -s 5` meant 5 GPa). `dataset merge --suffix`
+  is `--dir-suffix`, and must be `.` followed by letters, digits, `_`, `+` or `-`.
+- `map` with every input failing is an error; `[inputs]` lists a failed input in its place.
+- `ferro net` prints its label scheme before `Inputs:`. The help pages share one layout; the
+  `map chg-sdf` page showed `--qn` defaulting to 2, it is 3.
+- A plain file where a system directory should go is refused with the usual `--overwrite` message.
 
-- `dataset filter -s` is gone; write `--s-max`.  `filter -s 5` used to mean 5 GPa.
-- `dataset merge --suffix` is now `--dir-suffix`: it names the output directory's suffix (`.train`).
+### `net`, `convert` and `dataset collect`: corrections
 
-Also:
-
-- `map` with every input failing is an error (`every input failed`), as `traj` and `net` already were.
-- The `[inputs]` block lists a failed input in its place, not at the end, so it matches the
-  `[k/N]` lines on screen.  The `skipped:` line of a failed input goes to stderr.
-- `ferro net` prints its label scheme before the `Inputs:` line.
-- `dataset collect --type inspect` leaves the density empty for an atom with no mass and says so,
-  on screen and in the `#` block of the frame table, as `ferro info` does (see *Masses* above).
-  A plain file where a system directory should go is refused with the usual
-  `--overwrite` message.
-- The help pages share one layout and one block for the common options; `map chg-sdf` showed
-  `--qn` defaulting to 2, it is 3.
-
-### Network classification belongs to the analysis library
-
-Nothing changes on the command line except four corrections:
-
-- `ferro net` refuses a trajectory in which a frame has no cell.  The statistics used to leave such
-  frames out silently while `--export-traj` refused them; each frame is now classified once and
-  feeds both.
-- Converting a program output (CP2K, pw.x, OUTCAR, vasprun.xml) to xyz, POSCAR or LAMMPS data no
-  longer writes the program name as the structure's title or comment line.
-- `dataset collect --type inspect` on a vasprun.xml run now carries the note that its temperature
-  column is derived from the kinetic energy.  It was meant to and never did.
-- Writing a DeePMD system whose frames carry a stress in a zero-volume cell is an error; it used to
-  write a zero virial.  The `--ratio` errors of `dataset filter` / `merge` now begin with
-  `Validation error:`, like the other parameter errors.
-
-Python: `Trajectory.charge(frame)` and `multiplicity(frame)` are gone; they always returned 0 and 1.
-
-### A third of the memory
-
-A trajectory now stores what an atom is (element, label, mass) once for a run of frames, and only
-positions, charges, forces and velocities per frame; the large text readers (LAMMPS dump, extxyz,
-CP2K and pw.x logs) no longer hold the whole file as text while parsing, and `map density` /
-`map radius` / `traj gr` sum frames in batches instead of keeping one grid per frame.  Reading a
-200-frame, 2004-atom dump took 80 MB and takes 19 MB; `map density` on it 468 MB → 71 MB, `traj gr`
-227 MB → 57 MB.  Every result is unchanged, byte for byte.
+- `ferro net` refuses a trajectory in which a frame has no cell.
+- Converting a program output no longer writes the program name as the title / comment line.
+- `collect --type inspect` on vasprun.xml notes that its temperature comes from the kinetic energy.
+- `collect`: a VASP output with no usable frame is skipped (`no usable frame`), not joined to its
+  directory. `filter` / `merge` `--ratio` errors begin with `Validation error:`.
 
 ### `convert`, `info` and `traj` read program outputs and DeePMD systems
 
-A VASP `OUTCAR` / `vasprun.xml`, a CP2K or pw.x `.out` log and a DeePMD system directory used to
-be readable only by `dataset collect` / `dataset filter`: `ferro info -i vasprun.xml` answered
-`Unsupported .xml`.  Every command that reads a structure now takes them, the outputs recognised by
-their program banner and read the way `collect` reads them (unconverged frames dropped and
-counted).  Extensions are compared case-insensitively (`.XYZ`, `.CIF`), and the Python `read` /
-`write` use the same format table as `ferro convert`, so the two can no longer disagree.
+- OUTCAR, vasprun.xml, CP2K and pw.x logs (recognised by their banner) and DeePMD system directories
+  are read by every command that reads a structure, as `collect` reads them. Extensions are compared
+  case-insensitively.
 
-### Text that is not UTF-8 is an error at its line
+### Less memory
 
-One byte that is not UTF-8 used to reject a whole file with `cannot open FILE` — although it had
-opened fine — or `stream did not contain valid UTF-8`, without a position.  The error now names the
-file, line, column and byte.
+- A 200-frame, 2004-atom dump reads in 19 MB (was 80 MB); `map density` on it 468 → 71 MB, `traj gr`
+  227 → 57 MB. Every result is unchanged, byte for byte.
 
-### Reader warnings reach Python
+### Quantum ESPRESSO
 
-The readers no longer print.  The CLI shows the same messages as before (the LAMMPS dump site-label
-mapping no longer ends with a line about `-a/-b/-c`); Python's `read` raises them as `UserWarning`,
-where they used to go straight to stderr.  `read_output` also returns `version_note`,
-`step_range`, `layout_drift` and `restarts`, which it used to drop — a CP2K version ferro has no
-fixture for was flagged on the command line and silent in Python.
-
-### A box that is not periodic in all three directions is an error
-
-A frame with a cell but `pbc` other than `T T T` — extxyz `pbc="F F F"` or `"T T F"`, a LAMMPS
-dump with an `f` or `s` boundary, CP2K `PERIODIC XY` / `NONE`, a DeePMD system with `nopbc` —
-used to be measured as a bulk by every analysis: a molecule in a 3 Å box found its neighbours
-through images that do not exist, and `traj gr` reported them with exit code 0. Such an input
-now fails with `only 3-D periodic cells are supported`, in `traj`, `map`, `net` and the
-geometric criteria of `dataset filter`. Results for fully periodic input are unchanged, byte for
-byte.
-
-`dataset filter --al6` also checks the cutoff scan of its diagnostics against the
-minimum-image bound now, and `map sdf` checks `--cutoff-fl` / `--cutoff-ml`; both used to
-measure past it without a word.
-
-### Python `write`: CIF, POSCAR and LAMMPS data get one file per frame
-
-`ferro.write` of a trajectory with several frames to a CIF, POSCAR or LAMMPS data
-path used to write only the first frame (POSCAR, data) or all frames into one CIF.
-It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
-`ferro convert` does.
-
-### extxyz without a `pos` or a species column is an error
-
-A frame whose `Properties` has no `pos` column used to read every atom at the
-origin, and one with no `species` column named every atom `X`. The first is now an
-error; for the second, ASE's atomic-number column `Z` gives the element, and a frame
-with neither is an error.
-
-### `dataset merge --suffix` must look like `.train`
-
-The suffix is appended to the output directory names, and one containing `/` or `..`
-wrote outside `-o`. It must now be `.` followed by letters, digits, `_`, `+` or `-`;
-anything else is refused before any input is read.
-
-### `dataset collect`: a VASP output with no usable frame is skipped, not joined
-
-An OUTCAR or vasprun.xml whose every step was dropped (an unfinished first step,
-say) used to be read as zero frames and joined to the other files of its directory;
-the composition check then failed and the good files were lost with it. It is now
-skipped with `no usable frame`, as CP2K and QE outputs already were.
-
-### Site labels survive a LAMMPS dump round trip
-
-Writing a dump now folds `<element>_<suffix>` site labels (`P_3`, `O_b`) into the
-element column, as `ferro net --export-traj` always did. A `convert` from a labelled
-dump, or from an extxyz with a `label` column, to a dump used to drop every label;
-`ferro.write` to a dump keeps them the same way.
-
-### LAMMPS data keeps the masses of its `Masses` section
-
-The mass given for each atom type is now the atoms' mass, not only a hint for the
-element: isotopes and coarse-grained masses survive (`ferro info` densities, a
-`convert` back to data). Writing a data file whose atoms of one element carry
-different masses is an error, since a type has one mass.
-
-### `ferro dataset collect` reads Quantum ESPRESSO pw.x output
-
-`scf`, `md` and `vc-md` outputs are recognised by their `Program PWSCF` banner, or
-named with `--format qe/pw` (`ferro doc collect`). An scf needs `tprnfor = .true.`:
-frames without forces are dropped, as for CP2K.
-
-### `ferro-py conv -s qe --scan ecutwfc=…`
-
-QE convergence tests scan `ecutwfc` (`ferro-py doc conv`); `conv analyze` reads the
-pw.x outputs.
-
-### `ferro-py job -s qe`: `ecutrho` is at least 4 × `ecutwfc`
-
-When `ecutrho` comes from the UPF suggestions and that is below 4 × `ecutwfc`, the job now
-writes 4 × `ecutwfc`. Regenerate QE inputs whose template sets a high `ecutwfc` but no
-`ecutrho`. An `ecutrho` at or below `ecutwfc` in the template is now an error.
+- `ferro dataset collect` reads pw.x `scf`, `md` and `vc-md` output (`Program PWSCF` banner, or
+  `--format qe/pw`); an scf needs `tprnfor = .true.`.
+- `ferro-py conv -s qe --scan ecutwfc=…`; `conv analyze` reads pw.x outputs.
+- `ferro-py job -s qe`: `ecutrho` is at least 4 × `ecutwfc`, and 4 × `ecutwfc` when no UPF suggests
+  one. Regenerate QE inputs whose template sets a high `ecutwfc` but no `ecutrho`. An `ecutrho` at
+  or below `ecutwfc` in the template is an error.
 
 ## `v0.4.0` — 2026-10-17
 
