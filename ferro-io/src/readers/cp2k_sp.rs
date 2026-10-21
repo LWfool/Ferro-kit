@@ -345,11 +345,6 @@ fn read_stress(lines: &[&str], head: usize, hi: usize) -> Result<Option<Matrix3<
     Ok((row == 3).then_some(t))
 }
 
-/// Reads a CP2K single-point output file, discarding the statistics.
-pub fn read_cp2k_sp(path: &Path) -> Result<Trajectory> {
-    Ok(read_cp2k_sp_with_stats(path)?.0)
-}
-
 /// Reads a CP2K single-point output file and reports what was dropped.
 pub fn read_cp2k_sp_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();

@@ -15,13 +15,13 @@ pub use notice::{Level, Notice};
 pub(crate) mod testutil;
 
 pub use readers::{
-    read_aimd_as, read_aimd_with_stats, read_cp2k_md, read_cp2k_md_with_stats, read_cp2k_sp,
+    read_aimd_as, read_aimd_with_stats, read_cp2k_md_with_stats,
     read_cp2k_sp_with_stats,
-    read_vasp_outcar, read_vasp_outcar_with_stats, read_vasprun,
+    read_vasp_outcar_with_stats,
     read_vasprun_with_stats, sniff, AimdFormat, AimdStats,
     read_deepmd_npy, read_deepmd_npy_with_warnings,
     read_cif, read_pdb, read_pdb_with_warnings, read_xyz, read_xyz_with_warnings,
-    read_poscar, read_poscar_with_warnings, read_contcar,
+    read_poscar, read_poscar_with_warnings,
     read_chgcar,
     read_cube_as_chg,
     is_extxyz, read_extxyz, read_extxyz_with_warnings,

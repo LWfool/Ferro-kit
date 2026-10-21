@@ -33,11 +33,6 @@ use nalgebra::{Matrix3, Vector3};
 use super::aimd::{AimdFormat, AimdStats};
 use ferro_core::units::{convert_pressure, PressureUnit};
 
-/// Reads a VASP OUTCAR, discarding the statistics.
-pub fn read_vasp_outcar(path: &Path) -> Result<Trajectory> {
-    Ok(read_vasp_outcar_with_stats(path)?.0)
-}
-
 /// True when `needle` appears as a contiguous run of whitespace-separated
 /// tokens in `line`.
 ///

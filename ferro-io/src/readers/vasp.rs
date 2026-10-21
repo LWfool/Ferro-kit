@@ -17,10 +17,6 @@ pub fn read_poscar_with_warnings(path: &Path) -> Result<(Trajectory, Vec<Notice>
     parse_poscar(&content).with_context(|| format!("parsing {path_}"))
 }
 
-pub fn read_contcar(path: &Path) -> Result<Trajectory> {
-    read_poscar(path)
-}
-
 fn parse_poscar(content: &str) -> Result<(Trajectory, Vec<Notice>)> {
     let mut warnings = Vec::new();
     let mut lines = content.lines();

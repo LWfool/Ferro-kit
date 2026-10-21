@@ -154,11 +154,6 @@ fn line_matches(line: &str, candidates: &[&[&str]]) -> bool {
     })
 }
 
-/// Reads a CP2K MD output file, discarding the statistics.
-pub fn read_cp2k_md(path: &Path) -> Result<Trajectory> {
-    Ok(read_cp2k_md_with_stats(path)?.0)
-}
-
 /// Reads a CP2K MD output file and reports what was dropped.
 pub fn read_cp2k_md_with_stats(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let path_ = path.display();

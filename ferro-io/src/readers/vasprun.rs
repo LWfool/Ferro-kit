@@ -29,11 +29,6 @@ use quick_xml::Reader;
 
 use super::aimd::{AimdFormat, AimdStats};
 
-/// Reads a vasprun.xml, discarding the statistics.
-pub fn read_vasprun(path: &Path) -> Result<Trajectory> {
-    Ok(read_vasprun_with_stats(path)?.0)
-}
-
 /// Where in the document the pull parser currently is.
 #[derive(Default)]
 struct State {
