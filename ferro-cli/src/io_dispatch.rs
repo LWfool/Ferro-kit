@@ -41,22 +41,6 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
     Ok(traj)
 }
 
-/// Reads a trajectory and keeps only its last `n` frames when `last_n` is given.
-///
-/// The `--last-n` skip-equilibration step every analysis subcommand performs, in one
-/// place so the batch loop stays a one-liner in each of them.
-pub fn read_trajectory_tail(
-    path: &Path,
-    opts: &ReadArgs,
-    last_n: Option<usize>,
-) -> Result<Trajectory> {
-    let mut traj = read_trajectory(path, opts)?;
-    if let Some(n) = last_n {
-        traj = traj.tail(n);
-    }
-    Ok(traj)
-}
-
 /// Returns a human-readable read/write matrix of the supported formats.
 ///
 /// The rows come from `Format::ALL`, so the matrix cannot drift from what is read

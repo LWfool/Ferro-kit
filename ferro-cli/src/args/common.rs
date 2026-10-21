@@ -11,7 +11,7 @@ use ferro_io::{AtomStyle, LammpsUnits};
 use std::path::{Path, PathBuf};
 
 use crate::batch;
-use crate::io_dispatch::{check_atom_style, read_trajectory_tail};
+use crate::io_dispatch::{check_atom_style, read_trajectory};
 
 /// Reading choices a file name cannot carry. Shared by every command that reads
 /// a structure or trajectory through `io_dispatch::read_trajectory`.
@@ -113,9 +113,14 @@ impl CommonArgs {
         }
     }
 
-    /// Reads one trajectory and applies `--last-n`.
+    /// Reads one trajectory and applies `--last-n`, the skip-equilibration step every
+    /// analysis subcommand performs.
     pub fn load(&self, path: &Path) -> Result<Trajectory> {
-        read_trajectory_tail(path, &self.read, self.last_n)
+        let traj = read_trajectory(path, &self.read)?;
+        Ok(match self.last_n {
+            Some(n) => traj.tail(n),
+            None => traj,
+        })
     }
 
     /// Builds the naming/placement bundle for this run.
