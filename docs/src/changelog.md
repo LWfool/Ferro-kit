@@ -161,8 +161,25 @@ command line alike; regenerate it rather than migrating it.
   and the `Masses` section of LAMMPS data on writing (nothing is written). `ferro info` leaves the
   density row out, prints the rest and exits 1; `dataset collect --type inspect` leaves the
   density column empty. No mass is guessed from a prefix (`Fe1` is not read as Fe here).
-- Library: `effective_mass()` (on `Atom`, `Site`, `AtomRef`), `Frame::total_mass` and
-  `Frame::center_of_mass` return `Result`, and `Frame::center` returns `Result<()>`.
+- Library: `effective_mass()` (on `Atom`, `Site`, `AtomRef`) and `Frame::total_mass` return
+  `Result`.
+
+### Library: removed and moved items
+
+No command-line behaviour changes; Rust callers change as follows.
+
+- `ferro_analysis::ml` is split by task. What `ferro dataset` uses now lives under
+  `ferro_analysis::ml::dataset` and is reached only there: `ml::filter_frames` and
+  `ml::filter::filter_frames` are both `ml::dataset::filter_frames`, likewise `Split`, the merge
+  functions, `DEFAULT_SEED`, `frame_table`, `filter_diagnostics` and `quantiles`. The geometry
+  helpers (`min_pair_distance`, `count_with_coordination`, `coordination_histogram`) and the
+  remaining diagnostics functions are no longer public.
+- Removed, with no caller left: `ferro_io::{read_contcar, read_cp2k_md, read_cp2k_sp,
+  read_vasp_outcar, read_vasprun}` (use `read_poscar` or the `_with_stats` readers);
+  `ferro_analysis::VERSION`; `MsdFit::{frac_lo, frac_hi}` (the range is `MsdParams.fit_range`);
+  `AtomType::{display_rank, is_bridging}`; `Frame::{geometric_center, center_of_mass, center,
+  is_periodic, velocities_mut}`; `Trajectory::{frame_mut, iter_frames}`; `Atom::distance_to`;
+  `Table::n_cols`; `FrameVerdict::is_clean` (test `flags == 0`).
 
 ### Writers: fewer silent results
 
