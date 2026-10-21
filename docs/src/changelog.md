@@ -52,8 +52,7 @@ command line alike; regenerate it rather than migrating it.
 - `traj gr` / `traj sq`: the `dr` header line is the requested `--dr`; the width actually used,
   which the minimum-image clamp makes differ between inputs, is a `dr` column of `[inputs]`. The
   header used to print the first input's actual width as if it held for the whole batch. Data
-  columns are unchanged. Library: `GrResult.params.dr` is the request, `GrResult.dr_used` the
-  actual width (`params.dr` used to hold the actual width).
+  columns are unchanged.
 - `map velocity` / `map force` with velocities / forces in some frames but not others is an error
   naming the first frame without them, as `traj vacf` is; the frames without them used to be
   skipped without a word, so the map averaged a different stretch of the run than asked.
@@ -86,25 +85,10 @@ command line alike; regenerate it rather than migrating it.
 - `map density` / `velocity` / `force` / `radius` with an `--elements` filter that matches no
   atom is an error, as it is for `msd`, `vacf`, `vanhove` and the library's jump map; it used to write a grid
   of zeros reporting "0 atoms". The error names the filter in every analysis.
-- Library: `ferro_analysis::{distance, angle, dihedral, radius_of_gyration, bounding_box,
-  mean_squared_displacement, rmsd_to_first, center_of_mass_trajectory,
-  radius_of_gyration_trajectory}` are removed. Nothing called them; they took no minimum image
-  and did not unwrap, so `mean_squared_displacement` sat next to `calc_msd` giving a different
-  answer. Use `calc_msd`, and `Cell::minimum_image` for distances.
-- Library: `Table::validate` and `Table::concat_union` return `ferro_core::Result`
-  (`ChemError::ValidationError`) instead of `Result<_, String>`.
-- Library: `find_supercell_dims` refuses a NaN or infinite `min_length`, and `build_box` /
-  `estimate_box_length` a NaN or infinite `density` / `min_dist`. NaN used to pass the
-  `<= 0` checks: `min_length` was then ignored, the others panicked.
-- Library: `build_box` takes a `seed` (last argument); the same seed gives the same box. It drew
-  from an unseeded generator, in an element order that changed from run to run.
 - The automatic first-shell cutoff (`net --A-B=auto`, `dataset filter --al6 auto`) smooths g(r)
   over the documented 0.10 Å; it was 0.14 Å (7 bins of 0.02 Å). Cutoffs on a shallow minimum
   move by a bin or two: on the test glasses Zn-O 2.631 → 2.651 and 2.611 → 2.571 Å, Al-O
   2.591 → 2.571 Å; P-O and the clean gaps do not move.
-- Library: `MsdParams`, `VacfParams`, `RotCorrParams`, `BondLifeParams` and `VanHoveParams`
-  default `dt` to NaN, and `validate` / `calc_*` refuse it as "dt must be given"; the default of
-  1.0 fs used to compute silently. The CLI and Python already required it.
 
 ### Command line
 
@@ -115,8 +99,6 @@ command line alike; regenerate it rather than migrating it.
   input and then fail on each as "trajectory is empty".
 - `bader -m` with an unknown method is a usage error from the argument parser, listing the valid
   names, exit code 2 (it was a `FerroError` with exit code 1). Case still does not matter.
-  Library: `ferro_io::read_charge_grid` reads a `.cube` or a CHGCAR by name, the choice `bader`
-  made on its own.
 
 ### Messages: one layout, on stderr
 
@@ -135,8 +117,6 @@ command line alike; regenerate it rather than migrating it.
   subclasses of `UserWarning` (a `UserWarning` filter still catches them).  The text starts with
   the path and line, so reading several files that trigger the same notice gives one warning per
   file; it used to give one in all.  The instance carries `source`, `line` and `detail`.
-- Rust library: the per-format readers and `ReadReport::warnings` return
-  `Vec<ferro_io::Notice>` (`level`, `line`, `message`) instead of `Vec<String>`.
 
 ### Histogram bins: one rule for `gr`, `sq`, `vanhove` and `angle`
 
@@ -167,33 +147,6 @@ command line alike; regenerate it rather than migrating it.
   and the `Masses` section of LAMMPS data on writing (nothing is written). `ferro info` leaves the
   density row out, prints the rest and exits 1; `dataset collect --type inspect` leaves the
   density column empty. No mass is guessed from a prefix (`Fe1` is not read as Fe here).
-- Library: `effective_mass()` (on `Atom`, `Site`, `AtomRef`) and `Frame::total_mass` return
-  `Result`.
-
-### Library: removed and moved items
-
-No command-line behaviour changes; Rust callers change as follows.
-
-- `ferro_analysis::ml` is split by task. What `ferro dataset` uses now lives under
-  `ferro_analysis::ml::dataset` and is reached only there: `ml::filter_frames` and
-  `ml::filter::filter_frames` are both `ml::dataset::filter_frames`, likewise `Split`, the merge
-  functions, `DEFAULT_SEED`, `frame_table`, `filter_diagnostics` and `quantiles`. The geometry
-  helpers (`min_pair_distance`, `count_with_coordination`, `coordination_histogram`) and the
-  remaining diagnostics functions are no longer public.
-- `ferro_io` readers return what they noticed alongside the frames, under the plain name: the
-  `_with_warnings` / `_with_stats` variants are gone, and `read_lammps_dump`, `read_deepmd_npy`
-  and `read_qe_out` return `(Trajectory, Vec<Notice>)` or `(Trajectory, AimdStats)` (take `.0`
-  for the frames alone). `read_aimd_with_stats` is `read_aimd`.
-- No longer reachable from `ferro_io`: `read_as`, `read_xyz`, `read_extxyz`, `read_pdb`,
-  `read_cif`, `read_poscar`, `read_contcar`, `read_lammps_data`, `read_cp2k_md`, `read_cp2k_sp`,
-  `read_vasp_outcar`, `read_vasprun`, `read_cp2k_inp`, `read_cp2k_restart`, `read_qe_input`,
-  `is_extxyz`, `apply_type_map`, `write_xyz`, `index_width`, `indexed_path`. Read any format
-  through `ferro_io::read` (its warnings and AIMD statistics are in `ReadReport`), or a program
-  output through `read_aimd` / `read_aimd_as`.
-- Removed, with no caller left: `ferro_analysis::VERSION`; `MsdFit::{frac_lo, frac_hi}` (the range is `MsdParams.fit_range`);
-  `AtomType::{display_rank, is_bridging}`; `Frame::{geometric_center, center_of_mass, center,
-  is_periodic, velocities_mut}`; `Trajectory::{frame_mut, iter_frames}`; `Atom::distance_to`;
-  `Table::n_cols`; `FrameVerdict::is_clean` (test `flags == 0`).
 
 ### Writers: fewer silent results
 
@@ -215,9 +168,6 @@ No command-line behaviour changes; Rust callers change as follows.
   used to be written as 0. New `ferro convert --drop-partial` (Python:
   `ferro.write(..., drop_partial=True)`) leaves the column out instead — LAMMPS data, whose
   charge column is mandatory, then writes every charge as 0.
-- Library: `ferro_io::write` / `write_numbered` take `&WriteOptions { units, drop_partial }`
-  in place of the `units` argument; `write_extxyz_with`, `write_lammps_dump` and
-  `write_lammps_data` take the `drop_partial` flag.
 
 ### Readers: fewer silent results
 
@@ -366,24 +316,6 @@ Nothing changes on the command line except four corrections:
 
 Python: `Trajectory.charge(frame)` and `multiplicity(frame)` are gone; they always returned 0 and 1.
 
-Library:
-
-- `Frame.charge`, `Frame.multiplicity`, `Frame.bonds`, `TrajectoryMetadata.timestep` and
-  `Trajectory::time_at` are removed (nothing produced them).  `TrajectoryMetadata.source` is split
-  into `title` and `program`.
-- `AtomType`, `TypeParams`, `CutoffTable`, `classify_frame`, the network graph and `NeighborList`
-  moved from `ferro_core` to `ferro_analysis`; `PeriodicCell` stays in core.  New
-  `calc_network_typed` returns the per-frame types with the statistics.
-  `ferro_structure::find_clusters` and `classify_trajectory` are removed.
-- `ferro_analysis::ml::merge::sort_atoms` is `Trajectory::canonically_sorted`; the (Z, symbol)
-  order is `ferro_core::data::elements::canonical_cmp`.  New `Frame::virial` and
-  `Cell::stress_from_virial`.
-- `ferro_analysis` and `ferro_io` are reached from the crate root only (`ferro_analysis::GrParams`,
-  not `ferro_analysis::md::gr::GrParams`); `ml` stays a module.  The time-correlation analyses
-  check the frame spacing themselves, so `check_frame_spacing` is no longer public.
-- The `--ratio` split, the stitching of restart segments, the per-frame table of
-  `collect --type inspect` and the filter's diagnostic tables are in `ferro_analysis::ml`.
-
 ### A third of the memory
 
 A trajectory now stores what an atom is (element, label, mass) once for a run of frames, and only
@@ -392,10 +324,6 @@ CP2K and pw.x logs) no longer hold the whole file as text while parsing, and `ma
 `map radius` / `traj gr` sum frames in batches instead of keeping one grid per frame.  Reading a
 200-frame, 2004-atom dump took 80 MB and takes 19 MB; `map density` on it 468 MB → 71 MB, `traj gr`
 227 MB → 57 MB.  Every result is unchanged, byte for byte.
-
-Library: `Frame.atoms`, `Frame.forces` and `Frame.velocities` are no longer public fields.  Read
-atoms with `atom(i)` / `atoms()` / `positions()`, forces with `forces()`; build frames with
-`add_atom` / `set_atoms`, and set forces with `set_forces`, which refuses a wrong length.
 
 ### `convert`, `info` and `traj` read program outputs and DeePMD systems
 
@@ -420,10 +348,6 @@ where they used to go straight to stderr.  `read_output` also returns `version_n
 `step_range`, `layout_drift` and `restarts`, which it used to drop — a CP2K version ferro has no
 fixture for was flagged on the command line and silent in Python.
 
-Library: `calc_cube_density` and `calc_cube_jump` return `Result` and say why they failed (no
-periodic cell, no velocities / forces, too few frames, atoms changing between frames, an empty
-element filter) instead of `None`; `SqResult` carries its warnings.
-
 ### A box that is not periodic in all three directions is an error
 
 A frame with a cell but `pbc` other than `T T T` — extxyz `pbc="F F F"` or `"T T F"`, a LAMMPS
@@ -443,8 +367,7 @@ measure past it without a word.
 `ferro.write` of a trajectory with several frames to a CIF, POSCAR or LAMMPS data
 path used to write only the first frame (POSCAR, data) or all frames into one CIF.
 It now writes one file per frame, `conf_0000.cif`, `conf_0001.cif`, …, as
-`ferro convert` does. Library callers of `write_cif` / `write_poscar` /
-`write_lammps_data` get an error for several frames instead.
+`ferro convert` does.
 
 ### extxyz without a `pos` or a species column is an error
 

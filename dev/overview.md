@@ -135,6 +135,134 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
 
 `v0.3.1` 是纯新增，故升 patch 位。
 
+## 0.4.0 之后（未发版）
+
+用户可见的变化在手册 `changelog.md` 的 `Unreleased`。
+
+- **库 API**（不进 changelog）：2026-10-18 – 10-21 各批（审查第 3–5 步、遗留清理、第 12–14 批、瘦身 S2 / P3）
+  曾把 Rust 库的变化写进 changelog，2026-10-21 按「库 API 不进 changelog」的既有分工移回这里（瘦身 D-2，用户定）。
+  下面是原文（英文），按原所在的 changelog 小节标出：
+
+- 原在「Analyses」：
+
+  >  Library: `GrResult.params.dr` is the request, `GrResult.dr_used` the
+  >   actual width (`params.dr` used to hold the actual width).
+
+- 原在「Analyses」：
+
+  > - Library: `ferro_analysis::{distance, angle, dihedral, radius_of_gyration, bounding_box,
+  >   mean_squared_displacement, rmsd_to_first, center_of_mass_trajectory,
+  >   radius_of_gyration_trajectory}` are removed. Nothing called them; they took no minimum image
+  >   and did not unwrap, so `mean_squared_displacement` sat next to `calc_msd` giving a different
+  >   answer. Use `calc_msd`, and `Cell::minimum_image` for distances.
+
+- 原在「Analyses」：
+
+  > - Library: `Table::validate` and `Table::concat_union` return `ferro_core::Result`
+  >   (`ChemError::ValidationError`) instead of `Result<_, String>`.
+
+- 原在「Analyses」：
+
+  > - Library: `find_supercell_dims` refuses a NaN or infinite `min_length`, and `build_box` /
+  >   `estimate_box_length` a NaN or infinite `density` / `min_dist`. NaN used to pass the
+  >   `<= 0` checks: `min_length` was then ignored, the others panicked.
+
+- 原在「Analyses」：
+
+  > - Library: `build_box` takes a `seed` (last argument); the same seed gives the same box. It drew
+  >   from an unseeded generator, in an element order that changed from run to run.
+
+- 原在「Analyses」：
+
+  > - Library: `MsdParams`, `VacfParams`, `RotCorrParams`, `BondLifeParams` and `VanHoveParams`
+  >   default `dt` to NaN, and `validate` / `calc_*` refuse it as "dt must be given"; the default of
+  >   1.0 fs used to compute silently. The CLI and Python already required it.
+
+- 原在「Command line」：
+
+  >   Library: `ferro_io::read_charge_grid` reads a `.cube` or a CHGCAR by name, the choice `bader`
+  >   made on its own.
+
+- 原在「Messages: one layout, on stderr」：
+
+  > - Rust library: the per-format readers and `ReadReport::warnings` return
+  >   `Vec<ferro_io::Notice>` (`level`, `line`, `message`) instead of `Vec<String>`.
+
+- 原在「Masses: no 1 amu stand-in」：
+
+  > - Library: `effective_mass()` (on `Atom`, `Site`, `AtomRef`) and `Frame::total_mass` return
+  >   `Result`.
+
+- 原在「Library: removed and moved items」：
+
+  > ### Library: removed and moved items
+  >
+  > No command-line behaviour changes; Rust callers change as follows.
+  >
+  > - `ferro_analysis::ml` is split by task. What `ferro dataset` uses now lives under
+  >   `ferro_analysis::ml::dataset` and is reached only there: `ml::filter_frames` and
+  >   `ml::filter::filter_frames` are both `ml::dataset::filter_frames`, likewise `Split`, the merge
+  >   functions, `DEFAULT_SEED`, `frame_table`, `filter_diagnostics` and `quantiles`. The geometry
+  >   helpers (`min_pair_distance`, `count_with_coordination`, `coordination_histogram`) and the
+  >   remaining diagnostics functions are no longer public.
+  > - `ferro_io` readers return what they noticed alongside the frames, under the plain name: the
+  >   `_with_warnings` / `_with_stats` variants are gone, and `read_lammps_dump`, `read_deepmd_npy`
+  >   and `read_qe_out` return `(Trajectory, Vec<Notice>)` or `(Trajectory, AimdStats)` (take `.0`
+  >   for the frames alone). `read_aimd_with_stats` is `read_aimd`.
+  > - No longer reachable from `ferro_io`: `read_as`, `read_xyz`, `read_extxyz`, `read_pdb`,
+  >   `read_cif`, `read_poscar`, `read_contcar`, `read_lammps_data`, `read_cp2k_md`, `read_cp2k_sp`,
+  >   `read_vasp_outcar`, `read_vasprun`, `read_cp2k_inp`, `read_cp2k_restart`, `read_qe_input`,
+  >   `is_extxyz`, `apply_type_map`, `write_xyz`, `index_width`, `indexed_path`. Read any format
+  >   through `ferro_io::read` (its warnings and AIMD statistics are in `ReadReport`), or a program
+  >   output through `read_aimd` / `read_aimd_as`.
+  > - Removed, with no caller left: `ferro_analysis::VERSION`; `MsdFit::{frac_lo, frac_hi}` (the range is `MsdParams.fit_range`);
+  >   `AtomType::{display_rank, is_bridging}`; `Frame::{geometric_center, center_of_mass, center,
+  >   is_periodic, velocities_mut}`; `Trajectory::{frame_mut, iter_frames}`; `Atom::distance_to`;
+  >   `Table::n_cols`; `FrameVerdict::is_clean` (test `flags == 0`).
+
+- 原在「Writers: fewer silent results」：
+
+  > - Library: `ferro_io::write` / `write_numbered` take `&WriteOptions { units, drop_partial }`
+  >   in place of the `units` argument; `write_extxyz_with`, `write_lammps_dump` and
+  >   `write_lammps_data` take the `drop_partial` flag.
+
+- 原在「Network classification belongs to the analysis library」：
+
+  > Library:
+  >
+  > - `Frame.charge`, `Frame.multiplicity`, `Frame.bonds`, `TrajectoryMetadata.timestep` and
+  >   `Trajectory::time_at` are removed (nothing produced them).  `TrajectoryMetadata.source` is split
+  >   into `title` and `program`.
+  > - `AtomType`, `TypeParams`, `CutoffTable`, `classify_frame`, the network graph and `NeighborList`
+  >   moved from `ferro_core` to `ferro_analysis`; `PeriodicCell` stays in core.  New
+  >   `calc_network_typed` returns the per-frame types with the statistics.
+  >   `ferro_structure::find_clusters` and `classify_trajectory` are removed.
+  > - `ferro_analysis::ml::merge::sort_atoms` is `Trajectory::canonically_sorted`; the (Z, symbol)
+  >   order is `ferro_core::data::elements::canonical_cmp`.  New `Frame::virial` and
+  >   `Cell::stress_from_virial`.
+  > - `ferro_analysis` and `ferro_io` are reached from the crate root only (`ferro_analysis::GrParams`,
+  >   not `ferro_analysis::md::gr::GrParams`); `ml` stays a module.  The time-correlation analyses
+  >   check the frame spacing themselves, so `check_frame_spacing` is no longer public.
+  > - The `--ratio` split, the stitching of restart segments, the per-frame table of
+  >   `collect --type inspect` and the filter's diagnostic tables are in `ferro_analysis::ml`.
+
+- 原在「A third of the memory」：
+
+  > Library: `Frame.atoms`, `Frame.forces` and `Frame.velocities` are no longer public fields.  Read
+  > atoms with `atom(i)` / `atoms()` / `positions()`, forces with `forces()`; build frames with
+  > `add_atom` / `set_atoms`, and set forces with `set_forces`, which refuses a wrong length.
+
+- 原在「Reader warnings reach Python」：
+
+  > Library: `calc_cube_density` and `calc_cube_jump` return `Result` and say why they failed (no
+  > periodic cell, no velocities / forces, too few frames, atoms changing between frames, an empty
+  > element filter) instead of `None`; `SqResult` carries its warnings.
+
+- 原在「Python `write`: CIF, POSCAR and LAMMPS data get one file per frame」：
+
+  >  Library callers of `write_cif` / `write_poscar` /
+  > `write_lammps_data` get an error for several frames instead.
+
 ## `v0.4.0`（2026-10-17 打 tag，发版）
 
 输入生成迁到 ferro-python 收尾（`decisions.md`「`ferro.jobs`」）与 dataset 审查的修复。删了一个
