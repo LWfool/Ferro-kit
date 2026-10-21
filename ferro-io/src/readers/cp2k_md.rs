@@ -854,19 +854,4 @@ mod tests {
         let (traj, _) = parse_cp2k_md(&xy).unwrap();
         assert!(traj.frames.iter().all(|f| f.pbc == [true, true, false]));
     }
-
-    /// Runs against a real 40 MB restarted run; `examples/` is gitignored, so
-    /// this is opt-in: `cargo test -p ferro-io -- --ignored --nocapture`.
-    #[test]
-    #[ignore]
-    fn reads_the_reference_output() {
-        let (traj, st) = read_cp2k_md(Path::new("../examples/cp2k/md/total.out")).unwrap();
-        println!("{st:?}");
-        println!("frames={} atoms={:?}", traj.n_frames(), traj.n_atoms());
-        let f = &traj.frames[0];
-        println!("energy={:?}", f.energy);
-        println!("stress[0][0]={:?}", f.stress.map(|s| s[(0, 0)]));
-        println!("force[0]={:?}", f.forces().map(|v| v[0]));
-        println!("cell={:?}", f.cell.as_ref().map(|c| c.matrix));
-    }
 }
