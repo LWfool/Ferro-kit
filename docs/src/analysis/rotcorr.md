@@ -173,9 +173,7 @@ pub struct RotCorrParams {
 **The file name does not carry `--vector` or `--legendre`.**  Two runs on the same input into the same
 directory overwrite each other; tell them apart with `-s` (e.g. `-s bondP1`).
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#`
-comment block holds the shared parameters and the `[inputs]` list (`pandas.read_csv(comment="#")` drops
-it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).
 
 ## Usage
 

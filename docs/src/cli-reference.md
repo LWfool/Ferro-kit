@@ -26,8 +26,8 @@ an input (`ferro traj gr --dr 0.1`) are an error, not a request for the page: th
 
 ## Common Flags
 
-Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`convert` / `info` /
-`bader` / `dataset` do **not** take it; each has its own parameters):
+Every command under `traj` / `map` / `net` takes these flags (`convert` / `info` / `bader` / `dataset`
+do **not**; each has its own parameters):
 
 | Flag | Description |
 |---|---|
@@ -43,8 +43,7 @@ Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`conv
 
 ### Batch processing
 
-`-i` always takes several values.  There is **only one code path**: a single input is the N=1 case, not a
-special mode — dispatching on the file count would make the shape of the output depend on how many files the glob happened to match that day.
+`-i` always takes several values; a single input is simply N=1 and gives output of the same shape.
 
 ```bash
 ferro traj gr -i 'runs/*/prod.lammpstrj' -a P -b O -s scan
@@ -95,8 +94,7 @@ Two rules that are easily confused:
   one set of data must not end up under two file names.
 
 The selected elements/labels become **part of a path**, so the character set `[A-Za-z0-9_+-]` is validated
-before the name is assembled, and a violation errors out **before the first file is read**.  Substituting
-underscores was rejected — it would let `-a P/2` and `-a P_2` write silently into the same file.
+before the name is assembled, and a violation errors out **before the first file is read**.
 
 ### Type selection (gr / angle)
 
@@ -109,11 +107,7 @@ The two groups are mutually exclusive:
 
 The first slot is the centre (for a pair) or end atom A (for a triplet).  **The order matters**: `g(r)` is symmetric but `CN` is directed.
 
-**`traj sq` has no type selection**: `-a/-b` and `-x/-y` have been removed.  The primary output of $S(q)$ is
-the two totals, and the partials are a diagnostic decomposition that adds back to the total
-($\sum w_{ij}S_{ij} = \mathrm{total}$); keeping only one pair would hide exactly that closure, and selecting
-columns in pandas is enough to look at one pair.  Partials resolved by label went with them — the atom
-count behind a single site label is usually too small for its partial to show any signal.  `GroupBy::Label` in the library is untouched.
+**`traj sq` has no type selection**: every pair is always written; see [S(q)](analysis/sq.md#no-type-selection).
 
 ---
 
@@ -293,7 +287,7 @@ ferro convert -i traj.dump -o conf.lmp --number 20              # 20 frames at e
 Three points of semantics to remember:
 
 - **Closed interval, 0-based**, matching the frame numbers `ferro info` prints: when `info` shows the last
-  frame as `Frame 4`, `--end 4` reaches it.  (A half-open interval would need `--end 5`, which does not line up with `info`, so it was not adopted.)
+  frame as `Frame 4`, `--end 4` reaches it.
 - **`--stride` and `--number` cannot be given together**; clap rejects that while parsing.  One is an
   interval and the other a total, so the combination states two intentions at once; silently ignoring one of them would be the worse choice.
 - **`--number` always includes both ends.**  The last frame is often the best-equilibrated configuration, and
@@ -325,7 +319,7 @@ The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.
 `POSCAR*`).  **When only one frame is selected, one file is written with no index**, whatever the format.
 
 `-i` currently accepts a **single file** only.  Several inputs plus frame selection would make the output
-names of different trajectories collide; that needs the input stem in the file name as well, which is a separate piece of work.
+names of different trajectories collide.
 
 **The element column carries clean element symbols**, with one exception: the LAMMPS dump writer folds
 a label of the form `<element>_<suffix>` (`P_3`, `O_b`) into its element column, and the dump reader
@@ -808,7 +802,7 @@ Three `.dat` files in Henkelman format, `bader_<kind>_<input stem>[_<suffix>].da
 | `bader_BCF_<input stem>.dat` | Bader Charge File — the charge, volume and coordinates of each Bader volume |
 | `bader_AVF_<input stem>.dat` | Atomic Volume File — the atom → Bader volume index mapping |
 
-These three follow the bader format of the Henkelman group and are parsed by external tools, which is why they did not move to csv with the rest of the outputs.
+These three follow the bader format of the Henkelman group and are parsed by external tools.
 
 The three reports are **written next to the input file by default** (`-i run1/CHGCAR` →
 `run1/bader_ACF_CHGCAR.dat`), which makes this the only command in the repository that does not default to the
@@ -1073,7 +1067,8 @@ box-drawing characters; `NO_COLOR` turns off colour only.
 
 Apart from `ferro map` (cube) and `ferro bader` (ACF/BCF/AVF), every output is **one csv** with a `#`
 comment block above the data holding the shared parameters and the `[inputs]` list (frame count, atom
-count, volume and status per input).
+count, volume and status per input).  Several inputs stack into that one table, told apart by a `file`
+column.
 
 That block is for people to read — `pandas.read_csv(comment="#")` drops it, so **anything a script has to
 parse is always a column** and is never hidden in a comment.

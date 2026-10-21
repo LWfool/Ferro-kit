@@ -228,11 +228,8 @@ per input is a column of the `[inputs]` list:
 
 $D$ is also printed to stdout in Å²/fs, cm²/s and m²/s.
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#`
-comment block holds the shared parameters and the `[inputs]` list (`pandas.read_csv(comment="#")` drops
-it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
-
-Figures are made from this csv outside ferro; see [Plotting](../plotting.md).  `ferro-py plot msd`
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).
+Figures: [Plotting](../plotting.md).  `ferro-py plot msd`
 draws the fitted line from the `[inputs]` columns.
 
 ## Usage

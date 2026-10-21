@@ -73,9 +73,7 @@ These are the library defaults.  On the command line `--dt` is required, and `r_
 The lag time $\tau$ is recorded only in the `#` header block (once in frames, once in fs).  One $\tau$ per run;
 when several $\tau$ are supported later a `tau` column will be added — that adds rows rather than changing the column structure.
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
-(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
-
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).
 
 ## Usage
 

@@ -150,23 +150,18 @@ The `[inputs]` block carries `r_max` (after clamping to the minimum-image bound)
 $g(r)$ bin width actually used, see [g(r)](gr.md)) and
 `q_trunc` $= 2\pi/r_{max}$, the low-$q$ bound described in [The low-$q$ limit](#the-low-q-limit).
 
-`sq` no longer writes a `gr` alongside; run `ferro traj gr` separately when $g(r)$ is needed.
+`sq` does not write $g(r)$; run `ferro traj gr` for it.
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
-(`pandas.read_csv(comment="#")` drops it).  `-o` takes a directory,
-`-s` the file-name suffix.
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).
 
 ### No type selection
 
-`-a/-b` and `-x/-y` have been removed; **every pair is always written in full**.  The reason is that the
+**Every pair is always written in full** (no `-a/-b`, no `-x/-y`).  The reason is that the
 primary output is those two totals, and the whole value of the partials lies in the closure $\sum_{i\le j} w_{ij}(q)S_{ij}(q) = \mathrm{total}$ —
-keeping only one pair hides exactly that.  To look at one pair, select the columns in pandas; the file is small anyway.
+keeping only one pair hides exactly that.  To look at one pair, select the columns in pandas; the file is small anyway.  Site labels are not offered either: the atom count behind a single label is usually too small for its
+partial to show any signal.
 
-Partials resolved by label are gone with them: `-x/-y` was the only entry into `GroupBy::Label`, and the atom
-count behind a single site label is usually too small for its partial to show any signal.  **`GroupBy::Label` in the library is untouched**
-(the `GrParams` field is still there, and the two tests pinning the $O(1/N)$ self-exclusion term still run) — it is only no longer exposed on the CLI.
-
-Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
+Figures: [Plotting](../plotting.md).
 
 ## Usage
 

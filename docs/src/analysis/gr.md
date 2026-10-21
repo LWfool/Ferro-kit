@@ -123,16 +123,7 @@ which is a real count.  In `traj sq` the matching $S_{AA}(q)$ is empty too, and 
 pair as $S_{AA} = 1$ (no structural contribution; its weight $\propto c_A^2$ is a finite-size term), so one
 dopant atom does not blank the total.
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
-(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
-
-
-$g(r)$ is **symmetric** — `A-B` and `B-A` are pointwise identical.  $CN(r)$ is **directed** —
-`A-B` is the average number of B around each A, so the order of `-a` / `-b` matters.
-
-Header lines record all parameters, atom counts, average volume, and number density.
-
-Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).  Figures: [Plotting](../plotting.md).
 
 ## Usage
 

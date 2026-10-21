@@ -121,11 +121,7 @@ pub struct AngleParams {
 The triplet goes into **data columns**, so trajectories with different element sets stack directly.  Both the
 integer `count` and the normalised `p` are kept: the integer histogram is what the bin-by-bin cross-check against `dump2analysis` rests on, and `p` alone cannot serve it.
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#` comment block holds the shared parameters and the `[inputs]` list
-(`pandas.read_csv(comment="#")` drops it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
-
-
-Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).  Figures: [Plotting](../plotting.md).
 
 ## Usage
 

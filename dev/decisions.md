@@ -131,6 +131,28 @@
 > whatever directory you happened to be in; a default that follows the input
 > cannot do that.
 
+### `cli-reference.md` 与 `analysis/sq.md` 里的决策理由（D-9 / D-14）
+
+手册改成只说「是什么」，下列原句（含当时的取舍理由）撤下。方括号是来源页；替换句改写了的，以手册现状为准。
+
+- [analysis/sq.md] Partials resolved by label are gone with them: `-x/-y` was the only entry into `GroupBy::Label`, and the atom
+  count behind a single site label is usually too small for its partial to show any signal.  **`GroupBy::Label` in the library is untouched**
+  (the `GrParams` field is still there, and the two tests pinning the $O(1/N)$ self-exclusion term still run) — it is only no longer exposed on the CLI.
+- [cli-reference.md] Every command under `traj` / `map` / `net` flattens the same `CommonArgs` (`convert` / `info` /
+  `bader` / `dataset` do **not** take it; each has its own parameters):
+- [cli-reference.md] `-i` always takes several values.  There is **only one code path**: a single input is the N=1 case, not a
+  special mode — dispatching on the file count would make the shape of the output depend on how many files the glob happened to match that day.
+- [cli-reference.md] Substituting
+  underscores was rejected — it would let `-a P/2` and `-a P_2` write silently into the same file.
+- [cli-reference.md] **`traj sq` has no type selection**: `-a/-b` and `-x/-y` have been removed.  The primary output of $S(q)$ is
+  the two totals, and the partials are a diagnostic decomposition that adds back to the total
+  ($\sum w_{ij}S_{ij} = \mathrm{total}$); keeping only one pair would hide exactly that closure, and selecting
+  columns in pandas is enough to look at one pair.  Partials resolved by label went with them — the atom
+  count behind a single site label is usually too small for its partial to show any signal.  `GroupBy::Label` in the library is untouched.
+- [cli-reference.md] (A half-open interval would need `--end 5`, which does not line up with `info`, so it was not adopted.)
+- [cli-reference.md] ; that needs the input stem in the file name as well, which is a separate piece of work.
+- [cli-reference.md] and are parsed by external tools, which is why they did not move to csv with the rest of the outputs.
+
 ## 瘦身 P4 的判据（2026-10-21）
 
 - **dpdata 不当 CP2K 的独立对照**（用户定，A-9）：dpdata 读 CP2K 输出靠 cp2kdata 插件，原作者已

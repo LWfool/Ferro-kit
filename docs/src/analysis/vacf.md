@@ -109,9 +109,7 @@ element selection, units, integration rule).  Per input, `[inputs]` lists:
 | `diffusion_end` | $D$ at the longest lag (Å²/fs) — not the plateau |
 | `species` | elements among those atoms |
 
-All output is **one** csv; multiple inputs are stacked into a single table with a `file` column.  The `#`
-comment block holds the shared parameters and the `[inputs]` list (`pandas.read_csv(comment="#")` drops
-it).  `-o` takes the **output directory**; the batch suffix goes to `-s`.
+One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).
 
 ## Usage
 
