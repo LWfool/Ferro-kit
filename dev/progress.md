@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：934 个（全部通过，clippy 零警告；2026-10-21 实数）；另 ferro-python 192 个 pytest
+## 测试总数：921 个（全部通过，clippy 零警告；2026-10-21 瘦身 P4 后实数）；另 ferro-python 194 个 pytest
 
 | Crate | 测试数 |
 |---|---|
 | ferro-core | 78 |
-| ferro-io（lib 294 + 集成 4） | 298（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
-| ferro-structure | 90 |
+| ferro-io（lib 294 + 集成 4） | 298（另有 2 个 `#[ignore]`：296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
+| ferro-structure | 78 |
 | ferro-analysis | 308 |
 | ferro-render | 31 |
-| ferro-cli（lib 108 + bin 5 + 集成 16） | 129 |
+| ferro-cli（lib 107 + bin 5 + 集成 16） | 128 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。0.4.0 这批的破坏性改动见 `overview.md`。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
@@ -56,7 +56,7 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 | **`cp2k_md_3frames.out`**（2026-09-21） | `examples/cp2k/md/total.out` 裁 3 帧，165 KB | CP2K 端到端。**此前一份 CP2K 样例都没有**，那条链只有代码里构造的字符串。选这三帧是因为第 2、3 帧的瞬时温度与累计平均**不相等**，取错列会当场失败 |
 | **`5Al_0003_1500K_f394.out`**（2026-09-22，用户提供） | 真实 CP2K 2025.2 单点，457 原子 | 新布局：`FORCES|`、`STRESS| … [bar]`、`CELL_TOP|` 干扰项 |
 | **`cp2k_sp_v61.out`**（2026-09-22） | cp2kdata 的 `test_energy_force/v6.1/normal/output`，MIT，107 KB 整份照抄 | 老布局三个块一次到齐：`energy (a.u.):`、`ATOMIC FORCES in [a.u.]`、无前缀的 ` STRESS TENSOR [GPa]`；外加 gamma=120 的三斜胞与 `Fe1`/`Fe2` 两个 kind。断言数值全取自 cp2kdata 自己的 `answer/`，是跟独立实现对表 |
-| **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见 |
+| **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见。由 `lammps_dump.rs` 的 `test_triclinic_bounds_are_not_xlo_xhi` 读（瘦身 A-8） |
 | **`qe75_{sp,sp_spin,sp_noconv,md,vcmd}.out`**（2026-10-17，超算实算） | QE 7.5 pw.x，6 原子 $AlPO_4$，PBE-D3，`verbosity = 'high'`，共 410 KB；`ferro-python/scripts/qe_fixtures_hpc.sh` 生成，输入与作业脚本在 `examples/qe/pwx/` | 总力后跟七组力分量；`nspin = 2`；`electron_maxstep = 3` 不收敛；5 步 SVR md 与 5 步 vc-md。能量、力与 dpdata 一致到 1e-10，其余与 ASE 一致到 1e-7 |
 | **`vasp651_sp/frame_{0011,0161,0194}/`**（2026-10-13，用户提供） | VASP 6.5.1 单点（r2SCAN-D3，302 原子）200 帧中挑 3 帧，`OUTCAR` + `vasprun.xml` 原样，1.3 MB | 单点布局。全部 200 帧当时与 dpdata 1.0.2 逐帧对拍（两条路），box / coord / energy / force 逐位相同，virial 差 1.4e-6 eV（换算常数 160.2176634 vs 160.2176621）。原数据随后由用户删除，测试钉住 3 帧的 dpdata 参考值。0011 的 xml 应力非对称最大，读侧取对称部分（见 `plan.md` 归档「vasprun 的非对称应力」） |
 

@@ -3,6 +3,21 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## 瘦身 P4 的判据（2026-10-21）
+
+- **dpdata 不当 CP2K 的独立对照**（用户定，A-9）：dpdata 读 CP2K 输出靠 cp2kdata 插件，原作者已
+  不再维护，现用的是用户自己 fork 并更新的版本（用户测试时也与 deepmd 环境中的 cp2kdata 对比过）。
+  因此 `cp2k_md.rs` 那条只打印的探针直接删除，没有去补 dpdata 参考值；CP2K 的端到端覆盖靠
+  `tests/` 里的三份 CP2K fixture。VASP 与 QE 的 dpdata 对拍不受影响。
+- **最小镜像三份、MIC 上界两份不合**（A-11，R6）：契约不同（可失败与否、是否缓存逆矩阵、是否只支持
+  立方盒）；`box_builder` 那份在 relax 内循环里，换成 `PeriodicCell` 会改变舍入，同一 seed 出的盒子
+  就变了。各处已加互指注释。`gr` 改调 `PeriodicCell::mic_bound` 后可删 `Cell::minimum_image_cutoff`，
+  但要动 analysis，未做。
+- **`.gitignore` 保留 `.env`、`config/secrets.yml`、`*.key`**（C-6）：同为模板残留、本仓也没有这些文件，
+  但它们是防误提交密钥的兜底，删掉没有收益；删的只是 `CLAUDE.md` 与会误伤 `lib/`、`var/` 的 Python 模板条目。
+- **出图只合并面板网格**（C-5）：各模块 4 行的 `plot()` 入口不合（收益为负，net 已分岔）；
+  gr / angle 的 `build_figure` 合并网格后只剩三行循环与图例，不再共享。
+
 ## `ferro-io` 的公开面：告警随返回，按格式的 reader 不上根（2026-10-21，瘦身 P3，用户定）
 
 - **告警与统计是读取结果的一部分**，reader 只有一个名字，返回 `(Trajectory, Vec<Notice>)` 或
