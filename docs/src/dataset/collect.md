@@ -74,9 +74,6 @@ Two generations are implemented, differing in two blocks:
 **2025 – 2026 is read silently**; 2026 carried the 2025 layout forward
 unchanged. **2024 and earlier gets a `FerroNote` line** naming its version and is
 then read anyway — the note is a prompt to spot-check one frame, not a refusal.
-It exists because ferro has no *single-point* output from those releases to
-test against; the block shapes were read off real 2023.1 / 2023.2 / 2024.1 AIMD
-logs instead.
 
 Releases before 8.1 wrote `energy (a.u.):` in round brackets and a stress block
 with no `STRESS|` prefix. Both are still handled — there is a real 6.1 output in
@@ -237,8 +234,7 @@ kind names kept as labels, type_map uses the element: Fe1 -> Fe (6)  Fe2 -> Fe (
 
 > dpdata's CP2K plugin defaults the other way (`true_symbols=False` writes the
 > *kind* names into `atom_names`), so a dataset built there and one built here
-> can differ in their type map from the same output. If you need the kinds split
-> into separate types, say so and it can become a flag.
+> can differ in their type map from the same output.
 
 ## Quantum ESPRESSO output
 
@@ -342,10 +338,7 @@ instead, so every system keeps a name and all of them nest under `-o`. A bare
 file name such as `total.out` belongs to the current directory.
 
 `-o` is **optional**. Without it the system lands **beside** the AIMD directory
-it came from, which keeps a collected dataset next to the run that produced it.
-An earlier default of `.` was rejected for scattering `.npy` files through
-whatever directory you happened to be in; a default that follows the input
-cannot do that. Writing into an existing non-empty directory needs
+it came from, which keeps a collected dataset next to the run that produced it. Writing into an existing non-empty directory needs
 `--overwrite`.
 
 ### The `.db` suffix
@@ -512,88 +505,24 @@ printed values.
 
 ## Checked against dpdata
 
-Every quantity below was compared, number by number, against
-[cp2kdata](https://github.com/robinzyb/cp2kdata) 0.7.4 reading the same file —
-the reference implementation of CP2K support for
-[dpdata](https://github.com/deepmodeling/dpdata). CP2K 2025.2 throughout.
+Compared number by number against [cp2kdata](https://github.com/robinzyb/cp2kdata) 0.7.4, the CP2K
+support of [dpdata](https://github.com/deepmodeling/dpdata), and against dpdata's own VASP reader,
+reading the same files (CP2K 2025.2):
 
-### Single point — 457 atoms, via dpdata
-
-`dpdata.LabeledSystem(out, fmt="cp2kdata/e_f")` against the `deepmd/npy` system
-`collect` writes. Atoms were paired **explicitly by position** rather than
-sorted, so a permutation could not hide in the comparison; the pairing came out
-as the identity and every element matched.
-
-| | max\|diff\| | relative |
-|---|---|---|
-| energies | 3.2e-10 | 1.4e-15 |
-| cells | 0 | 0 |
-| coords | 0 | 0 |
-| forces | 4.4e-11 | 5.7e-12 |
-| virials | 2.8e-14 | 2.1e-16 |
-
-### AIMD — 2000 frames, 112 atoms
-
-| | result |
+| Input | Largest difference |
 |---|---|
-| energy, all 2000 frames | max\|diff\| **0** |
-| stress, all 2000 frames | relative 1.2e-15 |
-| coords, 2000 × 112 × 3 | **0** |
-| forces, 2000 × 112 × 3 | **0** |
-| duplicate frames at the restart seam | none |
+| CP2K single point, 457 atoms | energy 1.4e-15, forces 5.7e-12 relative (a digit of the Bohr constant, not parsing); cell and coordinates 0 |
+| CP2K AIMD, 2000 frames × 112 atoms | energies, coordinates and forces 0; stress 1.2e-15 relative; no duplicate frames at a restart seam |
+| VASP `OUTCAR` | energies, coordinates, forces and cells identical; virial trace agrees in sign and size |
 
-### Four things the comparison makes explicit
+Two things to know:
 
-**The force residual is a constant, not the parser.** `BOHR_TO_ANG` is written
-to ten digits (`0.529_177_210_9`) where CODATA 2018 has
-`0.529177210903`, a relative difference of 5.669e-12 — which is the force
-residual, to the digit. Redo the same comparison using ferro's own constants on
-both sides and the forces come out bit-identical. The energy residual, 1.4e-15,
-is ordinary floating-point noise: `HARTREE_TO_EV` *is* the CODATA 2018 value and
-dpdata simply carries two more digits from its own derivation.
-
-**The initial configuration of an MD segment is not collected.** Frames are
-anchored on `MD| Step number`, and CP2K dumps the starting structure *before*
-the first such line. For the reference run that is 1 frame out of 2001. The
-restart point is skipped too, but it has no trajectory block of its own, so
-nothing complete is lost there — which is also why the seam produces no
-duplicate frames.
-
-**Coordinates and forces are not verifiable through cp2kdata.** Its
-`parse_pos_xyz` / `parse_frc_xyz` read `*-pos-*.xyz` and `*frc*.xyz` *sibling
-files*; given a self-contained log it raises `No atomic coordinates found in
-cp2k output`. The figures above therefore come from an independent extractor
-written against the xyz format itself, cross-checked with the `i = N, time = …,
-E = …` comment that CP2K writes into every block — which is what pins each frame
-to its energy without either parser having a say. If you want that leg covered
-by a third-party implementation instead, have CP2K also write `-pos-1.xyz` and
-`-frc-1.xyz`; dpdata reads those.
-
-**The cell is read at full precision, cp2kdata's at three decimals.** ferro
-takes the 12-field line after the force block; cp2kdata takes `CELL| Vector`,
-which CP2K prints rounded:
-
-```
-cp2kdata  [11.415      11.415       8.029    ]
-ferro     [11.41476108 11.41495281  8.02853232]
-```
-
-Rounding ferro's to three decimals reproduces cp2kdata's exactly. Under NVT
-cp2kdata repeats that rounded cell for every frame, so its volumes — and hence
-its virials — carry a ~1e-4 relative offset that ferro does not.
-
-### The virial sign, checked across formats
-
-Agreeing with cp2kdata alone cannot rule out both being wrong the same way, so
-the same comparison was run on a VASP `OUTCAR` through dpdata's own reader,
-which shares no code with cp2kdata. Energies, coordinates, forces and cells come
-out identical and the virial trace agrees in sign and magnitude
-(+1170.9134 eV both ways).
-
-The 8e-9 residual there is neither tool's parser either: VASP prints the virial
-twice, once as `Total` (eV, directly) and once as `in kB`, and **both** ferro
-and dpdata reconstruct it from `in kB` × volume. That path inherits the coarser
-printed precision — 385.09371 eV against the 385.09354 eV on the `Total` line.
+- **The initial configuration of a CP2K MD segment is not collected.** Frames are anchored on
+  `MD| Step number`, and CP2K writes the starting structure before the first one (1 frame of 2001 in
+  the reference run).
+- **The cell is read at full precision**, from the line after the force block. cp2kdata takes
+  `CELL| Vector`, which CP2K rounds to three decimals, so its volumes and virials carry a ~1e-4
+  relative offset that ferro's do not.
 
 ## Dropped frames
 
