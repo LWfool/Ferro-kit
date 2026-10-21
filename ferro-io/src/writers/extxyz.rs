@@ -193,10 +193,7 @@ mod tests {
     use nalgebra::Vector3;
 
     fn bcc_traj() -> Trajectory {
-        let cell = Cell::from_lengths_angles(2.87, 2.87, 2.87, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
-        frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
+        let mut frame = crate::testutil::bcc_fe();
         frame.energy = Some(-17.43);
         frame.set_forces(Some(vec![
             Vector3::new(0.1, 0.0, 0.0),

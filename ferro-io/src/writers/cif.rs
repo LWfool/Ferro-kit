@@ -85,23 +85,15 @@ fn sanitize_block_name(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::readers::cif::read_cif;
-    use ferro_core::{Atom, Cell, Frame, Trajectory};
+    use ferro_core::{Atom, Frame, Trajectory};
     use nalgebra::Vector3;
-
-    fn make_bcc_frame() -> Frame {
-        let cell = Cell::from_lengths_angles(2.87, 2.87, 2.87, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
-        frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
-        frame
-    }
 
     #[test]
     fn test_roundtrip_periodic() {
         let path = std::env::temp_dir().join("bcc_fe_rt.cif");
         let path_str = &path;
 
-        let mut traj = Trajectory::from_frame(make_bcc_frame());
+        let mut traj = Trajectory::from_frame(crate::testutil::bcc_fe());
         traj.metadata.title = Some("BCC_Fe".to_string());
         write_cif(&traj, path_str).unwrap();
 

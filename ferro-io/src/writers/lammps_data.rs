@@ -167,15 +167,11 @@ fn bounding_box(frame: &ferro_core::Frame) -> (f64, f64, f64, f64, f64, f64) {
 mod tests {
     use super::*;
     use crate::readers::lammps_data::{read_lammps_data, AtomStyle};
-    use ferro_core::{Atom, Cell, Frame, Trajectory};
+    use ferro_core::{Atom, Frame, Trajectory};
     use nalgebra::Vector3;
 
     fn bcc_traj() -> Trajectory {
-        let cell = Cell::from_lengths_angles(2.87, 2.87, 2.87, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
-        frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
-        Trajectory::from_frame(frame)
+        Trajectory::from_frame(crate::testutil::bcc_fe())
     }
 
     #[test]

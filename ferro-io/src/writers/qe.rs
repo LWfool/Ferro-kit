@@ -50,20 +50,12 @@ mod tests {
     use crate::readers::qe::parse_qe_input_parts;
     use crate::readers::read_qe_input;
     use crate::testutil::write_tmp as tmp;
-    use ferro_core::{Atom, Cell};
+    use ferro_core::Atom;
     use nalgebra::Vector3;
-
-    fn bcc() -> Frame {
-        let cell = Cell::from_lengths_angles(2.87, 2.87, 2.87, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
-        frame.add_atom(Atom::new("Fe", Vector3::new(1.435, 1.435, 1.435)));
-        frame
-    }
 
     #[test]
     fn test_cards_round_trip() {
-        let cards = qe_structure_cards(&bcc(), &[("Fe".into(), "Fe.pbe.UPF".into())]).unwrap();
+        let cards = qe_structure_cards(&crate::testutil::bcc_fe(), &[("Fe".into(), "Fe.pbe.UPF".into())]).unwrap();
         let names: Vec<&str> = cards.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names, ["ATOMIC_SPECIES", "CELL_PARAMETERS", "ATOMIC_POSITIONS"]);
         for (name, text) in &cards {
@@ -83,7 +75,7 @@ mod tests {
 
     #[test]
     fn test_structure_cards_refuse_incomplete_input() {
-        let e = qe_structure_cards(&bcc(), &[]).unwrap_err();
+        let e = qe_structure_cards(&crate::testutil::bcc_fe(), &[]).unwrap_err();
         assert!(format!("{e:#}").contains("no pseudopotential given for Fe"), "{e:#}");
         let mut mol = Frame::new();
         mol.add_atom(Atom::new("O", Vector3::zeros()));
