@@ -25,6 +25,28 @@ which part of a split it is, so it never stacks with `.train` / `.valid` /
 **Omitting `-o` is the read-only mode.** It reports and writes nothing, which is
 how you choose the thresholds before committing to them.
 
+## Parameters
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <DIR>...` | | system directories, or a directory containing them (`type.raw` is searched for recursively) |
+| `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i`; **omitting it means read-only** |
+| `--mkdir` | | create `-o` without asking (required when there is no terminal) |
+| `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
+| `--s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
+| `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this |
+| `--al6 [<RCUT>]` | off / automatic when bare | keep only frames containing a 6-coordinate Al; given bare, the cutoff is the outer edge of the first Al–O RDF shell |
+| `--start <N>` | 0 | start of the range (the index among the **surviving frames**, 0-based and inclusive) |
+| `--end <N>` | last frame | end of the range (0-based, **inclusive**) |
+| `--stride <N>` | 1 | take one out of every N surviving frames |
+| `-N, --number <N>` | | take this many frames at even intervals, both ends included; mutually exclusive with `--stride` |
+| `--shuffle` | off | shuffle before writing, **after every criterion and after the frame sampling** |
+| `--seed <N>` | 666 | the seed for `--shuffle` and for the `--ratio` split; giving it with neither errors out |
+| `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
+| `--type <WHAT>` | deepmd | `deepmd` (system directory) \| `nep` (one `.xyz` per system, stress as `virial=`) \| `extxyz` (one `.xyz`, stress as `stress=`) |
+| `--ratio <A:B:C>` | | split each system train:valid:test (`8:1:1`) or train:test (`9:1`); weights, not fractions |
+| `--overwrite` | | allow writing into an existing non-empty directory |
+
 ## The funnel
 
 ```

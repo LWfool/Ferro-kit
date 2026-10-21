@@ -76,6 +76,14 @@ pub struct CubeDensityParams {
 }
 ```
 
+| Flag | Default | Description |
+|---|---|---|
+| `--nx/ny/nz` | 50 | grid dimensions |
+| `--elements` | (all) | element filter |
+
+`ferro map velocity` and `ferro map force` take the same flags.  `velocity` needs a trajectory carrying
+velocities (a LAMMPS dump needs `--units real|metal`), `force` one carrying forces.
+
 ## Output
 
 A Gaussian cube file (`.cube`):

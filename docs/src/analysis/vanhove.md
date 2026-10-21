@@ -66,6 +66,15 @@ pub struct VanHoveParams {
 
 These are the library defaults.  On the command line `--dt` is required, and `r_min` is not exposed: `ferro traj vanhove` always uses $r_\min = 0$.  A `--tau` of the frame count or more is an error, as `--max-lag` is for the other time correlations.
 
+| Flag | Default | Description |
+|---|---|---|
+| `--tau` | N/2 | lag [frames] |
+| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
+| `--shift` | 1 | spacing between time origins [frames] |
+| `--r-max` | 10.0 | maximum displacement [Å] |
+| `--dr` | 0.01 | bin width [Å] |
+| `--elements` | (all) | element filter |
+
 ## Output
 
 `vanhove_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vanhove_all…` without `--elements`): `file, r, p_r` — $P(r) = 4\pi r^2 G_s$ in Å⁻¹, $\int P\,dr = 1 - f_\text{out}$.

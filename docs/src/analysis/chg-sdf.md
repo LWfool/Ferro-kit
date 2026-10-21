@@ -126,4 +126,4 @@ output[r_out] = input[ R⁻¹ · (r_out − centre) + centre ]
 ## Related Commands
 
 - [`ferro map sdf`](cube-sdf.md) — atom-type SDF (no charge density required)
-- [`ferro bader`](../cli-reference.md#ferro bader) — Bader charge decomposition from CHGCAR / cube files
+- [`ferro bader`](../cli-reference.md#ferro-bader) — Bader charge decomposition from CHGCAR / cube files

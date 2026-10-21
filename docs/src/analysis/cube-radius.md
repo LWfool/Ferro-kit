@@ -51,6 +51,14 @@ pub struct CubeRadiusParams {
 }
 ```
 
+| Flag | Default | Description |
+|---|---|---|
+| `--radius` | 0.7 | hard-sphere radius [Å] |
+| `--nx/ny/nz` | 50 | grid dimensions |
+| `--elements` | (all) | element filter |
+
+The command line defaults to a 50³ grid; the library to 100³.
+
 ## Output
 
 A Gaussian cube file with raw occupancy counts per voxel.  Values are not normalised.  To convert to fractional occupancy, divide by $N_\text{frames} \cdot N_\text{atoms}$.

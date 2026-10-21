@@ -96,6 +96,19 @@ pub struct ClusterSdfParams {
 }
 ```
 
+| Flag | Default | Description |
+|---|---|---|
+| `--qn` | 3 | target $Q_n$ level (0–3) |
+| `--former` | `P` | network former element |
+| `--ligand` | `O` | bridging ligand element |
+| `--cutoff-fl` | 2.4 | network former–ligand cutoff [Å] |
+| `--modifier` | (none) | modifier cation element |
+| `--cutoff-ml` | 2.8 | modifier–ligand cutoff [Å] |
+| `--grid-res` | 0.1 | voxel size [Å] |
+| `--sigma` | 1.5 | Gaussian broadening [voxels] |
+| `--padding` | 3.0 | grid boundary margin [Å] |
+| `--rmsd-warn` | 0.5 | RMSD warning threshold [Å] |
+
 ## Output
 
 One Gaussian cube file per atom type per family:

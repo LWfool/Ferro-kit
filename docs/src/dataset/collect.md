@@ -120,6 +120,17 @@ derivatives of the free energy, so pairing them with the extrapolated energy
 would give a model two halves of different functionals. dpdata makes the same
 choice, which keeps datasets converted by either tool comparable.
 
+## Parameters
+
+| Flag | Description |
+|---|---|
+| `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported; PJM job logs `x<N>-<job>.<id>.out` are left out before grouping |
+| `-o <DIR>` | output root directory, **optional**; without it the output lands next to each input directory |
+| `--type <WHAT>` | `deepmd` (a DeePMD system) \| `inspect` (diagnostics only, no dataset) [deepmd] |
+| `--format <FMT>` | read every input as this format instead of trusting its banner: `cp2k/md` \| `cp2k/sp` \| `vasp/outcar` \| `vasp/xml` \| `qe/pw` |
+| `--mkdir` | create `-o` without asking (required when there is no terminal) |
+| `--overwrite` | allow writing into an existing non-empty directory |
+
 ## What a CP2K MD run must print
 
 The run log must be self-contained — coordinates, forces and the stress tensor
@@ -379,7 +390,7 @@ you already have it; the last one is what this run produced.
 |---|---|
 | `frame` | index within the collected system |
 | `step` | the MD step number the engine printed (empty for vasprun.xml) |
-| `temperature` | K |
+| `temperature` | K; vasprun.xml does not print it, so it is back-calculated from the ionic kinetic energy, $T = 2E_\text{kin}/(3Nk_B)$, as the `#` header notes |
 | `energy` | eV |
 | `volume` | Å³, from `abs(det(cell))` |
 | `density` | g/cm³ |

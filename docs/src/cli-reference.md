@@ -390,177 +390,20 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 
 ## `ferro traj`
 
-Eight trajectory analyses sharing one export pipeline: a single long or wide csv.
+Trajectory analyses.  Each writes **one** csv for all its inputs (see
+[Output format conventions](#output-format-conventions)); figures are drawn by `ferro-py plot`, see
+[Plotting](plotting.md).  Parameters, output columns and conventions are on each command's page.
 
-```bash
-ferro traj <command> -i traj.lammpstrj [flags] [-o DIR] [-s SUFFIX]
-```
-
-### `gr` — radial distribution function
-
-$g(r)$ and the coordination number $\text{CN}(r)$.
-
-```bash
-ferro traj gr -i traj.lammpstrj -a P -b O --r-max 10.0 --dr 0.002 -s run1
-```
-
-| Flag | Default | Description |
+| Command | Computes | Manual |
 |---|---|---|
-| `--r-min` | 0.001 | minimum radius [Å] |
-| `--r-max` | 10.005 | maximum radius [Å]; clamped to half the smallest **interplanar spacing** (not the shortest edge length) |
-| `--dr` | 0.002 | bin width [Å] |
-
-**Long table**: `file, r, center, neighbor, gr, cn`.  The types go into data columns, so trajectories with
-different element sets stack directly; omitting `-a/-b` adds rows rather than columns.  `gr` is symmetric
-(`A-B` == `B-A`) and `cn` is directed (`CN(A→B)`), a distinction written into the `center`/`neighbor` columns rather than into a footnote.
-
-### `sq` — structure factor
-
-$S(q)$ from the Fourier transform of $g(r)$.
-
-```bash
-ferro traj sq -i traj.lammpstrj --q-max 25.0 --dq 0.02 --weighting both -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--q-min` | 0.1 | minimum $q$ [Å⁻¹] |
-| `--q-max` | 25.0 | maximum $q$ [Å⁻¹] |
-| `--dq` | 0.02 | $q$ bin width [Å⁻¹] |
-| `--weighting` | `both` | `none`, `xrd`, `neutron`, `both` |
-| `--r-max` | 10.005 | max radius of the transformed $g(r)$ [Å] |
-| `--dr` | 0.002 | $g(r)$ bin width [Å] |
-
-There is no `--r-min`: the transform always integrates from $r = 0$ (see [S(q)](analysis/sq.md)).
-
-**Wide table**: `file, q, total_xrd, total_neutron`, then three columns per pair (`_sq` / `_xrd` /
-`_neutron`, canonical half only).  The primary output is the two totals (one $q$ per row); the weighted
-partials are a diagnostic decomposition that sums back to the total.
-
-### `msd` — mean squared displacement
-
-```bash
-ferro traj msd -i traj.lammpstrj --dt 2.0 --elements Li --fit-range 0.3,0.8 -s run1
-```
-
-Every lag is averaged over all time origins (FFT); periodic inputs are unwrapped with the TOR scheme;
-columns `file, time, msd, msd_x, msd_y, msd_z` (Cartesian).  The conventions are spelled out in
-[MSD](analysis/msd.md).
-
-| Flag | Default | Description |
-|---|---|---|
-| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
-| `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
-| `--elements` | (all) | comma-separated element filter |
-| `--fit-range` | (none) | `FMIN,FMAX` linear-fit window as fractions of the lag axis (`0..max-lag`) → the self-diffusion coefficient D |
-
-Giving `--fit-range` computes $D = \text{slope}/6$, its error `d_err` and $R^2$, prints them, and adds
-`t_lo, t_hi, points, slope, intercept, d_ang2_per_fs, d_err, r2` to each input's row in the `[inputs]` list.
-Plot with `ferro-py plot msd`, which draws the fitted line from those columns.
-
-### `angle` — bond angle distribution
-
-```bash
-ferro traj angle -i traj.lammpstrj -a O -b P -c O --r-cut-ab 2.4 --r-cut-bc 2.4 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--r-cut-ab` | 2.3 | cutoff from end A to centre B [Å] — A is the one given by `-a`/`-x` |
-| `--r-cut-bc` | 2.3 | cutoff from end C to centre B [Å] — C is the one given by `-c`/`-z` |
-| `--angle-min` | 0.0 | lower bound of the histogram [°] |
-| `--angle-max` | 180.0 | upper bound of the histogram [°] (inclusive) |
-| `--d-angle` | 0.1 | bin width [°] |
-
-Without a triplet the two cutoffs fall back to the canonical (Z, symbol) order; when both ends are the
-same type they both take `min(--r-cut-ab, --r-cut-bc)`.  Angles outside the range are **discarded**, not merely hidden.
-
-**Long table**: `file, angle, end_a, center, end_c, count, p`.  Both the integer `count` and the normalised
-`p` are kept — the integer histogram is what the bin-by-bin cross-check against `dump2analysis` rests on.
-See [Bond Angle Distribution](analysis/angle.md) for details.
-
-### `vacf` — velocity autocorrelation
-
-```bash
-ferro traj vacf -i traj.lammpstrj --dt 2.0 --elements Li --units metal -s run1
-```
-
-Every lag averages all time origins (FFT); `diffusion` is the trapezoidal Green–Kubo running integral.
-Details in [VACF](analysis/vacf.md).
-
-| Flag | Default | Description |
-|---|---|---|
-| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
-| `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
-| `--elements` | (all) | element filter |
-
-Columns: `file, time, vacf, vacf_norm, vacf_x, vacf_y, vacf_z, diffusion`
-
-### `rotcorr` — rotational correlation
-
-$C_2(t)$ of a molecular orientation vector.
-
-```bash
-ferro traj rotcorr -i water.lammpstrj --center O --neighbor H --r-cut 1.2 --dt 2.0 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--center` | (required) | element of the centre atom |
-| `--neighbor` | (required) | element of the neighbour atom |
-| `--r-cut` | 1.2 | cutoff for the bond search [Å] |
-| `--vector` | `sum` | `sum` = the centre's bonds summed, per frame; `bond` = each bond of frame 0 followed by atom identity (`gmx rotacf -d`) — use for tetrahedra |
-| `--legendre` | 2 | order of $P_\ell$: 1 or 2 |
-| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
-| `--max-lag` | N/2 | longest lag [frames], `1..N-1` |
-
-Every lag averages all (molecule, origin) pairs valid at both ends (FFT); `integral` is trapezoidal.
-Details in [Rotational correlation](analysis/rotcorr.md).
-
-Columns: `file, time, c2, integral` (`c1` with `--legendre 1`)
-
-### `bondlife` — bond lifetimes and bond events
-
-Intermittent $C_I(t)$ and continuous $S_C(t)$ bond correlation functions over all time origins, and
-bonds formed / broken per frame.  Details in [Bond lifetimes](analysis/bondlife.md).
-
-```bash
-ferro traj bondlife -i glass_water.lammpstrj --center Si --neighbor O --r-bond 2.2 --dt 1000 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--center` | (required) | centre element |
-| `--neighbor` | (required) | neighbour element, may equal `--center` |
-| `--r-bond` | (required) | a free pair bonds at $r \le$ this [Å] |
-| `--r-break` | `--r-bond` | a bond survives while $r \le$ this [Å] |
-| `--intermittency` | 0 | fill breaks of at most this many frames ($S_C$, events) |
-| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
-| `--max-lag` | N/2 | longest lag [frames] |
-
-Columns: `bondlife_<C>-<N>.csv` → `file, time, c_int, s_cont`; `bondlife_events_<C>-<N>.csv` →
-`file, time, n_bonds, formed, broken`
-
-### `vanhove` — Van Hove self-correlation
-
-```bash
-ferro traj vanhove -i traj.lammpstrj --tau 500 --dt 2.0 --r-max 8.0 --dr 0.02 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--tau` | N/2 | lag [frames] |
-| `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
-| `--shift` | 1 | spacing between time origins [frames] |
-| `--r-max` | 10.0 | maximum displacement [Å] |
-| `--dr` | 0.01 | bin width [Å] |
-| `--elements` | (all) | element filter |
-
-Columns: `file, r, p_r`
-
-### Plotting
-
-ferro writes csv only; figures are made in Python by `ferro-py plot`. See [Plotting](plotting.md).
+| `gr` | radial distribution function $g(r)$ and coordination number $CN(r)$ | [g(r)](analysis/gr.md) |
+| `sq` | structure factor $S(q)$, X-ray and neutron weighted | [S(q)](analysis/sq.md) |
+| `msd` | mean squared displacement and the self-diffusion coefficient | [MSD](analysis/msd.md) |
+| `angle` | bond angle distribution | [Bond angles](analysis/angle.md) |
+| `vacf` | velocity autocorrelation and its Green–Kubo integral | [VACF](analysis/vacf.md) |
+| `rotcorr` | rotational correlation $C_1(t)$ / $C_2(t)$ of an orientation vector | [Rotational correlation](analysis/rotcorr.md) |
+| `bondlife` | intermittent and continuous bond correlations, bonds formed / broken per frame | [Bond lifetimes](analysis/bondlife.md) |
+| `vanhove` | van Hove self-correlation $G_s(r, \tau)$ | [Van Hove](analysis/vanhove.md) |
 
 ---
 
@@ -572,176 +415,25 @@ overwrites another and the name does not depend on how many files a glob matched
 `density_<input>_TAG.cube`.  All products follow one rule,
 `<mode>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.
 
-```bash
-ferro map <command> -i traj.lammpstrj [flags] [-o DIR] [-s SUFFIX]
-```
-
-### `density` — atom number density
-
-```bash
-ferro map density -i traj.lammpstrj --nx 80 --ny 80 --nz 80 --elements Li -s run1
-```
-
-| Flag | Default | Description |
+| Command | Computes | Manual |
 |---|---|---|
-| `--nx/ny/nz` | 50 | grid dimensions |
-| `--elements` | (all) | element filter |
-
-### `velocity` — mean speed per voxel
-
-Requires a trajectory carrying velocities (a LAMMPS dump needs `--units real|metal`).
-
-```bash
-ferro map velocity -i traj.lammpstrj --units metal -s run1
-```
-
-### `force` — mean force magnitude per voxel
-
-Requires a trajectory carrying forces.
-
-```bash
-ferro map force -i traj.lammpstrj -s run1
-```
-
-### `radius` — hard-sphere occupancy
-
-```bash
-ferro map radius -i traj.lammpstrj --elements Li --radius 0.7 --nx 100 --ny 100 --nz 100 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--radius` | 0.7 | hard-sphere radius [Å] |
-| `--nx/ny/nz` | 50 | grid dimensions |
-| `--elements` | (all) | element filter |
-
-### `sdf` — cluster SDF
-
-```bash
-ferro map sdf -i traj.lammpstrj --qn 3 --former P --ligand O --cutoff-fl 2.4 \
-    --modifier Zn --cutoff-ml 2.8 --grid-res 0.1 --sigma 1.5 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--qn` | 3 | target $Q_n$ level (0–3) |
-| `--former` | `P` | network former element |
-| `--ligand` | `O` | bridging ligand element |
-| `--cutoff-fl` | 2.4 | network former–ligand cutoff [Å] |
-| `--modifier` | (none) | modifier cation element |
-| `--cutoff-ml` | 2.8 | modifier–ligand cutoff [Å] |
-| `--grid-res` | 0.1 | voxel size [Å] |
-| `--sigma` | 1.5 | Gaussian broadening [voxels] |
-| `--padding` | 3.0 | grid boundary margin [Å] |
-| `--rmsd-warn` | 0.5 | RMSD warning threshold [Å] |
-
-Output: one `sdf_<type>_<input>.cube` per atom type (`sdf_fam<N>_<type>_<input>.cube` when there are several families).
-
-### `chg-sdf` — charge-density SDF
-
-Computes the orientationally averaged electron density around Qn clusters from a set of QE `pp.x`
-charge-density cubes.  It does **not** use `-i`; it takes `--cubes` instead.
-
-```bash
-ferro map chg-sdf --cubes frame_000.cube frame_001.cube frame_002.cube \
-    --qn 2 --former P --ligand O --cutoff-fl 2.4 -s run1
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--cubes <files…>` | (required) | QE pp.x cube files, one per frame |
-| `--qn` | `3` | target Qn level (0–3) |
-| `--former` | `P` | network former element |
-| `--ligand` | `O` | bridging ligand element |
-| `--cutoff-fl` | `2.4` | network former–ligand cutoff [Å] |
-| `--modifier` | (none) | modifier cation element |
-| `--cutoff-ml` | `2.8` | modifier–ligand cutoff [Å] |
-| `--chg-padding` | `6.0` | sub-grid boundary margin [Å] |
-| `--rmsd-warn` | `0.5` | alignment RMSD warning threshold [Å] |
-
-Output: `chg_sdf_Q<n>[_<suffix>].cube`, or `chg_sdf_fam<N>_Q<n>.cube` with several signature families; no
-input segment, since one result comes from all the cubes.  For the algorithm see
-[Averaged Charge-Density SDF](analysis/chg-sdf.md).
-
-> `--cubes` is the only mode in `ferro map` that aggregates several inputs into **one** SDF, the opposite
-> of the "one input, one output" semantics of the rest of the group.  Splitting it up requires first
-> defining an intermediate format that carries the sample count (a weighted average across files does not commute); see `dev/plan.md`.
+| `density` | atom number density per voxel | [3-D density maps](analysis/cube-density.md) |
+| `velocity` / `force` | mean speed / mean force magnitude per voxel | [3-D density maps](analysis/cube-density.md) |
+| `radius` | hard-sphere occupancy | [Hard-sphere occupancy](analysis/cube-radius.md) |
+| `sdf` | cluster spatial distribution function around $Q_n$ clusters | [Cluster SDF](analysis/cube-sdf.md) |
+| `chg-sdf` | orientation-averaged charge density around $Q_n$ clusters; takes `--cubes` (QE pp.x cubes) instead of `-i` and writes **one** SDF from all of them | [Charge-density SDF](analysis/chg-sdf.md) |
 
 ---
 
 ## `ferro net`
 
-Glass network topology: bridging-ligand count (the Qn of P), ligand classification, coordination number and linkage statistics.
+Glass network topology: $Q^n$ of the network formers, ligand types, coordination numbers and linkages,
+written as six stacked csv; cutoffs are given per pair as `--P-O=2.4` (or `auto`).  See
+[Glass network analysis](analysis/network.md).
 
 ```bash
-ferro net -i traj.lammpstrj --P-O=2.4
 ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
-ferro net -i 'runs/*/prod.lammpstrj' --P-O=2.4 -o scan
-ferro net -i 'runs/*/prod.lammpstrj' --P-O=auto --Al-O=auto -o scan
-ferro net -i traj.lammpstrj --P-O=2.4 --last-n 500 --export-traj
-ferro net -i traj.lammpstrj --Al-O=2.4 --Si-O=2.0 --qn Si,Al
 ```
-
-### Pair parameters (required, at least one)
-
-Cutoffs use the form `--<Former>-<Ligand>=<cutoff>` (element symbols capitalised).  The element pair lives
-in the **parameter name**, which clap cannot model, so `main` strips them out of argv before parsing.
-
-```
---P-O=2.4     P-O cutoff 2.4 Å (P is the network former, O the ligand)
---Al-O=2.4    one system may have several network formers
---Al-F=2.1    one network former may have several ligand species
---Zn-O=2.6    read as a modifier-ligand cutoff when --modifier Zn is given
---P-O=auto    the first minimum of the P-O g(r), taken from each input separately
-```
-
-`auto` and numbers can be mixed.  Each input's chosen values are printed and written to the `[inputs]`
-block; see [network analysis](analysis/network.md#automatic-cutoffs-auto) for how the minimum is found.
-
-### Ordinary parameters
-
-| Parameter | Default | Notes |
-|---|---|---|
-| `-i <FILE>...` | — | input trajectories (shows the help when omitted) |
-| `-o <DIR>` | current directory | output directory; ferro asks first when it does not exist, `--mkdir` skips the question |
-| `-s <SUFFIX>` | — | batch marker, appended to the output name |
-| `--mkdir` | off | create `-o` without asking (required in non-interactive environments) |
-| `--last-n N` | all | use only the last N frames |
-| `--ncore N` | all cores | number of threads |
-| `--units <UNITS>` | — | `real` or `metal`.  The statistics read neither velocities nor forces, but a dump that has them is refused without it |
-| `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
-| `--modifier E,E` | — | elements that count towards **coordination number only**, taking no part in the bridge count or the ligand classification.  Their cutoffs must be given as well, otherwise ferro errors out |
-| `--qn E,E` | `B,P,Si` | network formers to report Qn for.  **Replaces** the default list rather than adding to it; naming a non-former, or an element already taken by `--modifier`, errors out |
-| `--export-traj [FMT]` | — | also write a labelled trajectory: `lammpstrj` (default) or `extxyz` |
-
-### Output
-
-Six csv files, each with a `file` column.  **The `#` header of every file carries its own column-by-column
-description**, which `pandas.read_csv(comment="#")` drops as a whole.
-
-| File | What it holds |
-|---|---|
-| `network_composition.csv` | **an overview of the structural composition**: `P-Q2` `Al_4` `O_b` `Zn_4`, each as a fraction of its own element (summing to 1 per element) |
-| `network_qn.csv` | the Qn distribution, readable as soon as the file is opened |
-| `network_qn_partner.csv` | the same, split by partner element, i.e. $Q^n(m\mathrm{Al})$ |
-| `network_ligand_type.csv` | the ligand classification; `label` reads as `Al-O_b-P` |
-| `network_coordination.csv` | the coordination-number distribution (network formers + modifiers) |
-| `network_linkage.csv` | how the bridges connect: the ligand element plus the site state at both ends |
-
-**Qn is reported only for Qn network formers** (`B,P,Si` by default).  Network formers such as Al are
-characterised by coordination number and do not appear as rows in the first two files, but they are still
-in the `m_Al` column, in `ligand_type` and in `linkage`.  When there is no Qn network former the first two files are not written at all, and the reason is printed to the screen.
-
-The labels come in **two vocabularies**: the distribution tables (`composition` / `qn` / `qn_partner`) use
-the **unit** vocabulary `P-Q2`, because they count structural units; `linkage` and the exported trajectory
-use the **atom** vocabulary `P_2` / `Al_4`, because a linkage joins atoms and a trajectory label must be
-splittable back into an element.  For non-Qn network formers the two coincide (`Al_4`, where the number is
-the **coordination number**).  Ligands are `O_f` / `O_n` / `O_b` / `O_t`, modifiers are bare element symbols.  The table is printed once per run for the parameters actually given.  **Downstream `-x/-y` use the atom vocabulary.**
-
-`--export-traj` writes `network_types_<input stem>[_<suffix>].<ext>` per input.
-
-For the details (the statements behind the numbers, what `sd` means, pandas examples, how the two export
-formats differ, and the single-frame restriction on selecting by label) see [Glass Network Analysis](analysis/network.md).
 
 ---
 
@@ -803,215 +495,18 @@ their own run directories, do they avoid overwriting each other.  `-o <DIR>` col
 
 A three-step pipeline for machine-learning training sets.  What sets it apart from the other commands:
 the output is a **directory** (a DeePMD system is a directory), so `-o` is the output **root directory**;
-and it does not take `CommonArgs`.  The output of `filter` and `merge` carries a `.train` suffix by
+and it does not take the common flags.  The output of `filter` and `merge` carries a `.train` suffix by
 default, and the three parts `--ratio` splits out are `.train` / `.valid` / `.test`; a name already ending
 in one of them does not get another.  The output of `collect` carries `.db` (raw collected data), which is
 **not** a split suffix: `filter` / `merge` strip it before naming their own output — `md.db` filters into `md.train`, not `md.db.train`.
 
-```
-ferro dataset collect   AIMD output      → DeePMD system directory (--type inspect for diagnostics)
-ferro dataset filter    system directory → a filtered system directory
-ferro dataset merge     several systems  → merged by composition
-```
-
 All three steps read and write the same directory format, and **none of them modifies its own input**.
 
-### `collect` — AIMD output into a dataset
-
-| Flag | Description |
-|---|---|
-| `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported; PJM job logs `x<N>-<job>.<id>.out` are left out before grouping |
-| `-o <DIR>` | output root directory, **optional**; without it the output lands next to each input directory |
-| `--type <WHAT>` | `deepmd` (a DeePMD system) \| `inspect` (diagnostics only, no dataset) [deepmd] |
-| `--format <FMT>` | read every input as this format instead of trusting its banner: `cp2k/md` \| `cp2k/sp` \| `vasp/outcar` \| `vasp/xml` \| `qe/pw` |
-| `--mkdir` | create `-o` without asking (required when there is no terminal) |
-| `--overwrite` | allow writing into an existing non-empty directory |
-
-**One system per input directory.**  The `.out` files in one directory are segments of a single run cut
-apart by restarts, and are joined back together — this is also the dividing line between collect and
-merge: collect joins the fragments of **one run**, merge combines **different runs**.  The same applies to
-a batch of single points: one directory holds several `ENERGY_FORCE` outputs of the same composition, each file contributing one frame.
-
-**Which reader is used is decided by the content of the file**, not by its name.  CP2K writes two
-completely different layouts under the same `CP2K|` banner, told apart by `GLOBAL| Run type`:
-`ENERGY` / `ENERGY_FORCE` go to the single-point reader, everything else to the MD reader.
-
-The directory name is **what is left after the common ancestor is stripped**, nested as it was rather than flattened, and the file stem does not go into the name:
-
-| `-i` | Output |
-|---|---|
-| `/data/md/*.out` (no `-o`) | `/data/md.db/` |
-| `run*/*.out -o sets` | `sets/run1.db/`, `sets/run2.db/` |
-| `/s/a/md/x.out /s/b/md/x.out -o sets` | `sets/a/md.db/`, `sets/b/md.db/` |
-| `*.out -o sys`, run in `md/` (a single directory) | `sys/md.db/` |
-
-A common prefix carries no distinguishing information by definition, so what remains after stripping it is
-necessarily unique and a name collision is no longer an error — a collision is the definition of "these belong together".
-
-The output directory name **always carries `.db`** (database), marking it as raw collected data.  It is
-**not** a split suffix: `.train`/`.valid`/`.test` say which part of a split something is, `.db` says where
-the data came from.  Keeping it out of that table was a deliberate trade-off — the guard that forbids
-splitting a `.valid` again reads exactly that table, and `.db` would be rejected along with them.
-`filter` / `merge` strip it before naming their own output, so `md.db` filters into `md.train` rather than
-`md.db.train`; two stacked suffixes would also leave `merge`'s shared-suffix check (which looks at the last segment only) without a unique answer.
-
-Without `-o` the output is written **next to** the AIMD directory.  The earlier rule that "`-o` is
-mandatory" was aimed at a default of `.`, which would scatter npy files into the directory being worked in; a default that follows the input cannot scatter them anywhere else.
-
-**`--type inspect`**: writes diagnostics only and no dataset.  The three files land in
-`<AIMD directory>/ferro_inspect/`, and `-o` **errors out** on this path (there is no dataset to place):
-
-| File | Content |
-|---|---|
-| `<directory name>.lammpstrj` | all frames, for looking at |
-| `<directory name>.data` | the **last frame**, for continuing a run (frame 0 is the initial configuration you fed in) |
-| `<directory name>_info.csv` | per frame: `frame` `step` `temperature` `energy` `volume` `density` `source`; the run summary is in the `#` header |
-
-The temperature is read directly from CP2K and from OUTCAR; vasprun.xml does not print it, so it is
-back-calculated from the ionic kinetic energy as `T = 2·E_kin/(3N·k_B)`, which the `#` header notes.  Missing values are rendered as **empty fields**, never padded with zeros.
-
-Files are ordered by their first `MD| Step number`, and the order within a file is kept.  **Overlapping
-frames are not deduplicated** (a restart only reruns the few steps since the checkpoint, and identical
-positions and velocities give identical energies and forces), but the step range of every source file is
-printed so that this premise stays checkable.  Single points have no step number and fall back to **ordering by file name**; that column then reads `N single point(s)` instead of `steps ?`.
-
-Inconsistent compositions in one directory **error out immediately**, naming both files, rather than being
-dropped as bad frames — that is human error, not a problem with the data.  A single out file that fails to
-parse is skipped and the system is built from the rest; the skip list is reported again at the end and the exit code is set to 1.
-
-**MD** requires CP2K to print coordinates, forces and stress all to `__STD_OUT__`, which makes one out
-file self-contained.  **Single points** need no `&MOTION`: the coordinates and forces come from the two
-tables that `PRINT_LEVEL MEDIUM` prints anyway.  The frame anchor is `ENERGY| Total FORCE_EVAL`, so N
-single-point outputs concatenated with `cat` read as N frames.
-
-Units are read from the text itself (`[hartree]` / `[bar]`), and an unrecognised one **errors out** rather
-than defaulting — `STRESS_UNIT` is a CP2K input keyword, and one version can emit bar, GPa or atm.
-Forces are the only quantity with no unit annotation and fall back to a.u.
-
-**CP2K versions**: two generations are implemented — **2023–2024** (`energy [a.u.]:` plus the
-`ATOMIC FORCES` table) and **2025–2026** (`energy [hartree]` plus the `FORCES|` block); the coordinate
-table, the kind block and `CELL|` have the same shape in both.  2025–2026 is read silently; **2024 and
-earlier get one extra `FerroNote` line per file naming the version, and are then extracted as usual** — the
-note asks for a spot-check of one frame, it is not a refusal.  The parenthesised energy and the unprefixed stress block of pre-8.1 versions are still recognised, but those versions are out of scope.
-
-**CP2K kind names**: with several kinds per element (`Fe1`/`Fe2`), `element` takes the real element and
-the kind name goes into `label`, while `type_map.raw` is still built from elements, so the two merge into
-one training type.  The mapping is printed once per system.  The CP2K plugin of dpdata defaults to the opposite (taking the kind name as the element).
-
-**Cross-check against dpdata**: both single points and AIMD were compared item by item against cp2kdata
-0.7.4 (CP2K 2025.2).  Across all 2000 AIMD frames the energies, coordinates and forces are bit-for-bit
-identical and the stress differs by 1.2e-15 relative; all five single-point quantities agree.  For the full
-numbers and the four accompanying notes (where the force residual comes from, the first MD frame, why coordinates and forces cannot be verified through cp2kdata, and cell precision) see "Checked against dpdata" in `ferro doc dataset collect`.
-
-Frames are dropped for three reasons, and they are **always counted**: SCF not converged / a truncated
-block (including a force count that does not match the atom count) / a mismatched composition.  A single
-point without stress is **not** a dropped frame — a run without `STRESS_TENSOR` is still good data, it merely has no virial; a missing force is always fatal, since `force.npy` is not optional in DeePMD.
-
-Output:
-
-```
-<outdir>/<name>.db/
-  type.raw          the type index per atom, 0-based
-  type_map.raw      element symbols, ordered by (Z, symbol)
-  set.000/coord.npy (nframes, natoms*3)  Å
-          box.npy   (nframes, 9)         Å, row-major
-          energy.npy(nframes, 1)         eV
-          force.npy (nframes, natoms*3)  eV/Å
-          virial.npy(nframes, 9)         eV = stress × V
-```
-
-Everything on disk is **two-dimensional float64**.  dpdata defaults to float32 and ferro does not follow —
-this is the head of the pipeline and everything downstream reads it, so precision lost here cannot be recovered.
-
-### `filter` — select frames by quality
-
-| Flag | Default | Description |
+| Command | Does | Manual |
 |---|---|---|
-| `-i <DIR>...` | | system directories, or a directory containing them (`type.raw` is searched for recursively) |
-| `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i`; **omitting it means read-only** |
-| `--mkdir` | | create `-o` without asking (required when there is no terminal) |
-| `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
-| `--s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
-| `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this |
-| `--al6 [<RCUT>]` | off / automatic when bare | keep only frames containing a 6-coordinate Al; given bare, the cutoff is the outer edge of the first Al–O RDF shell |
-| `--start <N>` | 0 | start of the range (the index among the **surviving frames**, 0-based and inclusive) |
-| `--end <N>` | last frame | end of the range (0-based, **inclusive**) |
-| `--stride <N>` | 1 | take one out of every N surviving frames |
-| `-N, --number <N>` | | take this many frames at even intervals, both ends included; mutually exclusive with `--stride` |
-| `--shuffle` | off | shuffle before writing, **after every criterion and after the frame sampling** |
-| `--seed <N>` | 666 | the seed for `--shuffle` and for the `--ratio` split; giving it with neither errors out |
-| `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
-| `--type <WHAT>` | deepmd | `deepmd` (system directory) \| `nep` (one `.xyz` per system, stress as `virial=`) \| `extxyz` (one `.xyz`, stress as `stress=`) |
-| `--ratio <A:B:C>` | | split each system train:valid:test (`8:1:1`) or train:test (`9:1`); weights, not fractions |
-| `--overwrite` | | allow writing into an existing non-empty directory |
-
-The funnel (narrowing step by step):
-
-```
-all frames → |F|max → |σ|max → min d(O-O) → Al6 → [range / sampling] → shuffle
-```
-
-**The range and the sampling act on the index among the surviving frames**, not on the original frame
-number — after an unknown number of frames has been dropped, that is the only semantics that still makes sense.  The report always gives the original frame numbers.
-
-A threshold of 0 disables that criterion: an explicit zero states "do not judge", which no small positive number can express.
-
-The report has three tables: `[funnel]` for what survives each step, `[criteria]` for how many frames each
-criterion rejects and how many it rejects **exclusively**, and `[overlap]` for the pairwise overlap.  **The
-exclusive count is the evidence that a criterion is worth having** — each funnel step only counts against the survivors of the previous one, so a criterion that merely re-catches what others already caught still looks busy there.
-
-There are four diagnostic tables as well: the distribution of min d(O–O), the number of Al6 per frame, the
-Al coordination distribution, and an **rcut sensitivity scan**.  The last one matters most — on one system
-it can climb steeply from 0.9% to 41.4%, while on another it is a flat 100% line.  All four are computed
-unconditionally: measured on 1110 frames of 302 atoms the wall-clock time is the same as without them, and computing them only in read-only mode would mean they never reach disk.
-
-Printing and writing are separate:
-
-| | Screen | Written to disk |
-|---|---|---|
-| without `-o` (read-only) | all seven printed | **nothing at all** |
-| with `-o` | only the three statistics tables | all seven written |
-
-The seven csv files sit **flat** in the `-o` root (`filter_funnel.csv`, `filter_rcut_scan.csv`, …), go
-through the same writer as every other output, and carry their own `#` header and `[inputs]` list.  Several
-systems are stacked into one file, with the row label being the **path relative to `-i`** in the `system`
-column — in a nested layout `a/md` and `b/md` have the same leaf name and could not be told apart once stacked.
-
-Keeping them flat rather than in a `report/` subdirectory is deliberate: `expand_dirs` only picks up
-directories, so a later `merge -i clean/*` filters the flat csv files out by itself, whereas a `report/` would be picked up as a system candidate.
-
-### `merge` — combine by composition
-
-| Flag | Default | Description |
-|---|---|---|
-| `-i <DIR>...` | | the system directories to combine; globs are supported |
-| `-o <DIR>` | | output root directory, one subdirectory per composition |
-| `--mkdir` | | create `-o` without asking (required when there is no terminal) |
-| `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
-| `--seed <N>` | 666 | the shuffle seed, in both modes |
-| `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
-| `--dir-suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
-| `--type <WHAT>` | deepmd | as in `filter`; `nep` is refused with `--mode by-source` |
-| `--ratio <A:B:C>` | | as in `filter`, per group; refused with `--mode by-source`, with `--dir-suffix`, and on inputs already split |
-| `--overwrite` | | allow writing into an existing non-empty directory |
-
-**Grouping does not look at directory names** — `init.011` says nothing about what is inside.  Grouping is
-by the per-atom element sequence, and only identical compositions are combined.  The output directory is
-named `<atom count>_<formula>` (`112_Al32O64Zn16`), where the subscripts are the actual counts, not reduced.
-
-The systems in a group may order their atoms differently: on merging they are brought to the canonical
-order `(Z, symbol)`, with **the per-atom arrays (coord, force) following the same permutation**, while
-quantities independent of atom numbering (box, energy, virial) are carried over unchanged.  DP is invariant under a permutation of atom numbering; this changes the notation, not the physics.
-
-| Mode | Behaviour |
-|---|---|
-| `shuffle` | concatenate everything of the same composition → shuffle by seed → split by `--set-size` |
-| `by-source` | no mixing across systems; each system is shuffled by seed and split **within itself**, no set spans two systems, and the correspondence is written to `sets_source.txt` |
-
-Both modes spread the remainder evenly: 500 frames split by 400 gives 250+250, not 400+100.
-
-`filter --shuffle` and `merge --mode shuffle` are **one or the other, not a sequence**: shuffle in merge to
-get sets that mix several sources, shuffle in filter when the dataset goes straight to the trainer.
+| `collect` | AIMD output → DeePMD system directory (`--type inspect` for diagnostics only) | [Collecting AIMD output](dataset/collect.md) |
+| `filter` | system directory → a filtered system directory | [Filtering a dataset](dataset/filter.md) |
+| `merge` | several systems → merged by composition | [Merging datasets](dataset/merge.md) |
 
 ---
 

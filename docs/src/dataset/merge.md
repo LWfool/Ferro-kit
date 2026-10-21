@@ -10,6 +10,21 @@ ferro dataset merge -i data/*.train -o merged --mode by-source
 ferro dataset merge -i clean/* -o merged --set-size 250 --dir-suffix .train
 ```
 
+## Parameters
+
+| Flag | Default | Description |
+|---|---|---|
+| `-i <DIR>...` | | the system directories to combine; globs are supported |
+| `-o <DIR>` | | output root directory, one subdirectory per composition |
+| `--mkdir` | | create `-o` without asking (required when there is no terminal) |
+| `--mode <MODE>` | shuffle | `shuffle` \| `by-source` |
+| `--seed <N>` | 666 | the shuffle seed, in both modes |
+| `--set-size <N>` | 400 | frames per output set; 0 means no splitting |
+| `--dir-suffix <EXT>` | see right | force the output directory suffix: `.` followed by letters, digits, `_`, `+` or `-` (`.train`).  By default: inherit the suffix when the group shares one, use `.train` when none has one; **a mixture of different parts errors out** rather than labelling test data as a training set |
+| `--type <WHAT>` | deepmd | as in `filter`; `nep` is refused with `--mode by-source` |
+| `--ratio <A:B:C>` | | as in `filter`, per group; refused with `--mode by-source`, with `--dir-suffix`, and on inputs already split |
+| `--overwrite` | | allow writing into an existing non-empty directory |
+
 ## Grouping is by content, not by name
 
 `init.011` tells you nothing reliable about what is inside it. Systems are
@@ -96,6 +111,9 @@ hold-out of that condition, and picking a validation split means picking a set.
 
 Pick `shuffle` instead when you want every set to be statistically like every
 other.
+
+`filter --shuffle` and `merge --mode shuffle` are one or the other, not a sequence: shuffle in `merge` to
+get sets that mix several sources, in `filter` when the dataset goes straight to the trainer.
 
 ## The remainder is spread, in both modes
 

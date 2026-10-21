@@ -264,6 +264,22 @@ convert 的四条 CIF 并成一条）。原文照搬，以便查当时的理由�
 >   every fractional coordinate are one atom (ASE's `symprec`); two different sites landing on the same
 >   position is an error rather than one silently winning.
 
+### `cli-reference.md` 的 traj / map / net / dataset 四节（D-1）
+
+四节改为索引表，参数表搬到各命令页，其余内容各命令页已有。下面三段只在 cli-reference 里出现过，原文照搬：filter 诊断表无条件计算的实测依据、报表 csv 平铺而不进 `report/` 的理由、`map chg-sdf --cubes` 聚合多文件的待办指向。
+
+> There are four diagnostic tables as well: the distribution of min d(O–O), the number of Al6 per frame, the
+> Al coordination distribution, and an **rcut sensitivity scan**.  The last one matters most — on one system
+> it can climb steeply from 0.9% to 41.4%, while on another it is a flat 100% line.  All four are computed
+> unconditionally: measured on 1110 frames of 302 atoms the wall-clock time is the same as without them, and computing them only in read-only mode would mean they never reach disk.
+
+> Keeping them flat rather than in a `report/` subdirectory is deliberate: `expand_dirs` only picks up
+> directories, so a later `merge -i clean/*` filters the flat csv files out by itself, whereas a `report/` would be picked up as a system candidate.
+
+> `--cubes` is the only mode in `ferro map` that aggregates several inputs into **one** SDF, the opposite
+> of the "one input, one output" semantics of the rest of the group.  Splitting it up requires first
+> defining an intermediate format that carries the sample count (a weighted average across files does not commute); see `dev/plan.md`.
+
 ## 瘦身 P4 的判据（2026-10-21）
 
 - **dpdata 不当 CP2K 的独立对照**（用户定，A-9）：dpdata 读 CP2K 输出靠 cp2kdata 插件，原作者已
