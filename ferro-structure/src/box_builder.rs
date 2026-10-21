@@ -444,46 +444,22 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
 mod tests {
     use super::*;
 
+    /// Plain formulas, compared as whole maps so an extra parsed element fails too.
     #[test]
-    fn test_parse_formula_water() {
-        let counts = parse_formula("H2O").unwrap();
-        assert_eq!(counts["H"], 2);
-        assert_eq!(counts["O"], 1);
-    }
-
-    #[test]
-    fn test_parse_formula_p2o5() {
-        let counts = parse_formula("P2O5").unwrap();
-        assert_eq!(counts["P"], 2);
-        assert_eq!(counts["O"], 5);
-    }
-
-    #[test]
-    fn test_parse_formula_zno() {
-        let counts = parse_formula("ZnO").unwrap();
-        assert_eq!(counts["Zn"], 1);
-        assert_eq!(counts["O"], 1);
-    }
-
-    #[test]
-    fn test_parse_formula_ch3oh() {
-        let counts = parse_formula("CH3OH").unwrap();
-        assert_eq!(counts["C"], 1);
-        assert_eq!(counts["H"], 4); // 3 + 1
-        assert_eq!(counts["O"], 1);
-    }
-
-    #[test]
-    fn test_parse_formula_ccl4() {
-        let counts = parse_formula("CCl4").unwrap();
-        assert_eq!(counts["C"], 1);
-        assert_eq!(counts["Cl"], 4);
-    }
-
-    #[test]
-    fn test_parse_formula_single_element() {
-        let counts = parse_formula("Fe").unwrap();
-        assert_eq!(counts["Fe"], 1);
+    fn test_parse_formula_plain() {
+        let cases: [(&str, &[(&str, usize)]); 6] = [
+            ("H2O", &[("H", 2), ("O", 1)]),
+            ("P2O5", &[("P", 2), ("O", 5)]),
+            ("ZnO", &[("Zn", 1), ("O", 1)]),
+            ("CH3OH", &[("C", 1), ("H", 4), ("O", 1)]), // H: 3 + 1
+            ("CCl4", &[("C", 1), ("Cl", 4)]),
+            ("Fe", &[("Fe", 1)]),
+        ];
+        for (formula, expect) in cases {
+            let expect: HashMap<String, usize> =
+                expect.iter().map(|&(e, n)| (e.to_string(), n)).collect();
+            assert_eq!(parse_formula(formula).unwrap(), expect, "{formula}");
+        }
     }
 
     #[test]

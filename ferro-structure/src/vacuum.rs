@@ -92,33 +92,17 @@ mod tests {
     }
 
     #[test]
-    fn test_add_vacuum_z() {
+    fn test_add_vacuum_each_axis() {
         let frame = cubic_frame(10.0);
-        let out = add_vacuum(&frame, "z", 5.0).unwrap();
-        let [la, lb, lc] = out.cell.as_ref().unwrap().lengths();
-        assert!((la - 10.0).abs() < 1e-10);
-        assert!((lb - 10.0).abs() < 1e-10);
-        assert!((lc - 15.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_add_vacuum_x() {
-        let frame = cubic_frame(10.0);
-        let out = add_vacuum(&frame, "x", 8.0).unwrap();
-        let [la, lb, lc] = out.cell.as_ref().unwrap().lengths();
-        assert!((la - 18.0).abs() < 1e-10);
-        assert!((lb - 10.0).abs() < 1e-10);
-        assert!((lc - 10.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_add_vacuum_y() {
-        let frame = cubic_frame(10.0);
-        let out = add_vacuum(&frame, "y", 3.0).unwrap();
-        let [la, lb, lc] = out.cell.as_ref().unwrap().lengths();
-        assert!((la - 10.0).abs() < 1e-10);
-        assert!((lb - 13.0).abs() < 1e-10);
-        assert!((lc - 10.0).abs() < 1e-10);
+        for (axis, t, expect) in [("x", 8.0, [18.0, 10.0, 10.0]),
+                                  ("y", 3.0, [10.0, 13.0, 10.0]),
+                                  ("z", 5.0, [10.0, 10.0, 15.0])] {
+            let out = add_vacuum(&frame, axis, t).unwrap();
+            let lengths = out.cell.as_ref().unwrap().lengths();
+            for (l, e) in lengths.iter().zip(expect) {
+                assert!((l - e).abs() < 1e-10, "axis {axis}: lengths {lengths:?}, expected {expect:?}");
+            }
+        }
     }
 
     #[test]
@@ -148,41 +132,19 @@ mod tests {
         assert_eq!(out.cell.as_ref().unwrap().origin, o, "加真空应保留盒子原点");
     }
 
+    /// Positions, pbc and charges survive; energy and forces, which no longer describe the
+    /// new box, are cleared.
     #[test]
-    fn test_positions_unchanged() {
-        let frame = cubic_frame(10.0);
-        let out = add_vacuum(&frame, "z", 5.0).unwrap();
-        let pos = out.positions()[0];
-        assert!((pos.x - 1.0).abs() < 1e-10);
-        assert!((pos.y - 2.0).abs() < 1e-10);
-        assert!((pos.z - 3.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_pbc_unchanged() {
-        let frame = cubic_frame(10.0);
-        let out = add_vacuum(&frame, "z", 5.0).unwrap();
-        assert_eq!(out.pbc, [true; 3]);
-    }
-
-    #[test]
-    fn test_atom_charges_preserved() {
-        let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("O", Vector3::zeros()));
+    fn test_what_survives_and_what_is_cleared() {
+        let mut frame = cubic_frame(10.0);
         frame.set_charge(0, Some(-0.8));
-        let out = add_vacuum(&frame, "z", 5.0).unwrap();
-        assert_eq!(out.atom(0).charge, Some(-0.8));
-    }
-
-    #[test]
-    fn test_results_cleared() {
-        let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        frame.add_atom(Atom::new("O", Vector3::zeros()));
         frame.energy = Some(-100.0);
         frame.set_forces(Some(vec![Vector3::zeros()])).unwrap();
         let out = add_vacuum(&frame, "z", 5.0).unwrap();
+        let pos = out.positions()[0];
+        assert!((pos - Vector3::new(1.0, 2.0, 3.0)).norm() < 1e-10, "{pos:?}");
+        assert_eq!(out.pbc, [true; 3]);
+        assert_eq!(out.atom(0).charge, Some(-0.8));
         assert!(out.energy.is_none());
         assert!(out.forces().is_none());
     }
@@ -215,18 +177,13 @@ mod tests {
         assert!(add_vacuum(&frame, "w", 5.0).is_err());
     }
 
+    // Review E-9: a NaN / inf thickness and a singular cell (ASE's c = 0 convention for 2D
+    // materials) used to return a NaN cell in silence
     #[test]
-    fn test_error_zero_thickness() {
+    fn test_error_bad_thickness() {
         let frame = cubic_frame(10.0);
-        assert!(add_vacuum(&frame, "z", 0.0).is_err());
-    }
-
-    // 审查 E-9：NaN / inf 厚度与奇异胞（ASE 二维材料的 c=0 约定）以前静默返回 NaN 晶胞
-    #[test]
-    fn test_error_non_finite_thickness() {
-        let frame = cubic_frame(10.0);
-        for t in [f64::NAN, f64::INFINITY] {
-            assert!(add_vacuum(&frame, "z", t).is_err(), "厚度 {t} 应报错");
+        for t in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(add_vacuum(&frame, "z", t).is_err(), "thickness {t} should be an error");
         }
     }
 
@@ -235,12 +192,6 @@ mod tests {
         let mut frame = cubic_frame(10.0);
         frame.cell.as_mut().unwrap().matrix[(2, 2)] = 0.0;
         assert!(add_vacuum(&frame, "z", 5.0).is_err());
-    }
-
-    #[test]
-    fn test_error_negative_thickness() {
-        let frame = cubic_frame(10.0);
-        assert!(add_vacuum(&frame, "z", -1.0).is_err());
     }
 
     // Review A-13: a NaN cell passed the determinant test (NaN < 1e-12 is false)
