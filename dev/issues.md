@@ -72,7 +72,7 @@
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
 | 自定义 `-h`（原 `cmd/job.rs`，已删；教训通用） | 自己声明 `help` 字段接管 `-h/--help`，却没关掉 clap 自动生成的那个。**两个同名参数只在 debug 断言里报**：`cargo build` 通过、release 正常跑，而 **debug 版 `ferro job` 一跑就 panic**（`clap_builder/debug_asserts.rs:99`）。测试全绿也发现不了 —— 23 个 workflow 测试测的是 builder，从不经过 clap 解析 | `#[command(disable_help_flag = true)]`。2026-08-24 修。**任何自定义 `-h`/`-V` 都要同时关掉 clap 的自动版**；发现它的唯一途径是拿 debug 二进制真跑一次子命令 |
-| `cargo fmt`（全仓） | 代码库未用 rustfmt 管理，全仓 `cargo fmt` 会改动 ~80 文件（含 22k 行生成的 `cp2k_basis_db.rs`），淹没特性 diff | 只对改动文件 `cargo fmt -- <file>`，或跳过格式化手工对齐周边风格；用 `cargo build`/`cargo clippy` 验证。若已误跑全仓，先提交真实改动再 `git checkout -- .` 丢弃格式化 |
+| `cargo fmt`（全仓） | 代码库未用 rustfmt 管理，全仓 `cargo fmt` 会改动约 115 个文件、近 1900 处（2026-10-21 实测），淹没特性 diff | 只对改动文件 `cargo fmt -- <file>`，或跳过格式化手工对齐周边风格；用 `cargo build`/`cargo clippy` 验证。若已误跑全仓，先提交真实改动再 `git checkout -- .` 丢弃格式化 |
 | CLI 的包名 | 目录叫 `ferro-cli`，包名是 **`ferro`**：`cargo build -p ferro-cli` 报错而 `target/` 里的旧二进制照跑，端到端检查拿旧结果当新的（2026-10-14 实测踩到） | `cargo build -p ferro` / `cargo test -p ferro`；端到端前看一眼二进制时间戳 |
 | Claude Code 的 shell 与非 ASCII 字符（2026-10-14 / 15 实测） | 命令行里的中文与「—」偶发被截成非法 UTF-8：`python - <<'PY'` 报 `Non-UTF-8 code`；`git commit -m` **提交成功但信息是乱码**（git 只警告）；`sed -i 's/…—…/'` 把坏字节写进 changelog，因手册经 `include_str!` 编进二进制，下一次 `cargo build` 才报 `not valid utf-8` | 命令行只放 ASCII：提交信息用 Write 写文件再 `git commit -F`；含非 ASCII 的替换用 Edit 工具或 Write 写的脚本 |
 

@@ -527,7 +527,8 @@ ionvol[j] = count(volnum == Bader_vols_of_j) * V_cell / nrho
 | `AtIndex.dat` | 每个格点的归属原子编号（可视化用） |
 
 **ACF/BCF/AVF 三个 writer 不走 `Table`**（全项目唯一的例外）：它们是 Henkelman 组的
-既定格式，外部工具按它解析。0.2.0 让其余 7 个 `write_*` 退役时，这三个明确保留。
+既定格式。0.2.0 让其余 7 个 `write_*` 退役时，这三个明确保留。**但现有版式并不兼容**：
+ASE `attach_charges` 与 pymatgen `_parse_acf` 实测都解析失败（`plan.md` C-D3，随 Bader 重写处理）。
 
-已实现部分见 `progress.md`「ferro-analysis / dft」；`--outdir` 尚未接入（三个固定
-文件名写在当前目录，连跑两个体系会互相覆盖），见 `plan.md` 的三项小待办。
+已实现部分见 `progress.md`「ferro-analysis / dft」。三个 `.dat` 默认写在输入文件旁、名字带输入 stem，
+`-o` 可改目录（2026-09-20 起）。

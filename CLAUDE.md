@@ -20,8 +20,8 @@ cargo clippy                                  # 必须零警告
 cd ferro-python && cargo check                # 独立 workspace，主 workspace 会跳过它
 ```
 
-`cargo fmt` **不要全仓跑**：本仓未纳入 rustfmt 管理，全仓格式化会改动约 80 文件
-（含 22k 行生成代码），淹没真实 diff。见 `dev/issues.md`「构建 / 工具链陷阱」。
+`cargo fmt` **不要全仓跑**：本仓未纳入 rustfmt 管理，全仓格式化会改动约 115 个文件、
+近 1900 处（2026-10-21 实测），淹没真实 diff。见 `dev/issues.md`「构建 / 工具链陷阱」。
 
 测试 fixture：`tests/`，清单与来源见 `dev/progress.md` 的 fixture 表。
 
@@ -55,7 +55,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
   `g/cm³`、`cm²/s`）—— 它们是符号不是公式，进 LaTeX 只会让表格更难读，
   手册原本就是「公式 LaTeX、单位 Unicode」；② 代码块与行内代码；
   ③ `SUMMARY.md` 的目录标题（mdBook 侧边栏不过 MathJax，会字面显示）
-- 库 crate 用 `ferro_core::error::ChemError` / `Result<T>`；CLI 用 `anyhow::Result`
+- 库 crate 用 `ferro_core::error::ChemError` / `Result<T>`；CLI 用 `anyhow::Result`。
+  **`ferro-io` 例外**，继续用 `anyhow`（用户定，理由见 `dev/plan.md`「库 crate 的错误类型」）
 - 顶层类型恒为 `Trajectory`，单帧文件也是（`frames: vec![frame_0]`）
 - **`Molecule` 类型不存在** —— `Frame` 覆盖分子与周期体系，由 `pbc: [bool; 3]` 区分
 - 原子索引是**隐式的**（在帧里的下标），不存 `index` 字段。`Frame` 是拓扑 / 坐标分离存储：
