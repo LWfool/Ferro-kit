@@ -108,14 +108,10 @@ $Q^n(m\mathrm{B})$ for borophosphates, and $P^n_{m\mathrm{Al},x\mathrm{B}}$ with
 | $m_X$ | **heteronuclear** bridging connections: P–O–Al, P–O–B … |
 | total bridging connections | $n + \sum_X m_X$ — **not** $n$ |
 
-> Verbatim from arXiv 2510.13545: *"'n' denotes the total number of bridging oxygen
-> connections involving P–O–P and P–O–Si bonds, and 'm' and 'x' specify the number
-> of aluminum and boron connections with phosphate."*
->
-> The aluminophosphate literature points out explicitly that reading "$n$ is the total number of bridging
-> oxygens" is a **known misconception** in this field.  It arises because $n$ and $m$ come from two
-> different NMR experiments (homonuclear J / double-quantum vs heteronuclear REAPDOR / TRAPDOR /
-> HETCOR) and are two independent counts by nature.  Species with $m>n$ such as $Q^0(3\mathrm{B})$ and $Q^1(2\mathrm{Al})$ are real and common (the former is 29% at high boron content), and cannot be explained under the reading that "$m$ is a subset of $n$".
+> arXiv 2510.13545: *"'n' denotes the total number of bridging oxygen connections involving P–O–P and
+> P–O–Si bonds, and 'm' and 'x' specify the number of aluminum and boron connections with phosphate."*
+> Reading $n$ as the total bridge count is a known misconception: $n$ and $m$ come from two different NMR
+> experiments, and species with $m>n$ such as $Q^0(3\mathrm{B})$ and $Q^1(2\mathrm{Al})$ are common.
 
 **The total bridging-oxygen count is still available**: the `[inputs]` block gives `mean_n_bo` next to `mean_qn`.
 
@@ -125,7 +121,7 @@ $Q^n(m\mathrm{B})$ for borophosphates, and $P^n_{m\mathrm{Al},x\mathrm{B}}$ with
 > tetrahedron, whatever sits on the other side. The two agree only when the system has no other
 > network former; in an aluminosilicate or a borosilicate ferro's Si $n$ is smaller. To compare with
 > such a paper, add the heteronuclear connections: total $= n + \sum_X m_X$ from `qn_partner` (or
-> read `mean_n_bo` for the average). The default list is kept as it is (decision 2026-10-11).
+> read `mean_n_bo` for the average).
 
 - `qn=1, m_Al=2` → $Q^1(2\mathrm{Al})$, three bridges in total
 - `qn` is the **marginal** of `qn_partner` over the `m_` columns (count and fraction close exactly)
@@ -139,12 +135,8 @@ equal to `qn`, a duplicate column.  It is fully determined by `qn` and is not an
 
 Note that Al is a **partner here, not a subject**: it has no row of its own, but the `m_Al` column is there as usual.
 
-The two are **two tables rather than one plus a `groupby`**: the plain Qn distribution is the primary output
-and must be readable the moment the file is opened, without an aggregation first.  This is the same
-criterion that makes `composition` a table of its own — a different granularity deserves a separate table.  `sd`
-likewise has to be accumulated separately rather than summed: the variance of a sum of correlated terms is
-not the sum of the variances.  Measured on the reference trajectory, the `qn=1` row of P has a correct `sd`
-of **0** (the P–O–P backbone does not change from frame to frame), while summing the `sd` of the four corresponding `qn_partner` rows gives **7.598e-3** — summing would forge a visible fluctuation for a quantity that does not move at all.  The components moving while their sum stays put is exactly what cancellation between correlated terms looks like.
+Do not rebuild a `qn` row's `sd` by summing `qn_partner` rows: the variance of a sum of correlated terms is
+not the sum of the variances, and summing gives a fluctuation where there is none.
 
 **A tricluster ligand is counted by connections.** A ligand bonded to three network formers connects the
 site in question to **two** partners, so it contributes 2 rather than 1 — the literature counts *connections*,
@@ -188,9 +180,6 @@ number per element (Qn for P, CN for Al) and therefore cannot answer "how many b
 > $1/\sqrt{N}$ nor estimates the physical fluctuation.  Read it as "how much this number swings between
 > snapshots".  Real error bars call for block averaging, which this analysis does not provide.
 
-The implementation uses Welford's recurrence rather than $\Sigma f$ / $\Sigma f^2$: the latter produces
-~2e-10 of cancellation noise on a constant series, and a spurious wobble in the `sd` column would be read as physics.
-
 ---
 
 ## Quick start
@@ -230,8 +219,6 @@ At least one pair parameter of the form `--<Former>-<Ligand>=<cutoff>` (element 
 ```
 
 `auto` and numbers can be mixed (`--P-O=auto --Zn-O=2.6`); see [Automatic cutoffs](#automatic-cutoffs-auto).
-
-The element pair lives in the **parameter name**, which clap cannot model, so `main` strips them out of argv before parsing.
 
 ### Optional
 

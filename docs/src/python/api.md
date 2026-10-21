@@ -17,19 +17,7 @@ wheels on `v*` tags or a manual run (artifacts kept 7 days); download the artifa
 pip install --no-index ferro-*.whl      # `import ferro` and the ferro-py command
 ```
 
-To build one yourself:
-
-```bash
-pip install maturin
-cd ferro-python
-maturin build --release                 # -> target/wheels/ferro-*.whl
-```
-
-> `cargo build` from the workspace root does **not** build this crate: it is a
-> separate workspace with its own lockfile, so the root `cargo build` / `test` /
-> `clippy` skip it, and a break in the bindings is not caught by the main test
-> suite. After changing a public API of `ferro-core`, `ferro-io` or
-> `ferro-analysis`, run `cd ferro-python && cargo check`.
+To build a wheel yourself, see the Installation page of the ferro manual (`ferro doc installation`).
 
 The command-line side — `ferro-py job`, `conv`, `config`, `plot` — has its own pages:
 run `ferro-py doc` for the list.

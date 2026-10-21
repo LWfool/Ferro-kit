@@ -153,6 +153,117 @@
 - [cli-reference.md] ; that needs the input stem in the file name as well, which is a separate piece of work.
 - [cli-reference.md] and are parsed by external tools, which is why they did not move to csv with the rest of the outputs.
 
+### 安装重复、绘图历史、network 设计论证、filter 限制、convert 的 CIF 条目（D-11 / D-12 / D-13 / 其他）
+
+下列原段落撤下或压缩（network 的文献段压成四行；filter 的「Not implemented yet」改为「Limits」；
+convert 的四条 CIF 并成一条）。原文照搬，以便查当时的理由与数字。
+
+来源 `python/api.md`：
+
+> To build one yourself:
+>
+> ```bash
+> pip install maturin
+> cd ferro-python
+> maturin build --release                 # -> target/wheels/ferro-*.whl
+> ```
+>
+> > `cargo build` from the workspace root does **not** build this crate: it is a
+> > separate workspace with its own lockfile, so the root `cargo build` / `test` /
+> > `clippy` skip it, and a break in the bindings is not caught by the main test
+> > suite. After changing a public API of `ferro-core`, `ferro-io` or
+> > `ferro-analysis`, run `cd ferro-python && cargo check`.
+
+来源 `plotting.md`：
+
+> ## Why ferro does not plot
+>
+> Up to `0.3.2` the trajectory commands took `--plot` and wrote a PNG through the Rust
+> `plotters` crate. It was removed in `0.3.3`:
+>
+> - **It broke builds on Linux.** Text rendering needs the system `fontconfig` and
+>   `freetype` development libraries, which compute clusters often lack. On macOS the
+>   system font stack hid the problem.
+> - **It could not reach publication quality.** `plotters` has no PDF backend, and
+>   vector output through SVG → PDF would add about 40 more crates. The PNG was frozen
+>   at self-check level while the real figures were already made in Python.
+> - **It cost more than it gave.** It pulled in over 30 of the roughly 130 crates in
+>   the build, for four figure types that matplotlib does better.
+
+来源 `analysis/network.md`：
+
+> > Verbatim from arXiv 2510.13545: *"'n' denotes the total number of bridging oxygen
+> > connections involving P–O–P and P–O–Si bonds, and 'm' and 'x' specify the number
+> > of aluminum and boron connections with phosphate."*
+> >
+> > The aluminophosphate literature points out explicitly that reading "$n$ is the total number of bridging
+> > oxygens" is a **known misconception** in this field.  It arises because $n$ and $m$ come from two
+> > different NMR experiments (homonuclear J / double-quantum vs heteronuclear REAPDOR / TRAPDOR /
+> > HETCOR) and are two independent counts by nature.  Species with $m>n$ such as $Q^0(3\mathrm{B})$ and $Q^1(2\mathrm{Al})$ are real and common (the former is 29% at high boron content), and cannot be explained under the reading that "$m$ is a subset of $n$".
+
+来源 `analysis/network.md`：
+
+>  The default list is kept as it is (decision 2026-10-11).
+
+来源 `analysis/network.md`：
+
+> The two are **two tables rather than one plus a `groupby`**: the plain Qn distribution is the primary output
+> and must be readable the moment the file is opened, without an aggregation first.  This is the same
+> criterion that makes `composition` a table of its own — a different granularity deserves a separate table.  `sd`
+> likewise has to be accumulated separately rather than summed: the variance of a sum of correlated terms is
+> not the sum of the variances.  Measured on the reference trajectory, the `qn=1` row of P has a correct `sd`
+> of **0** (the P–O–P backbone does not change from frame to frame), while summing the `sd` of the four corresponding `qn_partner` rows gives **7.598e-3** — summing would forge a visible fluctuation for a quantity that does not move at all.  The components moving while their sum stays put is exactly what cancellation between correlated terms looks like.
+
+来源 `analysis/network.md`：
+
+> The implementation uses Welford's recurrence rather than $\Sigma f$ / $\Sigma f^2$: the latter produces
+> ~2e-10 of cancellation noise on a constant series, and a spurious wobble in the `sd` column would be read as physics.
+
+来源 `analysis/network.md`：
+
+> The element pair lives in the **parameter name**, which clap cannot model, so `main` strips them out of argv before parsing.
+
+来源 `dataset/filter.md`：
+
+> ## Not implemented yet
+>
+> - **Multi-layer periodic images.** Cutoffs are checked against the
+>   minimum-image bound of the tightest frame (NPT boxes shrink) and rejected
+>   beyond it, rather than scanning further image shells. Not a limitation for cells much larger than the cutoff.
+> - **Extra keys.** `atom_ener.npy` and friends have no home in `Frame`; they are
+>   **reported** on read and would be lost on write. The reader names them rather
+>   than dropping them quietly.
+> - **Mixed-type systems** (dpdata's `deepmd/npy/mixed`, for DPA models). There
+>   `type.raw` is a placeholder of zeros and the real types sit in each set's
+>   `real_atom_types.npy`. A system holding that file is **refused**, by `filter`
+>   and `merge` alike, rather than read with every atom as the first element of
+>   `type_map.raw`. Convert it to the standard layout first (dpdata `deepmd/npy`).
+
+来源 `cli-reference.md`：
+
+> - **A CIF with partial occupancy is refused.**  A structure holds whole atoms, so a mixed site
+>   (`Mg 0.5` / `Fe 0.5`) would become two overlapping atoms and a vacancy site (`O 0.9`) a full
+>   atom.  The error names every site with `_atom_site_occupancy` below 1; order the structure
+>   first (one species per site, a supercell for vacancies).
+>   An unknown (`?`) or malformed coordinate is an error naming the site, not an atom at the origin.
+> - **CIF blocks without atom sites are skipped.**  A `data_global` block that only carries journal
+>   and author fields (common in Acta Cryst and COD files) does not stop the read; only a file in
+>   which no block has an `_atom_site_` loop is an error.
+> - **Writing a CIF needs a cell.**  A frame without one is an error before the file is created;
+>   write a non-periodic structure as `.xyz` or `.extxyz`.
+> - **A CIF without symmetry operations is expanded from its space-group symbol.**  Explicit operations
+>   (`_space_group_symop_operation_xyz`, its CIF2 form `_space_group_symop.operation_xyz`, or
+>   `_symmetry_equiv_pos_as_xyz`) are used as given; otherwise the Hall symbol, the H-M symbol or the
+>   IT number is looked up, and only a file with none of them is read as P1.  When a symbol fits more
+>   than one setting — an origin choice (`F d -3 m`), or `C m m e`, whose two settings differ by an
+>   origin shift — the read **fails** rather than guess, because the wrong origin keeps the atom count
+>   plausible and every position wrong.  Append the setting (`F d -3 m :2`), give
+>   `_space_group_name_Hall`, or list the operations.  The monoclinic unique axis and the hexagonal vs.
+>   rhombohedral cell of an R group are taken from the cell parameters.  A symbol that contradicts
+>   the IT number, or a malformed operation, is an error.  Images of one site closer than $10^{-3}$ in
+>   every fractional coordinate are one atom (ASE's `symprec`); two different sites landing on the same
+>   position is an error rather than one silently winning.
+
 ## 瘦身 P4 的判据（2026-10-21）
 
 - **dpdata 不当 CP2K 的独立对照**（用户定，A-9）：dpdata 读 CP2K 输出靠 cp2kdata 插件，原作者已

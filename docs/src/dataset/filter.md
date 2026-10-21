@@ -302,16 +302,10 @@ number of O atoms in the cell (64 O gave a mean of 2.40 Å, 201 O gave 2.00 Å f
 the same kind of glass), so a threshold carried over from another system means
 very little.
 
-## Not implemented yet
+## Limits
 
-- **Multi-layer periodic images.** Cutoffs are checked against the
-  minimum-image bound of the tightest frame (NPT boxes shrink) and rejected
-  beyond it, rather than scanning further image shells. Not a limitation for cells much larger than the cutoff.
-- **Extra keys.** `atom_ener.npy` and friends have no home in `Frame`; they are
-  **reported** on read and would be lost on write. The reader names them rather
-  than dropping them quietly.
-- **Mixed-type systems** (dpdata's `deepmd/npy/mixed`, for DPA models). There
-  `type.raw` is a placeholder of zeros and the real types sit in each set's
-  `real_atom_types.npy`. A system holding that file is **refused**, by `filter`
-  and `merge` alike, rather than read with every atom as the first element of
-  `type_map.raw`. Convert it to the standard layout first (dpdata `deepmd/npy`).
+- Cutoffs beyond the minimum-image bound of the tightest frame (NPT boxes shrink) are rejected; further
+  image shells are not scanned.
+- Extra keys such as `atom_ener.npy` are reported on read and not written.
+- Mixed-type systems (dpdata `deepmd/npy/mixed`: a set holding `real_atom_types.npy`) are refused by
+  `filter` and `merge`; convert to the standard `deepmd/npy` layout first.

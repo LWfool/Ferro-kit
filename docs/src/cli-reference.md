@@ -201,28 +201,16 @@ Things that trip people up:
   `dataset --type nep|extxyz` all write extended XYZ under `.xyz`, so a `.xyz` whose comment line (line 2)
   declares `Lattice=` or `Properties=` is read with the extended XYZ reader; anything else stays plain XYZ.
   Writing to `.xyz` still produces plain XYZ (no cell); write `.extxyz` to keep the cell.
-- **A CIF with partial occupancy is refused.**  A structure holds whole atoms, so a mixed site
-  (`Mg 0.5` / `Fe 0.5`) would become two overlapping atoms and a vacancy site (`O 0.9`) a full
-  atom.  The error names every site with `_atom_site_occupancy` below 1; order the structure
-  first (one species per site, a supercell for vacancies).
-  An unknown (`?`) or malformed coordinate is an error naming the site, not an atom at the origin.
-- **CIF blocks without atom sites are skipped.**  A `data_global` block that only carries journal
-  and author fields (common in Acta Cryst and COD files) does not stop the read; only a file in
-  which no block has an `_atom_site_` loop is an error.
-- **Writing a CIF needs a cell.**  A frame without one is an error before the file is created;
+- **CIF.**  Explicit symmetry operations (`_space_group_symop_operation_xyz`, its CIF2 form, or
+  `_symmetry_equiv_pos_as_xyz`) are used as given; otherwise the Hall symbol, the H-M symbol or the IT
+  number is looked up, and a file with none of them reads as P1.  A symbol that fits more than one setting
+  (`F d -3 m`, `C m m e`) is an error rather than a guess: append the setting (`F d -3 m :2`), give
+  `_space_group_name_Hall`, or list the operations.  The monoclinic unique axis and the R-group cell come
+  from the cell parameters; images of one site within $10^{-3}$ (fractional) are one atom, two sites on
+  one position an error.  Partial occupancy (`_atom_site_occupancy` < 1) is refused, naming every such
+  site — order the structure first; an unknown (`?`) or malformed coordinate is an error naming the site.
+  Blocks without an `_atom_site_` loop (a `data_global` block) are skipped.  Writing a CIF needs a cell;
   write a non-periodic structure as `.xyz` or `.extxyz`.
-- **A CIF without symmetry operations is expanded from its space-group symbol.**  Explicit operations
-  (`_space_group_symop_operation_xyz`, its CIF2 form `_space_group_symop.operation_xyz`, or
-  `_symmetry_equiv_pos_as_xyz`) are used as given; otherwise the Hall symbol, the H-M symbol or the
-  IT number is looked up, and only a file with none of them is read as P1.  When a symbol fits more
-  than one setting — an origin choice (`F d -3 m`), or `C m m e`, whose two settings differ by an
-  origin shift — the read **fails** rather than guess, because the wrong origin keeps the atom count
-  plausible and every position wrong.  Append the setting (`F d -3 m :2`), give
-  `_space_group_name_Hall`, or list the operations.  The monoclinic unique axis and the hexagonal vs.
-  rhombohedral cell of an R group are taken from the cell parameters.  A symbol that contradicts
-  the IT number, or a malformed operation, is an error.  Images of one site closer than $10^{-3}$ in
-  every fractional coordinate are one atom (ASE's `symprec`); two different sites landing on the same
-  position is an error rather than one silently winning.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp`, `conf.poscar` and `conf.pos` all go through the same reader/writer pair.
 - **A LAMMPS data file needs `--atom-style atomic|charge|full`.**  The layout of the `Atoms` section cannot
