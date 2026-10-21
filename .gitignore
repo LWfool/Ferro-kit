@@ -9,22 +9,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
 wheels/
 *.egg-info/
-.installed.cfg
-*.egg
 *.pdf
 
 # IDE
@@ -44,7 +32,6 @@ config/secrets.yml
 /private
 /examples
 .claude/
-CLAUDE.md
 # 比较脚本的输出（scripts/compare_*.py）
 cmp_out/
 
