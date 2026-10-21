@@ -222,7 +222,7 @@ counted, not written with zeros.
 CP2K lets one element carry several *kinds* — `&KIND Fe1` and `&KIND Fe2` with
 different magnetisation guesses, or a kind whose name is a different element
 symbol entirely after a substitution. ferro keeps both readings:
-[`Atom::element`](../data-model.md#atom) is the real element from the
+[`Atom::element`](../data-model.md#atoms-what-an-atom-is-and-where-it-is) is the real element from the
 coordinate table, [`Atom::label`](../data-model.md#element-vs-label) is the kind
 name, filled only when the two differ.
 
@@ -637,9 +637,6 @@ hand.
 - **No extxyz / NEP output.** The pipeline's intermediate format is the DeePMD
   directory; GPUMD's `train.xyz` is an export at the end of the chain, not at
   the start.
-- **None of these formats is registered with `ferro convert`.** `.out` is far
-  too generic to be claimed for CP2K, and `OUTCAR` has no extension at all, so
-  the AIMD readers are reachable only through `ferro dataset collect`.
 - **No ML force-field OUTCARs.** A VASP run driven by its machine-learned force
   field prints `free  energy ML TOTEN` and `ML FORCE` instead, and its block
   layout differs by more than the names. Without a sample to check against,

@@ -42,7 +42,7 @@ where $c_\alpha = N_\alpha / N$ is the mole fraction of species $\alpha$, and $f
 ### Physical Interpretation
 
 $S(q)$ is built from $g(r)$ and inherits its periodicity assumption: a slab's vacuum enters the density
-(see [g(r): every direction is treated as periodic](gr.md#every-direction-is-treated-as-periodic)).
+(see [g(r): only 3-D periodic cells](gr.md#only-3-d-periodic-cells)).
 
 $S(q)$ characterises structural correlations at length scale $2\pi/q$. Key features:
 
@@ -166,9 +166,6 @@ Partials resolved by label are gone with them: `-x/-y` was the only entry into `
 count behind a single site label is usually too small for its partial to show any signal.  **`GroupBy::Label` in the library is untouched**
 (the `GrParams` field is still there, and the two tests pinning the $O(1/N)$ self-exclusion term still run) — it is only no longer exposed on the CLI.
 
-The `.sq` file header records both the g(r) parameters (used as input) and the S(q) parameters.  
-Column ordering matches the `.gr` file. Additional columns `total_xrd` and/or `total_neutron` are appended when weighting is requested.
-
 Figures are made from this csv outside ferro; see [Plotting](../plotting.md).
 
 ## Usage
@@ -192,4 +189,3 @@ for (name, table) in sq.to_tables() {
 
 - The Fourier transform is parallelised over $q$ values with `rayon::par_iter`.
 - Scattering data (form factors and neutron lengths) are stored as static tables in `ferro-analysis` (`md/scattering_data.rs`).
-- For a single-element system, `total_xrd ≈ total` because all Faber-Ziman weights reduce to 1.
