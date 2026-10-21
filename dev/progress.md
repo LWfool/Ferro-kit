@@ -104,7 +104,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     dump / data 读写它，`make_supercell` / `add_vacuum` / `merge_frames` 认它，其余格式不读不写
   - **`interplanar_spacings()` / `minimum_image_cutoff()`**：dᵢ = 1/‖(Mᵀ)⁻¹.row(i)‖，
     最小镜像的正确几何上界（非正交晶胞 d < L，用边长会高估）；`calc_gr` 与
-    `CellList::build` 共用同一份
+    `box_builder` 的 `CellList` 共用同一份
 - **网络类型不在 core**：`AtomType` / `TypeParams` / `classify_frame[_detailed]`、former–ligand 图
   （`build_network_graph`）与并查集 `connected_components` 于 2026-10-18 移到
   `ferro-analysis/src/network/`（只有分析层叫它们的名字，按「两个以上中间层需要」的判据不该在
@@ -229,7 +229,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   文档全名单、Masses / Atoms 按段名定位不依赖顺序、Masses 行须恰为 `type mass`、重复 type 报错
   （A-10）；CP2K MD 缺 cell 行计入 `AimdStats.n_no_cell` 并在报错里点名 `&CELL`，第三个同构 xyz
   块（VELOCITIES 打到 stdout）整份报错（A-17）；CIF 判重按 ASE `symprec`：逐分量 1e-3、只在同一
-  非对称位点的像之间、跨位点重合报错（A-7）。**A-13（QE 一行 namelist）挂起**，随 QC 专项
+  非对称位点的像之间、跨位点重合报错（A-7）。A-13（QE 一行 namelist）2026-10-16 随 `ferro.jobs` 第 1 步修复
 
 ### ferro-structure
 
@@ -254,7 +254,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 
 | 文件 | 分析 | 要点 |
 |---|---|---|
-| `gr.rs` | g(r) + CN(r) | CellList 加速；**n² 个有序对**；逐帧体积归一化 |
+| `gr.rs` | g(r) + CN(r) | `NeighborList`（`neighbor.rs`）加速；**n² 个有序对**；逐帧体积归一化 |
 | `sq.rs` | S(q) | 只对规范半边做 FT；Faber-Ziman 上三角权重 |
 | `msd.rs` | 均方位移 | NPT 安全，atom-major 并行；`fit_diffusion` 出 D 与 R² |
 | `angle.rs` | 键角分布 | `AngleParams::ends` 按用户写的 `-a`/`-c` 顺序分派 cutoff |
@@ -268,7 +268,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 
 `gr.rs` 的字段：`rho_g = ⟨ρ_f·g_f⟩`（供 S(q) 逐帧变换重构）、`volume_std`（两遍算法）、
 `rho = N·⟨1/V⟩`。粒子数守恒校验：逐帧比对总数与分组计数，不符即 `Err`。
-排序为 `(elem_z, 字符串)` 二级比较。`GroupBy::{Element, Label}`。
+排序走 `canonical_cmp`（`ferro-core/src/data/elements.rs`）。`GroupBy::{Element, Label}`。
 
 2026-10-07 – 10-08 的口径修正：`vanhove --tau` 默认 N/2（同 `--max-lag`）；`GrResult.r_max_used`
 存截断后的值，头部写请求值；S(q) 的 `q-min` 必须 > 0，`[inputs]` 带 `q_trunc = 2π/r_max`，
@@ -317,7 +317,6 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - `Bin { count, fraction, sd }`：`fraction` 是逐帧比例的平均，`sd` 是同一序列的样本
   标准差（ddof=1，缺席帧按 0 计入），用 Welford + Chan/Golub/LeVeque 成对合并（rayon 是归并）
 - `linkage` 规范半边存储，两端各带元素/同核连接数(`qn_a`)/配位数，`LinkKey` 含配体元素维
-- 旧的 `cn.rs`、`ligand_class.rs`、`qn.rs`、`modifier.rs` 已删除（逻辑迁移至 ferro-core）
 
 ### ferro-analysis / ml
 
@@ -452,15 +451,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **帮助页全部按同一模板**（2026-09-22 重定为五段）：一句话用途 +
   `Parameters:`（完整）+ `Output:`（≤4 行）+ `Examples:` +
   `Full documentation:  ferro doc <topic>`，目标 ≤30 行。判据与口径一律进手册。
-  25 页推平：`collect` 96 → 28 行、net 55 → 30、顶层 66 → 49、convert 43 → 33、
-  bader 44 → 32、info 32 → 20。仍超 30 行的三页（`job -s cp2k` 48、
-  `dataset filter` 41、顶层 49）大头是参数表与命令列表本身 —— **不为凑行数砍**。
-  顺带修掉的不一致：`job -s cp2k` 有两个 `Output:`（一个其实是参数分组）、
-  `msd`/`vacf`/`rotcorr`/`vanhove` 的 `File name —` 段、net 的大写小节名、
-  `job -s gaussian` 页里两处中文说明。
-  **2026-09-28 补齐漏网的六页**（09-27 合规扫描发现，见 `plan.md`）：net 实为
-  ≈50 行（Output 11 行）→ 38 行；job 三页的分组降为 `Parameters:` 下的缩进
-  小标题；`convert` 的格式矩阵并进 `Parameters:`（它是 `-i`/`-o` 的值域）
+  仍超 30 行的页（`dataset filter`、顶层总览）大头是参数表与命令列表本身 ——
+  **不为凑行数砍**。`convert` 的格式矩阵并进 `Parameters:`（它是 `-i`/`-o` 的值域）
 - 三级帮助全部手写在 `help.rs`（clap 的派生格式塞不下输出列结构这类段落）。
   **叶子命令 `convert` / `info` / `bader` 也走同一模式**（2026-08-22）：`-i` 是
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
@@ -496,8 +488,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 独立 workspace（pyo3 0.29，**abi3-py311**），maturin 的 Rust/Python 混合布局：Rust 扩展是
 `ferro._ferro`，`python/ferro/__init__.py` 整体再导出，`import ferro` 用法不变。
 - Rust 侧：`types.rs`（`PyTrajectory`，含 `pbc` / `subset` / `frame_indices` / `energy` /
-  `forces` / `stress`）、`io.rs`（`read` / `write` 按扩展名分派，与 CLI 的 `io_dispatch` 同口径：
-  `.lammps` = data，`.vasp` / `.poscar` / `.pos` / `POSCAR*` / `CONTCAR*` = VASP；`read(type_map=)`；
+  `forces` / `stress`）、`io.rs`（`read` / `write` 经 `Format::from_name` 分派，与 CLI 共用 `ferro-io/src/format.rs` 的
+  `Format` 表；`read(type_map=)`；
   `read_output`（经 aimd 嗅探，CP2K / VASP / QE 都认）、`write_table`）、`jobs.rs`（`sort_atoms`、`poscar_string`、`qe_structure_cards`、
   `cp2k_structure_sections`、`parse_qe_input_parts`、`write_namelists`）、`structure.rs`、`analysis.rs`、
   `doc.rs`（`docs/src/python/` 七页经 `include_str!` 编进扩展，`_doc_pages` / `_render_markdown`，
@@ -525,7 +517,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 
 ---
 
-## 依赖版本（2026-08-08 全量升级至最新）
+## 依赖版本
 
 | 依赖 | 版本 | 声明位置 | 备注 |
 |---|---|---|---|
@@ -537,6 +529,10 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 | `anyhow` | 1.0 | workspace | |
 | `rand` | 0.10 | workspace | 0.8→0.10 改名三处，见 `issues.md` |
 | `quick-xml` | 0.38 | ferro-io | vasprun.xml；净新增 1 个 crate，零传递依赖 |
+| `ndarray-npy` | 0.10 | workspace | DeePMD npy 读写 |
+| `chacha20` | 0.10 | workspace | 可复现的 RNG（`ml/merge`、`box_builder` 的 `--seed`） |
+| `glob` | 0.3 | workspace | `-i` 的通配展开 |
+| `libc` | 0.2 | ferro-render | 终端宽度 ioctl；经 rand → getrandom 已在编译图里，净新增 0 |
 | `clap` | 4.5 | ferro-cli | derive |
 | `pyo3` | 0.29 | ferro-python | 0.21→0.29 仅需 `skip_from_py_object`；2026-10-16 运行时已验证（abi3-py311 wheel + pytest） |
 
@@ -551,8 +547,6 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
   clippy 警告）。pyo3 0.29 运行时已验证（2026-10-16，见上节）
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入；
   无 CLI / Python 入口，只能作为库函数调用
-- `cp2k_basis_db`：源数据为 gitignore 的 examples/ 6 文件，DB 已固化为静态表
-- QE 赝势仅占位 `<El>.UPF`（UPF 与 CP2K GTH 库不通用，由用户提供 `pseudo_dir`）
 - **REPL / 脚本模式未实现**。`main.rs` 是可用的子命令分发器，裸 `ferro` 打印分类总览
 - 代码库未纳入 rustfmt 管理，格式为手工维护（含刻意的列对齐）；是否采用见 `plan.md`
 - `cube_density.rs:188` 用参考帧体积归一化，NPT 下同类偏差；需先定义「NPT 下 3D 密度图
@@ -562,24 +556,17 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 - **按标签选型只在单帧成立**：`traj gr -x P_3 -y O_b` 对多帧标注轨迹会被 `calc_gr` 的
   逐类型粒子数守恒守卫拒绝（实测 `P_3`：149/152/150/150/150）。多帧请按元素选
 - `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
-  「一输入一产物」相反。**优先级高**
-- **`write_cube` 的参数顺序已于 2026-09-12 改为 `(cube, path)`**，与其余 12 个
-  writer 一致（破坏性，但 0.3.2 未发版且波及面只有仓内 7 处）
+  「一输入一产物」相反（待办见 `plan.md`）
 - **`ferro bader` 的三个 `.dat` 默认写在输入文件旁边**（2026-09-20 起），名字是
   `bader_ACF_<输入stem>[_<-s 后缀>].dat`（BCF / AVF 同形，`batch::product_name` 的规则），`-o` 可改目录。这是全仓唯一不默认当前目录的
   命令：VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然互相覆盖
-- ~~`ferro job` 只用输入的第 0 帧~~：`ferro job` 已于 2026-10-17 删除；`ferro-py job` 用
-  `--start` / `--end` / `--stride` / `--number` 选帧，一帧一个作业目录
 - **`ferro info` 的密度只报首尾两帧**，不是全轨迹统计。NPT 下要 mean ± σ 请读
   `ferro traj` 产物文件头的 `# volume = <mean> +/- <std>`。元素表里查不到质量的符号
   **报错并点名**（2026-10-20，A-3，用户定 4；此前回退 1 amu 把密度拉低）：`ferro info` 不打
   Density 行、其余照出、退出码 1
 - `ferro-python` 仍只暴露 gr/msd，未包 net
-- **`ferro dataset collect` 读 CP2K / VASP OUTCAR / vasprun.xml / QE pw.x**；四者
-  **都未**注册进 `io_dispatch`（`.out` 太通用、`OUTCAR` 根本没有扩展名），故
-  `ferro convert -i OUTCAR` 仍不认识它们。2026-09-21 加 `--type inspect` 时
-  **有意绕开了**这条待办：LAMMPS 导出挂在 collect 上而不是 convert 上，于是
-  `io_dispatch` 的注册判据（按内容嗅探还是按前缀）仍未定，见 `plan.md`
+- **CP2K / VASP OUTCAR / vasprun.xml / QE pw.x 的输出**已进 `Format` 表（`Format::Aimd(..)`，
+  按横幅嗅探，2026-10-17），`convert` / `info` / `traj` 与 `dataset collect` 都能读
 - **`--type inspect` 的产物会落进 `-i` 的 glob 射程**：产物默认写在 AIMD 目录内
   （`ferro_inspect/`）或同级（`.db`），所以 `-i 'data/**/*'` 重跑时会把上一轮的
   产物当输入收进来。它们认不出横幅，**失败得很响**（跳过 + 退出码 1），不会静默
@@ -602,6 +589,3 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
   （`deepmd/utils/data.py` 的 `_make_idx_map`，默认 `sort_atoms=True`，
   非 mixed type 的 descriptor 要求如此）。ferro 排完之后 `type.raw` 单调不减，
   那个 lexsort 成为恒等置换
-- **`ferro-python` 的格式分派是独立实现**（`ferro-python/src/io.rs`），未跟着 CLI 的
-  `io_dispatch.rs` 走。2026-10-16 已对齐（`.lammps` = data，`.vasp` / `.poscar` / `.pos` = VASP），
-  但两处 match 分支仍分开维护，**会漂**——加格式时两边都要看一眼（`plan.md` 的 `enum Format` 待办）
