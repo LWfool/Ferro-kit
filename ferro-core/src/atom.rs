@@ -58,12 +58,6 @@ impl Atom {
             charge: self.charge,
         }
     }
-
-    /// Cartesian distance to another atom \[Å\], ignoring periodicity.
-    /// Periodic distances go through [`crate::periodic::PeriodicCell::minimum_image`].
-    pub fn distance_to(&self, other: &Atom) -> f64 {
-        (self.position - other.position).norm()
-    }
 }
 
 /// No fallback (user decision 2026-10-20, review A-3): 1 amu used to stand in for an
@@ -166,12 +160,5 @@ mod tests {
         assert!(Atom::new("Fe1", Vector3::zeros()).effective_mass().is_err());
         atom.mass = Some(3.0);
         assert_eq!(atom.effective_mass().unwrap(), 3.0);
-    }
-
-    #[test]
-    fn test_distance() {
-        let a = Atom::new("O", Vector3::new(0.0, 0.0, 0.0));
-        let b = Atom::new("H", Vector3::new(1.0, 0.0, 0.0));
-        assert!((a.distance_to(&b) - 1.0).abs() < 1e-10);
     }
 }

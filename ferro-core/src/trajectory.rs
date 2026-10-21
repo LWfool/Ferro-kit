@@ -102,10 +102,6 @@ impl Trajectory {
         self.frames.get(index)
     }
 
-    pub fn frame_mut(&mut self, index: usize) -> Option<&mut Frame> {
-        self.frames.get_mut(index)
-    }
-
     pub fn first(&self) -> Option<&Frame> {
         self.frames.first()
     }
@@ -223,10 +219,6 @@ impl Trajectory {
             .filter_map(|&i| self.frames.get(i).cloned())
             .collect();
         Trajectory { frames, metadata: self.metadata.clone() }
-    }
-
-    pub fn iter_frames(&self) -> impl Iterator<Item = &Frame> {
-        self.frames.iter()
     }
 
     /// The trajectory with every frame's atoms — and the per-atom arrays — in

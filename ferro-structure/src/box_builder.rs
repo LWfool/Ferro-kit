@@ -678,7 +678,6 @@ mod tests {
             n_molecules: 5,
         }];
         let frame = build_box(&comps, 1.0, 1.5, 500, 7).unwrap();
-        assert!(frame.is_periodic());
         assert_eq!(frame.pbc, [true; 3]);
     }
 

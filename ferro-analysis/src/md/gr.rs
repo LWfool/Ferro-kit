@@ -809,7 +809,7 @@ mod tests {
         let tables = res.to_tables(None).unwrap();
         let (_, t) = &tables[0];
         // 2 个类型 → 4 个有序对;长表下列数恒为 5,行数才随配对数增长
-        assert_eq!(t.n_cols(), 5, "长表列数与体系组成无关");
+        assert_eq!(t.names().len(), 5, "长表列数与体系组成无关");
         assert_eq!(t.n_rows(), 4 * res.r.len());
         assert!(t.validate().is_ok());
     }

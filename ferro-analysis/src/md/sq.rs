@@ -858,7 +858,7 @@ mod tests {
         // 没有配对过滤:q + 2 条 total + 3 对 × 3 列 = 12 列,恒定如此。
         // 只留一对会藏起 Σ w_ij·S_ij == total 的闭合,而那是 partial 存在的唯一理由
         let (_, t) = sq.to_tables().remove(0);
-        assert_eq!(t.n_cols(), 12);
+        assert_eq!(t.names().len(), 12);
         assert_eq!(t.n_rows(), sq.q.len(), "宽表 → 一行一个 q,配对增多只加列");
         assert!(t.validate().is_ok());
         assert!(!t.names().contains(&"total"), "未加权 total 不该复活");

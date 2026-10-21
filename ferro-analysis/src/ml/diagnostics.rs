@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use crate::network::TypeParams;
 use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
-use ferro_core::{Cell, Table, Trajectory};
+use ferro_core::{Table, Trajectory};
 
 use super::filter::{FilterParams, FilterResult};
 
@@ -193,17 +193,6 @@ pub fn coordination_table(hist: &[(u32, usize)]) -> Table {
     t
 }
 
-/// A [`Cell`]-carrying frame is required by every function here; this is the
-/// check callers make before asking.
-pub fn all_frames_have_cells(traj: &Trajectory) -> bool {
-    traj.frames.iter().all(|f| f.cell.is_some())
-}
-
-/// Convenience for callers holding a cell they already validated.
-pub fn cell_of(traj: &Trajectory, i: usize) -> Option<&Cell> {
-    traj.frames.get(i)?.cell.as_ref()
-}
-
 /// The tables that answer "should I be filtering, and at what value".
 ///
 /// A selection whose outcome swings with its cutoff is chosen by the cutoff
@@ -377,7 +366,7 @@ mod tests {
     use super::*;
 
     fn run_of(temps: &[Option<f64>], steps: &[Option<i64>]) -> Trajectory {
-        use ferro_core::{Atom, Frame};
+        use ferro_core::{Atom, Cell, Frame};
         use nalgebra::Vector3;
         let mut t = Trajectory::new();
         for (i, (temp, step)) in temps.iter().zip(steps).enumerate() {

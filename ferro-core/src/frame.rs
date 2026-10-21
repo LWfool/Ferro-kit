@@ -226,10 +226,6 @@ impl Frame {
         self.velocities.as_deref()
     }
 
-    pub fn velocities_mut(&mut self) -> Option<&mut [Vector3<f64>]> {
-        self.velocities.as_deref_mut()
-    }
-
     /// Sets the velocities; one per atom, or an error.
     pub fn set_velocities(&mut self, velocities: Option<Vec<Vector3<f64>>>) -> Result<()> {
         self.check_len("velocities", velocities.as_ref())?;
@@ -341,28 +337,6 @@ impl Frame {
         self.sites.iter().map(|s| s.effective_mass()).sum()
     }
 
-    /// Mass-weighted centre \[Å\]; `Err` as [`Self::total_mass`].
-    pub fn center_of_mass(&self) -> Result<Vector3<f64>> {
-        if self.positions.is_empty() {
-            return Ok(Vector3::zeros());
-        }
-        let total = self.total_mass()?;
-        let mut sum = Vector3::zeros();
-        for (s, p) in self.sites.iter().zip(&self.positions) {
-            sum += p * s.effective_mass()?;
-        }
-        Ok(sum / total)
-    }
-
-    /// Unweighted centre \[Å\].
-    pub fn geometric_center(&self) -> Vector3<f64> {
-        if self.positions.is_empty() {
-            return Vector3::zeros();
-        }
-        let sum = self.positions.iter().fold(Vector3::zeros(), |acc, v| acc + v);
-        sum / self.positions.len() as f64
-    }
-
     // ── Transformations ──────────────────────────────────────────────────────
 
     /// Moves every atom by `disp`.
@@ -372,19 +346,7 @@ impl Frame {
         }
     }
 
-    /// Moves the centre of mass to the origin; `Err` as [`Self::total_mass`].
-    pub fn center(&mut self) -> Result<()> {
-        let com = self.center_of_mass()?;
-        self.translate(-com);
-        Ok(())
-    }
-
     // ── Periodicity ──────────────────────────────────────────────────────────
-
-    /// Whether any direction is periodic.
-    pub fn is_periodic(&self) -> bool {
-        self.pbc.iter().any(|&p| p)
-    }
 
     /// Folds atoms outside the box back into `[0, 1)` along the periodic directions;
     /// atoms inside, and the non-periodic directions, are left alone.
@@ -499,7 +461,7 @@ mod tests {
     fn test_new_frame() {
         let f = Frame::new();
         assert_eq!(f.n_atoms(), 0);
-        assert!(!f.is_periodic());
+        assert_eq!(f.pbc, [false; 3]);
     }
 
     #[test]
@@ -524,24 +486,21 @@ mod tests {
     }
 
     #[test]
-    fn test_center_of_mass() {
+    fn test_total_mass() {
         let mut f = Frame::new();
         f.add_atom(Atom::new("C", Vector3::new(0.0, 0.0, 0.0)));
         f.add_atom(Atom::new("C", Vector3::new(2.0, 0.0, 0.0)));
-        let com = f.center_of_mass().unwrap();
-        assert!((com.x - 1.0).abs() < 1e-10);
+        assert!((f.total_mass().unwrap() - 2.0 * 12.011).abs() < 1e-2);
         // Review A-3: no 1 amu stand-in for an element with no mass
         f.add_atom(Atom::new("Xx", Vector3::new(4.0, 0.0, 0.0)));
         assert!(f.total_mass().is_err());
-        assert!(f.center_of_mass().is_err());
-        assert!(f.center().is_err());
     }
 
     #[test]
     fn test_periodic_frame() {
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
         let f = Frame::with_cell(cell, [true; 3]);
-        assert!(f.is_periodic());
+        assert_eq!(f.pbc, [true; 3]);
         assert!(f.cell.is_some());
     }
 

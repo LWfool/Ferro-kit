@@ -152,9 +152,6 @@ impl FrameVerdict {
     pub fn flagged_by(&self, c: Criterion) -> bool {
         self.flags & c.bit() != 0
     }
-    pub fn is_clean(&self) -> bool {
-        self.flags == 0
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -544,7 +541,7 @@ mod tests {
         assert_eq!(r.keep, vec![0, 3]);
         assert!(r.verdicts[1].flagged_by(Criterion::Force));
         assert!(r.verdicts[2].flagged_by(Criterion::Stress));
-        assert!(r.verdicts[0].is_clean());
+        assert_eq!(r.verdicts[0].flags, 0);
     }
 
     #[test]
@@ -552,7 +549,7 @@ mod tests {
         let t = traj_of(&[1.0, 99.0], &[0.1, 0.1]);
         let r = filter_frames(&t, &FilterParams::default()).unwrap();
         assert_eq!(r.keep, vec![0, 1]);
-        assert!(r.verdicts[1].is_clean());
+        assert_eq!(r.verdicts[1].flags, 0);
     }
 
     /// The exclusive count is what tells a redundant criterion from a useful one.

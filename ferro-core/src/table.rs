@@ -80,8 +80,6 @@ impl Table {
         self
     }
 
-    pub fn n_cols(&self) -> usize { self.cols.len() }
-
     /// Row count, taken from the first column (0 when the table has no columns).
     pub fn n_rows(&self) -> usize {
         self.cols.first().map(|(_, c)| c.len()).unwrap_or(0)
@@ -231,7 +229,7 @@ mod tests {
     #[test]
     fn test_shape_accessors() {
         let t = sample();
-        assert_eq!(t.n_cols(), 2);
+        assert_eq!(t.names().len(), 2);
         assert_eq!(t.n_rows(), 2);
         assert_eq!(t.names(), vec!["file", "r"]);
         assert!(t.column("r").is_some());

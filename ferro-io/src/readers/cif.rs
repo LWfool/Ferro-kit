@@ -696,7 +696,7 @@ O1   O   0.5  0.5  0.5  1.0(0)
         assert_eq!(traj.n_frames(), 1);
         let frame = traj.first().unwrap();
         assert_eq!(frame.n_atoms(), 2);
-        assert!(frame.is_periodic());
+        assert_eq!(frame.pbc, [true; 3]);
         let [a, b, c] = frame.cell.as_ref().unwrap().lengths();
         assert!((a - 5.0).abs() < 1e-4);
         assert!((b - 5.0).abs() < 1e-4);
