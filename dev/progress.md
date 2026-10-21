@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：895 个（全部通过，clippy 零警告；2026-10-19 实数）；另 ferro-python 180 个 pytest
+## 测试总数：934 个（全部通过，clippy 零警告；2026-10-21 实数）；另 ferro-python 192 个 pytest
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 75 |
-| ferro-io | 284（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
-| ferro-structure | 84 |
-| ferro-analysis | 301 |
+| ferro-core | 78 |
+| ferro-io（lib 294 + 集成 4） | 298（另有 3 个 `#[ignore]`：真实 40 MB CP2K out、296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
+| ferro-structure | 90 |
+| ferro-analysis | 308 |
 | ferro-render | 31 |
-| ferro-cli（lib 105 + bin 5 + 集成 10） | 120 |
+| ferro-cli（lib 108 + bin 5 + 集成 16） | 129 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。0.4.0 这批的破坏性改动见 `overview.md`。
 0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
@@ -512,7 +512,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   另需 LaTeX；`import ferro` 不加载 matplotlib。样式 `['science','vibrant']`，产物目录共用
   `labels.csv`（`key,label,show`，行序即显示顺序），每张图旁写 `<name>_data.csv`）
 
-测试：`ferro-python/tests/` **152 个 pytest**（2026-10-17 实数），本地用 maturin 编 wheel、
+测试：`ferro-python/tests/` 的 pytest（个数见文件顶部），本地用 maturin 编 wheel、
 `pip install --no-deps --target <scratch>` 后 `PYTHONPATH=<scratch> python -m pytest`。
 GitHub Actions（`.github/workflows/python-wheels.yml`）编 manylinux2014 x86_64 与 macOS arm64
 wheel，并在 Python 3.11 / 3.13 上用编好的 wheel 跑 pytest，2026-10-16 `903de96` 全绿。
