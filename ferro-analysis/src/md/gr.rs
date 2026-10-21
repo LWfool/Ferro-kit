@@ -495,50 +495,14 @@ impl GrResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::md::util::sc_crystal;
     use ferro_core::{Atom, Cell, Frame, Trajectory};
     use nalgebra::Vector3;
-
-    /// 构造简单立方 Fe 超胞（n×n×n，a=2.87 Å）
-    fn make_sc_fe(n: usize) -> Frame {
-        let a = 2.87_f64;
-        let side = n as f64 * a;
-        let cell = Cell::from_lengths_angles(side, side, side, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        for i in 0..n {
-            for j in 0..n {
-                for k in 0..n {
-                    frame.add_atom(Atom::new(
-                        "Fe",
-                        Vector3::new(i as f64 * a, j as f64 * a, k as f64 * a),
-                    ));
-                }
-            }
-        }
-        frame
-    }
-
-    /// 构造两组分系统（O 和 Si 交替，a=3.0 Å）
-    fn make_o_si_crystal(n: usize) -> Frame {
-        let a = 3.0_f64;
-        let side = n as f64 * a;
-        let cell = Cell::from_lengths_angles(side, side, side, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        for i in 0..n {
-            for j in 0..n {
-                for k in 0..n {
-                    let pos = Vector3::new(i as f64 * a, j as f64 * a, k as f64 * a);
-                    let elem = if (i + j + k) % 2 == 0 { "O" } else { "Si" };
-                    frame.add_atom(Atom::new(elem, pos));
-                }
-            }
-        }
-        frame
-    }
 
     /// 构造合成 NPT 轨迹：同一 O/Si 晶体逐帧按 `scales` 缩放，晶胞与坐标同比变化，
     /// 故每帧都是合法晶体而体积逐帧不同。用于检验体积归一化口径。
     fn make_npt_traj(n: usize, scales: &[f64]) -> Trajectory {
-        let base = make_o_si_crystal(n);
+        let base = sc_crystal(n, 3.0, &["O", "Si"]);
         let base_cell = base.cell.as_ref().unwrap().matrix;
         let mut traj = Trajectory::new();
         for &s in scales {
@@ -652,7 +616,7 @@ mod tests {
 
     #[test]
     fn test_changing_atom_count_is_rejected() {
-        let f1 = make_o_si_crystal(3);
+        let f1 = sc_crystal(3, 3.0, &["O", "Si"]);
         let mut f2 = f1.clone();
         f2.add_atom(Atom::new("O", Vector3::new(1.5, 1.5, 1.5)));
         let mut traj = Trajectory::from_frame(f1);
@@ -664,7 +628,7 @@ mod tests {
     #[test]
     fn test_changing_per_type_counts_is_rejected() {
         // 总原子数不变但组成变了 —— 这类轨迹拼接最容易被静默接受
-        let f1 = make_o_si_crystal(3);
+        let f1 = sc_crystal(3, 3.0, &["O", "Si"]);
         let mut f2 = f1.clone();
         f2.sites_mut()[0].element = "Si".to_string();
         let mut traj = Trajectory::from_frame(f1);
@@ -690,7 +654,7 @@ mod tests {
     #[test]
     fn test_all_ordered_pairs_present() {
         // n 个类型 → n² 个有序对，gr 与 cn 键集合完全一致
-        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 3.0, &["O", "Si"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
 
@@ -710,7 +674,7 @@ mod tests {
     #[test]
     fn test_gr_is_symmetric_across_mirror_keys() {
         // g(r) 无方向：A-B 与 B-A 应逐点相同
-        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 3.0, &["O", "Si"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
         for (x, y) in res.gr["O-Si"].iter().zip(res.gr["Si-O"].iter()) {
@@ -743,7 +707,7 @@ mod tests {
 
     #[test]
     fn test_gr_first_peak_sc_fe() {
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
 
@@ -760,7 +724,7 @@ mod tests {
 
     #[test]
     fn test_cn_sc_fe_first_shell() {
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
         let cn_last = *res.cn["Fe-Fe"].last().unwrap();
@@ -770,7 +734,7 @@ mod tests {
     #[test]
     fn test_sorted_keys_group_by_centre() {
         // 列顺序按 (Z_centre, centre, Z_neighbour, neighbour)，同一中心的列连在一起
-        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 3.0, &["O", "Si"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
         assert_eq!(
@@ -781,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_to_tables_pair_long_format() {
-        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 3.0, &["O", "Si"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
 
@@ -802,7 +766,7 @@ mod tests {
 
     #[test]
     fn test_to_tables_all_pairs_stacks_rows_not_columns() {
-        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 3.0, &["O", "Si"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
 
@@ -816,7 +780,7 @@ mod tests {
 
     #[test]
     fn test_to_tables_unknown_pair_errors() {
-        let traj = Trajectory::from_frame(make_sc_fe(2));
+        let traj = Trajectory::from_frame(sc_crystal(2, 2.87, &["Fe"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
         assert!(
@@ -829,7 +793,7 @@ mod tests {
     fn test_meta_lines_report_requested_rmax_and_composition() {
         // 9 Å 立方胞 → 截断到 4.5；头部是批内共享的请求值，截断值逐文件进 [inputs]
         // （审查 B-7：旧代码头部写截断值却标 requested，第一个文件的值冒充全批）
-        let traj = Trajectory::from_frame(make_o_si_crystal(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 3.0, &["O", "Si"]));
         let params = GrParams { r_min: 0.1, r_max: 10.0, dr: 0.1, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
         assert!(res.r_max_used < 10.0, "该胞应触发截断");
@@ -926,7 +890,7 @@ mod tests {
 
     #[test]
     fn test_gr_rmax_not_clamped_when_within_bound() {
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let params = GrParams { r_min: 0.1, r_max: 3.9, dr: 0.01, ..Default::default() };
         let res = calc_gr(&traj, &params).unwrap();
         assert!((res.r_max_used - 3.9).abs() < 1e-12);

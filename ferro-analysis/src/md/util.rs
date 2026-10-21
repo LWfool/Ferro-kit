@@ -224,6 +224,24 @@ pub(crate) fn check_frame_spacing(traj: &Trajectory) -> Result<()> {
     Ok(())
 }
 
+/// Simple-cubic `n`x`n`x`n` test crystal with lattice constant `a`; the element of site
+/// (i, j, k) is `elems[(i + j + k) % elems.len()]`.
+#[cfg(test)]
+pub(crate) fn sc_crystal(n: usize, a: f64, elems: &[&str]) -> Frame {
+    let side = n as f64 * a;
+    let cell = Cell::from_lengths_angles(side, side, side, 90.0, 90.0, 90.0).unwrap();
+    let mut frame = Frame::with_cell(cell, [true; 3]);
+    for i in 0..n {
+        for j in 0..n {
+            for k in 0..n {
+                let pos = Vector3::new(i as f64 * a, j as f64 * a, k as f64 * a);
+                frame.add_atom(ferro_core::Atom::new(elems[(i + j + k) % elems.len()], pos));
+            }
+        }
+    }
+    frame
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

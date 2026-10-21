@@ -404,32 +404,15 @@ impl SqResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::md::util::sc_crystal;
     use super::super::gr::{GrParams, GroupBy, calc_gr};
     use ferro_core::{Atom, Cell, Frame, Trajectory};
     use nalgebra::Vector3;
 
-    fn make_sc_fe(n: usize) -> Frame {
-        let a = 2.87_f64;
-        let side = n as f64 * a;
-        let cell = Cell::from_lengths_angles(side, side, side, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        for i in 0..n {
-            for j in 0..n {
-                for k in 0..n {
-                    frame.add_atom(Atom::new(
-                        "Fe",
-                        Vector3::new(i as f64 * a, j as f64 * a, k as f64 * a),
-                    ));
-                }
-            }
-        }
-        frame
-    }
-
     #[test]
     fn test_sq_rejects_gr_not_starting_at_zero() {
         // 审查 B-1：积分从 r_min 起会漏掉 [0, r_min] 段的 −ρ 项，整条 S(q) 平移
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 1.2, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -439,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_sq_q_axis_length() {
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -453,7 +436,7 @@ mod tests {
     #[test]
     fn test_sq_keeps_only_canonical_half_of_gr_pairs() {
         // S(q) 对称、无有向对应物，故只保留规范半边，不复制镜像键
-        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
+        let traj = Trajectory::from_frame(sc_crystal(4, 3.0, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -471,7 +454,7 @@ mod tests {
 
     #[test]
     fn test_sq_large_q_tail_near_one() {
-        let traj = Trajectory::from_frame(make_sc_fe(4));
+        let traj = Trajectory::from_frame(sc_crystal(4, 2.87, &["Fe"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 5.5, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -490,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_xrd_total_equals_partial_for_single_element() {
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -511,7 +494,7 @@ mod tests {
     /// scattering factor; the result says so instead of the library printing it.
     #[test]
     fn test_missing_scattering_data_is_a_result_warning() {
-        let mut frame = make_sc_fe(3);
+        let mut frame = sc_crystal(3, 2.87, &["Fe"]);
         for a in frame.sites_mut() { a.element = "X1".into(); }
         let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
@@ -525,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_neutron_total_equals_partial_for_single_element() {
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -538,23 +521,6 @@ mod tests {
         let max_diff = neu.iter().zip(part.iter()).map(|(a,b)| (a-b).abs()).fold(0.0_f64, f64::max);
         assert!(max_diff < 1e-9, "single-element neutron total should equal the partial, diff={max_diff:.4}");
         assert!(sq_res.total_xrd.is_none(), "xrd not requested");
-    }
-
-    /// 构造多组分晶体（元素按 (i+j+k) % n_elems 轮换，a=3.0 Å）
-    fn make_multi_crystal(n: usize, elems: &[&str]) -> Frame {
-        let a = 3.0_f64;
-        let side = n as f64 * a;
-        let cell = Cell::from_lengths_angles(side, side, side, 90.0, 90.0, 90.0).unwrap();
-        let mut frame = Frame::with_cell(cell, [true; 3]);
-        for i in 0..n {
-            for j in 0..n {
-                for k in 0..n {
-                    let pos = Vector3::new(i as f64 * a, j as f64 * a, k as f64 * a);
-                    frame.add_atom(Atom::new(elems[(i + j + k) % elems.len()], pos));
-                }
-            }
-        }
-        frame
     }
 
     /// 复现 `calc_sq_from_gr` 内部的 `elems` 构造（浓度 + 原子序数）
@@ -588,7 +554,7 @@ mod tests {
         // 回归保护：曾因全 n² 遍历 + factor=2.0 让异种对被累加两次，Σw > 1，
         // 导致 total_xrd / total_neutron 整体偏大（二元体系约 1.4 倍）。
         for elems_list in [&["O", "Si"][..], &["O", "P", "Zn"][..]] {
-            let traj = Trajectory::from_frame(make_multi_crystal(4, elems_list));
+            let traj = Trajectory::from_frame(sc_crystal(4, 3.0, elems_list));
             let gr_res = calc_gr(&traj, &GrParams {
                 r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
             });
@@ -616,7 +582,7 @@ mod tests {
     #[test]
     fn test_hetero_pair_weight_not_double_counted() {
         // 二元体系异种对权重应为 2·c_A·c_B·f_A·f_B/<f>²，而非其两倍。
-        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
+        let traj = Trajectory::from_frame(sc_crystal(4, 3.0, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         });
@@ -640,7 +606,7 @@ mod tests {
     #[test]
     fn test_weighted_partials_sum_to_total() {
         // 加权 partial 是 total 的精确分解 —— 这正是导出这些列的意义
-        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "P", "Zn"]));
+        let traj = Trajectory::from_frame(sc_crystal(4, 3.0, &["O", "P", "Zn"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -661,7 +627,7 @@ mod tests {
     #[test]
     fn test_single_atom_species_partial_is_undefined_not_zero() {
         // 4³ 个 Fe 中换 1 个为 Ni：没有 Ni–Ni 对，g/S 都无定义
-        let mut frame = make_sc_fe(4);
+        let mut frame = sc_crystal(4, 2.87, &["Fe"]);
         frame.sites_mut()[0].element = "Ni".into();
         let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
             r_min: 0.0, r_max: 5.5, dr: 0.01, ..Default::default()
@@ -742,7 +708,7 @@ mod tests {
 
     /// 合成 NPT 轨迹：同一晶体逐帧按 `scales` 缩放，体积随之变化。
     fn make_npt_traj(n: usize, elems: &[&str], scales: &[f64]) -> Trajectory {
-        let base = make_multi_crystal(n, elems);
+        let base = sc_crystal(n, 3.0, elems);
         let base_cell = base.cell.as_ref().unwrap().matrix;
         let mut traj = Trajectory::new();
         for &s in scales {
@@ -847,7 +813,7 @@ mod tests {
 
     #[test]
     fn test_to_tables_always_writes_every_pair() {
-        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
+        let traj = Trajectory::from_frame(sc_crystal(4, 3.0, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 5.9, dr: 0.05, ..Default::default()
         }).unwrap();
@@ -870,7 +836,7 @@ mod tests {
     #[test]
     fn test_partials_sum_to_total_in_the_table() {
         // 0.1.10 立起来的恒等式必须在导出层依然成立
-        let traj = Trajectory::from_frame(make_multi_crystal(4, &["O", "Si"]));
+        let traj = Trajectory::from_frame(sc_crystal(4, 3.0, &["O", "Si"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 5.9, dr: 0.05, ..Default::default()
         }).unwrap();
@@ -899,7 +865,7 @@ mod tests {
     #[test]
     fn test_q_grid_keeps_q_max_when_the_quotient_rounds_down() {
         // (15 - 0.3) / 0.1 = 146.99999999999997: a bare floor ended the grid at 14.9 (review C-3)
-        let traj = Trajectory::from_frame(make_sc_fe(3));
+        let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
         let gr = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
         }).unwrap();
@@ -917,7 +883,7 @@ mod tests {
 
     #[test]
     fn test_meta_lines_carry_both_parameter_blocks() {
-        let traj = Trajectory::from_frame(make_sc_fe(2));
+        let traj = Trajectory::from_frame(sc_crystal(2, 2.87, &["Fe"]));
         let gr_res = calc_gr(&traj, &GrParams {
             r_min: 0.0, r_max: 3.9, dr: 0.1, ..Default::default()
         }).unwrap();
