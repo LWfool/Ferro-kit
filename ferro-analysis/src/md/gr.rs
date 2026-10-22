@@ -146,6 +146,11 @@ pub struct GrResult {
     pub elements: Vec<String>,
     /// Atom count per grouping key (from the first frame)
     pub element_counts: BTreeMap<String, usize>,
+    /// The element of each grouping key, read from the atoms (first frame); the identity
+    /// map under `Element`. A label shared by atoms of different elements maps to `""`.
+    /// Consumers needing per-element data (S(q) scattering factors) read this, never the
+    /// key string: a label such as `Os` ("surface O") spells osmium.
+    pub key_element: BTreeMap<String, String>,
     /// How `elements` was derived
     pub group_by: GroupBy,
     pub n_frames: usize,
@@ -271,6 +276,12 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         .iter().cloned().zip(first_counts.iter().copied())
         .filter(|&(_, c)| c > 0)
         .collect();
+    let mut key_element: BTreeMap<String, String> = BTreeMap::new();
+    for atom in first_frame.atoms() {
+        let e = key_element.entry(group_key(atom, by).to_string())
+            .or_insert_with(|| atom.element.to_string());
+        if e != atom.element { e.clear(); }
+    }
     let n_total = first_frame.n_atoms() as f64;
 
     // Frames are counted in parallel and summed in frame order (`par_map_in_order`): a
@@ -390,6 +401,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         rho_g: rho_g_map,
         elements: types,
         element_counts,
+        key_element,
         group_by: by,
         n_frames,
         avg_volume,

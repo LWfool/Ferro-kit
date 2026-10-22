@@ -208,7 +208,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
             .map(|e| {
                 let c = gr.element_counts.get(e).copied().unwrap_or(0) as f64
                     / n_total as f64;
-                (e.as_str(), c, elem_z_local(e))
+                (e.as_str(), c, elem_z_local(gr.key_element.get(e).map_or("", String::as_str)))
             })
             .collect();
         warnings.extend(missing_scattering_data(&elems));
@@ -506,6 +506,22 @@ mod tests {
         assert!(sq_res.warnings[0].contains("no scattering data for X1"), "{:?}", sq_res.warnings);
     }
 
+    /// A label shared by two elements has no single scattering factor: same warning.
+    #[test]
+    fn test_label_spanning_two_elements_is_a_result_warning() {
+        let mut frame = sc_crystal(3, 2.87, &["Fe", "Ni"]);
+        for a in frame.sites_mut() { a.label = Some("M".into()); }
+        let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
+            r_min: 0.0, r_max: 3.9, dr: 0.01, group_by: GroupBy::Label,
+        }).unwrap();
+        assert_eq!(gr_res.key_element["M"], "");
+        let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
+            q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Xrd,
+        }).unwrap();
+        assert_eq!(sq_res.warnings.len(), 1);
+        assert!(sq_res.warnings[0].contains("no scattering data for M"), "{:?}", sq_res.warnings);
+    }
+
     #[test]
     fn test_neutron_total_equals_partial_for_single_element() {
         let traj = Trajectory::from_frame(sc_crystal(3, 2.87, &["Fe"]));
@@ -530,7 +546,7 @@ mod tests {
         gr.elements.iter()
             .map(|e| {
                 let c = gr.element_counts.get(e).copied().unwrap_or(0) as f64 / n_total as f64;
-                (e.as_str(), c, elem_z_local(e))
+                (e.as_str(), c, elem_z_local(gr.key_element.get(e).map_or("", String::as_str)))
             })
             .collect()
     }
@@ -790,6 +806,19 @@ mod tests {
         let (ex, en, lx, ln) = totals_by_group(make_labelled_crystal(4, false));
         assert!(max_abs_diff(&ex, &lx) < 1e-12, "total_xrd differs under pure relabelling");
         assert!(max_abs_diff(&en, &ln) < 1e-12, "total_neutron differs under pure relabelling");
+    }
+
+    #[test]
+    fn test_label_spelling_an_element_keeps_the_atom_element() {
+        // A label that happens to spell another element (`Os`, "surface O") must still get
+        // O's scattering data: the element comes from the atom, never from the label string.
+        let mut frame = make_labelled_crystal(4, false);
+        for s in frame.sites_mut() {
+            if s.element == "O" { s.label = Some("Os".into()); }
+        }
+        let (ex, en, lx, ln) = totals_by_group(frame);
+        assert!(max_abs_diff(&ex, &lx) < 1e-12, "total_xrd: label `Os` was read as osmium");
+        assert!(max_abs_diff(&en, &ln) < 1e-12, "total_neutron: label `Os` was read as osmium");
     }
 
     #[test]
