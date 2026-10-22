@@ -372,7 +372,7 @@ convert 的四条 CIF 并成一条）。原文照搬，以便查当时的理由�
   7 格 = 0.14 Å 改为记录所定的 5 格 = 0.10 Å；测试玻璃上 Zn-O / Al-O 的自动截断移动一两格（0.02–0.04 Å），P-O 与
   干净空隙不动
 - **第 5 批（analysis 布局）**：用户定：map density / velocity / force / radius 选不到原子改为报错（原写全 0 格点、
-  「0 atoms」）；**用户定：暂不换 TOR**（NPT 下 vanhove / map jump 仍是格点视图，待用户了解后再定）；
+  「0 atoms」）；**用户定：暂不换 TOR**（NPT 下 vanhove / map jump 仍是格点视图，待用户了解后再定；2026-10-22 用户定 vanhove 换 TOR，`76e4a71`，见「已完成项的判据」）；
   `unwrapped_frac_sum` 边读边求和、互指注明不合；sq 的两个包装函数与 `elem_z_local` 各有 2–3 处调用，按 R1 保留
   （与审查建议不同）
 - **第 6 批（CLI / render / structure）**：6.1 `\frac` 后紧跟因子（字母数字、`(` `[` `{` `_` `^`、命令）时整个分式加
@@ -768,6 +768,20 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 收敛顺利不等于找到了基态。定第 4 条时可拿这个体系对照铁磁与反铁磁（`&BS` 初猜）的能量。
 
 ## 已完成项的判据（0.3.0 以后；0.3.0 以前的归档已删，见 git 历史）
+
+### vanhove 换 TOR 解包裹；angle / vanhove 共享头部只留参数（2026-10-22，`76e4a71`、`a66f0a1`）
+
+**TOR**：`msd.rs::unwrap_tor` 连同非周期分支下沉为 `md/util.rs::unwrapped_series`，msd 与 vanhove 共用
+（第二个调用方出现，按 R1 下沉）。`unwrap_lattice`（格点视图）只剩 `cube_jump`，`map jump` 挂起，随其改写一并换。
+实测：NVT fixture（`--last-n 2`）与三斜 fixture 的产物逐字节不变 —— 盒子不变时两种解包裹等价；NPT fixture
+lag 1 / 2 分别 47 / 63 行变化。测试用 msd 那组「先跨界、再胀缩」的帧（`issues.md`「TOR 单测」）；
+注意 y、z 要放在分数坐标 0，否则盒子胀缩让它们也有真实的笛卡尔位移，看起来像实现错了。
+
+**共享头部**：与 msd 同一判据（`meta_lines` 只放批内共享的参数）。vanhove 的 τ、time、origins、outside_fraction
+早已在 `[inputs]`，只是共享区还留着一份，删掉并补 `species`；`--tau` 给定时共享区仍写它。angle 的逐三元组
+mean / std / count 是逐文件 × 逐三元组的二维量，放 `[inputs]` 会很宽，故**单独出一张表**
+`angle_stats_*`（`AngleResult::to_tables` 由一张变两张）；`scripts/compare_angle.py` 改读它，不再解析 `#` 块。
+两处 `species` 的排序不同（angle 按 Z、vanhove 按字母，后者同 msd），沿用各自既有的顺序，未统一。
 
 ### `dataset collect`：输入是当前目录下的裸文件名时，产物位置错（2026-10-17 发现并修复，`7735386`）
 

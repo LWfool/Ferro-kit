@@ -267,6 +267,10 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
   记为空串）。`calc_sq_from_gr` 改经它查散射数据：此前按标签分组时从标签字符串反推元素，`Os` 会读成锇。
   CLI 的 sq 固定按元素分组、Python 不暴露 sq，用户入口不受影响。
 
+- 2026-10-22（`a66f0a1`）：`AngleResult::to_tables` 返回两张表（`angle` 与新的 `stats`）；`AngleResult` /
+  `VanHoveResult::meta_lines` 不再含逐输入的量（angle 的类型清单与 `[statistics]`，vanhove 的 τ、time、
+  atoms、origins、elements）。`md/util.rs::unwrapped_series` 为 crate 内共用（`76e4a71`），不是公开项。
+
 ## `v0.4.0`（2026-10-17 打 tag，发版）
 
 输入生成迁到 ferro-python 收尾（`decisions.md`「`ferro.jobs`」）与 dataset 审查的修复。删了一个

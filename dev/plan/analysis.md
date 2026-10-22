@@ -4,13 +4,6 @@
 
 ## 优先级中
 
-### vanhove：默认 1 个原点 + 仍用格点视图解包裹（2026-09-27 发现）
-
-固定 lag 的位移直方图，FFT 无用。~~`tau` 默认 `n_steps − 1` → 只有 1 个原点~~（2026-10-08 随 B-5 改为 N/2）；解包裹
-仍是 `unwrap_frac`（分数坐标解包裹 × 当帧盒子，即格点视图，NPT 下有 msd 手册里写的
-问题）。改默认 tau（N/2？）并换 TOR —— `msd.rs::unwrap_tor` 届时有第二个用户，
-可下沉共享。
-
 ### bondlife 的后续（2026-09-27 记）
 
 - **氢键几何判据**（供体–H–受体角度）：水–玻璃界面的 H 键需要它；现只有距离判据
@@ -65,23 +58,10 @@
 VACF 的傅里叶变换，业内常用（如 LAMMPS/MDAnalysis 生态的 power spectrum）。等 vacf
 改 FFT 后顺手做：窗函数（Hann？）、归一化、频率单位（THz / cm⁻¹）需先查规范。
 
-### 共享头部冒充全批：angle / vanhove（2026-09-27 扫描；vacf、rotcorr 已修）
-
-与 msd 同类（`fa2727c` 已修 msd）：`meta_lines()` 里用了逐文件的量，多文件时第一个
-文件的值摆在共享区。
-
-| 分析 | 写进共享区的逐文件量 |
-|---|---|
-| `angle` | `elements` 列表、`[statistics]` 段（每个三元组的 mean/std/count） |
-| `vanhove` | `elements`、`n_atoms`、`n_origins`、`tau_frames`、`time` |
-
-修法同 msd：共享区只留参数，其余走 `Summary` 列或 `note()`。`angle` 的统计是逐文件
-逐三元组的二维量，放 `[inputs]` 会很宽，可能要单独一张表。
-
 ### D 的统计误差：GLS / 贝叶斯（2026-09-27 提出，低）
 
 `d_err` 是 gmx msd 的半窗差，本质是线性度检查。严格误差需要 MSD 协方差，见 kinisi
-（PMC11736684）。先解决上面「只有 1 个原点」，否则协方差无从谈起。
+（PMC11736684）。msd 已是全原点平均（2026-09-27），原点数不再是前提。
 
 ### 搁置项
 
