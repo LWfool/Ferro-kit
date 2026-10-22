@@ -1153,7 +1153,7 @@ NVT/NPT_I）、质量表读 `~/.emacs.d` 的 elisp、倾斜折叠的除数写错
 ### 原子顺序 + --format + 帮助页精简（2026-09-22 落地）
 
 起因是实测 `collect -i 1Al/*.out` 报「different compositions」而两个化学式打出来
-一模一样。落地清单见 `overview.md`「2026-09-22 的第二批」。
+一模一样。用户侧变化见手册 `changelog.md` 的 `v0.3.4` 一节，判据见 `overview.md`「2026-09-22 的第二批」。
 
 **被实测推翻的两条原计划**：
 
