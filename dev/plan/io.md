@@ -4,7 +4,36 @@
 
 ## 优先级高
 
-### DeePMD mixed type 数据的读写（2026-08-26 提出）
+### ferro dataset：剩余小项（2026-08-25）
+
+**额外键搬运**：`atom_ener` / `fparam` 这类 `Frame` 装不下的项，读时告警、
+写时丢失。真出现时再设计（需要一条绕过 `Trajectory` 的按帧索引搬运通道）。
+（原节其余各项 —— NEP 导出、filter 读回 npy、merge 的 `type_map` 对齐 —— 均已完成。）
+
+
+## 优先级中
+
+### 带速度的测试 fixture（2026-09-12 提出，2026-09-21 仍未做）
+
+`tests/` 两条 fixture **没有速度数据**，于是 `vacf` / `vanhove` / `rotcorr`
+跑不到写文件那一步 —— 这三个命令端到端从来没验过（0.2.0 改名那轮就只验了
+gr/angle/msd/sq/net/map），2026-09-12 的 golden master 基线也盖不到它们。
+
+补一条带 `vx vy vz` 列的 LAMMPS dump（5 帧即可）就能把三个命令纳入。
+注意**不能**用全零速度顶替：VACF 在全零速度下是退化情形，跑得通但看不出
+实现对不对，那是假的安全网。
+
+### VASP：ML_FF 的 OUTCAR（2026-08-27 提出）
+
+VASP 的机器学习力场跑出来的输出用 `free  energy ML TOTEN`
+与 `ML FORCE`。dpdata 用一个 `ml=True` 开关切 token，但它给两者的行偏移是
+`[14, 4]` —— **块结构本身就不同**，不只是换个名字。没有样例就没法验，等有输出
+再补；`vasp_outcar.rs` 的锚点已经是多候选表的形状，加 token 不必重构。
+（原节的另一半「`io_dispatch` 注册」已由 10-17 第 3 步的 `Format` 表解决。）
+
+## 优先级低
+
+### DeePMD mixed type 数据的读写（2026-08-26 提出）（2026-10-22 由高降为低：功能类，按定级规则；瘦身 E-12 / E-20，用户定）
 
 **现状（2026-10-07，审查 A6）**：reader 见到任一 set 有 `real_atom_types.npy` 即报错拒收。
 **只拒不读**是有意的：只做读侧的话 `filter` 读进来再写回标准布局（按第一帧定 `type.raw`），
@@ -42,35 +71,6 @@ mixed type 布局（**先核对 DeePMD-kit 文档与 dpdata 的 `deepmd/npy/mixe
   现在无条件排 —— 两者相遇时要先定 mixed system 的规范序是什么
 - 与 `filter` 的关系：`filter` 现在按 system 读回再写出，mixed system 经它一趟必须
   仍是 mixed，否则静默降级成「全 0 类型」的坏数据
-
-### ferro dataset：剩余小项（2026-08-25）
-
-**额外键搬运**：`atom_ener` / `fparam` 这类 `Frame` 装不下的项，读时告警、
-写时丢失。真出现时再设计（需要一条绕过 `Trajectory` 的按帧索引搬运通道）。
-（原节其余各项 —— NEP 导出、filter 读回 npy、merge 的 `type_map` 对齐 —— 均已完成。）
-
-
-## 优先级中
-
-### 带速度的测试 fixture（2026-09-12 提出，2026-09-21 仍未做）
-
-`tests/` 两条 fixture **没有速度数据**，于是 `vacf` / `vanhove` / `rotcorr`
-跑不到写文件那一步 —— 这三个命令端到端从来没验过（0.2.0 改名那轮就只验了
-gr/angle/msd/sq/net/map），2026-09-12 的 golden master 基线也盖不到它们。
-
-补一条带 `vx vy vz` 列的 LAMMPS dump（5 帧即可）就能把三个命令纳入。
-注意**不能**用全零速度顶替：VACF 在全零速度下是退化情形，跑得通但看不出
-实现对不对，那是假的安全网。
-
-### VASP：ML_FF 的 OUTCAR（2026-08-27 提出）
-
-VASP 的机器学习力场跑出来的输出用 `free  energy ML TOTEN`
-与 `ML FORCE`。dpdata 用一个 `ml=True` 开关切 token，但它给两者的行偏移是
-`[14, 4]` —— **块结构本身就不同**，不只是换个名字。没有样例就没法验，等有输出
-再补；`vasp_outcar.rs` 的锚点已经是多候选表的形状，加 token 不必重构。
-（原节的另一半「`io_dispatch` 注册」已由 10-17 第 3 步的 `Format` 表解决。）
-
-## 优先级低
 
 ### CP2K 的 EXTXYZ / XMOL 输出：kind 名进 species 列、`Energy=` 是 Hartree（2026-08-26 提出，2026-10-22 查源码，降为低）
 

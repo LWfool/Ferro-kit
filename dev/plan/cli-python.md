@@ -2,9 +2,9 @@
 
 > 从 `dev/plan.md` 按需读取；定级规则见 `plan.md` 顶部。
 
-## 优先级中
+## 优先级低
 
-### ferro-structure：补充结构操作
+### ferro-structure：补充结构操作（2026-10-22 由中降为低：功能类，按定级规则；瘦身 E-12 / E-20，用户定）
 
 `rotate.rs` / `orient.rs` / `substitute.rs` / `disturb.rs` / `select.rs`。
 
@@ -22,8 +22,6 @@
 其余可参考项：晶胞数学在 `PBC.f90`；菜单 20 边界分子补全、22 原子折叠入胞、
 25 提取团簇、28 坐标轴互换。
 
-
-## 优先级低
 
 ### 结构操作的 CLI 入口：supercell / vacuum / box_builder（2026-10-21 用户定登记）
 
