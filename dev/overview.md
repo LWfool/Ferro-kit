@@ -267,7 +267,8 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
   记为空串）。`calc_sq_from_gr` 改经它查散射数据：此前按标签分组时从标签字符串反推元素，`Os` 会读成锇。
   CLI 的 sq 固定按元素分组、Python 不暴露 sq，用户入口不受影响。
 
-- 2026-10-22（`a66f0a1`）：`AngleResult::to_tables` 返回两张表（`angle` 与新的 `stats`）；`AngleResult` /
+- 2026-10-22（`a66f0a1`、`17b7d1a`）：删除 `AngleStats` 与 `AngleResult.stats`（逐三元组 mean / std / count），
+  `to_tables` 仍只出 `angle` 一张表（`a66f0a1` 曾加 `stats` 表，`17b7d1a` 撤掉）；`AngleResult` /
   `VanHoveResult::meta_lines` 不再含逐输入的量（angle 的类型清单与 `[statistics]`，vanhove 的 τ、time、
   atoms、origins、elements）。`md/util.rs::unwrapped_series` 为 crate 内共用（`76e4a71`），不是公开项。
 

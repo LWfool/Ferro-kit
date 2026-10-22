@@ -219,7 +219,7 @@ type_new**。于是原子类型按数组下标而非实际元素归类。LAMMPS 
 | 计数 | 每个几何角一次（PO₄ 给 6 个 O-P-O） | 有序端对，两端**同元素**时数两次；不同元素时一次 |
 | bin k 覆盖 | `[kΔθ, (k+1)Δθ)` | `[0.05+kΔθ, 0.15+kΔθ)` |
 
-计数因子不影响 mean / std / 峰位。半格偏移源自 `angle.c:OutputAngle` 的
+计数因子不影响 `p` 与峰位（ferro 不报 mean / std，见 `decisions.md`「angle 不报平均键角」）。半格偏移源自 `angle.c:OutputAngle` 的
 `min_angle = 0.05`；那套分箱会把 <0.05° 的角写到 `a[-1]`（越界），上界也延到
 180.05°，故不采作默认。0.1.15 起 `--angle-min` / `--angle-max` 可调，
 `--angle-min 0.05 --angle-max 180.05 --d-angle 0.1` 可逐点复现——实测 O-P-O 与

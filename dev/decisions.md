@@ -769,7 +769,7 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 
 ## 已完成项的判据（0.3.0 以后；0.3.0 以前的归档已删，见 git 历史）
 
-### vanhove 换 TOR 解包裹；angle / vanhove 共享头部只留参数（2026-10-22，`76e4a71`、`a66f0a1`）
+### vanhove 换 TOR 解包裹；angle / vanhove 共享头部只留参数；angle 不报平均键角（2026-10-22，`76e4a71`、`a66f0a1`、`17b7d1a`）
 
 **TOR**：`msd.rs::unwrap_tor` 连同非周期分支下沉为 `md/util.rs::unwrapped_series`，msd 与 vanhove 共用
 （第二个调用方出现，按 R1 下沉）。`unwrap_lattice`（格点视图）只剩 `cube_jump`，`map jump` 挂起，随其改写一并换。
@@ -778,9 +778,13 @@ lag 1 / 2 分别 47 / 63 行变化。测试用 msd 那组「先跨界、再胀�
 注意 y、z 要放在分数坐标 0，否则盒子胀缩让它们也有真实的笛卡尔位移，看起来像实现错了。
 
 **共享头部**：与 msd 同一判据（`meta_lines` 只放批内共享的参数）。vanhove 的 τ、time、origins、outside_fraction
-早已在 `[inputs]`，只是共享区还留着一份，删掉并补 `species`；`--tau` 给定时共享区仍写它。angle 的逐三元组
-mean / std / count 是逐文件 × 逐三元组的二维量，放 `[inputs]` 会很宽，故**单独出一张表**
-`angle_stats_*`（`AngleResult::to_tables` 由一张变两张）；`scripts/compare_angle.py` 改读它，不再解析 `#` 块。
+早已在 `[inputs]`，只是共享区还留着一份，删掉并补 `species`；`--tau` 给定时共享区仍写它。
+
+**angle 的 mean / std / count 整个删掉，不导出**（用户定）：先按「逐文件 × 逐三元组的二维量」单独出过一张
+`angle_stats_*` 表（`a66f0a1`），看过内容后用户判定无意义 —— O-Al-O 这类多配位态（4 / 5 / 6 配位）叠加出
+的分布，平均值落在峰与峰之间、不属于任何一个态；三个量又都能从长表按 `count` 加权精确算出，没有新信息。
+`17b7d1a` 删 `AngleStats` 与计算本身，`compare_angle.py` 不再比 mean / std（逐 bin 残差更严）。
+**以后别再加回来**：要描述键角分布，读 `p` 的峰位与布居。
 两处 `species` 的排序不同（angle 按 Z、vanhove 按字母，后者同 msd），沿用各自既有的顺序，未统一。
 
 ### `dataset collect`：输入是当前目录下的裸文件名时，产物位置错（2026-10-17 发现并修复，`7735386`）
