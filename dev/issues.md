@@ -17,16 +17,9 @@
 
 ## Bader 实现陷阱（来自 Fortran 源码逆向分析）
 
-| 位置 | 陷阱 | 正确做法 |
-|---|---|---|
-| CHGCAR 读取 | VASP 存储的是 `ρ × V_cell`，不是物理密度 | 读入不做归一化；真空判断除以 `vol`；电荷积分除以 `nrho` |
-| `ChargeGrid` | ndarray 不可对外暴露 | 存储用 `Vec<f64>`，内部计算可用局部 ndarray |
-| `step_neargrid` | Fortran `dr` 是 `SAVE` 变量，跨调用持续累积 | 放入 `PathState.dr`，新路径（pnum==1）时归零 |
-| `max_neargrid` | `known=1` 与 `known=2` 处理完全不同 | known=1：step 内 fallback to ongrid；known=2：max 层 EXIT 继承 volnum |
-| weight 极大值位置 | Fortran 原始代码存的是循环末尾的邻居 `p`，不是极大值本身 | Rust 改为 `chgList[n].pos`（bug 修正） |
-| `rho_grad_dir` | 对高倾斜晶胞梯度方向有近似误差（car2lat 用了两次） | 正交/弱倾斜体系无影响；强倾斜晶胞改用 weight 方法 |
-| CHGCAR 密度循环顺序 | 文件中 n1(x) 最快，n3(z) 最慢 | Rust Vec 索引：`rho[n1 + N1*(n2 + N2*n3)]` |
-| `lat_i_dist(0,0,0)` | 中心点距离为 0，不能取倒数 | 显式存为 `0.0`（step_ongrid 跳过 d=0 方向） |
+算法层的陷阱（`ρ × V_cell` 存储、`dr` 的 SAVE 语义、`known=1/2`、weight 极大值位置、
+`rho_grad_dir` 近似、CHGCAR 循环顺序、`lat_i_dist(0,0,0)`）以 `dev/bader.md` §9 为准，这里不再抄一份。
+bader.md 没有的一条：`ChargeGrid` 不对外暴露 ndarray —— 存储用 `Vec<f64>`，内部计算可用局部 ndarray。
 
 ---
 
@@ -55,6 +48,8 @@
 | maturin 解释器 | 默认可能选到杂散 python3.9，wheel tag 不匹配当前 python | `maturin build --interpreter "$(which python)"` |
 | `pyproject.toml` | `readme="README.md"` 缺文件 → maturin 失败；失效 `python-source` | 必须有 README.md；无 python 覆盖层时删 `python-source` |
 | `pyproject.toml` 的版本号 | 手动同步 `[project] version` | **已漂移过一次**：0.3.0 发版时发现它还停在 `0.1.7`，落后四个版本，而 maturin 打 wheel 用的正是这个值——装出来的包会自称 0.1.7。已改用 `dynamic = ["version"]` 让 maturin 从 Cargo.toml 取，`[project]` 下不再写 `version`（2026-10-16 起 maturin 实际构建验证过） |
+| CP2K 模板 | 写 `MOTION/CELL_OPT/TYPE` | CP2K 2026.2 删了这个键，写了即在读输入时 ABORT（不变胞的 GEO_OPT 也中止，因为 `&CELL_OPT` 节总在模板里）。不要写；旧版默认值即 `DIRECT_CELL_OPT`。见 `decisions.md`「`ferro.jobs`」冒烟一段 |
+| QE aimd 模板 | 不设 `nosym` | SVR 热浴的随机速度破坏初始对称性，第 2 步 `checkallsym` 中止；aimd 模板加 `nosym = .true.` |
 | `maturin develop` | 无激活 venv/conda 时报错 | 用 `maturin build` + `pip install <wheel>`，或先激活环境 |
 | `lib.rs` 的 `pyerr` | `e.to_string()` 转 anyhow 错误 | 只剩最外层 context：`conv analyze` 的状态只写 `unreadable (parsing FILE)`，原因（`1 SCF not converged`）丢了。用 `format!("{e:#}")` 带出整条链（2026-10-17 修） |
 
@@ -265,7 +260,6 @@ q>15 处为 1.00031（XRD）/ 1.00018（ND），标准差 0.014 / 0.002，确认
 | 按输入数量分派单/批两条路 | 产物形态会取决于 glob 当天匹配到几个文件；平时 5 个走批处理、某天只剩 1 个就悄悄换形态 | **单一代码路径**，N=1 是 N 的特例。两条路还意味着两套命名、两套错误处理 |
 | `expand_inputs` 零匹配 | 静默跑零个文件是最难查的失败，尤其在脚本里 | 零匹配**报错**并回显模式 |
 | 批内失败 | 只打印不改退出码，shell 里 `ferro traj gr ... && next` 会把失败当成功 | 跳过 + `[inputs]` 留原因 + **退出码 1**；参数级错误仍在读第一个文件前快速失败 |
-| `glob` crate | 不支持 `{a,b}` 花括号 | 让 shell 展开（展开后的字面路径原样通过）；文档写明 |
 | 多输入下的 `.cube` | 文件名不带 stem 时第二个输入直接覆盖第一个 | `ferro map` 的文件名必须掺输入 stem（`density_<stem>.cube`） |
 
 ## 外部脚本调用 ferro 的陷阱（2026-08-11，`scripts/ferrocmp.py`）
@@ -624,16 +618,9 @@ ferro 选严格同元素，因为它覆盖 `Qⁿ(mAl)` / `Qⁿ(mB)` 这两个最
 
 ## bader weight 方法的真空电荷取错（2026-09-20 发现，未修）
 
-`bader_weight.rs:265` 取 `volchg[nvols]` 当真空电荷，但该数组在 weight 方法里是
-**1 索引**的（上方几行的注释自己写着 `volchg is 1-indexed`），`[nvols]` 于是指向
-最后一个 Bader 体积。`bader_grid.rs` 的三条路是 0 索引、真空在 `[nvols]` —— 两份代码索引基准不同，
-而这个下标在两边长得一样。（2026-10-02 更正：原文称 grid 那边「是对的」，不成立 ——
-那里的 `volchg[nvols]` 是刚 push 的硬编码 0，真空电荷从未积分，见 `dev/plan/suspended.md` S-B。）
-
-后果：ACF 末尾的 `Total` 行虚高一个体积的电荷。`tests/CHGCAR_2atoms` 上报
-158.98 e，网格实际只有 105.99 e（逐原子的 `ionchg` 是对的，只有 `vacchg` 被污染）。
-`ferro-cli/tests/bader_reports.rs` 的真空断言因此只跑 `ongrid` / `neargrid`，
-注释里指名了这条。
+`bader_weight.rs` 把 1 索引数组的 `volchg[nvols]` 当真空电荷。现象、实测数字与修法见
+`plan/suspended.md`「bader weight 的真空电荷取错」（Bader 改写组）。`ferro-cli/tests/bader_reports.rs`
+的真空断言因此只跑 `ongrid` / `neargrid`，注释里指名了这条。
 
 ## 全库简化审计发现的陷阱（2026-09-03 提出，2026-09-12 按 Rule of Three 重做）
 
@@ -675,8 +662,7 @@ golden master 的差异失去唯一解释。
 不需要任何屏蔽 —— 而「需要屏蔽的东西太多」正是 golden master 最常见的失败原因。
 两次跑同一版二进制自比对零差异，93 个产物（含 npy 二进制）全部确定。
 
-盖不到的：`vacf` / `vanhove` / `rotcorr`（fixture 无速度）、`map chg-sdf`
-（无 cube fixture）、`map velocity` / `force`（无速度）。
+盖不到的（无速度、无 cube fixture 的几个分析）登记在 `plan/io.md`「测试缺口」与「带速度的测试 fixture」。
 
 **`bader` 已补上**（2026-09-20）：`tests/CHGCAR_2atoms` 是 8×8×8 的合成网格，
 三种方法 × 三份报告都能端到端对拍。它的密度处处高于真空阈值，故 `vacchg` 恒为 0
@@ -971,5 +957,5 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 闭包返回借用 | 把 `\|p\| (&p.0, &p.1)` 先绑到变量再传给 `impl Fn(&T) -> (&Path, …)`，报 lifetime may not live long enough | 闭包直接写在参数位置让签名从约束推断，或改写成 `fn` |
 | 重排 / 排序 | 以为排序在 `ml::merge` | 规范序是 `ferro_core::data::elements::canonical_cmp`，排原子是 `Trajectory::canonically_sorted`；type_map、gr 列序、merge 同一条规则 |
 | 维里 | 手写 `stress * volume` / `virial / volume` | `Frame::virial()` / `Cell::stress_from_virial()`，零体积统一报错 |
-| shell 里的非 ASCII | heredoc 或命令行参数带中文 / 制表符号（`──`），python 报 Non-UTF-8、grep 报 illegal byte sequence | 含中文的编辑一律 Write 脚本文件或 Edit 工具（第 5 步又犯两次，都在落盘前被拦下；第 6 步再犯两次：一次 heredoc 带 Å / 中文在落盘前报错，一次 sed 参数带中文，改动本身正确写进了文件，但违反了规则；第 7 步又一次：heredoc 写的编辑脚本带中文旧串，改动正确，但违反了规则） |
+| shell 里的非 ASCII | 第 5 – 7 步又犯过五次（heredoc、sed 参数带中文） | 规则见「构建 / 工具链陷阱」与 `memory.md`「中文不要经 Bash」 |
 
