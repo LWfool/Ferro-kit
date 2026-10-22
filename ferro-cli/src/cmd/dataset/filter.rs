@@ -87,12 +87,7 @@ impl FilterCmd {
 }
 
 pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
-    // 参数级错误在读第一个数据集之前暴露
-    // NaN 与任何数比较都为假，`< 0.0` 拦不住它，进了 FilterParams 又被当成「关闭」
-    let usable = |v: f64| v.is_finite() && v >= 0.0;
-    if !usable(args.f_max()) || !usable(args.s_max()) {
-        bail!("thresholds must be finite and non-negative (0 switches the criterion off)");
-    }
+    // 参数级错误在读第一个数据集之前暴露；取值范围由 FilterParams::validate 一处负责（审查 C-2）
     let manual_rcut = match args.al6.as_deref() {
         None | Some("auto") => None,
         Some(v) => Some(
@@ -100,34 +95,12 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
                 .with_context(|| format!("--al6 expects a cutoff in Angstrom or nothing, got `{v}`"))?,
         ),
     };
-    if let Some(r) = manual_rcut {
-        if !(r.is_finite() && r > 0.0) {
-            bail!("--al6 cutoff must be a finite positive number");
-        }
-    }
     let split = filter_split(args)?;
     if args.seed.is_some() && !args.shuffle && split.is_off() {
         bail!("--seed only means something with --shuffle or --ratio");
     }
     if !split.is_off() && args.output.is_none() {
         bail!("--ratio needs an output directory (-o DIR); a read-only run writes nothing");
-    }
-    if args.oo_min.is_some_and(|v| !(v.is_finite() && v > 0.0)) {
-        bail!("--oo-min must be a finite positive number (omit the flag to switch the criterion off)");
-    }
-    // The frame selection, checked as convert checks its own (`cmd/convert.rs`); two copies
-    // with different flags, below the Rule of Three, so not shared (R6). Left to the run,
-    // these dropped every frame or wrote nothing with exit code 0 (review D-1)
-    if let (Some(s), Some(e)) = (args.start, args.end) {
-        if s > e {
-            bail!("--start {s} is past --end {e} (both are 0-based and inclusive)");
-        }
-    }
-    if args.stride == Some(0) {
-        bail!("--stride must be at least 1");
-    }
-    if args.number == Some(0) {
-        bail!("--number must be at least 1");
     }
 
     let params = FilterParams {
@@ -143,6 +116,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
         // 每个 system 各算各的，此处只放手动值
         al6_rcut: manual_rcut,
     };
+    params.validate()?;
 
     let roots = crate::batch::expand_dirs(&args.input)?;
     let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new(); // (system, 相对路径)
@@ -440,13 +414,13 @@ mod tests {
         }
         use clap::Parser;
         for (args, want) in [
-            ("-f nan", "finite"),
-            ("-f inf", "finite"),
-            ("--s-max nan", "finite"),
-            ("--oo-min nan", "--oo-min"),
-            ("--oo-min inf", "--oo-min"),
-            ("--al6 nan", "--al6"),
-            ("--al6 inf", "--al6"),
+            ("-f nan", "f-max must be a finite number"),
+            ("-f inf", "f-max must be a finite number"),
+            ("--s-max nan", "s-max must be a finite number"),
+            ("--oo-min nan", "oo-min must be a finite number"),
+            ("--oo-min inf", "oo-min must be a finite number"),
+            ("--al6 nan", "al6 must be a finite number"),
+            ("--al6 inf", "al6 must be a finite number"),
         ] {
             let mut argv = vec!["filter", "-i", "no_such_system_dir"];
             argv.extend(args.split_whitespace());
@@ -467,9 +441,9 @@ mod tests {
         }
         use clap::Parser;
         for (args, want) in [
-            ("--stride 0", "--stride must be at least 1"),
-            ("-N 0", "--number must be at least 1"),
-            ("--start 3 --end 1", "--start 3 is past --end 1"),
+            ("--stride 0", "stride must be >= 1"),
+            ("-N 0", "number must be >= 1"),
+            ("--start 3 --end 1", "start 3 is past end 1"),
         ] {
             let mut argv = vec!["filter", "-i", "no_such_system_dir"];
             argv.extend(args.split_whitespace());

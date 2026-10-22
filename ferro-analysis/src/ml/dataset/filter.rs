@@ -119,6 +119,33 @@ impl Default for FilterParams {
 }
 
 impl FilterParams {
+    /// Range checks; [`filter_frames`] runs them first, the CLI before reading any system.
+    /// A NaN or negative threshold used to read as "off", and a zero stride / number or
+    /// a start past end selected nothing (review C-2).
+    pub fn validate(&self) -> Result<(), ChemError> {
+        check::non_negative("f-max", self.f_max)?;
+        check::non_negative("s-max", self.s_max)?;
+        check::non_negative("oo-min", self.oo_min)?;
+        if let Some(r) = self.al6_rcut {
+            check::positive("al6", r)?;
+        }
+        check::at_least_one("stride", self.stride)?;
+        if let Some(n) = self.number {
+            check::at_least_one("number", n)?;
+        }
+        if self.stride != 1 && self.number.is_some() {
+            return Err(ChemError::ValidationError(
+                "stride and number are two ways of saying the same thing; give only one".into(),
+            ));
+        }
+        if let Some(e) = self.end.filter(|&e| self.start > e) {
+            return Err(ChemError::ValidationError(format!(
+                "start {} is past end {e} (both are 0-based and inclusive)", self.start
+            )));
+        }
+        Ok(())
+    }
+
     /// The criteria these parameters switch on, in funnel order.
     pub fn enabled(&self) -> Vec<Criterion> {
         Criterion::ALL
@@ -171,12 +198,8 @@ pub struct FilterResult {
 /// lacks that label — a missing force array is a broken dataset, not a frame
 /// that happens to pass.
 pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterResult, ChemError> {
+    params.validate()?;
     let n = traj.n_frames();
-    if params.stride != 1 && params.number.is_some() {
-        return Err(ChemError::ValidationError(
-            "stride and number are two ways of saying the same thing; give only one".into(),
-        ));
-    }
     if params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces().is_none()) {
         return Err(ChemError::ValidationError(
             "a force threshold was given but some frames carry no forces".into(),
@@ -445,6 +468,33 @@ mod tests {
             })
             .collect();
         Trajectory { frames, metadata: Default::default() }
+    }
+
+    /// Review C-2: the range checks lived only in the CLI. A library caller's NaN or
+    /// negative threshold switched its criterion off, `al6_rcut = NaN` dropped every
+    /// frame, and a zero stride / number or start past end selected nothing — all `Ok`
+    #[test]
+    fn out_of_range_parameters_are_refused() {
+        let traj = oo_traj(&[1.0, 3.0]);
+        let d = FilterParams::default;
+        for (p, want) in [
+            (FilterParams { f_max: f64::NAN, ..d() }, "f-max"),
+            (FilterParams { f_max: -1.0, ..d() }, "f-max"),
+            (FilterParams { s_max: f64::INFINITY, ..d() }, "s-max"),
+            (FilterParams { oo_min: f64::NAN, ..d() }, "oo-min"),
+            (FilterParams { oo_min: -2.0, ..d() }, "oo-min"),
+            (FilterParams { al6_rcut: Some(f64::NAN), ..d() }, "al6"),
+            (FilterParams { al6_rcut: Some(0.0), ..d() }, "al6"),
+            (FilterParams { stride: 0, ..d() }, "stride"),
+            (FilterParams { number: Some(0), ..d() }, "number"),
+            (FilterParams { stride: 2, number: Some(1), ..d() }, "stride and number"),
+            (FilterParams { start: 1, end: Some(0), ..d() }, "start"),
+        ] {
+            let err = filter_frames(&traj, &p).err().map(|e| e.to_string()).unwrap_or_default();
+            assert!(err.contains(want), "{p:?}: want an error naming {want}, got {err:?}");
+        }
+        // 0 switches a threshold off and is not an error
+        assert!(FilterParams { f_max: 0.0, s_max: 0.0, oo_min: 0.0, ..d() }.validate().is_ok());
     }
 
     #[test]
