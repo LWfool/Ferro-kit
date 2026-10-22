@@ -541,3 +541,40 @@ Special cases:
 An automatic cutoff that reaches further than the usual hand-picked value can make formers share two
 ligands, and the warning `former pair(s) share 2+ ligands (edge-sharing)` then fires: on `43Z43P15A`,
 Al-O = 2.591 Å gives 3 such pairs where 2.4 Å gives none.  Look at the g(r) before reading it as structure.
+
+## Comparing with experiment
+
+When the numbers disagree with NMR or diffraction, look first at two modelling choices.  Neither is a
+fault in the code: both are decisions the command line makes, and either can move a result by an order
+of magnitude.
+
+### Intermediate oxides: former or modifier is your choice
+
+ZnO is a network **intermediate**: depending on its coordination it can sit in the network or modify it,
+and the glass draws no strict line between the two roles — the same sample holds Zn of both kinds.
+`ferro net` needs one role per element, so assigning Zn to formers or modifiers is a modelling choice made
+with `--modifier`; it is not something the program can decide, and neither answer is "correct".
+
+The choice reshapes the whole network.  On one ZnO–$P_2O_5$–$Al_2O_3$ trajectory (`43Z43P15A`, 72.6% of
+the Zn four-coordinate):
+
+| | `--modifier Zn` | Zn as a former (`--Zn-O=2.8`, no `--modifier`) |
+|---|---|---|
+| bridging oxygens per P (`mean_n_bo`) | 2.40 | 3.96 |
+| `O_n` (non-bridging) | 2985 | 70 |
+| `O_b` (bridging) | 3583 | 5607 |
+| `O_t` (tricluster) | 2 | 893 |
+
+97.7% of the oxygens labelled `O_n` under the first reading are bonded to Zn, so this one flag
+effectively redefines the network.  Treating Zn as a modifier matches how $^{31}\mathrm{P}$ NMR counts $Q^n$
+(P–O–P connections only; Zn–O–P does not count), which makes it the reading to compare with
+$^{31}\mathrm{P}$ spectra.
+Say which reading you used when reporting, and when a comparison is far off, run both.
+
+### Which formers count towards $n$
+
+Here $n$ counts homonuclear bridges only (see above).  Some papers fold a second framework former into
+$n$ — arXiv 2510.13545 counts P–O–Si — whereas the borophosphate literature keeps B in $m$
+($Q^n(m\mathrm{B})$).  Against a paper of the first kind ferro's $n$ is systematically lower, by exactly
+the `m_<X>` column of that element: nothing is lost, add it back.  Check which elements the other side's
+$n$ includes before comparing.
