@@ -302,7 +302,8 @@ fn split_elems(s: Option<&str>) -> Vec<String> {
 ///
 /// An `auto` pair holds `NaN` in the returned table until [`resolve_auto`] fills it
 /// from each input; the table is needed before any input is read, to validate the
-/// element roles and print the label scheme, and those only look at the keys.
+/// element roles and print the label scheme, and those only look at the keys. A placeholder
+/// that slipped past `resolve_auto` would be refused by the classifier, not computed with.
 fn build_params(
     pair_args: &[String],
     modifier: Option<&str>,
@@ -353,6 +354,14 @@ fn build_params(
         }
         params = params.with_qn_elements(elems);
     }
+    // The ranges are TypeParams::validate's alone (review C-2); checked here on the given
+    // values, the auto placeholders aside, so a bad cutoff fails before any input is read
+    let mut given = params.clone();
+    for k in &auto {
+        given.cutoffs.remove(k);
+        given.modifier_cutoffs.remove(k);
+    }
+    given.validate()?;
     Ok((params, auto))
 }
 
@@ -423,12 +432,9 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option
         let cutoff = if cutoff_str == "auto" {
             None
         } else {
+            // The range is checked in build_params, by TypeParams::validate
             let c: f64 = cutoff_str.parse()
                 .map_err(|_| anyhow!("Invalid cutoff value in '{arg}' (a number or auto)"))?;
-            // NaN 与 0 比较为假，`c <= 0.0` 拦不住它
-            if !(c.is_finite() && c > 0.0) {
-                bail!("Cutoff must be a finite positive number, got {c} in '{arg}'");
-            }
             Some(c)
         };
         map.insert((former.to_string(), ligand.to_string()), cutoff);
@@ -466,13 +472,17 @@ mod tests {
 
     #[test]
     fn test_non_finite_cutoffs_are_rejected() {
-        // 审查 D-M3：`--P-O=nan` 曾通过（nan <= 0 为假），P 的 cn=1314、全 Q0
-        for v in ["nan", "inf", "-inf", "0", "-1"] {
-            let arg = format!("--P-O={v}");
-            let err = parse_pairs(&args(&[&arg])).expect_err(&arg).to_string();
-            assert!(err.contains("finite positive"), "{arg}：{err}");
+        // Review D-M3: `--P-O=nan` once passed (nan <= 0 is false), giving P cn = 1314 and all Q0.
+        // The check is now TypeParams::validate's, run by build_params before any input is read
+        for arg in ["--P-O=nan", "--P-O=inf", "--P-O=-inf", "--P-O=-1"] {
+            let err = build_params(&args(&[arg]), None, None).expect_err(arg).to_string();
+            assert!(err.contains("P-O cutoff must be a finite number >= 0"), "{arg}: {err}");
         }
-        assert!(parse_pairs(&args(&["--P-O=2.3", "--Al-O=auto"])).is_ok());
+        let err = build_params(&args(&["--P-O=2.3", "--Zn-O=-2"]), Some("Zn"), None).unwrap_err().to_string();
+        assert!(err.contains("Zn-O cutoff"), "modifier cutoff: {err}");
+        // 0 is "this pair never bonds" (user decision 2026-10-22); auto placeholders are not checked
+        assert!(build_params(&args(&["--P-O=0"]), None, None).is_ok());
+        assert!(build_params(&args(&["--P-O=2.3", "--Al-O=auto"]), None, None).is_ok());
     }
 
     #[test]
@@ -512,7 +522,6 @@ mod tests {
     #[test]
     fn test_bad_cutoffs_are_rejected() {
         assert!(parse_pairs(&args(&["--P-O=abc"])).is_err());
-        assert!(parse_pairs(&args(&["--P-O=-1.0"])).is_err());
         assert!(parse_pairs(&args(&["--PO=2.4"])).is_err());
         assert!(parse_pairs(&args(&["--P-O=AUTO"])).is_err(), "只认小写 auto");
         assert_eq!(parse_pairs(&args(&["--P-O=auto"])).unwrap()
