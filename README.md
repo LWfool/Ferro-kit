@@ -4,7 +4,7 @@ A modular computational-chemistry post-processing toolkit written in Rust, aimed
 **periodic systems** — crystals, surfaces and glasses — and at the MD trajectories
 they produce.
 
-**Version 0.3.2** (unreleased) · 536 tests · MIT
+MIT licensed. The current version and test count are in [`dev/progress.md`](dev/progress.md).
 
 > **Documentation**
 > [`docs/src/`](docs/src) is the user manual (mdBook): every command, every output
@@ -16,10 +16,11 @@ they produce.
 
 ```
 ferro/
-├── ferro-core/       # Data structures, static data, Table, AtomType
+├── ferro-core/       # Data structures, static data, Table, PeriodicCell
 ├── ferro-io/         # Format readers/writers; write_table is the one exit for analysis output
-├── ferro-structure/  # Supercells, vacuum layers, merging, box building, typing, clustering
+├── ferro-structure/  # Supercells, vacuum layers, merging, box building, type labelling
 ├── ferro-analysis/   # Pure computation — never touches the filesystem
+├── ferro-render/     # Terminal rendering for `ferro doc` (markdown + LaTeX); depends on no ferro crate
 ├── ferro-cli/        # The single `ferro` binary
 └── ferro-python/     # PyO3 bindings (its own workspace, built with maturin)
 ```
@@ -32,7 +33,8 @@ ferro-cli / ferro-python        ← the only layer allowed to combine crates
     ├── ferro-core
     ├── ferro-io        → core
     ├── ferro-structure → core
-    └── ferro-analysis  → core
+    ├── ferro-analysis  → core
+    └── ferro-render              (depends on no ferro crate)
 ```
 
 Shared types sink into `ferro-core` rather than crossing sideways: a type belongs there
@@ -52,7 +54,7 @@ cargo clippy                 # must be warning-free
 with `cd ferro-python && cargo check` after changing any public API.
 
 Do **not** run `cargo fmt` over the whole repository — this codebase is not under
-rustfmt management and a full pass rewrites ~80 files (see `dev/issues.md`).
+rustfmt management and a full pass rewrites ~115 files (see `dev/issues.md`).
 
 ## Command line
 
@@ -61,11 +63,12 @@ that implements them. Running `ferro`, `ferro <group>` or `ferro <group> <comman
 with no input prints progressively more detailed help.
 
 ```
-ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove   → stacked CSV (+ optional PNG)
+ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife → stacked CSV
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                       → six stacked CSVs
-ferro bader | convert | info | job
-ferro doc   <topic>                                            → 手册（编译在二进制里）
+ferro dataset collect | filter | merge                         → DeePMD system directories
+ferro bader | convert | info
+ferro doc   <topic>                                            → the manual, compiled into the binary
 ```
 
 ```bash
@@ -101,7 +104,7 @@ path. A failing input is skipped, listed in the `[inputs]` block of the output, 
 exit code 1; argument errors fail before the first file is read.
 
 ```
-<-o dir>/<command>[_<table>][_<label>]_<suffix>.csv
+<-o dir>/<command>[_<table>][_<label>][_<input>][_<suffix>].csv
 ```
 
 `-o` is where products go — a path, for every command: the output **directory** for the
@@ -119,11 +122,12 @@ ferro writes csv only and draws no figures; publication figures are drawn by
 
 | Group | Methods |
 |---|---|
-| Trajectory | g(r) + CN(r), S(q) (Faber-Ziman, XRD/neutron weighted), MSD + self-diffusion D, bond-angle distribution, VACF + Green-Kubo, rotational correlation C₂(t), Van Hove Gs(r,τ) |
+| Trajectory | g(r) + CN(r), S(q) (Faber-Ziman, XRD/neutron weighted), MSD + self-diffusion D, bond-angle distribution, VACF + Green-Kubo, rotational correlation C₂(t), Van Hove Gs(r,τ), bond lifetimes |
 | Spatial maps | number density, velocity field, force field, hard-sphere occupancy, cluster SDF (Kabsch-aligned), charge-density cluster SDF |
 | Network topology | composition, Qⁿ speciation, partner decomposition Qⁿ_m, ligand types, coordination numbers, bridge linkage |
 | Charges | Bader partitioning — on-grid, near-grid, off-grid, Yu-Trinkle weight (ACF/BCF/AVF output) |
-| Structure | supercells, vacuum layers, merging, formula-driven box building, type labelling, cluster detection |
+| ML datasets | DeePMD system collection, frame filtering, merging and train/valid/test splitting; GPUMD/NEP export |
+| Structure | supercells, vacuum layers, merging, formula-driven box building, type labelling |
 | Input generation | VASP, CP2K, Quantum ESPRESSO pw.x — single point, optimisation, AIMD, convergence tests; in the Python package (`ferro-py job`, `ferro-py conv`) |
 
 Everything is normalised per frame before time-averaging, which matters under NPT; the
@@ -139,19 +143,11 @@ third quantity again — a tricluster is one oxygen but two connections. Results
 
 ## File formats
 
-| Format | Read | Write |
-|---|:---:|:---:|
-| XYZ | ✓ | ✓ |
-| Extended XYZ (with `label:S:1`) | ✓ | ✓ |
-| PDB | ✓ | ✓ |
-| CIF | ✓ | ✓ |
-| POSCAR / CONTCAR | ✓ | ✓ (POSCAR) |
-| LAMMPS data | ✓ | ✓ |
-| LAMMPS dump | ✓ | ✓ |
-| CP2K `.inp` / `.restart` | ✓ | — |
-| Quantum ESPRESSO `.in` | ✓ | — |
-| Gaussian cube | ✓ | ✓ |
-| VASP CHGCAR | ✓ | — |
+Structures and trajectories: XYZ / extended XYZ, PDB, CIF, POSCAR / CONTCAR, LAMMPS data and dump,
+Gaussian cube, VASP CHGCAR, CP2K and QE inputs (read-only), and the AIMD outputs of VASP
+(OUTCAR, vasprun.xml), CP2K and QE, plus DeePMD npy systems. The authoritative table —
+what is recognised by which name, read or written — is printed by `ferro convert` with no
+input and lives in [`docs/src/cli-reference.md`](docs/src/cli-reference.md).
 
 Analysis products are CSV only, all written through the single `write_table` exit.
 
@@ -168,38 +164,7 @@ DeePMD-kit / VASP convention. Conversions go through the enums in `units.rs`.
 
 ## Core data model
 
-`Trajectory` is always the top-level type, even for a single-frame file. There is no
-`Molecule` type — `Frame` covers molecules and periodic systems alike, distinguished by
-`pbc`. Atom indices are implicit: an atom's identity is its position in `Vec<Atom>`.
-
-```rust
-pub struct Trajectory {
-    pub frames: Vec<Frame>,
-    pub metadata: TrajectoryMetadata,
-}
-
-pub struct Frame {
-    pub atoms: Vec<Atom>,
-    pub cell: Option<Cell>,                 // None = non-periodic
-    pub pbc: [bool; 3],
-    pub charge: i32,
-    pub multiplicity: u32,
-    pub bonds: Option<Vec<(usize, usize)>>,
-    pub energy: Option<f64>,                // eV
-    pub forces: Option<Vec<Vector3<f64>>>,  // eV/Å
-    pub stress: Option<Matrix3<f64>>,       // eV/Å³
-    pub velocities: Option<Vec<Vector3<f64>>>, // Å/fs
-}
-
-pub struct Atom {
-    pub element: String,
-    pub position: Vector3<f64>,             // Å, Cartesian
-    pub label: Option<String>,              // site label, e.g. "P_3", "Fe1"
-    pub mass: Option<f64>,                  // amu; None = element table value
-    pub magmom: Option<f64>,                // μ_B
-    pub charge: Option<f64>,                // e
-}
-```
+See [`docs/src/data-model.md`](docs/src/data-model.md).
 
 ## Python bindings
 
@@ -223,9 +188,8 @@ g = ferro.gr_pair(t, "P", "O", by="element", r_max=10.0, dr=0.02)
 d = ferro.msd(t, dt=2.0, elements=["Li"])
 ```
 
-Currently exposed: `read` / `write` / `supercell` / `add_vacuum_layer` / `merge` /
-`gr_pair` / `gr_all` / `msd`, plus the `Trajectory` methods. Network analysis is not
-wrapped yet. See `docs/src/python/api.md`; the `ferro-py` commands are read with `ferro-py doc`.
+The full API is in [`docs/src/python/api.md`](docs/src/python/api.md); the `ferro-py` commands
+are read with `ferro-py doc`.
 
 ## Python scripts
 
@@ -238,23 +202,7 @@ The publication figures moved into ferro-python as `ferro-py plot`.
 reproduced (its atom typing goes stale after frame 0) — read it before concluding that
 ferro disagrees.
 
-## Test fixtures
+## Test fixtures and known limitations
 
-`tests/` carries two five-frame LAMMPS trajectories, one NPT and one NVT. The NPT one
-exists so that per-frame volume normalisation is actually exercised; its frames are
-sampled at even intervals, because consecutive frames do not span enough volume to test
-anything.
-
-## Known limitations
-
-- `ferro map chg-sdf` still aggregates several cubes into one SDF, unlike every other
-  `map` mode; splitting it needs an intermediate format carrying sample counts first
-- `bader` writes `ACF.dat` / `BCF.dat` / `AVF.dat` into the current directory under fixed
-  names — running two systems in a row overwrites them
-- `convert` still takes a full path in `-o`, opposite to the other 11 commands
-- Selecting by site label (`-x` / `-y`) only works on a single frame: g(r) requires a
-  fixed particle count per type, and labels change as the run evolves
-- The pyo3 0.29 bindings compile but have not been verified at runtime
-- No REPL / script mode yet
-
-The full list, with the reasoning behind each, is in `dev/progress.md` and `dev/plan.md`.
+The fixture list is in [`dev/progress.md`](dev/progress.md); open work and known
+limitations are indexed in [`dev/plan.md`](dev/plan.md).
