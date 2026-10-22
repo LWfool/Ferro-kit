@@ -11,12 +11,11 @@
 //! Parallelism: per atom (each atom's three series are independent).
 
 use crate::check;
-use super::util::{check_frame_spacing, select_atoms};
+use super::util::{check_frame_spacing, select_atoms, unwrapped_series, Series};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
-use ferro_core::{PeriodicCell, Table, Trajectory};
+use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
-use nalgebra::Vector3;
 
 use super::correlate::{resolve_max_lag, AutocorrPlan};
 
@@ -119,38 +118,6 @@ pub struct MsdFit {
 
 // ─── 内部辅助 ─────────────────────────────────────────────────────────────────
 
-/// Unwrapped Cartesian series, `[atom][axis][frame]`.
-type Series = Vec<[Vec<f64>; 3]>;
-
-/// TOR unwrapping (Bullerjahn et al. 2023, eq 2), in 3-D:
-/// `u[i+1] = u[i] + mic_{i+1}(w[i+1] − w[i])`, `u[0] = w[0]`, where `mic_{i+1}`
-/// is the minimum image in frame `i+1`'s cell, taken in fractional coordinates as
-/// `f − ⌊f + 1/2⌋`. A step is far below half a cell, so this is exact for any
-/// cell shape.
-fn unwrap_tor(traj: &Trajectory, boxes: &[&PeriodicCell], atom_indices: &[usize]) -> Series {
-    atom_indices.par_iter().map(|&i| {
-        let n = traj.n_frames();
-        let mut s = [Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n)];
-        let mut w_prev = traj.frames[0].positions()[i];
-        let mut u = w_prev;
-        for (k, frame) in traj.frames.iter().enumerate() {
-            if k > 0 {
-                let w = frame.positions()[i];
-                let pc = boxes[k];
-                let f = pc.to_fractional(w - w_prev);
-                // ⌊x + 1/2⌋ 而非 round()：与论文式 2 逐字一致（两者只在恰好 ±0.5 处不同）
-                let f_mic = f.map(|c| c - (c + 0.5).floor());
-                u += pc.to_cartesian(f_mic);
-                w_prev = w;
-            }
-            for (axis, v) in s.iter_mut().zip([u.x, u.y, u.z]) {
-                axis.push(v);
-            }
-        }
-        s
-    }).collect()
-}
-
 /// MSD summed over atoms, per axis: `out[axis][m]`, `m = 0 ..= max_lag`, each lag
 /// averaged over its `N − m` origins.
 ///
@@ -222,14 +189,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
 
     let cells = check::periodic_cells(traj, None)?;
     // periodic_cells rejects a mix, so either every frame has a cell or none does
-    let series: Series = match cells.iter().map(Option::as_ref).collect::<Option<Vec<_>>>() {
-        Some(boxes) => unwrap_tor(traj, &boxes, &atom_indices),
-        None => atom_indices.iter().map(|&i| {
-            let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.positions()[i]).collect();
-            [p.iter().map(|v| v.x).collect(), p.iter().map(|v| v.y).collect(),
-             p.iter().map(|v| v.z).collect()]
-        }).collect(),
-    };
+    let series = unwrapped_series(traj, &cells, &atom_indices);
 
     let [sx, sy, sz] = msd_sums(&series, max_lag);
     let inv = 1.0 / n_atoms as f64;

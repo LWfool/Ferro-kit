@@ -38,13 +38,11 @@ $\alpha_2 = 0$ for a Gaussian distribution; $\alpha_2 > 0$ indicates fat tails (
 
 ### Algorithm
 
-1. Convert Cartesian positions to fractional coordinates.
-2. Unwrap the fractional coordinates frame by frame: a jump of more than half a cell between neighbouring frames is taken as a boundary crossing and removed.  This is the **lattice view**, not the TOR scheme that `msd` uses — see [Periodic boundaries](#periodic-boundaries) below.
-3. Convert back to absolute Cartesian positions with each frame's own cell.
-4. For each time origin $p$ (every `--shift` frames, while $p + \tau$ is still inside the trajectory) and each selected atom $j$:
+1. Unwrap periodic trajectories with the TOR scheme, as `msd` does — see [Periodic boundaries](#periodic-boundaries) below.
+2. For each time origin $p$ (every `--shift` frames, while $p + \tau$ is still inside the trajectory) and each selected atom $j$:
    $$r = |\mathbf{r}_j(p + \tau) - \mathbf{r}_j(p)|$$
    Accumulate into histogram bin $\lfloor (r - r_\min) / \Delta r \rfloor$ if $r_\min \le r < r_\max$.
-5. Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms} \cdot \Delta r)$.
+3. Normalise: $P(r_i) = \text{count}(r_i) / (N_\text{origins} \cdot N_\text{atoms} \cdot \Delta r)$.
 
 $\Delta r$ is `--dr` when $[r_\min, r_\max]$ holds a whole number of bins, otherwise slightly
 narrower, $(r_\max - r_\min) / \lceil (r_\max - r_\min) / \texttt{dr} \rceil$, so the last bin ends
@@ -121,4 +119,4 @@ $G(r,\tau) = G_s + G_d$ is not available.  For $\tau = 0$ use `traj gr`.
 
 ## Periodic boundaries
 
-Periodic trajectories are unwrapped in the lattice view (step 2 above): fractional coordinates are unwrapped, then multiplied by the current cell.  **Under NVT this is identical to the TOR scheme of `msd`.**  Under NPT it is not: the barostat's rescaling moves an atom that has crossed $n$ boundaries by $n$ times the change in box length, which widens $G_s$ at long $\tau$.  The mechanism and a worked example are in the [MSD page](msd.md#why-tor-and-not-the-lattice-view).  Switching vanhove to TOR is planned.  For non-periodic systems, raw Cartesian distances are used directly.
+Periodic trajectories are unwrapped with the same TOR scheme as `msd` ([MSD page](msd.md#periodic-boundaries-tor-unwrapping)): each step adds the minimum-image displacement in the later frame's cell.  Under NVT this is identical to the lattice view (unwrapped fractional coordinates times the current cell); under NPT the lattice view moves an atom that has crossed $n$ boundaries by $n$ times the change in box length, which widens $G_s$ at long $\tau$ — see [why TOR](msd.md#why-tor-and-not-the-lattice-view).  For non-periodic systems, raw Cartesian distances are used directly.

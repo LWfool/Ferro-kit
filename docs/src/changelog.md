@@ -45,6 +45,8 @@ command line alike; regenerate it rather than migrating it.
 - `traj gr` / `sq`: the `dr` header line is the requested `--dr`; the width actually used, which
   differs between inputs when the minimum-image bound clamps $r_\max$, is a `dr` column of `[inputs]`.
 - `traj sq` ends the $q$ grid at `--q-max` whenever the range is a whole number of `--dq`.
+- `traj vanhove` unwraps periodic trajectories with TOR, as `msd` does. NVT output is unchanged; NPT
+  output changes (the lattice view turned box rescaling into displacement): regenerate it.
 - `traj msd` writes exactly 0 at lag 0; `traj rotcorr --legendre 1` names `c1` in its header.
 - The automatic first-shell cutoff (`net --A-B=auto`, `filter --al6`) smooths $g(r)$ over the
   documented 0.10 Å (it was 0.14 Å): a cutoff on a shallow minimum moves by a bin or two (test glasses:

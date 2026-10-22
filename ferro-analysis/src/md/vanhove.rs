@@ -5,21 +5,22 @@
 //! ∫P dr = 1 − (fraction of displacements outside [r_min, r_max)).
 //!
 //! Workflow: `calc_vanhove` → `VanHoveResult::to_tables`.
-//! Algorithm follows code1/vanhove.c (`EstimateVanHove`):
-//!   1. Fractional coordinate conversion + lattice-view unwrapping (`unwrap_frac`).
-//!   2. Convert back to absolute Cartesian coordinates.
-//!   3. For each time origin p, compute |r(p+τ) − r(p)| and accumulate into a histogram.
-//!   4. Normalise: p_r[i] = count[i] / (n_origins × n_atoms × dr).
+//! Algorithm follows code1/vanhove.c (`EstimateVanHove`), except for the unwrapping:
+//!   1. TOR unwrapping (`util::unwrapped_series`, as `msd`); code1 used the lattice
+//!      view (unwrapped fraction × current box), which turns NPT box breathing into
+//!      displacement.
+//!   2. For each time origin p, compute |r(p+τ) − r(p)| and accumulate into a histogram.
+//!   3. Normalise: p_r[i] = count[i] / (n_origins × n_atoms × dr).
 //!
 //! Parallelism: per time-origin par_iter; each origin computed independently then reduced.
 
 use crate::check;
 use super::correlate::resolve_max_lag;
-use super::util::{check_frame_spacing, select_atoms, unwrap_lattice};
+use super::util::{check_frame_spacing, select_atoms, unwrapped_series};
 use rayon::prelude::*;
 use std::collections::BTreeSet;
 use ferro_core::error::ChemError;
-use ferro_core::{PeriodicCell, Table, Trajectory};
+use ferro_core::{Table, Trajectory};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
 
@@ -98,46 +99,16 @@ pub struct VanHoveResult {
     pub elements: Vec<String>,
 }
 
-// ─── 内部辅助 ─────────────────────────────────────────────────────────────────
-
-/// Unwrap fractional coordinates in-place to remove periodic-boundary jumps.
-///
-/// Checks the fractional-coordinate difference between adjacent frames:
-/// |Δ| > 0.5 indicates a boundary crossing; corrected by subtracting round(Δ).
-///
-/// This is the lattice-view unwrap. `msd` moved to the TOR scheme, which is the
-/// correct one under NPT; switching this path is on `dev/plan.md`.
-fn unwrap_frac(frac: &mut [Vec<[f64; 3]>]) {
-    let n_steps = frac.len();
-    if n_steps < 2 { return; }
-    let n_atoms = frac[0].len();
-
-    // 转置为 atom-major：各原子时间序列互相独立，可并行处理
-    let mut by_atom: Vec<Vec<[f64; 3]>> = (0..n_atoms)
-        .map(|j| frac.iter().map(|step| step[j]).collect())
-        .collect();
-
-    by_atom.par_iter_mut().for_each(|coords| unwrap_lattice(coords));
-
-    // 转置回 step-major
-    for (i, step) in frac.iter_mut().enumerate() {
-        for j in 0..n_atoms {
-            step[j] = by_atom[j][i];
-        }
-    }
-}
-
 // ─── 计算 ────────────────────────────────────────────────────────────────────
 
 /// Compute the van Hove self-correlation function Gs(r, τ) with time-shift averaging.
 ///
-/// The algorithm matches code1/vanhove.c `EstimateVanHove`:
-/// 1. Convert atom Cartesian coordinates to fractional (periodic) or keep Cartesian (non-periodic).
-/// 2. Unwrap fractional coordinates across periodic boundaries.
-/// 3. Convert back to absolute Cartesian positions.
-/// 4. For each time origin p (spaced by `shift`), compute the scalar displacement
+/// The algorithm matches code1/vanhove.c `EstimateVanHove` except for step 1:
+/// 1. Unwrap periodic trajectories with TOR (`util::unwrapped_series`); keep
+///    Cartesian positions as they are for non-periodic ones.
+/// 2. For each time origin p (spaced by `shift`), compute the scalar displacement
 ///    `|r(p+τ) − r(p)|` for every selected atom and accumulate into a histogram.
-/// 5. Normalise: `p_r[i] = count[i] / (n_origins × n_atoms × dr)`; displacements outside
+/// 3. Normalise: `p_r[i] = count[i] / (n_origins × n_atoms × dr)`; displacements outside
 ///    `[r_min, r_max)` stay in the denominator and are reported as `outside_fraction`.
 ///
 /// Returns `Err`, each with its own message, if:
@@ -194,47 +165,17 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         return Err(ChemError::ValidationError(format!("no time origin fits tau = {tau} in {n_steps} frames")));
     }
 
-    // Absolute Cartesian positions, unwrapped when periodic. periodic_cells rejects a
-    // trajectory mixing frames with and without a cell, so either every frame has one or none
-    let cart: Vec<Vec<[f64; 3]>> = match cells.iter().map(Option::as_ref).collect::<Option<Vec<&PeriodicCell>>>() {
-        // Periodic: unwrap in fractional coordinates, then back to Cartesian
-        Some(pcs) => {
-        let mut frac: Vec<Vec<[f64; 3]>> = traj.frames.iter().zip(&pcs).map(|(frame, pc)| {
-            atom_indices.iter().map(|&i| {
-                let f = pc.to_fractional(frame.positions()[i]);
-                [f.x, f.y, f.z]
-            }).collect()
-        }).collect();
-        unwrap_frac(&mut frac);
-
-        // Back to Cartesian through each frame's own cell matrix (NPT works as is)
-        frac.iter().zip(traj.frames.iter())
-            .map(|(step_frac, frame)| {
-                let m = &frame.cell.as_ref().unwrap().matrix;
-                step_frac.iter().map(|&[fa, fb, fc]| [
-                    fa * m[(0,0)] + fb * m[(1,0)] + fc * m[(2,0)],
-                    fa * m[(0,1)] + fb * m[(1,1)] + fc * m[(2,1)],
-                    fa * m[(0,2)] + fb * m[(1,2)] + fc * m[(2,2)],
-                ]).collect()
-            }).collect()
-        }
-        // Not periodic: the Cartesian positions as they are, nothing to unwrap
-        None => traj.frames.iter().map(|frame| {
-            atom_indices.iter().map(|&i| {
-                let p = &frame.positions()[i];
-                [p.x, p.y, p.z]
-            }).collect()
-        }).collect(),
-    };
+    // Continuous Cartesian series (TOR-unwrapped when periodic), [atom][axis][frame]
+    let series = unwrapped_series(traj, &cells, &atom_indices);
 
     // 并行计算各 origin 的局部直方图，reduce 合并
     let hist: Vec<u64> = p_values.par_iter()
         .map(|&p| {
             let mut local = vec![0u64; n_bins];
-            for (c_end, c_orig) in cart[p + tau].iter().zip(cart[p].iter()) {
-                let dx = c_end[0] - c_orig[0];
-                let dy = c_end[1] - c_orig[1];
-                let dz = c_end[2] - c_orig[2];
+            for [x, y, z] in &series {
+                let dx = x[p + tau] - x[p];
+                let dy = y[p + tau] - y[p];
+                let dz = z[p + tau] - z[p];
                 let r = (dx*dx + dy*dy + dz*dz).sqrt();
                 if r >= params.r_min && r < params.r_max {
                     let bin = ((r - params.r_min) / params.dr) as usize;
@@ -546,6 +487,35 @@ mod tests {
         // Every sample is in the last bin: density × width = 1
         assert!((res.p_r[14] * w - 1.0).abs() < 1e-12, "{}", res.p_r[14] * w);
         assert!(res.meta_lines().join("\n").contains(&format!("dr      = {w} Ang")));
+    }
+
+    /// NPT: the box breathing must not show up as displacement. The atom crosses a face
+    /// (x: 9.5 → 10.5, wrapped to 0.5), then sits still in fractional coordinates while
+    /// the box goes 10 → 11 → 10. The lattice view (unwrapped fraction × current box)
+    /// reads 1.05 × 11 = 11.55 and moves the atom 1.05 Å per breath; TOR adds only the
+    /// minimum-image steps, 1.0, +0.05, −0.05. Same frames as msd's
+    /// `test_tor_does_not_follow_lattice_scaling`.
+    #[test]
+    fn test_tor_does_not_follow_lattice_scaling() {
+        let frames = [(10.0, 0.95), (10.0, 0.05), (11.0, 0.05), (10.0, 0.05)];
+        let mut traj = Trajectory::new();
+        for (len, fx) in frames {
+            let cell = Cell::from_lengths_angles(len, len, len, 90.0, 90.0, 90.0).unwrap();
+            let mut fr = Frame::with_cell(cell.clone(), [true; 3]);
+            // y = z = 0 so the breathing box does not move the atom along them
+            fr.add_atom(Atom::new("Na", cell.fractional_to_cartesian(Vector3::new(fx, 0.0, 0.0))));
+            traj.add_frame(fr);
+        }
+        let params = VanHoveParams { tau: Some(1), dt: 1.0, r_max: 2.0, dr: 0.01, ..Default::default() };
+        let res = calc_vanhove(&traj, &params).unwrap();
+        // Probability mass with bin centre in [lo, hi): the 0.05 Å steps sit on a bin edge
+        let mass = |lo: f64, hi: f64| -> f64 {
+            res.r.iter().zip(&res.p_r).filter(|(r, _)| (lo..hi).contains(*r)).map(|(_, p)| p * res.params.dr).sum()
+        };
+        // Three origins: 1.0 once, 0.05 twice; nothing at the lattice view's 1.05
+        assert!((mass(0.03, 0.07) - 2.0 / 3.0).abs() < 1e-9, "mass near 0.05 Å: {}", mass(0.03, 0.07));
+        assert!((mass(0.98, 1.02) - 1.0 / 3.0).abs() < 1e-9, "mass near 1.0 Å: {}", mass(0.98, 1.02));
+        assert_eq!(mass(1.03, 1.07), 0.0, "lattice-view displacement 1.05 Å must be empty");
     }
 
     /// `--tau` past the last frame used to be clamped silently; the other time

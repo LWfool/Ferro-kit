@@ -2,7 +2,8 @@
 //! (`cube_from_grid`) but is kept on its own for its tests.
 
 use ferro_core::error::{ChemError, Result};
-use ferro_core::{Cell, CubeData, Frame, Trajectory};
+use ferro_core::{Cell, CubeData, Frame, PeriodicCell, Trajectory};
+use rayon::prelude::*;
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 
@@ -152,11 +153,54 @@ pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
     out
 }
 
+/// Unwrapped Cartesian series, `[atom][axis][frame]`.
+pub(crate) type Series = Vec<[Vec<f64>; 3]>;
+
+/// Continuous Cartesian series of `atom_indices`, shared by `msd` and `vanhove`.
+/// `cells` is [`crate::check::periodic_cells`]' result, which rejects a mix, so either
+/// every frame has a cell or none does; without cells the positions are used as they are.
+///
+/// Periodic: TOR unwrapping (Bullerjahn et al. 2023, eq 2), in 3-D:
+/// `u[i+1] = u[i] + mic_{i+1}(w[i+1] − w[i])`, `u[0] = w[0]`, where `mic_{i+1}`
+/// is the minimum image in frame `i+1`'s cell, taken in fractional coordinates as
+/// `f − ⌊f + 1/2⌋`. A step is far below half a cell, so this is exact for any
+/// cell shape, and NPT box fluctuations do not turn into displacement.
+pub(crate) fn unwrapped_series(traj: &Trajectory, cells: &[Option<PeriodicCell>], atom_indices: &[usize]) -> Series {
+    let Some(boxes) = cells.iter().map(Option::as_ref).collect::<Option<Vec<&PeriodicCell>>>() else {
+        return atom_indices.iter().map(|&i| {
+            let p: Vec<Vector3<f64>> = traj.frames.iter().map(|f| f.positions()[i]).collect();
+            [p.iter().map(|v| v.x).collect(), p.iter().map(|v| v.y).collect(),
+             p.iter().map(|v| v.z).collect()]
+        }).collect();
+    };
+    atom_indices.par_iter().map(|&i| {
+        let n = traj.n_frames();
+        let mut s = [Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n)];
+        let mut w_prev = traj.frames[0].positions()[i];
+        let mut u = w_prev;
+        for (k, frame) in traj.frames.iter().enumerate() {
+            if k > 0 {
+                let w = frame.positions()[i];
+                let pc = boxes[k];
+                let f = pc.to_fractional(w - w_prev);
+                // ⌊x + 1/2⌋ 而非 round()：与论文式 2 逐字一致（两者只在恰好 ±0.5 处不同）
+                let f_mic = f.map(|c| c - (c + 0.5).floor());
+                u += pc.to_cartesian(f_mic);
+                w_prev = w;
+            }
+            for (axis, v) in s.iter_mut().zip([u.x, u.y, u.z]) {
+                axis.push(v);
+            }
+        }
+        s
+    }).collect()
+}
+
 /// Lattice-view unwrap of one atom's fractional series, in place: each step is moved
 /// by the whole lattice vector that brings it nearest the previous one (`|Δ| > 0.5` is a
-/// boundary crossing). Shared by `vanhove` and `cube_jump`; `msd` uses the TOR scheme
-/// instead, which is the correct one under NPT — moving these two to it is on
-/// `dev/plan.md`.
+/// boundary crossing). Used by `cube_jump`; `msd` and `vanhove` use the TOR scheme
+/// ([`unwrapped_series`]), which is the correct one under NPT — `map jump` is suspended
+/// (`dev/plan/suspended.md`) and moves with its rewrite.
 ///
 /// [`unwrapped_frac_sum`] applies the same rule frame by frame while summing, so it never
 /// holds a whole series; it keeps its own loop for that reason.
