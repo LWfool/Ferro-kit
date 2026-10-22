@@ -14,37 +14,9 @@
 | ferro-render | 31 |
 | ferro-cli（lib 107 + bin 5 + 集成 16） | 128 |
 
-版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。0.4.0 这批的破坏性改动见 `overview.md`。
-0.3.5 从未单独发版（只有锚点 `v0.3.5-alpha`），它的内容（2026-10-03 四路审查严重 / 中两级的修复）
-与 2026-10-11 全库审查的 15 条修复一起随 `v0.3.6` 发出，两批都含破坏性改动，清单见 `overview.md`。
+版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。
 `rust-version = 1.89` 自 0.3.6 起声明（依赖树最高要求，nalgebra 0.35）。
-`v0.2.1 → v0.3.0` 的三批破坏性改动清单见 `overview.md`。
-
-`v0.3.1` 相对 `v0.3.0` **全部是新增**（`ferro dataset` 三步、CP2K out reader、
-DeePMD npy 读写、`ml` 模块、`array_order`），没有破坏性变更 —— 唯一动到既有
-行为的是 `HARTREE_TO_EV` 由旧值改为 CODATA 2018，而它此前全项目无使用点。
-
-`v0.3.2`（未发版）含破坏性改动（`collect` 的产物布局），但按用户要求走 patch 位；
-清单见 `overview.md`。
-
-**2026-09-12 的简化重构**（锚点 tag `v0.3.2-alpha1` = 重构前）：按 `CLAUDE.md`
-的 R1–R6 重做了一次全库审计，落地九个提交。判据换成 Rule of Three 之后，上一轮
-列的重复条目**大半判为有意保留**（两处不到门槛），真正合并的只有三条 ×3 以上的：
-`ferro-io` 的测试临时文件辅助 ×13 → `testutil`、四份 `floats` → `readers/util`、
-三份 `build_avg_frame` → `md/util`。另有 `cmd/traj.rs` 七个 `run_*` 的共享前半段
-收进 `drive()`、`network` 的 `to_tables` 266 行拆成六个建表方法。
-
-这一轮**唯一改变输出的**是 `build_avg_frame` 的 PBC 解缠修复（见下）；
-其余八个提交的 93 个产物逐字节零差异。零调用清单整体搁置，见 `plan/zero-call.md`。
-
-## 锚点 tag
-
-**`v0.1.15`** = 批处理/长表重构前的最后状态（单文件输入、`.dat` 宽表、writer 在
-ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构全变。
-
-**`v0.3.2-alpha1`**（指向 `c7627ff`）= 2026-09-12 简化重构前的最后状态。命名带
-`-alpha1` 而不是直接用 `v0.3.2`：0.3.2 **尚未发版**，占掉那个名字会让将来的发版点
-无名可用（`v0.1.15` 当年能直接用版本号，是因为它已经发过了）。
+各版本批次、破坏性改动、锚点 tag 见 `overview.md`。
 
 ## tests/ 的 fixture
 
@@ -152,8 +124,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   - **速度**（2026-10-14，审查 A-2）：读侧 `velocities` / `vel`（GPUMD）/ `velo`（QUIP）按 Å/fs 直收，
     ASE 的 `momenta` 除以质量（`masses` 列优先）再乘 `ASE_FS`；写侧写 `masses` + `momenta`
     两列（ASE 与 GPUMD 都不认 `velocities`），ASE 3.29 `get_velocities()` 读回差 ~1e-11
-  - 符号的依据是**外部实物**：fixture 由 ASE 3.29.0 生成，期望值由 dpdata 1.0.2
-    的换算式独立算出（`~/.miniforge3/envs/deepmd`）。自读自写的回路验证不了符号
+  - 符号、行列序、Voigt 拒收的依据见 `issues.md`「extxyz 的 stress/virial 编码陷阱」
   - **写侧可选 `virial=`**（`write_extxyz_with` + `StressKey`，2026-08-26）：eV，
     正 = 压缩，乘体积不变号；无 cell 报错。GPUMD 两个键都认但都给时取 virial，
     故 NEP 导出走它。恒只写一个键
@@ -165,10 +136,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   是下一个锚点，缺块的帧宁可丢也不借下一帧的数据。单位从文本自读
   （`[hartree]` / `[bar]`），认不出报错。丢帧三类（SCF 未收敛 / 块截断 / 组成不符）
   计数由 `Cp2kOutStats` 带出。
-  **文本锚点按 token 序列匹配**（`mod tag` 一张多候选表），对列宽、对齐、缩进
-  与制表符免疫；数值行不写死下标（应力靠「解得出三个浮点」筛，cell 从尾部取）。
-  四种排版变形 + 多一行表头 + cell 多一列，均有测试钉住结果逐位相同。
-  2026-09-22 补两处老版本的块：`energy (a.u.):` 的圆括号写法（此前整份 bail 在
+  文本锚点按 token 序列匹配（`mod tag` 一张多候选表），数值行不写死下标，依据见
+  `issues.md`「CP2K out 解析 / DeePMD 数据集编码陷阱」。2026-09-22 补两处老版本的块：`energy (a.u.):` 的圆括号写法（此前整份 bail 在
   `unknown energy unit []`）、无 `STRESS|` 前缀的 ` STRESS TENSOR [GPa]`（此前帧
   照读、stress 恒 None、数据集少一个 virial.npy，全程无错误）
   **virial 与 cp2kdata 对拍**（2026-10-17，CP2K 2025.2 NVT，`examples/cp2k/md/` 的 `total.out` 2000 帧
@@ -200,9 +169,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   专用类型，否则 analysis 要依赖 io）。**dpdata 的 float32 与 ferro 的 float64
   都收**；`virial → stress` 除以 `|det(box)|`（system 里没有 volume.npy）；
   额外键（`atom_ener` 等）**告警而非静默丢**
-- **`vasp_outcar.rs` / `vasprun.rs`**（2026-08-27）：VASP AIMD 两条路。口径三方
-  实证一致（dpdata 1.0.2、用户的 `private/dp_makedataliu.py`、ASE 的 OUTCAR 解析）：
-  能量取 `free energy TOTEN`（不是 `sigma->0`）；`in kB` 六个数按 VASP 自己的
+- **`vasp_outcar.rs` / `vasprun.rs`**（2026-08-27）：VASP AIMD 两条路（各条口径的
+  依据见 `issues.md`「VASP AIMD 读取编码陷阱」）：能量取 `free energy TOTEN`（不是 `sigma->0`）；`in kB` 六个数按 VASP 自己的
   **`XX YY ZZ XY YZ ZX`**（与 extxyz 规格的 `XX YY ZZ YZ XZ XY` 不同），转 eV/Å³
   **不变号**；体积走 `|det|` 而非三个对角线相乘（后者只对正交胞成立）。
   **晶胞逐帧各读各的**，缺块的帧丢弃而不继承 —— 定胞下这个 bug 逐位不可见。
@@ -379,55 +347,26 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   零匹配报错）、`unique_labels`（同名输入改 `_2`，撞名按小写比 —— macOS / Windows 文件系统
   不分大小写，2026-10-14 审查 E-12）、`map_inputs<T>`（串行遍历，轨迹逐条释放；帧内并行不变）、`stack<T>`、
   `write_all`、`Output { dir, label, suffix }`、`Summary`（存**预格式化文本**）
-- **`cmd/dataset/`**（2026-10-19 由 `dataset.rs` 拆为 `mod` / `collect` / `filter` / `merge` / `inspect`）：`ferro dataset collect` —— AIMD out → DeePMD system
-  目录。**一目录一 system**（2026-08-26 改）：同目录的 `.out` 是同一次运行被
-  重启切开的段，合并回去；命名保留目录层级（剥掉公共祖先，其余原样嵌套，
-  文件 stem 不进名字），只有一组时写到 `-o/<目录名>.db`（2026-10-19 前是 `-o` 本身加 `.db`，旁边留一个空的 `-o`）。
-  **分组前剔除 PJM 作业日志**（2026-10-05，`drop_pjm_logs` / `is_pjm_log`）：
-  `x<数字>-<jobname>.<全数字 jobid>.out`，不读、不计失败，打一行 NOTE；全被剔除
-  时读文件前报错；规则写死、无关闭开关（用户裁定）。此前它们逐个计入失败、退出码 1。
-  `-o` 可选（缺省写在各输入目录旁，`<dir>.db`），`--overwrite` 拦覆盖。文件按首个 step 排序，重复帧不去重但区间打出来。
-  同目录成分不符报错（不当坏帧丢），单文件解析失败跳过且最后再报一遍。
-  **每个文件读完当场按 (Z, 符号) 重排**（2026-09-22；现走 `Trajectory::canonically_sorted`）：CP2K 按输入列原子的顺序写
-  坐标表，同一体系的两次单点常常顺序不同，此前被当成两个体系拒绝。排完再比
-  成分，于是剩下的差异必然是计数差异，报错点名到元素。
-  **`--format`**（2026-09-22）：`cp2k/md`/`cp2k/sp`/`vasp/outcar`/`vasp/xml`/`qe/pw`（2026-10-17），
-  压过嗅探。嗅探仍跑，降为两件事的依据 —— 不一致时的一行 `NOTE:`，以及
-  「同目录 OUTCAR + vasprun.xml」那条守卫的比较对象（`--format` 一给，
-  `stats.format` 就恒等于它，守卫会失效）。
-  **产物默认带 `.train`**（2026-09-20 起，`filter` 与 `merge`；`collect` 不加），
-  `--ratio` 划分出的三部分是 `.train`/`.valid`/`.test`；已带后缀不叠加，`merge`
-  遇到混合后缀报错，`.train` 输入可再划分而 `.valid`/`.test` 拒绝。
-  `ferro dataset filter` —— 按力（eV/Å）/ 应力（CLI 收 GPa）阈值筛帧（`-f` / `--s-max` 是 `Option`，应力阈值没有短名 —— `-s` 是批次标记，审查 E2-2；
-  默认 20 / 10 经 `FilterCmd::f_max()/s_max()` 取；用户没给时缺该标签的 system 只关掉这一条并打
-  Note，显式给了才报错 —— 2026-10-14，审查 D-4），
-  `-i` 收 system 目录或其上层（递归找 `type.raw`），`-o` 按相对路径重建，
-  **不给 `-o` 即只读**。七张表（三张统计 + 四张诊断）经 `write_all` 出 csv，
-  平铺在 `-o` 根下；诊断恒算（实测挂钟无差别），只读模式全打屏、一字不落盘，
-  给了 `-o` 则只打三张统计表。`--shuffle` 在**全部判据与
-  抽帧之后**打乱写出顺序（seed 默认 666）—— 抽帧要看时间序，而打乱不可逆。
-  `ferro dataset merge` —— 按成分分组合并，两种模式（`shuffle` 全局打乱后按
-  `--set-size` 切 / `by-source` 每个 system 内部按 `--seed` 打乱后各自切 set（2026-10-19 起，此前不打乱），set 边界落在 system 边界上，
-  并写 `sets_source.txt`）
-  - **`--type deepmd|nep|extxyz` 与 train/valid/test 划分**（2026-08-26，
-    filter 与 merge 共用 `OutType` / `Split` / `write_split`）：nep 与 extxyz
-    一个 system（merge 是一个成分组）一个 `.xyz`，差别只在应力键；`--set-size`
-    不到达它们。`--ratio` 收 `8:1:1`（权重非分数），两段即 train:test；
-    不给就不划分。产物用 dpgen 的目录名
-    后缀 `.train/.valid/.test`（`SPLIT_SUFFIXES` 早已存在，merge 一直在继承它）。
-    成员取自打乱序、各部分内部排回帧序 —— 同 seed 逐字节可复现；比例向上取到
-    至少 1 帧。四处在读第一个文件前失败：by-source + 划分、by-source + 非
-    deepmd、`--dir-suffix` + 划分、输入已带划分后缀
-- **`cmd/dataset/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断
-  产物（`.lammpstrj` 全帧 / `.data` **末帧** / `_info.csv` 逐帧标量表），落在
-  `<AIMD 目录>/ferro_inspect/`，**不写任何 npy**，`-o` 在这条路上报错。
-  `_info.csv` 是一张 `Table`：摘要进 `#` 头，表体列
-  `frame step temperature energy volume density source`。`step` 与 `source`
-  两列是重启接缝的可见性来源 —— collect 有意不对重叠帧去重
+- **`cmd/dataset/`**（2026-10-19 由 `dataset.rs` 拆为 `mod` / `collect` / `filter` / `merge` / `inspect`）：
+  三步的行为、参数与产物布局见手册 `docs/src/dataset/`，这里只记实现位置与用户裁定
+  - collect：一目录一 system（2026-08-26）；PJM 作业日志在分组前剔除（`drop_pjm_logs` / `is_pjm_log`，
+    2026-10-05，规则写死、无关闭开关，用户裁定）；每个文件读完当场按 (Z, 符号) 重排
+    （`Trajectory::canonically_sorted`，2026-09-22）。`--format` 压过嗅探，但嗅探仍跑：
+    不一致时打 `NOTE:`，并作「同目录 OUTCAR + vasprun.xml」守卫的比较对象（`--format` 一给，
+    `stats.format` 就恒等于它，守卫会失效）
+  - filter：`-f` / `--s-max` 是 `Option`，默认 20 / 10 经 `FilterCmd::f_max()/s_max()` 取 ——
+    用户没给时缺该标签的 system 只关这一条，显式给了才报错（2026-10-14，审查 D-4）；应力阈值没有
+    短名（`-s` 是批次标记，审查 E2-2）；诊断恒算（实测挂钟无差别）；`--shuffle` 在全部判据与
+    抽帧之后（抽帧要看时间序，打乱不可逆）
+  - merge：`shuffle` / `by-source` 两种模式，by-source 自 2026-10-19 起在 system 内部打乱
+  - `--type deepmd|nep|extxyz` 与 `--ratio` 划分（2026-08-26）：filter 与 merge 共用
+    `OutType` / `Split` / `write_split`；划分后缀用 dpgen 的目录名（`SPLIT_SUFFIXES`），
+    `filter` / `merge` 产物默认带 `.train`（2026-09-20 起）
+- **`cmd/dataset/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断产物，
+  布局与 `_info.csv` 的列见手册 `dataset/collect.md`
 - **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 除 `python/` 外的全部页经 `include_str!`
   编译进二进制（`python/` 只由 `ferro-py doc` 收录）。topic 跟子命令树同名（`ferro doc dataset filter`），
-  裸命令列出全部；原样输出 markdown（零依赖），stdout 是 tty 时经 `$PAGER`
-  （默认 `less -R`），否则直接打印，pager 起不来就回落。
+  裸命令列出全部；pager 与 `NO_COLOR` 的行为见手册 `cli-reference.md` 的 doc 一节。
   **支持按小节寻址**（`Page.section`）：`convert` / `info` / `bader` 没有手册
   专页，是 `cli-reference.md` 的小节，取该 `##` 到下一个同级标题，不是整本
 - **`ferro-render` crate**（2026-09-24；2026-10-06 从 `ferro-cli/src/doc/render.rs` 拆出，
@@ -438,17 +377,13 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   tokenizer；表格带完整边框、单元格按词折行；行内 `$...$` 按四条语法规则转
   Unicode；块级 `$$` 用同一转换合成一行、缩进 4 格、超宽在空格处折行，
   `\begin{}` 环境（矩阵、cases）保留原文。宽度取 ioctl → `COLUMNS` → 80，正文上限 100 列。
-  **Windows 与 `NO_COLOR`**：前者纯 ASCII（无转义码、`+--+` 边框、公式留 TeX），
-  后者只关颜色。`rendering_loses_no_content` 对每页两种样式校验不丢字
+  Windows 下纯 ASCII 样式；`rendering_loses_no_content` 对每页两种样式校验不丢字
 - **帮助页与 clap 的防漂测试**（`main.rs` 的 `mod help_sync`）：正向断言每个
   长选项都在其富文本页出现（写短名也算），反向断言页里的每个 `--xxx` 在某个
   命令上真实存在（允许交叉引用，跳过「there is no --x」这类否定陈述）。
   页文本从 `include_str!("help.rs")` 按函数名切出来 —— 25 个 `print_*` 改成
-  返回字符串比这个检查本身还大。**上线当场抓到 19 处真漏**：`--metal-units`
-  12 页没写、`--tau`/`--ncore` 在 rotcorr/vacf/vanhove 共 5 处没写；
-  `gr` 的 `--atom-c`/`--label-z` 是有意不写（SelectArgs 与 angle 共享），
-  进 `UNDOCUMENTED` 白名单并写明理由
-  。另一条（2026-10-09）：带 `default_value(_t)` 的参数 doc 注释里不许再手写
+  返回字符串比这个检查本身还大。有意不写的参数进 `UNDOCUMENTED` 白名单并写明理由
+  （如 `gr` 的 `--atom-c`/`--label-z`：SelectArgs 与 angle 共享）。另一条（2026-10-09）：带 `default_value(_t)` 的参数 doc 注释里不许再手写
   `[default: …]` —— clap 自己会渲染，曾在 dataset 的六个参数上显示两遍
 - **帮助页全部按同一模板**（2026-09-22 重定为五段）：一句话用途 +
   `Parameters:`（完整）+ `Output:`（≤4 行）+ `Examples:` +
@@ -460,15 +395,13 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `Option`，为空即 `wants_help()` → 富文本页；`-h` 仍归 clap 的参数表。两套并存
   是有意的 —— 短表是参数速查，富文本是格式清单与告警说明。（曾经唯一自己接管 `-h` 的
   `job` 已于 2026-10-17 删除，计算输入改由 `ferro-py job` 生成）
-- **`convert` 支持选帧**（2026-08-22）：`--start` / `--end` / `--stride` /
-  `--number`。产物个数**由目标格式决定不设开关** —— 装得下轨迹的写一个文件，
-  只装单结构的（CIF / POSCAR / data）一帧一个，序号用**原轨迹帧索引**插在扩展名
-  之前（`POSCAR_0000` 仍匹配前缀，可读回）。`-o` 语义未动，仍是完整路径
+- **`convert` 支持选帧**（2026-08-22）；产物个数由目标格式决定、不设开关（用法见手册 §convert）
 - **格式清单的唯一出处是 `ferro-io/src/format.rs` 的 `Format` 表**（`can_write` / `multi_frame`）；
   `io_dispatch::supported_formats()` 由 `Format::ALL` 生成读 / 写 / 写出帧数三列，不再手写。
   输入（QE、CP2K `.inp`/`.restart`）与程序输出只读；CIF / POSCAR / LAMMPS data 一帧一个文件
 - `net` 的 `--P-O=2.3` 由 `main` 在 clap 解析前从 argv 剥离，**只在 `argv[1] == "net"` 时**
-  （2026-10-08；此前对所有子命令剥离，`traj gr --P-O=2.3` 被静默吞掉）；截断拒收 nan / inf / ≤0
+  （2026-10-08；此前对所有子命令剥离，`traj gr --P-O=2.3` 被静默吞掉）；截断须有限且 ≥ 0
+  （0 = 这一对不成键），由 `TypeParams::validate` 检查（2026-10-22，C-2）
 - **`-s` 只收字母、数字、`_`、`+`、`-`**（`batch::check_suffix`，2026-10-08），traj / map / net /
   chg-sdf / bader 入口查；`dataset merge --suffix` 是目录后缀，另一套语义
 - **写侧格式判定是 `ferro_io::Format::for_output`**（2026-10-08 起在读输入前判定；原
@@ -562,17 +495,14 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 - **`ferro bader` 的三个 `.dat` 默认写在输入文件旁边**（2026-09-20 起），名字是
   `bader_ACF_<输入stem>[_<-s 后缀>].dat`（BCF / AVF 同形，`batch::product_name` 的规则），`-o` 可改目录。这是全仓唯一不默认当前目录的
   命令：VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然互相覆盖
-- **`ferro info` 的密度只报首尾两帧**，不是全轨迹统计。NPT 下要 mean ± σ 请读
-  `ferro traj` 产物文件头的 `# volume = <mean> +/- <std>`。元素表里查不到质量的符号
+- `ferro info` 的密度只报首尾两帧（手册 §info 已写明）。元素表里查不到质量的符号
   **报错并点名**（2026-10-20，A-3，用户定 4；此前回退 1 amu 把密度拉低）：`ferro info` 不打
   Density 行、其余照出、退出码 1
 - `ferro-python` 仍只暴露 gr/msd，未包 net
 - **CP2K / VASP OUTCAR / vasprun.xml / QE pw.x 的输出**已进 `Format` 表（`Format::Aimd(..)`，
   按横幅嗅探，2026-10-17），`convert` / `info` / `traj` 与 `dataset collect` 都能读
-- **`--type inspect` 的产物会落进 `-i` 的 glob 射程**：产物默认写在 AIMD 目录内
-  （`ferro_inspect/`）或同级（`.db`），所以 `-i 'data/**/*'` 重跑时会把上一轮的
-  产物当输入收进来。它们认不出横幅，**失败得很响**（跳过 + 退出码 1），不会静默
-  污染数据，但 `-i` 写成 `*.out` / `OUTCAR` 这类具体模式更省事
+- **`--type inspect` 的产物会落进 `-i` 的 glob 射程**：重跑时被当输入收进来，认不出横幅而
+  跳过 + 退出码 1，不会静默污染数据（用户须知已写进手册 `dataset/collect.md`）
 - **vasprun.xml 的温度是反算量**：该格式不打印瞬时温度（只有输入参数 `TEBEG`），
   由 `<i name="kinetic">` 按 `T = 2·E_kin/(3N·k_B)` 得来，`_info.csv` 的 `#` 头
   会注明。同一次运行读 OUTCAR 与读 vasprun 得到的温度因此**来源不同** —— 与两者

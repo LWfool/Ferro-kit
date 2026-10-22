@@ -410,6 +410,12 @@ values in the table render as **empty fields**, never `0`.
 there is no dataset on this path. Silently ignoring it would send you looking for
 a dataset in a directory that never received one.
 
+The products land inside the AIMD directory (`ferro_inspect/`) or next to it
+(`.db`), so a broad glob such as `-i 'data/**/*'` picks the previous run's
+products up as inputs on a re-run. They carry no recognisable banner and fail
+loudly — skipped, exit code 1 — rather than polluting anything, but a specific
+pattern (`*.out`, `OUTCAR`) avoids the noise.
+
 ## One system per directory
 
 The `.out` files sitting in one directory are the restart segments of one run,
