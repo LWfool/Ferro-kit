@@ -27,7 +27,7 @@ D 组（手册压缩，7947 → 6803 行）已完成。接下来另交计划：C
 | | 中 | 带速度的测试 fixture；VASP ML_FF 的 OUTCAR |
 | | 低 | `convert` 写 CIF 的空间群；MACE / NequIP 格式；`read_cube` 合并；CP2K EXTXYZ / XMOL（kind 名、Hartree 能量）；dataset 审查余项 |
 | `plan/analysis.md` | 中 | bondlife 后续；配位态动力学；VDOS；D 的统计误差；bondlife 手册口径 |
-| | 低 | filter 多层周期镜像；机器学习集成；S(q) Lorch 窗；分析侧逐帧消费；库层参数无 `validate`（C-2） |
+| | 低 | filter 多层周期镜像；机器学习集成；S(q) Lorch 窗；分析侧逐帧消费 |
 | `plan/cli-python.md` | 中 | ferro-structure 补充结构操作 |
 | | 低 | **结构操作的 CLI 入口（supercell / vacuum / box_builder）**；code1 / code2 引用扫描；REPL；rustfmt；ferro-py job 的遗留与存疑 |
 | `plan/suspended.md` | 挂起 | Bader 改写组、cube_sdf / chg_sdf 改写组、`map jump` 入口组（随功能改写一并处理，平时不修） |

@@ -219,6 +219,7 @@ At least one pair parameter of the form `--<Former>-<Ligand>=<cutoff>` (element 
 ```
 
 `auto` and numbers can be mixed (`--P-O=auto --Zn-O=2.6`); see [Automatic cutoffs](#automatic-cutoffs-auto).
+A cutoff of 0 means the pair never bonds; a negative or non-finite one is an error.
 
 ### Optional
 

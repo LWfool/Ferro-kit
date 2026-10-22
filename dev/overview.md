@@ -272,6 +272,10 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
   `VanHoveResult::meta_lines` 不再含逐输入的量（angle 的类型清单与 `[statistics]`，vanhove 的 τ、time、
   atoms、origins、elements）。`md/util.rs::unwrapped_series` 为 crate 内共用（`76e4a71`），不是公开项。
 
+- 2026-10-22（`5686678`、`1201faf`）：新增 `FilterParams::validate` 与 `TypeParams::validate`；`filter_frames`
+  与 `classify_frame(_detailed)`（经它的 `calc_network`）入口先调。此前库调用方的 NaN / 负阈值静默关判据、
+  NaN 截断零成键，现返回 `ValidationError`；0 仍合法。`write_deepmd_npy_bounds` 拒收不首尾相接的边界（`2d02d2c`）。
+
 ## `v0.4.0`（2026-10-17 打 tag，发版）
 
 输入生成迁到 ferro-python 收尾（`decisions.md`「`ferro.jobs`」）与 dataset 审查的修复。删了一个

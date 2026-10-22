@@ -94,9 +94,3 @@ Al6 走 `ferro-core` 的 `classify_frame`，要做多层得动 net 共用的近�
 - **S(q) 的 Lorch 窗**（10-19 用户定 1：归新功能，低；做的时候再查文献）
 - **分析侧逐帧消费**（10-17 第 4 步用户定「这次不做」，记作后续项）：gr / sq / map / net 边读边算、内存与帧数无关
 - **bondlife 手册口径**（10-03 物理 / 口径，未改）：$S_C$ 是「比值的和」（Luzar–Chandler / gmx 同构），MDA `autocorrelation` 是「比值的平均」，lag 1 差 3e-4。手册 `bondlife.md` 应改说「与 MDA 只差平均顺序」
-
-### 库层参数无 `validate`（10-20 扫描 C-2，登记不修）
-
-**登记不修**：**C-2** `ml/filter.rs` 的 `FilterParams` 与 `network/classify.rs` 的 `TypeParams` 没有 `validate`，范围检查只在
-CLI（`cmd/dataset/filter.rs:92-117`、`cmd/net.rs:430`）。库调用方传 NaN 时：`f_max` / `s_max` / `oo_min` 的判据静默关闭，
-`al6_rcut = NaN` 删光全部帧，`TypeParams` 截断为 NaN 则零成键。**有 Python 入口时补，走 `check.rs`**。

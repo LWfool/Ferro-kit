@@ -71,6 +71,10 @@ command line alike; regenerate it rather than migrating it.
   the help page and exited 0. The bare command still prints the page.
 - `--last-n 0` is refused before anything is read.
 - `bader -m` with an unknown method is a usage error, exit 2 (it was exit 1).
+- `ferro net --P-O=0` and `dataset filter --oo-min 0` are accepted (both were errors): a zero
+  cutoff means the pair never bonds, a zero `--oo-min` switches the criterion off as `-f 0` does.
+  Out-of-range values are still refused before anything is read, worded as
+  `P-O cutoff must be a finite number >= 0, got -2.3`; `--s-max` reports its value in eV/Å³.
 
 ### Messages: one layout, on stderr
 

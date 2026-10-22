@@ -427,7 +427,7 @@ convert 的四条 CIF 并成一条）。原文照搬，以便查当时的理由�
    `traj.pdb:57: FerroWarning: last MODEL (frame 2) has no ENDMDL; kept`、
    `sets/a.db: FerroNote: no virial.npy; stress criterion switched off`
 4. A-3：查不到质量的元素名**报错**并点名，由用户改输入（不回退 1 amu、不按前缀猜）
-5. C-2：**只登记**，有 Python 入口时再补（见下）
+5. C-2：**只登记**，有 Python 入口时再补（见下）。2026-10-22 用户改定提前修（`5686678`、`1201faf`、`d8bcbc6`，见「已完成项的判据」）
 6. 全部等级逐条修；每批开工前逐条计划交用户审，每条单独提交并带回归测试
 
 ## 2026-10-17 全盘架构审查
@@ -767,6 +767,23 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 收敛顺利不等于找到了基态。定第 4 条时可拿这个体系对照铁磁与反铁磁（`&BS` 初猜）的能量。
 
 ## 已完成项的判据（0.3.0 以后；0.3.0 以前的归档已删，见 git 历史）
+
+### C-2：`FilterParams` / `TypeParams` 加 `validate`，范围检查只留库里一份（2026-10-22，`5686678`、`1201faf`、`d8bcbc6`）
+
+**用户定：CLI 直接调库的 `validate`，不在 CLI 留第二份**（方案 b；「两边各留一份、CLI 负责早报错」的 a 被否，
+理由是回避问题）。读第一个文件前失败这一条照旧：两处 CLI 都在建好参数、读输入前调 `validate`。
+
+- **口径**：阈值与截断都是「有限且 ≥ 0，0 = 关 / 不成键」，`al6_rcut` 是 `Some` 时 > 0。stride / number 的
+  ≥ 1、互斥与 start ≤ end 也搬进 `FilterParams::validate`（库里它们同样会静默选空）。`convert` 的帧选择检查
+  是另一份（字段不同），两处互指注释已改指 `FilterParams::validate`
+- **用户可见变化（用户定）**：`--P-O=0`、`--oo-min 0` 由报错改为接受；报错文案改用库的参数名（`P-O cutoff`、
+  `oo-min`），`--s-max` 显示换算后的 eV/Å³
+- **net 的 auto 占位保留 NaN**（用户定的替代方案，原计划是 auto 对另存清单、不进表）：读输入前有四处只看
+  截断表的键（至少一个形成子、`print_label_scheme`、`--modifier` / `--qn` 的角色检查），去掉占位就得四处改成
+  「键 ∪ auto 清单」。分类器拒收 NaN 之后，占位漏过 `resolve_auto` 会报错而非静默零成键，原计划要防的风险
+  已不存在。早期检查对「去掉 auto 键的副本」调 `validate`
+- **实测**：负截断比登记时多一种表现 —— 比较用 `cutoff²`，表里另有正截断撑起近邻表时按绝对值成键，只有它
+  一个时零成键。基线对拍（net 四组、filter 三组）成功运行的产物逐字节不变
 
 ### `write_deepmd_npy_bounds`：set 边界须首尾相接铺满 `[0, nf)`（2026-10-22，`2d02d2c`）
 

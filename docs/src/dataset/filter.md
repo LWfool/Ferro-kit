@@ -34,7 +34,7 @@ how you choose the thresholds before committing to them.
 | `--mkdir` | | create `-o` without asking (required when there is no terminal) |
 | `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
 | `--s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |
-| `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this |
+| `--oo-min [<DMIN>]` | off / 2.0 when bare | drop the frame when its smallest O–O distance falls below this; 0 disables |
 | `--al6 [<RCUT>]` | off / automatic when bare | keep only frames containing a 6-coordinate Al; given bare, the cutoff is the outer edge of the first Al–O RDF shell |
 | `--start <N>` | 0 | start of the range (the index among the **surviving frames**, 0-based and inclusive) |
 | `--end <N>` | last frame | end of the range (0-based, **inclusive**) |
