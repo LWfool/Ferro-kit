@@ -70,24 +70,44 @@ VASP 的机器学习力场跑出来的输出用 `free  energy ML TOTEN`
 再补；`vasp_outcar.rs` 的锚点已经是多候选表的形状，加 token 不必重构。
 （原节的另一半「`io_dispatch` 注册」已由 10-17 第 3 步的 `Format` 表解决。）
 
-### CP2K 的 EXTXYZ 把 atom kind 写进 species 列（2026-08-26 提出）
-
-CP2K 新版的 `MOTION/PRINT/TRAJECTORY` 多了 `FORMAT EXTXYZ`，而它的
-`PRINT_ATOM_KIND` 会**把 subsys 里的 atom kind 写进 species 列**（文档原文：只对
-XMOL 与 EXTXYZ 有效）。Ferro 的 extxyz reader 假设 species 是纯元素、位点标签走
-独立的 `label:S:1` 列，撞上这种文件会把 kind 当元素收下。
-
-与 LAMMPS dump「没地方放第二个名字只能折进 element 列」是同一族问题，但**不能照抄
-那边的解法**：dump 那边是无条件按下划线拆，而 extxyz 的 species 列在合规文件里就
-该是纯元素，无条件拆会误伤。要定的是判据 —— 拆还是不拆、按什么拆、
-`split_element_label` 的 `Unknown` 分支怎么处理（`Pb` 那类贪婪前缀误判的教训见
-`issues.md`）。
-
-CP2K 的 EXTXYZ **只写 cell + 坐标**，不写 stress/virial（力在 `PRINT/FORCES` 另一个
-文件里），故这条与应力无关，是纯粹的标签映射问题。
-
-
 ## 优先级低
+
+### CP2K 的 EXTXYZ / XMOL 输出：kind 名进 species 列、`Energy=` 是 Hartree（2026-08-26 提出，2026-10-22 查源码，降为低）
+
+**降级理由**（2026-10-22 用户定）：用户的 CP2K 数据全从 `.out` 读（`cp2k_md` / `cp2k_sp`），不开
+`MOTION/PRINT/* FORMAT XMOL|EXTXYZ`。下面两条只在主动开了这些输出时才碰得到。
+
+**CP2K 的 EXTXYZ 是一量一文件**（CP2K master `motion_utils.F`、`input_cp2k_motion_print.F`）：
+
+| print key | `Properties` | 数值默认单位 |
+|---|---|---|
+| `TRAJECTORY`（`-pos-1.xyz`） | `species:S:1:pos:R:3` | Å（随 `UNIT`） |
+| `VELOCITIES`（`-vel-1.xyz`） | `species:S:1:velo:R:3` | bohr/au_t |
+| `FORCES`（`-frc-1.xyz`） | `species:S:1:force:R:3` | Hartree/bohr |
+| `STRESS` | 无 `FORMAT` 关键字，不出 EXTXYZ | — |
+
+标题行恒为 `Lattice="…"（Å） Properties=… pbc="…" Step=N Time=t（fs） Energy=E`。Ferro 只读得进 `-pos`
+文件（另两种无 `pos` 列，reader 报错，不会读错）。两处会静默出错：
+
+1. **`Energy=` 是 Hartree**：`write_trajectory` 把 `etot` 原样写出（晶胞那行乘了 `angstrom`，能量没换），
+   Ferro 按 extxyz 惯例当 eV 读，差 27.2 倍
+2. **kind 名进 species 列**：`PRINT_ATOM_KIND` 为真、或 kind 无元素符号时，`particle_methods.F` 的
+   `write_particle_coordinates` 写 `&KIND` 名原文，标题行无任何标记。XMOL（走 xyz reader）同样受影响。
+   实测（2026-10-22）：species 为 `Fe1` / `O_s` 的文件读入退出码 0，`convert` 出的 POSCAR 元素行就是
+   `O_s   Fe1`，gr 按它们分组；ASE 读同一文件 `KeyError: 'Fe1'`
+
+**要做时的候选修法**（当时推荐，未经用户定）：
+
+- 1：按原始大小写认 CP2K 标题特征（`Step=`、`Time=`、`Energy=` 同时出现；ASE 写小写 `energy=`），
+  换算 Hartree → eV（`units.rs` 的 `HARTREE_TO_EV`）并告警；备选是丢能量并告警、指向 `.out`
+- 2：整串是元素照旧（合规文件逐字节不变）；否则查元素表推断（开头全部字母 → 前两个 → 首字母），原串
+  进 `label`，告警列 `原串 -> 元素`，推不出报错。合乎「reader 缺元素时从标签推、如实匹配」（`CA1` →
+  Ca 同 `Os` → 锇）。改的是 xyz / extxyz 共用的 `readers/util.rs::species_element`，两个 reader 一并生效。
+  **不能照抄** dump 的「无条件按下划线拆」：合规 extxyz 的 species 本就是纯元素（`Pb` 贪婪前缀的教训见
+  `issues.md`）
+- 无法识别、只能进手册的：`TRAJECTORY%UNIT bohr` 时坐标是 bohr、晶胞仍是 Å
+
+更一般的一条同属此节：xyz / extxyz 的 species 不在元素表里时一律照收（不只 CP2K 的文件），修法即上面第 2 条。
 
 ### `convert` 写 CIF 时判定并写出空间群（2026-10-11 提出，功能，低）
 
@@ -138,5 +158,4 @@ ferro-python 运行时。（`--metal-units` 全链路已随 2026-10-03 的 `--un
 ### 其他 io 待办（2026-10-21 从各审查节归拢）
 
 - **`read_cube` 与 `read_cube_as_chg` 合并成一个 cube reader**（10-17 第 5 步用户定：`read_cube` 标记保留，以后合并）
-- **`write_deepmd_npy_bounds` 的边界检查只比总帧数**（第 10 批顺带注意到）：重叠或越界的 bounds（如 `[(0,3),(5,7)]`，共 5 帧）能过检查后在切片处 panic；只有 CLI 内部生成 bounds，暂无外部入口
 - **`ferro dataset` 审查（2026-10-17）未做的低级项**：D-5 filter 不重排原子（collect / merge 会），可写进手册；D-7 超过 1000 个 set 时目录按字典序；仍存疑：左手系晶胞
