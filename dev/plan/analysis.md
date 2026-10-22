@@ -78,18 +78,6 @@ VACF 的傅里叶变换，业内常用（如 LAMMPS/MDAnalysis 生态的 power s
 修法同 msd：共享区只留参数，其余走 `Summary` 列或 `note()`。`angle` 的统计是逐文件
 逐三元组的二维量，放 `[inputs]` 会很宽，可能要单独一张表。
 
-### S(q) 的散射数据从标签字符串反推元素（2026-10-22 发现，中）
-
-`md/sq.rs` 的 `elem_z_local` 用 `symbol_to_z` 从分组键取 Z，再查形状因子与中子散射长度。
-g(r) 按 `GroupBy::Label` 分组时键是 site 标签，`symbol_to_z` 先整串精确匹配：标签 `Os`（表面 O）
-会得到锇（76），`Ca`、`Co`、`Cs`、`Nb` 同理，S(q) 静默用错数据、不出告警。定中不定高：CLI 的 sq
-固定按元素分组（`cmd/traj.rs`），Python 不暴露 sq，目前只有库函数 `calc_sq_from_gr` 可达。
-
-修法：`GrResult` 记下每个分组键对应的元素（来自 `Site.element`），sq 按它查散射数据，不再解析字符串。
-`canonical_cmp` 的排序也从标签反推 Z，只影响列顺序，可一并改成读字段。先写测试：标签 `Os` 的 O 原子，
-按标签与按元素分组的 S(q) 应一致（现有 `totals_by_group` 用的标签恰好不撞元素符号，没测出来）。
-判据背景见 `decisions.md`「手册迁出」gr 小节。
-
 ### D 的统计误差：GLS / 贝叶斯（2026-09-27 提出，低）
 
 `d_err` 是 gmx msd 的半窗差，本质是线性度检查。严格误差需要 MSD 协方差，见 kinisi

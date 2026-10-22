@@ -263,6 +263,10 @@ Python 绘图脚本跟进后一并升。**旧产物与旧命令行都不兼容**
   >  Library callers of `write_cif` / `write_poscar` /
   > `write_lammps_data` get an error for several frames instead.
 
+- 2026-10-22（`3baec43`）：`GrResult` 新增 `key_element`（分组键 → 元素，取自首帧原子；标签跨两种元素
+  记为空串）。`calc_sq_from_gr` 改经它查散射数据：此前按标签分组时从标签字符串反推元素，`Os` 会读成锇。
+  CLI 的 sq 固定按元素分组、Python 不暴露 sq，用户入口不受影响。
+
 ## `v0.4.0`（2026-10-17 打 tag，发版）
 
 输入生成迁到 ferro-python 收尾（`decisions.md`「`ferro.jobs`」）与 dataset 审查的修复。删了一个
