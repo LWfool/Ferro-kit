@@ -16,7 +16,7 @@ pub use md::{
     GrParams, GrResult, GroupBy, calc_gr,
     SqParams, SqResult, SqWeighting, calc_sq_from_gr,
     MsdParams, MsdResult, calc_msd,
-    AngleParams, AngleResult, AngleStats, calc_angle,
+    AngleParams, AngleResult, calc_angle,
     VanHoveParams, VanHoveResult, calc_vanhove,
     VacfParams, VacfResult, calc_vacf,
     Legendre, RotCorrParams, RotCorrResult, RotVector, calc_rotcorr,

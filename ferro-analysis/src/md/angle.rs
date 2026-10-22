@@ -14,7 +14,7 @@
 //!
 //! Counting: each geometric angle once (a PO₄ tetrahedron gives 6 O-P-O angles, not 12).
 //! `code1/dump2analysis` enumerates ordered end pairs instead, so its histogram is exactly
-//! twice this one whenever both ends are the same type; mean/std/peak positions are equal.
+//! twice this one whenever both ends are the same type; `p` and the peak positions are equal.
 //!
 //! Parallelism: per-frame `par_iter().fold().reduce()`. The histograms are integer counts,
 //! so the thread schedule cannot change the sum; gr, which sums floats, goes through
@@ -122,17 +122,6 @@ impl Default for AngleParams {
 
 // ─── 结果 ────────────────────────────────────────────────────────────────────
 
-/// Per-triplet angle statistics.
-#[derive(Debug, Clone)]
-pub struct AngleStats {
-    /// Mean angle \[degrees\]
-    pub mean: f64,
-    /// Standard deviation \[degrees\]
-    pub std: f64,
-    /// Total number of angle measurements
-    pub count: u64,
-}
-
 /// Result of a bond angle distribution calculation.
 ///
 /// Key format: `"ElemA-ElemCenter-ElemC"` with Z(ElemA) ≤ Z(ElemC).
@@ -143,8 +132,6 @@ pub struct AngleResult {
     pub angle: Vec<f64>,
     /// Raw count histogram per triplet key
     pub hist: BTreeMap<String, Vec<u64>>,
-    /// Per-triplet statistics (mean, std, count)
-    pub stats: BTreeMap<String, AngleStats>,
     pub n_frames: usize,
     /// Atoms per frame (all atoms; angle has no element filter)
     pub n_atoms: usize,
@@ -175,7 +162,7 @@ pub struct AngleResult {
 /// O-P-O angles, not 12. `code1/dump2analysis -m angle` instead enumerates ordered end
 /// pairs and counts (O₁,P,O₂) and (O₂,P,O₁) separately, so its histogram is exactly
 /// twice this one whenever the two ends are the same type (for A ≠ C the two agree).
-/// The factor cancels out of `mean`, `std` and the peak positions.
+/// The factor cancels out of `p` and the peak positions.
 ///
 /// # Cutoff assignment
 /// `r_cut_ab` goes to end A and `r_cut_bc` to end C, where A/C are taken from
@@ -307,21 +294,8 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
         .map(|i| params.angle_min + (i as f64 + 0.5) * params.d_angle)
         .collect();
 
-    // 从直方图计算 mean 和 std（加权平均）
-    let mut stats: BTreeMap<String, AngleStats> = BTreeMap::new();
-    for (key, bins) in &total_hist {
-        let total_count: u64 = bins.iter().sum();
-        if total_count == 0 { continue; }
-        let tc = total_count as f64;
-        let mean: f64 = angle.iter().zip(bins.iter())
-            .map(|(&a, &c)| a * c as f64).sum::<f64>() / tc;
-        let var: f64 = angle.iter().zip(bins.iter())
-            .map(|(&a, &c)| (a - mean).powi(2) * c as f64).sum::<f64>() / tc;
-        stats.insert(key.clone(), AngleStats { mean, std: var.sqrt(), count: total_count });
-    }
-
     Ok(AngleResult {
-        angle, hist: total_hist, stats, n_frames, n_atoms: first_frame.n_atoms(),
+        angle, hist: total_hist, n_frames, n_atoms: first_frame.n_atoms(),
         params: params.clone(), elements,
     })
 }
@@ -329,10 +303,9 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
 impl AngleResult {
-    /// Projects the result into the tables the writers consume.
+    /// Projects the histogram into the long-format table the writers consume.
     ///
-    /// `angle`: one row per `(angle, triplet)`, columns `angle, end_a, center, end_c, count, p`.
-    /// `stats`: one row per triplet, columns `end_a, center, end_c, mean, std, count`.
+    /// One row per `(angle, triplet)`: columns `angle, end_a, center, end_c, count, p`.
     /// Same reasoning as `GrResult::to_tables` — the triplet becomes data, not column
     /// names, so trajectories with different compositions stack without alignment.
     ///
@@ -373,34 +346,13 @@ impl AngleResult {
             .push_text("end_c", c_col)
             .push_num("count", cnt_col)
             .push_num("p", p_col);
-
-        // One row per triplet: mean / std / count of the angles. Per input, so a table
-        // stacked with the others rather than a header block
-        let (mut sa, mut sb, mut sc) = (Vec::new(), Vec::new(), Vec::new());
-        let (mut mean, mut std, mut count) = (Vec::new(), Vec::new(), Vec::new());
-        for key in &keys {
-            let Some(s) = self.stats.get(key) else { continue };
-            let (ea, centre, ec) = split_triplet(key);
-            sa.push(ea.to_string());
-            sb.push(centre.to_string());
-            sc.push(ec.to_string());
-            mean.push(s.mean);
-            std.push(s.std);
-            count.push(s.count as f64);
-        }
-        let mut stats = Table::new();
-        stats.push_text("end_a", sa)
-            .push_text("center", sb)
-            .push_text("end_c", sc)
-            .push_num("mean", mean)
-            .push_num("std", std)
-            .push_num("count", count);
-        vec![("angle".to_string(), t), ("stats".to_string(), stats)]
+        vec![("angle".to_string(), t)]
     }
 
-    /// Parameter block: only what the whole batch shares. The types present and the
-    /// per-triplet mean/std/count differ per input, so they go to `[inputs]` (`species`)
-    /// and the `stats` table; in the header the first input would stand for all.
+    /// Parameter block: only what the whole batch shares. The types present differ per
+    /// input, so they are the `species` column of `[inputs]`; in the header the first
+    /// input would stand for all. No mean / std per triplet: a distribution with several
+    /// coordination states (O-Al-O) has no meaningful single mean.
     pub fn meta_lines(&self) -> Vec<String> {
         let (end_a, end_c) = match &self.params.ends {
             Some((a, c)) => (format!("end A = {a}"), format!("end C = {c}")),
@@ -466,6 +418,13 @@ mod tests {
         assert!(err.contains("angle range [100, 100.5] is narrower than one d-angle = 1 bin"), "{err}");
     }
 
+    /// The one angle of `key`'s histogram: (bin centre, total count)
+    fn single_angle(res: &AngleResult, key: &str) -> (f64, u64) {
+        let h = &res.hist[key];
+        let i = h.iter().position(|&c| c > 0).expect("a non-empty bin");
+        (res.angle[i], h.iter().sum())
+    }
+
     #[test]
     fn test_angle_90deg() {
         let traj = make_90deg_angle();
@@ -476,10 +435,9 @@ mod tests {
         let key = "O-Si-O";
         assert!(res.hist.contains_key(key), "missing key {}", key);
 
-        let stats = &res.stats[key];
-        assert!((stats.mean - 90.0).abs() < 1.0,
-            "expected ~90°, got {:.2}°", stats.mean);
-        assert_eq!(stats.count, 1, "should have exactly 1 angle pair");
+        let (theta, n) = single_angle(&res, key);
+        assert!((theta - 90.0).abs() < 1.0, "expected ~90°, got {theta:.2}°");
+        assert_eq!(n, 1, "should have exactly 1 angle pair");
         // [inputs] 的 atoms 列读它；旧代码填的是类型数（2），见审查 B-4
         assert_eq!(res.n_atoms, 3, "n_atoms 应为原子数而非类型数");
     }
@@ -490,10 +448,9 @@ mod tests {
         let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params).unwrap();
 
-        let stats = &res.stats["O-Si-O"];
-        assert!((stats.mean - 180.0).abs() < 1.0,
-            "expected ~180°, got {:.2}°", stats.mean);
-        assert_eq!(stats.count, 1);
+        let (theta, n) = single_angle(&res, "O-Si-O");
+        assert!((theta - 180.0).abs() < 1.0, "expected ~180°, got {theta:.2}°");
+        assert_eq!(n, 1);
     }
 
     #[test]
@@ -592,24 +549,8 @@ mod tests {
         let meta = res.meta_lines().join("\n");
         assert!(meta.contains("each geometric angle once"), "the counting convention must stay in the header");
         // Per-input values in the shared header would let the first input stand for the batch
-        assert!(!meta.contains("mean"), "statistics belong in the stats table:\n{meta}");
         for t in &res.elements {
             assert!(!meta.lines().any(|l| l.trim() == t), "type {t} listed in the shared header:\n{meta}");
-        }
-
-        let (name, stats) = res.to_tables().remove(1);
-        assert_eq!(name, "stats");
-        assert_eq!(stats.names(), vec!["end_a", "center", "end_c", "mean", "std", "count"]);
-        assert_eq!(stats.n_rows(), res.stats.len());
-        assert!(stats.validate().is_ok());
-        let s = &res.stats["O-Si-O"];
-        match (stats.column("center"), stats.column("mean"), stats.column("count")) {
-            (Some(ferro_core::Column::Text(b)), Some(ferro_core::Column::Num(m)), Some(ferro_core::Column::Num(c))) => {
-                let i = b.iter().position(|x| x == "Si").expect("an O-Si-O row");
-                assert!((m[i] - s.mean).abs() < 1e-12 && (m[i] - 90.0).abs() < 0.1, "{}", m[i]);
-                assert_eq!(c[i], s.count as f64);
-            }
-            _ => panic!("center must be text, mean/count numeric"),
         }
     }
 
@@ -697,7 +638,7 @@ mod tests {
             ends: Some(("Zn".to_string(), "P".to_string())), ..base.clone()
         };
         let res = calc_angle(&traj, &named).unwrap();
-        assert_eq!(res.stats["P-O-Zn"].count, 1, "端原子顺序应由 ends 决定");
+        assert_eq!(single_angle(&res, "P-O-Zn").1, 1, "端原子顺序应由 ends 决定");
 
         // 反过来写 -a P -c Zn：P 拿 2.5（✓），Zn 拿 2.2（2.4 > 2.2 ✗）→ 落选
         let flipped = AngleParams {
@@ -738,8 +679,9 @@ mod tests {
         let res = calc_angle(&traj, &inside).unwrap();
         assert_eq!(res.angle.len(), 20);
         assert!((res.angle[0] - 80.5).abs() < 1e-12, "bin 中心应为 angle_min + (i+0.5)*d");
-        assert_eq!(res.stats["O-Si-O"].count, 1);
-        assert!((res.stats["O-Si-O"].mean - 90.0).abs() < 1.0);
+        let (theta, n) = single_angle(&res, "O-Si-O");
+        assert_eq!(n, 1);
+        assert!((theta - 90.0).abs() < 1.0);
 
         // 窗口挪开后该角被丢弃，没有任何三元组留下
         let outside = AngleParams {

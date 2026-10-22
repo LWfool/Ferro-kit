@@ -517,7 +517,6 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
         // 指定三元组时过滤输出（端原子已规范排序，两种顺序均检查）
         if let Some((key1, key2)) = &triplet_keys {
             result.hist.retain(|k, _| k == key1 || k == key2);
-            result.stats.retain(|k, _| k == key1 || k == key2);
             if result.hist.is_empty() {
                 return Err(anyhow!(
                     "triplet '{key1}' not found (check the symbols and that the centre is the middle one)"

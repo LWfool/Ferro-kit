@@ -373,7 +373,6 @@ Parameters:
 
 Output:
   angle_<triplet>[_<suffix>].csv, long format: file angle end_a center end_c count p
-  angle_stats_<triplet>[_<suffix>].csv: file end_a center end_c mean std count
   The triplet is spelled as you wrote it (-a O -b P -c O -> angle_O-P-O.csv);
   no triplet -> angle_all.csv
 

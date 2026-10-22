@@ -35,7 +35,7 @@ pub(crate) mod util;
 pub use gr::{GrParams, GrResult, GroupBy, calc_gr};
 pub use sq::{SqParams, SqResult, SqWeighting, calc_sq_from_gr};
 pub use msd::{MsdParams, MsdResult, calc_msd};
-pub use angle::{AngleParams, AngleResult, AngleStats, calc_angle};
+pub use angle::{AngleParams, AngleResult, calc_angle};
 pub use vanhove::{VanHoveParams, VanHoveResult, calc_vanhove};
 pub use vacf::{VacfParams, VacfResult, calc_vacf};
 pub use bondlife::{BondLifeParams, BondLifeResult, calc_bondlife};

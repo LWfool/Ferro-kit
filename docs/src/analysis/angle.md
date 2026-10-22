@@ -61,7 +61,7 @@ Two convention differences, both documented here so the numbers can be read side
 | Counting | each geometric angle once | ordered end pairs — **twice** when both ends are the same element (once when they differ) |
 | Bin $k$ covers | $[k\Delta\theta,\ (k{+}1)\Delta\theta)$ | $[0.05 + k\Delta\theta,\ 0.15 + k\Delta\theta)$ |
 
-The factor of two cancels out of the mean, the standard deviation and the peak positions.
+The factor of two cancels out of `p` and the peak positions.
 The bin offset is half a bin; `dump2analysis`'s grid misses $[0, 0.05)$ (angles there index
 `a[-1]`, out of bounds) and extends past 180°, so ferro does not adopt it as a default. It
 can be reproduced exactly when needed:
@@ -75,11 +75,12 @@ Verified on `examples/lammps/43Z43P15A_NPT.lammpstrj`: after accounting for the 
 convention, all 1800 bins of both O–P–O and O–Al–O match `dump2analysis` as **exact
 integers** (zero differing bins). See `scripts/compare_angle.py --align-binning`.
 
-### Statistics
+### No mean or standard deviation
 
-From the raw count histogram $h(\theta_i)$:
-
-$$\bar{\theta} = \frac{\sum_i \theta_i \, h_i}{\sum_i h_i}, \quad \sigma = \sqrt{\frac{\sum_i (\theta_i - \bar{\theta})^2 h_i}{\sum_i h_i}}$$
+ferro reports the distribution only.  A single mean and width describe a single peak; a centre with
+several coordination states (Al in 4-, 5- and 6-fold sites, O–Al–O at about 109°, 90° and 180°) gives a
+superposition whose mean falls between the peaks and belongs to none of them.  Read peak positions and
+populations from `p` instead.
 
 ### Raw counts, not divided by $\sin\theta$
 
@@ -120,8 +121,6 @@ pub struct AngleParams {
 
 The triplet goes into **data columns**, so trajectories with different element sets stack directly.  Both the
 integer `count` and the normalised `p` are kept: the integer histogram is what the bin-by-bin cross-check against `dump2analysis` rests on, and `p` alone cannot serve it.
-
-`angle_stats_<triplet>[_<suffix>].csv`: `file, end_a, center, end_c, mean, std, count` — one row per input and triplet, [Statistics](#statistics) in degrees.
 
 The `#` header holds only the parameters shared by the batch.  The types present in each input are the `species` column of `[inputs]`.
 

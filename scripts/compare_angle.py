@@ -6,11 +6,14 @@
 
 两处必须知道的约定差异（都不修改数据，只影响读图）：
 
-1. 计数相差恰好 2 倍。dump2analysis 的 EstimateAngle 对端原子集合 a、c 分别遍历，
-   两端同元素时把 (O₁,P,O₂) 与 (O₂,P,O₁) 各数一次；ferro 枚举的是中心原子邻居
-   表里的无序对，每个几何角只数一次 —— 一个 PO₄ 四面体就是 6 个 O-P-O 角，不是 12
-   个。两端**不同**元素时（如 O-P-Zn）两者都只数一次，比值为 1。该因子不影响
-   mean / std / 峰位。这里**不做归一化**，倍率直接显示在叠加图上。
+1. Counts differ by exactly 2. dump2analysis's EstimateAngle loops over the end sets a
+   and c separately, so with both ends the same element it counts (O1,P,O2) and
+   (O2,P,O1) once each; ferro enumerates unordered pairs of the centre's neighbours,
+   each geometric angle once — a PO4 tetrahedron gives 6 O-P-O angles, not 12. With
+   **different** ends (O-P-Zn) both count once and the ratio is 1. The factor leaves
+   the peak positions alone. No normalisation here: the ratio is shown on the overlay.
+   (No mean / std is compared: ferro does not report them, a multi-state distribution
+   such as O-Al-O has no meaningful single mean, and the bin-by-bin residual is stricter.)
 
 2. **bin 区间真的错开半格**，不是标注方式不同（早先版本的本文件写成"横轴标注
    约定不同、同一索引覆盖同一区间"，那是错的，已更正）。dump2analysis 的
@@ -62,33 +65,6 @@ SUFFIX = "cmp"  # the -s batch tag; the triplet is already in the label segment 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "lammps" / "43Z43P15A_NPT.lammpstrj"
 
-def fe_stats(path, a, b, c):
-    """mean / std / count of this triplet from ferro's `angle_stats_*.csv`.
-
-    Returns None when the row is missing instead of guessing; the caller decides
-    how to show it.
-    """
-    df = fc.one_file(fc.read(path), path)
-    row = df[(df["end_a"] == a) & (df["center"] == b) & (df["end_c"] == c)]
-    if row.empty:
-        return None
-    r = row.iloc[0]
-    return float(r["mean"]), float(r["std"]), float(r["count"])
-
-
-def d2a_stats(path):
-    """抽出 dump2analysis 头部的 `# angle: mean +/- std` 与 `# Total pairs:`。"""
-    mean = std = count = None
-    for line in Path(path).read_text().splitlines():
-        if not line.startswith("#"):
-            break
-        if line.startswith("# angle:"):
-            parts = line.split(":")[1].split("+/-")
-            mean, std = float(parts[0]), float(parts[1])
-        elif "Total pairs:" in line:
-            count = float(line.split(":")[1])
-    return mean, std, count
-
 
 def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
     results = {}
@@ -137,11 +113,6 @@ def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
             "x_ref": d2a[:n, 0],
             "y_fe": y_fe[:n],
             "y_ref": d2a[:n, 1],
-            "fe_stats": fe_stats(
-                outdir / fc.product_name("angle", table="stats",
-                                         label=fc.file_label(a, b, c), suffix=SUFFIX),
-                a, b, c),
-            "ref_stats": d2a_stats(d2a_out),
             "version": fc.version(fe_out),
         }
     return results
@@ -166,13 +137,6 @@ def plot(results, traj, png):
         ax.set_xlim(60, 180)
         ax.legend(fontsize=8)
         ax.grid(alpha=0.3)
-
-        fs, rs = d["fe_stats"], d["ref_stats"]
-        if fs and rs[0] is not None:
-            ax.text(0.02, 0.97,
-                    f"fe : mean={fs[0]:.4f}  std={fs[1]:.4f}  N={fs[2]:.0f}\n"
-                    f"ref: mean={rs[0]:.4f}  std={rs[1]:.4f}  N={rs[2]:.0f}",
-                    transform=ax.transAxes, va="top", fontsize=7, family="monospace")
 
         # 残差：按 bin 索引对齐，横轴借用 fe 的中心值作刻度
         axd = axes[1][col]
@@ -228,15 +192,10 @@ def main():
                       align_binning=args.align_binning)
 
     print("\n数值摘要（原始计数，未归一化）")
-    print(f"{'triplet':>10}{'Σ fe':>12}{'Σ ref':>12}{'Σfe/Σref':>11}"
-          f"{'mean fe':>11}{'mean ref':>11}{'std fe':>10}{'std ref':>10}")
+    print(f"{'triplet':>10}{'Σ fe':>12}{'Σ ref':>12}{'Σfe/Σref':>11}")
     for tag, d in results.items():
-        fs, rs = d["fe_stats"], d["ref_stats"]
-        if fs is None:
-            fs = (float("nan"), float("nan"), float("nan"))
         print(f"{tag:>10}{d['y_fe'].sum():>12.0f}{d['y_ref'].sum():>12.0f}"
-              f"{d['y_fe'].sum() / d['y_ref'].sum():>11.4f}"
-              f"{fs[0]:>11.4f}{rs[0]:>11.4f}{fs[1]:>10.4f}{rs[1]:>10.4f}")
+              f"{d['y_fe'].sum() / d['y_ref'].sum():>11.4f}")
 
     plot(results, traj, outdir / "compare_angle.png")
 
