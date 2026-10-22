@@ -46,42 +46,13 @@ ga = ferro.gr_all(t, by="label")
 d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_x/y/z"
 ```
 
-### API surface
-
-| Function | Description |
-|---|---|
-| `read(path, units=None, atom_style=None, type_map=None)` | Auto-detect format → `Trajectory`; LAMMPS data needs `atom_style`, a dump with velocities/forces needs `units`; a dump without an element column takes `type_map={1: "Zr", 2: "O"}` |
-| `write(traj, path, units=None, drop_partial=False)` | Write by extension; velocities/forces to a dump need `units`; a charge / magmom column only some atoms carry is an error unless `drop_partial=True`; QE / CP2K inputs, program outputs and DeePMD directories are read-only |
-| `read_output(path)` | VASP OUTCAR / vasprun.xml, CP2K single-point / MD output, pw.x output → `(Trajectory, stats)`; frames carry energy, forces, stress; dropped frames (SCF not converged…) are counted in `stats` |
-| `write_table(path, columns, meta=[])` | A CSV in ferro's table layout; `columns` = `[(name, numbers or strings)]` |
-| `sort_atoms(traj)` | Per frame, atoms in (Z, symbol) order — the order `ferro convert` writes |
-| `poscar_string(traj, frame_index=0, comment="ferro")` | POSCAR text of one frame |
-| `qe_structure_cards(traj, pseudos, frame_index=0)` | `ATOMIC_SPECIES` / `CELL_PARAMETERS` / `ATOMIC_POSITIONS`; `pseudos` maps every element to a file name |
-| `cp2k_structure_sections(traj, frame_index=0)` | CP2K `&CELL` + `&COORD` |
-| `parse_qe_input_parts(text)` / `write_namelists(namelists)` | pw.x input → `([(name, [(key, raw value)])], cards text)`, and back |
-| `supercell(traj, nx, ny, nz)` | Per-frame supercell |
-| `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along `x`/`y`/`z` |
-| `merge(a, b, axis, gap)` | Merge the first frames of two systems |
-| `gr_pair(traj, a, b, by="element", r_max=None, dr=0.002, r_min=0.001)` | g(r) + CN(r) for one pair |
-| `gr_all(traj, by="element", r_max=None, dr=0.002, r_min=0.001)` | g(r) + CN(r) for all n² ordered pairs |
-| `msd(traj, dt, max_lag=None, elements=None)` | MSD(t), time-origin averaged |
-
-`Trajectory` methods: `n_frames()`, `n_atoms()`, `elements()`,
-`positions(frame)`, `symbols(frame)`, `cell(frame)`, `pbc(frame)`, `energy(frame)` [eV],
-`forces(frame)` [eV/Å], `stress(frame)` [eV/Å³, positive = compression], `tail(n)`, `subset(indices)`,
-`frame_indices(start=None, end=None, stride=None, number=None)` (the frame choice of
-`ferro convert`: 0-based, inclusive, all frames by default), `len()`, `repr()`.
+The full API — every function, the `Trajectory` methods, the warning classes — is in
+[`docs/src/python/api.md`](../docs/src/python/api.md), also readable as `ferro-py doc api`;
+the `ferro-py job` / `conv` / `config` / `plot` commands have their own pages there.
 
 Tests: `pytest ferro-python/tests` with the built wheel on the path.
-
-Analysis functions return `dict[str, list[float]]` (PyO3 auto-converts).
-`by="label"` groups by site label instead of element — valid on a single frame only,
-since g(r) requires a fixed particle count per type.
-
-Network analysis (`ferro net`) is not wrapped yet.
 
 ## Notes
 
 - `__version__` is taken from `Cargo.toml`; keep it in step with the root workspace
   version by hand — this crate is not a member of it
-- `gr(...)` was split into `gr_pair` / `gr_all` in 0.1.10; the old name is gone
