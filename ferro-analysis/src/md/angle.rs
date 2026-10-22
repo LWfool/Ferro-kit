@@ -329,9 +329,10 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 // ─── 输出函数 ────────────────────────────────────────────────────────────────
 
 impl AngleResult {
-    /// Projects the histogram into the long-format table the writers consume.
+    /// Projects the result into the tables the writers consume.
     ///
-    /// One row per `(angle, triplet)`: columns `angle, end_a, center, end_c, count, p`.
+    /// `angle`: one row per `(angle, triplet)`, columns `angle, end_a, center, end_c, count, p`.
+    /// `stats`: one row per triplet, columns `end_a, center, end_c, mean, std, count`.
     /// Same reasoning as `GrResult::to_tables` — the triplet becomes data, not column
     /// names, so trajectories with different compositions stack without alignment.
     ///
@@ -372,16 +373,40 @@ impl AngleResult {
             .push_text("end_c", c_col)
             .push_num("count", cnt_col)
             .push_num("p", p_col);
-        vec![("angle".to_string(), t)]
+
+        // One row per triplet: mean / std / count of the angles. Per input, so a table
+        // stacked with the others rather than a header block
+        let (mut sa, mut sb, mut sc) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut mean, mut std, mut count) = (Vec::new(), Vec::new(), Vec::new());
+        for key in &keys {
+            let Some(s) = self.stats.get(key) else { continue };
+            let (ea, centre, ec) = split_triplet(key);
+            sa.push(ea.to_string());
+            sb.push(centre.to_string());
+            sc.push(ec.to_string());
+            mean.push(s.mean);
+            std.push(s.std);
+            count.push(s.count as f64);
+        }
+        let mut stats = Table::new();
+        stats.push_text("end_a", sa)
+            .push_text("center", sb)
+            .push_text("end_c", sc)
+            .push_num("mean", mean)
+            .push_num("std", std)
+            .push_num("count", count);
+        vec![("angle".to_string(), t), ("stats".to_string(), stats)]
     }
 
-    /// Parameter block plus the per-triplet mean/std/count summary.
+    /// Parameter block: only what the whole batch shares. The types present and the
+    /// per-triplet mean/std/count differ per input, so they go to `[inputs]` (`species`)
+    /// and the `stats` table; in the header the first input would stand for all.
     pub fn meta_lines(&self) -> Vec<String> {
         let (end_a, end_c) = match &self.params.ends {
             Some((a, c)) => (format!("end A = {a}"), format!("end C = {c}")),
             None => ("low-Z end".to_string(), "high-Z end".to_string()),
         };
-        let mut v = vec![
+        vec![
             format!("r_cut_ab = {} Ang  ({end_a} to center)", self.params.r_cut_ab),
             format!("r_cut_bc = {} Ang  ({end_c} to center)", self.params.r_cut_bc),
             format!("angle    = {} .. {} deg", self.params.angle_min, self.params.angle_max),
@@ -389,22 +414,11 @@ impl AngleResult {
             "counting : each geometric angle once  \
              (code1/dump2analysis counts A-B-C twice when both ends are the same type)"
                 .to_string(),
-            format!("grouped by {}:", match self.params.group_by {
+            format!("grouped by {}", match self.params.group_by {
                 GroupBy::Element => "element",
                 GroupBy::Label => "label",
             }),
-        ];
-        for elem in &self.elements { v.push(format!("  {elem}")); }
-        v.push("[statistics]".to_string());
-        for key in sort_triplet_keys(&self.hist) {
-            if let Some(s) = self.stats.get(&key) {
-                v.push(format!(
-                    "{key:<14}: mean={:7.3}  std={:6.3}  count={}",
-                    s.mean, s.std, s.count
-                ));
-            }
-        }
-        v
+        ]
     }
 }
 
@@ -572,13 +586,31 @@ mod tests {
     }
 
     #[test]
-    fn test_meta_lines_keep_stats_and_counting_convention() {
+    fn test_meta_lines_hold_only_batch_shared_values() {
         let traj = make_90deg_angle();
         let res = calc_angle(&traj, &AngleParams::default()).unwrap();
         let meta = res.meta_lines().join("\n");
-        assert!(meta.contains("[statistics]"));
-        assert!(meta.contains("mean="));
-        assert!(meta.contains("each geometric angle once"), "计数约定差异必须留在头里");
+        assert!(meta.contains("each geometric angle once"), "the counting convention must stay in the header");
+        // Per-input values in the shared header would let the first input stand for the batch
+        assert!(!meta.contains("mean"), "statistics belong in the stats table:\n{meta}");
+        for t in &res.elements {
+            assert!(!meta.lines().any(|l| l.trim() == t), "type {t} listed in the shared header:\n{meta}");
+        }
+
+        let (name, stats) = res.to_tables().remove(1);
+        assert_eq!(name, "stats");
+        assert_eq!(stats.names(), vec!["end_a", "center", "end_c", "mean", "std", "count"]);
+        assert_eq!(stats.n_rows(), res.stats.len());
+        assert!(stats.validate().is_ok());
+        let s = &res.stats["O-Si-O"];
+        match (stats.column("center"), stats.column("mean"), stats.column("count")) {
+            (Some(ferro_core::Column::Text(b)), Some(ferro_core::Column::Num(m)), Some(ferro_core::Column::Num(c))) => {
+                let i = b.iter().position(|x| x == "Si").expect("an O-Si-O row");
+                assert!((m[i] - s.mean).abs() < 1e-12 && (m[i] - 90.0).abs() < 0.1, "{}", m[i]);
+                assert_eq!(c[i], s.count as f64);
+            }
+            _ => panic!("center must be text, mean/count numeric"),
+        }
     }
 
     #[test]

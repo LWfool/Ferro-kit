@@ -77,7 +77,7 @@ These are the library defaults.  On the command line `--dt` is required, and `r_
 
 `vanhove_<element>[_<suffix>].csv` (elements sorted and deduplicated; `vanhove_all…` without `--elements`): `file, r, p_r` — $P(r) = 4\pi r^2 G_s$ in Å⁻¹, $\int P\,dr = 1 - f_\text{out}$.
 
-The lag time $\tau$ is recorded only in the `#` header block (once in frames, once in fs).  One $\tau$ per run;
+The `#` header holds only the parameters shared by the batch (`tau` when given with `--tau`).  Everything that differs per input is a column of `[inputs]`: `tau_frames` and `time_fs` (the lag actually used — under the default it is half of each input's frames), `origins`, `outside_fraction` and `species` (elements present among the selected atoms).  One $\tau$ per run;
 when several $\tau$ are supported later a `tau` column will be added — that adds rows rather than changing the column structure.
 
 One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).

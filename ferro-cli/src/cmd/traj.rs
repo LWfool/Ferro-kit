@@ -532,6 +532,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
     let mut summary = Summary::new(&["triplets"]);
     for (input, r) in &results {
         summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &[r.hist.len() as f64]);
+        summary.note("species", r.elements.join(" "));
     }
     summary.failed(&failures);
 
@@ -702,6 +703,7 @@ fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
             r.n_atoms,
             &[r.tau_frames as f64, r.time, r.n_origins as f64, r.outside_fraction],
         );
+        summary.note("species", r.elements.join(" "));
         if r.outside_fraction > 0.01 {
             crate::report::warn(input.path.display(), format!(
                 "{:.1}% of displacements exceed r_max = {} Å and are not in p_r; raise --r-max",

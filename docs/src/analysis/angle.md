@@ -121,6 +121,10 @@ pub struct AngleParams {
 The triplet goes into **data columns**, so trajectories with different element sets stack directly.  Both the
 integer `count` and the normalised `p` are kept: the integer histogram is what the bin-by-bin cross-check against `dump2analysis` rests on, and `p` alone cannot serve it.
 
+`angle_stats_<triplet>[_<suffix>].csv`: `file, end_a, center, end_c, mean, std, count` — one row per input and triplet, [Statistics](#statistics) in degrees.
+
+The `#` header holds only the parameters shared by the batch.  The types present in each input are the `species` column of `[inputs]`.
+
 One csv for all inputs, stacked with a `file` column; see [Output format conventions](../cli-reference.md#output-format-conventions).  Figures: [Plotting](../plotting.md).
 
 ## Usage

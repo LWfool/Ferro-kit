@@ -47,6 +47,12 @@ command line alike; regenerate it rather than migrating it.
 - `traj sq` ends the $q$ grid at `--q-max` whenever the range is a whole number of `--dq`.
 - `traj vanhove` unwraps periodic trajectories with TOR, as `msd` does. NVT output is unchanged; NPT
   output changes (the lattice view turned box rescaling into displacement): regenerate it.
+- `traj angle` / `vanhove`: the `#` header keeps only the parameters the batch shares; with several
+  inputs it used to show the first input's values as if for all.
+  - `angle`'s per-triplet mean / std / count (the `[statistics]` block) is a new product,
+    `angle_stats_<triplet>[_<suffix>].csv`; the type list is the `species` column of `[inputs]`.
+    Scripts that parsed `[statistics]` read the csv instead.
+  - `vanhove`'s τ, time, atoms, origins and elements are in `[inputs]` (`species` is new there).
 - `traj msd` writes exactly 0 at lag 0; `traj rotcorr --legendre 1` names `c1` in its header.
 - The automatic first-shell cutoff (`net --A-B=auto`, `filter --al6`) smooths $g(r)$ over the
   documented 0.10 Å (it was 0.14 Å): a cutoff on a shallow minimum moves by a bin or two (test glasses:

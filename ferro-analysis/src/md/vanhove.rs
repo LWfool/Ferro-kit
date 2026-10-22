@@ -226,18 +226,26 @@ impl VanHoveResult {
         vec![("vanhove".to_string(), t)]
     }
 
-    /// Parameter block for the comment header above the data.
+    /// Parameter block for the comment header above the data: only what the whole batch
+    /// shares. τ under the N/2 default, the time, atoms, origins and the elements present
+    /// differ per input and are columns of `[inputs]`.
     pub fn meta_lines(&self) -> Vec<String> {
+        let p = &self.params;
         vec![
-            format!("tau     = {} frames", self.tau_frames),
-            format!("time    = {} fs", self.time),
-            format!("shift   = {} frames", self.params.shift),
-            format!("dr      = {} Ang", self.params.dr),
-            format!("r_min   = {} Ang", self.params.r_min),
-            format!("r_max   = {} Ang", self.params.r_max),
-            format!("atoms   = {}", self.n_atoms),
-            format!("origins = {}", self.n_origins),
-            format!("elements: {}", self.elements.join(" ")),
+            match p.tau {
+                Some(t) => format!("tau     = {t} frames"),
+                None => "tau     = half of each input's frames (see [inputs])".to_string(),
+            },
+            format!("dt      = {} fs", p.dt),
+            format!("shift   = {} frames", p.shift),
+            format!("dr      = {} Ang", p.dr),
+            format!("r_min   = {} Ang", p.r_min),
+            format!("r_max   = {} Ang", p.r_max),
+            "unwrap  = TOR for periodic inputs: minimum image in the later frame's cell (Bullerjahn 2023)".to_string(),
+            match &p.elements {
+                Some(els) => format!("elements = {}", els.join(" ")),
+                None => "elements = all".to_string(),
+            },
         ]
     }
 }
@@ -468,6 +476,21 @@ mod tests {
         assert!(t.validate().is_ok());
         // tau is metadata, not a column, for now (dev/plan/analysis.md, shelved items)
         assert!(res.meta_lines().join("\n").contains("tau"));
+    }
+
+    /// Per-input values in the shared header would let the first input stand for the batch
+    #[test]
+    fn test_meta_lines_hold_only_batch_shared_values() {
+        let traj = make_linear_traj(50.0, 0.3, 10);
+        let res = calc_vanhove(&traj, &VanHoveParams { dt: 2.0, ..Default::default() }).unwrap();
+        let meta = res.meta_lines().join("\n");
+        assert!(meta.contains("tau     = half of each input's frames"), "{meta}");
+        assert!(meta.contains("elements = all"), "{meta}");
+        for per_input in ["atoms", "origins", "time", "Fe"] {
+            assert!(!meta.contains(per_input), "{per_input} in the shared header:\n{meta}");
+        }
+        let given = calc_vanhove(&traj, &VanHoveParams { tau: Some(3), dt: 2.0, ..Default::default() }).unwrap();
+        assert!(given.meta_lines().join("\n").contains("tau     = 3 frames"));
     }
 
     /// `--r-max 1.0 --dr 0.07` used to give 15 bins of 0.07, the last one [0.98, 1.05)

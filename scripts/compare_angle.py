@@ -37,7 +37,6 @@ dump2analysis 的角度 bin 宽度固定 0.1°（无对应参数），故 ferro 
 """
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -63,23 +62,18 @@ SUFFIX = "cmp"  # the -s batch tag; the triplet is already in the label segment 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_TRAJ = REPO / "examples" / "lammps" / "43Z43P15A_NPT.lammpstrj"
 
-# ferro 的 `[statistics]` 块：`O-P-O  : mean=109.320  std= 6.072  count=25740`
-FE_STATS_RE = re.compile(
-    r"^(?P<tag>\S+)\s*:\s*mean=\s*(?P<mean>[-\d.eE+]+)\s+"
-    r"std=\s*(?P<std>[-\d.eE+]+)\s+count=\s*(?P<count>[-\d.eE+]+)")
+def fe_stats(path, a, b, c):
+    """mean / std / count of this triplet from ferro's `angle_stats_*.csv`.
 
-
-def fe_stats(path, tag):
-    """抽出 ferro 注释块里该三元组那行 mean / std / count。
-
-    这三个量只在给人看的 `#` 块里（表里是逐 bin 的 count/p），故仍需解析文本；
-    找不到时返回 None 而不是猜，由调用方决定怎么显示。
+    Returns None when the row is missing instead of guessing; the caller decides
+    how to show it.
     """
-    for line in fc.meta_lines(path):
-        m = FE_STATS_RE.match(line)
-        if m and m.group("tag") == tag:
-            return float(m["mean"]), float(m["std"]), float(m["count"])
-    return None
+    df = fc.one_file(fc.read(path), path)
+    row = df[(df["end_a"] == a) & (df["center"] == b) & (df["end_c"] == c)]
+    if row.empty:
+        return None
+    r = row.iloc[0]
+    return float(r["mean"]), float(r["std"]), float(r["count"])
 
 
 def d2a_stats(path):
@@ -143,7 +137,10 @@ def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
             "x_ref": d2a[:n, 0],
             "y_fe": y_fe[:n],
             "y_ref": d2a[:n, 1],
-            "fe_stats": fe_stats(fe_out, tag),
+            "fe_stats": fe_stats(
+                outdir / fc.product_name("angle", table="stats",
+                                         label=fc.file_label(a, b, c), suffix=SUFFIX),
+                a, b, c),
             "ref_stats": d2a_stats(d2a_out),
             "version": fc.version(fe_out),
         }
