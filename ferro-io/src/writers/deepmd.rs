@@ -114,7 +114,15 @@ pub fn write_deepmd_npy_bounds(
     }
 
     let nf = frames.len();
-    let covered: usize = bounds.iter().map(|(lo, hi)| hi.saturating_sub(*lo)).sum();
+    // The sets must tile [0, nf) in order: a total-only check let an overlap write a
+    // frame twice and a gap or reversed pair panic on the slice below
+    let mut covered = 0;
+    for (i, &(lo, hi)) in bounds.iter().enumerate() {
+        if lo != covered || hi <= lo {
+            bail!("set {i} is [{lo}, {hi}); sets must be non-empty and start where the previous one ends (frame {covered})");
+        }
+        covered = hi;
+    }
     if covered != nf {
         bail!("set boundaries cover {covered} frame(s) but the trajectory holds {nf}");
     }
@@ -388,6 +396,17 @@ mod set_tests {
             set_bounds(2000, 400),
             vec![(0, 400), (400, 800), (800, 1200), (1200, 1600), (1600, 2000)]
         );
+    }
+
+    #[test]
+    fn bounds_that_sum_right_but_do_not_tile_are_refused() {
+        // Each sums to 2 frames, the old total-only check passed them all: the overlap
+        // silently wrote frame 0 twice, the gap and the reversed pair panicked on the slice
+        for bounds in [&[(0, 1), (0, 1)][..], &[(0, 1), (2, 3)], &[(0, 2), (2, 1), (1, 1)]] {
+            let d = out_dir("ferro_dp_bad_bounds");
+            let err = write_deepmd_npy_bounds(&demo_traj(), &d, bounds).unwrap_err().to_string();
+            assert!(err.contains("must be non-empty and start where"), "{bounds:?}: {err}");
+        }
     }
 
     #[test]
