@@ -582,8 +582,8 @@ E 组重设计：R-2 产物命名统一 —— 现有四种排列（traj `<mode>
   `JOB DONE`，放在 `examples/qe/pwx/{sp,sp_spin,sp_noconv,md,vcmd}/`（pw.in + pw.out；vcmd 另有
   pw.x 自己写的逐步文件 `pw.avec` 等，可核对逐步晶胞），作业脚本与日志在 `job/`。首跑全部
   GENERATION FAILED：作业脚本的 `conda activate` 前缺 `conda init`（用户修好重跑）
-- ✅ pw.x 输出 reader `readers/qe_out.rs`（`04e95a0`）+ `aimd.rs` 嗅探；collect `--format qe/pw`
-  （`49befab`）；`read_output` / `conv analyze` 读 QE、`pyerr` 带出原因链（`9d9c8bc`）。核对：能量、力
+- ✅ pw.x 输出 reader `readers/qe_out.rs` + `aimd.rs` 嗅探；collect `--format qe/pw`；
+  `read_output` / `conv analyze` 读 QE、`pyerr` 带出原因链。核对：能量、力
   与 dpdata 一致到 1e-10，其余与 ASE 一致到 1e-7（ASE 能量的 1.2e-6 相对偏差是它写死 CODATA 2006）；
   collect 产物经 dpdata 读回逐帧对上。变异验证三项（读第二组力、应力翻号、MD 帧错一位）都被抓到。
   **与原计划的两处出入**：① 原计划「没开 tprnfor 的帧照收」，实测 collect 会写出没有 `force.npy`
@@ -600,9 +600,8 @@ E 组重设计：R-2 产物命名统一 —— 现有四种排列（traj `<mode>
   只在小胞时打开（现行为：1×1×1 不写 `&KPOINTS`），偶数网格不以 Γ 为中心不算问题
 - CP2K 基组与赝势须同 q 配对；GTH-PBE 可不写电荷，GTH-SCAN 必须写明（生成一律写 `-qN`）
 
-已修（各一提交，pytest 125 → 133）：P-1 `ffc5c9f`、P-2 `40535de`、P-3 `e23ba40`、P-5 `cec54a1`、
-P-6 `80f9646`、P-7 `511820b`（强制 `ibrav = 0`、删胞参数键）、P-9 `6d90a19`、P-10 `706cc64`、
-P-11 `a282757`。P-4（ecutrho）、P-8（CP2K 偶数网格偏离 Γ）按上面裁定不改。
+P-1 – P-3、P-5 – P-7、P-9 – P-11 已修（P-7：强制 `ibrav = 0`、删胞参数键）；P-4（ecutrho）、
+P-8（CP2K 偶数网格偏离 Γ）按上面裁定不改。
 
 `RECOMMENDED_POTCAR` 个别条目（Fe、Er…）未对照 vasp.at 当前表：**用户定不核对**（2026-10-17）。
 
@@ -662,18 +661,9 @@ XRD/中子加权、msd（对 MDA EinsteinMSD fft）、vacf、rotcorr、vanhove�
 regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；Cell 运算；`net` 六张表
 （对 numpy）；dataset collect/merge/filter 产物（对 dpdata 读回）。
 
-**QC 输入生成组**（**2026-10-17 `ferro-workflow` 与 `cmd/job.rs` 已删，本组不再修**；保留作 ferro-py job 的不重犯清单，第 15–17 步已对照）：D-M4、D-M6–D-M12（CP2K / QE / Gaussian 输入生成）**挂起作专项**（2026-10-08 用户定：大工程，先记录）。动手前须逐条对照 `examples/external/cp2k-2026.2/src` 与 QE、Gaussian 官方文档核实——D-M10 等几条只是推断；修完应能让生成的输入真跑过一次各软件的输入解析。
-
-| # | 位置 | 问题 / 依据 | 修法 |
-|---|---|---|---|
-| D-M4 | `cp2k.rs write_force_eval` | NPT 不写 `STRESS_TENSOR`，CP2K 启动报错（`md_run.F:331-344`） | NPT 时写 `ANALYTICAL` |
-| D-M6 | `cp2k.rs --smear` | 不写 `ADDED_MOS`，CP2K 报错（`qs_environment.F:2247`）；`--scf ot` 时 smear 静默丢。手册 `spin.md:76` 示例正中 | 写 `ADDED_MOS`；OT + smear 报错 |
-| D-M7 | `cp2k.rs` PBC | 分子 / `--pbc z` 不写 `POISSON_SOLVER`，默认 PERIODIC 报错；分子 `&CELL` 无 ABC。`test_energy_molecular` 断言的正是这份不可运行的输入 | 非 3D 写 MT / WAVELET + ABC，或报错 |
-| D-M8 | `cp2k.rs` | `--kpoints` + `--scf ot` CP2K 报错（`qs_scf_initialization.F:886-887`），builder 不拦 | 提前拒绝 |
-| D-M9 | `ferro-workflow/src/qe.rs build` | 无胞仍写 `ibrav = 0` 不写 `CELL_PARAMETERS`，pw.x 拒收；`test_scf_basic` 断言的正是它 | 报错或要求给盒子 |
-| D-M10 | `qe.rs` vc-md（推断，本机无 QE 源码） | 写 `ion_dynamics='verlet'`，INPUT_PW 中 vc-md 只支持 `'beeman'` | 改 `beeman` |
-| D-M11 | `ferro-workflow/src/job_builder.rs` Gaussian | 周期结构丢胞、不写 `TV`，静默变团簇计算（ASE 写三行 TV） | 写 TV 或报错 |
-| D-M12 | `cmd/job.rs` | 与所选软件无关的参数静默忽略（QE 不读 `--cutoff`/`--md-timestep`/`--thermostat`/`--pbc`）；`--task` 等枚举值读完输入、打印 auto-spin 之后才校验 | clap `ValueEnum`；不适用参数报错 |
+**QC 输入生成组**（D-M4、D-M6 – D-M12：CP2K / QE / Gaussian 输入生成的问题）：2026-10-17 `ferro-workflow` 与
+`cmd/job.rs` 已删，本组不再修。它作为 `ferro-py job` 的不重犯清单，第 15 – 17 步已逐条对照过（结论见
+「2026-10-19 四次审查遗留清理」作废一条：无一重犯）；原表见 git 历史。
 
 - ~~`merge` 侧向是插真空条带而非 ASE `stack` 的应变匹配~~（2026-10-09 随 D-M2 定：保留不拉伸，
   共格界面不是它的用途）；`box_builder` 按原子随机放、软约束
@@ -693,27 +683,13 @@ regtest 零 panic；超胞（对 ASE / pymatgen）；元素质量（86 种）；
 是一次性的，未进仓；每条的「复现」写到可以重做的程度。陷阱的一般化教训见
 `issues.md`「2026-10-01 审查：读写两侧的静默错误」。**每条修复单独提交并带回归测试**。
 
-**严重**（静默产出错数据，或 panic 打断整个批次）
+严重 S1 – S7 与中 M1 – M5 均已修（问题表见 git 历史）。三条用户裁定以后照此：
 
-| # | 位置 | 问题 | 复现 | 修法 |
-|---|---|---|---|---|
-| ~~S1~~ **已修**（`f1c7908` reader 丢残末帧 + 告警、中间帧不完整报错；`58f9c90` `Trajectory::check_same_atoms` 挂到六个时间相关分析）| `readers/lammps_dump.rs:58,108,124-127` | 截断的 dump（MD 中断，常见）不报错：残帧照收；`lines[i]` 无越界检查 | `head -n 9000 tests/43Z43P15A_NPT_5.lammpstrj`：第 4 帧 939 原子无告警；`traj msd` panic `msd.rs:133`（退出码 101，批内不再是「跳过 + 退出码 1」）；`net` 退出码 0、`[inputs]` 写 `atoms 2004 ok`，mean_cn 4.00 → 3.97；截断在 BOX BOUNDS 前则读取本身 panic `:58` | 原子行不足 n 时报错（或丢末帧并告警）；`lines[i]` 改 `get` + `bail`。另在 core 加「各帧原子数与元素序列一致」守卫，msd/vacf/bondlife/rotcorr/angle/net/map 共用 —— 现在只有 gr 有 |
-| ~~S2~~ **已修**（`c4f7508`，期望值对 ASE `Prism.vector_to_lammps`）| `writers/lammps_dump.rs:82-115` | 坐标转进 LAMMPS 规范胞（下三角），速度与力**未同步旋转** | extxyz `Lattice="0 4 0 -4 0 0 0 0 4"`、原子 (1,2,3)、v=(0.5,0,0)、f=(1,0,0) → dump 坐标 (2,−1,3) 已转，vx=0.5、fx=23.06 仍在 x（应在 −y）。影响 `convert -o *.lammpstrj` 与 `collect --type inspect` | 求 R = L_lmpᵀ·(Mᵀ)⁻¹，v、f 同样左乘 R；测试用非下三角胞 + 力 |
-| ~~S3~~ **已修**（`5882fd4`；复核时另发现 reader 不认速度块的模式行、ASE 写的速度被静默丢弃，`7f333aa` 一并修）| `writers/vasp.rs:38-51` | POSCAR 坐标按元素分组写，速度按原序写 | O(v=.1) Si(v=.2) O(v=.3) → 坐标序 O O Si，速度序 .1 .2 .3，后两个原子速度互换 | 速度用与坐标相同的分组循环 |
-| ~~S4~~ **已修**（`29ff9d6`，口径照 pw.x `cell_base.f90`；alat 坐标、不写选项一并支持；L6 的 qe.rs 部分同修）| `readers/qe.rs:174-179`（及 `:69-72`、`:105-108`） | 卡片单位只认 `{...}` 写法，`CELL_PARAMETERS bohr`、`ATOMIC_POSITIONS crystal`、`(crystal)` 一律回落 Å；`alat` 的拒绝也只对 `{alat}` 生效；QE 无选项时的默认并不是 Å | Si 原胞 `CELL_PARAMETERS bohr` + `ATOMIC_POSITIONS crystal` → 胞读成 5.13 Å，第二个 Si 在 (0.25,0.25,0.25) Å，无告警 | 首行去掉括号后不区分大小写匹配关键字；无选项按 QE 默认或报错 |
-| ~~S5~~ **已修**（`a2c013a`，照 CP2K `parser_get_logical`；另修 &COORD UNIT 非 bohr 当 Å、&CELL 认 `[bohr]` 而非不存在的 UNIT 关键字）| `readers/cp2k.rs:84` | `&COORD` 的 `SCALED` 只认 `.TRUE.`；单写 `SCALED`（CP2K lone keyword 即真）、`SCALED T` 判为假 | 同一输入：`SCALED` / `SCALED T` → 坐标 0.25（当 Å）；`SCALED .TRUE.` → 1.3575 | 按 CP2K 逻辑值规则：缺省值、`T` `TRUE` `.TRUE.` `YES` `ON` 均真 |
-| ~~S6~~ **已修**（`3d3f6ed`，`ferro_io::is_extxyz` 两处分派共用；写 `.xyz` 仍是纯 XYZ、丢晶胞，未动）| `cli/io_dispatch.rs:18`、`ferro-python/src/io.rs:52` | `.xyz` 一律走纯 XYZ reader，extxyz 的 Lattice/能量/力/应力/速度全丢。**ferro 自己** `dataset --type nep|extxyz` 写的就是 `.xyz`（`cmd/dataset.rs:250`） | 同一 extxyz 文件改名 `.xyz` → `info` 报 `Cell: none (non-periodic)` | 读 `.xyz` 时看第 2 行，含 `Lattice=` 或 `Properties=` 即转 extxyz reader。Python 侧同步（两处分派会漂，见 `progress.md`） |
-| ~~S7~~ **已修**（`2abe03a`，按用户裁定：同名依次加 `_2`、`_3` 并打 Note，不拼父目录、不改产物落点。用户原以为 map/net 的产物跟着输入目录走，实际是当前目录或平铺进 `-o`，与手册一致）| `cli/batch.rs:29 label_of`、`cmd/map.rs:183-190 stem_for`、`cmd/net.rs:259` | 多输入时只取 stem，不同目录的同名文件撞名。**与已登记的「`map` 产物名随输入数变」不是一条**：那条是 N=1 与 N>1 两套命名，这条是 N>1 下静默覆盖 | `-i 'runs/*/prod.lammpstrj'`（两个不同体系）：`map density` 两次都写 `density_prod.cube`，后者覆盖前者，退出码 0；`traj gr` 的 csv 10004 行 `file` 列全是 `prod` | 复用 `collect` 的规则（`issues.md:448`）：撞名改 `<父目录>_<stem>`，仍撞报错，在读第一个文件前判。与合规扫描第 2 条（`map` 命名）一起定 |
-
-**中**
-
-| # | 位置 | 问题 | 复现 | 修法 |
-|---|---|---|---|---|
-| ~~M1~~ **已修**（`a4c2b6d`，按用户裁定：**不看注释、不按列数猜**，style 由 `--atom-style` / Python `atom_style` 显式给出，缺了在读第一个文件前报错；列数只收基本列或 +3，原子数核对 `N atoms`；image flag 展开同 LAMMPS / ASE。修法栏的「按列数推断」作废）| `readers/lammps_data.rs:112,158` | `Atoms` 段无 style 注释时按 full 解析（注释在 LAMMPS 里是可选的） | 5 列 atomic → `Atoms: 0` 无报错；8 列（带 image flag）→ 第 2 原子 (1,1,1) 读成 (1,0,0) | 无注释按列数推断（5/8 atomic、6/9 charge、7/10 full），歧义报错；列不足报错而非跳过 |
-| ~~M2~~ **已修**（`6dff5b1`，用户裁定缩放坐标按 LAMMPS 定义加 lo，与 ASE 不同；顺带读 `mass`、坏字段报错。`typelabel`、`ix iy iz` 未接，见下）| `readers/lammps_dump.rs:182` | 无可识别坐标列时坐标静默全 0 | `ITEM: ATOMS id type element xsu ysu zsu` → 两原子都在 (0,0,0) | 支持 `xsu/ysu/zsu`；一列都找不到报错 |
-| ~~M3~~ **已修**（`aa82fb2`，12 个 `XxxParams::validate` 共用 `ferro-analysis/src/check.rs`，CLI 在建目录、读文件前调用；angle / vanhove / sq 改 `Result`。cube_*、network、chg_sdf 仍返回 `Option`，见下）| `md/gr.rs:222`、`md/sq.rs:118`、`md/cube_density.rs:84`、`cmd/traj.rs:521` | 参数未在读文件前校验，违反 `CLAUDE.md` | `--dr 0` / `--dq 0` / `--nx 0` 均 panic（101）；`--r-min 5 --r-max 3` 读完文件才逐个 skipped；`angle --d-angle 0` 报误导的「empty trajectory?」（`calc_angle` 返回 `Option`，三种失败揉成一种） | CLI 构造参数时统一查 `> 0`、`r_min < r_max`、`n ≥ 1`；`calc_angle` 改 `Result` |
-| ~~M4~~ **已修**（`c35567d`，每轴下标列表，窗口 ≥ 网格时取全部；对照 C 全遍历与 numpy 独立实现。默认参数 50³/0.7 Å 不受影响，测试轨迹 `--radius 15` 修复前多计约 0.9%）| `md/cube_radius.rs:78-80,118-125` | 搜索窗 `2s+1` 超过网格点数时 `rem_euclid` 把多个偏移折到同一体素，重复计数。**不只粗网格**：40³ 网格、`--radius 4.9`（10 Å 胞）也中 | 单原子单帧，10 Å 立方胞，`--radius 4.9`：4³ 网格 max=8；40³ 网格 max=2、sum=31852（解析值 ≈ 31540）。单帧单原子任一体素应 ≤ 1 | 对折叠后的 `(ix,iy,iz)` 去重（同 `box_builder` CellList 那次），或把窗口截到 n |
-| ~~M5~~ **已修**（`694f4e7` 按轴 pbc 基础设施；`48bf11e` cube 参考结构折回，**只在 cube 里做的特例**。读入时平移原点 / 折回的方案实测会扰动 NPT MSD，已否决，见 issues 与手册 msd 页）| `md/cube_density.rs:202`（origin 恒 0）、`md/util.rs:40`（平均帧不折回） | LAMMPS 盒子 `lo≠0` 时原点被丢，密度按分数坐标折进 [0,L)，原子按原坐标写出。**与已登记的 NPT 体积口径不是一条** | `tests/70Z30P00A_NVT_5`（lo=1.82）：cube 原点 0、边长 39.22 Å，5003 原子里 659 个在网格外。周期意义上密度与原子一致，**可视化效果未验** | 平均帧折回 [0,1) 后写，或把盒子原点带进 `CubeData.origin`（reader 也要保留 lo） |
+- **S7**：多输入同名时依次加 `_2`、`_3` 并打 Note，不拼父目录、不改产物落点
+- **M1**：LAMMPS data 的 atom style **不看注释、不按列数猜**，由 `--atom-style` / Python `atom_style`
+  显式给出，缺了在读第一个文件前报错
+- **M5**：读入时平移原点 / 折回的方案实测会扰动 NPT MSD，已否决；只在 cube 里折回参考结构
+  （见 `issues.md` 与手册 msd 页）
 
 ## 库 crate 的错误类型：`ferro-io` 用 `anyhow`（2026-09-28）
 
