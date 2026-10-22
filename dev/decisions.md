@@ -24,10 +24,13 @@
 > - Pseudo-element labels (e.g. `"P0"`, `"Ob"`) are supported: `elem_z` resolves them by stripping numeric/alphabetic suffixes.
 > - Column ordering uses atomic number Z as the primary sort key, with string labels as tiebreaker for deterministic ordering of pseudo-elements.
 
-**存疑，未处理**：`elem_z`（`md/gr.rs`）与 `elem_z_local`（`md/sq.rs`）都是从标签字符串剥后缀反推元素，
-与 CLAUDE.md「绝不从标签字符串反解析」的精神相冲（那条针对 `AtomType::label()` 的数字，这里是元素）。
-`Site` 本来就带 `element` 字段，排序可以直接读它。另外 g(r) 产物早已是长表，「Column ordering」的说法
-需要按现状核对。
+**存疑，已登记**（2026-10-22 按代码核对后更正）：上面说的 `elem_z` 在 `gr.rs` 里已不存在，剥后缀的是
+`ferro-core/src/data/elements.rs` 的 `symbol_to_z`（整串精确匹配 → 前两个字母 → 首字母 → 255），
+`gr.rs` 只在测试里给它起了别名。调用方两处：`canonical_cmp`（只管排序，不影响数值）与 `md/sq.rs` 的
+`elem_z_local`（查形状因子与中子散射长度，影响 S(q) 数值）。后者在 g(r) 按标签分组时会把 `Os`、`Ca`、
+`Co`、`Cs`、`Nb` 这类标签整串匹配成别的元素。CLI 的 sq 固定按元素分组、Python 不暴露 sq，目前只经库函数
+可达。待办见 `plan/analysis.md`「S(q) 的散射数据从标签字符串反推元素」。另外 g(r) 产物早已是长表，
+「Column ordering」的说法需要按现状核对。
 
 ### `dataset/collect.md`「Checked against dpdata」与三处开发口吻（D-8）
 

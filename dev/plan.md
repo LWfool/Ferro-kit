@@ -26,7 +26,7 @@ D 组（手册压缩，7947 → 6803 行）已完成。接下来另交计划：C
 | `plan/io.md` | 高 | DeePMD mixed type 读写；dataset 额外键搬运；测试缺口（第 8 批，暂缓） |
 | | 中 | 带速度的测试 fixture；VASP ML_FF 的 OUTCAR；CP2K EXTXYZ 的 kind 写进 species 列 |
 | | 低 | `convert` 写 CIF 的空间群；MACE / NequIP 格式；`read_cube` 合并；`write_deepmd_npy_bounds` 边界检查；dataset 审查余项 |
-| `plan/analysis.md` | 中 | vanhove 原点与解包裹；bondlife 后续；配位态动力学；VDOS；angle / vanhove 共享头部；D 的统计误差；bondlife 手册口径 |
+| `plan/analysis.md` | 中 | S(q) 散射数据从标签反推元素；vanhove 原点与解包裹；bondlife 后续；配位态动力学；VDOS；angle / vanhove 共享头部；D 的统计误差；bondlife 手册口径 |
 | | 低 | filter 多层周期镜像；机器学习集成；S(q) Lorch 窗；分析侧逐帧消费；库层参数无 `validate`（C-2） |
 | `plan/cli-python.md` | 中 | ferro-structure 补充结构操作 |
 | | 低 | **结构操作的 CLI 入口（supercell / vacuum / box_builder）**；code1 / code2 引用扫描；REPL；rustfmt；ferro-py job 的遗留与存疑 |
