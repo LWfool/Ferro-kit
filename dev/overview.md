@@ -26,7 +26,8 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的入口层
 
 中间层 crate 之间不允许互相依赖。**但共享类型可以下沉** —— 判据：一个类型该放
 `ferro-core`，当且仅当两个以上中间层需要叫出它的名字。两个方向各一个范例：
-`Trajectory`（io 产出、analysis 消费）与 `Table`（analysis 产出、io 消费）。
+`Trajectory`（io 产出、analysis 消费）与 `Table`（analysis 产出、io 消费）。分析私有的中间产物
+（`GrResult`、`SqResult`…）留在 `ferro-analysis`，只有可序列化投影（`to_tables()` 出的 `Table`）跨层。
 
 这条规则的完整论证见 `issues.md`「分析产物为什么不进 ferro-io」—— ASE 与 pymatgen
 是 Python，**能**写出循环依赖却依然不写，说明这是设计选择而非语言约束。
