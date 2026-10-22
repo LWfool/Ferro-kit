@@ -87,7 +87,8 @@ impl FilterCmd {
 }
 
 pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
-    // 参数级错误在读第一个数据集之前暴露；取值范围由 FilterParams::validate 一处负责（审查 C-2）
+    // Parameter errors surface before the first system is read; the value ranges are
+    // FilterParams::validate's alone (review C-2)
     let manual_rcut = match args.al6.as_deref() {
         None | Some("auto") => None,
         Some(v) => Some(

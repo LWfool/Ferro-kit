@@ -82,6 +82,16 @@ impl TypeParams {
         self
     }
 
+    /// Every cutoff finite and >= 0; 0 means the pair never bonds. [`classify_frame_detailed`]
+    /// runs it first, `ferro net` before reading any input (review C-2: a NaN cutoff used to
+    /// bond nothing, a negative one bonded at its absolute value).
+    pub fn validate(&self) -> Result<()> {
+        for ((a, b), &c) in self.cutoffs.iter().chain(&self.modifier_cutoffs) {
+            crate::check::non_negative(&format!("{a}-{b} cutoff"), c)?;
+        }
+        Ok(())
+    }
+
     /// Whether this former is reported with a Qn speciation.
     pub fn is_qn_former(&self, elem: &str) -> bool {
         self.qn_elements.contains(elem)
@@ -258,6 +268,7 @@ pub fn classify_frame(frame: &Frame, params: &TypeParams) -> Result<Vec<AtomType
 
 /// [`classify_frame`] plus the ligand→former adjacency, for pairwise statistics.
 pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<FrameTypes> {
+    params.validate()?;
     let cell = PeriodicCell::of(frame)?;
     // One neighbour list at the longest cutoff serves every pair; each pair is then
     // measured again against its own cutoff
@@ -572,6 +583,27 @@ mod tests {
         c.insert(("P".into(), "O".into()), 2.0);
         c.insert(("Al".into(), "O".into()), 2.0);
         TypeParams::new(c, CutoffTable::new())
+    }
+
+    /// Review C-2: a NaN cutoff bonded nothing for its pair, and a negative one bonded at
+    /// its absolute value when another pair sized the neighbour list — both `Ok`
+    #[test]
+    fn test_out_of_range_cutoffs_are_refused() {
+        let frame = frame_of(&[("P", 0.0, 0.0, 0.0), ("O", 1.5, 0.0, 0.0), ("Zn", 5.0, 0.0, 0.0)]);
+        for (table, v) in [("former", f64::NAN), ("former", -1.6), ("former", f64::INFINITY), ("modifier", -2.0)] {
+            let mut p = params_po_alo();
+            match table {
+                "former" => p.cutoffs.insert(("P".into(), "O".into()), v),
+                _ => p.modifier_cutoffs.insert(("Zn".into(), "O".into()), v),
+            };
+            let pair = if table == "former" { "P-O" } else { "Zn-O" };
+            let err = classify_frame(&frame, &p).err().map(|e| e.to_string()).unwrap_or_default();
+            assert!(err.contains(&format!("{pair} cutoff")), "{table} {v}: got {err:?}");
+        }
+        // 0 is "this pair never bonds", as an absent pair is given by `ferro net --X-O=auto`
+        let mut p = params_po_alo();
+        p.cutoffs.insert(("P".into(), "O".into()), 0.0);
+        assert!(classify_frame(&frame, &p).is_ok());
     }
 
     /// 审查 D-M17：奇异胞（c=0 的 slab）曾在最小镜像处 panic，公开函数应报错
