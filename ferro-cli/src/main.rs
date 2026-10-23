@@ -55,6 +55,11 @@ enum Command {
     Convert(cmd::convert::ConvertCmd),
     /// Print structure / trajectory information
     Info(cmd::info::InfoCmd),
+    /// Make structures: supercells, vacuum layers, stacked pairs, mixed boxes
+    Build {
+        #[command(subcommand)]
+        cmd: Option<cmd::build::BuildCmd>,
+    },
     /// Build machine-learning training sets from AIMD output
     Dataset {
         #[command(subcommand)]
@@ -148,6 +153,19 @@ fn run() -> Result<()> {
         Command::Info(c) => {
             if cmd::info::wants_help(c) { page_or_fail(1)?; help::print_info(); 0 } else { cmd::info::run(c)? }
         }
+        Command::Build { cmd: None } => {
+            help::print_build_overview();
+            0
+        }
+        Command::Build { cmd: Some(c) } => {
+            if cmd::build::wants_help(c) {
+                page_or_fail(2)?;
+                cmd::build::print_help(c);
+                0
+            } else {
+                cmd::build::run(c)?
+            }
+        }
         Command::Dataset { cmd: None } => {
             help::print_dataset_overview();
             0
@@ -220,6 +238,7 @@ mod help_sync {
         (&["dataset", "collect"], "print_dataset_collect"),
         (&["dataset", "filter"], "print_dataset_filter"),
         (&["dataset", "merge"], "print_dataset_merge"),
+        (&["build", "supercell"], "print_build_supercell"),
     ];
 
     /// Options clap accepts on a command that its page deliberately omits.
@@ -370,6 +389,7 @@ mod help_sync {
             ("traj", "print_traj_overview"),
             ("map", "print_map_overview"),
             ("dataset", "print_dataset_overview"),
+            ("build", "print_build_overview"),
         ] {
             let text = page(fname);
             for sub in subcommand(&[group]).get_subcommands() {

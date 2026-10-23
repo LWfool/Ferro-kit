@@ -168,6 +168,9 @@ Structure I/O
   convert        Format conversion — run it bare for the read/write matrix
   info           Atoms, cell, volume, density (g/cm³) of a structure or trajectory
 
+Structure building       one structure file per input, in the input's format
+  build supercell   Replicate a cell, given or sized by atoms / spacing
+
 Machine-learning datasets
   dataset collect   AIMD output -> DeePMD system directories (set.*/*.npy)
   dataset filter    Drop low-quality frames (force / stress thresholds)
@@ -865,5 +868,59 @@ Examples:
   ferro dataset merge -i 'clean/*' -o nep --type nep --ratio 9:1
 
 Full documentation:  ferro doc dataset merge"#
+    );
+}
+
+/// `ferro build` with no subcommand.
+pub fn print_build_overview() {
+    println!(
+        r#"ferro build — Make structures
+
+  One product per input, <-o dir>/<op>_<input>[_<suffix>].<ext>, in the
+  input's format unless --format names another:
+
+  supercell  replicate a cell nx x ny x nz times
+
+Run a subcommand with no -i for its full page:
+  ferro build supercell"#
+    );
+}
+
+pub fn print_build_supercell() {
+    println!(
+        r#"ferro build supercell — Replicate a cell along a, b, c
+
+  Give the replicas, or the size to reach: the smallest supercell whose
+  interplanar spacings reach --min-length, grown along its thinnest axis
+  until it holds --min-atoms. Every frame of a trajectory is replicated.
+
+Parameters:
+  -i, --input  FILE...    Input structure(s); globs allowed (quote them)
+      --dims NX NY NZ     Replicas along a, b, c
+      --min-atoms N       At least N atoms
+      --min-length LEN    Every interplanar spacing at least LEN [Å]; this is
+                          the perpendicular thickness, which bounds a cutoff
+                          (r_cut <= LEN/2), not the lattice vector length
+      --dry-run           Print the replicas and atom counts, write nothing
+  -o, --output DIR        Output directory                       [current dir]
+  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
+      --mkdir             Create -o without asking (needed with no terminal)
+      --format EXT        Output format: vasp, cif, extxyz, data...  [input's]
+{READ_OPTS}
+  -h, --help              Short parameter table
+
+Output:
+  supercell_<input>[_<suffix>].<ext>, atoms in (Z, symbol) order. Sizes are
+  taken from the first frame and applied to all; a single-structure format
+  (POSCAR, CIF) gets one file per frame. Energy, forces, stress and velocities
+  are dropped: they belong to the calculation, not the structure
+
+Examples:
+  ferro build supercell -i quartz.cif --dims 2 2 3
+  ferro build supercell -i POSCAR --min-atoms 200 --min-length 12
+  ferro build supercell -i 'cifs/*.cif' --min-length 10 -o big --mkdir
+  ferro build supercell -i OUTCAR --dims 2 2 2 --format vasp
+
+Full documentation:  ferro doc build supercell"#
     );
 }
