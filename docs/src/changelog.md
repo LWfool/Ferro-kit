@@ -204,6 +204,8 @@ carries its input name even for one input:
 - `collect --type inspect` on vasprun.xml notes that its temperature comes from the kinetic energy.
 - `collect`: a VASP output with no usable frame is skipped (`no usable frame`), not joined to its
   directory. `filter` / `merge` `--ratio` errors begin with `Validation error:`.
+- `collect` lists skipped inputs once, at the end, each with its reason; a directory whose only file
+  is unusable counts as one failure, not two.
 
 ### `convert`, `info` and `traj` read program outputs and DeePMD systems
 

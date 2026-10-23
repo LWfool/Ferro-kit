@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：925 个（全部通过，clippy 零警告；2026-10-22 C-2 库层 validate 后实数）；另 ferro-python 194 个 pytest
+## 测试总数：926 个（全部通过，clippy 零警告；2026-10-23 collect 失败计数修复后实数）；另 ferro-python 194 个 pytest
 
 | Crate | 测试数 |
 |---|---|
@@ -12,7 +12,7 @@
 | ferro-structure | 78 |
 | ferro-analysis | 312 |
 | ferro-render | 31 |
-| ferro-cli（lib 107 + bin 5 + 集成 16） | 128 |
+| ferro-cli（lib 108 + bin 5 + 集成 16） | 129 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。
 `rust-version = 1.89` 自 0.3.6 起声明（依赖树最高要求，nalgebra 0.35）。
@@ -350,7 +350,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **`cmd/dataset/`**（2026-10-19 由 `dataset.rs` 拆为 `mod` / `collect` / `filter` / `merge` / `inspect`）：
   三步的行为、参数与产物布局见手册 `docs/src/dataset/`，这里只记实现位置与用户裁定
   - collect：一目录一 system（2026-08-26）；PJM 作业日志在分组前剔除（`drop_pjm_logs` / `is_pjm_log`，
-    2026-10-05，规则写死、无关闭开关，用户裁定）；每个文件读完当场按 (Z, 符号) 重排
+    2026-10-05，规则写死、无关闭开关，用户裁定）；失败按输入文件计，原因随条目收集、跑完统一列一次，
+    目录级条目只带前面没列过的文件（2026-10-23）；每个文件读完当场按 (Z, 符号) 重排
     （`Trajectory::canonically_sorted`，2026-09-22）。`--format` 压过嗅探，但嗅探仍跑：
     不一致时打 `NOTE:`，并作「同目录 OUTCAR + vasprun.xml」守卫的比较对象（`--format` 一给，
     `stats.format` 就恒等于它，守卫会失效）
