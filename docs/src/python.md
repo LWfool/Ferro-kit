@@ -50,7 +50,7 @@ changes often and what users want to edit is in Python.**
 | the structure blocks of input files: POSCAR, QE's three cards, CP2K's `&CELL` / `&COORD` | the parameter blocks: INCAR, the pw.x namelists, the CP2K section tree |
 | parsing and writing QE namelists (one grammar for the reader and the generator) | the templates: nine native input files, users' own templates by name |
 | reading program outputs: energy, forces, stress (`read_output`) and writing ferro's tables (`write_table`) | convergence tests and their analysis arithmetic (`ferro-py conv`) |
-| structure operations (`supercell`, `add_vacuum_layer`, `merge`) and analysis (`gr_pair`, `gr_all`, `msd`) | the configuration file, `~/.config/ferro/config.toml` |
+| structure operations (`supercell`, `add_vacuum_layer`, `merge`, `build_box`) and analysis (`gr_pair`, `gr_all`, `msd`) | the configuration file, `~/.config/ferro/config.toml` |
 | the manual pages and their terminal rendering (`ferro-py doc`) | the `ferro-py` command line and its help pages |
 | | `ferro.plot`: figures from ferro's csv tables (`ferro-py plot`) |
 

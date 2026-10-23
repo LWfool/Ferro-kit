@@ -155,6 +155,14 @@ def test_add_vacuum_layer_smoke(tmp_path):
     assert sum(out.cell(0), []) == pytest.approx([5, 0, 0, 0, 5, 0, 0, 0, 12.5])
 
 
+def test_build_box_is_reproducible():
+    box = ferro.build_box([("H2O", 30), ("ZnO", 5)], 1.2, seed=7)
+    assert box.n_atoms() == 30 * 3 + 5 * 2
+    assert box.positions(0) == ferro.build_box([("H2O", 30), ("ZnO", 5)], 1.2, seed=7).positions(0)
+    with pytest.raises(ferro.FerroError, match="density"):
+        ferro.build_box([("H2O", 30)], -1.0)
+
+
 def test_gr_defaults_are_those_of_the_cli():
     # ferro traj gr: --r-min 0.001, --dr 0.002; the bin centres start at r_min + dr/2.
     # r_max - r_min is a whole number of bins, so the width is not narrowed (md/util.rs::bins)

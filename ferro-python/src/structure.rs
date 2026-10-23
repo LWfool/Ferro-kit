@@ -1,7 +1,7 @@
-//! 结构操作绑定（超胞 / 真空层 / 合并）。
+//! Structure operation bindings (supercell / vacuum layer / merge / mixed box).
 
 use ferro_core::{matrix3_from_row_major, Cell, Trajectory};
-use ferro_structure::{add_vacuum, make_supercell, merge_frames};
+use ferro_structure::{add_vacuum, build_box as build_mixed_box, make_supercell, merge_frames, Component};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -54,6 +54,23 @@ fn merge(
     Ok(PyTrajectory::new(Trajectory::from_frame(merged)))
 }
 
+/// Pack `components`, `[(name or formula, count), ...]`, at random into a cubic box of
+/// `density` g/cm³; a one-frame trajectory. Defaults are those of `ferro build box`.
+#[pyfunction]
+#[pyo3(signature = (components, density, min_dist = 1.5, relax_steps = 500, seed = 666))]
+fn build_box(
+    components: Vec<(String, usize)>,
+    density: f64,
+    min_dist: f64,
+    relax_steps: usize,
+    seed: u64,
+) -> PyResult<PyTrajectory> {
+    let comps: Vec<Component> =
+        components.into_iter().map(|(compound, n_molecules)| Component { compound, n_molecules }).collect();
+    let frame = build_mixed_box(&comps, density, min_dist, relax_steps, seed).map_err(pyerr)?;
+    Ok(PyTrajectory::new(Trajectory::from_frame(frame)))
+}
+
 /// Interplanar spacings (d_a, d_b, d_c) [Å] of a cell given as rows a, b, c [Å]: the distance
 /// between the lattice planes normal to each reciprocal vector, `1 / |b_i|` (2π not included).
 /// The k-point mesh of `ferro.jobs` is built on it; a singular cell is an error.
@@ -70,5 +87,6 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(supercell, m)?)?;
     m.add_function(wrap_pyfunction!(add_vacuum_layer, m)?)?;
     m.add_function(wrap_pyfunction!(merge, m)?)?;
+    m.add_function(wrap_pyfunction!(build_box, m)?)?;
     Ok(())
 }
