@@ -342,8 +342,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   旧 `fe-traj` 是 29 个字段的大结构体）。`CommonArgs` / `SelectArgs` 经
   `#[command(flatten)]` 接入
 - **`-o` 恒为路径**（2026-09-20 起，`--outdir` 已删）：写多个产物的命令（13 个分析
-  命令、`chg-sdf`、`bader`、`dataset`）指目录，只写一个文件的（`convert`）
-  指文件；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
+  命令、`chg-sdf`、`bader`、`dataset`）指目录，`convert` 也指目录（2026-10-23 起，
+  `--format` 必填、产物沿用输入名、缺目录直接建）；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
   `[y/N]`，非交互环境报错并指明 `--mkdir`，询问都在读第一个输入之前
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
   零匹配报错）、`unique_labels`（同名输入改 `_2`，撞名按小写比 —— macOS / Windows 文件系统

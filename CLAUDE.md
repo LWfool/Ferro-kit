@@ -81,9 +81,10 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 当前版本见 `dev/progress.md` 顶部，历次版本批次与破坏性改动（含走 patch 位的例外）见
 `dev/overview.md`。何时升版本号的细则见 `dev/memory.md`「版本号更新规则」。
 
-**`-o` 恒为路径**：写多个产物的命令指目录，`convert` 指文件；批次标记走
+**`-o` 恒为路径**：写多个产物的命令指目录，`convert` 也指目录；批次标记走
 `-s/--suffix`。目录缺失时经 `outpath.rs` 询问，非交互环境须给 `--mkdir`。
-**`convert` 例外**：`--format EXT` 让 `-o` 成为目录；缺失目录直接建，没有 `--mkdir`。
+**`convert` 例外**：`--format EXT` 必填，产物沿用输入名（`DIR/<stem>.<EXT>`）；
+缺失目录直接建，没有 `--mkdir`。
 
 ## 扩展项目
 
