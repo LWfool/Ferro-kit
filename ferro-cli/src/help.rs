@@ -35,14 +35,13 @@ pub fn print_convert() {
     println!(
         r#"ferro convert — Structure / trajectory format conversion
 
-  Reads one file, writes another. Both formats come from the file NAMES;
-  there is no --from / --to flag.
+  Reads one file, writes it into a directory in the format --format names.
+  The input format comes from the file NAME; there is no --from flag.
 
 Parameters:
-  -i, --input  FILE       Input file  (format from its name)
-  -o, --output PATH       Output file (format from its name), or a directory
-                          when --format is given. Missing directories are created
-      --format EXT        Write EXT (cif, vasp, extxyz, ...) into the -o directory
+  -i, --input  FILE       Input file (format from its name)
+  -o, --output DIR        Output directory, created if missing
+      --format EXT        Format to write: cif, vasp, extxyz, ...
       --start  N          First frame to take (0-based, inclusive)         [0]
       --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
       --stride N          Take every Nth frame within [start, end]         [1]
@@ -52,20 +51,20 @@ Parameters:
                           the missing values are never written as 0
 {READ_OPTS}
   -h, --help              Short parameter table (this page adds the formats)
- Formats -i / -o accept, recognised by file name:
+ Formats -i reads (by file name) and --format writes (by extension):
 {}
 
 Output:
+  Products are named after the input: traj.dump gives DIR/traj.<EXT>.
   One file when the target format holds a trajectory (Frames column above),
   one file PER FRAME when it holds a single structure (CIF, POSCAR, data):
-  POSCAR_0000, conf_0002.cif — the index is the ORIGINAL frame number.
-  With --format the stem is `frame`: DIR/frame_0000.cif, DIR/frame.extxyz
+  DIR/traj_0002.cif — the index is the ORIGINAL frame number.
 
 Examples:
-  ferro convert -i input.cif -o POSCAR
-  ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
-  ferro convert -i traj.dump -o out/conf.vasp --number 20
-  ferro convert -i traj.dump -o cifs/ --format cif --stride 10
+  ferro convert -i input.cif -o . --format vasp
+  ferro convert -i traj.dump -o sub --format extxyz --start 100 --end 199
+  ferro convert -i traj.dump -o out --format vasp --number 20
+  ferro convert -i traj.dump -o cifs --format cif --stride 10
 
 Full documentation:  ferro doc convert"#,
         crate::io_dispatch::supported_formats()

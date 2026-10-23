@@ -70,16 +70,16 @@ pub fn supported_formats() -> String {
   A name that says nothing (OUTCAR, vasprun.xml, a .out log) is read by its
   program banner. Frames whose SCF did not converge are dropped and counted,
   as `ferro dataset collect` does. A directory holding type.raw is a DeePMD
-  system. Writing to a CONTCAR name emits POSCAR-format content.
+  system. --format takes an extension from a row with Write = y.
 
   `-` under Write means read-only: an input or a program output can be
   converted FROM, not TO. To generate a CP2K or QE input use
   `ferro-py job -s cp2k|qe`, which writes a full run setup rather than bare
   coordinates.
 
-  `one per file` means the format holds one structure: 500 frames written
-  to conf.cif give conf_0000.cif ... conf_0499.cif. Use --stride / --number
-  to thin them out."
+  `one per file` means the format holds one structure: 500 frames of
+  traj.dump with --format cif give traj_0000.cif ... traj_0499.cif. Use
+  --stride / --number to thin them out."
     )
 }
 

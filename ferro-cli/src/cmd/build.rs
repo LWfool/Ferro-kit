@@ -339,7 +339,7 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
             1 => Ok(traj.frames.into_iter().next().expect("one frame")),
             n => bail!(
                 "{} holds {n} frames; merge stacks two structures — take one first with \
-                 `ferro convert -i {} -o one.extxyz --start K --end K`",
+                 `ferro convert -i {} -o DIR --format extxyz --start K --end K`",
                 p.display(), p.display()
             ),
         }
