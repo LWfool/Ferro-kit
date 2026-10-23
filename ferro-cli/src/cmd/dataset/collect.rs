@@ -80,8 +80,10 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
     let fmt = args.format.map(AimdFormat::from);
 
     let groups = group_by_directory(&inputs);
-    let mut failures = 0usize;
-    let mut skipped: Vec<PathBuf> = Vec::new();
+    // (source, reason, inputs it kept out of every system). The count is in input
+    // files, which is what main reports; a directory entry carries only the files
+    // not already listed one by one, so no input is counted twice
+    let mut failed: Vec<(PathBuf, String, usize)> = Vec::new();
 
     for group in &groups {
         let dest = if inspect {
@@ -89,25 +91,31 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
         } else {
             collect_dest(args.output.as_deref(), group)
         };
-        match collect_group(group, &dest, args.overwrite, inspect, fmt, &mut skipped) {
-            Ok(()) => {}
-            Err(e) => {
-                crate::report::error(group.dir.display(), format!("{e:#}; skipped"));
-                failures += 1;
+        let before = failed.len();
+        if let Err(e) = collect_group(group, &dest, args.overwrite, inspect, fmt, &mut failed) {
+            // "No usable file" after every file failed on its own says nothing new
+            let rest = group.files.len() - (failed.len() - before);
+            if rest > 0 {
+                failed.push((group.dir.clone(), format!("{e:#}"), rest));
             }
         }
     }
 
-    if !skipped.is_empty() {
-        // 合并语义下坏文件不毒化整个 system，但 system 目录看着是正常的，
-        // 帧数少了却无从察觉 —— 所以这份清单要在最后再说一遍
-        for p in &skipped {
-            crate::report::error(p.display(), "skipped above; NOT in any system");
-        }
-        failures += skipped.len();
-    }
+    // Reported once, after the run: in a directory per single point the bad ones
+    // would otherwise be scattered among hundreds of progress lines. Merging lets a
+    // bad file not poison its system, but the system directory then looks normal
+    // while holding fewer frames — so the list says which inputs are NOT in it
+    let failures: usize = failed.iter().map(|(_, _, n)| n).sum();
     if failures > 0 {
-        crate::report::error(crate::report::PROGRAM, format!("{failures} failure(s)"));
+        crate::report::error(crate::report::PROGRAM, format!(
+            "{failures} input(s) skipped, NOT in any system:"
+        ));
+        for (source, reason, n) in &failed {
+            match n {
+                1 => crate::report::error(source.display(), reason),
+                _ => crate::report::error(source.display(), format!("{reason} ({n} files)")),
+            }
+        }
     }
     Ok(failures)
 }
@@ -299,7 +307,7 @@ fn collect_group(
     overwrite: bool,
     inspect: bool,
     format: Option<AimdFormat>,
-    skipped: &mut Vec<PathBuf>,
+    skipped: &mut Vec<(PathBuf, String, usize)>,
 ) -> Result<()> {
     // Checked before any file is read, for both kinds: `dest` is the system directory or,
     // for inspect, `ferro_inspect/`. ensure_writable rather than a hand-made copy (review
@@ -338,18 +346,14 @@ fn collect_group(
                 Ok(f) => f,
                 Err(e) => {
                     // The banner check is ferro-io's, and knows nothing of this flag
-                    crate::report::error(path.display(), format!("{e:#} (--format reads it as a given program); skipped"));
-                    skipped.push(path.clone());
+                    skipped.push((path.clone(), format!("{e:#} (--format reads it as a given program)"), 1));
                     continue;
                 }
             },
         };
         match read_aimd_as(path, fmt) {
             Ok((traj, stats)) => parts.push((path.clone(), traj.canonically_sorted(), stats)),
-            Err(e) => {
-                crate::report::error(path.display(), format!("{e:#}; skipped"));
-                skipped.push(path.clone());
-            }
+            Err(e) => skipped.push((path.clone(), format!("{e:#}"), 1)),
         }
     }
     if parts.is_empty() {
@@ -635,6 +639,31 @@ mod tests {
             &[("a.out", failed), ("b.out", sp_text(true)), ("c.out", sp_text(false))]);
         assert_eq!(read.unwrap().n_frames(), 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// One directory per single point (the VASP SP layout): a directory whose only
+    /// file is unusable is one failed input, not two. It used to count once as the
+    /// skipped file and once more as the directory left with no usable file
+    #[test]
+    fn a_directory_whose_only_file_is_unusable_counts_as_one_failure() {
+        let root = std::env::temp_dir().join("ferro_collect_one_failure");
+        let _ = std::fs::remove_dir_all(&root);
+        let failed = sp_text(true).replace("SCF run converged", "SCF run NOT converged");
+        for (d, text) in [("bad", failed), ("good", sp_text(true))] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+            std::fs::write(root.join(d).join("sp.out"), text).unwrap();
+        }
+        let args = CollectCmd {
+            input: vec![root.join("bad/sp.out"), root.join("good/sp.out")],
+            output: Some(root.join("out")),
+            mkdir: true,
+            overwrite: false,
+            out_type: CollectType::Deepmd,
+            format: None,
+        };
+        assert_eq!(run_collect(&args).unwrap(), 1);
+        assert!(root.join("out/good.db/type.raw").exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// QE pw.x 实算输出：单点按文件成帧（没收敛的那份被 SKIP），md 逐步成帧，

@@ -448,9 +448,11 @@ a mistake of the person, not a problem with the data, and the two call for
 completely different responses.
 
 A file that fails to parse is skipped, the rest still become a system, and the
-skipped files are listed again at the end with exit code 1. The second listing is
-not redundant: the system directory looks perfectly normal while holding fewer
-frames than you think.
+skipped files are listed once, at the end of the run, each with its reason, under
+`<N> input(s) skipped, NOT in any system`; the exit code is 1. `N` counts input
+files: a directory whose only file is unusable is one failure, not two. The list
+matters even when the system was written: the system directory looks perfectly
+normal while holding fewer frames than you think.
 
 ### PJM job logs are left out
 
