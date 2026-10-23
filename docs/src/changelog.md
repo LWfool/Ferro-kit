@@ -12,6 +12,17 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro build`: supercell, vacuum, merge, box
+
+- New commands: `ferro build supercell` (replicate by `--dims`, or size by `--min-atoms` /
+  `--min-length`), `vacuum`, `merge` and `box`, which before were reachable only from Python or
+  not at all. `-o` is the output directory, `-s` the batch tag; the product is
+  `<op>_<input>[_<suffix>].<ext>` in the input's format unless `--format` says otherwise.
+  See `ferro doc build`.
+- `--min-length` is the interplanar spacing, not the lattice vector length: on a tilted cell
+  a script that sized by vector length gives a thinner supercell than ferro does.
+- Python: `ferro.build_box(components, density, ...)`, the same box as `ferro build box`.
+
 ### `ferro-py plot` replaces `scripts/plot_*.py`
 
 - Publication figures are drawn by `ferro-py plot gr | sq | angle | msd | net` and

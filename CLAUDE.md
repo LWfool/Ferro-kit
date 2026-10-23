@@ -103,8 +103,9 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 不收 —— 一份手册两处收录迟早走样（用户定）。`ferro doc python` 只读 `docs/src/python.md`：
 ferro-python 的构成、依赖、职责与架构，不写用法。
 
-**加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`。
-目前无 CLI 入口（`box_builder` 也是库级）。
+**加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`
+→ CLI `ferro-cli/src/cmd/build.rs`（帮助页、`help_sync` 的 `PAGES`、手册 `docs/src/build.md` 一节 +
+`doc.rs` 的 `PAGES` 一条）。
 
 **加数据集判据**：`ferro-analysis/src/ml/dataset/filter.rs` 的 `Criterion` 加变体（记得
 `ALL`、`name`、`bit`、`enabled` 四处）→ `FilterParams` 加参数 → `cmd/dataset/filter.rs`

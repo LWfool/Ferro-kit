@@ -29,6 +29,6 @@ D 组（手册压缩，7947 → 6803 行）已完成；C-1 / C-2（两份 README
 | | 低 | DeePMD mixed type 读写（10-22 由高降）；`convert` 写 CIF 的空间群；MACE / NequIP 格式；`read_cube` 合并；CP2K EXTXYZ / XMOL（kind 名、Hartree 能量）；dataset 审查余项 |
 | `plan/analysis.md` | 中 | bondlife 手册口径；vanhove `tau` 列（搁置） |
 | | 低 | bondlife 后续、配位态动力学、VDOS（10-22 由中降）；D 的统计误差；filter 多层周期镜像；机器学习集成；S(q) Lorch 窗；分析侧逐帧消费 |
-| `plan/cli-python.md` | 低 | ferro-structure 补充结构操作（10-22 由中降）；**结构操作的 CLI 入口（supercell / vacuum / box_builder）**；code1 / code2 引用扫描；REPL；rustfmt；ferro-py job 的遗留与存疑 |
+| `plan/cli-python.md` | 低 | ferro-structure 补充结构操作（10-22 由中降）；code1 / code2 引用扫描；REPL；rustfmt；ferro-py job 的遗留与存疑 |
 | `plan/suspended.md` | 挂起 | Bader 改写组、cube_sdf / chg_sdf 改写组、`map jump` 入口组（随功能改写一并处理，平时不修） |
 | `plan/zero-call.md` | 中 | 零调用清单 |

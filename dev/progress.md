@@ -3,7 +3,7 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：926 个（全部通过，clippy 零警告；2026-10-23 collect 失败计数修复后实数）；另 ferro-python 194 个 pytest
+## 测试总数：933 个（全部通过，clippy 零警告；2026-10-23 `ferro build` 落地后实数）；另 ferro-python 195 个 pytest
 
 | Crate | 测试数 |
 |---|---|
@@ -12,7 +12,7 @@
 | ferro-structure | 78 |
 | ferro-analysis | 312 |
 | ferro-render | 31 |
-| ferro-cli（lib 108 + bin 5 + 集成 16） | 129 |
+| ferro-cli（lib 108 + bin 5 + 集成 23） | 136 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。
 `rust-version = 1.89` 自 0.3.6 起声明（依赖树最高要求，nalgebra 0.35）。
@@ -212,6 +212,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   - `parse_formula` 栈式解析，支持嵌套 `()` / `[]`：`Ca3(PO4)2`、`(NH4)2SO4`、`K4[Fe(CN)6]`
   - `resolve_component`：先查 COMPOUNDS，查不到则当化学式解析 → 可建库外化合物的盒子
   - 拒绝空式、空组、零计数、括号错配、未知元素
+- CLI 入口 `ferro build supercell | vacuum | merge | box`（`ferro-cli/src/cmd/build.rs`，2026-10-23）；
+  Python 四者都有（`supercell` / `add_vacuum_layer` / `merge` / `build_box`）
 - `typing.rs`：`apply_type_labels`（`ferro net --export-traj` 用）。`classify_trajectory` 与
   `cluster.rs::find_clusters` 已于 2026-10-18 删除（零调用；changelog 记为库 API 移除）
 
@@ -363,6 +365,10 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   - `--type deepmd|nep|extxyz` 与 `--ratio` 划分（2026-08-26）：filter 与 merge 共用
     `OutType` / `Split` / `write_split`；划分后缀用 dpgen 的目录名（`SPLIT_SUFFIXES`），
     `filter` / `merge` 产物默认带 `.train`（2026-09-20 起）
+- **`cmd/build.rs`**（2026-10-23）：`build supercell | vacuum | merge | box`，只读、命名、写，结构操作全在
+  `ferro-structure`。四者共用 `OutArgs`（`-o` 目录 / `-s` / `--mkdir` / `--format`，格式默认取输入的）与
+  `write_product`；supercell / vacuum 走 `per_input`（`batch::map_inputs`，逐输入失败跳过 + 退出码 1），
+  merge / box 只出一个产物、失败即报错。手册 `docs/src/build.md`，判据见 `decisions.md`「`ferro build`」
 - **`cmd/dataset/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断产物，
   布局与 `_info.csv` 的列见手册 `dataset/collect.md`
 - **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 除 `python/` 外的全部页经 `include_str!`
@@ -482,7 +488,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
   改公共 API 后须在 `ferro-python/` 里补跑 `cargo clippy` 与 pytest（2026-10-16 就漏过一次
   clippy 警告）。pyo3 0.29 运行时已验证（2026-10-16，见上节）
 - `box_builder`：不支持水合物点记法（`CuSO4·5H2O`）—— 水应作为独立 component 传入；
-  无 CLI / Python 入口，只能作为库函数调用
+  入口是 `ferro build box` 与 `ferro.build_box`（2026-10-23）
 - **REPL / 脚本模式未实现**。`main.rs` 是可用的子命令分发器，裸 `ferro` 打印分类总览
 - 代码库未纳入 rustfmt 管理，格式为手工维护（含刻意的列对齐）；是否采用见 `plan/cli-python.md`
 - `cube_density.rs:188` 用参考帧体积归一化，NPT 下同类偏差；需先定义「NPT 下 3D 密度图

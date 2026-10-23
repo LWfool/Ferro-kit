@@ -23,14 +23,6 @@
 25 提取团簇、28 坐标轴互换。
 
 
-### 结构操作的 CLI 入口：supercell / vacuum / box_builder（2026-10-21 用户定登记）
-
-三者都只有库函数，CLI 没有入口：`make_supercell` / `find_supercell_dims`、`add_vacuum`、
-`build_box` / `estimate_box_length`（`ferro-structure/src/lib.rs`）。前两者另有 Python 绑定
-（`ferro-python/src/structure.rs` 的 `supercell` / `add_vacuum_layer`），`build_box` 连 Python 也没有。
-命令形态待定（例如 `ferro build supercell | vacuum | box`）；按定级规则属功能，低。
-做的时候 `merge_frames`（Python 有 `merge`）一并考虑。
-
 ### 代码注释中的 code1 / code2 引用统一扫描（2026-10-09 提出）
 
 `private/code1`（dump2analysis）与 `code2`（dump2sq）是私有参考代码，**不是行业标准做法** ——
