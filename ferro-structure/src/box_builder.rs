@@ -14,6 +14,7 @@ use ferro_core::frame::Frame;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 
 /// A component in a mixed-compound system.
+#[derive(Clone, Debug)]
 pub struct Component {
     /// Compound name or formula, looked up in the COMPOUNDS database first; anything
     /// not there is parsed as a chemical formula (`Ca3(PO4)2`) and its molar mass summed

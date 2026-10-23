@@ -170,6 +170,9 @@ Structure I/O
 
 Structure building       one structure file per input, in the input's format
   build supercell   Replicate a cell, given or sized by atoms / spacing
+  build vacuum      Add a vacuum layer along one lattice vector
+  build merge       Stack two structures with a gap between them
+  build box         Pack molecules at random into a box of given density
 
 Machine-learning datasets
   dataset collect   AIMD output -> DeePMD system directories (set.*/*.npy)
@@ -880,8 +883,11 @@ pub fn print_build_overview() {
   input's format unless --format names another:
 
   supercell  replicate a cell nx x ny x nz times
+  vacuum     add a vacuum layer along one lattice vector
+  merge      stack two structures, merge_<A>_<B>[_<suffix>].<ext>
+  box        pack molecules into a cubic box, box[_<suffix>].vasp
 
-Run a subcommand with no -i for its full page:
+Run a subcommand with no -i (box: no -c) for its full page:
   ferro build supercell"#
     );
 }
@@ -922,5 +928,103 @@ Examples:
   ferro build supercell -i OUTCAR --dims 2 2 2 --format vasp
 
 Full documentation:  ferro doc build supercell"#
+    );
+}
+
+pub fn print_build_vacuum() {
+    println!(
+        r#"ferro build vacuum — Add a vacuum layer along one lattice vector
+
+  Lengthens one lattice vector so that the gap between periodic images grows
+  by --thickness, measured perpendicular to the other two vectors. Atoms are
+  not moved or centred: a slab crossing the cell boundary is split by the gap.
+
+Parameters:
+  -i, --input  FILE...    Input structure(s); globs allowed (quote them)
+      --axis X            Lattice vector to lengthen: x = a, y = b, z = c  [z]
+      --thickness LEN     Vacuum thickness [Å]
+  -o, --output DIR        Output directory                       [current dir]
+  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
+      --mkdir             Create -o without asking (needed with no terminal)
+      --format EXT        Output format: vasp, cif, extxyz, data...  [input's]
+{READ_OPTS}
+  -h, --help              Short parameter table
+
+Output:
+  vacuum_<input>[_<suffix>].<ext>, atoms in (Z, symbol) order, every frame
+  of a trajectory treated alike. Energy, forces, stress and velocities are
+  dropped
+
+Examples:
+  ferro build vacuum -i slab.vasp --thickness 15
+  ferro build vacuum -i 'slabs/*.cif' --axis y --thickness 20 -o vac --mkdir
+
+Full documentation:  ferro doc build vacuum"#
+    );
+}
+
+pub fn print_build_merge() {
+    println!(
+        r#"ferro build merge — Stack two structures along one lattice vector
+
+  Puts B on top of A along --axis with a gap of --gap between them, measured
+  along the interface normal. Neither block is strained: both are moved
+  rigidly and centred in the interface plane, and the in-plane vectors are
+  the longer of the two. The interfaces must be parallel.
+
+Parameters:
+  -i, --input  A B        The two structures, bottom first; one frame each
+      --axis X            Lattice vector to stack along: x, y, z           [z]
+      --gap LEN           Gap between the blocks [Å]; 0 allowed
+  -o, --output DIR        Output directory                       [current dir]
+  -s, --suffix SUFFIX     Batch tag, the last segment of the product name
+      --mkdir             Create -o without asking (needed with no terminal)
+      --format EXT        Output format: vasp, cif, extxyz, data...      [A's]
+{READ_OPTS}
+  -h, --help              Short parameter table
+
+Output:
+  merge_<A>_<B>[_<suffix>].<ext>, atoms in (Z, symbol) order. Energy,
+  forces, stress and velocities are dropped
+
+Examples:
+  ferro build merge -i substrate.vasp water.vasp --gap 2.5
+  ferro build merge -i a.cif b.cif --axis x --gap 0 --format extxyz
+
+Full documentation:  ferro doc build merge"#
+    );
+}
+
+pub fn print_build_box() {
+    println!(
+        r#"ferro build box — Pack molecules at random into a cubic box
+
+  The box length comes from the total mass and --density. Atoms are placed
+  at random, then pushed apart by a soft-core relaxation until no pair is
+  closer than --min-dist; a box that still has such pairs is an error.
+  Molecules are not kept whole: this is a starting structure for a melt.
+
+Parameters:
+  -c, --component SPEC    NAME:COUNT, a formula or a known compound name;
+                          repeat for each component: -c H2O:100 -c 'P2O5:10'
+      --density RHO       Mass density [g/cm³]
+      --min-dist LEN      Closest allowed distance between atoms [Å]     [1.5]
+      --relax-steps N     Relaxation steps                               [500]
+      --seed N            Random seed; the same seed gives the same box  [666]
+  -o, --output DIR        Output directory                       [current dir]
+  -s, --suffix SUFFIX     Batch tag, the last segment of the product name
+      --mkdir             Create -o without asking (needed with no terminal)
+      --format EXT        Output format: vasp, cif, extxyz, data...     [vasp]
+  -h, --help              Short parameter table
+
+Output:
+  box[_<suffix>].<ext>, atoms in (Z, symbol) order, with the box length and
+  atom count on stdout
+
+Examples:
+  ferro build box -c ZnO:43 -c P2O5:43 -c Al2O3:15 --density 3.2
+  ferro build box -c H2O:200 --density 1.0 --format extxyz -s w200
+
+Full documentation:  ferro doc build box"#
     );
 }

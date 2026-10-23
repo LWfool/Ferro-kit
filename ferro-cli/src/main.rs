@@ -239,6 +239,9 @@ mod help_sync {
         (&["dataset", "filter"], "print_dataset_filter"),
         (&["dataset", "merge"], "print_dataset_merge"),
         (&["build", "supercell"], "print_build_supercell"),
+        (&["build", "vacuum"], "print_build_vacuum"),
+        (&["build", "merge"], "print_build_merge"),
+        (&["build", "box"], "print_build_box"),
     ];
 
     /// Options clap accepts on a command that its page deliberately omits.

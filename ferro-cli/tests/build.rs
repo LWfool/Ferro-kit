@@ -71,6 +71,50 @@ fn supercell_dry_run_writes_nothing() {
     assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
 }
 
+/// The spacing along the vacuum axis grows by exactly the thickness; the others stay.
+#[test]
+fn vacuum_grows_the_spacing_along_its_axis() {
+    let d = scratch("vac");
+    ok(&ferro(&["build", "vacuum", "-i", TRICLINIC, "--axis", "y", "--thickness", "7.5",
+                "--format", "extxyz", "-o", d.to_str().unwrap()]));
+    let src = read(Path::new(TRICLINIC));
+    let made = read(&d.join("vacuum_triclinic_2frames.extxyz"));
+    assert_eq!(made.n_frames(), 2);
+    for (a, b) in src.frames.iter().zip(&made.frames) {
+        let sa = a.cell.as_ref().unwrap().interplanar_spacings().unwrap();
+        let sb = b.cell.as_ref().unwrap().interplanar_spacings().unwrap();
+        assert!((sb[1] - sa[1] - 7.5).abs() < 1e-9 && (sb[0] - sa[0]).abs() < 1e-9 && (sb[2] - sa[2]).abs() < 1e-9,
+                "{sa:?} -> {sb:?}");
+    }
+}
+
+/// A box built twice with one seed is the same file; merging it with itself doubles it.
+#[test]
+fn box_is_reproducible_and_merge_stacks_two() {
+    let d = scratch("box");
+    let o = d.to_str().unwrap();
+    for s in ["a", "b"] {
+        ok(&ferro(&["build", "box", "-c", "H2O:30", "-c", "ZnO:5", "--density", "1.2", "--seed", "7",
+                    "-o", o, "-s", s]));
+    }
+    let (a, b) = (d.join("box_a.vasp"), d.join("box_b.vasp"));
+    assert_eq!(std::fs::read(&a).unwrap(), std::fs::read(&b).unwrap());
+    assert_eq!(read(&a).frames[0].n_atoms(), 30 * 3 + 5 * 2);
+
+    ok(&ferro(&["build", "merge", "-i", a.to_str().unwrap(), b.to_str().unwrap(), "--gap", "2", "-o", o]));
+    let merged = read(&d.join("merge_box_a_box_b.vasp"));
+    assert_eq!(merged.frames[0].n_atoms(), 2 * 100);
+}
+
+/// merge does not pick a frame of a trajectory on the user's behalf.
+#[test]
+fn merge_refuses_a_trajectory() {
+    let d = scratch("merge_traj");
+    let out = ferro(&["build", "merge", "-i", TRICLINIC, TRICLINIC, "--gap", "1", "-o", d.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("holds 2 frames"));
+}
+
 /// An OUTCAR cannot be written back, and that is known before it is read.
 #[test]
 fn a_read_only_input_format_needs_format() {
