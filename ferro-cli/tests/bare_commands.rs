@@ -25,7 +25,7 @@ fn options_without_an_input_fail() {
         &["map", "chg-sdf", "--qn", "3"],
         &["dataset", "merge", "--seed", "1"],
         &["net", "--P-O=2.3"],
-        &["convert", "-o", "x.xyz"],
+        &["convert", "-o", "out"],
     ] {
         let out = ferro(args);
         assert!(!out.status.success(), "{args:?} exited 0");

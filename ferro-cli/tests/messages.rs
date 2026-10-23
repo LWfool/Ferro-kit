@@ -91,7 +91,7 @@ fn reader_notice_carries_source_and_line() {
     let d = scratch("reader");
     let input = d.join("cut.xyz");
     std::fs::write(&input, "2\nc\nO 0 0 0\nH 1 0 0\n2\nc\nO 0 0 0\n").unwrap();
-    let out = ferro(&["convert", "-i", input.to_str().unwrap(), "-o", d.join("o.xyz").to_str().unwrap()]);
+    let out = ferro(&["convert", "-i", input.to_str().unwrap(), "-o", d.join("o").to_str().unwrap(), "--format", "xyz"]);
     assert!(out.status.success());
     assert_eq!(
         text(&out.stderr),

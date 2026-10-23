@@ -11,12 +11,11 @@ pub struct ConvertCmd {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Output file (format from its name), or a directory when --format is given;
-    /// missing directories are created
+    /// Output directory, created if missing; products are named after the input
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Treat -o as a directory and write this format into it (an extension: cif, vasp, extxyz…)
+    /// Format to write (an extension: cif, vasp, extxyz…)
     #[arg(long, value_name = "EXT")]
     pub format: Option<String>,
 
@@ -55,12 +54,26 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     let Some(input) = &args.input else {
         bail!("convert needs an input file: -i <FILE>");
     };
-    let Some(output) = &args.output else {
-        bail!("convert needs an output file: -o <FILE>  (run `ferro convert` for the format list)");
+    let Some(dir) = &args.output else {
+        bail!("convert needs an output directory: -o <DIR>  (run `ferro convert` for the format list)");
+    };
+    // Not clap's `required`: bare `ferro convert` must still reach the format list
+    let Some(ext) = &args.format else {
+        bail!(
+            "convert needs a target format: --format <EXT>, e.g. `-o {} --format extxyz`",
+            dir.display()
+        );
     };
 
-    // Compared as resolved paths: `-o ./x` for `-i x` is the same file, and writing
-    // it truncates the input. The output need not exist yet, so its parent is resolved.
+    // The product is named after the input: `traj.dump` -> DIR/traj.<EXT>, and a
+    // format holding one structure per file numbers it, DIR/traj_0000.<EXT>.
+    // A name without an extension (POSCAR) or a DeePMD directory is the stem as a whole
+    let stem = input.file_stem().unwrap_or(input.as_os_str()).to_string_lossy();
+    let output = &dir.join(format!("{stem}.{}", ext.trim_start_matches('.')));
+
+    // Compared as resolved paths: `-o .` for `-i x.extxyz --format extxyz` is the
+    // same file, and writing it truncates the input. The output need not exist yet,
+    // so its parent is resolved.
     let resolved = |p: &Path| -> PathBuf {
         p.canonicalize().unwrap_or_else(|_| {
             let parent = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
@@ -72,24 +85,6 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("Input and output paths are identical");
     }
 
-    // 给了 --format 则 -o 是目录，产物名为 frame.<EXT>（逐帧时 frame_0000.<EXT>）；
-    // 否则 -o 是文件，目标格式从文件名推断。目录形状的 -o 不带 --format 时无格式
-    // 可判（Rust 与 pathlib 一样丢掉末尾分隔符，只有原文能看出意图），报错并给出
-    // 可直接抄的写法
-    let output = &match &args.format {
-        Some(ext) => output.join(format!("frame.{}", ext.trim_start_matches('.'))),
-        None => {
-            if ends_with_separator(output) || output.is_dir() {
-                let shown = output.display();
-                bail!(
-                    "-o '{shown}' names a directory, but no format was given. \
-                     Add --format (e.g. --format cif), or name a file: -o '{}'",
-                    output.join("conf.extxyz").display()
-                );
-            }
-            output.clone()
-        }
-    };
     // 参数级错误在读第一个文件之前失败：轨迹可能是几个 GB，读完再报「--start 比
     // --end 大」是白等。跨参数的一致性能在这里查的都查掉。
     // ferro-python 的 `Trajectory.frame_indices` 有同义的一份（报错用 Python 参数名，按 R6 不合）
@@ -107,12 +102,9 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("--number must be at least 1");
     }
     // 目标格式也是参数：认不出就别建目录、别读输入（审查 D-M15）
-    ferro_io::Format::for_output(output).with_context(|| match &args.format {
-        Some(ext) => format!("--format {ext}"),
-        None => "-o names the output FILE; to write into a directory, add --format EXT".into(),
-    })?;
-    // convert 只写这一个目标，路径是用户逐字写出的，不必再问是否建目录
-    crate::outpath::ensure_parent(output, true)?;
+    ferro_io::Format::for_output(output).with_context(|| format!("--format {ext}"))?;
+    // convert writes into this one directory, typed out by the user: no need to ask
+    crate::outpath::ensure_dir(dir, true)?;
 
     let traj = read_trajectory(input, &args.read)?;
     let n_read = traj.n_frames();
@@ -160,10 +152,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
             input.display(),
             indices.len(),
             indices.len(),
-            output
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("this format"),
+            ext.trim_start_matches('.'),
         );
         println!(
             "  {}  ...  {}",
@@ -172,16 +161,6 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         );
     }
     Ok(())
-}
-
-/// True when the user wrote a trailing separator (`-o out/`).
-///
-/// `Path` drops it the way `pathlib` does — `Path::new("out/").file_name()` is `Some("out")`
-/// — so the raw text is the only place that intent survives. Without `--format`,
-/// `convert` has no format to write into such a directory.
-fn ends_with_separator(p: &Path) -> bool {
-    let s = p.to_string_lossy();
-    s.ends_with(std::path::MAIN_SEPARATOR) || s.ends_with('/')
 }
 
 #[cfg(test)]
@@ -198,19 +177,19 @@ mod tests {
             number: None,
             drop_partial: false,
             read: ReadArgs::default(),
-            format: None,
+            format: Some("extxyz".into()),
         }
     }
 
-    /// `-o ./same.extxyz` for `-i same.extxyz` is the same file under another spelling:
-    /// comparing the text let it through and the write truncated the input.
+    /// `-o .` / `-o sub/..` for `-i same.extxyz --format extxyz` lands on the input itself:
+    /// comparing the text would let it through and the write truncate the input.
     #[test]
     fn the_same_file_spelt_differently_is_refused() {
         let dir = std::env::temp_dir().join(format!("ferro_convert_same_{}", std::process::id()));
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         let input = dir.join("same.extxyz");
         std::fs::write(&input, "1\nProperties=species:S:1:pos:R:3\nO 0 0 0\n").unwrap();
-        for out in [dir.join("./same.extxyz"), dir.join("sub/../same.extxyz")] {
+        for out in [dir.join("."), dir.join("sub/..")] {
             let err = run(&cmd(Some(input.to_str().unwrap()), Some(out.to_str().unwrap())))
                 .unwrap_err().to_string();
             assert!(err.contains("identical"), "{}: {err}", out.display());
@@ -218,28 +197,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// `-o out/` 没有文件名可判格式：不给 --format 就报错，并给出两种可抄的写法
+    /// Without --format there is nothing to name the target format: refused before
+    /// anything is read, with a line to copy
     #[test]
-    fn a_directory_without_format_is_refused_with_a_usable_hint() {
-        let existing = std::env::temp_dir();
-        for out in ["out/", existing.to_str().unwrap()] {
-            let err = run(&cmd(Some("in.xyz"), Some(out))).unwrap_err().to_string();
-            assert!(err.contains("names a directory"), "{out}: {err}");
-            assert!(err.contains("--format"), "{out}: 要提示 --format: {err}");
-            assert!(err.contains("conf.extxyz"), "{out}: 要给出可直接抄的文件写法: {err}");
-        }
+    fn a_missing_format_is_refused_with_a_usable_hint() {
+        let mut c = cmd(Some("no_such_input.xyz"), Some("out"));
+        c.format = None;
+        let err = run(&c).unwrap_err().to_string();
+        assert!(err.contains("-o out --format extxyz"), "should give a line to copy: {err}");
     }
 
-    /// --format 让 -o 成为目录：缺失的目录直接建（不问、无需 --mkdir），单结构格式
-    /// 逐帧 frame_NNNN.EXT，多帧格式一个 frame.EXT
+    /// -o is a directory, created when missing (no question, no --mkdir). Products are
+    /// named after the input: one STEM_NNNN.EXT per frame for a single-structure format,
+    /// one STEM.EXT for a trajectory format
     #[test]
-    fn format_turns_output_into_a_directory_created_on_demand() {
+    fn output_is_a_directory_created_on_demand_and_named_after_the_input() {
         let root = std::env::temp_dir().join(format!("ferro_convert_dir_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for (ext, want) in [
-            ("cif", vec!["frame_0000.cif", "frame_0004.cif"]),
-            (".vasp", vec!["frame_0000.vasp", "frame_0004.vasp"]),
-            ("extxyz", vec!["frame.extxyz"]),
+            ("cif", vec!["43Z43P15A_NPT_5_0000.cif", "43Z43P15A_NPT_5_0004.cif"]),
+            (".vasp", vec!["43Z43P15A_NPT_5_0000.vasp", "43Z43P15A_NPT_5_0004.vasp"]),
+            ("extxyz", vec!["43Z43P15A_NPT_5.extxyz"]),
         ] {
             let dir = root.join(ext.trim_start_matches('.')).join("nested");
             let mut c = cmd(fixture().to_str(), dir.to_str());
@@ -247,7 +225,7 @@ mod tests {
             c.format = Some(ext.into());
             run(&c).unwrap_or_else(|e| panic!("--format {ext}: {e}"));
             for name in want {
-                assert!(dir.join(name).is_file(), "--format {ext}: 缺 {name}");
+                assert!(dir.join(name).is_file(), "--format {ext}: missing {name}");
             }
         }
         let _ = std::fs::remove_dir_all(&root);
@@ -267,35 +245,43 @@ mod tests {
         assert!(Wrap::try_parse_from(["convert", "-i", "a.xyz", "-o", "b.xyz", "-N", "3", "--stride", "2"]).is_err());
     }
 
-    /// 审查 D-M15：参数与目标格式错了，应在建 -o 的目录、读输入之前报错，不留空目录
+    /// Review D-M15: bad values and an unknown target format fail before -o is created
+    /// or the input read, leaving no empty directory behind
     #[test]
     fn bad_values_fail_before_the_directory_is_made() {
         let dir = std::env::temp_dir().join("ferro_d_m15_convert_must_not_exist");
         let _ = std::fs::remove_dir_all(&dir);
-        let good = dir.join("out.extxyz");
-        let bad_fmt = dir.join("out.nosuchfmt");
-        type Case<'a> = (&'a Path, fn(&mut ConvertCmd), &'a str);
+        type Case<'a> = (fn(&mut ConvertCmd), &'a str);
         let cases: [Case; 5] = [
-            (&good, |c| c.stride = Some(0), "--stride"),
-            (&good, |c| c.number = Some(0), "--number"),
-            (&good, |c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
-            (&bad_fmt, |_| {}, "Unsupported output format"),
-            (&dir, |c| c.format = Some("nosuchfmt".into()), "Unsupported output format"),
+            (|c| c.stride = Some(0), "--stride"),
+            (|c| c.number = Some(0), "--number"),
+            (|c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
+            (|c| c.format = Some("nosuchfmt".into()), "Unsupported output format"),
+            (|c| c.format = None, "--format"),
         ];
-        for (out, tweak, want) in cases {
-            let mut c = cmd(Some("no_such_input.xyz"), Some(out.to_str().unwrap()));
+        for (tweak, want) in cases {
+            let mut c = cmd(Some("no_such_input.xyz"), dir.to_str());
             tweak(&mut c);
             let err = format!("{:#}", run(&c).unwrap_err());
-            assert!(err.contains(want), "应报「{want}」，实际 {err}");
-            assert!(!dir.exists(), "「{want}」：参数错误时不该建 -o 的目录");
+            assert!(err.contains(want), "should report '{want}', got {err}");
+            assert!(!dir.exists(), "'{want}': a bad value must not create the -o directory");
         }
     }
 
+    /// A name without an extension (POSCAR) is the stem as a whole
     #[test]
-    fn a_path_with_directories_is_taken_as_written() {
-        assert!(!ends_with_separator(Path::new("out/conf.extxyz")));
-        assert!(ends_with_separator(Path::new("out/")));
-        assert!(!ends_with_separator(Path::new("out")));
+    fn an_input_without_extension_names_the_product_whole() {
+        let dir = std::env::temp_dir().join(format!("ferro_convert_noext_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let read = ReadArgs { units: Some(ferro_io::LammpsUnits::Metal), ..ReadArgs::default() };
+        let mut t = read_trajectory(&fixture(), &read).unwrap();
+        t.frames.truncate(1);
+        let poscar = dir.join("POSCAR");
+        ferro_io::write(&t, &poscar, &ferro_io::WriteOptions::default()).unwrap();
+        run(&cmd(poscar.to_str(), dir.join("out").to_str())).unwrap();
+        assert!(dir.join("out/POSCAR.extxyz").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn fixture() -> PathBuf {
@@ -305,31 +291,32 @@ mod tests {
     #[test]
     fn test_frame_range_is_validated_before_the_file_is_read() {
         // 输入根本不存在：若先读文件，报的会是「打不开」而不是参数错误
-        let mut c = cmd(Some("no_such_file.dump"), Some("out.xyz"));
+        let mut c = cmd(Some("no_such_file.dump"), Some("out"));
         c.start = Some(9);
         c.end = Some(2);
         let err = run(&c).unwrap_err();
         assert!(err.to_string().contains("--start 9 is past --end 2"), "{err}");
 
-        let mut c = cmd(Some("no_such_file.dump"), Some("out.xyz"));
+        let mut c = cmd(Some("no_such_file.dump"), Some("out"));
         c.stride = Some(0);
         assert!(run(&c).unwrap_err().to_string().contains("--stride"));
 
-        let mut c = cmd(Some("no_such_file.dump"), Some("out.xyz"));
+        let mut c = cmd(Some("no_such_file.dump"), Some("out"));
         c.number = Some(0);
         assert!(run(&c).unwrap_err().to_string().contains("--number"));
     }
 
     #[test]
     fn test_selecting_nothing_is_an_error_that_names_the_available_range() {
-        let out = std::env::temp_dir().join("ferro_convert_empty.xyz");
+        let out = std::env::temp_dir().join(format!("ferro_convert_empty_{}", std::process::id()));
         let mut c = cmd(fixture().to_str(), out.to_str());
         c.start = Some(99);
         let err = run(&c).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("no frames selected"), "{msg}");
         assert!(msg.contains("0..=4"), "错误信息要说清可用范围: {msg}");
-        assert!(!out.exists(), "选不到帧时不该留下文件");
+        assert!(!out.join("43Z43P15A_NPT_5.extxyz").exists(), "selecting nothing must leave no file");
+        let _ = std::fs::remove_dir_all(&out);
     }
 
     /// 多帧写 CIF：每帧一个文件、每个文件一个 data_ 块。VESTA 等只认第一个块，
@@ -339,15 +326,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ferro_convert_cif_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let mut c = cmd(fixture().to_str(), dir.join("conf.cif").to_str());
+        let mut c = cmd(fixture().to_str(), dir.to_str());
+        c.format = Some("cif".into());
         c.read.units = Some(ferro_io::LammpsUnits::Metal);
         run(&c).unwrap();
         for i in 0..5 {
-            let p = dir.join(format!("conf_{i:04}.cif"));
+            let p = dir.join(format!("43Z43P15A_NPT_5_{i:04}.cif"));
             let text = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
-            assert_eq!(text.matches("data_").count(), 1, "{} 应只有一个 data_ 块", p.display());
+            assert_eq!(text.matches("data_").count(), 1, "{} should hold one data_ block", p.display());
         }
-        assert!(!dir.join("conf.cif").exists(), "不该再写出多块的 conf.cif");
+        assert!(!dir.join("43Z43P15A_NPT_5.cif").exists(), "no multi-block CIF should be written");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -375,8 +363,9 @@ mod tests {
         };
         ferro_io::write(&t, &input, &ferro_io::WriteOptions::default()).unwrap();
 
-        let output = dir.join("out.extxyz");
+        let output = dir.join("out");
         run(&cmd(input.to_str(), output.to_str())).unwrap();
+        let output = output.join("in.extxyz");
         let back = read_trajectory(&output, &ReadArgs::default()).unwrap();
         for (k, f) in back.frames.iter().enumerate() {
             let order: Vec<&str> = f.atoms().map(|a| a.element).collect();
@@ -406,7 +395,9 @@ mod tests {
 
     #[test]
     fn test_identical_paths_are_rejected() {
-        let err = run(&cmd(Some("same.xyz"), Some("same.xyz"))).unwrap_err();
+        let mut c = cmd(Some("same.xyz"), Some("."));
+        c.format = Some("xyz".into());
+        let err = run(&c).unwrap_err();
         assert!(err.to_string().contains("identical"), "{err}");
     }
 }
