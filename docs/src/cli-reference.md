@@ -328,8 +328,8 @@ where it is a truncated final frame and is dropped with a warning.
 | Flag | Default | Description |
 |---|---|---|
 | `-i <file>` | (required) | input file (a single one); omit it to print the format table |
-| `-o <path>` | (required) | output file, may include directories (`-o out/run1/x.extxyz`); the target format is inferred from the file name.  With `--format` it is a **directory** instead.  Missing directories are created without asking.  When several frames are written the index goes into the file-name part and the path is unchanged |
-| `--format <EXT>` | — | treat `-o` as a directory and write this format into it (`cif`, `vasp`, `extxyz`, …): `DIR/frame_0000.cif` … for one-structure formats, `DIR/frame.extxyz` for trajectory formats.  Without it, an `-o` ending in `/` or naming an existing directory is an error |
+| `-o <dir>` | (required) | output **directory**; missing directories are created without asking.  Products are named after the input: `DIR/<stem>.<EXT>`, or `DIR/<stem>_0000.<EXT>` … when several frames go to a one-structure format |
+| `--format <EXT>` | (required) | format to write, as an extension (`cif`, `vasp`, `extxyz`, …) |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
 | `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
