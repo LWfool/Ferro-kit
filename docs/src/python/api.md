@@ -100,7 +100,7 @@ the program outputs and DeePMD directories are read-only.  Writing velocities or
 
 `xyz`, `extxyz`, `pdb` and the dump hold a whole trajectory in one file. CIF, POSCAR and
 LAMMPS data hold one structure: a trajectory of several frames is written one file per frame,
-named as `ferro convert` names them — `conf.cif` gives `conf_0000.cif`, `conf_0001.cif`, …,
+numbered by frame — `conf.cif` gives `conf_0000.cif`, `conf_0001.cif`, …,
 and `POSCAR` gives `POSCAR_0000`, … (indices padded to at least four digits).
 
 A charge or magnetic-moment column that only some atoms of a frame carry (a structure merged

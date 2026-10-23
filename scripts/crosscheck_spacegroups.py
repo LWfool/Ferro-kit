@@ -77,7 +77,8 @@ def write_cif(path, cell, tag, value):
 def ferro_frac(cif):
     """返回 (分数坐标, 错误信息)，二者恰有一个为 None。"""
     out = cif.with_suffix(".extxyz")
-    r = subprocess.run([FERRO, "convert", "-i", str(cif), "-o", str(out)],
+    r = subprocess.run([FERRO, "convert", "-i", str(cif), "-o", str(cif.parent),
+                        "--format", "extxyz"],
                        capture_output=True, text=True)
     if r.returncode != 0:
         return None, (r.stderr.strip().splitlines() or ["?"])[-1]

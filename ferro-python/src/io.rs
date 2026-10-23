@@ -117,8 +117,8 @@ fn read(
 /// Writes a trajectory in the format its name declares.
 ///
 /// xyz, extxyz, pdb, lammpstrj/dump hold a whole trajectory; cif, POSCAR/CONTCAR/vasp/pos
-/// and data/lmp/lammps hold one structure, so several frames go to one file each, named
-/// as `ferro convert` names them (`conf.cif` -> `conf_0000.cif`, ...). The inputs and
+/// and data/lmp/lammps hold one structure, so several frames go to one file each,
+/// numbered by frame (`conf.cif` -> `conf_0000.cif`, ...). The inputs and
 /// program outputs are read-only. A trajectory with velocities / forces written to a
 /// dump needs `units` ("real" / "metal"). A charge / magnetic-moment column that only
 /// some atoms of a frame carry is an error, never filled with 0; `drop_partial=True`

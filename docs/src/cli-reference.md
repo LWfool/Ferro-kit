@@ -146,17 +146,20 @@ stdout carries only the results and progress (`[2/5] runs/b/prod.lammpstrj`, the
 
 ## `ferro convert`
 
-Format conversion.  The format on both sides is decided by the **file name**; there is no `--from` / `--to`.
-The one exception is on the read side: a name that says nothing about its format — an `OUTCAR`, a
+Format conversion.  `-o` is a **directory** (created if missing) and `--format EXT` names the format to
+write; both are required.  Products are named after the input: `traj.lammpstrj` with `--format extxyz`
+gives `DIR/traj.extxyz`, and an input without an extension (`POSCAR`) keeps its whole name.
+The input format is decided by the **file name**; there is no `--from`.
+The one exception: a name that says nothing about its format — an `OUTCAR`, a
 `vasprun.xml`, a CP2K or pw.x `.out` log — is recognised by the program banner inside, and a
 directory holding `type.raw` is a DeePMD system.
 
 ```bash
 ferro convert                              # without -i: prints the table below
-ferro convert -i input.xyz -o output.pdb
-ferro convert -i input.cif -o POSCAR
-ferro convert -i traj.lammpstrj -o traj.extxyz --units metal
-ferro convert -i traj.lammpstrj -o cifs/ --format cif --units metal   # one CIF per frame in cifs/
+ferro convert -i input.xyz -o out --format pdb                     # out/input.pdb
+ferro convert -i input.cif -o . --format vasp                      # ./input.vasp
+ferro convert -i traj.lammpstrj -o out --format extxyz --units metal
+ferro convert -i traj.lammpstrj -o cifs --format cif --units metal   # cifs/traj_0000.cif ...
 ```
 
 | Format | Recognised by | Read | Write | Frames written |
@@ -194,11 +197,10 @@ Things that trip people up:
 - **Bytes that are not UTF-8 text are an error** naming the file, line, column and byte (a
   binary file, or another program's output mixed into a log through `2>&1`).  Nothing is replaced
   and read past.
-- **"One per file" splits the trajectory**: 500 frames written to `conf.cif` give `conf_0000.cif` …
-  `conf_0499.cif`, the index being the original frame number.  CIF is split too, although the format
+- **"One per file" splits the trajectory**: 500 frames of `traj.dump` with `--format cif` give
+  `traj_0000.cif` … `traj_0499.cif`, the index being the original frame number.  CIF is split too, although the format
   allows several `data_` blocks in one file: VESTA and Materials Studio show only the first block.
   Thin the frames out with `--stride` / `--number`.
-- Writing to the name `CONTCAR` produces content in **POSCAR format**.
 - **A `.xyz` can be extended XYZ.**  ASE, GPUMD's `train.xyz`, CP2K's EXTXYZ output and ferro's own
   `dataset --type nep|extxyz` all write extended XYZ under `.xyz`, so a `.xyz` whose comment line (line 2)
   declares `Lattice=` or `Properties=` is read with the extended XYZ reader; anything else stays plain XYZ.
@@ -261,10 +263,10 @@ charge is unaffected: extended XYZ and dumps write no charge column, LAMMPS data
 ### Frame selection
 
 ```bash
-ferro convert -i traj.dump -o sub.extxyz --start 100            # skip the relaxation stage
-ferro convert -i traj.dump -o sub.extxyz --start 100 --end 199
-ferro convert -i traj.dump -o POSCAR --stride 50                # one every 50 frames
-ferro convert -i traj.dump -o conf.lmp --number 20              # 20 frames at even intervals
+ferro convert -i traj.dump -o sub --format extxyz --start 100   # skip the relaxation stage
+ferro convert -i traj.dump -o sub --format extxyz --start 100 --end 199
+ferro convert -i traj.dump -o vasp --format vasp --stride 50    # one every 50 frames
+ferro convert -i traj.dump -o lmp --format lmp --number 20      # 20 frames at even intervals
 ```
 
 | Flag | Default | Description |
@@ -300,13 +302,11 @@ The index is inserted **before the extension** and is the **frame index in the o
 "the n-th one selected"), so the output maps straight back onto the trajectory:
 
 ```
--o POSCAR    --stride 2   →  POSCAR_0000      POSCAR_0002      POSCAR_0004
--o conf.vasp --number 3   →  conf_0000.vasp   conf_0002.vasp   conf_0004.vasp
+-i traj.dump --format vasp --stride 2   →  traj_0000.vasp   traj_0002.vasp   traj_0004.vasp
+-i traj.dump --format cif  --number 3   →  traj_0000.cif    traj_0002.cif    traj_0004.cif
 ```
 
-The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.  Names recognised by a
-**prefix**, such as `POSCAR`, can still be read back with an index attached (`POSCAR_0002` still matches
-`POSCAR*`).  **When only one frame is selected, one file is written with no index**, whatever the format.
+The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.  **When only one frame is selected, one file is written with no index**, whatever the format.
 
 `-i` currently accepts a **single file** only.  Several inputs plus frame selection would make the output
 names of different trajectories collide.

@@ -115,7 +115,7 @@ the in-plane sizes differ a lot.
   means nothing otherwise.
 - Each block is first folded into its own cell along its periodic axes.
 - A trajectory is refused rather than reduced to its first frame. Take the frame you
-  want with `ferro convert -i md.dump -o one.extxyz --start K --end K`.
+  want with `ferro convert -i md.dump -o DIR --format extxyz --start K --end K`.
 - The output format is A's unless `--format` says otherwise.
 
 ## `ferro build box`
