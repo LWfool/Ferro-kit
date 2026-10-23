@@ -142,6 +142,36 @@ const PAGES: &[Page] = &[
         section: None,
     },
     Page {
+        topic: "build",
+        source: "build.md",
+        text: include_str!("../../docs/src/build.md"),
+        section: None,
+    },
+    Page {
+        topic: "build supercell",
+        source: "build.md § ferro build supercell",
+        text: include_str!("../../docs/src/build.md"),
+        section: Some("## `ferro build supercell`"),
+    },
+    Page {
+        topic: "build vacuum",
+        source: "build.md § ferro build vacuum",
+        text: include_str!("../../docs/src/build.md"),
+        section: Some("## `ferro build vacuum`"),
+    },
+    Page {
+        topic: "build merge",
+        source: "build.md § ferro build merge",
+        text: include_str!("../../docs/src/build.md"),
+        section: Some("## `ferro build merge`"),
+    },
+    Page {
+        topic: "build box",
+        source: "build.md § ferro build box",
+        text: include_str!("../../docs/src/build.md"),
+        section: Some("## `ferro build box`"),
+    },
+    Page {
         topic: "dataset collect",
         source: "dataset/collect.md",
         text: include_str!("../../docs/src/dataset/collect.md"),

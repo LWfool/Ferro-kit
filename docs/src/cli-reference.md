@@ -10,6 +10,7 @@ ferro net                                                      → six stacked c
                                                                  + optional labelled trajectory
 ferro bader                                                    → ACF / BCF / AVF tables (Henkelman's layout)
 ferro convert | info                                           → structure files / a summary
+ferro build supercell | vacuum | merge | box                   → one structure file per input
 ferro dataset collect | filter | merge                         → DeePMD system directories
 ferro doc   <topic>                                            → the manual (compiled into the binary)
 ```
@@ -72,7 +73,7 @@ input order, and ferro prints a `FerroNote` naming each renamed file.  Stems are
 ```
 
 `selection` says **what was computed** and is filled in by the type selection; `input` names the input
-file and appears only in per-input products (`ferro map`, `net --export-traj`, `bader`); `-s` is the batch
+file and appears only in per-input products (`ferro map`, `net --export-traj`, `bader`, `build`); `-s` is the batch
 marker.  The selection comes before the suffix, so `ls gr_P-O_*` lists the results for one pair across all
 batches.
 
@@ -85,6 +86,7 @@ batches.
 | `traj bondlife` | `--center`-`--neighbor` | `bondlife_Si-O.csv` and `bondlife_events_Si-O.csv` |
 | `traj sq` | none (see below) | `sq.csv` |
 | `ferro net`, `ferro map` | none | `network_qn.csv`, `density_<input>.cube` |
+| `ferro build` | none | `supercell_<input>.vasp`, `merge_<A>_<B>.cif`, `box.vasp` |
 
 Two rules that are easily confused:
 
@@ -490,6 +492,21 @@ current directory.  VASP charge densities are all called `CHGCAR`, and only land
 their own run directories, do they avoid overwriting each other.  `-o <DIR>` collects them elsewhere, and `-s <SUFFIX>` tells two runs with different parameters on the same input apart (`bader_ACF_<stem>_<suffix>.dat`).
 
 ---
+
+## `ferro build`
+
+Makes structures: one product per input, `<-o dir>/<op>_<input>[_<suffix>].<ext>`, in the
+input's format unless `--format` names another. It does not take the common flags `--last-n` /
+`--ncore`.
+
+| Command | Does |
+|---|---|
+| `supercell` | replicate a cell, given (`--dims`) or sized by `--min-atoms` / `--min-length` |
+| `vacuum` | add a vacuum layer along one lattice vector |
+| `merge` | stack two structures with a gap, `merge_<A>_<B>` |
+| `box` | pack molecules at random into a cubic box of a given density, `box.vasp` |
+
+Parameters and the reasoning behind them: [Building structures](build.md).
 
 ## `ferro dataset`
 

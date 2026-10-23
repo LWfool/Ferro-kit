@@ -25,6 +25,10 @@
 - [Averaged Charge-Density SDF](analysis/chg-sdf.md)
 - [Glass Network Analysis](analysis/network.md)
 
+# Structures
+
+- [Building Structures](build.md)
+
 # Machine-Learning Datasets
 
 - [Collecting AIMD Output](dataset/collect.md)
