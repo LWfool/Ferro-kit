@@ -185,6 +185,14 @@ impl Format {
             None => bail!("Cannot determine format (no extension): {}", path.display()),
         }
     }
+
+    /// The format a user names to write, as an extension (`cif`, `.vasp`, `EXTXYZ`), with
+    /// the checks of [`Format::for_output`]. For the CLI's `--format` and Python's
+    /// `write(format=)`: the product path is not asked, because [`Format::from_name`] takes
+    /// a `POSCAR_x.cif` for a POSCAR.
+    pub fn for_extension(ext: &str) -> Result<Format> {
+        Format::for_output(Path::new(&format!("x.{}", ext.trim_start_matches('.').to_lowercase())))
+    }
 }
 
 /// Reads a charge-density grid: a `.cube` file (Gaussian / QE pp.x), or a VASP CHGCAR

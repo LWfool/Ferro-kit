@@ -62,7 +62,7 @@ impl OutArgs {
     fn ext(&self, input: &Path) -> Result<String> {
         if let Some(f) = &self.format {
             let ext = f.trim_start_matches('.').to_lowercase();
-            Format::for_output(Path::new(&format!("x.{ext}"))).with_context(|| format!("--format {f}"))?;
+            Format::for_extension(&ext).with_context(|| format!("--format {f}"))?;
             return Ok(ext);
         }
         match Format::from_name(input) {
