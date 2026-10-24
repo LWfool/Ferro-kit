@@ -12,6 +12,16 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro convert`: `-o` is a directory
+
+- `-o` is now the output **directory** and `--format EXT` is required: `ferro convert -i a.dump -o b.xyz`
+  becomes `ferro convert -i a.dump -o . --format xyz`. A `-o` that does not exist yet and ends in a format
+  extension (`-o b.xyz`) is refused rather than made into a directory.
+- Products are named after the input: `DIR/<input>.<EXT>`, and per-frame files are `<input>_NNNN.<EXT>`
+  instead of `frame_NNNN.<EXT>`. A DeePMD directory keeps its whole name (`data.000` gives
+  `data.000.extxyz`). `-s SUFFIX` tags the product, `<input>_<SUFFIX>.<EXT>`; an existing product is
+  overwritten, with a note.
+
 ### `ferro build`: supercell, vacuum, merge, box
 
 - New commands: `ferro build supercell` (replicate by `--dims`, or size by `--min-atoms` /

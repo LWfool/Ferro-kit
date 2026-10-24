@@ -25,7 +25,7 @@ D 组（手册压缩，7947 → 6803 行）已完成；C-1 / C-2（两份 README
 | 子文件 | 优先级 | 条目 |
 |---|---|---|
 | `plan/io.md` | 高 | dataset 额外键搬运；测试缺口（第 8 批，暂缓） |
-| | 中 | 带速度的测试 fixture；VASP ML_FF 的 OUTCAR |
+| | 中 | Python `write` 的 POSCAR 前缀优先；带速度的测试 fixture；VASP ML_FF 的 OUTCAR |
 | | 低 | DeePMD mixed type 读写（10-22 由高降）；`convert` 写 CIF 的空间群；MACE / NequIP 格式；`read_cube` 合并；CP2K EXTXYZ / XMOL（kind 名、Hartree 能量）；dataset 审查余项 |
 | `plan/analysis.md` | 中 | bondlife 手册口径；vanhove `tau` 列（搁置） |
 | | 低 | bondlife 后续、配位态动力学、VDOS（10-22 由中降）；D 的统计误差；filter 多层周期镜像；机器学习集成；S(q) Lorch 窗；分析侧逐帧消费 |

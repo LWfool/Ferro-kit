@@ -148,7 +148,11 @@ stdout carries only the results and progress (`[2/5] runs/b/prod.lammpstrj`, the
 
 Format conversion.  `-o` is a **directory** (created if missing) and `--format EXT` names the format to
 write; both are required.  Products are named after the input: `traj.lammpstrj` with `--format extxyz`
-gives `DIR/traj.extxyz`, and an input without an extension (`POSCAR`) keeps its whole name.
+gives `DIR/traj.extxyz`; an input without an extension (`POSCAR`) and a DeePMD directory (`data.000`)
+keep their whole name.  `-s SUFFIX` makes it `DIR/traj_SUFFIX.extxyz`, so same-named inputs from two
+runs (two `OUTCAR`s) can share one `-o`; an existing product is overwritten, with a note.  The directory
+is created only once there are frames to write, and a `-o` yet to be made that ends in a format extension
+(`-o out.extxyz`) is refused.
 The input format is decided by the **file name**; there is no `--from`.
 The one exception: a name that says nothing about its format — an `OUTCAR`, a
 `vasprun.xml`, a CP2K or pw.x `.out` log — is recognised by the program banner inside, and a
@@ -330,6 +334,7 @@ where it is a truncated final frame and is dropped with a warning.
 | `-i <file>` | (required) | input file (a single one); omit it to print the format table |
 | `-o <dir>` | (required) | output **directory**; missing directories are created without asking.  Products are named after the input: `DIR/<stem>.<EXT>`, or `DIR/<stem>_0000.<EXT>` … when several frames go to a one-structure format |
 | `--format <EXT>` | (required) | format to write, as an extension (`cif`, `vasp`, `extxyz`, …) |
+| `-s, --suffix <SUFFIX>` | — | tag appended to the product name: `DIR/<stem>_<SUFFIX>.<EXT>` |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
 | `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |

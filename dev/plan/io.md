@@ -13,6 +13,13 @@
 
 ## 优先级中
 
+### Python `ferro.write` 对 POSCAR / CONTCAR 开头的文件名无视扩展名（2026-10-24 提出）
+
+`ferro.write(traj, "POSCAR_x.cif")` 写出的是 POSCAR：`Format::from_name` 先认前缀。CLI 的 `convert`
+已改为从 `--format` 显式取格式（`dev/issues.md`「`convert` 目录 `-o`」），Python 的 `write` 仍按文件名推断。
+待定：改 `from_name` 让已知扩展名优先（影响全部读侧识别，例如 `POSCAR.data` 会变成 LAMMPS data），
+还是只在写侧（`for_output`）让扩展名优先、或给 `write` 加 `format=` 参数。
+
 ### 带速度的测试 fixture（2026-09-12 提出，2026-09-21 仍未做）
 
 `tests/` 两条 fixture **没有速度数据**，于是 `vacf` / `vanhove` / `rotcorr`

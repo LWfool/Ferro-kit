@@ -926,3 +926,12 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 维里 | 手写 `stress * volume` / `virial / volume` | `Frame::virial()` / `Cell::stress_from_virial()`，零体积统一报错 |
 | shell 里的非 ASCII | 第 5 – 7 步又犯过五次（heredoc、sed 参数带中文） | 规则见「构建 / 工具链陷阱」与 `memory.md`「中文不要经 Bash」 |
 
+## `convert` 目录 `-o` 审查修复的编码陷阱（2026-10-24）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 写出格式 | 拼好 `DIR/<输入名>.<EXT>` 再交给 `write` / `for_output` 从文件名推断 | `Format::from_name` **先认 POSCAR / CONTCAR 前缀、后看扩展名**：`-i POSCAR --format extxyz` 写出的是 POSCAR，`--format nosuchfmt` 也照样通过。用户给了格式就只从它解析（`for_output("x.{ext}")`），经 `write_numbered(…, format, …)` 显式传入 |
+| 产物名取 stem | `input.file_stem()` | `.` / `..` / `../` 没有 `file_name`，退回整条路径会拼出隐藏文件、甚至逃出 `-o`；DeePMD 目录的 `data.000` 被当扩展名剥掉。先 `canonicalize`，目录取 `file_name`、文件取 `file_stem` |
+| 同文件检查 | 在 `-o` 建出来之前比较 resolved 路径 | `-o new/..` 尚不存在时 canonicalize 失败、退回原文比较而漏过，输入被覆盖。建目录之后再比；按帧拆分时产物是 `x_NNNN`，不比 |
+| 建目录时机 | 不询问就建的目录放在读输入之前 | 输错 `-i` 或选不到帧会留下空目录。`convert` 在选出帧之后才 `ensure_dir`（询问式的命令仍在读之前，见 `outpath.rs` 模块文档） |
+
