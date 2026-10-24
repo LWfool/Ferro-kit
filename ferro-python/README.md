@@ -35,7 +35,7 @@ t = ferro.read("traj.lammpstrj", units="metal")   # -> Trajectory
 print(len(t), t.n_atoms(), t.elements())
 
 sc = ferro.supercell(t, 2, 2, 1)
-ferro.write(sc, "POSCAR")
+ferro.write(sc, "POSCAR", format="vasp")
 
 # one pair -> {"r", "P-O_gr", "P-O_cn"}
 g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)

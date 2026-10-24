@@ -31,7 +31,7 @@ t = ferro.read("traj.lammpstrj", units="metal")   # -> Trajectory
 print(len(t), t.n_atoms(), t.elements())
 
 sc = ferro.supercell(t, 2, 2, 1)
-ferro.write(sc, "POSCAR")
+ferro.write(sc, "POSCAR", format="vasp")
 
 g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)   # dict[str, list[float]]
 d = ferro.msd(t, dt=2.0, elements=["Li"])
@@ -92,10 +92,13 @@ A dump without an `element` or `typelabel` column reads its atoms as `X1`, `X2`,
 names them, exactly as `--type-map` on the command line.  A type missing from the map, an
 unknown symbol, or `type_map` on anything but a dump is an error.
 
-### `write(traj, path, units=None, drop_partial=False)`
+### `write(traj, path, format, units=None, drop_partial=False)`
 
-Writes by extension: `xyz`, `extxyz`, `pdb`, `cif`, `POSCAR*`/`CONTCAR*`/`vasp`/`poscar`/`pos` (POSCAR format),
-`data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  QE (`in`/`qe`) and CP2K (`inp`/`restart`) inputs,
+Writes in `format`, an extension as for `ferro convert --format` (case and a leading dot do not
+matter): `xyz`, `extxyz`, `pdb`, `cif`, `vasp`/`poscar`/`pos` (POSCAR format),
+`data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  `format` is required and `path` is never consulted for
+it — `"POSCAR"` with `format="vasp"` is fine, and `"POSCAR_x.cif"` with `format="cif"` is CIF, not
+the POSCAR its prefix would suggest.  QE (`in`/`qe`) and CP2K (`inp`/`restart`) inputs,
 the program outputs and DeePMD directories are read-only.  Writing velocities or forces to a dump requires `units`.
 
 `xyz`, `extxyz`, `pdb` and the dump hold a whole trajectory in one file. CIF, POSCAR and
