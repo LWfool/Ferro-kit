@@ -19,6 +19,10 @@ pub struct ConvertCmd {
     #[arg(long, value_name = "EXT")]
     pub format: Option<String>,
 
+    /// Batch tag, the last segment of the product name: <input>_<suffix>.<ext>
+    #[arg(short, long, value_name = "SUFFIX")]
+    pub suffix: Option<String>,
+
     /// First frame to take (0-based, inclusive)               [default: 0]
     #[arg(long, value_name = "N")]
     pub start: Option<usize>,
@@ -72,29 +76,10 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     let format = ferro_io::Format::for_output(Path::new(&format!("x.{ext}")))
         .with_context(|| format!("--format {given}"))?;
 
-    // The product is named after the input: `traj.dump` -> DIR/traj.<EXT>, and a
-    // format holding one structure per file numbers it, DIR/traj_0000.<EXT>.
-    // A name without an extension (POSCAR) or a DeePMD directory is the stem as a whole
-    let stem = input.file_stem().unwrap_or(input.as_os_str()).to_string_lossy();
-    let output = &dir.join(format!("{stem}.{ext}"));
-
-    // Compared as resolved paths: `-o .` for `-i x.extxyz --format extxyz` is the
-    // same file, and writing it truncates the input. The output need not exist yet,
-    // so its parent is resolved.
-    let resolved = |p: &Path| -> PathBuf {
-        p.canonicalize().unwrap_or_else(|_| {
-            let parent = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-            let name = p.file_name().map(PathBuf::from).unwrap_or_default();
-            parent.canonicalize().map(|d| d.join(&name)).unwrap_or_else(|_| p.to_path_buf())
-        })
-    };
-    if resolved(input) == resolved(output) {
-        bail!("Input and output paths are identical");
-    }
-
-    // 参数级错误在读第一个文件之前失败：轨迹可能是几个 GB，读完再报「--start 比
-    // --end 大」是白等。跨参数的一致性能在这里查的都查掉。
-    // ferro-python 的 `Trajectory.frame_indices` 有同义的一份（报错用 Python 参数名，按 R6 不合）
+    // Parameter errors fail before the first file is read: a trajectory can be several
+    // GB, and reading it all to report "--start is past --end" is a wasted wait.
+    // ferro-python's `Trajectory.frame_indices` has a twin (its errors use the Python
+    // parameter names; kept apart per R6)
     // `dataset filter` checks its frame selection the same way (`FilterParams::validate`)
     let start = args.start.unwrap_or(0);
     if let (Some(s), Some(e)) = (args.start, args.end) {
@@ -108,8 +93,31 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     if args.number == Some(0) {
         bail!("--number must be at least 1");
     }
-    // convert writes into this one directory, typed out by the user: no need to ask
-    crate::outpath::ensure_dir(dir, true)?;
+    // The old habit `-o out.extxyz` would now make a directory of that name, and the
+    // reader of out.extxyz meets "is a directory" far from the command that did it.
+    // Only a -o yet to be made: an existing directory of any name is used as it is
+    if let Some(e) = dir.extension().filter(|_| !dir.exists()) {
+        if ferro_io::Format::from_name(Path::new(&format!("x.{}", e.to_string_lossy()))).is_some() {
+            bail!(
+                "-o is the output directory, and '{}' looks like a file name; products are named \
+                 after the input, e.g. `-o {} --format {ext}`",
+                dir.display(),
+                dir.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")).display()
+            );
+        }
+    }
+
+    // The product is named after the input: `traj.dump` -> DIR/traj.<EXT>, and a
+    // format holding one structure per file numbers it, DIR/traj_0000.<EXT>.
+    // A name without an extension (POSCAR) is the name as a whole, and so is a DeePMD
+    // directory: DP-GEN's data.000 / data.001 must not both become `data`. Taken from
+    // the resolved path, so `-i .` and `-i ..` name the directory they stand for
+    let real = input.canonicalize().with_context(|| format!("cannot open {}", input.display()))?;
+    let name = if real.is_dir() { real.file_name() } else { real.file_stem() }
+        .with_context(|| format!("{}: no name to give the product", input.display()))?
+        .to_string_lossy();
+    let product = crate::batch::product_name(&[&name], args.suffix.as_deref(), &ext);
+    let output = &dir.join(&product);
 
     let traj = read_trajectory(input, &args.read)?;
     let n_read = traj.n_frames();
@@ -128,6 +136,27 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         );
     }
 
+    // Made only now, once there is something to write: a mistyped -i or a selection of
+    // nothing leaves no empty directory behind. convert writes into this one directory,
+    // typed out by the user: no need to ask
+    crate::outpath::ensure_dir(dir, true)?;
+    // Compared as resolved paths now that -o exists: `-o .`, `-o sub/..` or a just-made
+    // `-o new/..` for `-i x.extxyz --format extxyz` is the input itself, and writing it
+    // truncates the input. Only when one file is written: split per frame, the products
+    // are x_NNNN.EXT, never the input
+    if format.multi_frame() || indices.len() == 1 {
+        let target = dir.canonicalize().with_context(|| format!("-o {}", dir.display()))?.join(&product);
+        if target == real {
+            bail!("Input and output paths are identical");
+        }
+    }
+    // Same-named inputs from different runs (OUTCAR, vasprun.xml) share a product name;
+    // overwriting is said out loud, with -s as the way to keep both
+    let before: std::collections::HashSet<PathBuf> = std::fs::read_dir(dir)
+        .with_context(|| format!("-o {}", dir.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .collect();
+
     // Every product has its atoms in (Z, symbol) order, one block per element in
     // periodic-table order as in a POSCAR, so one system is written in the same atom
     // order whichever program it came from. The sort takes a permutation per frame:
@@ -143,6 +172,17 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // The per-frame files are numbered by the frame they came from in the input
     let opts = ferro_io::WriteOptions { units: args.read.units, drop_partial: args.drop_partial };
     let written = ferro_io::write_numbered(&picked, output, format, &opts, &indices)?;
+    let replaced: Vec<&PathBuf> = written.iter().filter(|p| before.contains(*p)).collect();
+    if let Some(first) = replaced.first() {
+        crate::report::note(
+            dir.display(),
+            format!(
+                "overwrote {} existing file(s), {} first; give -s SUFFIX to keep both",
+                replaced.len(),
+                first.display()
+            ),
+        );
+    }
     if written.len() == 1 {
         println!(
             "Converted {} -> {}  ({} of {n_read} frame{} in 1 file)",
@@ -183,23 +223,50 @@ mod tests {
             drop_partial: false,
             read: ReadArgs::default(),
             format: Some("extxyz".into()),
+            suffix: None,
         }
     }
 
-    /// `-o .` / `-o sub/..` for `-i same.extxyz --format extxyz` lands on the input itself:
-    /// comparing the text would let it through and the write truncate the input.
+    /// `-o .` / `-o sub/..` / `-o new/..` for `-i same.extxyz --format extxyz` lands on
+    /// the input itself: comparing the text would let it through and the write truncate
+    /// the input. `new` does not exist beforehand, so nothing can be resolved up front
     #[test]
     fn the_same_file_spelt_differently_is_refused() {
         let dir = std::env::temp_dir().join(format!("ferro_convert_same_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         let input = dir.join("same.extxyz");
-        std::fs::write(&input, "1\nProperties=species:S:1:pos:R:3\nO 0 0 0\n").unwrap();
-        for out in [dir.join("."), dir.join("sub/..")] {
+        let text = "1\nProperties=species:S:1:pos:R:3 note=keepme\nO 0 0 0\n";
+        std::fs::write(&input, text).unwrap();
+        for out in [dir.join("."), dir.join("sub/.."), dir.join("new/..")] {
             let err = run(&cmd(Some(input.to_str().unwrap()), Some(out.to_str().unwrap())))
                 .unwrap_err().to_string();
             assert!(err.contains("identical"), "{}: {err}", out.display());
         }
+        assert_eq!(std::fs::read_to_string(&input).unwrap(), text, "the input was rewritten");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The product name comes from the resolved input: `-i .` in a DeePMD system is the
+    /// directory's name, and a DeePMD directory keeps its whole name, so DP-GEN's
+    /// data.000 and data.001 are two products, not one `data` overwritten
+    #[test]
+    fn a_deepmd_directory_names_the_product_whole() {
+        let root = std::env::temp_dir().join(format!("ferro_convert_dp_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let read = ReadArgs { units: Some(ferro_io::LammpsUnits::Metal), ..ReadArgs::default() };
+        let mut t = read_trajectory(&fixture(), &read).unwrap();
+        t.frames.truncate(1);
+        let out = root.join("out");
+        for sys in ["data.000", "data.001"] {
+            ferro_io::write_deepmd_npy(&t, &root.join(sys)).unwrap();
+            run(&cmd(root.join(sys).to_str(), out.to_str())).unwrap_or_else(|e| panic!("{sys}: {e:#}"));
+            assert!(out.join(format!("{sys}.extxyz")).is_file(), "missing {sys}.extxyz");
+        }
+        // `DIR/.` is the directory itself, not a hidden `..extxyz`
+        run(&cmd(root.join("data.000/.").to_str(), root.join("dot").to_str())).unwrap();
+        assert!(root.join("dot/data.000.extxyz").is_file());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Without --format there is nothing to name the target format: refused before
@@ -327,9 +394,8 @@ mod tests {
         let err = run(&c).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("no frames selected"), "{msg}");
-        assert!(msg.contains("0..=4"), "错误信息要说清可用范围: {msg}");
-        assert!(!out.join("43Z43P15A_NPT_5.extxyz").exists(), "selecting nothing must leave no file");
-        let _ = std::fs::remove_dir_all(&out);
+        assert!(msg.contains("0..=4"), "the error should name the available range: {msg}");
+        assert!(!out.exists(), "selecting nothing must leave no directory");
     }
 
     /// 多帧写 CIF：每帧一个文件、每个文件一个 data_ 块。VESTA 等只认第一个块，
@@ -406,11 +472,57 @@ mod tests {
         assert!(err.to_string().contains("-o"), "{err}");
     }
 
+    /// A missing input is reported as such and leaves no -o directory; a -o yet to be
+    /// made that reads like a file name (`out.extxyz`) is refused with the directory form
     #[test]
-    fn test_identical_paths_are_rejected() {
-        let mut c = cmd(Some("same.xyz"), Some("."));
+    fn a_missing_input_or_a_file_like_output_makes_no_directory() {
+        let root = std::env::temp_dir().join(format!("ferro_convert_nodir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let err = format!("{:#}", run(&cmd(Some("no_such_input.dump"), root.join("o").to_str())).unwrap_err());
+        assert!(err.contains("cannot open"), "{err}");
+        let err = format!("{:#}", run(&cmd(fixture().to_str(), root.join("out.extxyz").to_str())).unwrap_err());
+        assert!(err.contains("looks like a file name"), "{err}");
+        assert!(!root.exists(), "neither may create a directory");
+        // An existing directory is used whatever its name
+        std::fs::create_dir_all(root.join("run.xyz")).unwrap();
+        let mut c = cmd(fixture().to_str(), root.join("run.xyz").to_str());
+        c.read.units = Some(ferro_io::LammpsUnits::Metal);
+        run(&c).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Splitting a multi-frame file into per-frame files in its own directory writes
+    /// x_NNNN.EXT, never the input, so it is not "identical paths"
+    #[test]
+    fn splitting_in_place_is_not_the_same_file() {
+        let dir = std::env::temp_dir().join(format!("ferro_convert_split_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let read = ReadArgs { units: Some(ferro_io::LammpsUnits::Metal), ..ReadArgs::default() };
+        let mut t = read_trajectory(&fixture(), &read).unwrap();
+        t.frames.truncate(2);
+        let input = dir.join("x.extxyz");
+        ferro_io::write(&t, &input, &ferro_io::WriteOptions::default()).unwrap();
+        let mut c = cmd(input.to_str(), dir.to_str());
         c.format = Some("xyz".into());
-        let err = run(&c).unwrap_err();
-        assert!(err.to_string().contains("identical"), "{err}");
+        run(&c).unwrap();
+        let mut c = cmd(input.to_str(), dir.to_str());
+        c.format = Some("vasp".into());
+        run(&c).unwrap();
+        assert!(dir.join("x_0000.vasp").is_file() && dir.join("x_0001.vasp").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// -s tags the product, so same-named inputs from two runs can share one -o
+    #[test]
+    fn suffix_is_the_last_segment_of_the_product_name() {
+        let dir = std::env::temp_dir().join(format!("ferro_convert_suffix_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut c = cmd(fixture().to_str(), dir.to_str());
+        c.read.units = Some(ferro_io::LammpsUnits::Metal);
+        c.suffix = Some("700K".into());
+        run(&c).unwrap();
+        assert!(dir.join("43Z43P15A_NPT_5_700K.extxyz").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

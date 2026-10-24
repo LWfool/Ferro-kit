@@ -42,6 +42,7 @@ Parameters:
   -i, --input  FILE       Input file (format from its name)
   -o, --output DIR        Output directory, created if missing
       --format EXT        Format to write: cif, vasp, extxyz, ...
+  -s, --suffix SUFFIX     Batch tag, the last segment of the product name
       --start  N          First frame to take (0-based, inclusive)         [0]
       --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
       --stride N          Take every Nth frame within [start, end]         [1]
@@ -55,7 +56,8 @@ Parameters:
 {}
 
 Output:
-  Products are named after the input: traj.dump gives DIR/traj.<EXT>.
+  Products are named after the input: traj.dump gives DIR/traj.<EXT>,
+  DIR/traj_<SUFFIX>.<EXT> with -s; an existing product is overwritten (noted).
   One file when the target format holds a trajectory (Frames column above),
   one file PER FRAME when it holds a single structure (CIF, POSCAR, data):
   DIR/traj_0002.cif — the index is the ORIGINAL frame number.
