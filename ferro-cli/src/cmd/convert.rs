@@ -324,12 +324,12 @@ mod tests {
         let dir = std::env::temp_dir().join("ferro_d_m15_convert_must_not_exist");
         let _ = std::fs::remove_dir_all(&dir);
         type Case<'a> = (fn(&mut ConvertCmd), &'a str);
-        let cases: [Case; 5] = [
+        // A missing --format has its own test (a_missing_format_is_refused_with_a_usable_hint)
+        let cases: [Case; 4] = [
             (|c| c.stride = Some(0), "--stride"),
             (|c| c.number = Some(0), "--number"),
             (|c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
             (|c| c.format = Some("nosuchfmt".into()), "Unsupported output format"),
-            (|c| c.format = None, "--format"),
         ];
         for (tweak, want) in cases {
             let mut c = cmd(Some("no_such_input.xyz"), dir.to_str());
@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_frame_range_is_validated_before_the_file_is_read() {
-        // 输入根本不存在：若先读文件，报的会是「打不开」而不是参数错误
+        // The input does not exist: reading it first would report "cannot open", not the parameter error
         let mut c = cmd(Some("no_such_file.dump"), Some("out"));
         c.start = Some(9);
         c.end = Some(2);
@@ -398,8 +398,8 @@ mod tests {
         assert!(!out.exists(), "selecting nothing must leave no directory");
     }
 
-    /// 多帧写 CIF：每帧一个文件、每个文件一个 data_ 块。VESTA 等只认第一个块，
-    /// 写成一个多块文件时用户看到的只有第 0 帧
+    /// Several frames to CIF: one file per frame, one data_ block per file. VESTA and the
+    /// like read only the first block, so a multi-block file would show frame 0 alone
     #[test]
     fn test_cif_is_written_one_frame_per_file() {
         let dir = std::env::temp_dir().join(format!("ferro_convert_cif_{}", std::process::id()));
@@ -448,10 +448,10 @@ mod tests {
         let back = read_trajectory(&output, &ReadArgs::default()).unwrap();
         for (k, f) in back.frames.iter().enumerate() {
             let order: Vec<&str> = f.atoms().map(|a| a.element).collect();
-            assert_eq!(order, ["O", "Al", "P", "Zn"], "第 {k} 帧应按原子序数排");
-            let forces = f.forces().expect("力应写出");
+            assert_eq!(order, ["O", "Al", "P", "Zn"], "frame {k} should be in atomic-number order");
+            let forces = f.forces().expect("forces should be written");
             for (a, fv) in f.atoms().zip(forces) {
-                assert_eq!(fv.x, -a.position.x, "第 {k} 帧 {} 的力没跟着原子走", a.element);
+                assert_eq!(fv.x, -a.position.x, "frame {k}: the force of {} did not move with its atom", a.element);
             }
         }
         let _ = std::fs::remove_dir_all(&dir);

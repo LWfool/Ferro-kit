@@ -5,8 +5,10 @@
 //! successful run, so the terminal asks first. Scripts have no one to ask, hence
 //! `--mkdir`: non-interactive runs must say up front that creating is fine.
 //!
-//! Both entry points are called **before the first input is read**, so a bad path fails
-//! next to the other parameter errors rather than after an hour of analysis.
+//! It is called **before the first input is read**, so a bad path fails next to the
+//! other parameter errors rather than after an hour of analysis. `convert` is the
+//! exception: it creates its one directory without asking, so it waits until there is
+//! something to write and a failed read leaves no empty directory.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
@@ -31,15 +33,6 @@ pub fn ensure_dir(dir: &Path, mkdir: bool) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("cannot create '{}': {e}", dir.display()))?;
     println!("Created: {}", dir.display());
     Ok(())
-}
-
-/// [`ensure_dir`] for the directory a file is going into: `-o out/run1/x.xyz` needs
-/// `out/run1`. A bare file name has no parent to create.
-pub fn ensure_parent(path: &Path, mkdir: bool) -> Result<()> {
-    match path.parent() {
-        Some(d) => ensure_dir(d, mkdir),
-        None => Ok(()),
-    }
 }
 
 /// Asks on the terminal; refuses to guess when there is no terminal to ask.
@@ -107,10 +100,5 @@ mod tests {
         let err = ensure_dir(&d, false).unwrap_err().to_string();
         assert!(err.contains("--mkdir"), "{err}");
         assert!(!d.exists());
-    }
-
-    #[test]
-    fn a_bare_file_name_has_no_parent_to_create() {
-        ensure_parent(Path::new("out.xyz"), false).unwrap();
     }
 }
