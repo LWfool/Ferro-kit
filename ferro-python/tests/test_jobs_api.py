@@ -63,7 +63,7 @@ def test_subset_pbc_and_sort(nvt):
 
 def test_poscar_string_equals_write_poscar(tmp_path, nvt):
     one = nvt.subset([0])
-    ferro.write(one, str(tmp_path / "POSCAR"))
+    ferro.write(one, str(tmp_path / "POSCAR"), format="vasp")
     written = (tmp_path / "POSCAR").read_text().splitlines()
     text = ferro.poscar_string(one, comment="test").splitlines()
     assert text[0] == "test"

@@ -114,9 +114,12 @@ fn read(
     Ok(PyTrajectory::new(traj))
 }
 
-/// Writes a trajectory in the format its name declares.
+/// Writes a trajectory to `path` in `format`, an extension as for `ferro convert --format`
+/// ("cif", "vasp", "extxyz", ...).
 ///
-/// xyz, extxyz, pdb, lammpstrj/dump hold a whole trajectory; cif, POSCAR/CONTCAR/vasp/pos
+/// The format is never read off `path`: a name starting POSCAR / CONTCAR would pass for a
+/// POSCAR whatever its extension, and `path` may have none (`"POSCAR"`, format="vasp").
+/// xyz, extxyz, pdb, lammpstrj/dump hold a whole trajectory; cif, vasp/poscar/pos
 /// and data/lmp/lammps hold one structure, so several frames go to one file each,
 /// numbered by frame (`conf.cif` -> `conf_0000.cif`, ...). The inputs and
 /// program outputs are read-only. A trajectory with velocities / forces written to a
@@ -124,10 +127,19 @@ fn read(
 /// some atoms of a frame carry is an error, never filled with 0; `drop_partial=True`
 /// leaves it out (LAMMPS data, whose charge column is mandatory, then writes 0 for all).
 #[pyfunction]
-#[pyo3(signature = (traj, path, units = None, drop_partial = false))]
-fn write(py: Python<'_>, traj: &PyTrajectory, path: &str, units: Option<&str>, drop_partial: bool) -> PyResult<()> {
+#[pyo3(signature = (traj, path, format, units = None, drop_partial = false))]
+fn write(
+    py: Python<'_>,
+    traj: &PyTrajectory,
+    path: &str,
+    format: &str,
+    units: Option<&str>,
+    drop_partial: bool,
+) -> PyResult<()> {
+    let fmt = Format::for_extension(format).map_err(pyerr)?;
     let opts = ferro_io::WriteOptions { units: parse_units(units)?, drop_partial };
-    py.detach(|| ferro_io::write(&traj.inner, Path::new(path), &opts)).map_err(pyerr)?;
+    let numbers: Vec<usize> = (0..traj.inner.n_frames()).collect();
+    py.detach(|| ferro_io::write_numbered(&traj.inner, Path::new(path), fmt, &opts, &numbers)).map_err(pyerr)?;
     Ok(())
 }
 

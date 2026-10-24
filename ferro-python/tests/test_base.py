@@ -82,7 +82,7 @@ def test_generate_sorts_and_checks(tmp_path, user_templates):
     s = Echo(user_templates).generate(traj, 2, JobOptions("sp"))
     assert s.files["POSCAR"] == ferro.poscar_string(ferro.sort_atoms(traj.subset([2]))), "取指定帧并按 (Z, 符号) 排序"
 
-    ferro.write(traj.tail(1), str(tmp_path / "mol.xyz"))
+    ferro.write(traj.tail(1), str(tmp_path / "mol.xyz"), format="xyz")
     with pytest.raises(JobError, match="only periodic systems"):
         Echo(user_templates).generate(ferro.read(str(tmp_path / "mol.xyz")), 0, JobOptions("sp"))
 

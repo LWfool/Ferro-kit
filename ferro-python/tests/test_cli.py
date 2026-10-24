@@ -142,7 +142,7 @@ def test_job_trajectory_shares_potcar(tmp_path, job, capsys):
 
 
 def test_job_single_structure(tmp_path, job):
-    ferro.write(ferro.read(str(NVT)).tail(1), str(tmp_path / "one.vasp"))
+    ferro.write(ferro.read(str(NVT)).tail(1), str(tmp_path / "one.vasp"), format="vasp")
     out = tmp_path / "out"
     out.mkdir()
     assert job("-i", str(tmp_path / "*.vasp"), "-o", str(out)) == 0, "加引号的通配符由程序展开"
@@ -152,8 +152,8 @@ def test_job_single_structure(tmp_path, job):
 
 def test_job_mixed_compositions_write_nothing(tmp_path, job, capsys):
     t = ferro.read(str(NVT)).tail(1)
-    ferro.write(t, str(tmp_path / "a.vasp"))
-    ferro.write(t, str(tmp_path / "c.vasp"))
+    ferro.write(t, str(tmp_path / "a.vasp"), format="vasp")
+    ferro.write(t, str(tmp_path / "c.vasp"), format="vasp")
     lines = (tmp_path / "c.vasp").read_text().splitlines()
     lines[5] = lines[5].replace(t.elements()[0], "S", 1)   # 第 6 行元素行：换一个元素
     (tmp_path / "c.vasp").write_text("\n".join(lines) + "\n")
@@ -204,7 +204,7 @@ def test_failed_job_leaves_no_output_directory(tmp_path, job, capsys):
 
 
 def test_job_errors_name_the_frame(tmp_path, job, capsys):
-    ferro.write(ferro.read(str(NVT)).tail(1), str(tmp_path / "mol.xyz"))
+    ferro.write(ferro.read(str(NVT)).tail(1), str(tmp_path / "mol.xyz"), format="xyz")
     assert job("-i", str(tmp_path / "mol.xyz"), "-o", str(tmp_path)) == 1
     assert "mol.xyz frame 0: only periodic systems" in capsys.readouterr().err
 

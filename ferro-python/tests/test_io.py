@@ -13,12 +13,12 @@ from conftest import NVT
 def test_lammps_extension_is_data_file(tmp_path, ext):
     t = ferro.read(str(NVT)).tail(1)
     path = tmp_path / f"one.{ext}"
-    ferro.write(t, str(path))
-    assert "atoms" in path.read_text(), f".{ext} 应写成 LAMMPS data"
+    ferro.write(t, str(path), format=ext)
+    assert "atoms" in path.read_text(), f"format={ext} should write LAMMPS data"
     with pytest.raises(RuntimeError, match="atom_style"):
         ferro.read(str(path))
     back = ferro.read(str(path), atom_style="full")
-    assert back.symbols(0) == t.symbols(0), f".{ext} 应按 data 读回原元素"
+    assert back.symbols(0) == t.symbols(0), f".{ext} should read back as data, elements intact"
     with pytest.raises(RuntimeError, match="LAMMPS dump input only"):
         ferro.read(str(path), atom_style="full", type_map={1: "P"})
 
@@ -27,20 +27,35 @@ def test_lammps_extension_is_data_file(tmp_path, ext):
 def test_vasp_names_are_poscar(tmp_path, name):
     t = ferro.read(str(NVT)).tail(1)
     path = tmp_path / name
-    ferro.write(t, str(path))
-    assert path.read_text() == ferro.poscar_string(t), f"{name} 应写成 POSCAR"
-    assert ferro.read(str(path)).symbols(0) == t.symbols(0), f"{name} 应按 POSCAR 读回"
+    ferro.write(t, str(path), format="vasp")
+    assert path.read_text() == ferro.poscar_string(t), f"{name} should hold a POSCAR"
+    assert ferro.read(str(path)).symbols(0) == t.symbols(0), f"{name} should read back as POSCAR"
 
 
-@pytest.mark.parametrize("name, made", [
-    ("conf.cif", ["conf_0000.cif", "conf_0002.cif"]),
-    ("conf.vasp", ["conf_0000.vasp", "conf_0002.vasp"]),
-    ("POSCAR", ["POSCAR_0000", "POSCAR_0002"]),
-    ("conf.data", ["conf_0000.data", "conf_0002.data"]),
+def test_format_is_explicit_and_never_read_off_the_path(tmp_path):
+    t = ferro.read(str(NVT)).tail(1)
+    # A POSCAR-prefixed name with another extension is written in the format asked for
+    path = tmp_path / "POSCAR_x.cif"
+    ferro.write(t, str(path), format="cif")
+    assert path.read_text().count("data_") == 1, "format='cif' must write CIF"
+    # A leading dot and upper case are the same format name
+    ferro.write(t, str(tmp_path / "a.out"), format=".EXTXYZ")
+    assert "Properties=" in (tmp_path / "a.out").read_text().splitlines()[1]
+    with pytest.raises(ferro.FerroError, match="Unsupported output format"):
+        ferro.write(t, str(tmp_path / "b.xyz"), format="nosuchfmt")
+    with pytest.raises(TypeError):
+        ferro.write(t, str(tmp_path / "c.xyz"))
+
+
+@pytest.mark.parametrize("name, fmt, made", [
+    ("conf.cif", "cif", ["conf_0000.cif", "conf_0002.cif"]),
+    ("conf.vasp", "vasp", ["conf_0000.vasp", "conf_0002.vasp"]),
+    ("POSCAR", "vasp", ["POSCAR_0000", "POSCAR_0002"]),
+    ("conf.data", "data", ["conf_0000.data", "conf_0002.data"]),
 ])
-def test_single_structure_formats_write_one_file_per_frame(tmp_path, name, made):
+def test_single_structure_formats_write_one_file_per_frame(tmp_path, name, fmt, made):
     t = ferro.read(str(NVT)).tail(3)
-    ferro.write(t, str(tmp_path / name))
+    ferro.write(t, str(tmp_path / name), format=fmt)
     assert not (tmp_path / name).exists(), "the unindexed name must not be written"
     files = sorted(p.name for p in tmp_path.iterdir())
     assert len(files) == 3 and files[0] == made[0] and files[-1] == made[1], files
@@ -50,7 +65,7 @@ def test_single_structure_formats_write_one_file_per_frame(tmp_path, name, made)
 
 def test_trajectory_formats_write_one_file(tmp_path):
     t = ferro.read(str(NVT)).tail(3)
-    ferro.write(t, str(tmp_path / "all.extxyz"))
+    ferro.write(t, str(tmp_path / "all.extxyz"), format="extxyz")
     assert [p.name for p in tmp_path.iterdir()] == ["all.extxyz"]
     assert ferro.read(str(tmp_path / "all.extxyz")).n_frames() == 3
 
@@ -105,7 +120,7 @@ def test_read_uses_the_same_format_table_as_convert(tmp_path):
     assert len(t) == 1 and t.energy(0) is not None
     # An upper-case extension is the same format
     path = tmp_path / "ONE.XYZ"
-    ferro.write(ferro.read(str(NVT)).tail(1), str(path))
+    ferro.write(ferro.read(str(NVT)).tail(1), str(path), format="xyz")
     assert len(ferro.read(str(path))) == 1
 
 
@@ -126,12 +141,12 @@ def test_partial_charge_column_needs_drop_partial(tmp_path):
                          ferro.read(str(tmp_path / "POSCAR")), "z", 2.0)
     for name in ("m.extxyz", "m.data"):
         with pytest.raises(ferro.FerroError, match="2 of 4 atoms have a charge"):
-            ferro.write(merged, str(tmp_path / name))
+            ferro.write(merged, str(tmp_path / name), format=name.split(".")[1])
         assert not (tmp_path / name).exists(), "refused before the file is created"
-    ferro.write(merged, str(tmp_path / "m.extxyz"), drop_partial=True)
+    ferro.write(merged, str(tmp_path / "m.extxyz"), format="extxyz", drop_partial=True)
     header = (tmp_path / "m.extxyz").read_text().splitlines()[1]
     assert "Properties=" in header and "charge" not in header, "drop_partial leaves the column out"
-    ferro.write(merged, str(tmp_path / "m.data"), drop_partial=True)
+    ferro.write(merged, str(tmp_path / "m.data"), format="data", drop_partial=True)
     atoms = (tmp_path / "m.data").read_text().split("Atoms # full\n\n")[1].splitlines()[:4]
     assert [line.split()[3] for line in atoms] == ["0.000000"] * 4, \
         "LAMMPS data must have a charge column: every charge written as 0"
