@@ -22,6 +22,12 @@ command line alike; regenerate it rather than migrating it.
   `data.000.extxyz`). `-s SUFFIX` tags the product, `<input>_<SUFFIX>.<EXT>`; an existing product is
   overwritten, with a note.
 
+### Python: `ferro.write` takes the format explicitly
+
+- `ferro.write(traj, path, format, ...)`: `format` is required, as for `convert --format`
+  (`ferro.write(t, "POSCAR")` becomes `ferro.write(t, "POSCAR", format="vasp")`). The path is no longer
+  consulted: `ferro.write(t, "POSCAR_x.cif")` used to write a POSCAR, because of the name's prefix.
+
 ### `ferro build`: supercell, vacuum, merge, box
 
 - New commands: `ferro build supercell` (replicate by `--dims`, or size by `--min-atoms` /

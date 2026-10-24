@@ -744,6 +744,21 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 
 ## 已完成项的判据（0.3.0 以后；0.3.0 以前的归档已删，见 git 历史）
 
+### 写出格式一律由用户显式给出：`convert --format`、Python `write(format=)`（2026-10-24，用户定）
+
+起因：`convert` 改为产物沿用输入名后，`-i POSCAR --format extxyz` 写出的是 POSCAR —— 产物名
+`POSCAR.extxyz` 交给 `write` 重新推断格式，`Format::from_name` 先认 POSCAR / CONTCAR 前缀。
+Python `write(t, "POSCAR_x.cif")` 同病。
+
+- **不改 `from_name` 的优先级**：读侧靠它识别 `POSCAR.0001`、`CONTCAR_relaxed` 这类名字，让扩展名
+  优先会把 `POSCAR.data` 之类改认成别的格式，影响面是全部读入
+- **写侧：用户给的格式只经 `Format::for_extension` 解析，再显式传给 `write_numbered`**。
+  Python `write` 的 `format` 改为必填（用户定），`path` 的扩展名与 `format` 不一致时不检查、
+  以 `format` 为准 —— `"POSCAR"` 这类无扩展名的路径必须能用（用户认可）
+- Rust 的 `ferro_io::write` 仍按文件名推断：只剩库内与 `build` 调用，产物名都由 ferro 自己拼
+  （`build` 以 `<op>_` 开头，碰不到前缀规则）
+- `for_extension` 是 `build` / `convert` / Python 三处「拼 `x.{ext}` 交给 `for_output`」的合并（R6 第三处）
+
 ### `ferro build`：结构操作的 CLI 入口（2026-10-23）
 
 扩胞参考用户的 `01_scripts/bin/make_supercell.py`，以下几处有意不同：
