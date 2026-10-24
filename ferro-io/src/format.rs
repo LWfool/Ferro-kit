@@ -314,18 +314,21 @@ pub struct WriteOptions {
 /// `conf.cif` -> `conf_0000.cif`, `conf_0001.cif`, ...
 pub fn write(traj: &Trajectory, path: &Path, opts: &WriteOptions) -> Result<Vec<PathBuf>> {
     let numbers: Vec<usize> = (0..traj.n_frames()).collect();
-    write_numbered(traj, path, opts, &numbers)
+    write_numbered(traj, path, Format::for_output(path)?, opts, &numbers)
 }
 
-/// [`write()`], naming the per-frame files by `numbers` instead of by position —
-/// `ferro convert` numbers them by the frame they came from in the input.
+/// [`write()`] in a given `format`, naming the per-frame files by `numbers` instead of
+/// by position — `ferro convert` numbers them by the frame they came from in the input.
+///
+/// The format is not read off `path`: `convert` names its product after the input, and
+/// [`Format::from_name`] takes a `POSCAR_x.extxyz` for a POSCAR whatever `--format` said.
 pub fn write_numbered(
     traj: &Trajectory,
     path: &Path,
+    format: Format,
     opts: &WriteOptions,
     numbers: &[usize],
 ) -> Result<Vec<PathBuf>> {
-    let format = Format::for_output(path)?;
     if format.multi_frame() || traj.n_frames() <= 1 {
         write_one(traj, path, format, opts)?;
         return Ok(vec![path.to_path_buf()]);
@@ -459,7 +462,7 @@ mod tests {
         let dir = tmp_dir("split");
         let made = write(&traj, &dir.join("conf.cif"), &WriteOptions::default()).unwrap();
         assert_eq!(made, ["conf_0000.cif", "conf_0001.cif", "conf_0002.cif"].map(|n| dir.join(n)));
-        let made = write_numbered(&traj, &dir.join("POSCAR"), &WriteOptions::default(), &[0, 50, 12345]).unwrap();
+        let made = write_numbered(&traj, &dir.join("POSCAR"), Format::Poscar, &WriteOptions::default(), &[0, 50, 12345]).unwrap();
         assert_eq!(made, ["POSCAR_00000", "POSCAR_00050", "POSCAR_12345"].map(|n| dir.join(n)));
         assert!(made.iter().all(|p| p.is_file()));
         let one = write(&traj, &dir.join("all.extxyz"), &WriteOptions::default()).unwrap();

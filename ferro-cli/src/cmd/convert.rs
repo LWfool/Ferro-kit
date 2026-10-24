@@ -58,18 +58,25 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("convert needs an output directory: -o <DIR>  (run `ferro convert` for the format list)");
     };
     // Not clap's `required`: bare `ferro convert` must still reach the format list
-    let Some(ext) = &args.format else {
+    let Some(given) = &args.format else {
         bail!(
             "convert needs a target format: --format <EXT>, e.g. `-o {} --format extxyz`",
             dir.display()
         );
     };
+    let ext = given.trim_start_matches('.').to_lowercase();
+    // The format comes from --format alone, never from the product name: that name is
+    // the input's, and `Format::from_name` takes anything starting POSCAR / CONTCAR for
+    // a POSCAR whatever its extension. Checked here, so an unknown format is refused
+    // before the directory is made or the input read (review D-M15)
+    let format = ferro_io::Format::for_output(Path::new(&format!("x.{ext}")))
+        .with_context(|| format!("--format {given}"))?;
 
     // The product is named after the input: `traj.dump` -> DIR/traj.<EXT>, and a
     // format holding one structure per file numbers it, DIR/traj_0000.<EXT>.
     // A name without an extension (POSCAR) or a DeePMD directory is the stem as a whole
     let stem = input.file_stem().unwrap_or(input.as_os_str()).to_string_lossy();
-    let output = &dir.join(format!("{stem}.{}", ext.trim_start_matches('.')));
+    let output = &dir.join(format!("{stem}.{ext}"));
 
     // Compared as resolved paths: `-o .` for `-i x.extxyz --format extxyz` is the
     // same file, and writing it truncates the input. The output need not exist yet,
@@ -101,8 +108,6 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     if args.number == Some(0) {
         bail!("--number must be at least 1");
     }
-    // 目标格式也是参数：认不出就别建目录、别读输入（审查 D-M15）
-    ferro_io::Format::for_output(output).with_context(|| format!("--format {ext}"))?;
     // convert writes into this one directory, typed out by the user: no need to ask
     crate::outpath::ensure_dir(dir, true)?;
 
@@ -137,7 +142,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // 20 frames to POSCAR can only be 20 files, so there is no switch to remember.
     // The per-frame files are numbered by the frame they came from in the input
     let opts = ferro_io::WriteOptions { units: args.read.units, drop_partial: args.drop_partial };
-    let written = ferro_io::write_numbered(&picked, output, &opts, &indices)?;
+    let written = ferro_io::write_numbered(&picked, output, format, &opts, &indices)?;
     if written.len() == 1 {
         println!(
             "Converted {} -> {}  ({} of {n_read} frame{} in 1 file)",
@@ -152,7 +157,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
             input.display(),
             indices.len(),
             indices.len(),
-            ext.trim_start_matches('.'),
+            ext,
         );
         println!(
             "  {}  ...  {}",
@@ -280,7 +285,15 @@ mod tests {
         let poscar = dir.join("POSCAR");
         ferro_io::write(&t, &poscar, &ferro_io::WriteOptions::default()).unwrap();
         run(&cmd(poscar.to_str(), dir.join("out").to_str())).unwrap();
-        assert!(dir.join("out/POSCAR.extxyz").is_file());
+        // Written as extxyz, not as the POSCAR its name would suggest
+        let text = std::fs::read_to_string(dir.join("out/POSCAR.extxyz")).unwrap();
+        assert!(text.contains("Properties="), "POSCAR.extxyz is not extxyz:\n{text}");
+        // --format is checked on its own: a POSCAR-named product does not make it valid
+        let mut c = cmd(poscar.to_str(), dir.join("bad").to_str());
+        c.format = Some("nosuchfmt".into());
+        let err = format!("{:#}", run(&c).unwrap_err());
+        assert!(err.contains("Unsupported output format"), "{err}");
+        assert!(!dir.join("bad").exists(), "an unknown format must not create -o");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
