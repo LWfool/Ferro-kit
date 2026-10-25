@@ -236,7 +236,10 @@ tilting), not `xlo/xhi`; with all three tilt factors 0 the two forms are identic
 `ITEM: BOX BOUNDS abc origin`): the three box lines are the edge vectors $\mathbf{A}$, $\mathbf{B}$,
 $\mathbf{C}$, each followed by one component of the origin, and they are read as such; positions,
 velocities and forces are taken as written, already in that frame.  ferro writes the restricted form
-(`*_bound` and tilts), rotating positions, velocities and forces into LAMMPS's frame together.
+(`*_bound` and tilts), rotating positions, velocities and forces into LAMMPS's frame together.  In a
+dump and a data file alike, a cell skewed past half an edge is written as the same lattice on a reduced
+basis, each tilt at most half the edge it leans along: LAMMPS refuses a box skewed further.  The atoms
+keep their positions, so some may lie outside the box; LAMMPS maps them back in.
 
 **Element names in a LAMMPS dump**: the `element` column is used; without it, the `typelabel` column
 (LAMMPS type labels, set with `labelmap`); with both, `element` wins.  Either is split the same way

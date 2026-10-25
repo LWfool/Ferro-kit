@@ -89,18 +89,20 @@ pub fn write_lammps_dump(
         // 边界标志按 pbc 写（reader 认它），slab 往返才不变成 TTT；无胞帧 pbc 恒为 ff
         let flags = frame.pbc.map(|p| if p { "pp" } else { "ff" }).join(" ");
 
-        let is_triclinic = xy != 0.0 || xz != 0.0 || yz != 0.0;
+        // The box on a reduced basis; the positions below go through the unreduced cell
+        let (bxy, bxz, byz) = super::reduce_tilts(lx, ly, xy, xz, yz);
+        let is_triclinic = bxy != 0.0 || bxz != 0.0 || byz != 0.0;
         if is_triclinic {
             // 三斜时 dump 的六个数是 *_bound（倾斜后的外接盒），不是 xlo/xhi ——
             // 倾斜向量会把盒子探出 [0, l) 之外，bound 把那部分包进来。写成 xlo/xhi
             // 的话 reader 端 hi-lo 得到的边长偏小，而读写两侧一致地错时往返测试
             // 全绿（与 extxyz 应力符号同一个陷阱）
-            let (xlo_b, xhi_b) = (lo[0] + min4(0.0, xy, xz, xy + xz), lo[0] + lx + max4(0.0, xy, xz, xy + xz));
-            let (ylo_b, yhi_b) = (lo[1] + yz.min(0.0), lo[1] + ly + yz.max(0.0));
+            let (xlo_b, xhi_b) = (lo[0] + min4(0.0, bxy, bxz, bxy + bxz), lo[0] + lx + max4(0.0, bxy, bxz, bxy + bxz));
+            let (ylo_b, yhi_b) = (lo[1] + byz.min(0.0), lo[1] + ly + byz.max(0.0));
             writeln!(w, "ITEM: BOX BOUNDS xy xz yz {flags}")?;
-            writeln!(w, "{xlo_b:.10} {xhi_b:.10} {xy:.10}")?;
-            writeln!(w, "{ylo_b:.10} {yhi_b:.10} {xz:.10}")?;
-            writeln!(w, "{:.10} {:.10} {yz:.10}", lo[2], lo[2] + lz)?;
+            writeln!(w, "{xlo_b:.10} {xhi_b:.10} {bxy:.10}")?;
+            writeln!(w, "{ylo_b:.10} {yhi_b:.10} {bxz:.10}")?;
+            writeln!(w, "{:.10} {:.10} {byz:.10}", lo[2], lo[2] + lz)?;
         } else {
             writeln!(w, "ITEM: BOX BOUNDS {flags}")?;
             writeln!(w, "{:.10} {:.10}", lo[0], lo[0] + lx)?;

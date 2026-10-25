@@ -72,6 +72,20 @@ pub(crate) fn partial_column(
     )
 }
 
+/// The LAMMPS tilts `(xy, xz, yz)` of the same lattice on a reduced basis, each at most
+/// half the edge it leans along — LAMMPS `read_data` refuses a box skewed further
+/// (review R2-4). Each step adds a lattice vector to another: `c -= k·b` moves `yz` and
+/// `xz`, then `c -= k·a` and `b -= k·a` move `xz` and `xy`. Only the box is reduced; the
+/// atoms keep their Cartesian positions, which the same lattice still holds. Shared by
+/// the LAMMPS data and dump writers.
+pub(crate) fn reduce_tilts(lx: f64, ly: f64, xy: f64, xz: f64, yz: f64) -> (f64, f64, f64) {
+    let k = if ly > 0.0 { (yz / ly).round() } else { 0.0 };
+    let (xz, yz) = (xz - k * xy, yz - k * ly);
+    let xz = xz - (xz / lx).round() * lx;
+    let xy = xy - (xy / lx).round() * lx;
+    (xy, xz, yz)
+}
+
 /// Zero-padded width for frame indices, at least 4 so `ls` sorts the products in
 /// frame order.
 pub fn index_width(max_index: usize) -> usize {
@@ -179,6 +193,42 @@ mod tests {
                 "x.lammpstrj" => assert!(!text.contains(" q"), "{text}"),
                 _ => assert!(text.lines().filter(|l| l.split_whitespace().count() == 7)
                                  .all(|l| l.split_whitespace().nth(3) == Some("0.000000")), "{text}"),
+            }
+        }
+    }
+
+    /// LAMMPS refuses a box whose tilt exceeds half the edge it leans along (`read_data`:
+    /// "Triclinic box skew is too large"). A strongly skewed cell is written as the same
+    /// lattice on a reduced basis, with the atoms where they were.
+    #[test]
+    fn strongly_skewed_cell_is_written_with_reduced_tilts() {
+        use crate::{read, write, ReadOptions, WriteOptions};
+        let cell = Cell::from_lengths_angles(4.0, 4.0, 6.0, 60.0, 75.0, 30.0).unwrap();
+        let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+        frame.add_atom(Atom::new("Si", cell.fractional_to_cartesian(Vector3::new(0.1, 0.2, 0.3))));
+        frame.add_atom(Atom::new("O", cell.fractional_to_cartesian(Vector3::new(0.6, 0.7, 0.9))));
+        let traj = Trajectory::from_frame(frame.clone());
+        let dir = std::env::temp_dir().join(format!("ferro_skew_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["x.data", "x.lammpstrj"] {
+            let path = dir.join(name);
+            write(&traj, &path, &WriteOptions::default()).unwrap();
+            let opts = ReadOptions { atom_style: Some(crate::AtomStyle::Full), ..Default::default() };
+            let back = read(&path, &opts).unwrap().0.frames.remove(0);
+            let m = back.cell.as_ref().unwrap().matrix;
+            let (lx, ly) = (m[(0, 0)], m[(1, 1)]);
+            let (xy, xz, yz) = (m[(1, 0)], m[(2, 0)], m[(2, 1)]);
+            let eps = 1e-9;
+            assert!(xy.abs() <= lx / 2.0 + eps && xz.abs() <= lx / 2.0 + eps && yz.abs() <= ly / 2.0 + eps,
+                    "{name}: tilts {xy} {xz} {yz} for lx {lx}, ly {ly}");
+            // The same lattice: each new vector is an integer combination of the old ones
+            for r in 0..3 {
+                let f = cell.cartesian_to_fractional(m.row(r).transpose()).unwrap();
+                assert!(f.iter().all(|x| (x - x.round()).abs() < 1e-9), "{name}: row {r} is {f:?}");
+            }
+            assert!((back.cell.as_ref().unwrap().volume() - cell.volume()).abs() < 1e-9, "{name}");
+            for (a, b) in back.positions().iter().zip(frame.positions()) {
+                assert!((a - b).norm() < 1e-8, "{name}: {a:?} vs {b:?}");
             }
         }
     }

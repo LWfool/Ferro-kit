@@ -70,13 +70,15 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
         }
     };
 
-    let is_triclinic = xy != 0.0 || xz != 0.0 || yz != 0.0;
+    // The box on a reduced basis; the positions below go through the unreduced cell
+    let (bxy, bxz, byz) = super::reduce_tilts(lx, ly, xy, xz, yz);
+    let is_triclinic = bxy != 0.0 || bxz != 0.0 || byz != 0.0;
 
     writeln!(w, "{:.10} {:.10} xlo xhi", lo[0], lo[0] + lx)?;
     writeln!(w, "{:.10} {:.10} ylo yhi", lo[1], lo[1] + ly)?;
     writeln!(w, "{:.10} {:.10} zlo zhi", lo[2], lo[2] + lz)?;
     if is_triclinic {
-        writeln!(w, "{:.10} {:.10} {:.10} xy xz yz", xy, xz, yz)?;
+        writeln!(w, "{bxy:.10} {bxz:.10} {byz:.10} xy xz yz")?;
     }
     writeln!(w)?;
 
