@@ -95,8 +95,6 @@ mod tag {
     ];
     /// Any `STRESS|` line — the numeric rows of the block are a subset.
     pub const STRESS_ROW: &[&[&str]] = &[&["STRESS|"]];
-    /// SCF convergence verdict; the wording after this differs by method.
-    pub const SCF: &[&[&str]] = &[&["SCF", "run"]];
     /// One per MD initialisation; more than one means the run was restarted.
     pub const RESTART: &[&[&str]] = &[&["MD_INI|", "MD", "initialization"]];
     /// Instantaneous ionic temperature of the step. The line carries **two**
@@ -517,10 +515,16 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
                 first_last = Some((first_last.map_or(n, |(f, _)| f), n));
             }
             // SCF 收敛与否：锚点上方最近的那一行；没有 SCF 行可依时不因此丢帧
-            pending = Some((window.len(), last_scf.unwrap_or(true)));
-        } else if line_matches(&l, tag::SCF) {
-            // 收敛与否看有没有 NOT 这个词，而不是整句措辞
-            last_scf = Some(!l.split_whitespace().any(|t| t == "NOT"));
+            // take(): a step without its own verdict line must not inherit this one
+            pending = Some((window.len(), last_scf.take().unwrap_or(true)));
+        } else if let Some(w) = Some(l.split_whitespace().collect::<Vec<_>>())
+            .filter(|w| w.windows(2).any(|p| p == ["SCF", "run"]))
+        {
+            // `SCF run` anywhere, not leading: CP2K writes `  *** SCF run converged in N
+            // steps ***` and `*** WARNING in qs_scf.F:630 :: SCF run NOT converged ***`.
+            // Converged only on the word `converged` without `NOT`, so `*** SCF run
+            // terminated by external request ***` counts as not converged
+            last_scf = Some(w.contains(&"converged") && !w.contains(&"NOT"));
         } else if line_matches(&l, tag::RESTART) {
             stats.n_restarts += 1;
         } else if version.is_none() && line_matches(&l, tag::VERSION) {
@@ -703,6 +707,43 @@ mod tests {
                              "\n     42       1       1.000       5.0000000000"),
             ),
         ]
+    }
+
+    // CP2K 2025/2026 wording (qs_scf.F; examples/cp2k/md/.../02Al.out): every verdict
+    // line starts with `***`, so a leading-token match never saw one and every frame
+    // passed as converged. MINI's bare wording is what the tests used to cover
+    #[test]
+    fn real_scf_wording_drops_the_unconverged_step() {
+        let text = MINI
+            .replace(" SCF run converged in     5 steps", "  *** SCF run converged in     5 steps ***")
+            .replace(
+                " SCF run NOT converged",
+                " *** SCF run terminated by external request ***\n\
+                 *** WARNING in qs_scf.F:630 :: SCF run NOT converged ***",
+            );
+        let (t, st) = parse_cp2k_md(&text).unwrap();
+        assert_eq!((st.n_steps, st.n_kept, st.n_scf_failed), (2, 1, 1));
+        assert_eq!(t.frames[0].energy, Some(-10.5 * HARTREE_TO_EV));
+    }
+
+    // "terminated by external request" alone (no NOT converged line after it) is no
+    // convergence either
+    #[test]
+    fn terminated_scf_is_not_converged() {
+        let text = MINI.replace(" SCF run NOT converged", " *** SCF run terminated by external request ***");
+        let (_, st) = parse_cp2k_md(&text).unwrap();
+        assert_eq!((st.n_kept, st.n_scf_failed), (1, 1));
+    }
+
+    // A step without its own verdict line must not inherit the previous step's
+    #[test]
+    fn scf_verdict_does_not_carry_over_to_the_next_step() {
+        let text = MINI
+            .replace(" SCF run converged in     5 steps", " *** WARNING in qs_scf.F:630 :: SCF run NOT converged ***")
+            .replace(" SCF run NOT converged\n", "");
+        let (t, st) = parse_cp2k_md(&text).unwrap();
+        assert_eq!((st.n_steps, st.n_kept, st.n_scf_failed), (2, 1, 1));
+        assert_eq!(t.frames[0].energy, Some(-10.4 * HARTREE_TO_EV));
     }
 
     #[test]
