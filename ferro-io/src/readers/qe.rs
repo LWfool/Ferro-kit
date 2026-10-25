@@ -324,12 +324,15 @@ fn fortran_vec3(line: &str) -> Result<Vector3<f64>> {
     Ok(Vector3::new(v[0], v[1], v[2]))
 }
 
+/// The card names are pw.x's full list (QE 7.x `INPUT_PW`): any one missing here
+/// is read as a data line of the block before it (review R1-6)
 fn is_card_or_namelist(l: &str) -> bool {
     let up = l.to_uppercase();
     matches!(
         up.split_whitespace().next().unwrap_or(""),
         "ATOMIC_POSITIONS" | "ATOMIC_SPECIES" | "CELL_PARAMETERS" |
-        "K_POINTS" | "CONSTRAINTS" | "ATOMIC_FORCES"
+        "K_POINTS" | "ADDITIONAL_K_POINTS" | "CONSTRAINTS" | "OCCUPATIONS" |
+        "ATOMIC_VELOCITIES" | "ATOMIC_FORCES" | "SOLVENTS" | "HUBBARD"
     ) || up.trim().starts_with('&')
 }
 
@@ -548,5 +551,17 @@ CELL_PARAMETERS {angstrom}
         assert!(f.atom(0).position.norm() < 1e-6);
         // Fe at (0.5,0.5,0.5) fractional = (1.435,1.435,1.435) Cartesian
         assert!((f.atom(1).position.x - 1.435).abs() < 1e-3);
+    }
+
+    /// Every pw.x card ends the block before it; `HUBBARD` (QE >= 7.1) right after
+    /// the positions used to be read as a fourth atom line.
+    #[test]
+    fn test_every_pw_x_card_ends_a_block() {
+        for card in ["HUBBARD {ortho-atomic}\nU O-2p 1.0", "OCCUPATIONS\n1.0", "ATOMIC_VELOCITIES a.u\nO 0 0 0",
+                     "ADDITIONAL_K_POINTS tpiba_b\n1", "SOLVENTS {1/cell}\nH2O 1.0 H2O.MOL"] {
+            let text = WATER_QE.replace("H  0.000 -0.763 -0.477\n", &format!("H  0.000 -0.763 -0.477\n{card}\n"));
+            let traj = parse_qe(&text).unwrap_or_else(|e| panic!("{card}: {e:#}"));
+            assert_eq!(traj.first().unwrap().n_atoms(), 3, "{card}");
+        }
     }
 }
