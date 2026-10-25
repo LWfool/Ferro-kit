@@ -99,6 +99,7 @@ pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
                         st.forces = None;
                         st.stress_kb = None;
                         st.energy = None;
+                        st.kinetic = None;
                     }
                     "scstep" => {
                         st.in_scstep = true;
@@ -444,6 +445,19 @@ mod tests {
             Err(e) => assert!(format!("{e:#}").contains("atominfo") || format!("{e:#}").contains("XML")),
             Ok((t, _)) => assert_eq!(t.n_frames(), 0),
         }
+    }
+
+    /// A calculation without a `kinetic` entry has no temperature; it used to inherit the
+    /// previous calculation's kinetic energy and report that frame's temperature as its own.
+    #[test]
+    fn a_missing_kinetic_energy_is_not_carried_over_from_the_previous_frame() {
+        let text = std::fs::read_to_string(FIXTURE).unwrap();
+        let second = "<i name=\"kinetic\">    121.39817355 </i>";
+        assert_eq!(text.matches(second).count(), 1);
+        let path = crate::testutil::write_tmp("vasprun_no_kinetic.xml", &text.replacen(second, "", 1));
+        let (traj, _) = read_vasprun(&path).unwrap();
+        assert!(traj.frames[0].temperature.is_some());
+        assert_eq!(traj.frames[1].temperature, None);
     }
 
     /// An empty `<i>` has no text event: its name used to stay armed, and the next text
