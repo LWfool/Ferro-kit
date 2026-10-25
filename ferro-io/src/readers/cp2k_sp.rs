@@ -415,6 +415,13 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
             stats.n_incomplete += 1;
             continue;
         };
+        // The rows are read as Å: a table in another unit is dropped, as `read_cell`
+        // drops a cell not in angstrom (review R1-9). CP2K 6.1 writes it in lower case
+        let unit = lines[head].split_whitespace().skip_while(|&t| t != "IN").nth(1);
+        if !unit.is_some_and(|u| u.eq_ignore_ascii_case("angstrom")) {
+            stats.n_incomplete += 1;
+            continue;
+        }
         let Some(rows) = read_coord_table(&lines, head, a) else {
             stats.n_incomplete += 1;
             continue;
@@ -564,6 +571,17 @@ mod tests {
         assert!((s[(0, 0)] * 160.217_663_4 - 1.0).abs() < 1e-6, "{s:?}");
         assert!((s[(2, 2)] * 160.217_663_4 - 3.0).abs() < 1e-6, "{s:?}");
         assert_eq!(s[(0, 1)], 0.0);
+    }
+
+    /// Coordinates are taken as Å; a table in any other unit is dropped as incomplete,
+    /// as `read_cell` drops a cell that is not in angstrom. It used to be read as Å.
+    /// CP2K 6.1 writes the unit in lower case, 2025 in upper case: both are Å.
+    #[test]
+    fn coordinates_not_in_angstrom_are_not_read_as_angstrom() {
+        let head = "ATOMIC COORDINATES IN ANGSTROM";
+        assert_eq!(parse_cp2k_sp(&MINI.replace(head, "ATOMIC COORDINATES IN angstrom")).unwrap().0.n_frames(), 1);
+        let e = parse_cp2k_sp(&MINI.replace(head, "ATOMIC COORDINATES IN BOHR")).unwrap_err();
+        assert!(format!("{e:#}").contains("1 incomplete"), "{e:#}");
     }
 
     /// The kind name is kept as a label only when it is not the element.
