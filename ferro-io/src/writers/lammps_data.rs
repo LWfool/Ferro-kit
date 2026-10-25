@@ -84,7 +84,8 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
     writeln!(w, "Masses")?;
     writeln!(w)?;
     for (i, (elem, mass)) in elem_order.iter().zip(&type_masses).enumerate() {
-        writeln!(w, "{} {:.4}  # {elem}", i + 1, mass)?;
+        // Shortest exact form: `{:.4}` cut an explicit isotope mass (review R2-2)
+        writeln!(w, "{} {mass}  # {elem}", i + 1)?;
     }
     writeln!(w)?;
 
@@ -231,6 +232,20 @@ mod tests {
     }
 
     // 审查 A-12：data 往返同样丢 lo
+    /// An explicit isotope mass survives the round trip; `{:.4}` used to cut deuterium's
+    /// 2.014101778 to 2.0141.
+    #[test]
+    fn test_isotope_mass_is_written_in_full() {
+        let text = "t\n\n1 atoms\n1 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n\
+                    Masses\n\n1 2.014101778  # H\n\nAtoms # full\n\n1 1 1 0.0 1.0 1.0 1.0\n";
+        let src = std::env::temp_dir().join("ferro_data_isotope_in.lammps");
+        let dst = std::env::temp_dir().join("ferro_data_isotope_out.lammps");
+        std::fs::write(&src, text).unwrap();
+        write_lammps_data(&read_lammps_data(&src, AtomStyle::Full).unwrap().0, &dst, false).unwrap();
+        let back = read_lammps_data(&dst, AtomStyle::Full).unwrap().0;
+        assert_eq!(back.frames[0].atom(0).effective_mass().unwrap(), 2.014101778);
+    }
+
     #[test]
     fn test_box_origin_survives_roundtrip() {
         let text = "test\n\n1 atoms\n1 atom types\n\n1.5 11.5 xlo xhi\n-2.0 8.0 ylo yhi\n3.0 13.0 zlo zhi\n\
