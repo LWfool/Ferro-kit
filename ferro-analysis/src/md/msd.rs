@@ -11,8 +11,7 @@
 //! Parallelism: per atom (each atom's three series are independent).
 
 use crate::check;
-use super::util::{check_frame_spacing, select_atoms, unwrapped_series, Series};
-use rayon::prelude::*;
+use super::util::{check_frame_spacing, par_map_in_order, select_atoms, unwrapped_series, Series};
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
@@ -128,8 +127,11 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
     let n = series[0][0].len();
     let plan = AutocorrPlan::new(n);
     let zero = || [vec![0.0; max_lag + 1], vec![0.0; max_lag + 1], vec![0.0; max_lag + 1]];
-    series.par_iter()
-        .map_init(|| (plan.worker(), vec![0.0; n], vec![0.0; max_lag + 1]), |(ac, x, s2), atom| {
+    // Summed in atom order, so the result does not depend on the thread count; a
+    // parallel `reduce` grouped the float sum by the thread schedule (review R3-1)
+    let mut sum = zero();
+    par_map_in_order(series, |atom| {
+            let (ac, x, s2) = &mut (plan.worker(), vec![0.0; n], vec![0.0; max_lag + 1]);
             let mut out = zero();
             for (axis, raw) in atom.iter().enumerate() {
                 // MSD 与平移无关；减去均值让 S1 与 2·S2 的量级接近原子的活动范围，
@@ -150,15 +152,14 @@ fn msd_sums(series: &Series, max_lag: usize) -> [Vec<f64>; 3] {
                 }
             }
             out
-        })
-        .reduce(zero, |mut a, b| {
-            for (aa, bb) in a.iter_mut().zip(&b) {
+        }, |b| {
+            for (aa, bb) in sum.iter_mut().zip(&b) {
                 for (x, y) in aa.iter_mut().zip(bb) {
                     *x += y;
                 }
             }
-            a
-        })
+        });
+    sum
 }
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
@@ -469,6 +470,20 @@ mod tests {
             traj.add_frame(frame);
         }
         traj
+    }
+
+    /// The sum over atoms is taken in atom order, so the result does not depend on the
+    /// thread count; a parallel `reduce` grouped it by the thread schedule.
+    #[test]
+    fn test_result_is_bit_identical_across_thread_counts() {
+        let traj = make_traj_npt_triclinic(64, 300);
+        let params = MsdParams { max_lag: Some(63), dt: 1.0, ..MsdParams::default() };
+        let run = |threads: usize| rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap()
+            .install(|| calc_msd(&traj, &params).unwrap().msd);
+        let one = run(1);
+        for _ in 0..5 {
+            assert!(run(8).iter().zip(&one).all(|(a, b)| a.to_bits() == b.to_bits()));
+        }
     }
 
     #[test]

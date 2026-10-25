@@ -27,7 +27,7 @@
 //! Parallelism: per molecule.
 
 use crate::check;
-use super::util::check_frame_spacing;
+use super::util::{check_frame_spacing, par_map_in_order};
 use rayon::prelude::*;
 use crate::neighbor::NeighborList;
 use ferro_core::{Table, Trajectory};
@@ -233,8 +233,12 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                           (0, Some(1), 2.0), (1, Some(2), 2.0), (2, Some(0), 2.0)],
         Legendre::P1 => &[(0, None, 1.0), (1, None, 1.0), (2, None, 1.0)],
     };
-    let (sq, cnt) = (0..n_units).into_par_iter()
-        .map_init(|| (plan.worker(), vec![0.0; n_frames], vec![0.0; max_lag + 1]), |(ac, x, s), k| {
+    // Summed in unit order, so the result does not depend on the thread count; a
+    // parallel `reduce` grouped the float sum by the thread schedule (review R3-1)
+    let units: Vec<usize> = (0..n_units).collect();
+    let (mut sq, mut cnt) = zero();
+    par_map_in_order(&units, |&k| {
+            let (ac, x, s) = &mut (plan.worker(), vec![0.0; n_frames], vec![0.0; max_lag + 1]);
             let unit: Vec<Option<[f64; 3]>> = orient.iter().map(|step| {
                 let [a, b, c] = step[k];
                 let n2 = a * a + b * b + c * c;
@@ -257,11 +261,9 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
             ac.sums(x, s);
             cnt.copy_from_slice(s);
             (sq, cnt)
-        })
-        .reduce(zero, |(mut a, mut b), (c, d)| {
-            for (x, y) in a.iter_mut().zip(&c) { *x += y; }
-            for (x, y) in b.iter_mut().zip(&d) { *x += y; }
-            (a, b)
+        }, |(c, d)| {
+            for (x, y) in sq.iter_mut().zip(&c) { *x += y; }
+            for (x, y) in cnt.iter_mut().zip(&d) { *x += y; }
         });
 
     let n_valid = orient.iter()

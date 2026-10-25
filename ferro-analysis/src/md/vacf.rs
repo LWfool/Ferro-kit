@@ -15,8 +15,7 @@
 //! Parallelism: per atom.
 
 use crate::check;
-use super::util::{check_frame_spacing, select_atoms};
-use rayon::prelude::*;
+use super::util::{check_frame_spacing, par_map_in_order, select_atoms};
 use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
@@ -116,8 +115,11 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
     // 逐原子逐轴：Σₜ v(t)v(t+m) 的全原点和，再在原子间累加
     let plan = AutocorrPlan::new(n_frames);
     let zero = || [vec![0.0; max_lag + 1], vec![0.0; max_lag + 1], vec![0.0; max_lag + 1]];
-    let sums = atom_indices.par_iter()
-        .map_init(|| (plan.worker(), vec![0.0; n_frames], vec![0.0; max_lag + 1]), |(ac, x, s), &i| {
+    // Summed in atom order, so the result does not depend on the thread count; a
+    // parallel `reduce` grouped the float sum by the thread schedule (review R3-1)
+    let mut sums = zero();
+    par_map_in_order(&atom_indices, |&i| {
+            let (ac, x, s) = &mut (plan.worker(), vec![0.0; n_frames], vec![0.0; max_lag + 1]);
             let mut out = zero();
             for (axis, o) in out.iter_mut().enumerate() {
                 for (xk, f) in x.iter_mut().zip(&traj.frames) {
@@ -127,14 +129,12 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
                 o.copy_from_slice(s);
             }
             out
-        })
-        .reduce(zero, |mut a, b| {
-            for (aa, bb) in a.iter_mut().zip(&b) {
+        }, |b| {
+            for (aa, bb) in sums.iter_mut().zip(&b) {
                 for (x, y) in aa.iter_mut().zip(bb) {
                     *x += y;
                 }
             }
-            a
         });
 
     // 第 m 个 lag 有 N−m 个原点
@@ -224,6 +224,21 @@ mod tests {
             traj.add_frame(frame);
         }
         traj
+    }
+
+    /// The sum over atoms is taken in atom order, so the result does not depend on the
+    /// thread count; a parallel `reduce` grouped it by the thread schedule.
+    #[test]
+    fn test_result_is_bit_identical_across_thread_counts() {
+        let traj = traj_from(|t, j| Vector3::new(jitter(3 * t + j), jitter(5 * t + 7 * j + 1), jitter(t * 11 + j + 3)),
+            &["O"; 300], 64);
+        let params = VacfParams { max_lag: Some(63), dt: 1.0, ..Default::default() };
+        let run = |threads: usize| rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap()
+            .install(|| calc_vacf(&traj, &params).unwrap().vacf);
+        let one = run(1);
+        for _ in 0..5 {
+            assert!(run(8).iter().zip(&one).all(|(a, b)| a.to_bits() == b.to_bits()));
+        }
     }
 
     #[test]
