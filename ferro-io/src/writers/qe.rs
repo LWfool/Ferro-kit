@@ -13,9 +13,16 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
     let mut w = String::new();
     writeln!(w, "ATOMIC_SPECIES")?;
     for elem in frame.unique_elements() {
-        let mass = ferro_core::data::elements::by_symbol(&elem)
-            .map(|e| e.atomic_mass)
-            .unwrap_or(1.0);
+        // The atoms' own mass (explicit, else the table; neither is an error, never 1 amu,
+        // review A-3). QE has one species per element, so one element with two masses
+        // cannot be written
+        let mut masses = frame.atoms().filter(|a| a.element == elem).map(|a| a.effective_mass());
+        let mass = masses.next().expect("an element of the frame has an atom")?;
+        for m in masses {
+            if m? != mass {
+                anyhow::bail!("{elem} atoms carry different masses; QE writes one species (one mass) per element");
+            }
+        }
         let pseudo = pseudos.iter().find(|(e, _)| *e == elem)
             .map(|(_, p)| p)
             .with_context(|| format!("no pseudopotential given for {elem}"))?;
@@ -71,6 +78,32 @@ mod tests {
         assert!((a - 2.87).abs() < 1e-9);
         // 卡片部分不含 namelist，拆分后原样落在 cards 里
         assert_eq!(parse_qe_input_parts(&text).unwrap().cards.trim_end(), cards.trim_end());
+    }
+
+    /// ATOMIC_SPECIES fell back to 1 amu for an unknown element and ignored explicit
+    /// masses (review R2-1; review A-3 removed that fallback from the other writers).
+    #[test]
+    fn test_species_mass_is_the_atoms_mass() {
+        let with_masses = |masses: [Option<f64>; 2], element: &str| {
+            let mut f = crate::testutil::bcc_fe();
+            let atoms: Vec<Atom> = f.atoms().zip(masses).map(|(a, m)| {
+                Atom { element: element.into(), mass: m, ..a.to_atom() }
+            }).collect();
+            f.set_atoms(atoms);
+            f
+        };
+        let pseudo = |e: &str| [(e.to_string(), "X.UPF".to_string())];
+        let species = |f: &Frame, e: &str| qe_structure_cards(f, &pseudo(e)).map(|c| c[0].1.clone());
+
+        // An explicit mass (an isotope) is written, not the table's
+        let s = species(&with_masses([Some(57.9353), Some(57.9353)], "Fe"), "Fe").unwrap();
+        assert!(s.contains("  Fe  57.9353  X.UPF"), "{s}");
+        // No mass anywhere is an error, never 1 amu
+        let e = species(&with_masses([None, None], "Fe1"), "Fe1").unwrap_err();
+        assert!(format!("{e:#}").contains("no mass for element 'Fe1'"), "{e:#}");
+        // One species per element: two masses for one element cannot be written
+        let e = species(&with_masses([Some(55.845), Some(57.9353)], "Fe"), "Fe").unwrap_err();
+        assert!(format!("{e:#}").contains("different masses"), "{e:#}");
     }
 
     #[test]
