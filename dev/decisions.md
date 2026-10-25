@@ -3,6 +3,26 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## 全库 code review 高级四条的修法（2026-10-25）
+
+逐条状态见 `plan/review-2026-10-24.md`。
+
+- **R1-1 CP2K MD 的 SCF 判定**：一行里出现相邻的 `SCF` `run` 两个 token 即判定行（不要求在行首，也不按字面
+  `contains`，否则 `relayouts_parse_identically` 的「列宽放大」变体不过）；收敛 = 含 `converged` 且无 `NOT`，
+  `terminated by external request` 因此算不收敛。判定在锚点处 `take()`，不沿用到下一步。依据：CP2K 2026.2
+  `qs_scf.F` 与 `examples/cp2k/md/` 真实输出的全部措辞（`converged in N steps`、`terminated by external request`、
+  `WARNING in qs_scf.F:630 :: SCF run NOT converged`）。仓库现有 4 份带 NOT 的样例，未收敛步都在最后一个锚点之后，
+  读出帧数不变。
+- **R1-2 extxyz 嗅探**：保留原 token 判据，**或上** `parse_comment` 的结果（`lattice` 值不是旗标 `T`、
+  `properties` 值含 `:`）。不单用 `parse_comment`：自由文本注释里的撇号让它报错，那时按普通 xyz；而原判据命中
+  的残缺 extxyz 仍应进 extxyz reader 报错，而不是被普通 reader 静默收下。
+- **R2-1 QE 的 ATOMIC_SPECIES**：取该元素原子的 `effective_mass()`；同元素质量不一致报错而不是取第一个 ——
+  QE 一元素一 species，静默取一个等于改了另一些原子的质量。
+- **R8-1 VASP 的 NELECT / NUPDOWN**：**用户定注释而非删除**（`# NELECT = 96`），INCAR 里仍看得到模板原值。
+  中性时注释 `NELECT`；多重度 1 且未给 `--multiplicity` 时注释 `NUPDOWN`（磁矩由 SCF 弛豫，同下文
+  「不设 `NUPDOWN`」的口径）；给了电荷 / 多重度照旧原位覆盖。参照：pymatgen 2026.7.16 `sets.py` 继承旧 INCAR
+  时跳过 `MAGMOM` / `NUPDOWN` / `LDAU*`（「structure may have changed」），但**不跳过 `NELECT`** —— 我们比它多做一项。
+
 ## 手册迁出（2026-10-21 瘦身 D 组）
 
 手册只写「是什么 / 怎么用」。下面是从 `docs/src/` 撤下、仍有留档价值的段落，**原文照搬**（英文），
