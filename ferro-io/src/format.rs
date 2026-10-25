@@ -347,8 +347,14 @@ pub fn write_numbered(
     for (&n, frame) in numbers.iter().zip(&traj.frames) {
         let one = Trajectory { frames: vec![frame.clone()], metadata: traj.metadata.clone() };
         let file = indexed_path(path, n, width);
-        write_one(&one, &file, format, opts)
-            .with_context(|| format!("writing frame {n} to {}", file.display()))?;
+        if let Err(e) = write_one(&one, &file, format, opts) {
+            // A refusal leaves nothing behind, as a single-file write does: the frames
+            // already written go too (review R2-3)
+            for f in &written {
+                let _ = std::fs::remove_file(f);
+            }
+            return Err(e.context(format!("writing frame {n} to {}", file.display())));
+        }
         written.push(file);
     }
     Ok(written)
@@ -475,6 +481,22 @@ mod tests {
         assert!(made.iter().all(|p| p.is_file()));
         let one = write(&traj, &dir.join("all.extxyz"), &WriteOptions::default()).unwrap();
         assert_eq!(read_plain(&one[0]).unwrap().n_frames(), 3);
+    }
+
+    /// A frame refused partway through a split leaves no files behind: the frames
+    /// before it used to stay on disk next to the error.
+    #[test]
+    fn a_refused_frame_leaves_no_split_files() {
+        let mut traj = one_atom_traj();
+        let mut bad = traj.frames[0].clone();
+        let mut na = Atom::new("Na", Vector3::new(1.0, 0.0, 0.0));
+        na.charge = Some(1.0);
+        bad.add_atom(na);
+        traj.frames.push(bad);
+        let dir = tmp_dir("split_refused");
+        let e = write(&traj, &dir.join("conf.data"), &WriteOptions::default()).unwrap_err();
+        assert!(format!("{e:#}").contains("have a charge"), "{e:#}");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "files were left behind");
     }
 
     /// `.vasp` / `.pos` go through the same reader and writer as a POSCAR name,
