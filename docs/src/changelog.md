@@ -12,6 +12,23 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Code review fixes: four silent wrong results
+
+- CP2K MD output: frames whose SCF did not converge are dropped, as documented. The verdict lines
+  CP2K 2025 / 2026 writes (`*** SCF run converged in N steps ***`, `*** WARNING in qs_scf.F:630 ::
+  SCF run NOT converged ***`) were never recognised, so every frame counted as converged.
+  `*** SCF run terminated by external request ***` counts as not converged, and a step without a
+  verdict line of its own no longer inherits the previous step's.
+- A `.xyz` whose comment line writes `Lattice = "..."` or `Properties = ...` (spaces around `=`,
+  accepted by ASE) is read as extended XYZ; it went to the plain reader, which dropped the cell,
+  energy and forces with exit code 0.
+- QE structure cards (`ferro-py job -s qe`, `conv -s qe`): `ATOMIC_SPECIES` takes the atoms' mass, an
+  explicit one before the element table's. An element with no mass is an error instead of 1 amu, and
+  so is one element whose atoms carry two masses (QE has one species per element).
+- `ferro-py job -s vasp`: a template's `NELECT` is commented out (`# NELECT = 96`) for a neutral
+  structure, and its `NUPDOWN` when the multiplicity is 1 and `--multiplicity` is not given, each with
+  a note. They used to stay and override the electron count and multiplicity the note reports.
+
 ### `ferro convert`: `-o` is a directory
 
 - `-o` is now the output **directory** and `--format EXT` is required: `ferro convert -i a.dump -o b.xyz`
