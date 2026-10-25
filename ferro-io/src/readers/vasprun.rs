@@ -74,8 +74,10 @@ pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
 
     loop {
         match reader.read_event_into(&mut buf) {
+            // Every syntax error means the input ended inside a construct: a run killed
+            // mid-write. Ill-formed markup (mismatched tags) is still an error
+            Err(quick_xml::Error::Syntax(_)) | Ok(Event::Eof) => break,
             Err(e) => bail!("{path_}: malformed XML at byte {}: {e}", reader.buffer_position()),
-            Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 let attr = |key: &str| -> Option<String> {
@@ -226,6 +228,13 @@ pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
 
     if st.elements.is_empty() {
         bail!("{path_}: no <atominfo> species list found");
+    }
+    // The file ends inside a calculation: a step that was started but never finished
+    if st.in_calculation {
+        stats.n_steps += 1;
+        stats.n_incomplete += 1;
+        let step = stats.n_steps as i64;
+        stats.steps = Some((stats.steps.map_or(step, |(lo, _)| lo), step));
     }
     Ok((traj, stats))
 }
@@ -444,6 +453,21 @@ mod tests {
         match read_vasprun(&p) {
             Err(e) => assert!(format!("{e:#}").contains("atominfo") || format!("{e:#}").contains("XML")),
             Ok((t, _)) => assert_eq!(t.n_frames(), 0),
+        }
+    }
+
+    /// A run killed mid-write leaves the file cut anywhere — inside a tag or inside a text
+    /// node. Either way the finished calculations are kept and the cut one is counted as an
+    /// incomplete step; a cut inside a tag used to discard the whole file.
+    #[test]
+    fn a_truncated_file_keeps_the_finished_frames() {
+        let text = std::fs::read_to_string(FIXTURE).unwrap();
+        let second = text.find("<i name=\"kinetic\">    121.39817355").unwrap();
+        for (name, cut) in [("tag", second + 5), ("text", second + 25)] {
+            let path = crate::testutil::write_tmp(&format!("vasprun_cut_{name}.xml"), &text[..cut]);
+            let (traj, stats) = read_vasprun(&path).unwrap_or_else(|e| panic!("cut in {name}: {e:#}"));
+            assert_eq!(traj.n_frames(), 1, "cut in {name}");
+            assert_eq!((stats.n_steps, stats.n_incomplete), (2, 1), "cut in {name}");
         }
     }
 
