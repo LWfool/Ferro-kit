@@ -69,6 +69,11 @@ pub fn write_extxyz_with(
         // a dump mass column), or converting would drop it;
         // atoms without one get the element's mass, so the column is always full. An element with
         // neither is an error (review A-3; it used to be written as 1 amu)
+        // The per-atom columns are split on blanks, by ASE and by this crate's reader:
+        // a label holding one would shift every column after it (review R2-8)
+        if let Some(l) = frame.atoms().filter_map(|a| a.label).find(|l| l.contains(char::is_whitespace)) {
+            bail!("frame {fi}: label '{l}' holds a blank, which the extxyz columns cannot carry");
+        }
         let has_mass = frame.velocities().is_some() || frame.atoms().any(|a| a.mass.is_some());
         if has_mass {
             for a in frame.atoms() {
@@ -387,5 +392,20 @@ mod tests {
         plain.add_atom(Atom::new("O", Vector3::zeros()));
         write_extxyz(&Trajectory::from_frame(plain), &path).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("masses"));
+    }
+
+    /// The per-atom columns are split on blanks (ASE, this crate's reader), so a label
+    /// holding one shifted every column after it. It is refused, naming the label.
+    #[test]
+    fn test_label_with_a_blank_is_refused() {
+        let mut frame = Frame::new();
+        let mut a = Atom::new("O", Vector3::zeros());
+        a.label = Some("O a".into());
+        frame.add_atom(a);
+        let path = std::env::temp_dir().join("ferro_extxyz_blank_label.xyz");
+        let _ = std::fs::remove_file(&path);
+        let e = write_extxyz(&Trajectory::from_frame(frame), &path).unwrap_err();
+        assert!(format!("{e:#}").contains("'O a'"), "{e:#}");
+        assert!(!path.exists(), "a refused write must not leave a file");
     }
 }
