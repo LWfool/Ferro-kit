@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -53,26 +53,50 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     writeln!(w, "_atom_site_fract_y")?;
     writeln!(w, "_atom_site_fract_z")?;
 
+    // `_atom_site_label` is unique (review R2-7): an automatic label skips every name an
+    // explicit label holds, anywhere in the frame, and a repeated explicit label gets
+    // `_2`, `_3`, ...
+    let explicit: HashSet<&str> = frame.atoms().filter_map(|a| a.label).collect();
+    let mut used: HashSet<String> = HashSet::new();
     let mut counters: HashMap<String, usize> = HashMap::new();
     for atom in frame.atoms() {
         let label = if let Some(l) = atom.label {
-            l.to_string()
+            (1..).map(|k| if k == 1 { l.to_string() } else { format!("{l}_{k}") })
+                .find(|c| !used.contains(c) && (c == l || !explicit.contains(c.as_str())))
+                .expect("an unbounded range finds a free name")
         } else {
             let n = counters.entry(atom.element.to_string()).or_insert(0);
-            *n += 1;
-            format!("{}{n}", atom.element)
+            loop {
+                *n += 1;
+                let c = format!("{}{n}", atom.element);
+                if !used.contains(&c) && !explicit.contains(c.as_str()) { break c; }
+            }
         };
+        used.insert(label.clone());
         let frac = cell.cartesian_to_fractional(atom.position)?;
         writeln!(
             w,
-            "{label:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
-            atom.element, frac.x, frac.y, frac.z
+            "{:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
+            quote(&label), atom.element, frac.x, frac.y, frac.z
         )?;
     }
 
     writeln!(w)?;
     w.flush()?;
     Ok(())
+}
+
+/// A CIF value as one token: quoted when it holds a blank or starts with a character
+/// that would make it something else (a tag, a comment, a quoted or text field)
+fn quote(s: &str) -> String {
+    let special = s.starts_with(['_', '#', '$', '\'', '"', ';', '[', ']']);
+    if !s.contains(char::is_whitespace) && !special {
+        s.to_string()
+    } else if s.contains('\'') {
+        format!("\"{s}\"")
+    } else {
+        format!("'{s}'")
+    }
 }
 
 fn sanitize_block_name(s: &str) -> String {
@@ -87,6 +111,29 @@ mod tests {
     use crate::readers::cif::read_cif;
     use ferro_core::{Atom, Frame, Trajectory};
     use nalgebra::Vector3;
+
+    /// `_atom_site_label` must be unique and one token. An automatic label used to take a
+    /// name an explicit label held, a repeated explicit label was written twice, and a
+    /// label with a space shifted the loop's columns.
+    #[test]
+    fn test_labels_are_unique_and_quoted() {
+        let cell = ferro_core::Cell::from_lengths_angles(5.0, 5.0, 5.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        let mut add = |el: &str, label: Option<&str>, x: f64| {
+            let mut a = Atom::new(el, Vector3::new(x, 0.0, 0.0));
+            a.label = label.map(Into::into);
+            frame.add_atom(a);
+        };
+        add("Fe", None, 0.0);
+        add("Fe", Some("Fe1"), 1.0);
+        add("O", Some("O a"), 2.0);
+        add("O", Some("O a"), 3.0);
+        let path = std::env::temp_dir().join("ferro_cif_labels.cif");
+        write_cif(&Trajectory::from_frame(frame), &path).unwrap();
+        let back = read_cif(&path).unwrap();
+        let labels: Vec<_> = back.frames[0].atoms().map(|a| a.label.map(str::to_string)).collect();
+        assert_eq!(labels, [Some("Fe2"), Some("Fe1"), Some("O a"), Some("O a_2")].map(|l| l.map(Into::into)));
+    }
 
     #[test]
     fn test_roundtrip_periodic() {
