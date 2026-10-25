@@ -43,7 +43,9 @@ fn write_csv(table: &Table, path: &Path) -> Result<()> {
     let file = File::create(path).context(format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
-    for line in &table.meta {
+    // A meta line holding a newline is written as several, each behind its own `#`
+    // (review R2-6)
+    for line in table.meta.iter().flat_map(|l| l.split('\n')) {
         if line.is_empty() {
             writeln!(w, "#")?;
         } else {
@@ -51,7 +53,8 @@ fn write_csv(table: &Table, path: &Path) -> Result<()> {
         }
     }
 
-    writeln!(w, "{}", table.names().join(","))?;
+    let names: Vec<String> = table.names().into_iter().map(escape).collect();
+    writeln!(w, "{}", names.join(","))?;
 
     for row in 0..table.n_rows() {
         let cells: Vec<String> = table.cols.iter().map(|(_, c)| escape(&c.cell(row))).collect();
@@ -65,9 +68,11 @@ fn write_csv(table: &Table, path: &Path) -> Result<()> {
 /// Quotes a field only when it would otherwise break the CSV structure.
 ///
 /// Element symbols and site labels never need it; the escape exists so a stray comma
-/// in a file name or a failure message cannot shift every following column.
+/// in a file name or a failure message cannot shift every following column. `#` is
+/// quoted because the manual reads these files with `read_csv(comment="#")`, which
+/// would cut the row there, and `\r` because it ends a line as `\n` does (review R2-5).
 fn escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
+    if s.contains([',', '"', '\n', '\r', '#']) {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
         s.to_string()
@@ -125,6 +130,22 @@ mod tests {
         write_table(&t, &p, TableFormat::Csv).unwrap();
         let s = std::fs::read_to_string(&p).unwrap();
         assert!(s.lines().nth(1).unwrap().starts_with('"'));
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// The manual reads these files with `read_csv(comment="#")`: an unquoted `#` cut the
+    /// rest of the row off, and a bare `\r` ended it. A meta line holding a newline left its
+    /// second half outside the comment block; a column name was never escaped at all.
+    #[test]
+    fn test_hash_carriage_return_and_newlines_cannot_break_the_layout() {
+        let p = tmp("ferro_table_hash.csv");
+        let mut t = Table::new();
+        t.meta_line("first\nsecond")
+            .push_text("a,b", vec!["run#2".into()])
+            .push_text("c", vec!["x\ry".into()]);
+        write_table(&t, &p, TableFormat::Csv).unwrap();
+        let s = std::fs::read_to_string(&p).unwrap();
+        assert_eq!(s, "# first\n# second\n\"a,b\",c\n\"run#2\",\"x\ry\"\n");
         let _ = std::fs::remove_file(&p);
     }
 }
