@@ -92,6 +92,33 @@ def test_template_values_are_kept(cfg, nvt, tmp_path):
     assert not any("parallel settings" in n for n in s.notes)
 
 
+def test_template_electron_count_and_spin_are_commented_out(cfg, nvt, tmp_path):
+    # A tested INCAR from another system: its NELECT / NUPDOWN would override the
+    # electron count and multiplicity the note reports (review R8-1)
+    tpl = tmp_path / "INCAR"
+    tpl.write_text("NELECT = 96\nISPIN = 2; NUPDOWN = 2  ! tested\nKSPACING = 0.5\n")
+    s = VaspGenerator(cfg).generate(nvt, 0, JobOptions("sp"), tpl)
+    incar = Incar.from_str(s.files["INCAR"])
+    assert "NELECT" not in incar and "NUPDOWN" not in incar, "neutral, multiplicity not given"
+    assert incar["ISPIN"] == "2", "the rest of the line stays"
+    lines = s.files["INCAR"].splitlines()
+    assert "# NELECT = 96" in lines and "# NUPDOWN = 2" in lines, "commented out, not deleted"
+    assert any("NELECT = 96" in n and "commented out" in n for n in s.notes)
+    assert any("NUPDOWN = 2" in n and "commented out" in n for n in s.notes)
+    # Given charge / multiplicity still overwrite the template's values in place
+    s = VaspGenerator(cfg).generate(nvt, 0, JobOptions("sp", charge=1), tpl)
+    incar = Incar.from_str(s.files["INCAR"])
+    assert incar["NELECT"] == str(electrons(nvt) - 1) and incar["NUPDOWN"] == "1"
+
+
+def test_incar_comment_out():
+    incar = Incar.from_str("NELECT = 96  ! old system\nISPIN = 2; NUPDOWN = 2\n")
+    incar.comment_out("nelect")
+    incar.comment_out("NUPDOWN")
+    assert incar.to_str() == "# NELECT = 96  ! old system\nISPIN = 2\n# NUPDOWN = 2\n"
+    assert incar.keys() == ["ISPIN"]
+
+
 def test_metagga_switches_algo(cfg, nvt, tmp_path):
     tpl = tmp_path / "INCAR"
     tpl.write_text(VaspGenerator.builtin_template("sp").replace("GGA = PE", "METAGGA = R2SCAN"))

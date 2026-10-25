@@ -150,6 +150,23 @@ class Incar:
             del self._lines[i]   # 行尾注释说的就是这个键，一起删
         self._index()
 
+    def comment_out(self, key):
+        """``KEY = value`` becomes ``# KEY = value`` where it stood; returns the value.
+
+        Alone on its line, the line is commented as a whole (its trailing comment kept);
+        sharing a line, the assignment leaves it and the commented copy follows the line.
+        """
+        key = key.upper()
+        i, value = self._where[key], self[key]
+        n, comment = len(self._lines), _split_comment(self._lines[i])[1]
+        del self[key]
+        if len(self._lines) < n:
+            self._lines.insert(i, f"# {key} = {value}" + (f"  {comment}" if comment else ""))
+        else:
+            self._lines.insert(i + 1, f"# {key} = {value}")
+        self._index()
+        return value
+
     def to_str(self):
         return "\n".join(self._lines) + "\n"
 
@@ -258,13 +275,23 @@ class VaspGenerator(Generator):
 
         n_valence = sum(c * z for c, z in zip(counts, zval))
         mult = multiplicity(n_valence, options.charge, options.multiplicity)
+        # A template's NELECT / NUPDOWN belong to the system it was tested on: left in,
+        # they override the count and multiplicity reported below (review R8-1).
+        # Commented out rather than deleted (user's choice), so the INCAR still shows them
         if options.charge:
             incar["NELECT"] = f"{n_valence - options.charge:g}"
+        elif "NELECT" in incar:
+            old = incar.comment_out("NELECT")
+            notes.append(f"template NELECT = {old} commented out: neutral structure, VASP counts the electrons")
         if mult > 1:
             incar["ISPIN"] = 2
             incar["NUPDOWN"] = mult - 1
         elif options.multiplicity is not None and incar.get("ISPIN", "1").strip() == "2":
             incar["NUPDOWN"] = 0
+        elif "NUPDOWN" in incar:
+            old = incar.comment_out("NUPDOWN")
+            notes.append(f"template NUPDOWN = {old} commented out: multiplicity 1, the moment relaxes "
+                         "in the SCF (give --multiplicity to fix it)")
         notes.append(f"{n_valence - options.charge:g} electrons, multiplicity {mult}")
 
         if options.kspacing is not None:
