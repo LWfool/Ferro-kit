@@ -66,7 +66,7 @@ fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
 
 /// 解析一个数，兼容 Fortran 在三位指数时省掉 `E` 的写法（`0.1234-100` = 0.1234E-100）。
 /// VASP 的 CHGCAR 在真空区的极小密度上会写出这种数。
-fn parse_fortran_float(tok: &str) -> Result<f64> {
+pub(crate) fn parse_fortran_float(tok: &str) -> Result<f64> {
     if let Ok(v) = tok.parse::<f64>() {
         return Ok(v);
     }

@@ -136,7 +136,8 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     let mut raw: Vec<f64> = Vec::with_capacity(nrho);
     for (k, l) in lines.enumerate() {
         for tok in l.split_whitespace() {
-            let v = tok.parse::<f64>().with_context(|| {
+            // Fortran drops the `E` of a three-digit exponent (`0.12345-100`), as in CHGCAR
+            let v = super::chgcar::parse_fortran_float(tok).with_context(|| {
                 format!("line {}: invalid volumetric value {tok:?}", first + k)
             })?;
             raw.push(v);
@@ -296,6 +297,15 @@ comment
 ";
 
     use crate::testutil::write_tmp;
+
+    /// Fortran writes a three-digit exponent without its `E` (`0.12345-100`); tiny densities
+    /// in vacuum come out that way and used to fail the whole cube.
+    #[test]
+    fn test_three_digit_exponent_without_e() {
+        let text = CUBE_OFFSET.replace(" 8.0\n", " 0.25-101\n");
+        let (_, chg) = parse_cube_as_chg(&text).unwrap();
+        assert!(chg.rho.iter().any(|&v| v > 0.0 && v < 1e-90), "the tiny value was not read");
+    }
 
     // ── CubeData tests ────────────────────────────────────────────────────────
 
