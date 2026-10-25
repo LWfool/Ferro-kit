@@ -57,13 +57,11 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
     let mut i = 0;
     let mut warnings = Vec::new();
 
-    let skip = |l: &str| -> bool { l.trim().is_empty() || l.trim().starts_with('#') };
-
     // ── Header ────────────────────────────────────────────────────────────────
-    // First non-blank line is the comment
-    while i < lines.len() && skip(lines[i]) { i += 1; }
-    // 空文件 / 只有空行时以前 `lines[i]` 越界 panic
-    let comment = lines.get(i).context("empty file: no header comment line")?.trim().to_string();
+    // The first line is the title whatever it holds, as LAMMPS `read_data` takes it:
+    // OVITO starts it with `#`, and skipping it as a comment took `N atoms` for the
+    // title (review R1-4)
+    let comment = lines.first().context("empty file: no header comment line")?.trim().to_string();
     i += 1;
 
     // Box bounds
@@ -428,10 +426,11 @@ Atoms # full
 
     #[test]
     fn test_empty_file_is_an_error() {
-        for text in ["", "\n  \n# 只有注释\n"] {
-            let e = parse_lammps_data(text, AtomStyle::Atomic).unwrap_err();
-            assert!(format!("{e:#}").contains("empty file"), "{e:#}");
-        }
+        let e = parse_lammps_data("", AtomStyle::Atomic).unwrap_err();
+        assert!(format!("{e:#}").contains("empty file"), "{e:#}");
+        // A blank title and nothing else is not empty, but still has no atom count
+        let e = parse_lammps_data("\n  \n# comment only\n", AtomStyle::Atomic).unwrap_err();
+        assert!(format!("{e:#}").contains("no Atoms section"), "{e:#}");
     }
 
     #[test]
@@ -539,6 +538,16 @@ Atoms # full
         // atomic has no charge column: still None
         let text = data_with("1 15.999  # O\n2 1.008  # H\n", "1 1 0 0 0\n2 2 1 0 0\n", "atomic");
         assert_eq!(parse_lammps_data(&text, AtomStyle::Atomic).unwrap().0.frames[0].atom(0).charge, None);
+    }
+
+    /// The first line is the title whatever it holds (LAMMPS `read_data`); OVITO starts it
+    /// with `#`. Skipped as a comment, it used to take the `N atoms` line for the title.
+    #[test]
+    fn test_title_line_starting_with_hash() {
+        let text = data_with("1 15.999\n2 1.008\n", "1 1 0 0 0\n2 2 1 0 0\n", "atomic")
+            .replacen("t\n", "# LAMMPS data file written by OVITO Basic 3.10.6\n", 1);
+        let f = parse_lammps_data(&text, AtomStyle::Atomic).unwrap().0.frames.remove(0);
+        assert_eq!(f.n_atoms(), 2);
     }
 
     /// LAMMPS does not order the sections; Atoms before Masses still gets the elements.
