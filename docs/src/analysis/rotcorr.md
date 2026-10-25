@@ -136,7 +136,8 @@ As in [MSD](msd.md#time-origins-and-the-lag-axis): every lag uses every origin; 
 by the longest lag, the integral underestimates $\tau_c$; fitting an exponential to $C_2$ is the
 alternative (`gmx rotacf -fitfn exp`).
 
-If any lag is empty (NaN), the integral is empty from there on.
+An empty lag (NaN, no pair valid at both ends) is a gap: its own `integral` is empty, and one trapezoid
+spans it between the lags on either side, so the integrals after it stay finite.
 
 ## Parameters
 

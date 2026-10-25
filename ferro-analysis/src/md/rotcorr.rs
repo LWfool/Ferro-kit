@@ -479,6 +479,19 @@ mod tests {
         assert!(r.rotcorr[2..].iter().all(|c| c.is_nan()), "{:?}", r.rotcorr);
     }
 
+    /// A lag with no valid pair between valid ones is a gap in the integral, bridged by
+    /// one trapezoid; its NaN used to carry into the integral of every later lag.
+    #[test]
+    fn test_integral_bridges_a_lag_without_valid_pair() {
+        // Frames 2 and 3 have no neighbor: lag 2 has no pair valid at both ends
+        let traj = tumbling(6, |t, _| t == 2 || t == 3);
+        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..Default::default() }).unwrap();
+        let (c, i) = (&r.rotcorr, &r.integral);
+        assert!(c[2].is_nan() && i[2].is_nan(), "{c:?}");
+        assert!((i[3] - (i[1] + 0.5 * 2.0 * (c[1] + c[3]))).abs() < 1e-12, "{i:?}");
+        assert!(i[4].is_finite() && i[5].is_finite(), "{i:?}");
+    }
+
     #[test]
     fn test_c0_always_one() {
         let traj = make_fixed_orientation(8);

@@ -106,13 +106,23 @@ pub fn resolve_max_lag(name: &str, n_frames: usize, max_lag: Option<usize>) -> f
 /// The rule GROMACS (`print_and_integrate`) and MDAnalysis transport-analysis
 /// (`scipy.integrate.trapezoid`) use for correlation integrals. The running form
 /// shows where the integral levels off.
+///
+/// A NaN point (a rotcorr lag with no valid pair) is a gap: its own integral is NaN,
+/// and one trapezoid spans it between the valid points on either side. Summed through,
+/// it made every later integral NaN (review R3-2).
 pub fn cumulative_trapezoid(y: &[f64], dt: f64) -> Vec<f64> {
     let mut out = Vec::with_capacity(y.len());
     let mut acc = 0.0;
+    let mut last: Option<(usize, f64)> = None;
     for (m, &v) in y.iter().enumerate() {
-        if m > 0 {
-            acc += 0.5 * dt * (y[m - 1] + v);
+        if v.is_nan() {
+            out.push(f64::NAN);
+            continue;
         }
+        if let Some((k, u)) = last {
+            acc += 0.5 * dt * (m - k) as f64 * (u + v);
+        }
+        last = Some((m, v));
         out.push(acc);
     }
     out
