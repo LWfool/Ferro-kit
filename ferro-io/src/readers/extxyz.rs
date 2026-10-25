@@ -28,10 +28,17 @@ pub fn is_extxyz(path: &Path) -> Result<bool> {
     let Some(comment) = super::util::text_lines(path)?.nth(1).transpose()? else {
         return Ok(false);
     };
-    Ok(comment.split_whitespace().any(|tok| {
+    let tokens = comment.split_whitespace().any(|tok| {
         let tok = tok.to_lowercase();
         tok.starts_with("lattice=") || tok.starts_with("properties=")
-    }))
+    });
+    // The reader's own tokenizer, so `Lattice = "..."` counts too. A bare word parses
+    // as a flag ("T"), so "lattice energy study" is no key; a comment that does not
+    // parse (an apostrophe in free text) is plain, unless the token test above hit
+    let parsed = parse_comment(&comment).is_ok_and(|m| {
+        m.get("lattice").is_some_and(|v| v != "T") || m.get("properties").is_some_and(|v| v.contains(':'))
+    });
+    Ok(tokens || parsed)
 }
 
 #[cfg(test)]
@@ -545,6 +552,20 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
     }
 
     use crate::testutil::write_tmp as tmp;
+
+    /// The sniff split on whitespace on its own, so `Lattice = "..."` (spaces round
+    /// `=`, which `parse_comment` and ASE accept) went to the plain reader and the cell
+    /// and energy were dropped with exit code 0 (review R1-2).
+    #[test]
+    fn test_sniff_accepts_spaces_around_equals() {
+        let spaced = "1\nLattice = \"5 0 0 0 5 0 0 0 5\" energy=-1.0\nO 0 0 0\n";
+        assert!(is_extxyz(&tmp("sniff_spaced.xyz", spaced)).unwrap());
+        let props = "1\nProperties = species:S:1:pos:R:3\nO 0 0 0\n";
+        assert!(is_extxyz(&tmp("sniff_props.xyz", props)).unwrap());
+        // A plain comment stays plain, including free text that is no key=value list
+        assert!(!is_extxyz(&tmp("sniff_plain.xyz", "1\nwater, it's cold\nO 0 0 0\n")).unwrap());
+        assert!(!is_extxyz(&tmp("sniff_word.xyz", "1\nlattice energy study\nO 0 0 0\n")).unwrap());
+    }
 
     /// A frame without a `pos` column used to read every atom at the origin, and one
     /// without `species` named every atom X: both silently, with exit code 0.
