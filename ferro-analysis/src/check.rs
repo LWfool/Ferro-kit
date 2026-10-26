@@ -65,8 +65,11 @@ pub(crate) fn at_least_one_if_given(name: &str, n: Option<usize>) -> Check {
 }
 
 /// `[lo, hi)` 至少容得下一个宽 `step` 的 bin
+///
+/// Within a relative 1e-9, as `md::util::bins` reads a whole number of steps: `0.3 - 0.2`
+/// is one `0.1` bin, not just short of one.
 pub(crate) fn holds_a_bin(range: &str, lo: f64, hi: f64, step: &str, w: f64) -> Check {
-    if (hi - lo) / w >= 1.0 { return Ok(()); }
+    if (hi - lo) / w >= 1.0 - 1e-9 { return Ok(()); }
     fail(format!("{range} [{lo}, {hi}] is narrower than one {step} = {w} bin"))
 }
 
@@ -162,6 +165,8 @@ mod tests {
         assert!(at_least_one_if_given("max-lag", Some(0)).is_err());
         assert!(holds_a_bin("r", 0.0, 0.5, "dr", 1.0).is_err());
         assert!(holds_a_bin("r", 0.0, 1.0, "dr", 1.0).is_ok());
+        // 0.3 - 0.2 = 0.09999999999999998: one bin within the 1e-9 that `bins` allows
+        assert!(holds_a_bin("r", 0.2, 0.3, "dr", 0.1).is_ok());
     }
 
     /// 每个参数结构体：默认值合法，每个受检字段各改一个坏值都被拦下。
