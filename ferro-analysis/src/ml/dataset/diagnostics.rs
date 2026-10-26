@@ -129,6 +129,11 @@ pub fn quantiles(values: &[f64]) -> Option<[f64; 6]> {
 /// Carries no header line: the quantiles are per input, so they belong in the
 /// `[inputs]` block (see [`quantiles`]) — a header line would survive stacking
 /// only for the first input and pass for the whole batch.
+///
+/// A fixed count of equal bins spanning the data's own [min, max], not bins of a
+/// given step, so it does not go through `md::util::bins` (review R5-2): the width
+/// is exactly range / count and the top value is clamped into the last bin, so no
+/// tail is lost and no bin is partial.
 pub fn distribution_table(values: &[f64], bins: usize) -> Table {
     let mut t = Table::new();
     let Some([lo, _, _, _, hi, _]) = quantiles(values) else { return t };
