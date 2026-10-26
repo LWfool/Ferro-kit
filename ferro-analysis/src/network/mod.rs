@@ -701,6 +701,7 @@ fn network(
     let invalid = |msg: &str| Err(ChemError::ValidationError(msg.into()));
     if traj.frames.is_empty() { return invalid("trajectory is empty"); }
     if params.cutoffs.is_empty() { return invalid("no former-ligand cutoff given"); }
+    params.validate()?;
 
     // Coordination goes by the minimum image: past the bound of the largest cutoff,
     // ligands in farther images are missed. A frame without a cell is an error, as
@@ -719,7 +720,7 @@ fn network(
         .enumerate()
         .map(|(k, frame)| {
             let ft = classify_frame_detailed(frame, params)
-                .expect("checked at the entry by check::all_periodic_cells");
+                .expect("checked at the entry by validate and check::all_periodic_cells");
             let fd = compute_frame(&ft, frame, params);
             (fd, keep_types.then_some((k, ft.types)))
         })
@@ -1098,6 +1099,16 @@ mod tests {
         let mut b = a.clone();
         b.cell = None;
         assert!(calc_network(&traj_of(vec![a, b]), &make_params(2.3)).is_err());
+    }
+
+    /// A bad cutoff is a validation error at the entry, not a panic inside the parallel loop.
+    #[test]
+    fn a_negative_cutoff_is_an_error_not_a_panic() {
+        let frame = cube(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)]);
+        let mut p = make_params(2.3);
+        p.modifier_cutoffs.insert(("Na".into(), "O".into()), -1.0);
+        let err = calc_network(&traj_of(vec![frame]), &p).unwrap_err().to_string();
+        assert!(err.contains("Na-O cutoff"), "{err}");
     }
 
     /// 孤立 PO4（Q0）
