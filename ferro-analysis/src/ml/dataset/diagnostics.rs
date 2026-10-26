@@ -227,8 +227,13 @@ pub fn filter_diagnostics(
         out.push(("al_cn".to_string(), coordination_table(&hist)));
     }
 
-    // A sweep around the current cutoff: how steep it is is what this table is for
-    let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1).filter(|v| *v > 0.0).collect();
+    // A sweep around the current cutoff: how steep it is is what this table is for. It
+    // stops at the minimum-image bound: past it cutoff_scan refuses, and a cutoff the
+    // filter accepted would fail the whole run after the report was printed
+    let bound = check::periodic_cells(traj, None)?.iter().flatten()
+        .map(|c| c.mic_bound()).fold(f64::INFINITY, f64::min);
+    let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1)
+        .filter(|v| *v > 0.0 && *v <= bound).collect();
     let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200)?;
     out.push(("rcut_scan".to_string(), scan_table(&scan)));
     Ok(out)
@@ -380,6 +385,25 @@ mod tests {
             t.add_frame(f);
         }
         t
+    }
+
+    /// A cutoff the filter accepted must not fail the diagnostics: the scan around it
+    /// stops at the minimum-image bound instead of running 0.3 A past the cutoff.
+    #[test]
+    fn the_cutoff_scan_stops_at_the_minimum_image_bound() {
+        use ferro_core::{Atom, Cell, Frame};
+        use nalgebra::Vector3;
+        // 5.1 A box: bound 2.55 A, cutoff 2.4 A, scan asked up to 2.7 A
+        let cell = Cell::from_lengths_angles(5.1, 5.1, 5.1, 90.0, 90.0, 90.0).unwrap();
+        let mut f = Frame::with_cell(cell, [true; 3]);
+        f.add_atom(Atom::new("Al", Vector3::new(0.0, 0.0, 0.0)));
+        f.add_atom(Atom::new("O", Vector3::new(1.9, 0.0, 0.0)));
+        let t = Trajectory::from_frame(f);
+        let p = FilterParams { al6_rcut: Some(2.4), ..Default::default() };
+        let r = super::super::filter::filter_frames(&t, &p).unwrap();
+        let tables = filter_diagnostics(&t, &r, &p).unwrap();
+        let (_, scan) = tables.iter().find(|(n, _)| n == "rcut_scan").unwrap();
+        assert_eq!(scan.n_rows(), 5, "2.1 .. 2.5, not 2.6 or 2.7");
     }
 
     /// Missing scalars render as empty fields, never as zero.
