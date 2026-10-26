@@ -62,7 +62,10 @@ impl Cell {
         let cx = cos_b;
         let cy = (cos_a - cos_b * cos_g) / sin_g;
         let cz_sq = 1.0 - cx * cx - cy * cy;
-        if cz_sq < 0.0 {
+        // V / abc = sin(γ)·cz: coplanar vectors (120/120/120) give a rounding-level cz_sq of
+        // either sign, ~1e-16, whose root is ~1e-8; 1e-6 sits above that noise and far
+        // below any real cell
+        if cz_sq < 0.0 || sin_g * cz_sq.sqrt() < 1e-6 {
             return Err(ChemError::ValidationError(
                 "Invalid lattice angles: cannot form a valid cell".into(),
             ));
@@ -360,6 +363,14 @@ mod tests {
         assert!(!ok(5.0, f64::NAN));
         assert!(!ok(5.0, 0.0));
         assert!(!ok(5.0, 180.0));
+    }
+
+    /// 120/120/120 puts the three vectors in one plane: a zero-volume cell, refused here
+    /// rather than failing downstream.
+    #[test]
+    fn coplanar_lattice_vectors_are_rejected() {
+        assert!(Cell::from_lengths_angles(5.0, 5.0, 5.0, 120.0, 120.0, 120.0).is_err());
+        assert!(Cell::from_lengths_angles(5.0, 5.0, 5.0, 60.0, 60.0, 60.0).is_ok());
     }
 
     #[test]
