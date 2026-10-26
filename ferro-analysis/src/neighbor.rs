@@ -26,7 +26,13 @@ pub struct NeighborList {
 impl NeighborList {
     /// `Err` when `rcut` exceeds the cell's minimum-image bound: past it each pair
     /// is seen at one image only and neighbours in farther images are lost.
+    /// Also `Err` for a cutoff that is not a positive finite number.
     pub fn build(positions: &[Vector3<f64>], cell: &PeriodicCell, rcut: f64) -> Result<Self> {
+        if !(rcut.is_finite() && rcut > 0.0) {
+            return Err(ChemError::ValidationError(format!(
+                "neighbour cutoff must be a finite number > 0, got {rcut}"
+            )));
+        }
         let bound = cell.mic_bound();
         if rcut > bound {
             return Err(ChemError::ValidationError(format!(
@@ -34,7 +40,16 @@ impl NeighborList {
             )));
         }
         // 每轴 bin 数 = floor(d_i / rcut)：(Mᵀ)⁻¹ 第 i 行的模 = 1/d_i，对三斜胞也成立
-        let n = [0, 1, 2].map(|i| ((1.0 / (rcut * cell.reciprocal().row(i).norm())).floor() as usize).max(1));
+        let mut nf = [0, 1, 2].map(|i| (1.0 / (rcut * cell.reciprocal().row(i).norm())).floor().max(1.0));
+        // More bins than atoms only adds empty ones; a tiny cutoff asked for (d / rcut)^3 of
+        // them. Shrinking every axis by the same factor keeps each bin at least rcut wide
+        let cap = positions.len().max(27) as f64;
+        let total = nf[0] * nf[1] * nf[2];
+        if total > cap {
+            let s = (total / cap).cbrt();
+            nf = nf.map(|v| (v / s).floor().max(1.0));
+        }
+        let n = nf.map(|v| v as usize);
         let mut bins = vec![Vec::new(); n[0] * n[1] * n[2]];
         let frac = positions.iter().enumerate().map(|(i, &p)| {
             let f = cell.to_fractional(p);
@@ -103,6 +118,26 @@ mod tests {
         let pc = PeriodicCell::new(&cubic(6.0), [true; 3]).unwrap();
         assert!(NeighborList::build(&[Vector3::zeros()], &pc, 3.0).is_ok());
         assert!(NeighborList::build(&[Vector3::zeros()], &pc, 3.01).is_err());
+    }
+
+    #[test]
+    fn a_cutoff_that_is_not_positive_is_refused() {
+        let pc = PeriodicCell::new(&cubic(6.0), [true; 3]).unwrap();
+        for rcut in [0.0, -1.0, f64::NAN] {
+            assert!(NeighborList::build(&[Vector3::zeros()], &pc, rcut).is_err(), "rcut {rcut}");
+        }
+    }
+
+    /// A tiny cutoff used to ask for (d / rcut)^3 bins: 8e15 here. The count is capped
+    /// by the atom count (at least 27), and the wider bins still find the pair.
+    #[test]
+    fn a_tiny_cutoff_does_not_blow_up_the_bin_count() {
+        let pc = PeriodicCell::new(&cubic(20.0), [true; 3]).unwrap();
+        let pos = [Vector3::new(1.0, 1.0, 1.0), Vector3::new(1.0 + 5e-5, 1.0, 1.0), Vector3::new(9.0, 9.0, 9.0)];
+        let nl = NeighborList::build(&pos, &pc, 1e-4).unwrap();
+        assert!(nl.bins.len() <= 27, "{} bins", nl.bins.len());
+        assert_eq!(nl.neighbors_of(0).iter().map(|n| n.0).collect::<Vec<_>>(), vec![1]);
+        assert!(nl.neighbors_of(2).is_empty());
     }
 
     /// Reference pairs from ASE 3.26 `neighbor_list('ijd', atoms, 3.5)` on the same
