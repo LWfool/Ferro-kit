@@ -6,6 +6,14 @@ use ferro_core::cell::Cell;
 use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
 
+/// Largest supercell built, in atoms: past it a typo in `min_length` or the multiples
+/// used to overflow `usize` or abort on the allocation instead of reporting.
+const MAX_ATOMS: usize = 100_000_000;
+
+fn too_many(what: &str) -> ChemError {
+    ChemError::ValidationError(format!("{what} would exceed {MAX_ATOMS} atoms"))
+}
+
 // ── 自动搜索 ──────────────────────────────────────────────────────────────────
 
 /// Find the smallest `[nx, ny, nz]` satisfying the given box-size and
@@ -28,31 +36,35 @@ use ferro_core::frame::Frame;
 ///
 /// # Errors
 /// - `ValidationError` if the cell is singular or not finite (`Cell::check`).
-/// - `ValidationError` if `min_length` is NaN or infinite.
+/// - `ValidationError` if `min_length` is negative, NaN or infinite.
+/// - `ValidationError` if the result would hold more than 1e8 atoms.
 pub fn find_supercell_dims(
     cell: &Cell,
     n_atoms: usize,
     min_length: f64,
     min_atoms: usize,
 ) -> Result<[usize; 3]> {
-    // NaN would fall through to "no constraint", infinity to a usize::MAX multiple.
-    if !min_length.is_finite() {
-        return Err(ChemError::ValidationError(format!("min_length must be finite, got {min_length}")));
+    // NaN would fall through to "no constraint", infinity to a usize::MAX multiple, and a
+    // negative length to "no constraint" as well.
+    if !(min_length.is_finite() && min_length >= 0.0) {
+        return Err(ChemError::ValidationError(format!("min_length must be finite and >= 0, got {min_length}")));
+    }
+    if min_atoms > MAX_ATOMS {
+        return Err(too_many(&format!("min_atoms {min_atoms}")));
     }
     // Interplanar spacings, not vector lengths: a minimum-image cutoff needs the
     // perpendicular thickness, and in a triclinic cell d < |a|, so lengths would give
     // too small a supercell. Repeating n times makes the spacing exactly n·d
     let lengths = cell.interplanar_spacings()?;
 
-    // Step 1: the smallest multiple per axis that meets min_length
-    let ceil_dim = |l: f64| -> usize {
-        if min_length > 0.0 {
-            ((min_length / l).ceil() as usize).max(1)
-        } else {
-            1
-        }
-    };
-    let mut n = [ceil_dim(lengths[0]), ceil_dim(lengths[1]), ceil_dim(lengths[2])];
+    // Step 1: the smallest multiple per axis that meets min_length, bounded in f64
+    // before the cast to usize can saturate
+    let ceil_dim = |l: f64| (min_length / l).ceil().max(1.0);
+    let nf = [ceil_dim(lengths[0]), ceil_dim(lengths[1]), ceil_dim(lengths[2])];
+    if nf[0] * nf[1] * nf[2] * n_atoms.max(1) as f64 > MAX_ATOMS as f64 {
+        return Err(too_many(&format!("min_length {min_length} A")));
+    }
+    let mut n = nf.map(|v| v as usize);
 
     // Step 2: grow the thinnest axis until there are enough atoms
     while n[0] * n[1] * n[2] * n_atoms.max(1) < min_atoms {
@@ -71,6 +83,10 @@ pub fn find_supercell_dims(
             .unwrap();
         n[shortest] += 1;
     }
+    // The last step adds a whole slab, which can carry the count past min_atoms
+    if n[0] * n[1] * n[2] * n_atoms > MAX_ATOMS {
+        return Err(too_many(&format!("min_atoms {min_atoms}")));
+    }
 
     Ok(n)
 }
@@ -84,6 +100,7 @@ pub fn find_supercell_dims(
 /// - `ValidationError` if the frame has no cell (`cell` is `None`), or one refused by
 ///   `Cell::check` (singular or not finite).
 /// - `ValidationError` if any of `nx`, `ny`, `nz` is zero.
+/// - `ValidationError` if the supercell would hold more than 1e8 atoms.
 ///
 /// # Notes
 /// - Per-atom scalar fields (`label`, `mass`, `magmom`, `charge`) are
@@ -98,6 +115,11 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         return Err(ChemError::ValidationError(
             format!("supercell dimensions must be ≥ 1, got ({nx}, {ny}, {nz})"),
         ));
+    }
+    let total = nx.checked_mul(ny).and_then(|v| v.checked_mul(nz))
+        .and_then(|v| v.checked_mul(frame.n_atoms()));
+    if total.is_none_or(|t| t > MAX_ATOMS) {
+        return Err(too_many(&format!("a {nx}x{ny}x{nz} supercell")));
     }
     let cell = frame.cell.as_ref().ok_or_else(|| {
         ChemError::ValidationError(
@@ -160,6 +182,23 @@ mod tests {
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("Fe", Vector3::new(a * 0.5, a * 0.5, a * 0.5)));
         frame
+    }
+
+    #[test]
+    fn a_negative_min_length_is_rejected() {
+        let cell = bcc_frame(2.87).cell.unwrap();
+        assert!(find_supercell_dims(&cell, 2, -1.0, 0).is_err());
+    }
+
+    /// Requests past MAX_ATOMS (1e8) are an error, not an overflow or a huge allocation.
+    #[test]
+    fn an_oversized_supercell_is_rejected() {
+        let frame = bcc_frame(2.87);
+        let cell = frame.cell.clone().unwrap();
+        assert!(find_supercell_dims(&cell, 2, 1e9, 0).is_err());
+        assert!(find_supercell_dims(&cell, 2, 0.0, usize::MAX).is_err());
+        assert!(make_supercell(&frame, 1 << 22, 1 << 22, 1 << 22).is_err());
+        assert!(make_supercell(&frame, 1000, 1000, 1000).is_err());
     }
 
     #[test]
