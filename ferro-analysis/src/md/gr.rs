@@ -45,14 +45,23 @@ pub(super) fn group_key(atom: ferro_core::AtomRef<'_>, by: GroupBy) -> &str {
 /// The string tie-break is what makes column order reproducible: site labels sharing an
 /// element (`O_f` / `O_b_P_P`, `P_0` … `P_3`) all map to the same Z, so sorting by Z alone
 /// would leave their relative order at the mercy of hash iteration order.
-pub(super) fn sorted_types(frame: &ferro_core::Frame, by: GroupBy) -> Vec<String> {
+///
+/// Refuses a key holding `-`: pair and triplet keys are joined with `-` and split back on the
+/// first one, so `O-b` + `Si` would come out as `O` / `b-Si`, and `A-B` + `C` would merge
+/// with `A` + `B-C`. Element symbols never hold one; only site labels can.
+pub(super) fn sorted_types(frame: &ferro_core::Frame, by: GroupBy) -> ferro_core::Result<Vec<String>> {
     let mut set = std::collections::HashSet::new();
     for a in frame.atoms() {
         set.insert(group_key(a, by).to_string());
     }
     let mut types: Vec<String> = set.into_iter().collect();
     types.sort_by(|a, b| canonical_cmp(a, b));
-    types
+    if let Some(t) = types.iter().find(|t| t.contains('-')) {
+        return Err(ChemError::ValidationError(format!(
+            "site label '{t}' holds a '-', which separates the pair / triplet names; rename the label"
+        )));
+    }
+    Ok(types)
 }
 
 /// Split a `"A-B"` key into `(A, B)`.
@@ -223,7 +232,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     let first_frame = traj.frames.first()
         .ok_or_else(|| ChemError::ValidationError("empty trajectory".into()))?;
     let by = params.group_by;
-    let types = sorted_types(first_frame, by);
+    let types = sorted_types(first_frame, by)?;
     let n_types = types.len();
 
     let type_idx: std::collections::HashMap<&str, usize> = types
@@ -958,5 +967,23 @@ mod tests {
             let res = calc_gr(&traj, &params).unwrap();
             assert_eq!(res.elements, expected, "label ordering must be reproducible");
         }
+    }
+
+    #[test]
+    fn test_label_with_a_hyphen_is_refused() {
+        // "O-b" + "Si" joins to "O-b-Si", which splits back as ("O", "b-Si")
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        for (i, (e, l)) in [("O", "O-b"), ("Si", "Si")].iter().enumerate() {
+            let mut a = Atom::new(*e, Vector3::new(i as f64 * 1.6, 0.0, 0.0));
+            a.label = Some(l.to_string());
+            frame.add_atom(a);
+        }
+        let traj = Trajectory::from_frame(frame);
+        let params = GrParams { r_min: 0.1, r_max: 5.9, dr: 0.05, group_by: GroupBy::Label };
+        let err = calc_gr(&traj, &params).unwrap_err().to_string();
+        assert!(err.contains("'O-b'"), "{err}");
+        // element grouping never sees the label
+        assert!(calc_gr(&traj, &GrParams { group_by: GroupBy::Element, ..params }).is_ok());
     }
 }

@@ -186,7 +186,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     // 多个标签（O_f / O_b_P_P）顺序可复现，而非随 HashSet 迭代序漂移。
     let first_frame = &traj.frames[0];
     let by = params.group_by;
-    let elements = sorted_types(first_frame, by);
+    let elements = sorted_types(first_frame, by)?;
 
     // Beyond the minimum-image bound each pair sees only its nearest image, so neighbours are missed
     let (rcut_name, max_rcut) = if params.r_cut_ab >= params.r_cut_bc {
@@ -610,6 +610,21 @@ mod tests {
             assert_eq!(res.elements, expected_types);
             assert_eq!(res.hist.keys().cloned().collect::<Vec<_>>(), expected_keys);
         }
+    }
+
+    #[test]
+    fn test_label_with_a_hyphen_is_refused() {
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let mut frame = Frame::with_cell(cell, [true; 3]);
+        for (e, l, x, y) in [("P", "P", 0.0, 0.0), ("O", "O-b", 1.6, 0.0), ("O", "O", 0.0, 1.6)] {
+            let mut a = Atom::new(e, Vector3::new(x, y, 0.0));
+            a.label = Some(l.to_string());
+            frame.add_atom(a);
+        }
+        let traj = Trajectory::from_frame(frame);
+        let params = AngleParams { group_by: GroupBy::Label, ..Default::default() };
+        let err = calc_angle(&traj, &params).unwrap_err().to_string();
+        assert!(err.contains("'O-b'"), "{err}");
     }
 
     // ── Q6: cutoff 按调用方给的端原子顺序分配 ────────────────────────────────

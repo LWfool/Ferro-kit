@@ -157,3 +157,7 @@ The guard is not a limitation of the implementation but of the quantity: a
 partial g(r) normalises by $N_A N_B$, and a count that changes between frames
 has no single value to normalise by. Use `--last-n 1` for one frame, or select
 by element with `-a`/`-b`.
+
+A label holding `-` (a CP2K kind `O-1`, say) is refused: pair names are joined
+with `-`, so `O-1` + `Si` would read back as `O` / `1-Si`. The same holds for
+`traj sq` and `traj angle`. Rename the label first.
