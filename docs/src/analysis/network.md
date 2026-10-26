@@ -33,7 +33,7 @@ $$d_{ij} = \bigl|\mathbf{r}_{ij} - \mathbf{M} \cdot \text{round}\!\left(\mathbf{
 
 The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a cutoff (the largest one given) beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
 
-The analysis requires a cell (PBC) on every frame.  Frames without one are skipped; when no frame is left, that input errors out and is skipped.
+The analysis requires a cell (PBC) on every frame and the same composition on every frame; an input that breaks either errors out and is skipped. Fractions average over all frames, so a frame with fewer atoms of an element would dilute them.
 
 ### The three roles
 

@@ -703,6 +703,20 @@ fn network(
     if params.cutoffs.is_empty() { return invalid("no former-ligand cutoff given"); }
     params.validate()?;
 
+    // Fractions average over every frame, an absent element counting 0, and n_atoms comes
+    // from frame 0: a frame of another composition would dilute both silently
+    fn composition(f: &Frame) -> BTreeMap<&str, usize> {
+        let mut c = BTreeMap::new();
+        for a in f.atoms() { *c.entry(a.element).or_default() += 1; }
+        c
+    }
+    let first = composition(&traj.frames[0]);
+    if let Some(k) = traj.frames.iter().position(|f| composition(f) != first) {
+        return Err(ChemError::ValidationError(format!(
+            "frame {k} has another composition than frame 0; network statistics need a fixed one"
+        )));
+    }
+
     // Coordination goes by the minimum image: past the bound of the largest cutoff,
     // ligands in farther images are missed. A frame without a cell is an error, as
     // in every other analysis, not skipped (review A-6)
@@ -1109,6 +1123,17 @@ mod tests {
         p.modifier_cutoffs.insert(("Na".into(), "O".into()), -1.0);
         let err = calc_network(&traj_of(vec![frame]), &p).unwrap_err().to_string();
         assert!(err.contains("Na-O cutoff"), "{err}");
+    }
+
+    /// Fractions average over every frame, counting an absent element as 0, so a frame
+    /// with another composition would dilute them. It is refused, naming the frame.
+    #[test]
+    fn a_frame_with_another_composition_is_an_error() {
+        let a = cube(vec![atom("P", 0.0, 0.0, 0.0), atom("O", 1.6, 0.0, 0.0)]);
+        let b = cube(vec![atom("P", 0.0, 0.0, 0.0), atom("Si", 1.6, 0.0, 0.0)]);
+        let err = calc_network(&traj_of(vec![a.clone(), a, b]), &make_params(2.3))
+            .unwrap_err().to_string();
+        assert!(err.contains("frame 2"), "{err}");
     }
 
     /// 孤立 PO4（Q0）
