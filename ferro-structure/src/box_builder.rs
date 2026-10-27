@@ -298,9 +298,16 @@ struct CellList {
 }
 
 impl CellList {
-    fn new(box_len: f64, cutoff: f64) -> Self {
+    fn new(box_len: f64, cutoff: f64, n_atoms: usize) -> Self {
         // 每个 bin 至少为 cutoff 大小
-        let n_bins = (box_len / cutoff).floor().max(1.0) as usize;
+        let mut nf = (box_len / cutoff).floor().max(1.0);
+        // More bins than atoms only adds empty ones; a tiny min_dist asked for (L / cutoff)^3
+        // of them (review R6-4). Same cap as ferro-analysis's NeighborList; bins only get wider
+        let cap = n_atoms.max(27) as f64;
+        if nf * nf * nf > cap {
+            nf = cap.cbrt().floor().max(1.0);
+        }
+        let n_bins = nf as usize;
         let inv_bin_size = n_bins as f64 / box_len;
         let total = n_bins * n_bins * n_bins;
         Self {
@@ -390,7 +397,7 @@ fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> u
     let step_size = min_dist * 0.05;
     let n = atoms.len();
 
-    let mut cl = CellList::new(box_len, cutoff);
+    let mut cl = CellList::new(box_len, cutoff, n);
 
     for _step in 0..max_steps {
         cl.rebuild(atoms);
@@ -742,7 +749,7 @@ mod tests {
         // 同一 bin 被多次访问会把近邻原子重复计入（弛豫斥力被成倍累加）。
         let box_len = 4.0;
         let cutoff = 2.0; // n_bins = floor(4 / 2) = 2
-        let mut cl = CellList::new(box_len, cutoff);
+        let mut cl = CellList::new(box_len, cutoff, 3);
         assert_eq!(cl.n_bins, 2, "test requires n_bins == 2 to exercise the wrap-around path");
 
         let atoms = vec![
@@ -760,6 +767,21 @@ mod tests {
             nbrs.len(), deduped.len(),
             "neighbors must not contain duplicate atom indices, got {nbrs:?}"
         );
+    }
+
+    /// A tiny min_dist used to ask for (L / cutoff)^3 bins: about 2e21 here. The count is
+    /// capped by the atom count (at least 27), and the wider bins still find the pair.
+    #[test]
+    fn a_tiny_cutoff_does_not_blow_up_the_bin_count() {
+        let mut cl = CellList::new(20.0, 1.5e-6, 3);
+        assert!(cl.bins.len() <= 27, "{} bins", cl.bins.len());
+        let atoms = vec![
+            Atom::new("Ar", Vector3::new(1.0, 1.0, 1.0)),
+            Atom::new("Ar", Vector3::new(1.0 + 5e-7, 1.0, 1.0)),
+            Atom::new("Ar", Vector3::new(9.0, 9.0, 9.0)),
+        ];
+        cl.rebuild(&atoms);
+        assert!(cl.neighbors(&atoms, 0).contains(&1));
     }
 
     #[test]
