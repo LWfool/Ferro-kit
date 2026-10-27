@@ -66,6 +66,11 @@ all frames have the same number of atoms. When the input is already large enough
 `1x1x1` is printed and the copy is written all the same: a script that expects the
 product finds it.
 
+The supercelled trajectory is held in memory at once, so it is capped at $10^8$ atoms
+in total (frames times atoms per frame); `--min-atoms` above that fails before any
+input is read. A long trajectory over the cap is refused before anything is built:
+supercell a single frame instead.
+
 The line printed for each input shows the replicas, how they were chosen (`given`
 or `auto`), the atom counts and the supercell's three spacings:
 

@@ -148,7 +148,7 @@ These return text for a calculation input; atoms are written in the order they a
 
 | Function | Description |
 |---|---|
-| `supercell(traj, nx, ny, nz)` | Per-frame supercell → new `Trajectory` |
+| `supercell(traj, nx, ny, nz)` | Per-frame supercell → new `Trajectory`.  More than $10^8$ atoms over all frames is a `FerroError`, raised before anything is copied |
 | `add_vacuum_layer(traj, axis, thickness)` | Add vacuum along the `"x"`/`"y"`/`"z"` lattice vector; `thickness` is the **perpendicular** gap (a tilted axis is lengthened by thickness / cos θ, as in ASE).  Atoms are not moved or centred.  A singular cell (c = 0 for a 2D material) or a non-finite thickness is an error |
 | `merge(a, b, axis, gap)` | Stack the first frames of two trajectories along `axis`: neither is strained, both are centred in the interface plane, `gap` is measured along the interface normal (as in `add_vacuum`); the interfaces must be parallel. Atoms are folded into their own cell first; one outside it along a non-periodic axis is an error |
 | `build_box(components, density, min_dist=1.5, relax_steps=500, seed=666)` | Pack `[(name or formula, count), ...]` at random into a cubic box of `density` g/cm³ → one-frame `Trajectory`; the same seed gives the same box.  Atoms are placed one by one, not as whole molecules.  Pairs still closer than `min_dist` after `relax_steps` are an error.  Same as `ferro build box`, see `ferro doc build box` |
