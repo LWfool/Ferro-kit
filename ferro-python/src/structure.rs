@@ -1,7 +1,9 @@
 //! Structure operation bindings (supercell / vacuum layer / merge / mixed box).
 
 use ferro_core::{matrix3_from_row_major, Cell, Trajectory};
-use ferro_structure::{add_vacuum, build_box as build_mixed_box, make_supercell, merge_frames, Component};
+use ferro_structure::{
+    add_vacuum, build_box as build_mixed_box, check_supercell_total, make_supercell, merge_frames, Component,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -11,6 +13,8 @@ use crate::types::PyTrajectory;
 /// 对轨迹每一帧构建 nx×ny×nz 超胞，返回新轨迹。
 #[pyfunction]
 fn supercell(traj: &PyTrajectory, nx: usize, ny: usize, nz: usize) -> PyResult<PyTrajectory> {
+    // Every frame is held at once: cap the whole trajectory before the copy (review fb7d8c3-1)
+    check_supercell_total(traj.inner.frames.iter().map(|f| f.n_atoms()), [nx, ny, nz]).map_err(pyerr)?;
     let mut out = traj.inner.clone();
     for f in out.frames.iter_mut() {
         *f = make_supercell(f, nx, ny, nz).map_err(pyerr)?;
