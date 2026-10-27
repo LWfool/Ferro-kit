@@ -57,18 +57,26 @@ pub fn find_supercell_dims(
     // perpendicular thickness, and in a triclinic cell d < |a|, so lengths would give
     // too small a supercell. Repeating n times makes the spacing exactly n·d
     let lengths = cell.interplanar_spacings()?;
+    // An empty cell counts as one atom in every cap below, so the multiples stay bounded
+    // (and the f64 -> usize cast cannot saturate) even with no atoms to count
+    let per_cell = n_atoms.max(1);
+    // Names the supercell that broke the cap, not the constraint that led to it: the input
+    // alone can be over it, or the last slab of the min_atoms search can carry it over
+    let oversized = |d: [f64; 3]| ChemError::ValidationError(format!(
+        "a {:.0}x{:.0}x{:.0} supercell of {n_atoms} atoms would hold {:.0} atoms, over {MAX_SUPERCELL_ATOMS}",
+        d[0], d[1], d[2], d[0] * d[1] * d[2] * per_cell as f64));
 
     // Step 1: the smallest multiple per axis that meets min_length, bounded in f64
     // before the cast to usize can saturate
     let ceil_dim = |l: f64| (min_length / l).ceil().max(1.0);
     let nf = [ceil_dim(lengths[0]), ceil_dim(lengths[1]), ceil_dim(lengths[2])];
-    if nf[0] * nf[1] * nf[2] * n_atoms.max(1) as f64 > MAX_SUPERCELL_ATOMS as f64 {
-        return Err(too_many(&format!("min_length {min_length} A")));
+    if nf[0] * nf[1] * nf[2] * per_cell as f64 > MAX_SUPERCELL_ATOMS as f64 {
+        return Err(oversized(nf));
     }
     let mut n = nf.map(|v| v as usize);
 
     // Step 2: grow the thinnest axis until there are enough atoms
-    while n[0] * n[1] * n[2] * n_atoms.max(1) < min_atoms {
+    while n[0] * n[1] * n[2] * per_cell < min_atoms {
         let super_lengths = [
             n[0] as f64 * lengths[0],
             n[1] as f64 * lengths[1],
@@ -85,8 +93,8 @@ pub fn find_supercell_dims(
         n[shortest] += 1;
     }
     // The last step adds a whole slab, which can carry the count past min_atoms
-    if n[0] * n[1] * n[2] * n_atoms > MAX_SUPERCELL_ATOMS {
-        return Err(too_many(&format!("min_atoms {min_atoms}")));
+    if n[0] * n[1] * n[2] * per_cell > MAX_SUPERCELL_ATOMS {
+        return Err(oversized(n.map(|v| v as f64)));
     }
 
     Ok(n)
@@ -239,6 +247,19 @@ mod tests {
     fn a_trajectory_at_the_total_cap_passes() {
         assert!(check_supercell_total([1000; 100], [10, 10, 10]).is_ok());
         assert!(check_supercell_total([1000; 101], [10, 10, 10]).is_err());
+    }
+
+    /// The error names the supercell that is too big, not min_length / min_atoms that
+    /// were within bounds (review fb7d8c3-4).
+    #[test]
+    fn an_oversized_supercell_error_names_the_supercell() {
+        let cell = bcc_frame(2.87).cell.unwrap();
+        // The input alone is over the cap; min_length 0 played no part
+        let err = find_supercell_dims(&cell, 150_000_000, 0.0, 0).unwrap_err().to_string();
+        assert!(err.contains("1x1x1 supercell of 150000000 atoms") && !err.contains("min_length"), "{err}");
+        // min_atoms is within the cap, the last slab carries the count over it
+        let err = find_supercell_dims(&cell, 60_000_000, 0.0, 100_000_000).unwrap_err().to_string();
+        assert!(err.contains("2x1x1 supercell of 60000000 atoms would hold 120000000"), "{err}");
     }
 
     #[test]
