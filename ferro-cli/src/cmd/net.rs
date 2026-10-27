@@ -245,7 +245,7 @@ fn export_labelled(
     let frames = traj.frames.iter().zip(per_frame)
         .map(|(frame, types)| {
             let labels: Vec<String> = types.iter().map(|t| t.label()).collect();
-            let labelled = apply_type_labels(frame, &labels);
+            let labelled = apply_type_labels(frame, &labels)?;
             // The dump writer folds `<element>_<suffix>` labels into its element column
             // (`dump_name`); count the labels it has to leave out
             if fmt == ExportFormat::Lammpstrj {
@@ -253,9 +253,9 @@ fn export_labelled(
                     .filter(|a| a.label.is_some_and(|l| l != a.element) && dump_name(*a) == a.element)
                     .count();
             }
-            labelled
+            Ok(labelled)
         })
-        .collect();
+        .collect::<Result<_>>()?;
     let out_traj = Trajectory { frames, metadata: traj.metadata.clone() };
 
     let path = out.join(&batch::product_name(&["network", "types", label], out.suffix.as_deref(), fmt.ext()));
