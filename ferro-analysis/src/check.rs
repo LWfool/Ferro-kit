@@ -69,7 +69,7 @@ pub(crate) fn at_least_one_if_given(name: &str, n: Option<usize>) -> Check {
 /// Within a relative 1e-9, as `md::util::bins` reads a whole number of steps: `0.3 - 0.2`
 /// is one `0.1` bin, not just short of one.
 pub(crate) fn holds_a_bin(range: &str, lo: f64, hi: f64, step: &str, w: f64) -> Check {
-    if (hi - lo) / w >= 1.0 - 1e-9 { return Ok(()); }
+    if (hi - lo) / w >= 1.0 - crate::md::util::WHOLE_STEPS_TOL { return Ok(()); }
     fail(format!("{range} [{lo}, {hi}] is narrower than one {step} = {w} bin"))
 }
 

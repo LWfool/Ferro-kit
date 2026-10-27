@@ -145,7 +145,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
     // `util::bins` counts it as whole. Not `bins` itself: these are points, not bins, and
     // dq is never narrowed
     let ratio = (params.q_max - params.q_min) / params.dq;
-    let n_q = (ratio + ratio * 1e-9).floor() as usize + 1;
+    let n_q = (ratio + ratio * super::util::WHOLE_STEPS_TOL).floor() as usize + 1;
     let q_vals: Vec<f64> = (0..n_q)
         .map(|i| params.q_min + i as f64 * params.dq)
         .collect();

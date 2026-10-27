@@ -7,6 +7,12 @@ use rayon::prelude::*;
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;
 
+/// A `range / step` quotient within this relative distance of a whole number counts as
+/// that number. One constant for every reader of "a whole number of steps" — `bins`,
+/// the S(q) sample count, `check::holds_a_bin` — so a later change cannot split them
+/// again (review R4-2 was such a split).
+pub(crate) const WHOLE_STEPS_TOL: f64 = 1e-9;
+
 /// The binning rule of every histogram analysis (CLAUDE.md, "Histogram bins"): the bin
 /// count is `ceil((hi - lo) / step)` and the width actually used is `(hi - lo) / count`,
 /// so the last bin ends exactly at `hi` and no bin is wider than requested. A ratio
@@ -21,10 +27,10 @@ pub(crate) fn bins(lo: f64, hi: f64, step: f64) -> (usize, f64) {
     if ratio.is_nan() || ratio <= 0.0 {
         return (0, step);
     }
-    let n = (ratio - ratio * 1e-9).ceil().max(1.0) as usize;
+    let n = (ratio - ratio * WHOLE_STEPS_TOL).ceil().max(1.0) as usize;
     // A whole number of steps keeps the request as given: (hi - lo) / n would be one ulp
     // off (0.0020000000000000005)
-    if (ratio - n as f64).abs() <= ratio * 1e-9 {
+    if (ratio - n as f64).abs() <= ratio * WHOLE_STEPS_TOL {
         return (n, step);
     }
     (n, (hi - lo) / n as f64)
