@@ -14,7 +14,10 @@ use crate::batch;
 use crate::io_dispatch::read_trajectory;
 use ferro_core::Trajectory;
 use ferro_io::{Format, WriteOptions};
-use ferro_structure::{add_vacuum, build_box, find_supercell_dims, make_supercell, merge_frames, Component};
+use ferro_structure::{
+    add_vacuum, build_box, check_supercell_total, find_supercell_dims, make_supercell, merge_frames, Component,
+    MAX_SUPERCELL_ATOMS,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum BuildCmd {
@@ -278,6 +281,13 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         }
     }
 
+    // find_supercell_dims refuses it too, but only after each input is read
+    if let Some(n) = c.min_atoms {
+        if n > MAX_SUPERCELL_ATOMS {
+            bail!("--min-atoms must be at most {MAX_SUPERCELL_ATOMS}, got {n}");
+        }
+    }
+
     per_input("supercell", &c.input, &c.read, &c.out, |traj| {
         let Some(first) = traj.first() else { bail!("no frames") };
         // 自动模式按第 0 帧定倍数，整条轨迹用同一组：每帧原子数不同的轨迹写不出去
@@ -292,6 +302,8 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         };
         let [nx, ny, nz] = dims;
         let n = first.n_atoms();
+        // All frames are held at once: cap the whole trajectory before allocating any
+        check_supercell_total(traj.frames.iter().map(|f| f.n_atoms()), dims)?;
         let frames = traj.frames.iter().map(|f| make_supercell(f, nx, ny, nz)).collect::<Result<Vec<_>, _>>()?;
         // 面间距才是最小镜像截断的上界（r_cut ≤ d/2），斜胞上它比边长短
         let d = frames[0].cell.as_ref().map(|cl| cl.interplanar_spacings()).transpose()?.unwrap_or([0.0; 3]);

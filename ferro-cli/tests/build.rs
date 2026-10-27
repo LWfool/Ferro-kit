@@ -71,6 +71,28 @@ fn supercell_dry_run_writes_nothing() {
     assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
 }
 
+/// Each frame stays under the 1e8 cap (3 atoms x 2e7), the two-frame trajectory does
+/// not; it is refused before any supercell is built (review fb7d8c3-1).
+#[test]
+fn supercell_over_the_trajectory_total_is_refused() {
+    let d = scratch("sc_total");
+    let out = ferro(&["build", "supercell", "-i", TRICLINIC, "--dims", "200", "200", "500",
+                      "--format", "extxyz", "-o", d.to_str().unwrap()]);
+    assert_ne!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("120000000 atoms in total"),
+            "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
+}
+
+/// A parameter error, so it fails before the (missing) input is read.
+#[test]
+fn supercell_min_atoms_over_the_cap_fails_before_reading() {
+    let out = ferro(&["build", "supercell", "-i", "no_such_file.cif", "--min-atoms", "200000000"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_ne!(out.status.code(), Some(0));
+    assert!(err.contains("--min-atoms must be at most") && !err.contains("no_such_file"), "{err}");
+}
+
 /// The spacing along the vacuum axis grows by exactly the thickness; the others stay.
 #[test]
 fn vacuum_grows_the_spacing_along_its_axis() {
