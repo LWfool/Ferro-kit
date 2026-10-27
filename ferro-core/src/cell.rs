@@ -62,10 +62,7 @@ impl Cell {
         let cx = cos_b;
         let cy = (cos_a - cos_b * cos_g) / sin_g;
         let cz_sq = 1.0 - cx * cx - cy * cy;
-        // V / abc = sin(γ)·cz: coplanar vectors (120/120/120) give a rounding-level cz_sq of
-        // either sign, ~1e-16, whose root is ~1e-8; 1e-6 sits above that noise and far
-        // below any real cell
-        if cz_sq < 0.0 || sin_g * cz_sq.sqrt() < 1e-6 {
+        if cz_sq < 0.0 {
             return Err(ChemError::ValidationError(
                 "Invalid lattice angles: cannot form a valid cell".into(),
             ));
@@ -78,7 +75,11 @@ impl Cell {
             b * cos_g,      b * sin_g,  0.0,
             c * cx,         c * cy,     c * cz,
         );
-        Ok(Self { matrix, origin: Vector3::zeros() })
+        // Coplanar vectors (120/120/120) leave a rounding-level cz_sq of either sign, ~1e-16:
+        // the positive ones pass the test above and are caught by `check`'s V / abc
+        let cell = Self { matrix, origin: Vector3::zeros() };
+        cell.check(&format!("the cell with angles {alpha}/{beta}/{gamma}"))?;
+        Ok(cell)
     }
 
     // ── 查询 ──────────────────────────────────────────────────────────────────
@@ -113,8 +114,13 @@ impl Cell {
         self.matrix.determinant().abs()
     }
 
-    /// The volume of a cell that can serve as a 3-D box: all nine numbers finite and
-    /// a volume above 1e-12 Å³; `what` names the cell in the error.
+    /// The volume of a cell that can serve as a 3-D box: all nine numbers finite, a
+    /// volume above 1e-12 Å³ and above 1e-6 of a·b·c; `what` names the cell in the error.
+    ///
+    /// The relative test is the one that catches coplanar vectors at any scale: V / abc
+    /// is a pure angle factor (0.027 even for a 10°/10°/10° rhombohedron), while the
+    /// rounding noise of three coplanar vectors leaves ~1e-8 of it. `from_lengths_angles`
+    /// goes through here too, so there is one singularity test (review 59f68b0-9).
     ///
     /// The one test behind [`crate::PeriodicCell::new`], [`Self::interplanar_spacings`],
     /// the stress / virial conversion and `ferro-structure`'s vacuum, merge and
@@ -125,10 +131,13 @@ impl Cell {
             return Err(ChemError::ValidationError(format!("{what} is not finite")));
         }
         let v = self.volume();
-        if v > 1e-12 {
+        let [a, b, c] = self.lengths();
+        // v > 1e-12 first: it makes a·b·c > 0, so the ratio is defined
+        if v > 1e-12 && v > 1e-6 * a * b * c {
             Ok(v)
         } else {
-            Err(ChemError::ValidationError(format!("{what} is singular (volume {v:e} Å³)")))
+            Err(ChemError::ValidationError(format!(
+                "{what} is singular (volume {v:e} Å³, {:e} of a·b·c)", v / (a * b * c))))
         }
     }
 
@@ -371,6 +380,22 @@ mod tests {
     fn coplanar_lattice_vectors_are_rejected() {
         assert!(Cell::from_lengths_angles(5.0, 5.0, 5.0, 120.0, 120.0, 120.0).is_err());
         assert!(Cell::from_lengths_angles(5.0, 5.0, 5.0, 60.0, 60.0, 60.0).is_ok());
+    }
+
+    /// A matrix cell gets the same relative test: volume 10 Å³ passes the absolute 1e-12,
+    /// but c lies 1e-5 Å off the a-b plane at 1.4 kÅ, 7e-9 of a·b·c (review 59f68b0-9).
+    #[test]
+    fn a_nearly_coplanar_matrix_cell_is_singular() {
+        #[rustfmt::skip]
+        let flat = Cell::from_matrix(Matrix3::new(
+            1e3, 0.0, 0.0,
+            0.0, 1e3, 0.0,
+            1e3, 1e3, 1e-5,
+        ));
+        let err = flat.check("the cell").unwrap_err().to_string();
+        assert!(err.contains("is singular"), "{err}");
+        // An extreme but real shape stays well inside: 10/10/10 degrees, V / abc = 0.027
+        assert!(Cell::from_lengths_angles(5.0, 5.0, 5.0, 10.0, 10.0, 10.0).is_ok());
     }
 
     #[test]
