@@ -238,7 +238,7 @@ class QeGenerator(Generator):
         # 但密度 |ψ|² 需要 4 倍截断。UPF 建议值不够就提到 4 倍（同 pw.x 不写 ecutrho 时的默认）；
         # 模板写的照用，只提示
         wfc, rho = (_fortran_float(qe.get("system", k)) for k in ("ecutwfc", "ecutrho"))
-        if rho <= wfc:
+        if rho <= wfc and rho_written:
             raise JobError(f"ecutrho must exceed ecutwfc (pw.x stops): {rho:g} <= {wfc:g} Ry")
         if rho < 4 * wfc:
             if rho_written:

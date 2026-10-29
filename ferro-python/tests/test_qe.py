@@ -172,6 +172,8 @@ def test_cutoffs_needed(cfg, nvt, tmp_path):
     ("  ecutwfc = 120\n", "480.0", "ecutrho = 480 Ry (4 x ecutwfc"),     # UPF 建议 400 < 4 × 120
     ("  ecutwfc = 120\n  ecutrho = 300\n", "300", "ecutrho 300 Ry is below 4 x ecutwfc"),
     ("  ecutwfc = 80\n", "400.0", None),                                     # 400 ≥ 4 × 80，不动
+    # the UPF suggestion 400 ≤ ecutwfc is not the user's value: raised, not refused
+    ("  ecutwfc = 500\n", "2000.0", "ecutrho = 2000 Ry (4 x ecutwfc; the largest UPF suggestion is 400)"),
 ])
 def test_ecutrho_against_four_times_ecutwfc(cfg, nvt, tmp_path, written, rho, note):
     tpl = tmp_path / "pw.in"
