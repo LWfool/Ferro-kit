@@ -31,6 +31,8 @@ pub(crate) fn latex(src: &str) -> String {
 
 /// Whether a script argument is `\text{..}`-like: a word label, not variables.
 fn names_a_word(rest: &[char]) -> bool {
+    // `_{\text{A end}}` names the same word as `_\text{A end}`
+    let rest = rest.strip_prefix(&['{'][..]).unwrap_or(rest);
     let name: String = rest.iter().skip(1).take_while(|c| c.is_ascii_alphabetic()).collect();
     rest.first() == Some(&'\\') && matches!(name.as_str(), "text" | "mathrm" | "operatorname")
 }
@@ -123,6 +125,8 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "geq" | "ge" => "≥",
         "approx" => "≈",
         "pm" => "±",
+        // `90^\circ`: SUP maps it to itself, so the degree sign needs no caret
+        "circ" => "°",
         "sum" => "Σ",
         // 表格单元格里的 |x| 只能写成 \lvert x \rvert：裸的 | 会把 markdown 表格切开
         "lvert" | "rvert" | "vert" => "|",
@@ -138,8 +142,8 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "det" | "min" | "max" | "arccos" | "diag" | "lim" => {
             return name;
         }
-        "text" | "mathrm" | "mathbf" | "mathit" | "mathsf" | "boldsymbol" | "operatorname" | "mathrel"
-        | "underbrace" => return arg(i),
+        "text" | "mathrm" | "mathbf" | "mathit" | "mathsf" | "texttt" | "boldsymbol" | "operatorname"
+        | "mathrel" | "underbrace" => return arg(i),
         // 重音用 Unicode 组合字符叠在参数后面;多字符参数只叠在最后一个字符上
         "hat" => return format!("{}\u{302}", arg(i)),
         "bar" | "overline" => return format!("{}\u{304}", arg(i)),
@@ -213,7 +217,7 @@ fn greek(name: &str) -> Option<char> {
 fn script(kind: char, arg: &str, word: bool) -> String {
     // Unicode 的下标字母不全(没有 b c d f g q w y z),上标字母只有 n 与 i
     const SUB: &str = "0₀1₁2₂3₃4₄5₅6₆7₇8₈9₉+₊-₋=₌(₍)₎aₐeₑoₒxₓhₕkₖlₗmₘnₙpₚsₛtₜiᵢjⱼrᵣuᵤvᵥ";
-    const SUP: &str = "0⁰1¹2²3³4⁴5⁵6⁶7⁷8⁸9⁹+⁺-⁻=⁼(⁽)⁾nⁿiⁱ";
+    const SUP: &str = "0⁰1¹2²3³4⁴5⁵6⁶7⁷8⁸9⁹+⁺-⁻=⁼(⁽)⁾nⁿiⁱ°°";
     let table: Vec<char> = (if kind == '_' { SUB } else { SUP }).chars().collect();
     let map = |c: char| table.chunks(2).find(|p| p[0] == c).map(|p| p[1]);
     if let Some(mapped) = arg.chars().map(map).collect::<Option<String>>() {
@@ -275,6 +279,12 @@ mod tests {
             (r"\hat{\mathbf{u}}", "u\u{302}"),
             (r"\bar\theta", "θ\u{304}"),
             (r"|\overrightarrow{BA}|", "|BA\u{20d7}|"),
+            // Review R9-1: a braced \text script is a word too
+            (r"\langle |\mathbf{q}| \rangle_{ijk} / \text{count}_{\text{visits}}", "⟨ |q| ⟩ᵢⱼₖ / count_{visits}"),
+            (r"x_{\text{A end}}", "x_{A end}"),
+            // Review R9-2
+            (r"\lceil (r_\max - r_\min) / \texttt{dr} \rceil", "⌈ (rₘₐₓ - rₘᵢₙ) / dr ⌉"),
+            (r"\cos 90^\circ", "cos 90°"),
         ];
         for (tex, want) in cases {
             assert_eq!(latex(tex), want, "输入: {tex}");
