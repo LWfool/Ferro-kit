@@ -279,18 +279,17 @@ pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<Fra
     } else {
         None
     };
-    let near = |i: usize| -> Vec<usize> {
-        nl.as_ref().map_or_else(Vec::new, |nl| nl.neighbors_of(i).into_iter().map(|(j, _, _)| j).collect())
-    };
-    let d2 = |from: usize, to: usize| {
-        cell.minimum_image(frame.positions()[to] - frame.positions()[from]).norm_squared()
+    // (index, minimum-image distance) as the neighbour list measured it, not measured
+    // again pair by pair (review R4-8)
+    let near = |i: usize| -> Vec<(usize, f64)> {
+        nl.as_ref().map_or_else(Vec::new, |nl| nl.neighbors_of(i).into_iter().map(|(j, d, _)| (j, d)).collect())
     };
 
     // Atom indices by element
     let elem_map = build_elem_map(frame);
 
     // 1. Each ligand atom's former neighbours (ligand_idx → Vec<(former_elem, former_idx)>)
-    let nf_map = build_nf_map(frame, params, &elem_map, &near, &d2);
+    let nf_map = build_nf_map(frame, params, &elem_map, &near);
 
     // 2. Assemble: Other by default, then overwritten by ligand / former / modifier (the old order)
     let mut types: Vec<AtomType> = frame.atoms()
@@ -310,7 +309,7 @@ pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<Fra
     for (idx, t) in classify_formers(params, &elem_map, &nf_map) {
         types[idx] = t;
     }
-    for (idx, t) in classify_modifiers_inner(frame, params, &elem_map, &near, &d2) {
+    for (idx, t) in classify_modifiers_inner(frame, params, &elem_map, &near) {
         types[idx] = t;
     }
     Ok(FrameTypes { types, ligand_formers })
@@ -328,14 +327,13 @@ fn build_elem_map(frame: &Frame) -> HashMap<String, Vec<usize>> {
 
 /// `ligand_idx` → `Vec<(former_elem, former_idx)>` — includes ligand atoms with 0 NF neighbors.
 ///
-/// `near(i)` lists the atoms near `i` in ascending index order, so each former's
+/// `near(i)` lists the atoms near `i` with their distances, in ascending index order, so each former's
 /// atoms are visited in the same order as a scan over all of them.
 fn build_nf_map(
     frame: &Frame,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,
-    near: &dyn Fn(usize) -> Vec<usize>,
-    d2: &dyn Fn(usize, usize) -> f64,
+    near: &dyn Fn(usize) -> Vec<(usize, f64)>,
 ) -> HashMap<usize, Vec<(String, usize)>> {
     let mut nf_map: HashMap<usize, Vec<(String, usize)>> = HashMap::new();
 
@@ -353,10 +351,9 @@ fn build_nf_map(
         for &la_idx in ligand_idxs {
             let around = near(la_idx);
             for (former, cutoff) in &former_pairs {
-                let c2 = cutoff * cutoff;
-                for &fa_idx in &around {
+                for &(fa_idx, d) in &around {
                     if frame.element(fa_idx) != *former { continue; }
-                    if d2(la_idx, fa_idx) < c2 {
+                    if d < *cutoff {
                         nf_map.entry(la_idx).or_default().push((former.clone(), fa_idx));
                     }
                 }
@@ -438,8 +435,7 @@ fn classify_modifiers_inner(
     frame: &Frame,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,
-    near: &dyn Fn(usize) -> Vec<usize>,
-    d2: &dyn Fn(usize, usize) -> f64,
+    near: &dyn Fn(usize) -> Vec<(usize, f64)>,
 ) -> Vec<(usize, AtomType)> {
     let mut result: Vec<(usize, AtomType)> = Vec::new();
 
@@ -452,10 +448,9 @@ fn classify_modifiers_inner(
 
             for ((m, ligand), &cutoff) in &params.modifier_cutoffs {
                 if m != &mod_elem { continue; }
-                let c2 = cutoff * cutoff;
-                for &la_idx in &around {
+                for &(la_idx, d) in &around {
                     if frame.element(la_idx) != *ligand { continue; }
-                    if d2(ma_idx, la_idx) < c2 { cn += 1; }
+                    if d < cutoff { cn += 1; }
                 }
             }
 
