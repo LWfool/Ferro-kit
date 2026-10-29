@@ -216,7 +216,7 @@ pub type Driven<T> = (Vec<(Input, T)>, Vec<Failure>, Output);
 pub fn drive<T>(
     common: &crate::args::common::CommonArgs,
     label: Option<String>,
-    calc: impl Fn(&Input, &Trajectory) -> Result<T>,
+    calc: impl Fn(&Input, &Trajectory, &Output) -> Result<T>,
 ) -> Result<Driven<T>> {
     // 参数（含 --atom-style）在建目录、读第一个文件之前查完
     let inputs = common.inputs()?;
@@ -225,7 +225,7 @@ pub fn drive<T>(
     common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
 
-    let (results, failures) = map_inputs(&inputs, |inp| calc(inp, &common.load(&inp.path)?));
+    let (results, failures) = map_inputs(&inputs, |inp| calc(inp, &common.load(&inp.path)?, &out));
     if results.is_empty() {
         return Err(anyhow!("every input failed; nothing to write"));
     }

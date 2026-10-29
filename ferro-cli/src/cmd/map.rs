@@ -184,8 +184,7 @@ fn drive(
     common: &CommonArgs,
     body: impl Fn(&Trajectory, &str, &batch::Output) -> Result<()>,
 ) -> Result<usize> {
-    let out = common.out(None);
-    let (_ok, failures, _) = batch::drive(common, None, |inp, traj| body(traj, &inp.label, &out))?;
+    let (_ok, failures, _) = batch::drive(common, None, |inp, traj, out| body(traj, &inp.label, out))?;
     Ok(failures.len())
 }
 

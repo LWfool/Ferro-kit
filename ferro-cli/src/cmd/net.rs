@@ -89,14 +89,13 @@ pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
 
     print_label_scheme(&params);
     // net 没有类型选择,故无 label 段
-    let out = cmd.common.out(None);
-    let (results, failures, out) = batch::drive(&cmd.common, None, |inp, traj| {
+    let (results, failures, out) = batch::drive(&cmd.common, None, |inp, traj, out| {
         let (params, shells) = resolve_auto(&params, &auto, traj, &inp.path)?;
         let result = match cmd.export_traj {
             // One classification feeds both the statistics and the labelled trajectory
             Some(fmt) => {
                 let (result, per_frame) = calc_network_typed(traj, &params)?;
-                export_labelled(traj, &per_frame, &inp.label, &out, fmt, cmd.common.read.units)?;
+                export_labelled(traj, &per_frame, &inp.label, out, fmt, cmd.common.read.units)?;
                 result
             }
             None => calc_network(traj, &params)?,
