@@ -532,7 +532,7 @@ analysis（io 没理由认识它），跨层的只有它的可序列化投影。
 | `Path` 与尾部分隔符 | 以为 `Path` 保留它 | `Path::new("out/").file_name()` 是 `Some("out")` —— 与 pathlib 一样被吃掉。要判断只能看原始字符串（`to_string_lossy().ends_with(...)`） |
 | 裸文件名的父目录 | `p.parent().unwrap_or(".")` | `Path::new("a.out").parent()` 是 **`Some("")`** 不是 `None`，`unwrap_or` 不触发；`canonicalize("")` 报错。空路径须显式当 `.`。2026-10-17 collect 因此把产物甩出 `-o`（`7735386`），测试全用带目录的路径，没覆盖到 |
 | 非交互环境下缺目录 | 自动创建 | **报错并指明 `--mkdir`**。脚本里没人能回答 `[y/N]`，而静默创建会把拼错的路径变成一次看着成功的运行。`convert` 除外（见上表「脚本里缺目录」） |
-| `convert` 的 `-o` | 按磁盘状态判 `-o` 是不是目录 | 2026-10-23 起 `-o` **恒为目录**、`--format` 必填，不再有文件模式（原「给 `--format` 才是目录、产物 `frame[_NNNN].EXT`」已被推翻，见 `decisions.md`）。产物 `<输入名>[_<-s>].EXT`、按帧拆分为 `<输入名>_NNNN.EXT`；尚不存在且带已知格式扩展名的 `-o`（`out.extxyz`）报错。陷阱见本文件「`convert` 目录 `-o` 审查修复」 |
+| `convert` 的 `-o` | 按磁盘状态判 `-o` 是不是目录 | 2026-10-23 起 `-o` **恒为目录**、`--format-out` 必填，不再有文件模式（原「给 `--format` 才是目录、产物 `frame[_NNNN].EXT`」已被推翻，见 `decisions.md`）。产物 `<输入名>[_<-s>].EXT`、按帧拆分为 `<输入名>_NNNN.EXT`；尚不存在且带已知格式扩展名的 `-o`（`out.extxyz`）报错。陷阱见本文件「`convert` 目录 `-o` 审查修复」 |
 | 确认提示写到哪 | stdout | stderr。`ferro ... > out.txt` 时提示仍要看得见，而 stdout 可能正被管道接走 |
 | `bader` 的默认输出位置 | 跟其余命令一样默认当前目录 | 默认**输入文件所在目录**。VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然写同一个 `CHGCAR_ACF.dat`。这是唯一的例外，帮助页与手册都写明 |
 | `job` 的 `-o` 解析函数 | 收 `&JobCmd` | 收 `Option<&Path>`。`run` 里 `if let Some(m) = args.method` 已经把 `args` 部分移动，再借整个结构体就是 E0507（与 0.2.0 那次同一族） |
@@ -694,10 +694,10 @@ golden master 的差异失去唯一解释。
 | 「重排原子」的实现 | 只置换 `forces` | `Frame` 上有**三个**逐原子旁路数组：`forces`、`velocities`、`bonds`（后者存的是原子编号，要反向映射 old→new）。dpdata 的 `sort_atom_types` 遍历 `DTYPES` 表、凡带 NATOMS 轴的一律置换，漏不掉；ferro 是手写的三个字段，只能靠测试钉住 |
 | `convert` 的原子重排 | 整条轨迹调一次 `sort_atoms` | **逐帧**各调一次（2026-10-17 起 `sort_atoms` 本身逐帧取置换，此条与上一条只剩历史意义）。`sort_atoms` 取第 0 帧的置换套全部帧，只对帧间原子顺序恒定的轨迹成立；LAMMPS dump 读侧按 id 排过，但 xyz / extxyz 没有 id，帧间顺序可变。逐帧排对顺序本就恒定的轨迹结果相同（稳定排序） |
 | 磁盘上的原子顺序 | 以为会影响训练 | **不影响**：DeePMD-kit 加载时自己按类型稳定排序（`deepmd/utils/data.py:1026`，默认 `sort_atoms=True`，文档写明非 mixed type 的 descriptor 要求如此）。但 **mixed type 是例外**，那条路上不排序，将来做 mixed type 时不能无脑套用 |
-| `--format` 与嗅探 | 给了 `--format` 就不嗅探了 | 嗅探照跑。它换来两样东西：不一致时的一行 `NOTE:`（静默服从会让**手滑写错**与**有意覆盖**长得一样，而前者的下一个症状是解析器在一份好文件上报锚点缺失），以及那条「同目录 OUTCAR + vasprun.xml」守卫的比较对象 |
-| 那条守卫 | 继续比较 `stats.format` | `--format` 一给，`stats.format` 就恒等于它，守卫**恒不触发**。改为比较嗅探结果。守卫挡的错误没有任何其他症状：数据集看着完全正常，只是每帧躺了两遍 |
+| `--format-in` 与嗅探 | 给了 `--format-in` 就不嗅探了 | 嗅探照跑。它换来两样东西：不一致时的一行 `NOTE:`（静默服从会让**手滑写错**与**有意覆盖**长得一样，而前者的下一个症状是解析器在一份好文件上报锚点缺失），以及那条「同目录 OUTCAR + vasprun.xml」守卫的比较对象 |
+| 那条守卫 | 继续比较 `stats.format` | `--format-in` 一给，`stats.format` 就恒等于它，守卫**恒不触发**。改为比较嗅探结果。守卫挡的错误没有任何其他症状：数据集看着完全正常，只是每帧躺了两遍 |
 | 「版本多、易错，把嗅探删掉」 | 照做 | 先量一下：`sniff` 只有 40 行且**不含任何版本知识**，担心的那部分全在四个 reader 的块匹配里，删掉它一行都减不掉 |
-| CP2K 读不到 `GLOBAL| Run type` | 默认按 MD 走 | 报错并点名 `--format cp2k/md`/`cp2k/sp`。默认按 MD 会让一份被裁过头的单点日志报成「MD 找不到 Step number 锚点」—— 报的错与真正的原因无关 |
+| CP2K 读不到 `GLOBAL| Run type` | 默认按 MD 走 | 报错并点名 `--format-in cp2k/md`/`cp2k/sp`。默认按 MD 会让一份被裁过头的单点日志报成「MD 找不到 Step number 锚点」—— 报的错与真正的原因无关 |
 | 精简帮助页 | 直接删段落 | 先逐条核对手册里有没有。这次 `collect` 删掉的 59 行在 `docs/src/dataset/collect.md` 里**逐条命中**，所以是删不是搬；不核对就会丢事实 |
 | 帮助页的小节名 | 随手起 | `job -s cp2k` 原本有一个叫 `Output:` 的**参数分组**（`--cube`/`--molden`），加产物段时撞名。一页里两个同名小节，读者无从分辨 |
 | `println!` 里的花括号 | 直接写 `{coord,box}.npy` | 会被当成格式占位符，编译报 "python's numeric grouping" 这种毫不相干的错。改写成 `coord|box` 或转义 `{{}}` |
@@ -930,7 +930,7 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| 写出格式 | 拼好 `DIR/<输入名>.<EXT>` 再交给 `write` / `for_output` 从文件名推断 | `Format::from_name` **先认 POSCAR / CONTCAR 前缀、后看扩展名**：`-i POSCAR --format extxyz` 写出的是 POSCAR，`--format nosuchfmt` 也照样通过。用户给的格式只经 `Format::for_extension` 解析，再经 `write_numbered(…, format, …)` 显式传入。Python `write` 同理，`format` 必填（判据见 `decisions.md`「写出格式一律由用户显式给出」） |
+| 写出格式 | 拼好 `DIR/<输入名>.<EXT>` 再交给 `write` / `for_output` 从文件名推断 | `Format::from_name` **先认 POSCAR / CONTCAR 前缀、后看扩展名**：`-i POSCAR --format-out extxyz` 写出的是 POSCAR，`--format nosuchfmt` 也照样通过。用户给的格式只经 `Format::for_extension` 解析，再经 `write_numbered(…, format, …)` 显式传入。Python `write` 同理，`format` 必填（判据见 `decisions.md`「写出格式一律由用户显式给出」） |
 | 产物名取 stem | `input.file_stem()` | `.` / `..` / `../` 没有 `file_name`，退回整条路径会拼出隐藏文件、甚至逃出 `-o`；DeePMD 目录的 `data.000` 被当扩展名剥掉。先 `canonicalize`，目录取 `file_name`、文件取 `file_stem` |
 | 同文件检查 | 在 `-o` 建出来之前比较 resolved 路径 | `-o new/..` 尚不存在时 canonicalize 失败、退回原文比较而漏过，输入被覆盖。建目录之后再比；按帧拆分时产物是 `x_NNNN`，不比 |
 | 建目录时机 | 不询问就建的目录放在读输入之前 | 输错 `-i` 或选不到帧会留下空目录。`convert` 在选出帧之后才 `ensure_dir`（询问式的命令仍在读之前，见 `outpath.rs` 模块文档） |
@@ -944,3 +944,10 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 格式嗅探 | 嗅探自写一套切词 | 与 reader 的解析规则漂移（`Lattice = "..."` 解析认、嗅探不认，静默走普通 reader）。嗅探调 reader 自己的 tokenizer |
 | 模板继承 | 生成器只在「需要改」时写结构相关键 | 模板（别的体系测过的输入）里的同名键原样留下并生效：VASP 的 `NELECT` / `NUPDOWN`。不写时也要处理模板里已有的（本仓注释掉，用户定） |
 
+## `--format-in` / `--format-out` 编码陷阱（2026-10-29）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| 读前参数检查（`check_read_args`、Python `read`） | 只看 `Format::from_name(path)` | 按有效格式 `format_in.or_else(\|\| from_name(path))` 判；否则 `-i x.txt --format-in lammps/data` 越过 `--atom-style` 检查，落到 io 的中性报错 |
+| 格式表的 `--format-in` 列 | 按 `Format::ALL` 的变体逐行查 `LABELS` | CP2K md / sp 两个变体共一行（`ALL` 只放 `Cp2kMd`），按 `name()` 归组才能两名同列 |
+| 加格式 | 只补 `ALL` 与各 match | `LABELS` 是数组，**不受 match 穷尽检查**：新变体须手动加一个名字；测试只查名字不重复 |

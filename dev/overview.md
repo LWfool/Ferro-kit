@@ -75,6 +75,11 @@ ferro-analysis）。此后所有分析产物的文件名、扩展名、列结构
 
 用户可见的变化在手册 `changelog.md` 的 `Unreleased`。
 
+- **2026-10-29 破坏性改名**：`convert` / `build` 的 `--format` → `--format-out`，`dataset collect` 的
+  `--format` → `--format-in`，不留别名；新增读入侧 `--format-in` 与 Python `read(format=)`。版本号**仍是
+  0.4.0**（用户定暂不动），发版时按破坏性改动定。库 API：`ferro_io::read_as` 进根导出，新增
+  `Format::LABELS` / `Format::from_label`。判据见 `decisions.md`「读入格式按名指定」
+
 - **库 API**（不进 changelog）：2026-10-18 – 10-21 各批（审查第 3–5 步、遗留清理、第 12–14 批、瘦身 S2 / P3）
   曾把 Rust 库的变化写进 changelog，2026-10-21 按「库 API 不进 changelog」的既有分工移回这里（瘦身 D-2，用户定）。
   下面是原文（英文），按原所在的 changelog 小节标出：

@@ -3,16 +3,16 @@
 > 各命令的用法与输出列结构见 `docs/src/`；踩过的坑见 `issues.md`；
 > 本文件只记**现状**：什么已完成、代码在哪、验证到什么程度。
 
-## 测试总数：933 个（全部通过，clippy 零警告；2026-10-23 `ferro build` 落地后实数）；另 ferro-python 195 个 pytest
+## 测试总数：986 个（全部通过，clippy 零警告；2026-10-29 `--format-in` 落地后实数）；另 ferro-python 206 个 pytest
 
 | Crate | 测试数 |
 |---|---|
-| ferro-core | 77 |
-| ferro-io（lib 295 + 集成 4） | 299（另有 2 个 `#[ignore]`：296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
-| ferro-structure | 78 |
-| ferro-analysis | 312 |
-| ferro-render | 31 |
-| ferro-cli（lib 108 + bin 5 + 集成 23） | 136 |
+| ferro-core | 80 |
+| ferro-io（lib 315 + 集成 4） | 319（另有 2 个 `#[ignore]`：296 MB OUTCAR + 19.7 MB vasprun 与 dpdata 对拍、`examples/qe/` 的 396 原子 QE 7.3.1 scf 与 GIPAW / pp.x 反例，需 `-- --ignored`；2026-10-17 复跑通过） |
+| ferro-structure | 85 |
+| ferro-analysis | 325 |
+| ferro-render | 32 |
+| ferro-cli（lib 115 + bin 5 + 集成 25） | 145 |
 
 版本号 **0.4.0**（workspace 统一；ferro-python 已同步；**2026-10-17 发版，tag `v0.4.0`**）。
 `rust-version = 1.89` 自 0.3.6 起声明（依赖树最高要求，nalgebra 0.35）。
@@ -181,8 +181,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 - **`aimd.rs`**（2026-08-27）：`AimdStats`（原 `Cp2kOutStats`）+ `AimdFormat` +
   `sniff`（读头 96 行认横幅）+ `read_aimd_as(path, fmt)` + 它的嗅探包装
   `read_aimd`（2026-10-21 前叫 `read_aimd_with_stats`）。2026-09-22 拆成两个：调用方在自己更清楚格式时
-  （`collect --format`）绕开嗅探。同日 `sniff` 的 CP2K 分支改为**读不到
-  `GLOBAL| Run type` 就报错**并点名 `--format` —— 此前默认按 MD 走，
+  （`collect --format-in`）绕开嗅探。同日 `sniff` 的 CP2K 分支改为**读不到
+  `GLOBAL| Run type` 就报错**并点名 `--format-in` —— 此前默认按 MD 走，
   一份被裁过头的单点日志会报成「MD 找不到 Step number 锚点」，与真正的原因无关。
   2026-10-17 加 `QeOut`：认 `Program PWSCF`；GIPAW、pp.x 等其他 QE 程序点名拒收
 - 其余格式：XYZ、PDB、CIF、VASP、CHGCAR、lammps_data、CP2K、QE
@@ -343,7 +343,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `#[command(flatten)]` 接入
 - **`-o` 恒为路径**（2026-09-20 起，`--outdir` 已删）：写多个产物的命令（13 个分析
   命令、`chg-sdf`、`bader`、`dataset`）指目录，`convert` 也指目录（2026-10-23 起，
-  `--format` 必填、产物沿用输入名、缺目录直接建）；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
+  `--format-out` 必填、产物沿用输入名、缺目录直接建）；批次标记走 `-s/--suffix`。目录不存在时经 **`outpath.rs`** 向 stderr 问一句
   `[y/N]`，非交互环境报错并指明 `--mkdir`，询问都在读第一个输入之前
 - **`batch.rs` 对结果类型泛型**，不认识任何分析类型：`expand_inputs`（自展开 glob，
   零匹配报错）、`unique_labels`（同名输入改 `_2`，撞名按小写比 —— macOS / Windows 文件系统
@@ -354,8 +354,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   - collect：一目录一 system（2026-08-26）；PJM 作业日志在分组前剔除（`drop_pjm_logs` / `is_pjm_log`，
     2026-10-05，规则写死、无关闭开关，用户裁定）；失败按输入文件计，原因随条目收集、跑完统一列一次，
     目录级条目只带前面没列过的文件（2026-10-23）；每个文件读完当场按 (Z, 符号) 重排
-    （`Trajectory::canonically_sorted`，2026-09-22）。`--format` 压过嗅探，但嗅探仍跑：
-    不一致时打 `NOTE:`，并作「同目录 OUTCAR + vasprun.xml」守卫的比较对象（`--format` 一给，
+    （`Trajectory::canonically_sorted`，2026-09-22）。`--format-in` 压过嗅探，但嗅探仍跑：
+    不一致时打 `NOTE:`，并作「同目录 OUTCAR + vasprun.xml」守卫的比较对象（`--format-in` 一给，
     `stats.format` 就恒等于它，守卫会失效）
   - filter：`-f` / `--s-max` 是 `Option`，默认 20 / 10 经 `FilterCmd::f_max()/s_max()` 取 ——
     用户没给时缺该标签的 system 只关这一条，显式给了才报错（2026-10-14，审查 D-4）；应力阈值没有
@@ -366,7 +366,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     `OutType` / `Split` / `write_split`；划分后缀用 dpgen 的目录名（`SPLIT_SUFFIXES`），
     `filter` / `merge` 产物默认带 `.train`（2026-09-20 起）
 - **`cmd/build.rs`**（2026-10-23）：`build supercell | vacuum | merge | box`，只读、命名、写，结构操作全在
-  `ferro-structure`。四者共用 `OutArgs`（`-o` 目录 / `-s` / `--mkdir` / `--format`，格式默认取输入的）与
+  `ferro-structure`。四者共用 `OutArgs`（`-o` 目录 / `-s` / `--mkdir` / `--format-out`，格式默认取输入的）与
   `write_product`；supercell / vacuum 走 `per_input`（`batch::map_inputs`，逐输入失败跳过 + 退出码 1），
   merge / box 只出一个产物、失败即报错。手册 `docs/src/build.md`，判据见 `decisions.md`「`ferro build`」
 - **`cmd/dataset/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断产物，
@@ -404,8 +404,13 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
   `job` 已于 2026-10-17 删除，计算输入改由 `ferro-py job` 生成）
 - **`convert` 支持选帧**（2026-08-22）；产物个数由目标格式决定、不设开关（用法见手册 §convert）
 - **格式清单的唯一出处是 `ferro-io/src/format.rs` 的 `Format` 表**（`can_write` / `multi_frame`）；
-  `io_dispatch::supported_formats()` 由 `Format::ALL` 生成读 / 写 / 写出帧数三列，不再手写。
-  输入（QE、CP2K `.inp`/`.restart`）与程序输出只读；CIF / POSCAR / LAMMPS data 一帧一个文件
+  `io_dispatch::supported_formats()` 由 `Format::ALL` 生成「识别方式 / `--format-in` 名 / 写出」三列，不再手写
+  （2026-10-29 由原读 / 写 / 写出帧数三列合并）。
+  输入（QE `.in`/`.qe`/`.qein`、CP2K `.inp`/`.restart`）与程序输出只读；CIF / POSCAR / LAMMPS data 一帧一个文件
+- **读入格式可显式指定**（2026-10-29）：名字表是 `Format::LABELS`（`program/kind`，`Format::from_label` 解析），
+  `ReadArgs` 的 `--format-in`（所有读结构文件的命令）、`dataset collect --format-in`（只收程序输出）与
+  Python `read(format=)` 共用。给了就走 `ferro_io::read_as`，不看文件名、不嗅探；`--atom-style` /
+  `--type-map` 的读前检查按给定格式判。写出侧是 `convert` / `build` 的 `--format-out EXT`（取扩展名）
 - `net` 的 `--P-O=2.3` 由 `main` 在 clap 解析前从 argv 剥离，**只在 `argv[1] == "net"` 时**
   （2026-10-08；此前对所有子命令剥离，`traj gr --P-O=2.3` 被静默吞掉）；截断须有限且 ≥ 0
   （0 = 这一对不成键），由 `TypeParams::validate` 检查（2026-10-22，C-2）
@@ -431,7 +436,7 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
 `ferro._ferro`，`python/ferro/__init__.py` 整体再导出，`import ferro` 用法不变。
 - Rust 侧：`types.rs`（`PyTrajectory`，含 `pbc` / `subset` / `frame_indices` / `energy` /
   `forces` / `stress`）、`io.rs`（`read` / `write` 经 `Format::from_name` 分派，与 CLI 共用 `ferro-io/src/format.rs` 的
-  `Format` 表；`read(type_map=)`；
+  `Format` 表；`read(type_map=)`、`read(format=)`（名字同 `--format-in`）；
   `read_output`（经 aimd 嗅探，CP2K / VASP / QE 都认）、`write_table`）、`jobs.rs`（`sort_atoms`、`poscar_string`、`qe_structure_cards`、
   `cp2k_structure_sections`、`parse_qe_input_parts`、`write_namelists`）、`structure.rs`、`analysis.rs`、
   `doc.rs`（`docs/src/python/` 七页经 `include_str!` 编进扩展，`_doc_pages` / `_render_markdown`，

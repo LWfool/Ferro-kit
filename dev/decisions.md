@@ -765,6 +765,24 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 
 ## 已完成项的判据（0.3.0 以后；0.3.0 以前的归档已删，见 git 历史）
 
+### 读入格式按名指定：`--format-in` / `--format-out`（2026-10-29，用户定）
+
+起因：QE 输入想用 `.qein` 后缀，且输入格式只能靠后缀猜、无法显式给出（输出早已由 `--format` 显式给）。
+
+- **参数名成对**：读入 `--format-in`，写出由 `--format` 改名 `--format-out`（用户定：「能看出来是一类」）。
+  `dataset collect` 原本的 `--format` 就是读入格式，一并改名 `--format-in`。**不留旧名别名**，直接报错 ——
+  同 `-o` 改目录时的先例
+- **读入取值是 `program/kind`**（沿用 collect 已有的 `vasp/outcar`、`cp2k/sp` 写法），不是扩展名：
+  程序输出（OUTCAR、`.out`）没有专属后缀，扩展名表达不了。通用格式无归属程序，直接用名字（`xyz`、`cif`）。
+  CP2K md / sp 共用 `Format::ALL` 的一行，但各有一个名字（二者判收敛的读法不同，见 collect）
+- **写出侧仍取扩展名**：可写格式都有唯一后缀，扩展名同时就是产物后缀，换成 `vasp/poscar` 只多打字
+- **名字表只在 `format.rs`**（`Format::LABELS`），CLI、collect、Python 共用，守「格式识别只在 format.rs」。
+  collect 不再有自己的 `InputFormat` 枚举，从同表过滤 `Format::Aimd(_)`
+- **Python**：`read(format=)` 取同一套名字；`write(format=)` 不改名 —— 函数名已区分方向。`format` 加在
+  `read` 参数表末尾，按位置传参的旧调用不受影响
+- **给了 `--format-in` 就不嗅探**（`read_as`），与 collect 不同：collect 的嗅探留着是为 NOTE 与「OUTCAR +
+  vasprun.xml 同目录」守卫（见 2026-09-22 一节），单文件读入没有这两样需求
+
 ### 写出格式一律由用户显式给出：`convert --format`、Python `write(format=)`（2026-10-24，用户定）
 
 起因：`convert` 改为产物沿用输入名后，`-i POSCAR --format extxyz` 写出的是 POSCAR —— 产物名
