@@ -90,9 +90,10 @@ class InputSet:
 def write_batch(jobs, out_dir):
     """``[(子目录名, InputSet)]`` 写进 ``out_dir``（须已存在），返回各子目录的路径。
 
-    多个任务时 ``shared`` 的文件（POTCAR）在 ``out_dir`` 只放一份，子目录里是相对路径
-    的符号链接（``../POTCAR``）：整个目录挪走或 ``rsync -a`` 过去链接不断。各任务的共用
-    文件不一致（组成不同）就报错，让用户按组成分开生成，不在一个目录里放几份。
+    A ``shared`` file (POTCAR) is written once in ``out_dir``, a single job included (N=1 is a
+    case of N), and each sub-directory links to it by a relative path (``../POTCAR``), so moving
+    the directory or ``rsync -a`` keeps the links. Jobs needing different shared files (another
+    composition) are refused: each composition goes to its own directory, not several copies in one.
     """
     out_dir = Path(out_dir)
     names = [name for name, _ in jobs]
@@ -100,15 +101,14 @@ def write_batch(jobs, out_dir):
     if duplicated:
         raise JobError(f"two inputs would both write {out_dir / duplicated[0]}; rename one of them")
     shared = {}
-    if len(jobs) > 1:
-        for name, s in jobs:
-            for f in s.shared:
-                first = shared.setdefault(f, (name, s.files[f]))
-                if first[1] != s.files[f]:
-                    raise JobError(
-                        f"{name} needs a different {f} from {first[0]} (another composition or "
-                        f"element order); generate jobs of each composition into their own -o"
-                    )
+    for name, s in jobs:
+        for f in s.shared:
+            first = shared.setdefault(f, (name, s.files[f]))
+            if first[1] != s.files[f]:
+                raise JobError(
+                    f"{name} needs a different {f} from {first[0]} (another composition or "
+                    f"element order); generate jobs of each composition into their own -o"
+                )
     # 先前一批留下的共用文件不同（另一组成）就拒绝：覆盖它会让那一批的 ../POTCAR 静默改指
     for f, (_, text) in shared.items():
         old = out_dir / f

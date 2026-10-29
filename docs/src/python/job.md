@@ -125,7 +125,7 @@ dump without an element column. A dump whose atoms are still placeholders
 DIR/POSCAR/                 single-structure file: named after the file
 DIR/traj_0000/              trajectory: <file stem>_<frame>, frame 0-based, 4 digits
 DIR/traj_0004/
-DIR/POTCAR                  VASP, several jobs: one shared copy …
+DIR/POTCAR                  VASP: one shared copy …
 DIR/traj_0000/POTCAR -> ../POTCAR      … linked from each job
 ```
 

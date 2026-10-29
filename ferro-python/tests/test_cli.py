@@ -146,8 +146,8 @@ def test_job_single_structure(tmp_path, job):
     out = tmp_path / "out"
     out.mkdir()
     assert job("-i", str(tmp_path / "*.vasp"), "-o", str(out)) == 0, "加引号的通配符由程序展开"
-    assert not (out / "one" / "POTCAR").is_symlink(), "单个任务不拆出共用文件"
-    assert not (out / "POTCAR").exists()
+    assert str((out / "one" / "POTCAR").readlink()) == "../POTCAR" and (out / "POTCAR").is_file(), \
+        "a single job has the same layout as several (N=1 is a case of N)"
 
 
 def test_job_mixed_compositions_write_nothing(tmp_path, job, capsys):

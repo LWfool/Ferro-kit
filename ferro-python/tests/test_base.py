@@ -129,6 +129,9 @@ def test_write_batch_refuses_other_composition(tmp_path):
     with pytest.raises(JobError, match="another composition"):
         write_batch(batch("Q\n"), tmp_path)
     assert (tmp_path / "POTCAR").read_text() == "P\n", "拒绝时不得改动已有的共用 POTCAR"
+    with pytest.raises(JobError, match="another composition"):
+        write_batch(batch("Q\n")[:1], tmp_path)   # a single job is checked too (N=1 is a case of N)
+    assert (tmp_path / "POTCAR").read_text() == "P\n"
 
 
 def test_kmesh_rejects_a_singular_cell():
