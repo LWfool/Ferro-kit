@@ -18,7 +18,7 @@
 //! Parallelism: per frame for distances, per candidate for the correlations.
 
 use crate::check;
-use super::util::check_frame_spacing;
+use super::util::{check_frame_spacing, select_atoms};
 use rayon::prelude::*;
 use crate::neighbor::NeighborList;
 use ferro_core::{Table, Trajectory};
@@ -177,15 +177,8 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     let cells = check::periodic_cells(traj, Some((r_break_name, r_break)))?;
 
     let ref_frame = &traj.frames[0];
-    let of = |el: &str| -> Vec<usize> {
-        ref_frame.atoms().enumerate().filter(|(_, a)| a.element == el).map(|(i, _)| i).collect()
-    };
-    let (centers, neighbors) = (of(&params.center), of(&params.neighbor));
-    for (list, el) in [(&centers, &params.center), (&neighbors, &params.neighbor)] {
-        if list.is_empty() {
-            return Err(ChemError::ValidationError(format!("no {el} atom in the first frame")));
-        }
-    }
+    let centers = select_atoms(ref_frame, Some(std::slice::from_ref(&params.center)))?;
+    let neighbors = select_atoms(ref_frame, Some(std::slice::from_ref(&params.neighbor)))?;
     let same = params.center == params.neighbor;
 
     // Minimum image in a frame with a box, plain Cartesian difference without one

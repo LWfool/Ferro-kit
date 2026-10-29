@@ -435,6 +435,6 @@ mod tests {
         let traj = make_traj(vec![(5.0, 5.0, 5.0)], vec!["Li"]);
         let params = CubeRadiusParams { nx: 4, ny: 4, nz: 4, elements: Some(vec!["Na".into()]), ..Default::default() };
         let err = calc_cube_radius(&traj, &params).err().unwrap().to_string();
-        assert!(err.contains("no atom matches the element filter"), "{err}");
+        assert!(err.contains("no atom of element Na in the first frame"), "{err}");
     }
 }

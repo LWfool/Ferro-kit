@@ -27,7 +27,7 @@
 //! Parallelism: per molecule.
 
 use crate::check;
-use super::util::{check_frame_spacing, par_map_in_order};
+use super::util::{check_frame_spacing, par_map_in_order, select_atoms};
 use rayon::prelude::*;
 use crate::neighbor::NeighborList;
 use ferro_core::{Table, Trajectory};
@@ -146,14 +146,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
 
     // 确定参与计算的 center 原子下标（按第一帧筛选）
     let ref_frame = &traj.frames[0];
-    let center_indices: Vec<usize> = ref_frame.atoms().enumerate()
-        .filter(|(_, a)| a.element == params.center)
-        .map(|(i, _)| i)
-        .collect();
-    if center_indices.is_empty() {
-        return Err(ChemError::ValidationError(format!(
-            "no {} atom in the first frame", params.center)));
-    }
+    let center_indices = select_atoms(ref_frame, Some(std::slice::from_ref(&params.center)))?;
 
     let r_cut2 = params.r_cut * params.r_cut;
 

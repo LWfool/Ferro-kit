@@ -114,7 +114,7 @@ fn voxel_idx(fx: f64, fy: f64, fz: f64, nx: usize, ny: usize, nz: usize) -> (usi
 ///
 /// Errors if a parameter is out of range, the trajectory has fewer than `tau + 1`
 /// frames, the atoms differ between frames, a frame's cell is not 3-D periodic, no
-/// frame has a periodic cell, or no atom matches the element filter.
+/// frame has a periodic cell, or no atom of the selected elements is in the first frame.
 pub fn calc_cube_jump(
     traj: &Trajectory,
     params: &CubeJumpParams,
@@ -268,7 +268,7 @@ mod tests {
     fn test_empty_selection_and_changing_atoms_are_errors() {
         let traj = two_frame_traj((5.0, 5.0, 5.0), (5.5, 5.0, 5.0), "Li");
         let params = CubeJumpParams { tau: 1, elements: Some(vec!["Na".into()]), ..Default::default() };
-        assert!(err(&traj, &params).contains("no atom matches"));
+        assert!(err(&traj, &params).contains("no atom of element Na in the first frame"));
 
         let mut grown = traj.clone();
         grown.frames[1].add_atom(Atom::new("Li", Vector3::new(1.0, 1.0, 1.0)));

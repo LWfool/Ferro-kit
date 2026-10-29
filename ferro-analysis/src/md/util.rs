@@ -67,9 +67,9 @@ pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result
         .map(|(i, _)| i)
         .collect();
     if picked.is_empty() {
-        return Err(ChemError::ValidationError(format!(
-            "no atom matches the element filter {:?}", elements.unwrap_or_default()
-        )));
+        // one wording for every analysis that selects atoms (review R3-7)
+        let what = elements.map_or(String::new(), |els| format!(" of element {}", els.join(", ")));
+        return Err(ChemError::ValidationError(format!("no atom{what} in the first frame")));
     }
     Ok(picked)
 }
