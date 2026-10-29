@@ -11,7 +11,7 @@ use ferro_io::{AtomStyle, LammpsUnits};
 use std::path::{Path, PathBuf};
 
 use crate::batch;
-use crate::io_dispatch::{check_atom_style, read_trajectory};
+use crate::io_dispatch::{check_read_args, read_trajectory};
 
 /// Reading choices a file name cannot carry. Shared by every command that reads
 /// a structure or trajectory through `io_dispatch::read_trajectory`.
@@ -96,12 +96,13 @@ pub struct CommonArgs {
 
 impl CommonArgs {
     /// Expands `-i` and checks, before any file is read, that the inputs can be
-    /// read with the options given (a LAMMPS data file needs `--atom-style`).
+    /// read with the options given (a LAMMPS data file needs `--atom-style`,
+    /// `--type-map` only fits a LAMMPS dump).
     pub fn inputs(&self) -> Result<Vec<PathBuf>> {
         batch::check_suffix(self.suffix.as_deref())?;
         let inputs = batch::expand_trajectories(&self.input)?;
         for p in &inputs {
-            check_atom_style(p, self.read.atom_style)?;
+            check_read_args(p, &self.read)?;
         }
         Ok(inputs)
     }
@@ -262,6 +263,25 @@ mod tests {
         let parse = |n: &str| Cli::try_parse_from(["ferro", "-i", "x.xyz", "--last-n", n]);
         assert!(parse("0").is_err());
         assert_eq!(parse("1").unwrap().common.last_n, Some(1));
+    }
+
+    /// Review R7-5: `--type-map` with a non-dump input used to fail only when that file's
+    /// turn came, after the dumps before it were read and analysed.
+    #[test]
+    fn a_type_map_on_a_non_dump_input_fails_before_any_read() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            common: CommonArgs,
+        }
+        let dump = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/triclinic_2frames.lammpstrj");
+        let cp2k = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/cp2k_md_3frames.out");
+        let cli = Cli::try_parse_from(["ferro", "-i", dump, cp2k, "--type-map", "1=P"]).unwrap();
+        let err = cli.common.inputs().unwrap_err().to_string();
+        assert!(err.contains("--type-map") && err.contains("cp2k_md_3frames.out"), "{err}");
+        let cli = Cli::try_parse_from(["ferro", "-i", dump, "--type-map", "1=P"]).unwrap();
+        assert_eq!(cli.common.inputs().unwrap().len(), 1);
     }
 
     #[test]

@@ -5,32 +5,34 @@
 use std::path::Path;
 use anyhow::{bail, Result};
 use ferro_core::Trajectory;
-use ferro_io::{AtomStyle, Format, ReadOptions};
+use ferro_io::{Format, ReadOptions};
 
 use crate::args::common::ReadArgs;
 
-/// Fails when `path` is a LAMMPS data file and no `--atom-style` was given.
+/// Fails when the reading options do not fit `path`: a LAMMPS data file with no
+/// `--atom-style`, or `--type-map` on anything but a LAMMPS dump.
 ///
 /// The `Atoms` layout is not recoverable from the file: the `# style` comment is
 /// optional and charge/molecular share a column count, so it is never guessed.
 /// Batch commands call this on every input before reading the first one.
-pub fn check_atom_style(path: &Path, style: Option<AtomStyle>) -> Result<Option<AtomStyle>> {
-    if style.is_none() && Format::from_name(path) == Some(Format::LammpsData) {
+pub fn check_read_args(path: &Path, opts: &ReadArgs) -> Result<()> {
+    let format = Format::from_name(path);
+    if opts.type_map.is_some() && format != Some(Format::LammpsDump) {
+        bail!("--type-map applies to LAMMPS dump input only, not {}", path.display());
+    }
+    if opts.atom_style.is_none() && format == Some(Format::LammpsData) {
         bail!(
             "{} is a LAMMPS data file: give its atom style with --atom-style atomic|charge|full \
              (Ferro never guesses it from the Atoms comment or the column count)",
             path.display()
         );
     }
-    Ok(style)
+    Ok(())
 }
 
 /// Reads any supported file or DeePMD directory, printing what the reader noticed.
 pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
-    if opts.type_map.is_some() && Format::from_name(path) != Some(Format::LammpsDump) {
-        bail!("--type-map applies to LAMMPS dump input only, not {}", path.display());
-    }
-    check_atom_style(path, opts.atom_style)?;
+    check_read_args(path, opts)?;
     let options = ReadOptions {
         units: opts.units,
         atom_style: opts.atom_style,
@@ -93,13 +95,14 @@ mod tests {
     #[test]
     fn flag_errors_name_the_flag() {
         for name in ["t.data", "t.lmp", "T.LAMMPS"] {
-            let err = check_atom_style(Path::new(name), None).unwrap_err().to_string();
+            let err = check_read_args(Path::new(name), &ReadArgs::default()).unwrap_err().to_string();
             assert!(err.contains("--atom-style"), "{name}: {err}");
         }
-        assert!(check_atom_style(Path::new("t.lammpstrj"), None).is_ok());
-        assert!(check_atom_style(Path::new("t.xyz"), None).is_ok());
+        assert!(check_read_args(Path::new("t.lammpstrj"), &ReadArgs::default()).is_ok());
+        assert!(check_read_args(Path::new("t.xyz"), &ReadArgs::default()).is_ok());
 
         let opts = ReadArgs { type_map: Some(crate::args::common::TypeMap(vec![(1, "P".into())])), ..Default::default() };
+        assert!(check_read_args(Path::new("t.lammpstrj"), &opts).is_ok());
         let err = read_trajectory(Path::new("t.extxyz"), &opts).unwrap_err().to_string();
         assert!(err.contains("--type-map applies to LAMMPS dump input only"), "{err}");
     }
