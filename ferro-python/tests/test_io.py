@@ -124,6 +124,20 @@ def test_read_uses_the_same_format_table_as_convert(tmp_path):
     assert len(ferro.read(str(path))) == 1
 
 
+def test_format_reads_a_file_whatever_its_name(tmp_path):
+    t = ferro.read(str(NVT)).tail(1)
+    path = tmp_path / "one.txt"
+    ferro.write(t, str(path), format="vasp")
+    with pytest.raises(ferro.FerroError, match="Unsupported input format"):
+        ferro.read(str(path))
+    assert ferro.read(str(path), format="vasp/poscar").symbols(0) == t.symbols(0)
+    with pytest.raises(ferro.FerroError, match="vasp/poscar"):
+        ferro.read(str(path), format="vasp")
+    # The checks follow the given format, not the name
+    with pytest.raises(ferro.FerroError, match="atom_style"):
+        ferro.read(str(path), format="lammps/data")
+
+
 def test_errors_are_ferro_errors(tmp_path):
     assert issubclass(ferro.FerroError, RuntimeError), "except RuntimeError must keep catching them"
     with pytest.raises(ferro.FerroError, match="missing.xyz"):

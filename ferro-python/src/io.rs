@@ -71,7 +71,7 @@ fn check_selection(
 /// Reads a structure / trajectory file, recognising its format as `ferro convert` does.
 ///
 /// Recognised by name (any case): xyz, extxyz, pdb, cif, POSCAR/CONTCAR/vasp/pos,
-/// in/qe (Quantum ESPRESSO input), inp/restart (CP2K), lammpstrj/dump (LAMMPS dump),
+/// in/qe/qein (Quantum ESPRESSO input), inp/restart (CP2K), lammpstrj/dump (LAMMPS dump),
 /// data/lmp/lammps (LAMMPS data). A file whose name says nothing (OUTCAR, vasprun.xml,
 /// a CP2K / pw.x `.out`) is read by its program banner, dropping unconverged frames;
 /// a directory holding `type.raw` is a DeePMD system. What the reader noticed (a
@@ -83,17 +83,22 @@ fn check_selection(
 /// `atom_style` ("atomic" / "charge" / "full"), never guessed from the comment or the
 /// column count. A dump without an element column takes `type_map`
 /// (`{1: "Zr", 2: "O"}`), the same function as the CLI's `--type-map`.
+///
+/// `format` reads the file as that format whatever its name and content, with the
+/// names of the CLI's `--format-in`: "qe/in", "vasp/outcar", "lammps/dump", ...
 #[pyfunction]
-#[pyo3(signature = (path, units = None, atom_style = None, type_map = None))]
+#[pyo3(signature = (path, units = None, atom_style = None, type_map = None, format = None))]
 fn read(
     py: Python<'_>,
     path: &str,
     units: Option<&str>,
     atom_style: Option<&str>,
     type_map: Option<std::collections::BTreeMap<u32, String>>,
+    format: Option<&str>,
 ) -> PyResult<PyTrajectory> {
     let p = Path::new(path);
-    let by_name = Format::from_name(p);
+    let given = format.map(Format::from_label).transpose().map_err(pyerr)?;
+    let by_name = given.or_else(|| Format::from_name(p));
     // Checked before reading, in Python's own words: the parameters are what is wrong
     if type_map.is_some() && by_name != Some(Format::LammpsDump) {
         return Err(pyerr(format!("type_map applies to LAMMPS dump input only, not {path}")));
@@ -109,7 +114,10 @@ fn read(
         type_map: type_map.map(|m| m.into_iter().collect()),
     };
     // Reading is the long part; other Python threads run meanwhile
-    let (traj, report) = py.detach(|| ferro_io::read(p, &options)).map_err(pyerr)?;
+    let (traj, report) = py.detach(|| match given {
+        Some(f) => ferro_io::read_as(p, f, &options),
+        None => ferro_io::read(p, &options),
+    }).map_err(pyerr)?;
     emit_warnings(py, path, &report.warnings)?;
     Ok(PyTrajectory::new(traj))
 }
