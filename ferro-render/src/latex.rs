@@ -86,6 +86,8 @@ fn command(chars: &[char], i: &mut usize) -> String {
             Some(',' | ' ' | ';' | ':') if chars.get(*i) == Some(&' ') => String::new(),
             Some(',' | ' ' | ';' | ':') => " ".to_string(),
             Some('!') => String::new(),
+            // `\\` breaks a line; the formula is shown on one, so it is a space (review R9-5)
+            Some('\\') => " ".to_string(),
             Some(c) => c.to_string(),
             None => "\\".to_string(),
         };
@@ -138,7 +140,14 @@ fn command(chars: &[char], i: &mut usize) -> String {
         "rfloor" => "⌋",
         "lceil" => "⌈",
         "rceil" => "⌉",
-        "left" | "right" | "bigl" | "bigr" | "big" | "Big" => "",
+        "left" | "right" => {
+            // `\left.` / `\right.` is the invisible delimiter: the dot goes too (review R9-5)
+            if chars.get(*i) == Some(&'.') {
+                *i += 1;
+            }
+            ""
+        }
+        "bigl" | "bigr" | "big" | "Big" => "",
         "sin" | "cos" | "tan" | "exp" | "ln" | "log" | "det" | "min" | "max" | "arccos" | "diag" | "lim" => {
             return name;
         }
@@ -282,6 +291,9 @@ mod tests {
             // Review R9-1: a braced \text script is a word too
             (r"\langle |\mathbf{q}| \rangle_{ijk} / \text{count}_{\text{visits}}", "⟨ |q| ⟩ᵢⱼₖ / count_{visits}"),
             (r"x_{\text{A end}}", "x_{A end}"),
+            // Review R9-5
+            (r"a = 1 \\ b = 2", "a = 1   b = 2"),
+            (r"\left. \frac{df}{dx} \right|_{x=0}", " (df)/(dx) |ₓ₌₀"),
             // Review R9-2
             (r"\lceil (r_\max - r_\min) / \texttt{dr} \rceil", "⌈ (rₘₐₓ - rₘᵢₙ) / dr ⌉"),
             (r"\cos 90^\circ", "cos 90°"),
