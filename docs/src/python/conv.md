@@ -109,7 +109,7 @@ For each structure and value, against the same structure at the reference:
 
 The last complete step of each output is used. A job that cannot be compared
 says why in `status`: `no output`, `SCF not converged`, `no complete step`,
-`unreadable (…)`, or `reference …` when the reference job is the one missing.
+`no forces` (forces are always compared), `unreadable (…)`, or `reference …` when the reference job is the one missing.
 
 ### Thresholds
 

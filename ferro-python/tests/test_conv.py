@@ -179,6 +179,34 @@ def test_compare_matches_an_independent_calculation(tmp_path):
         conv.compare(manifest, tmp_path, ref=450.0)
 
 
+def test_output_without_forces_is_not_compared(tmp_path, monkeypatch):
+    # 截断测试恒比力：没有力的档不能只凭 dE 判 within
+    manifest = fake_test(tmp_path)
+    read = ferro.read_output
+
+    class NoForces:
+        def __init__(self, traj):
+            self.traj = traj
+
+        def __len__(self):
+            return len(self.traj)
+
+        def __getattr__(self, name):
+            return getattr(self.traj, name)
+
+        def forces(self, frame):
+            return None
+
+    def read_output(path):
+        traj, stats = read(path)
+        return (NoForces(traj) if "encut_500" in path else traj), stats
+
+    monkeypatch.setattr(ferro, "read_output", read_output)
+    rows, _ = conv.compare(manifest, tmp_path)
+    assert rows[1]["status"] == "no forces" and rows[1]["within"] == "" and math.isnan(rows[1]["dE_meV_atom"])
+    assert rows[0]["status"] == "ok" and rows[0]["within"] in ("yes", "no"), "其他档照常比"
+
+
 def test_read_result_finds_outputs(tmp_path):
     shutil.copy(FIXTURES / "cp2k_sp_v61.out", tmp_path / "cp2k.out")
     energy, forces, pressure, status = conv.read_result(tmp_path, "cp2k")

@@ -169,7 +169,11 @@ def read_result(directory, software):
         f = len(traj) - 1
         stress = traj.stress(f)
         pressure = None if stress is None else sum(stress[i][i] for i in range(3)) / 3 * ferro.EV_ANG3_TO_KBAR
-        return traj.energy(f), traj.forces(f), pressure, "ok"
+        forces = traj.forces(f)
+        if forces is None:
+            # forces are always compared (the dF thresholds): an energy-only row would pass on dE alone
+            return traj.energy(f), None, pressure, "no forces"
+        return traj.energy(f), forces, pressure, "ok"
     return None, None, None, f"unreadable ({last_error})"
 
 
