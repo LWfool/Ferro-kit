@@ -254,6 +254,9 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                         };
 
                         if lo_dist >= rcut_lo || hi_dist >= rcut_hi { continue; }
+                        // A coincident atom (the neighbour list keeps d = 0) has no bond
+                        // direction: 0/0 would be NaN, which `as usize` puts in bin 0
+                        if lo_dist == 0.0 || hi_dist == 0.0 { continue; }
 
                         // 计算夹角 A-B-C（vec_BA · vec_BC）
                         let dot = lo_vec[0]*hi_vec[0] + lo_vec[1]*hi_vec[1] + lo_vec[2]*hi_vec[2];
@@ -440,6 +443,20 @@ mod tests {
         assert_eq!(n, 1, "should have exactly 1 angle pair");
         // [inputs] 的 atoms 列读它；旧代码填的是类型数（2），见审查 B-4
         assert_eq!(res.n_atoms, 3, "n_atoms 应为原子数而非类型数");
+    }
+
+    /// Review R4-6: a second Si on top of the first is a neighbour at d = 0; a triplet
+    /// with that leg has no angle and must not land in bin 0 as NaN.
+    #[test]
+    fn test_coincident_atom_has_no_angle() {
+        let mut traj = make_90deg_angle();
+        traj.frames[0].add_atom(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
+        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
+        let res = calc_angle(&traj, &params).unwrap();
+        let (theta, n) = single_angle(&res, "O-Si-O");
+        assert!((theta - 90.0).abs() < 1.0 && n == 2, "one O-Si-O per Si: {theta} x {n}");
+        assert!(!res.hist.keys().any(|k| k.ends_with("-Si-Si") || k.starts_with("Si-Si-")),
+                "no triplet with a zero-length leg: {:?}", res.hist.keys().collect::<Vec<_>>());
     }
 
     #[test]

@@ -91,7 +91,9 @@ impl NeighborList {
                         let df = Vector3::new(fj[0] - fi[0], fj[1] - fi[1], fj[2] - fi[2]);
                         let cart = self.cell.to_cartesian(df.map(|v| v - v.round()));
                         let d2 = cart.norm_squared();
-                        if d2 > 0.0 && d2 <= rcut2 {
+                        // `j == i` above is the self-exclusion; a coincident atom (d = 0)
+                        // stays, so the defect shows up downstream (review R4-6)
+                        if d2 <= rcut2 {
                             out.push((j, d2.sqrt(), [cart.x, cart.y, cart.z]));
                         }
                     }
@@ -138,6 +140,17 @@ mod tests {
         assert!(nl.bins.len() <= 27, "{} bins", nl.bins.len());
         assert_eq!(nl.neighbors_of(0).iter().map(|n| n.0).collect::<Vec<_>>(), vec![1]);
         assert!(nl.neighbors_of(2).is_empty());
+    }
+
+    /// Review R4-6: a coincident atom is a neighbour at distance 0; only `i` itself is left out.
+    #[test]
+    fn a_coincident_atom_is_kept() {
+        let pc = PeriodicCell::new(&cubic(10.0), [true; 3]).unwrap();
+        let pos = [Vector3::new(1.0, 1.0, 1.0), Vector3::new(1.0, 1.0, 1.0)];
+        let nl = NeighborList::build(&pos, &pc, 2.0).unwrap();
+        let n = nl.neighbors_of(0);
+        assert_eq!(n.len(), 1);
+        assert_eq!((n[0].0, n[0].1), (1, 0.0));
     }
 
     /// Reference pairs from ASE 3.26 `neighbor_list('ijd', atoms, 3.5)` on the same
