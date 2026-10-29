@@ -132,7 +132,9 @@ fn split_blocks(md: &str) -> Vec<Block<'_>> {
             blocks.push(Block::Code { indent, lines: body });
         } else if trimmed.starts_with("$$") {
             let start = i;
-            let single = trimmed.len() > 2 && trimmed.trim_end().ends_with("$$");
+            // trailing blanks are not content: `$$  ` opens a block (review R9-3)
+            let t = trimmed.trim_end();
+            let single = t.len() > 2 && t.ends_with("$$");
             i += 1;
             if !single {
                 while i < lines.len() {
@@ -942,6 +944,10 @@ mod tests {
         let b = split_blocks(md);
         assert_eq!(b[0], Block::Math(vec!["$$a$$"]));
         assert_eq!(b[1], Block::Math(vec!["$$", "b \\\\", "$$"]));
+        // review R9-3: an opening `$$` with trailing blanks used to be a one-line block
+        let b = split_blocks("$$  \nc\n$$\n\nafter\n");
+        assert_eq!(b[0], Block::Math(vec!["$$  ", "c", "$$"]));
+        assert_eq!(b[1], Block::Para { indent: 0, text: "after".into() });
     }
 
     #[test]
