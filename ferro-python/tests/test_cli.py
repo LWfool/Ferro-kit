@@ -243,7 +243,7 @@ def test_plot_shared_legend_covers_every_panel(tmp_path):
     (tmp_path / "gr_Si-O.csv").write_text(GR_CSV.replace("b,", "c,").replace("P,O", "Si,O"))
     with common.style():
         frames = common.read_all([str(tmp_path / "gr_P-O.csv"), str(tmp_path / "gr_Si-O.csv")])
-        fig = gr.build_figure(frames, common.context(frames))
+        fig = gr.build_figure(frames, common.context(frames, tmp_path))   # labels.csv goes to tmp_path
     legends = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
     assert len(legends) == 1 and [t.get_text() for t in legends[0].get_texts()] == ["a", "b", "c"]
 
