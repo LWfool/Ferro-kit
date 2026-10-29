@@ -255,6 +255,10 @@ def parse_type_map(text):
             raise UsageError(f"--type-map: '{item}' is not TYPE=ELEMENT (e.g. 1=Zr,2=O)")
         try:
             t = int(t)
+            # the binding takes a u32, as the Rust CLI does: a negative type is not a type
+            # (it used to escape as an OverflowError traceback, review R8-5)
+            if not 0 <= t <= 0xFFFFFFFF:
+                raise ValueError
         except ValueError:
             raise UsageError(f"--type-map: type '{t}' is not a number") from None
         if t in mapping:
