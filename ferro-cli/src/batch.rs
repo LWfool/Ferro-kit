@@ -123,17 +123,23 @@ fn expand_with(
         let pat_str = pat.to_string_lossy();
         let mut matched: Vec<PathBuf> = Vec::new();
 
-        match glob::glob(&pat_str) {
-            Ok(paths) => {
-                for entry in paths.flatten() {
-                    if keep(&entry) {
-                        matched.push(entry);
+        // An existing path is taken as it is, before any globbing: the shell already
+        // expanded it, or `[ ]` is part of the name, which glob would read as a
+        // character class and match some other file (review R7-6). This also covers
+        // a name that is not a valid pattern at all (an unclosed `[`)
+        if keep(pat) {
+            matched.push(pat.clone());
+        } else {
+            match glob::glob(&pat_str) {
+                Ok(paths) => {
+                    for entry in paths.flatten() {
+                        if keep(&entry) {
+                            matched.push(entry);
+                        }
                     }
                 }
+                Err(e) => bail!("bad input pattern '{pat_str}': {e}"),
             }
-            // 不是合法模式(例如路径里有未闭合的 `[`)时按字面路径处理
-            Err(_) if keep(pat) => matched.push(pat.clone()),
-            Err(e) => bail!("bad input pattern '{pat_str}': {e}"),
         }
 
         if matched.is_empty() {
@@ -594,6 +600,23 @@ mod tests {
         // 同一个文件经模式与字面路径各来一次 → 只留一份
         let dup = expand_inputs(&[pattern, by_glob[0].clone()]).unwrap();
         assert_eq!(dup.len(), by_glob.len(), "duplicates must be dropped");
+    }
+
+    /// Review R7-6: `run[1].xyz` was globbed as a character class and matched `run1.xyz`.
+    #[test]
+    fn an_existing_name_with_brackets_is_taken_literally() {
+        let dir = std::env::temp_dir().join(format!("ferro_glob_literal_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["run[1].xyz", "run1.xyz", "a[b.xyz"] {
+            std::fs::write(dir.join(name), "").unwrap();
+        }
+        assert_eq!(expand_inputs(&[dir.join("run[1].xyz")]).unwrap(), [dir.join("run[1].xyz")]);
+        assert_eq!(expand_inputs(&[dir.join("a[b.xyz")]).unwrap(), [dir.join("a[b.xyz")]);
+        // A name that does not exist is still a pattern
+        assert_eq!(expand_inputs(&[dir.join("run[0-9].xyz")]).unwrap(), [dir.join("run1.xyz")]);
+        assert_eq!(expand_inputs(&[dir.join("run*.xyz")]).unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
