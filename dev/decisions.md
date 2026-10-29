@@ -109,6 +109,7 @@ pymatgen（前两字母 → 首字母，不是「符号 + 数字」就告警）�
 > both sides and the forces come out bit-identical. The energy residual, 1.4e-15,
 > is ordinary floating-point noise: `HARTREE_TO_EV` *is* the CODATA 2018 value and
 > dpdata simply carries two more digits from its own derivation.
+> （2026-10-29 审查 R6-9：`BOHR_TO_ANG` 已补到 CODATA 2018 全位数，这条力残差随之消失。）
 >
 > **The initial configuration of an MD segment is not collected.** Frames are
 > anchored on `MD| Step number`, and CP2K dumps the starting structure *before*

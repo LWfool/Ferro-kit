@@ -12,8 +12,9 @@
 
 // ── 物理常数 ──────────────────────────────────────────────────────────────────
 
-/// Bohr 半径，单位 Å
-pub const BOHR_TO_ANG: f64 = 0.529_177_210_9;
+/// Bohr radius in Å, CODATA 2018 (was cut to 0.5291772109, 5.7e-12 off: the whole
+/// force residual against dpdata; review R6-9)
+pub const BOHR_TO_ANG: f64 = 0.529_177_210_903;
 pub const ANG_TO_BOHR: f64 = 1.0 / BOHR_TO_ANG;
 
 /// Hartree → eV
