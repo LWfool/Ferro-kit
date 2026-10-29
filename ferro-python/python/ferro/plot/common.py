@@ -167,6 +167,16 @@ def color_map(names):
     return {n: cycle[i % len(cycle)] for i, n in enumerate(names)}
 
 
+def shared_legend(axes, ax, cfg):
+    """One legend on ``ax`` for every curve in ``axes``: a component only some csv files have
+    still gets its entry (labels deduplicated, first appearance first)."""
+    entries = {}
+    for a in axes:
+        for handle, label in zip(*a.get_legend_handles_labels()):
+            entries.setdefault(label, handle)
+    ax.legend(list(entries.values()), list(entries), loc=cfg["legend_loc"], ncol=cfg["legend_ncol"])
+
+
 # ── Layout ───────────────────────────────────────────────────────────────────
 
 def panel_grid(n, cfg, wspace=None):

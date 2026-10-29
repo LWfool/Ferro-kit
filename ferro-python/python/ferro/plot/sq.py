@@ -72,8 +72,7 @@ def build_figure(frames, ctx):
     for row, (path, df) in zip(axes, frames):
         build_row(df, row, ctx, path)
 
-    handles, labels = axes[0][0].get_legend_handles_labels()
-    axes[0][0].legend(handles, labels, loc=CFG["legend_loc"], ncol=CFG["legend_ncol"])
+    common.shared_legend(axes.flat, axes[0][0], CFG)
     return fig
 
 

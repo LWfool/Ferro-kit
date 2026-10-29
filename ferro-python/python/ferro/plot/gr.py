@@ -86,8 +86,7 @@ def build_figure(frames, ctx):
         build_panel(path, df, ax, ctx)
 
     # One legend: the colours mean the same in every panel
-    handles, labels = flat[0].get_legend_handles_labels()
-    flat[0].legend(handles, labels, loc=CFG["legend_loc"], ncol=CFG["legend_ncol"])
+    common.shared_legend(flat, flat[0], CFG)
     return fig
 
 

@@ -68,8 +68,7 @@ def build_figure(frames, ctx):
     for ax, (path, df) in zip(flat, frames):
         build_panel(path, df, ax, ctx)
 
-    handles, labels = flat[0].get_legend_handles_labels()
-    flat[0].legend(handles, labels, loc=CFG["legend_loc"], ncol=CFG["legend_ncol"])
+    common.shared_legend(flat, flat[0], CFG)
     return fig
 
 

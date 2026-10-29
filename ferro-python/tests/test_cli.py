@@ -236,6 +236,19 @@ def can_plot():
 
 
 @pytest.mark.skipif(not can_plot(), reason="needs matplotlib, pandas, scienceplots and LaTeX")
+def test_plot_shared_legend_covers_every_panel(tmp_path):
+    # the second csv has a trajectory the first lacks: it still needs a legend entry
+    from ferro.plot import common, gr
+    (tmp_path / "gr_P-O.csv").write_text(GR_CSV)
+    (tmp_path / "gr_Si-O.csv").write_text(GR_CSV.replace("b,", "c,").replace("P,O", "Si,O"))
+    with common.style():
+        frames = common.read_all([str(tmp_path / "gr_P-O.csv"), str(tmp_path / "gr_Si-O.csv")])
+        fig = gr.build_figure(frames, common.context(frames))
+    legends = [ax.get_legend() for ax in fig.axes if ax.get_legend() is not None]
+    assert len(legends) == 1 and [t.get_text() for t in legends[0].get_texts()] == ["a", "b", "c"]
+
+
+@pytest.mark.skipif(not can_plot(), reason="needs matplotlib, pandas, scienceplots and LaTeX")
 def test_plot_gr_writes_figure_data_and_labels(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     (tmp_path / "gr_P-O.csv").write_text(GR_CSV)
