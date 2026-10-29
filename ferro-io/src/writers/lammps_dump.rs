@@ -48,6 +48,10 @@ pub fn write_lammps_dump(
              (CLI: --units real|metal, Python: units=\"real\"|\"metal\")"
         );
     }
+    if let Some(k) = trajectory.frames.iter().position(|f| f.cell.is_none() && f.n_atoms() == 0) {
+        // the box would be the bounding box of nothing, ±f64::MAX (review R2-10)
+        bail!("{path_}: frame {k} has no cell and no atoms, so no box to write");
+    }
     let has_charge: Vec<bool> = trajectory.frames.iter().enumerate().map(|(k, f)| {
         let with = f.atoms().filter(|a| a.charge.is_some()).count();
         super::partial_column("charge", with, f.n_atoms(), k, drop_partial)

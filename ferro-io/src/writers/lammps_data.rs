@@ -21,6 +21,10 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
     let frame = super::single_frame(trajectory, "LAMMPS data")?;
 
     let n = frame.n_atoms();
+    if frame.cell.is_none() && n == 0 {
+        // the box would be the bounding box of nothing, ±f64::MAX (review R2-10)
+        bail!("{path_}: a frame with no cell and no atoms has no box to write");
+    }
     let with_charge = frame.atoms().filter(|a| a.charge.is_some()).count();
     let use_charge = super::partial_column("charge", with_charge, n, 0, drop_partial)?;
 
@@ -201,6 +205,22 @@ mod tests {
         let e = write_lammps_data(&traj, &path, false).unwrap_err();
         assert!(format!("{e:#}").contains("no mass for element 'Xx'"), "{e:#}");
         assert!(!path.exists(), "a refused write must not leave a file");
+    }
+
+    // Review R2-10: no cell and no atoms used to give a ±f64::MAX box
+    #[test]
+    fn test_empty_cellless_frame_is_refused() {
+        let path = std::env::temp_dir().join("ferro_data_empty.lammps");
+        let _ = std::fs::remove_file(&path);
+        let e = write_lammps_data(&Trajectory::from_frame(Frame::new()), &path, false).unwrap_err();
+        assert!(format!("{e:#}").contains("no cell and no atoms"), "{e:#}");
+        assert!(!path.exists(), "a refused write must not leave a file");
+        let dump = std::env::temp_dir().join("ferro_dump_empty.lammpstrj");
+        let _ = std::fs::remove_file(&dump);
+        let e = crate::writers::lammps_dump::write_lammps_dump(
+            &Trajectory::from_frame(Frame::new()), &dump, None, false).unwrap_err();
+        assert!(format!("{e:#}").contains("frame 0 has no cell and no atoms"), "{e:#}");
+        assert!(!dump.exists(), "a refused write must not leave a file");
     }
 
     // 审查 A3：无胞帧以前按包围盒尺寸写成 0..L、坐标不平移，原子落在盒外
