@@ -387,11 +387,12 @@ impl FilterResult {
 
     pub fn meta_lines(&self) -> Vec<String> {
         let p = &self.params;
-        let off = |v: f64| if v > 0.0 { format!("{v}") } else { "off".to_string() };
+        // the unit only follows a value: `off` carries none (review R5-3)
+        let off = |v: f64, unit: &str| if v > 0.0 { format!("{v} {unit}") } else { "off".to_string() };
         let mut v = vec![
             format!("frames in  = {}", self.n_input),
             format!("frames out = {}", self.keep.len()),
-            format!("f_max      = {} eV/Ang", off(p.f_max)),
+            format!("f_max      = {}", off(p.f_max, "eV/Ang")),
             match p.s_max > 0.0 {
                 true => format!(
                     "s_max      = {:.6} eV/Ang^3  ({:.4} GPa)",
@@ -410,7 +411,7 @@ impl FilterResult {
             Some(k) => v.push(format!("number     = {k}")),
             None => v.push(format!("stride     = {}", p.stride)),
         }
-        v.push(format!("oo_min     = {} Ang", off(p.oo_min)));
+        v.push(format!("oo_min     = {}", off(p.oo_min, "Ang")));
         v.push(match p.al6_rcut {
             Some(r) => format!("al6_rcut   = {r:.3} Ang"),
             None => "al6_rcut   = off".to_string(),
@@ -495,6 +496,16 @@ mod tests {
         }
         // 0 switches a threshold off and is not an error
         assert!(FilterParams { f_max: 0.0, s_max: 0.0, oo_min: 0.0, ..d() }.validate().is_ok());
+    }
+
+    /// Review R5-3: a criterion switched off used to read `off eV/Ang`.
+    #[test]
+    fn meta_lines_give_no_unit_to_off() {
+        let traj = oo_traj(&[1.0, 3.0]);
+        let r = filter_frames(&traj, &FilterParams { f_max: 0.0, oo_min: 1.5, ..Default::default() }).unwrap();
+        let meta = r.meta_lines();
+        assert!(meta.contains(&"f_max      = off".to_string()), "{meta:?}");
+        assert!(meta.contains(&"oo_min     = 1.5 Ang".to_string()), "{meta:?}");
     }
 
     #[test]

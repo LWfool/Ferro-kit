@@ -248,11 +248,12 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
 
 /// The shared parameter block at the top of every report file.
 fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
-    let off = |v: f64| if v > 0.0 { format!("{v}") } else { "off".to_string() };
+    // the unit only follows a value: `off` carries none (review R5-3)
+    let off = |v: f64, unit: &str| if v > 0.0 { format!("{v} {unit}") } else { "off".to_string() };
     let mut v = vec![
-        format!("f_max     = {} eV/Ang", off(args.f_max())),
-        format!("s_max     = {} GPa", off(args.s_max())),
-        format!("oo_min    = {} Ang", off(params.oo_min)),
+        format!("f_max     = {}", off(args.f_max(), "eV/Ang")),
+        format!("s_max     = {}", off(args.s_max(), "GPa")),
+        format!("oo_min    = {}", off(params.oo_min, "Ang")),
         match args.al6.as_deref() {
             None => "al6       = off".to_string(),
             Some("auto") => "al6       = on (cutoff from the Al-O RDF, per system)".to_string(),
