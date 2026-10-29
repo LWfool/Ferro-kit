@@ -240,6 +240,16 @@ pub fn stack<T>(
     results: &[(Input, T)],
     to_tables: impl Fn(&T) -> Result<Vec<(String, Table)>>,
 ) -> Result<Vec<(String, Table)>> {
+    stack_as("file", results, to_tables)
+}
+
+/// [`stack`] with the label column named `label_col` — `dataset filter` names its
+/// inputs `system` (review R7-7: it used to carry its own copy of this loop).
+pub fn stack_as<T>(
+    label_col: &str,
+    results: &[(Input, T)],
+    to_tables: impl Fn(&T) -> Result<Vec<(String, Table)>>,
+) -> Result<Vec<(String, Table)>> {
     let mut order: Vec<String> = Vec::new();
     let mut groups: Vec<Vec<(String, Table)>> = Vec::new();
 
@@ -258,7 +268,7 @@ pub fn stack<T>(
 
     let mut out = Vec::with_capacity(order.len());
     for (name, parts) in order.into_iter().zip(groups) {
-        let merged = Table::concat_union("file", parts)?;
+        let merged = Table::concat_union(label_col, parts)?;
         out.push((name, merged));
     }
     Ok(out)

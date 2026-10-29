@@ -158,10 +158,9 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
 
     let mut failures = 0usize;
     let mut auto_rcuts: Vec<f64> = Vec::new();
-    // 报告按表名分组堆叠，行标签用**相对路径**而不是目录名 ——
+    // 报告按表名分组堆叠（batch::stack_as），行标签用**相对路径**而不是目录名 ——
     // 嵌套结构下 a/md 与 b/md 的叶子名相同，堆起来就分不出是谁
-    let mut order: Vec<String> = Vec::new();
-    let mut groups: Vec<Vec<(String, ferro_core::Table)>> = Vec::new();
+    let mut results: Vec<(crate::batch::Input, Vec<(String, ferro_core::Table)>)> = Vec::new();
     // 逐 system 的统计（O–O 分位、实际所用 Al–O 截断）进 [inputs] 的列，
     // 不进表头：表头堆叠后只剩第一个 system 的，会冒充整批
     let mut columns = vec!["frames_out"];
@@ -186,15 +185,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
                     values.push(one.rcut.or(params.al6_rcut).unwrap_or(f64::NAN));
                 }
                 summary.ok(label.clone(), one.n_input, one.n_atoms, &values);
-                for (name, table) in one.tables {
-                    match order.iter().position(|n| *n == name) {
-                        Some(i) => groups[i].push((label.clone(), table)),
-                        None => {
-                            order.push(name);
-                            groups.push(vec![(label.clone(), table)]);
-                        }
-                    }
-                }
+                results.push((crate::batch::Input { path: sys.clone(), label }, one.tables));
             }
             Err(e) => {
                 crate::report::error(sys.display(), format!("{e:#}; skipped"));
@@ -218,11 +209,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     // 平铺在 -o 根下而不是塞进子目录：expand_dirs 只收 is_dir(),所以 csv 会
     // 被后续 `merge -i clean/*` 自动滤掉,而一个 report/ 子目录反倒会被收进去
     if let Some(out) = &args.output {
-        let mut tables = Vec::with_capacity(order.len());
-        for (name, parts) in order.into_iter().zip(groups) {
-            let merged = ferro_core::Table::concat_union("system", parts)?;
-            tables.push((name, merged));
-        }
+        let tables = crate::batch::stack_as("system", &results, |t| Ok(t.clone()))?;
         let outp = crate::batch::Output {
             mkdir: true,
             dir: Some(out.clone()),
