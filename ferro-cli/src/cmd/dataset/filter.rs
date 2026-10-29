@@ -122,7 +122,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     let roots = crate::batch::expand_dirs(&args.input)?;
     let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new(); // (system, 相对路径)
     for root in &roots {
-        for sys in find_systems(root)? {
+        for sys in find_systems_under(root)? {
             let rel = sys.strip_prefix(root).unwrap_or(Path::new(""));
             let rel = if rel.as_os_str().is_empty() {
                 PathBuf::from(root.file_name().unwrap_or(root.as_os_str()))

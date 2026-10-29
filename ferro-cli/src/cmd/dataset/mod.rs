@@ -276,8 +276,31 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
     }
 }
 
+/// The systems under every root, each once.
+///
+/// Overlapping roots (`data` and `data/sysA`) find the same system twice; merging it
+/// twice puts its frames into both train and test (review R7-1).
+fn find_systems(roots: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut duplicates = 0usize;
+    for root in roots {
+        for sys in find_systems_under(root)? {
+            if seen.insert(std::fs::canonicalize(&sys).unwrap_or_else(|_| sys.clone())) {
+                out.push(sys);
+            } else {
+                duplicates += 1;
+            }
+        }
+    }
+    if duplicates > 0 {
+        crate::report::note(crate::report::PROGRAM, format!("{duplicates} duplicate system(s) skipped"));
+    }
+    Ok(out)
+}
+
 /// Directories holding a `type.raw`, searched depth-first and not descended into.
-fn find_systems(root: &Path) -> Result<Vec<PathBuf>> {
+fn find_systems_under(root: &Path) -> Result<Vec<PathBuf>> {
     if !root.is_dir() {
         bail!("{} is not a directory", root.display());
     }
@@ -376,7 +399,7 @@ mod test_ids {
     /// 读回 `root` 下全部 system，逐帧逐原子核对身份，返回帧号 g 的出现顺序
     pub(super) fn check_ids(root: &Path) -> Vec<usize> {
         let mut seen = Vec::new();
-        for sys in find_systems(root).unwrap() {
+        for sys in find_systems_under(root).unwrap() {
             let (traj, _) = read_deepmd_npy(&sys).unwrap();
             for f in &traj.frames {
                 let g = (-f.energy.unwrap() - 1.0).round() as usize;

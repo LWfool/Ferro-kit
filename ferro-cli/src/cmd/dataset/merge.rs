@@ -93,10 +93,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
         }
     }
     let roots = crate::batch::expand_dirs(&args.input)?;
-    let mut systems: Vec<PathBuf> = Vec::new();
-    for root in &roots {
-        systems.extend(find_systems(root)?);
-    }
+    let systems = find_systems(&roots)?;
     if systems.is_empty() {
         bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
     }
@@ -403,6 +400,31 @@ mod tests {
         let mut sorted = got.clone();
         sorted.sort();
         assert_eq!(sorted, input_order, "每帧应恰好出现一次");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review R7-1: `-i in -i in/a` found system `a` under both roots and merged it twice.
+    #[test]
+    fn overlapping_roots_merge_each_system_once() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: MergeCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_merge_overlap_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        ferro_io::write_deepmd_npy(&id_system(&[0, 1, 2, 3, 4], &[0, 1, 2]), &root.join("in/a")).unwrap();
+        ferro_io::write_deepmd_npy(&id_system(&[10, 11, 12, 13], &[1, 2, 0]), &root.join("in/b")).unwrap();
+        let (inp, a, out) = (root.join("in"), root.join("in/a"), root.join("out"));
+        let argv = [
+            "merge", "-i", inp.to_str().unwrap(), a.to_str().unwrap(), "-o", out.to_str().unwrap(),
+            "--mkdir", "--set-size", "3",
+        ];
+        assert_eq!(run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap(), 0);
+        let mut got = check_ids(&out);
+        got.sort();
+        assert_eq!(got, [0, 1, 2, 3, 4, 10, 11, 12, 13], "a frame was merged twice");
         let _ = std::fs::remove_dir_all(&root);
     }
 
