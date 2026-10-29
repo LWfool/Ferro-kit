@@ -39,8 +39,8 @@ use ferro_core::units::{convert_pressure, PressureUnit};
 /// Matching on tokens rather than on the raw line makes every anchor immune to
 /// column widths, alignment and indentation, which differ between VASP builds
 /// and between ensembles.
-fn has_tokens(line: &str, needle: &[&str]) -> bool {
-    let toks: Vec<&str> = line.split_whitespace().collect();
+/// `toks` is the line already split, once per line rather than once per anchor (review R1-10).
+fn has_tokens(toks: &[&str], needle: &[&str]) -> bool {
     if needle.len() > toks.len() {
         return false;
     }
@@ -122,7 +122,7 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
             }
             continue;
         }
-        if has_tokens(&line, &["ions", "per", "type"]) {
+        if has_tokens(&line.split_whitespace().collect::<Vec<_>>(), &["ions", "per", "type"]) {
             let here: Vec<usize> = line
                 .split('=')
                 .nth(1)
@@ -201,7 +201,8 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
         }
 
         // ── 帧内锚点 ─────────────────────────────────────────────────────
-        if has_tokens(&line, &["aborting", "loop"]) {
+        let toks: Vec<&str> = line.split_whitespace().collect();
+        if has_tokens(&toks, &["aborting", "loop"]) {
             p.converged = Some(line.contains("EDIFF is reached"));
             continue;
         }
@@ -209,7 +210,7 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
         // 标签因此有误导性 —— 它是离子温度,不是晶格温度:实测
         // EKIN=4.268142 eV、N=296 时 2*EKIN/(3N*k_B)=111.56,与该行打印的
         // 111.55 吻合。取 `(temperature` 之后的那个浮点,不写死列
-        if has_tokens(&line, &["kin.", "lattice"]) {
+        if has_tokens(&toks, &["kin.", "lattice"]) {
             let mut it = line.split_whitespace().skip_while(|t| !t.starts_with("(temperature"));
             it.next();
             p.temperature = it.next().and_then(|t| t.parse::<f64>().ok());
@@ -222,24 +223,24 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
             }
             continue;
         }
-        if has_tokens(&line, &["VOLUME", "and", "BASIS-vectors"]) {
+        if has_tokens(&toks, &["VOLUME", "and", "BASIS-vectors"]) {
             in_cell_block = true;
             continue;
         }
-        if in_cell_block && has_tokens(&line, &["direct", "lattice", "vectors"]) {
+        if in_cell_block && has_tokens(&toks, &["direct", "lattice", "vectors"]) {
             in_cell_block = false;
             want_cell = 3;
             cell_rows.clear();
             continue;
         }
-        if has_tokens(&line, &["POSITION", "TOTAL-FORCE"]) {
+        if has_tokens(&toks, &["POSITION", "TOTAL-FORCE"]) {
             want_atoms = elements.len();
             skip_before_atoms = 1; // 分隔线
             p.positions.clear();
             p.forces.clear();
             continue;
         }
-        if has_tokens(&line, &["free", "energy", "TOTEN"]) {
+        if has_tokens(&toks, &["free", "energy", "TOTEN"]) {
             let v = floats(&line);
             p.energy = v.last().copied();
             continue;
