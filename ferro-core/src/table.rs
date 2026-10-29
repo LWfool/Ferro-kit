@@ -142,6 +142,14 @@ impl Table {
             }
         }
 
+        // The label column goes in front: a part's own column of that name would make
+        // two columns with one header (review R6-6)
+        if names.iter().any(|n| n == label) {
+            return Err(ChemError::ValidationError(format!(
+                "a table already has a column '{label}', the name of the column that tells the inputs apart"
+            )));
+        }
+
         let mut labels: Vec<String> = Vec::new();
         let mut nums: Vec<Vec<f64>>    = vec![Vec::new(); names.len()];
         let mut texts: Vec<Vec<String>> = vec![Vec::new(); names.len()];
@@ -330,6 +338,12 @@ mod tests {
         assert!(matches!(err, ChemError::ValidationError(_)), "{err:?}");
         let err = err.to_string();
         assert!(err.contains("'x'"), "{err}");
+    }
+
+    #[test]
+    fn test_concat_rejects_a_column_named_like_the_label() {
+        let err = Table::concat_union("file", vec![part("a", &[("file", vec![1.0])])]).unwrap_err();
+        assert!(matches!(err, ChemError::ValidationError(_)) && err.to_string().contains("'file'"), "{err}");
     }
 
     #[test]
