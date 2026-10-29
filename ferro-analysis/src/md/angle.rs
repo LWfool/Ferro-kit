@@ -25,7 +25,7 @@ use crate::check;
 use ferro_core::error::ChemError;
 use crate::neighbor::NeighborList;
 use rayon::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use ferro_core::{Table, Trajectory};
 use super::gr::{GroupBy, group_key, sorted_types};
 use ferro_core::data::elements::canonical_cmp;
@@ -207,9 +207,20 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
             let cl = NeighborList::build(frame.positions(), pc, max_rcut)
                 .expect("checked against every frame's minimum-image bound at the entry");
 
-            for b_idx in 0..n {
-                let b_elem = group_key(frame.atom(b_idx), by);
+            // The frame's types in canonical order and each atom's index into them: ordering
+            // two ends is then comparing two integers, and a triplet is counted under three of
+            // them until the frame is done — not a canonical_cmp element-table scan and a
+            // format! per angle (review R3-4)
+            let keys: Vec<&str> = frame.atoms().map(|a| group_key(a, by)).collect();
+            let mut types = keys.clone();
+            types.sort_unstable();
+            types.dedup();
+            types.sort_by(|a, b| canonical_cmp(a, b));
+            let index: HashMap<&str, usize> = types.iter().enumerate().map(|(k, &t)| (t, k)).collect();
+            let ti: Vec<usize> = keys.iter().map(|k| index[k]).collect();
+            let mut local: HashMap<(usize, usize, usize), Vec<u64>> = HashMap::new();
 
+            for b_idx in 0..n {
                 // 只搜索 27 个相邻 cell，平均 ~30 个原子而非全部 N 个
                 let neighbors = cl.neighbors_of(b_idx);
 
@@ -220,22 +231,21 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                         let (a_idx, a_dist, a_vec) = neighbors[ai];
                         let (c_idx, c_dist, c_vec) = neighbors[ci];
 
-                        let a_elem = group_key(frame.atom(a_idx), by);
-                        let c_elem = group_key(frame.atom(c_idx), by);
-
                         // 规范排序：低 Z 端 → rcut_ab，高 Z 端 → rcut_bc
                         // 相同元素两端使用 min(rcut_ab, rcut_bc)
-                        // The same canonical_cmp as canonical_triplet; otherwise which of
-                        // two same-Z labels gets r_cut_ab would follow neighbour order
-                        let a_first = canonical_cmp(a_elem, c_elem).is_le();
-                        let (lo_elem, lo_dist, lo_vec, hi_elem, hi_dist, hi_vec) =
-                            if a_first {
-                                (a_elem, a_dist, a_vec, c_elem, c_dist, c_vec)
+                        // The same canonical_cmp order as canonical_triplet (`types` is sorted
+                        // by it); otherwise which of two same-Z labels gets r_cut_ab would
+                        // follow neighbour order
+                        let (a_t, c_t) = (ti[a_idx], ti[c_idx]);
+                        let (lo_t, lo_dist, lo_vec, hi_t, hi_dist, hi_vec) =
+                            if a_t <= c_t {
+                                (a_t, a_dist, a_vec, c_t, c_dist, c_vec)
                             } else {
-                                (c_elem, c_dist, c_vec, a_elem, a_dist, a_vec)
+                                (c_t, c_dist, c_vec, a_t, a_dist, a_vec)
                             };
+                        let (lo_elem, hi_elem) = (types[lo_t], types[hi_t]);
 
-                        let (rcut_lo, rcut_hi) = if lo_elem == hi_elem {
+                        let (rcut_lo, rcut_hi) = if lo_t == hi_t {
                             // 两端同类型时谁被排成 lo 取决于邻居枚举顺序，
                             // 只有取两者较小值才能给出可复现的结果
                             let m = params.r_cut_ab.min(params.r_cut_bc);
@@ -270,11 +280,15 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                         let bin = (((angle_deg - params.angle_min) / params.d_angle) as usize)
                             .min(n_bins - 1);
 
-                        // lo_elem 已是低 Z 端，直接调用 canonical_triplet 确保一致性
-                        let key = canonical_triplet(lo_elem, b_elem, hi_elem);
-                        h.entry(key).or_insert_with(|| vec![0u64; n_bins])[bin] += 1;
+                        local.entry((lo_t, ti[b_idx], hi_t)).or_insert_with(|| vec![0u64; n_bins])[bin] += 1;
                     }
                 }
+            }
+            // lo 已是低 Z 端，canonical_triplet 确保与其他调用点的键一致
+            for ((lo_t, b_t, hi_t), counts) in local {
+                let key = canonical_triplet(types[lo_t], types[b_t], types[hi_t]);
+                let entry = h.entry(key).or_insert_with(|| vec![0u64; n_bins]);
+                for (x, y) in entry.iter_mut().zip(&counts) { *x += y; }
             }
             h
         })
