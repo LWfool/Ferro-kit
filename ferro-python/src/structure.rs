@@ -15,11 +15,11 @@ use crate::types::PyTrajectory;
 fn supercell(traj: &PyTrajectory, nx: usize, ny: usize, nz: usize) -> PyResult<PyTrajectory> {
     // Every frame is held at once: cap the whole trajectory before the copy (review fb7d8c3-1)
     check_supercell_total(traj.inner.frames.iter().map(|f| f.n_atoms()), [nx, ny, nz]).map_err(pyerr)?;
-    let mut out = traj.inner.clone();
-    for f in out.frames.iter_mut() {
-        *f = make_supercell(f, nx, ny, nz).map_err(pyerr)?;
-    }
-    Ok(PyTrajectory::new(out))
+    // Each frame is built anew, so the input frames are not deep-copied first (review R8-10)
+    let frames = traj.inner.frames.iter()
+        .map(|f| make_supercell(f, nx, ny, nz))
+        .collect::<ferro_core::Result<Vec<_>>>().map_err(pyerr)?;
+    Ok(PyTrajectory::new(Trajectory { frames, metadata: traj.inner.metadata.clone() }))
 }
 
 /// 沿 `axis`（"x"/"y"/"z"）为每一帧添加 `thickness` Å 真空层。
@@ -29,11 +29,11 @@ fn add_vacuum_layer(
     axis: &str,
     thickness: f64,
 ) -> PyResult<PyTrajectory> {
-    let mut out = traj.inner.clone();
-    for f in out.frames.iter_mut() {
-        *f = add_vacuum(f, axis, thickness).map_err(pyerr)?;
-    }
-    Ok(PyTrajectory::new(out))
+    // Each frame is built anew, so the input frames are not deep-copied first (review R8-10)
+    let frames = traj.inner.frames.iter()
+        .map(|f| add_vacuum(f, axis, thickness))
+        .collect::<ferro_core::Result<Vec<_>>>().map_err(pyerr)?;
+    Ok(PyTrajectory::new(Trajectory { frames, metadata: traj.inner.metadata.clone() }))
 }
 
 /// 沿 `axis` 以 `gap` Å 间隙合并两个体系的首帧，返回单帧轨迹。
