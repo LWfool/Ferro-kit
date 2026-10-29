@@ -92,6 +92,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     if args.number == Some(0) {
         bail!("--number must be at least 1");
     }
+    crate::batch::check_suffix(args.suffix.as_deref())?;
     // The old habit `-o out.extxyz` would now make a directory of that name, and the
     // reader of out.extxyz meets "is a directory" far from the command that did it.
     // Only a -o yet to be made: an existing directory of any name is used as it is
@@ -244,6 +245,20 @@ mod tests {
         }
         assert_eq!(std::fs::read_to_string(&input).unwrap(), text, "the input was rewritten");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Review R7-4: `-s` goes into the product name, and convert never checked it, so
+    /// `-s a/../../x` wrote outside `-o`. Refused before the input is opened.
+    #[test]
+    fn a_suffix_that_could_leave_the_output_is_refused() {
+        let dir = std::env::temp_dir().join(format!("ferro_convert_suffix_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let out = dir.join("out");
+        let mut c = cmd(Some("no/such/input.extxyz"), Some(out.to_str().unwrap()));
+        c.suffix = Some("a/../../x".into());
+        let err = run(&c).unwrap_err().to_string();
+        assert!(err.contains("in -s"), "{err}");
+        assert!(!dir.exists(), "nothing may be created for a refused suffix");
     }
 
     /// The product name comes from the resolved input: `-i .` in a DeePMD system is the
