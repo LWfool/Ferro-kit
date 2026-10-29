@@ -14,7 +14,10 @@ ferro dataset filter -i raw -o clean -N 500 --set-size 250
 containing `type.raw` is taken as a system and not descended into. `-o` is the
 output **root**; each system is rebuilt under its path relative to `-i`, so
 `raw/500K/a.train` becomes `clean/500K/a.train` and two systems with the same
-name under different parents cannot overwrite each other.
+name under different parents cannot overwrite each other. With several `-i` the
+path is taken relative to their deepest common parent: `-i runs/a/md runs/b/md`
+gives `clean/a/md.train` and `clean/b/md.train`, not two `md`. A system reached
+through more than one `-i` (`-i raw raw/500K`) is filtered once.
 
 A `.db` suffix — what `collect` puts on raw collected data — is **stripped**
 before the output is named, so `raw/500K/a.db` becomes `clean/500K/a.train`
@@ -30,7 +33,7 @@ how you choose the thresholds before committing to them.
 | Flag | Default | Description |
 |---|---|---|
 | `-i <DIR>...` | | system directories, or a directory containing them (`type.raw` is searched for recursively) |
-| `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i`; **omitting it means read-only** |
+| `-o <DIR>` | | output root directory, rebuilt along the path relative to `-i` (several `-i`: their common parent); **omitting it means read-only** |
 | `--mkdir` | | create `-o` without asking (required when there is no terminal) |
 | `-f, --f-max <EV_PER_A>` | 20.0 | drop the frame when the largest force **vector magnitude** in it exceeds this; 0 disables |
 | `--s-max <GPA>` | 10.0 | drop the frame when the largest absolute value among its 9 stress components exceeds this; 0 disables |

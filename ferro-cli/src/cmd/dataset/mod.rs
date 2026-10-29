@@ -276,18 +276,18 @@ pub fn run(cmd: &DatasetCmd) -> Result<usize> {
     }
 }
 
-/// The systems under every root, each once.
+/// The systems under every root, each once, with the root it was found under.
 ///
 /// Overlapping roots (`data` and `data/sysA`) find the same system twice; merging it
 /// twice puts its frames into both train and test (review R7-1).
-fn find_systems(roots: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn find_systems(roots: &[PathBuf]) -> Result<Vec<(&Path, PathBuf)>> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut duplicates = 0usize;
     for root in roots {
         for sys in find_systems_under(root)? {
             if seen.insert(std::fs::canonicalize(&sys).unwrap_or_else(|_| sys.clone())) {
-                out.push(sys);
+                out.push((root.as_path(), sys));
             } else {
                 duplicates += 1;
             }

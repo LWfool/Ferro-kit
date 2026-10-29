@@ -800,7 +800,8 @@ Parameters:
   -i, --input  DIR...     System directories, or a directory holding them
                           (searched recursively)
   -o, --output DIR        Output root; each system is rebuilt under its path
-                          relative to -i. OMIT for a read-only run
+                          relative to -i (several -i: their common parent).
+                          OMIT for a read-only run
       --mkdir             Create -o without asking (needed with no terminal)
   -f, --f-max  EV_PER_A   Largest force magnitude allowed               [20.0]
       --s-max  GPA        Largest |stress component| allowed            [10.0]

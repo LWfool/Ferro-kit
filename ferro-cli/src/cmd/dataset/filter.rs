@@ -8,7 +8,7 @@ pub struct FilterCmd {
     #[arg(short, long, num_args = 1..)]
     pub input: Vec<PathBuf>,
 
-    /// Output root; each system is rebuilt under its path relative to -i.
+    /// Output root; each system is rebuilt under its path relative to -i (several -i: their common parent).
     /// Omit for a read-only run that only reports.
     #[arg(short, long, value_name = "DIR")]
     pub output: Option<PathBuf>,
@@ -120,17 +120,27 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     params.validate()?;
 
     let roots = crate::batch::expand_dirs(&args.input)?;
+    // Paths are taken relative to the deepest directory holding every root (review R7-2):
+    // stripping each root on its own sent runs/a/md and runs/b/md both to `md`. Resolved,
+    // so `-i .` / `-i ..` name the directory they stand for instead of joining `..`
+    // onto -o (review R7-3)
+    let resolve = |p: &Path| p.canonicalize().with_context(|| format!("cannot open {}", p.display()));
+    let mut common = resolve(&roots[0])?;
+    for root in &roots[1..] {
+        let root = resolve(root)?;
+        while !root.starts_with(&common) && common.pop() {}
+    }
     let mut jobs: Vec<(PathBuf, PathBuf)> = Vec::new(); // (system, 相对路径)
-    for root in &roots {
-        for sys in find_systems_under(root)? {
-            let rel = sys.strip_prefix(root).unwrap_or(Path::new(""));
-            let rel = if rel.as_os_str().is_empty() {
-                PathBuf::from(root.file_name().unwrap_or(root.as_os_str()))
-            } else {
-                rel.to_path_buf()
-            };
-            jobs.push((sys, rel));
-        }
+    for (root, sys) in find_systems(&roots)? {
+        let under = resolve(root)?;
+        let rel = under.strip_prefix(&common).unwrap_or(Path::new(""))
+            .join(sys.strip_prefix(root).unwrap_or(Path::new("")));
+        let rel = if rel.as_os_str().is_empty() {
+            PathBuf::from(common.file_name().context("a system at the file-system root has no name")?)
+        } else {
+            rel
+        };
+        jobs.push((sys, rel));
     }
     if jobs.is_empty() {
         bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
@@ -594,6 +604,44 @@ mod tests {
         let mut got = check_ids(&out);
         got.sort();
         assert_eq!(got, vec![0, 2, 3, 5], "应恰好删掉帧 1 与 4");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review R7-2 / R7-3: each root used to be stripped on its own, so `-i in/a/md in/b/md`
+    /// sent both systems to `out/md`, and a root ending in `..` joined `..` onto -o.
+    #[test]
+    fn products_are_placed_relative_to_the_common_parent_of_the_roots() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_filter_rel_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (src, ids) in [("in/a/md", [0, 1, 2]), ("in/b/md", [10, 11, 12])] {
+            ferro_io::write_deepmd_npy(&id_system(&ids, &[0, 1, 2]), &root.join(src)).unwrap();
+        }
+        std::fs::create_dir_all(root.join("in/a/md/sub")).unwrap();
+        let run = |inputs: &[PathBuf], out: &Path| {
+            let mut argv = vec!["filter".to_string(), "-i".into()];
+            argv.extend(inputs.iter().map(|p| p.to_str().unwrap().to_string()));
+            argv.extend(["-o".into(), out.to_str().unwrap().into(), "--mkdir".into()]);
+            assert_eq!(run_filter(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap(), 0);
+        };
+        let out = root.join("out");
+        run(&[root.join("in/a/md"), root.join("in/b/md")], &out);
+        for (leaf, want) in [("a", vec![0, 1, 2]), ("b", vec![10, 11, 12])] {
+            let mut got = check_ids(&out.join(leaf));
+            got.sort();
+            assert_eq!(got, want, "out/{leaf}");
+        }
+
+        let out = root.join("deep/out");
+        run(&[root.join("in/a/md/sub/..")], &out);
+        assert_eq!(check_ids(&out).len(), 3, "the product must land inside -o");
+        assert!(!root.join("deep/md.train").exists() && !root.join("deep/type.raw").exists(),
+                "the product escaped -o");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

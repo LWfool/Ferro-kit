@@ -93,7 +93,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
         }
     }
     let roots = crate::batch::expand_dirs(&args.input)?;
-    let systems = find_systems(&roots)?;
+    let systems: Vec<PathBuf> = find_systems(&roots)?.into_iter().map(|(_, sys)| sys).collect();
     if systems.is_empty() {
         bail!("no DeePMD system (a directory holding type.raw) found under the given paths");
     }
