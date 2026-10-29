@@ -1,6 +1,7 @@
 """ferro-py 命令行：帮助页与 argparse 一致（同 ferro-cli 的 help_sync），以及各命令的行为。"""
 
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -123,6 +124,21 @@ def job(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     (tmp_path / "t.txt").write_text("template\n")
     return lambda *a: cli.main(["job", "-s", "fake", "-t", "sp", "--template", str(tmp_path / "t.txt"), *a])
+
+
+def test_job_generates_each_file_before_reading_the_next(tmp_path, job, monkeypatch):
+    # review R8-9: every trajectory used to be read, and held, before the first job was built
+    events = []
+    read, generate = ferro.read, Fake.generate
+    monkeypatch.setattr(ferro, "read", lambda f, **kw: events.append(("read", Path(f).stem)) or read(f, **kw))
+    monkeypatch.setattr(Fake, "generate", lambda self, traj, i, *a, **kw:
+                        events.append(("gen", i)) or generate(self, traj, i, *a, **kw))
+    for name in ("a", "b"):
+        shutil.copy(NVT, tmp_path / f"{name}.lammpstrj")
+    out = tmp_path / "out"
+    assert job("-i", str(tmp_path / "a.lammpstrj"), str(tmp_path / "b.lammpstrj"), "--number", "2",
+               "-o", str(out), "--mkdir") == 0
+    assert events == [("read", "a"), ("gen", 0), ("gen", 4), ("read", "b"), ("gen", 0), ("gen", 4)], events
 
 
 def test_job_trajectory_shares_potcar(tmp_path, job, capsys):

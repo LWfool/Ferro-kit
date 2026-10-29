@@ -343,11 +343,12 @@ def run_job(argv):
     generator = generator(config.load())
 
     built = []
-    for name, traj, i, f in read_structures(files, args, type_map):
-        try:
-            built.append((name, generator.generate(traj, i, options, args.template)))
-        except (ValueError, ferro.FerroError) as e:
-            raise UsageError(f"{f} frame {i}: {e}") from None
+    for f, structures in read_structures(files, args, type_map):
+        for name, traj, i in structures:
+            try:
+                built.append((name, generator.generate(traj, i, options, args.template)))
+            except (ValueError, ferro.FerroError) as e:
+                raise UsageError(f"{f} frame {i}: {e}") from None
     # 先全部生成、再写：一个失败就什么都不写，不留半截的批次
     # -o is made only now: a failed read or generation leaves no empty directory behind
     ensure_dir(args.output, args.mkdir)
@@ -362,13 +363,17 @@ def check_read_args(args):
 
 
 def read_structures(files, args, type_map):
-    """-i 的文件 × 选帧 → [(任务名, Trajectory, 帧号, 文件)]。单结构文件的任务名不带帧号。"""
-    out = []
+    """Yields ``(file, [(job name, Trajectory, frame)])`` one -i file at a time; a
+    single-structure file's job name has no frame number.
+
+    A generator, so the caller generates a file's jobs before the next file is read and
+    only one trajectory is held at a time (review R8-9: every trajectory, multi-GB
+    dumps included, used to stay alive until the last job was built).
+    """
     for f in files:
         traj = ferro.read(f, units=args.units, atom_style=args.atom_style, type_map=type_map)
-        for i in traj.frame_indices(args.start, args.end, args.stride, args.number):
-            out.append((Path(f).stem if len(traj) == 1 else f"{Path(f).stem}_{i:04d}", traj, i, f))
-    return out
+        yield f, [(Path(f).stem if len(traj) == 1 else f"{Path(f).stem}_{i:04d}", traj, i)
+                  for i in traj.frame_indices(args.start, args.end, args.stride, args.number)]
 
 
 def report_batch(built, paths):
@@ -511,18 +516,29 @@ def run_conv(argv):
     check_read_args(args)
     files = expand_inputs(args.input)
     generator = generator(config.load())
-    structures = [(name, traj, i) for name, traj, i, _ in read_structures(files, args, type_map)]
-    try:
-        built, manifest = conv.build(generator, args.software, parameter, values, structures, options,
-                                     args.template)
-    except (ValueError, ferro.FerroError) as e:
-        raise UsageError(str(e)) from None
+    # One build per file, so only that file's trajectory is held (see read_structures)
+    built, manifest, n_structures = [], None, 0
+    for _, structures in read_structures(files, args, type_map):
+        try:
+            jobs, part = conv.build(generator, args.software, parameter, values, structures, options,
+                                    args.template)
+        except (ValueError, ferro.FerroError) as e:
+            raise UsageError(str(e)) from None
+        built += jobs
+        manifest = part if manifest is None else {**manifest, "jobs": manifest["jobs"] + part["jobs"]}
+        n_structures += len(structures)
+    # build lists value by value; per file that became file by file. A stable sort on the
+    # value restores the one-call order (jobs and manifest entries are built in step)
+    rank = {v: k for k, v in enumerate(values)}
+    order = sorted(range(len(built)), key=lambda k: rank[manifest["jobs"][k]["value"]])
+    built = [built[k] for k in order]
+    manifest["jobs"] = [manifest["jobs"][k] for k in order]
     # -o is made only now, as in run_job
     ensure_dir(args.output, args.mkdir)
     report_batch(built, write_batch(built, args.output))
     path = Path(args.output) / conv.MANIFEST
     path.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
-    print(f"Wrote: {path}  ({len(values)} values x {len(structures)} structures)")
+    print(f"Wrote: {path}  ({len(values)} values x {n_structures} structures)")
     return 0
 
 
