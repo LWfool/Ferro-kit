@@ -250,6 +250,23 @@ def test_plot_shared_legend_covers_every_panel(tmp_path):
 
 
 @pytest.mark.skipif(not can_plot(), reason="needs matplotlib, pandas, scienceplots and LaTeX")
+def test_msd_slope_one_guide_follows_the_first_shown_trajectory(tmp_path):
+    # review R8-7: with no fit the guide used to anchor on the csv's first trajectory, even hidden
+    from ferro.plot import common, msd
+    rows = [f"a,{t},{t}" for t in (1, 10, 100, 1000)] + [f"b,{t},{t}" for t in (1e3, 1e4, 1e5)]
+    header = "# ferro msd\n# [inputs]\n# file  status\n# a     ok\n# b     ok\n# ---\n"
+    (tmp_path / "msd_all.csv").write_text(header + "file,time,msd\n" + "\n".join(rows) + "\n")
+    (tmp_path / "labels.csv").write_text("key,label,show\na,a,0\nb,b,1\n")
+    with common.style():
+        frames = common.read_all([str(tmp_path / "msd_all.csv")])
+        fig = msd.build_figure(frames, common.context(frames, tmp_path), False, True)
+    scale = msd.TIME_SCALE[msd.CFG["time_unit"]]
+    guide = [ln for ln in fig.axes[0].get_lines() if ln.get_linestyle() == "--"]
+    assert len(guide) == 1 and min(guide[0].get_xdata()) >= 1e3 * scale, \
+        "the guide lies on b's time axis, not on the hidden a's"
+
+
+@pytest.mark.skipif(not can_plot(), reason="needs matplotlib, pandas, scienceplots and LaTeX")
 def test_plot_gr_writes_figure_data_and_labels(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     (tmp_path / "gr_P-O.csv").write_text(GR_CSV)

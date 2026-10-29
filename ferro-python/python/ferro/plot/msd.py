@@ -109,7 +109,9 @@ def build_panel(path, df, ax, ctx, components, loglog):
     if loglog:
         ax.set_xscale("log")
         ax.set_yscale("log")
-        add_slope_one(ax, first_fit, df, scale)
+        shown = ctx.shown(df)
+        if shown:   # a panel whose trajectories are all hidden draws no curve to guide
+            add_slope_one(ax, first_fit, df[df["file"] == shown[0]], scale)
     else:
         ax.set_xlim(*CFG["xlim"])
         ax.set_ylim(*CFG["ylim"])
@@ -129,19 +131,20 @@ def build_panel(path, df, ax, ctx, components, loglog):
               fontsize=CFG["legend_fontsize"], frameon=False)
 
 
-def add_slope_one(ax, first_fit, df, scale):
+def add_slope_one(ax, first_fit, first, scale):
     """A slope-1 guide spanning at most one decade, never beyond the data's time range.
 
     Anchor: the start of the first trajectory's fit window — if the window was chosen in the
     diffusive regime, the curve should follow this line. Without a fit, the geometric middle
-    of the first trajectory's time axis. An anchor less than a factor 2 from the end moves
-    back, or the guide is too short to show a slope.
+    of the first trajectory's time axis. ``first`` is that trajectory's rows: the first one
+    shown, not the first in the csv, which labels.csv may hide (review R8-7). An anchor less
+    than a factor 2 from the end moves back, or the guide is too short to show a slope.
     """
     if first_fit is not None:
         fit, sub = first_fit
         t0 = fit["t_lo"]
     else:
-        sub = df[(df["file"] == common.files_in(df)[0]) & (df["time"] > 0)].sort_values("time")
+        sub = first[first["time"] > 0].sort_values("time")
         t0 = math.sqrt(sub["time"].iloc[0] * sub["time"].iloc[-1])
     t_min, t_max = sub["time"].iloc[0], sub["time"].iloc[-1]
     if min(10 * t0, t_max) < 2 * t0:
