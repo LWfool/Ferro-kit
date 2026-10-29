@@ -255,6 +255,8 @@ struct Look {
     math: bool,
     link: bool,
     dim: bool,
+    /// A math span whose text is already converted by [`prerender`]
+    rendered: bool,
 }
 
 impl Look {
@@ -266,6 +268,7 @@ impl Look {
             math: self.math || o.math,
             link: self.link || o.link,
             dim: self.dim || o.dim,
+            rendered: self.rendered || o.rendered,
         }
     }
 }
@@ -462,7 +465,7 @@ fn link_at(chars: &[char], i: usize) -> Option<(String, String, usize)> {
 /// The visible text of a span, with the delimiters a plain terminal needs to
 /// tell code apart from prose.
 fn shown(s: &Span, style: Style) -> String {
-    if s.look.math {
+    if s.look.math && !s.look.rendered {
         // 希腊字母与上下标在 ASCII 终端上会变成问号,那里宁可保留 TeX 原文
         if style.unicode { latex(&s.text) } else { format!("${}$", s.text) }
     } else if s.look.code && !style.ansi {
@@ -496,6 +499,18 @@ fn paint(s: &Span, style: Style) -> String {
     }
 }
 
+/// Math spans converted once, up front: measuring, wrapping and painting each ask for
+/// the shown text, which used to run the LaTeX conversion 3-6 times (review R9-10).
+fn prerender(spans: &[Span], style: Style) -> Vec<Span> {
+    spans.iter().map(|s| {
+        if s.look.math && !s.look.rendered {
+            Span { text: shown(s, style), look: Look { rendered: true, ..s.look } }
+        } else {
+            s.clone()
+        }
+    }).collect()
+}
+
 fn visible_len(spans: &[Span], style: Style) -> usize {
     spans.iter().map(|s| screen_len(&shown(s, style))).sum()
 }
@@ -507,6 +522,7 @@ fn visible_len(spans: &[Span], style: Style) -> usize {
 /// line; one longer than the line breaks at its own spaces, and a single word
 /// longer than the line overflows rather than being cut.
 fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
+    let spans = &prerender(spans, style);
     let mut words: Vec<Vec<Span>> = Vec::new();
     // 上一个词是否还能继续往后粘(中间没遇到空白)
     let mut open = false;
@@ -759,7 +775,9 @@ fn render_table(lines: &[&str], width: usize, style: Style) -> String {
             cells(row)
                 .iter()
                 .map(|c| {
-                    let spans = inline(c);
+                    // converted once here: the column widths measure each cell twice
+                    // and the final wrap a third time
+                    let spans = prerender(&inline(c), style);
                     if k > 0 {
                         return spans;
                     }
