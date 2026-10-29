@@ -106,40 +106,10 @@ fn command(chars: &[char], i: &mut usize) -> String {
         }
         return g.to_string();
     }
+    if let Some(&(_, sym, _)) = SYMBOLS.iter().find(|s| s.0 == name) {
+        return sym.to_string();
+    }
     let sym = match name.as_str() {
-        "cdot" => "·",
-        "times" => "×",
-        "to" | "rightarrow" => "→",
-        "infty" => "∞",
-        "ell" => "ℓ",
-        "in" => "∈",
-        "int" => "∫",
-        "propto" => "∝",
-        "sim" => "∼",
-        "parallel" => "∥",
-        "wedge" => "∧",
-        "leftarrow" => "←",
-        "bmod" => "mod",
-        "quad" => " ",
-        "qquad" => "  ",
-        "neq" | "ne" => "≠",
-        "leq" | "le" => "≤",
-        "geq" | "ge" => "≥",
-        "approx" => "≈",
-        "pm" => "±",
-        // `90^\circ`: SUP maps it to itself, so the degree sign needs no caret
-        "circ" => "°",
-        "sum" => "Σ",
-        // 表格单元格里的 |x| 只能写成 \lvert x \rvert：裸的 | 会把 markdown 表格切开
-        "lvert" | "rvert" | "vert" => "|",
-        "hbar" => "ħ",
-        "langle" => "⟨",
-        "rangle" => "⟩",
-        "ldots" | "dots" | "cdots" => "…",
-        "lfloor" => "⌊",
-        "rfloor" => "⌋",
-        "lceil" => "⌈",
-        "rceil" => "⌉",
         "left" | "right" => {
             // `\left.` / `\right.` is the invisible delimiter: the dot goes too (review R9-5)
             if chars.get(*i) == Some(&'.') {
@@ -161,28 +131,14 @@ fn command(chars: &[char], i: &mut usize) -> String {
             let (a, b) = (arg(i), arg(i));
             let frac = format!("{}/{}", grouped(&a), grouped(&b));
             // A factor written right after the fraction would read as part of
-            // the denominator (`a/bc`), so the fraction itself gets brackets
-            // then; a space, a closing bracket or an operator ends it already.
-            // A command counts as a factor unless it renders as one of those: a
-            // closing delimiter (`\right)`), an operator or relation (`\cdot`, `\le`)
-            // or spacing (`\quad`).
-            const NOT_A_FACTOR: [&str; 27] = [
-                "right", "rvert", "rangle", "rfloor", "rceil", "bigr",
-                "cdot", "times", "pm", "to", "rightarrow", "leftarrow", "in", "propto", "sim",
-                "parallel", "wedge", "bmod", "neq", "ne", "leq", "le", "geq", "ge", "approx",
-                "quad", "qquad",
-            ];
-            let glued = match chars.get(*i) {
-                Some('\\') => {
-                    let next: String = chars[*i + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
-                    !next.is_empty() && !NOT_A_FACTOR.contains(&next.as_str())
-                }
-                Some(c) => c.is_alphanumeric() || matches!(c, '(' | '[' | '{' | '_' | '^'),
-                None => false,
-            };
-            return if glued { format!("({frac})") } else { frac };
+            // the denominator (`a/bc`), so the fraction itself gets brackets then
+            return if glued(chars, *i) { format!("({frac})") } else { frac };
         }
-        "sqrt" => return format!("√{}", grouped(&arg(i))),
+        "sqrt" => {
+            let a = grouped(&arg(i));
+            // `\sqrt{2}x` would read as √(2x): the same rule as a fraction (review R9-9)
+            return if glued(chars, *i) && !a.starts_with('(') { format!("√({a})") } else { format!("√{a}") };
+        }
         _ => {
             // 认不出的命令连同参数原样保留
             let mut raw = format!("\\{name}");
@@ -193,6 +149,46 @@ fn command(chars: &[char], i: &mut usize) -> String {
         }
     };
     sym.to_string()
+}
+
+/// Commands that are one symbol: name → (rendered, ends a factor). The flag is what
+/// [`glued`] reads, so a symbol added here is classed where it is defined instead of in
+/// a second hand-kept list (review R9-9). A factor ender renders as an operator, a
+/// relation, a closing delimiter or spacing.
+const SYMBOLS: &[(&str, &str, bool)] = &[
+    ("cdot", "·", true), ("times", "×", true), ("pm", "±", true),
+    ("to", "→", true), ("rightarrow", "→", true), ("leftarrow", "←", true),
+    ("in", "∈", true), ("propto", "∝", true), ("sim", "∼", true),
+    ("parallel", "∥", true), ("wedge", "∧", true), ("bmod", "mod", true),
+    ("neq", "≠", true), ("ne", "≠", true), ("leq", "≤", true), ("le", "≤", true),
+    ("geq", "≥", true), ("ge", "≥", true), ("approx", "≈", true),
+    ("quad", " ", true), ("qquad", "  ", true),
+    ("rvert", "|", true), ("rangle", "⟩", true), ("rfloor", "⌋", true), ("rceil", "⌉", true),
+    ("infty", "∞", false), ("ell", "ℓ", false), ("int", "∫", false), ("sum", "Σ", false),
+    // `90^\circ`: SUP maps it to itself, so the degree sign needs no caret
+    ("circ", "°", false),
+    // 表格单元格里的 |x| 只能写成 \lvert x \rvert：裸的 | 会把 markdown 表格切开
+    ("lvert", "|", false), ("vert", "|", false),
+    ("hbar", "ħ", false), ("langle", "⟨", false),
+    ("ldots", "…", false), ("dots", "…", false), ("cdots", "…", false),
+    ("lfloor", "⌊", false), ("lceil", "⌈", false),
+];
+
+/// Whether what follows `i` is a factor, which would read as part of a `/`'s
+/// denominator or a `√`'s radicand. A space, a closing bracket or an operator ends
+/// the expression already; so do the [`SYMBOLS`] flagged as enders and the closing
+/// delimiters `\right` / `\bigr`.
+fn glued(chars: &[char], i: usize) -> bool {
+    match chars.get(i) {
+        Some('\\') => {
+            let next: String = chars[i + 1..].iter().take_while(|c| c.is_ascii_alphabetic()).collect();
+            let ends = matches!(next.as_str(), "right" | "bigr")
+                || SYMBOLS.iter().any(|&(n, _, ender)| ender && n == next);
+            !next.is_empty() && !ends
+        }
+        Some(c) => c.is_alphanumeric() || matches!(c, '(' | '[' | '{' | '_' | '^'),
+        None => false,
+    }
 }
 
 /// `x` as is, `ab` as `(ab)` — what a `/` needs to read unambiguously.
@@ -291,6 +287,11 @@ mod tests {
             // Review R9-1: a braced \text script is a word too
             (r"\langle |\mathbf{q}| \rangle_{ijk} / \text{count}_{\text{visits}}", "⟨ |q| ⟩ᵢⱼₖ / count_{visits}"),
             (r"x_{\text{A end}}", "x_{A end}"),
+            // Review R9-9
+            (r"\sqrt{2}x", "√(2)x"),
+            (r"\sqrt{2} x", "√2 x"),
+            (r"\sqrt{ab}c", "√(ab)c"),
+            (r"\frac{a}{b}\rangle", "a/b⟩"),
             // Review R9-5
             (r"a = 1 \\ b = 2", "a = 1   b = 2"),
             (r"\left. \frac{df}{dx} \right|_{x=0}", " (df)/(dx) |ₓ₌₀"),
