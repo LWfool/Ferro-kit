@@ -29,10 +29,16 @@ impl Style {
             return Style { ansi: false, unicode: false };
         }
         Style {
-            ansi: std::env::var_os("NO_COLOR").is_none(),
+            ansi: ansi_allowed(std::env::var_os("NO_COLOR"), std::env::var_os("TERM")),
             unicode: true,
         }
     }
+}
+
+/// no-color.org: only a non-empty `NO_COLOR` turns colour off; `TERM=dumb` has no
+/// escape codes either (review R9-8).
+fn ansi_allowed(no_color: Option<std::ffi::OsString>, term: Option<std::ffi::OsString>) -> bool {
+    no_color.is_none_or(|v| v.is_empty()) && term.is_none_or(|t| t != "dumb")
 }
 
 /// Prose is not reflowed wider than this, however wide the terminal is.
@@ -883,6 +889,16 @@ mod tests {
         assert!(s[1].look.link && s[1].look.bold);
         assert_eq!(s[2].text, " (x.md)");
         assert!(s[2].look.dim);
+    }
+
+    #[test]
+    fn colour_follows_no_color_and_term() {
+        let s = |v: &str| Some(std::ffi::OsString::from(v));
+        assert!(ansi_allowed(None, s("xterm-256color")));
+        assert!(ansi_allowed(s(""), s("xterm")), "an empty NO_COLOR does not count");
+        assert!(!ansi_allowed(s("1"), s("xterm")));
+        assert!(!ansi_allowed(None, s("dumb")));
+        assert!(ansi_allowed(None, None));
     }
 
     #[test]

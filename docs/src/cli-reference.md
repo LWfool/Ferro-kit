@@ -567,9 +567,9 @@ their cells to fit, and turns inline formulas such as `$\alpha_1$` into `α₁`.
 that has no Unicode form stays as written (`τ_c`, `r_{min}`), and so do display formulas (`$$...$$`) and
 any command the renderer does not know.  The width comes from the terminal, then `$COLUMNS`, then 80.
 
-On Windows, and wherever `NO_COLOR` is set, the output is plainer: Windows gets ASCII only (no colour,
-`+--+` table borders, formulas left as TeX), because an older console may show neither escape codes nor
-box-drawing characters; `NO_COLOR` turns off colour only.
+On Windows, wherever `NO_COLOR` is set to a non-empty value, and under `TERM=dumb`, the output is plainer:
+Windows gets ASCII only (no colour, `+--+` table borders, formulas left as TeX), because an older console
+may show neither escape codes nor box-drawing characters; `NO_COLOR` and `TERM=dumb` turn off colour only.
 
 ---
 
