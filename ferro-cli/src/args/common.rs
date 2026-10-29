@@ -108,6 +108,9 @@ impl CommonArgs {
     }
 
     /// Applies `--ncore` to the global rayon pool. Call once, before any analysis.
+    ///
+    /// `map chg-sdf` (`cmd/map.rs::run_chg_sdf`) repeats the line: it has no `CommonArgs`.
+    /// Two sites on purpose, see the note there.
     pub fn init_threads(&self) {
         if let Some(n) = self.ncore {
             rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();

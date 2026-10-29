@@ -317,6 +317,8 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
     };
     out.prepare()?;
 
+    // The same line as CommonArgs::init_threads, kept apart on purpose (decisions.md, R6:
+    // chg-sdf has no CommonArgs, and a free function for one line saves nothing; review R7-9)
     if let Some(n) = c.ncore {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
