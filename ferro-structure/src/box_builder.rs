@@ -169,14 +169,6 @@ fn resolve_component(spec: &str) -> Result<(HashMap<String, usize>, f64)> {
 ///
 /// V = Σ(n_i × M_i) / (ρ × N_A), L = V^(1/3).
 pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64> {
-    // Written so that NaN fails too; an infinite density would give a zero box.
-    if !(density > 0.0 && density.is_finite()) {
-        return Err(ChemError::ValidationError(format!(
-            "density must be a finite number > 0, got {}",
-            density
-        )));
-    }
-
     let mut total_mass = 0.0_f64; // g/mol
     for comp in components {
         if comp.n_molecules == 0 {
@@ -184,6 +176,20 @@ pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64
         }
         let (_, molar_mass) = resolve_component(&comp.compound)?;
         total_mass += comp.n_molecules as f64 * molar_mass;
+    }
+    box_length(total_mass, density)
+}
+
+/// The cubic box side holding `total_mass` (g/mol) at `density` (g/cm³). Shared with
+/// `build_box`, which sums the masses in its own parse instead of parsing every
+/// component a second time (review R6-8).
+fn box_length(total_mass: f64, density: f64) -> Result<f64> {
+    // Written so that NaN fails too; an infinite density would give a zero box.
+    if !(density > 0.0 && density.is_finite()) {
+        return Err(ChemError::ValidationError(format!(
+            "density must be a finite number > 0, got {}",
+            density
+        )));
     }
 
     if total_mass == 0.0 {
@@ -232,11 +238,13 @@ pub fn build_box(
     // Ordered by element: a HashMap's order changes from run to run, and with it
     // which random draw each atom gets.
     let mut element_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut total_mass = 0.0_f64; // g/mol, summed in the same order as estimate_box_length
     for comp in components {
         if comp.n_molecules == 0 {
             continue;
         }
-        let (formula_counts, _) = resolve_component(&comp.compound)?;
+        let (formula_counts, molar_mass) = resolve_component(&comp.compound)?;
+        total_mass += comp.n_molecules as f64 * molar_mass;
         for (elem, count) in formula_counts {
             *element_counts.entry(elem).or_insert(0) += count * comp.n_molecules;
         }
@@ -254,7 +262,7 @@ pub fn build_box(
     element_counts.sort_by(|a, b| elements::canonical_cmp(&a.0, &b.0));
 
     // ── Step 2: estimate the box size ────────────────────────────────────────
-    let box_len = estimate_box_length(components, density)?;
+    let box_len = box_length(total_mass, density)?;
     let cell = Cell::from_lengths_angles(box_len, box_len, box_len, 90.0, 90.0, 90.0)?;
 
     // ── Step 3: place the atoms at random ────────────────────────────────────
