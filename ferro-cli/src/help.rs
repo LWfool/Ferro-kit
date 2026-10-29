@@ -37,11 +37,11 @@ pub fn print_convert() {
     println!(
         r#"ferro convert — Structure / trajectory format conversion
 
-  Reads one file, writes it into a directory in the format --format-out names.
-  The input format comes from the file NAME; there is no --from flag.
+  Reads one file and writes it into a directory in the format --format-out
+  names. The input format comes from the file name, or from --format-in.
 
 Parameters:
-  -i, --input  FILE       Input file (format from its name)
+  -i, --input  FILE       Input file
   -o, --output DIR        Output directory, created if missing
       --format-out EXT    Format to write: cif, vasp, extxyz, ...
   -s, --suffix SUFFIX     Batch tag, the last segment of the product name
@@ -49,25 +49,22 @@ Parameters:
       --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
       --stride N          Take every Nth frame within [start, end]         [1]
   -N, --number N          Take this many frames, spread evenly, both ends kept
-      --drop-partial      Leave out a charge / magnetic-moment column that only
-                          some atoms carry. Without it such a frame is an error:
-                          the missing values are never written as 0
+      --drop-partial      Leave out a charge / magnetic-moment column only some
+                          atoms carry (an error otherwise; never written as 0)
 {READ_OPTS}
   -h, --help              Short parameter table (this page adds the formats)
- Formats -i reads (by file name) and --format-out writes (by extension):
+
 {}
 
 Output:
-  Products are named after the input: traj.dump gives DIR/traj.<EXT>,
-  DIR/traj_<SUFFIX>.<EXT> with -s; an existing product is overwritten (noted).
-  One file when the target format holds a trajectory (Frames column above),
-  one file PER FRAME when it holds a single structure (CIF, POSCAR, data):
-  DIR/traj_0002.cif — the index is the ORIGINAL frame number.
+  DIR/<input>[_<SUFFIX>].<EXT>, overwritten if present (noted). A format that
+  holds one structure (Write = one per file) gives one file per frame,
+  numbered by the ORIGINAL frame index: DIR/traj_0002.cif.
 
 Examples:
   ferro convert -i input.cif -o . --format-out vasp
   ferro convert -i traj.dump -o sub --format-out extxyz --start 100 --end 199
-  ferro convert -i traj.dump -o out --format-out vasp --number 20
+  ferro convert -i pw.txt -o . --format-in qe/in --format-out cif
   ferro convert -i traj.dump -o cifs --format-out cif --stride 10
 
 Full documentation:  ferro doc convert"#,

@@ -63,7 +63,7 @@ Frame indices are 0-based; out-of-range raises `IndexError`.
 
 ## I/O
 
-### `read(path, units=None, atom_style=None, type_map=None) -> Trajectory`
+### `read(path, units=None, atom_style=None, type_map=None, format=None) -> Trajectory`
 
 Format auto-detected from the file name / extension (any case), with the same table as
 `ferro convert`:
@@ -73,12 +73,16 @@ Format auto-detected from the file name / extension (any case), with the same ta
 | `.xyz` / `.extxyz` | XYZ / extended XYZ |
 | `.pdb` / `.cif` | PDB / CIF |
 | `POSCAR*` / `CONTCAR*` / `.vasp` / `.poscar` / `.pos` | VASP |
-| `.in` / `.qe` | Quantum ESPRESSO input |
+| `.in` / `.qe` / `.qein` | Quantum ESPRESSO input |
 | `.inp` / `.restart` | CP2K input / restart |
 | `.lammpstrj` / `.dump` | LAMMPS dump; **`units` (`"real"` or `"metal"`) is required when it has velocity/force columns**, since a dump does not record its unit system |
 | `.data` / `.lmp` / `.lammps` | LAMMPS data; **`atom_style` (`"atomic"`, `"charge"` or `"full"`) is required**, never guessed from the `Atoms` comment or the column count |
 | `OUTCAR`, `vasprun.xml`, CP2K / pw.x `.out` | recognised by the program banner, read as `read_output` reads it (unconverged frames dropped) |
 | a directory holding `type.raw` | DeePMD system |
+
+`format` reads the file as that format whatever its name and content, with the names of
+`ferro convert --format-in` (`"qe/in"`, `"vasp/outcar"`, `"lammps/dump"`, …; `ferro convert` lists
+them): `ferro.read("pw.txt", format="qe/in")`.
 
 What the reader noticed on the way — a dropped incomplete last frame, a dump's element column
 split into element and site label, frames dropped from a program output — arrives as a Python
@@ -94,7 +98,7 @@ unknown symbol, or `type_map` on anything but a dump is an error.
 
 ### `write(traj, path, format, units=None, drop_partial=False)`
 
-Writes in `format`, an extension as for `ferro convert --format` (case and a leading dot do not
+Writes in `format`, an extension as for `ferro convert --format-out` (case and a leading dot do not
 matter): `xyz`, `extxyz`, `pdb`, `cif`, `vasp`/`poscar`/`pos` (POSCAR format),
 `data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  `format` is required and `path` is never consulted for
 it — `"POSCAR"` with `format="vasp"` is fine, and `"POSCAR_x.cif"` with `format="cif"` is CIF, not

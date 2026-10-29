@@ -17,14 +17,14 @@ ferro build box -c ZnO:43 -c P2O5:43 -c Al2O3:15 --density 3.2
 | `-o <DIR>` | current dir | output directory; a missing one is asked about, or created with `--mkdir` |
 | `-s <SUFFIX>` | | batch tag, the last segment of every product name |
 | `--mkdir` | | create `-o` without asking (required when there is no terminal) |
-| `--format <EXT>` | the input's | output format as an extension: `vasp`, `cif`, `extxyz`, `data`, … |
+| `--format-out <EXT>` | the input's | output format as an extension: `vasp`, `cif`, `extxyz`, `data`, … |
 
 Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext>`:
 `supercell_quartz.cif`, `vacuum_slab_s1.vasp`. `merge` names both inputs
 (`merge_<A>_<B>`), and `box`, which has none, is `box[_<suffix>].vasp`.
 
 - **The format follows the input.** A `POSCAR` / `CONTCAR` input gives `.vasp`. An
-  input ferro only reads (OUTCAR, a program output, a QE input) needs `--format`,
+  input ferro only reads (OUTCAR, a program output, a QE input) needs `--format-out`,
   and the run stops before anything is read if it is missing.
 - **A single-structure format gets one file per frame**, as with `convert`:
   a two-frame trajectory written as POSCAR is `supercell_md_0000.vasp`,
@@ -120,8 +120,8 @@ the in-plane sizes differ a lot.
   means nothing otherwise.
 - Each block is first folded into its own cell along its periodic axes.
 - A trajectory is refused rather than reduced to its first frame. Take the frame you
-  want with `ferro convert -i md.dump -o DIR --format extxyz --start K --end K`.
-- The output format is A's unless `--format` says otherwise.
+  want with `ferro convert -i md.dump -o DIR --format-out extxyz --start K --end K`.
+- The output format is A's unless `--format-out` says otherwise.
 
 ## `ferro build box`
 
@@ -134,7 +134,7 @@ Packs molecules at random into a cubic box of a given density.
 | `--min-dist <LEN>` | 1.5 | closest allowed distance between two atoms, in Å |
 | `--relax-steps <N>` | 500 | relaxation steps |
 | `--seed <N>` | 666 | random seed |
-| `--format <EXT>` | vasp | output format |
+| `--format-out <EXT>` | vasp | output format |
 
 A component is a formula — nested brackets allowed, `Ca3(PO4)2`, `K4[Fe(CN)6]` — or
 one of the known solvent names (`water`, `methanol`, `ethanol`, `acetone`, `dmso`,

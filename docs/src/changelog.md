@@ -12,6 +12,18 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Input format by name: `--format-in`; `--format` becomes `--format-out`
+
+- **Edit your command lines:** `ferro convert` and `ferro build` take `--format-out EXT` where they took
+  `--format EXT`, and `ferro dataset collect` takes `--format-in FMT` where it took `--format FMT`.
+  The old `--format` is an error.
+- `--format-in FMT` on every command that reads a structure file, and `format=` on Python's
+  `ferro.read`, read the input as FMT whatever its name and content. The names are
+  `program/kind`, as `collect` already used: `qe/in`, `qe/pw`, `vasp/poscar`, `vasp/outcar`,
+  `vasp/xml`, `cp2k/inp`, `cp2k/restart`, `cp2k/md`, `cp2k/sp`, `lammps/data`, `lammps/dump`,
+  `deepmd/npy`, and `xyz`, `extxyz`, `pdb`, `cif`. `ferro convert` lists them in its format table.
+- A QE input named `.qein` is recognised, as `.in` and `.qe` are.
+
 ### Code review fixes: four silent wrong results
 
 - CP2K MD output: frames whose SCF did not converge are dropped, as documented. The verdict lines

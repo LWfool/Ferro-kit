@@ -146,8 +146,8 @@ stdout carries only the results and progress (`[2/5] runs/b/prod.lammpstrj`, the
 
 ## `ferro convert`
 
-Format conversion.  `-o` is a **directory** (created if missing) and `--format EXT` names the format to
-write; both are required.  Products are named after the input: `traj.lammpstrj` with `--format extxyz`
+Format conversion.  `-o` is a **directory** (created if missing) and `--format-out EXT` names the format to
+write; both are required.  Products are named after the input: `traj.lammpstrj` with `--format-out extxyz`
 gives `DIR/traj.extxyz`; an input without an extension (`POSCAR`) and a DeePMD directory (`data.000`)
 keep their whole name.  `-s SUFFIX` makes it `DIR/traj_SUFFIX.extxyz`, so same-named inputs from two
 runs (two `OUTCAR`s) can share one `-o`; an existing product is overwritten, with a note.  The directory
@@ -160,31 +160,34 @@ directory holding `type.raw` is a DeePMD system.
 
 ```bash
 ferro convert                              # without -i: prints the table below
-ferro convert -i input.xyz -o out --format pdb                     # out/input.pdb
-ferro convert -i input.cif -o . --format vasp                      # ./input.vasp
-ferro convert -i traj.lammpstrj -o out --format extxyz --units metal
-ferro convert -i traj.lammpstrj -o cifs --format cif --units metal   # cifs/traj_0000.cif ...
+ferro convert -i input.xyz -o out --format-out pdb                     # out/input.pdb
+ferro convert -i input.cif -o . --format-out vasp                      # ./input.vasp
+ferro convert -i traj.lammpstrj -o out --format-out extxyz --units metal
+ferro convert -i traj.lammpstrj -o cifs --format-out cif --units metal   # cifs/traj_0000.cif ...
 ```
 
-| Format | Recognised by | Read | Write | Frames written |
-|---|---|:-:|:-:|---|
-| XYZ | `.xyz` | y | y | all |
-| extended XYZ | `.extxyz`, or a `.xyz` whose comment line declares `Lattice=` / `Properties=` | y | y | all |
-| PDB | `.pdb` | y | y | all (MODEL records) |
-| LAMMPS dump | `.dump` `.lammpstrj` | y | y | all |
-| CIF | `.cif` | y | y | **one per file** |
-| VASP | `.vasp` `.poscar` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | y | y | **one per file** |
-| LAMMPS data | `.lammps` `.data` `.lmp` | y | y | **one per file** |
-| QE (pw.x) | `.in` `.qe` | y | — | — |
-| CP2K input | `.inp` | y | — | — |
-| CP2K restart | `.restart` | y | — | — |
-| VASP OUTCAR | banner (an `OUTCAR` has no extension) | y | — | — |
-| vasprun.xml | banner (`.xml`) | y | — | — |
-| CP2K output | banner (`.out`), MD or single point by its run type | y | — | — |
-| QE output | banner (`.out`), pw.x only | y | — | — |
-| DeePMD | a directory holding `type.raw` | y | — | — |
+| Format | Recognised by | `--format-in` | Read | Write | Frames written |
+|---|---|---|:-:|:-:|---|
+| XYZ | `.xyz` | `xyz` | y | y | all |
+| extended XYZ | `.extxyz`, or a `.xyz` whose comment line declares `Lattice=` / `Properties=` | `extxyz` | y | y | all |
+| PDB | `.pdb` | `pdb` | y | y | all (MODEL records) |
+| LAMMPS dump | `.dump` `.lammpstrj` | `lammps/dump` | y | y | all |
+| CIF | `.cif` | `cif` | y | y | **one per file** |
+| VASP | `.vasp` `.poscar` `.pos`, or a `POSCAR*` / `CONTCAR*` prefix | `vasp/poscar` | y | y | **one per file** |
+| LAMMPS data | `.lammps` `.data` `.lmp` | `lammps/data` | y | y | **one per file** |
+| QE (pw.x) | `.in` `.qe` `.qein` | `qe/in` | y | — | — |
+| CP2K input | `.inp` | `cp2k/inp` | y | — | — |
+| CP2K restart | `.restart` | `cp2k/restart` | y | — | — |
+| VASP OUTCAR | banner (an `OUTCAR` has no extension) | `vasp/outcar` | y | — | — |
+| vasprun.xml | banner (`.xml`) | `vasp/xml` | y | — | — |
+| CP2K output | banner (`.out`), MD or single point by its run type | `cp2k/md` `cp2k/sp` | y | — | — |
+| QE output | banner (`.out`), pw.x only | `qe/pw` | y | — | — |
+| DeePMD | a directory holding `type.raw` | `deepmd/npy` | y | — | — |
 
 Extensions are compared **case-insensitively**: `CONF.XYZ` is XYZ, `OUT.CIF` is CIF.
+`--format-in FMT` takes the name in the `--format-in` column and reads the input as that
+format, whatever its name and content: `ferro convert -i pw.txt -o . --format-in qe/in --format-out cif`.
+Every command that reads a structure file (`info`, `traj`, `map`, `net`, `build`) takes it too.
 
 Things that trip people up:
 
@@ -201,7 +204,7 @@ Things that trip people up:
 - **Bytes that are not UTF-8 text are an error** naming the file, line, column and byte (a
   binary file, or another program's output mixed into a log through `2>&1`).  Nothing is replaced
   and read past.
-- **"One per file" splits the trajectory**: 500 frames of `traj.dump` with `--format cif` give
+- **"One per file" splits the trajectory**: 500 frames of `traj.dump` with `--format-out cif` give
   `traj_0000.cif` … `traj_0499.cif`, the index being the original frame number.  CIF is split too, although the format
   allows several `data_` blocks in one file: VESTA and Materials Studio show only the first block.
   Thin the frames out with `--stride` / `--number`.
@@ -272,10 +275,10 @@ charge is unaffected: extended XYZ and dumps write no charge column, LAMMPS data
 ### Frame selection
 
 ```bash
-ferro convert -i traj.dump -o sub --format extxyz --start 100   # skip the relaxation stage
-ferro convert -i traj.dump -o sub --format extxyz --start 100 --end 199
-ferro convert -i traj.dump -o vasp --format vasp --stride 50    # one every 50 frames
-ferro convert -i traj.dump -o lmp --format lmp --number 20      # 20 frames at even intervals
+ferro convert -i traj.dump -o sub --format-out extxyz --start 100   # skip the relaxation stage
+ferro convert -i traj.dump -o sub --format-out extxyz --start 100 --end 199
+ferro convert -i traj.dump -o vasp --format-out vasp --stride 50    # one every 50 frames
+ferro convert -i traj.dump -o lmp --format-out lmp --number 20      # 20 frames at even intervals
 ```
 
 | Flag | Default | Description |
@@ -311,8 +314,8 @@ The index is inserted **before the extension** and is the **frame index in the o
 "the n-th one selected"), so the output maps straight back onto the trajectory:
 
 ```
--i traj.dump --format vasp --stride 2   →  traj_0000.vasp   traj_0002.vasp   traj_0004.vasp
--i traj.dump --format cif  --number 3   →  traj_0000.cif    traj_0002.cif    traj_0004.cif
+-i traj.dump --format-out vasp --stride 2   →  traj_0000.vasp   traj_0002.vasp   traj_0004.vasp
+-i traj.dump --format-out cif  --number 3   →  traj_0000.cif    traj_0002.cif    traj_0004.cif
 ```
 
 The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.  **When only one frame is selected, one file is written with no index**, whatever the format.
@@ -338,7 +341,8 @@ where it is a truncated final frame and is dropped with a warning.
 |---|---|---|
 | `-i <file>` | (required) | input file (a single one); omit it to print the format table |
 | `-o <dir>` | (required) | output **directory**; missing directories are created without asking.  Products are named after the input: `DIR/<stem>.<EXT>`, or `DIR/<stem>_0000.<EXT>` … when several frames go to a one-structure format |
-| `--format <EXT>` | (required) | format to write, as an extension (`cif`, `vasp`, `extxyz`, …) |
+| `--format-out <EXT>` | (required) | format to write, as an extension (`cif`, `vasp`, `extxyz`, …) |
+| `--format-in <FMT>` | from the name | read the input as this format (`qe/in`, `vasp/outcar`, …; column `--format-in` above) |
 | `-s, --suffix <SUFFIX>` | — | tag appended to the product name: `DIR/<stem>_<SUFFIX>.<EXT>` |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
@@ -506,7 +510,7 @@ their own run directories, do they avoid overwriting each other.  `-o <DIR>` col
 ## `ferro build`
 
 Makes structures: one product per input, `<-o dir>/<op>_<input>[_<suffix>].<ext>`, in the
-input's format unless `--format` names another. It does not take the common flags `--last-n` /
+input's format unless `--format-out` names another. It does not take the common flags `--last-n` /
 `--ncore`.
 
 | Command | Does |

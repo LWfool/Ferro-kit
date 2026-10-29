@@ -47,45 +47,39 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
     Ok(traj)
 }
 
-/// Returns a human-readable read/write matrix of the supported formats.
+/// Returns the format matrix of `ferro convert`'s page: how each format is
+/// recognised, its `--format-in` name(s), and what writing it gives.
 ///
 /// The rows come from `Format::ALL`, so the matrix cannot drift from what is read
-/// and written. Read and write are NOT symmetric — the inputs and the program
-/// outputs are read-only — so the two directions get their own column.
+/// and written. Every format is read; the inputs and the program outputs are not
+/// written, so writing gets its own column.
 pub fn supported_formats() -> String {
     let mut rows = String::new();
     for f in Format::ALL {
-        let frames = match f {
+        // CP2K's two logs share a row and a name, and have a label each
+        let labels: Vec<&str> = Format::LABELS.iter()
+            .filter(|(_, g)| g.name() == f.name()).map(|(l, _)| *l).collect();
+        let write = match f {
             _ if !f.can_write() => "-",
-            Format::Pdb => "all (MODEL records)",
             _ if f.multi_frame() => "all",
             _ => "one per file",
         };
-        let write = if f.can_write() { "y" } else { "-" };
-        rows.push_str(&format!("  {:<14}{:<31}{:<7}{:<7}{frames}\n", f.name(), f.detected_by(), "y", write));
+        rows.push_str(&format!("  {:<14}{:<28}{:<18}{write}\n", f.name(), f.detected_by(), labels.join("  ")));
     }
     format!(
-        "  Format        Detected by                    Read   Write  Frames on write
-  ------------------------------------------------------------------
+        "  Format        Detected by                 --format-in       Write
+  ------------------------------------------------------------------------
 {rows}
-  Format is taken from the file NAME first: an extension (any case), or a
-  POSCAR/CONTCAR prefix for VASP files that have none.
-  * A .xyz whose comment line (line 2) declares Lattice= or Properties= is
-  read as extended XYZ, as ASE and GPUMD write it. Writing .xyz still gives
-  plain XYZ; use .extxyz to keep the cell.
-  A name that says nothing (OUTCAR, vasprun.xml, a .out log) is read by its
-  program banner. Frames whose SCF did not converge are dropped and counted,
-  as `ferro dataset collect` does. A directory holding type.raw is a DeePMD
-  system. --format-out takes an extension from a row with Write = y.
-
-  `-` under Write means read-only: an input or a program output can be
-  converted FROM, not TO. To generate a CP2K or QE input use
-  `ferro-py job -s cp2k|qe`, which writes a full run setup rather than bare
-  coordinates.
-
-  `one per file` means the format holds one structure: 500 frames of
-  traj.dump with --format-out cif give traj_0000.cif ... traj_0499.cif. Use
-  --stride / --number to thin them out."
+  Without --format-in the format comes from the file NAME: an extension in
+  any case, or a POSCAR/CONTCAR prefix. Then from the content:
+  * a .xyz whose line 2 declares Lattice= or Properties= is extended XYZ;
+    writing .xyz still gives plain XYZ, use extxyz to keep the cell
+  - a name that says nothing (OUTCAR, vasprun.xml, .out) is read by its
+    program banner; frames whose SCF did not converge are dropped
+  - a directory holding type.raw is a DeePMD system
+  Write: `all` = one file holds the trajectory; `one per file` = one file
+  per frame (thin with --stride / --number); `-` = read-only, generate a
+  CP2K / QE input with `ferro-py job -s cp2k|qe`."
     )
 }
 

@@ -34,10 +34,10 @@ wrong thing entirely.
 
 ### Saying the format yourself
 
-`--format` overrides the banner:
+`--format-in` overrides the banner:
 
 ```bash
-ferro dataset collect -i 'sp/*.log' --format cp2k/sp
+ferro dataset collect -i 'sp/*.log' --format-in cp2k/sp
 ```
 
 | value | reader |
@@ -57,7 +57,7 @@ top, a layout ferro has not seen, a file whose head was rewritten by a job
 scheduler. **The banner is still read**, for two things: a one-line `FerroNote`
 when it disagrees with what you asked (silence would make a typo and a
 deliberate override look identical), and the one-format-per-directory check
-below, which has nothing else to compare once `--format` fixes every file to
+below, which has nothing else to compare once `--format-in` fixes every file to
 the same value.
 
 ### Which CP2K releases
@@ -127,7 +127,7 @@ choice, which keeps datasets converted by either tool comparable.
 | `-i <FILE>...` | CP2K MD log / CP2K single-point output / VASP OUTCAR / vasprun.xml; globs are supported; PJM job logs `x<N>-<job>.<id>.out` are left out before grouping |
 | `-o <DIR>` | output root directory, **optional**; without it the output lands next to each input directory |
 | `--type <WHAT>` | `deepmd` (a DeePMD system) \| `inspect` (diagnostics only, no dataset) [deepmd] |
-| `--format <FMT>` | read every input as this format instead of trusting its banner: `cp2k/md` \| `cp2k/sp` \| `vasp/outcar` \| `vasp/xml` \| `qe/pw` |
+| `--format-in <FMT>` | read every input as this format instead of trusting its banner: `cp2k/md` \| `cp2k/sp` \| `vasp/outcar` \| `vasp/xml` \| `qe/pw` |
 | `--mkdir` | create `-o` without asking (required when there is no terminal) |
 | `--overwrite` | allow writing into an existing non-empty directory |
 
