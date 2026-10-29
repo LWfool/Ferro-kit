@@ -173,7 +173,9 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
 
     // orient[帧][单元] = 取向向量（未归一化；零向量 = 该帧无效）
     let orient: Vec<Vec<[f64; 3]>> = match params.vector {
-        RotVector::Sum => traj.frames.iter().enumerate().map(|(k, frame)| {
+        // Frames in parallel like Bond (review R3-5); an indexed collect keeps frame order,
+        // and each frame's sum is serial, so the result does not depend on the threads
+        RotVector::Sum => traj.frames.par_iter().enumerate().map(|(k, frame)| {
             // Candidates come from a neighbour list in a periodic frame, sorted by index
             // like the full scan, so the bond vectors are summed in the same order
             let nl = cells[k].as_ref().map(|pc| NeighborList::build(frame.positions(), pc, params.r_cut)
