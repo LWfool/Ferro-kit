@@ -55,6 +55,32 @@ impl Format {
         Format::Aimd(AimdFormat::Cp2kMd), Format::Aimd(AimdFormat::QeOut), Format::Deepmd,
     ];
 
+    /// The names a user gives to read a file as a format (`--format-in`, Python
+    /// `read(format=)`): `program/kind`, or the bare name of a format no one program
+    /// owns. CP2K's two logs get a name each, though they share a row of [`Format::ALL`].
+    pub const LABELS: [(&'static str, Format); 16] = [
+        ("xyz", Format::Xyz), ("extxyz", Format::Extxyz), ("pdb", Format::Pdb), ("cif", Format::Cif),
+        ("lammps/dump", Format::LammpsDump), ("lammps/data", Format::LammpsData),
+        ("vasp/poscar", Format::Poscar),
+        ("vasp/outcar", Format::Aimd(AimdFormat::VaspOutcar)), ("vasp/xml", Format::Aimd(AimdFormat::VaspXml)),
+        ("qe/in", Format::QeInput), ("qe/pw", Format::Aimd(AimdFormat::QeOut)),
+        ("cp2k/inp", Format::Cp2kInput), ("cp2k/restart", Format::Cp2kRestart),
+        ("cp2k/md", Format::Aimd(AimdFormat::Cp2kMd)), ("cp2k/sp", Format::Aimd(AimdFormat::Cp2kSp)),
+        ("deepmd/npy", Format::Deepmd),
+    ];
+
+    /// The format a [`Format::LABELS`] name stands for, in any case.
+    pub fn from_label(label: &str) -> Result<Format> {
+        let want = label.to_lowercase();
+        match Format::LABELS.iter().find(|(l, _)| *l == want) {
+            Some(&(_, f)) => Ok(f),
+            None => {
+                let all: Vec<&str> = Format::LABELS.iter().map(|(l, _)| *l).collect();
+                bail!("unknown input format '{label}'; one of: {}", all.join(" | "))
+            }
+        }
+    }
+
     /// Short name, for the format matrix and messages.
     pub fn name(self) -> &'static str {
         match self {
@@ -86,7 +112,7 @@ impl Format {
             Format::Cif => ".cif",
             Format::Poscar => ".vasp .poscar .pos POSCAR*",
             Format::LammpsData => ".lammps  .data  .lmp",
-            Format::QeInput => ".in  .qe",
+            Format::QeInput => ".in  .qe  .qein",
             Format::Cp2kInput => ".inp",
             Format::Cp2kRestart => ".restart",
             Format::Aimd(AimdFormat::VaspOutcar) => "banner (OUTCAR)",
@@ -134,7 +160,7 @@ impl Format {
             "cif" => Format::Cif,
             "vasp" | "poscar" | "pos" => Format::Poscar,
             "lammps" | "data" | "lmp" => Format::LammpsData,
-            "in" | "qe" => Format::QeInput,
+            "in" | "qe" | "qein" => Format::QeInput,
             "inp" => Format::Cp2kInput,
             "restart" => Format::Cp2kRestart,
             _ => return None,
@@ -442,7 +468,7 @@ mod tests {
     fn read_only_formats_are_rejected_on_write() {
         let traj = one_atom_traj();
         let dir = tmp_dir("ro");
-        for ext in ["inp", "restart", "in", "qe", "out", "xml"] {
+        for ext in ["inp", "restart", "in", "qe", "qein", "out", "xml"] {
             let path = dir.join(format!("t.{ext}"));
             let err = write(&traj, &path, &WriteOptions { units: Some(LammpsUnits::Real), ..Default::default() }).unwrap_err();
             assert!(err.to_string().contains("Unsupported output format"), ".{ext}: {err}");
@@ -584,6 +610,35 @@ mod tests {
         assert_eq!(read_plain(&dir).unwrap().frames[0].element(0), "Si");
         let err = Format::detect(dir.join("set.000").as_path()).unwrap_err().to_string();
         assert!(err.contains("not a DeePMD system"), "{err}");
+    }
+
+    /// A named format is read as that format whatever the file is called; every
+    /// label names a distinct format, and an unknown one lists the choices.
+    #[test]
+    fn a_label_reads_a_file_whatever_its_name() {
+        for (i, (a, fa)) in Format::LABELS.iter().enumerate() {
+            assert!(Format::LABELS[i + 1..].iter().all(|(_, fb)| fb != fa), "{a}: two labels for one format");
+        }
+        assert_eq!(Format::from_label("QE/IN").unwrap(), Format::QeInput);
+        let err = Format::from_label("qe").unwrap_err().to_string();
+        assert!(err.contains("qe/in | qe/pw"), "{err}");
+
+        let dir = tmp_dir("label");
+        let text = "&SYSTEM\n ibrav = 0\n nat = 1\n ntyp = 1\n/\n\
+            ATOMIC_SPECIES\nSi 28.085 Si.UPF\n\
+            CELL_PARAMETERS angstrom\n5 0 0\n0 5 0\n0 0 5\n\
+            ATOMIC_POSITIONS angstrom\nSi 0 0 0\n";
+        for name in ["pw.qein", "pw.txt"] {
+            std::fs::write(dir.join(name), text).unwrap();
+        }
+        assert_eq!(Format::detect(&dir.join("pw.qein")).unwrap(), Format::QeInput);
+        assert!(read_plain(&dir.join("pw.txt")).is_err(), ".txt says nothing");
+        let (t, _) = read_as(&dir.join("pw.txt"), Format::from_label("qe/in").unwrap(), &ReadOptions::default()).unwrap();
+        assert_eq!(t.frames[0].element(0), "Si");
+
+        let fx = Path::new("../tests/vasp_OUTCAR_2frames");
+        let (t, _) = read_as(fx, Format::from_label("vasp/outcar").unwrap(), &ReadOptions::default()).unwrap();
+        assert_eq!(t.n_frames(), 2);
     }
 
     /// The name picks the reader: `.cube` in any case goes to the cube reader, anything
