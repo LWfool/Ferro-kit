@@ -462,6 +462,9 @@ fn classify_modifiers_inner(
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
+// unique_keys_left / unique_keys_right are twins on purpose, not merged (R6: two sites;
+// a side flag or a key-picking closure would cost more to read than the four lines it
+// saves). Change one, change the other (review R4-9)
 fn unique_keys_left(table: &CutoffTable) -> Vec<String> {
     let mut v: Vec<String> = table.keys().map(|(a, _)| a.clone())
         .collect::<HashSet<_>>().into_iter().collect();
@@ -469,6 +472,7 @@ fn unique_keys_left(table: &CutoffTable) -> Vec<String> {
     v
 }
 
+/// The twin of `unique_keys_left`, kept separate on purpose (see the note above it).
 fn unique_keys_right(table: &CutoffTable) -> Vec<String> {
     let mut v: Vec<String> = table.keys().map(|(_, b)| b.clone())
         .collect::<HashSet<_>>().into_iter().collect();
