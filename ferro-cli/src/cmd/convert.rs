@@ -17,7 +17,7 @@ pub struct ConvertCmd {
 
     /// Format to write (an extension: cif, vasp, extxyz…)
     #[arg(long, value_name = "EXT")]
-    pub format: Option<String>,
+    pub format_out: Option<String>,
 
     /// Batch tag, the last segment of the product name: <input>_<suffix>.<ext>
     #[arg(short, long, value_name = "SUFFIX")]
@@ -62,18 +62,18 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         bail!("convert needs an output directory: -o <DIR>  (run `ferro convert` for the format list)");
     };
     // Not clap's `required`: bare `ferro convert` must still reach the format list
-    let Some(given) = &args.format else {
+    let Some(given) = &args.format_out else {
         bail!(
-            "convert needs a target format: --format <EXT>, e.g. `-o {} --format extxyz`",
+            "convert needs a target format: --format-out <EXT>, e.g. `-o {} --format-out extxyz`",
             dir.display()
         );
     };
     let ext = given.trim_start_matches('.').to_lowercase();
-    // The format comes from --format alone, never from the product name: that name is
+    // The format comes from --format-out alone, never from the product name: that name is
     // the input's, and `Format::from_name` takes anything starting POSCAR / CONTCAR for
     // a POSCAR whatever its extension. Checked here, so an unknown format is refused
     // before the directory is made or the input read (review D-M15)
-    let format = ferro_io::Format::for_extension(&ext).with_context(|| format!("--format {given}"))?;
+    let format = ferro_io::Format::for_extension(&ext).with_context(|| format!("--format-out {given}"))?;
 
     // Parameter errors fail before the first file is read: a trajectory can be several
     // GB, and reading it all to report "--start is past --end" is a wasted wait.
@@ -100,7 +100,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
         if ferro_io::Format::from_name(Path::new(&format!("x.{}", e.to_string_lossy()))).is_some() {
             bail!(
                 "-o is the output directory, and '{}' looks like a file name; products are named \
-                 after the input, e.g. `-o {} --format {ext}`",
+                 after the input, e.g. `-o {} --format-out {ext}`",
                 dir.display(),
                 dir.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new(".")).display()
             );
@@ -141,7 +141,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // typed out by the user: no need to ask
     crate::outpath::ensure_dir(dir, true)?;
     // Compared as resolved paths now that -o exists: `-o .`, `-o sub/..` or a just-made
-    // `-o new/..` for `-i x.extxyz --format extxyz` is the input itself, and writing it
+    // `-o new/..` for `-i x.extxyz --format-out extxyz` is the input itself, and writing it
     // truncates the input. Only when one file is written: split per frame, the products
     // are x_NNNN.EXT, never the input
     if format.multi_frame() || indices.len() == 1 {
@@ -222,12 +222,12 @@ mod tests {
             number: None,
             drop_partial: false,
             read: ReadArgs::default(),
-            format: Some("extxyz".into()),
+            format_out: Some("extxyz".into()),
             suffix: None,
         }
     }
 
-    /// `-o .` / `-o sub/..` / `-o new/..` for `-i same.extxyz --format extxyz` lands on
+    /// `-o .` / `-o sub/..` / `-o new/..` for `-i same.extxyz --format-out extxyz` lands on
     /// the input itself: comparing the text would let it through and the write truncate
     /// the input. `new` does not exist beforehand, so nothing can be resolved up front
     #[test]
@@ -283,14 +283,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Without --format there is nothing to name the target format: refused before
+    /// Without --format-out there is nothing to name the target format: refused before
     /// anything is read, with a line to copy
     #[test]
     fn a_missing_format_is_refused_with_a_usable_hint() {
         let mut c = cmd(Some("no_such_input.xyz"), Some("out"));
-        c.format = None;
+        c.format_out = None;
         let err = run(&c).unwrap_err().to_string();
-        assert!(err.contains("-o out --format extxyz"), "should give a line to copy: {err}");
+        assert!(err.contains("-o out --format-out extxyz"), "should give a line to copy: {err}");
     }
 
     /// -o is a directory, created when missing (no question, no --mkdir). Products are
@@ -308,10 +308,10 @@ mod tests {
             let dir = root.join(ext.trim_start_matches('.')).join("nested");
             let mut c = cmd(fixture().to_str(), dir.to_str());
             c.read.units = Some(ferro_io::LammpsUnits::Metal);
-            c.format = Some(ext.into());
-            run(&c).unwrap_or_else(|e| panic!("--format {ext}: {e}"));
+            c.format_out = Some(ext.into());
+            run(&c).unwrap_or_else(|e| panic!("--format-out {ext}: {e}"));
             for name in want {
-                assert!(dir.join(name).is_file(), "--format {ext}: missing {name}");
+                assert!(dir.join(name).is_file(), "--format-out {ext}: missing {name}");
             }
         }
         let _ = std::fs::remove_dir_all(&root);
@@ -338,12 +338,12 @@ mod tests {
         let dir = std::env::temp_dir().join("ferro_d_m15_convert_must_not_exist");
         let _ = std::fs::remove_dir_all(&dir);
         type Case<'a> = (fn(&mut ConvertCmd), &'a str);
-        // A missing --format has its own test (a_missing_format_is_refused_with_a_usable_hint)
+        // A missing --format-out has its own test (a_missing_format_is_refused_with_a_usable_hint)
         let cases: [Case; 4] = [
             (|c| c.stride = Some(0), "--stride"),
             (|c| c.number = Some(0), "--number"),
             (|c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
-            (|c| c.format = Some("nosuchfmt".into()), "Unsupported output format"),
+            (|c| c.format_out = Some("nosuchfmt".into()), "Unsupported output format"),
         ];
         for (tweak, want) in cases {
             let mut c = cmd(Some("no_such_input.xyz"), dir.to_str());
@@ -369,9 +369,9 @@ mod tests {
         // Written as extxyz, not as the POSCAR its name would suggest
         let text = std::fs::read_to_string(dir.join("out/POSCAR.extxyz")).unwrap();
         assert!(text.contains("Properties="), "POSCAR.extxyz is not extxyz:\n{text}");
-        // --format is checked on its own: a POSCAR-named product does not make it valid
+        // --format-out is checked on its own: a POSCAR-named product does not make it valid
         let mut c = cmd(poscar.to_str(), dir.join("bad").to_str());
-        c.format = Some("nosuchfmt".into());
+        c.format_out = Some("nosuchfmt".into());
         let err = format!("{:#}", run(&c).unwrap_err());
         assert!(err.contains("Unsupported output format"), "{err}");
         assert!(!dir.join("bad").exists(), "an unknown format must not create -o");
@@ -420,7 +420,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut c = cmd(fixture().to_str(), dir.to_str());
-        c.format = Some("cif".into());
+        c.format_out = Some("cif".into());
         c.read.units = Some(ferro_io::LammpsUnits::Metal);
         run(&c).unwrap();
         for i in 0..5 {
@@ -518,10 +518,10 @@ mod tests {
         let input = dir.join("x.extxyz");
         ferro_io::write(&t, &input, &ferro_io::WriteOptions::default()).unwrap();
         let mut c = cmd(input.to_str(), dir.to_str());
-        c.format = Some("xyz".into());
+        c.format_out = Some("xyz".into());
         run(&c).unwrap();
         let mut c = cmd(input.to_str(), dir.to_str());
-        c.format = Some("vasp".into());
+        c.format_out = Some("vasp".into());
         run(&c).unwrap();
         assert!(dir.join("x_0000.vasp").is_file() && dir.join("x_0001.vasp").is_file());
         let _ = std::fs::remove_dir_all(&dir);

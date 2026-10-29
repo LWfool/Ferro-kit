@@ -88,7 +88,7 @@ ferro net -i traj.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.6 --modifier Zn
 ferro bader -i CHGCAR -m neargrid
 
 # format conversion and quick inspection
-ferro convert -i traj.lammpstrj -o out --format extxyz
+ferro convert -i traj.lammpstrj -o out --format-out extxyz
 ferro info -i NaCl.cif
 
 # calculation inputs (VASP / QE / CP2K) come from the Python package

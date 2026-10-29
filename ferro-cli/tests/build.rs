@@ -33,7 +33,7 @@ fn supercell_with_given_dims_replicates_every_frame() {
     let d = scratch("sc_dims");
     let o = d.to_str().unwrap();
     ok(&ferro(&["build", "supercell", "-i", TRICLINIC, "--dims", "2", "1", "3",
-                "--format", "extxyz", "-o", o, "-s", "t"]));
+                "--format-out", "extxyz", "-o", o, "-s", "t"]));
     let src = read(Path::new(TRICLINIC));
     let made = read(&d.join("supercell_triclinic_2frames_t.extxyz"));
     assert_eq!(made.n_frames(), 2);
@@ -52,7 +52,7 @@ fn supercell_with_given_dims_replicates_every_frame() {
 fn supercell_auto_reaches_min_length_and_min_atoms() {
     let d = scratch("sc_auto");
     ok(&ferro(&["build", "supercell", "-i", TRICLINIC, "--min-length", "25", "--min-atoms", "100",
-                "--format", "extxyz", "-o", d.to_str().unwrap()]));
+                "--format-out", "extxyz", "-o", d.to_str().unwrap()]));
     let made = read(&d.join("supercell_triclinic_2frames.extxyz"));
     let f = &made.frames[0];
     assert!(f.n_atoms() >= 100);
@@ -77,7 +77,7 @@ fn supercell_dry_run_writes_nothing() {
 fn supercell_over_the_trajectory_total_is_refused() {
     let d = scratch("sc_total");
     let out = ferro(&["build", "supercell", "-i", TRICLINIC, "--dims", "200", "200", "500",
-                      "--format", "extxyz", "-o", d.to_str().unwrap()]);
+                      "--format-out", "extxyz", "-o", d.to_str().unwrap()]);
     assert_ne!(out.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&out.stderr).contains("120000000 atoms in total"),
             "{}", String::from_utf8_lossy(&out.stderr));
@@ -98,7 +98,7 @@ fn supercell_min_atoms_over_the_cap_fails_before_reading() {
 fn vacuum_grows_the_spacing_along_its_axis() {
     let d = scratch("vac");
     ok(&ferro(&["build", "vacuum", "-i", TRICLINIC, "--axis", "y", "--thickness", "7.5",
-                "--format", "extxyz", "-o", d.to_str().unwrap()]));
+                "--format-out", "extxyz", "-o", d.to_str().unwrap()]));
     let src = read(Path::new(TRICLINIC));
     let made = read(&d.join("vacuum_triclinic_2frames.extxyz"));
     assert_eq!(made.n_frames(), 2);
@@ -144,6 +144,6 @@ fn a_read_only_input_format_needs_format() {
     let out = ferro(&["build", "supercell", "-i", OUTCAR, "--dims", "2", "1", "1",
                       "-o", d.to_str().unwrap(), "--mkdir"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("needs --format EXT"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("needs --format-out EXT"));
     assert!(!d.exists(), "-o was created for a run that could not write");
 }

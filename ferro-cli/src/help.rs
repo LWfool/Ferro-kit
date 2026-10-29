@@ -37,13 +37,13 @@ pub fn print_convert() {
     println!(
         r#"ferro convert — Structure / trajectory format conversion
 
-  Reads one file, writes it into a directory in the format --format names.
+  Reads one file, writes it into a directory in the format --format-out names.
   The input format comes from the file NAME; there is no --from flag.
 
 Parameters:
   -i, --input  FILE       Input file (format from its name)
   -o, --output DIR        Output directory, created if missing
-      --format EXT        Format to write: cif, vasp, extxyz, ...
+      --format-out EXT    Format to write: cif, vasp, extxyz, ...
   -s, --suffix SUFFIX     Batch tag, the last segment of the product name
       --start  N          First frame to take (0-based, inclusive)         [0]
       --end    N          Last frame to take (0-based, INCLUSIVE)       [last]
@@ -54,7 +54,7 @@ Parameters:
                           the missing values are never written as 0
 {READ_OPTS}
   -h, --help              Short parameter table (this page adds the formats)
- Formats -i reads (by file name) and --format writes (by extension):
+ Formats -i reads (by file name) and --format-out writes (by extension):
 {}
 
 Output:
@@ -65,10 +65,10 @@ Output:
   DIR/traj_0002.cif — the index is the ORIGINAL frame number.
 
 Examples:
-  ferro convert -i input.cif -o . --format vasp
-  ferro convert -i traj.dump -o sub --format extxyz --start 100 --end 199
-  ferro convert -i traj.dump -o out --format vasp --number 20
-  ferro convert -i traj.dump -o cifs --format cif --stride 10
+  ferro convert -i input.cif -o . --format-out vasp
+  ferro convert -i traj.dump -o sub --format-out extxyz --start 100 --end 199
+  ferro convert -i traj.dump -o out --format-out vasp --number 20
+  ferro convert -i traj.dump -o cifs --format-out cif --stride 10
 
 Full documentation:  ferro doc convert"#,
         crate::io_dispatch::supported_formats()
@@ -191,7 +191,7 @@ Conventions:
   analysed on its own and the results stack into ONE csv carrying a `file`
   column; a failed input is skipped and the exit code is 1.
   -o is a DIRECTORY for the commands that write several products, the output
-  FILE for `convert` (a directory with --format). Every product is named
+  FILE for `convert` (a directory with --format-out). Every product is named
     <-o dir>/<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>
   where <input> appears on per-input products (map, bader, net --export-traj)
   and -s gives <suffix>. A command typed without -i prints its own page; -h
@@ -884,7 +884,7 @@ pub fn print_build_overview() {
         r#"ferro build — Make structures
 
   One product per input, <-o dir>/<op>_<input>[_<suffix>].<ext>, in the
-  input's format unless --format names another:
+  input's format unless --format-out names another:
 
   supercell  replicate a cell nx x ny x nz times
   vacuum     add a vacuum layer along one lattice vector
@@ -915,7 +915,7 @@ Parameters:
   -o, --output DIR        Output directory                       [current dir]
   -s, --suffix SUFFIX     Batch tag, the last segment of every product name
       --mkdir             Create -o without asking (needed with no terminal)
-      --format EXT        Output format: vasp, cif, extxyz, data...  [input's]
+      --format-out EXT    Output format: vasp, cif, extxyz, data...  [input's]
 {READ_OPTS}
   -h, --help              Short parameter table
 
@@ -929,7 +929,7 @@ Examples:
   ferro build supercell -i quartz.cif --dims 2 2 3
   ferro build supercell -i POSCAR --min-atoms 200 --min-length 12
   ferro build supercell -i 'cifs/*.cif' --min-length 10 -o big --mkdir
-  ferro build supercell -i OUTCAR --dims 2 2 2 --format vasp
+  ferro build supercell -i OUTCAR --dims 2 2 2 --format-out vasp
 
 Full documentation:  ferro doc build supercell"#
     );
@@ -950,7 +950,7 @@ Parameters:
   -o, --output DIR        Output directory                       [current dir]
   -s, --suffix SUFFIX     Batch tag, the last segment of every product name
       --mkdir             Create -o without asking (needed with no terminal)
-      --format EXT        Output format: vasp, cif, extxyz, data...  [input's]
+      --format-out EXT    Output format: vasp, cif, extxyz, data...  [input's]
 {READ_OPTS}
   -h, --help              Short parameter table
 
@@ -983,7 +983,7 @@ Parameters:
   -o, --output DIR        Output directory                       [current dir]
   -s, --suffix SUFFIX     Batch tag, the last segment of the product name
       --mkdir             Create -o without asking (needed with no terminal)
-      --format EXT        Output format: vasp, cif, extxyz, data...      [A's]
+      --format-out EXT    Output format: vasp, cif, extxyz, data...      [A's]
 {READ_OPTS}
   -h, --help              Short parameter table
 
@@ -993,7 +993,7 @@ Output:
 
 Examples:
   ferro build merge -i substrate.vasp water.vasp --gap 2.5
-  ferro build merge -i a.cif b.cif --axis x --gap 0 --format extxyz
+  ferro build merge -i a.cif b.cif --axis x --gap 0 --format-out extxyz
 
 Full documentation:  ferro doc build merge"#
     );
@@ -1018,7 +1018,7 @@ Parameters:
   -o, --output DIR        Output directory                       [current dir]
   -s, --suffix SUFFIX     Batch tag, the last segment of the product name
       --mkdir             Create -o without asking (needed with no terminal)
-      --format EXT        Output format: vasp, cif, extxyz, data...     [vasp]
+      --format-out EXT    Output format: vasp, cif, extxyz, data...     [vasp]
   -h, --help              Short parameter table
 
 Output:
@@ -1027,7 +1027,7 @@ Output:
 
 Examples:
   ferro build box -c ZnO:43 -c P2O5:43 -c Al2O3:15 --density 3.2
-  ferro build box -c H2O:200 --density 1.0 --format extxyz -s w200
+  ferro build box -c H2O:200 --density 1.0 --format-out extxyz -s w200
 
 Full documentation:  ferro doc build box"#
     );

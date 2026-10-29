@@ -1,7 +1,7 @@
 //! `ferro build` — make a new structure from existing ones (or from nothing, `box`).
 //!
 //! One product per input, `<-o dir>/<op>_<input>[_<suffix>].<ext>`, in the input's
-//! format unless `--format` says otherwise. The structure work is `ferro-structure`'s;
+//! format unless `--format-out` says otherwise. The structure work is `ferro-structure`'s;
 //! this module only reads, names and writes.
 
 use std::path::{Path, PathBuf};
@@ -51,7 +51,7 @@ pub struct OutArgs {
 
     /// Output format as an extension: vasp, cif, extxyz, data… (default: the input's)
     #[arg(long, value_name = "EXT")]
-    pub format: Option<String>,
+    pub format_out: Option<String>,
 }
 
 impl OutArgs {
@@ -59,13 +59,13 @@ impl OutArgs {
         batch::Output { dir: self.output.clone(), label: None, suffix: self.suffix.clone(), mkdir: self.mkdir }
     }
 
-    /// The extension of the product made from `input`: `--format`, else the input's own
+    /// The extension of the product made from `input`: `--format-out`, else the input's own
     /// (`POSCAR` / `CONTCAR` → `vasp`). Checked to be writable, so a read-only input
     /// format (OUTCAR, a QE input) fails before anything is read.
     fn ext(&self, input: &Path) -> Result<String> {
-        if let Some(f) = &self.format {
+        if let Some(f) = &self.format_out {
             let ext = f.trim_start_matches('.').to_lowercase();
-            Format::for_extension(&ext).with_context(|| format!("--format {f}"))?;
+            Format::for_extension(&ext).with_context(|| format!("--format-out {f}"))?;
             return Ok(ext);
         }
         match Format::from_name(input) {
@@ -74,7 +74,7 @@ impl OutArgs {
                 Ok(input.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default())
             }
             _ => bail!(
-                "{}: ferro does not write this input's format, so the product needs --format EXT \
+                "{}: ferro does not write this input's format, so the product needs --format-out EXT \
                  (vasp, cif, extxyz, ...)",
                 input.display()
             ),
@@ -351,7 +351,7 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
             1 => Ok(traj.frames.into_iter().next().expect("one frame")),
             n => bail!(
                 "{} holds {n} frames; merge stacks two structures — take one first with \
-                 `ferro convert -i {} -o DIR --format extxyz --start K --end K`",
+                 `ferro convert -i {} -o DIR --format-out extxyz --start K --end K`",
                 p.display(), p.display()
             ),
         }
@@ -368,7 +368,7 @@ fn run_box(c: &BoxCmd) -> Result<()> {
     let Some(rho) = c.density else { bail!("give the mass density: --density RHO (g/cm³)") };
     batch::check_suffix(c.out.suffix.as_deref())?;
     // 没有输入可沿用格式，默认写 POSCAR
-    let ext = match &c.out.format {
+    let ext = match &c.out.format_out {
         Some(_) => c.out.ext(Path::new(""))?,
         None => "vasp".to_string(),
     };

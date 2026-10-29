@@ -213,7 +213,7 @@ impl Format {
     }
 
     /// The format a user names to write, as an extension (`cif`, `.vasp`, `EXTXYZ`), with
-    /// the checks of [`Format::for_output`]. For the CLI's `--format` and Python's
+    /// the checks of [`Format::for_output`]. For the CLI's `--format-out` and Python's
     /// `write(format=)`: the product path is not asked, because [`Format::from_name`] takes
     /// a `POSCAR_x.cif` for a POSCAR.
     pub fn for_extension(ext: &str) -> Result<Format> {
@@ -355,7 +355,7 @@ pub fn write(traj: &Trajectory, path: &Path, opts: &WriteOptions) -> Result<Vec<
 /// by position — `ferro convert` numbers them by the frame they came from in the input.
 ///
 /// The format is not read off `path`: `convert` names its product after the input, and
-/// [`Format::from_name`] takes a `POSCAR_x.extxyz` for a POSCAR whatever `--format` said.
+/// [`Format::from_name`] takes a `POSCAR_x.extxyz` for a POSCAR whatever `--format-out` said.
 pub fn write_numbered(
     traj: &Trajectory,
     path: &Path,

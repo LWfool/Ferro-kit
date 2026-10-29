@@ -114,7 +114,7 @@ fn read(
     Ok(PyTrajectory::new(traj))
 }
 
-/// Writes a trajectory to `path` in `format`, an extension as for `ferro convert --format`
+/// Writes a trajectory to `path` in `format`, an extension as for `ferro convert --format-out`
 /// ("cif", "vasp", "extxyz", ...).
 ///
 /// The format is never read off `path`: a name starting POSCAR / CONTCAR would pass for a
