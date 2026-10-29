@@ -59,3 +59,14 @@ Python 改测试、拆提交两次报 `Non-UTF-8 code` 未执行，其中一次�
 **Why:** 单人项目，特性分支/PR 流程是多余开销；用户明确拒绝了 `git switch -c` 并指示「直接合并 main 分支」。
 
 **How to apply:** 被要求「提交修改」时，直接在 main 上 `git add <具体文件> && git commit`，不要先 `git switch -c`。只在用户另行要求时才开分支/PR。注意只 stage 预期文件（避免误纳入 stray 副本如 `xxx 2.rs`）。提交信息**不加任何署名行**（迁入时改写：原文要求保留 `Co-Authored-By`，与用户全局规则冲突，以全局规则为准）。相关：「版本号更新规则」。
+
+## CLI 的 cargo 包名是 `ferro`，不是 `ferro-cli`
+
+`cargo test -p ferro-cli` 报 `package ID specification ... did not match any packages`，一个测试都不跑；
+输出再经 `grep FAILED` 之类过滤，错误行被滤掉，看起来像「CLI 测试全过」。
+
+**Why:** 2026-10-29 review 低级修复一轮，R5-3、R9-8、R7-7、R7-8 四步都以为跑过了 CLI 测试，实际没跑；
+到 R7-9 才看见这行错误，补跑全量 `cargo test` 才确认无失败。
+
+**How to apply:** 单测 CLI 用 `cargo test -p ferro`；拿不准就跑全量 `cargo test`。过滤输出时把
+`error` 也放进 grep 的模式，别只盯 `FAILED` / `panicked`。

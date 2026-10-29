@@ -32,4 +32,4 @@ D 组（手册压缩，7947 → 6803 行）已完成；C-1 / C-2（两份 README
 | `plan/cli-python.md` | 低 | ferro-structure 补充结构操作（10-22 由中降）；code1 / code2 引用扫描；REPL；rustfmt；ferro-py job 的遗留与存疑 |
 | `plan/suspended.md` | 挂起 | Bader 改写组、cube_sdf / chg_sdf 改写组、`map jump` 入口组（随功能改写一并处理，平时不修） |
 | `plan/zero-call.md` | 中 | 零调用清单 |
-| `plan/review-2026-10-24.md` | 高 / 中 / 低 | 全库 code review 结果（高 4 已修 · 中 42 · 低 32）。中级已处理完（R4-7 随挂起组；R5-2 定不改；R8-3 误报），低级待用户逐条定 |
+| `plan/review-2026-10-24.md` | 高 / 中 / 低 | 全库 code review 结果（高 4 已修 · 中 42 · 低 32）。中级已处理完（R4-7 随挂起组；R5-2 定不改；R8-3 误报）；低级除 R2-9、R8-9 待用户定外已处理完（R9-6 定不修，R3-6 / R3-8 / R4-5 随挂起组） |
