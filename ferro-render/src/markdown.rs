@@ -339,7 +339,7 @@ fn inline(text: &str) -> Vec<Span> {
             '*' => {
                 let opens = !look.italic
                     && chars.get(i + 1).is_some_and(|n| !n.is_whitespace())
-                    && chars[i + 1..].contains(&'*');
+                    && contains(&chars[i + 1..], &['*']);
                 let closes = look.italic && i > 0 && !chars[i - 1].is_whitespace();
                 if opens || closes {
                     flush(&mut out, &mut buf, look);
@@ -405,8 +405,21 @@ fn find_run(chars: &[char], from: usize, c: char, len: usize) -> Option<usize> {
     None
 }
 
+/// Whether `needle` occurs in `hay` outside code spans: a closing mark inside code
+/// is opaque, so it cannot close anything (review R9-7).
 fn contains(hay: &[char], needle: &[char]) -> bool {
-    hay.windows(needle.len()).any(|w| w == needle)
+    let mut j = 0;
+    while j < hay.len() {
+        if hay[j] == '`' {
+            let run = run_len(hay, j, '`');
+            j = find_run(hay, j + run, '`', run).map_or(j + run, |k| k + run);
+        } else if hay[j..].starts_with(needle) {
+            return true;
+        } else {
+            j += 1;
+        }
+    }
+    false
 }
 
 /// `[label](url)` starting at `i` → label, url, and the index just past it.
@@ -876,6 +889,12 @@ mod tests {
     fn unmatched_marks_stay_literal() {
         let text: String = inline("a ** b * c ` d [e] f").iter().map(|s| s.text.as_str()).collect();
         assert_eq!(text, "a ** b * c ` d [e] f");
+        // review R9-7: the only closing mark sits in code, so these open nothing
+        let s = inline("a ** b `x**y` c");
+        assert!(s.iter().all(|s| !s.look.bold), "{s:?}");
+        assert!(s.iter().any(|s| s.look.code && s.text == "x**y"), "{s:?}");
+        let s = inline("a * b `*p` c");
+        assert!(s.iter().all(|s| !s.look.italic), "{s:?}");
     }
 
     #[test]
