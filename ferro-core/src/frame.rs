@@ -364,8 +364,10 @@ impl Frame {
         const WRAP_TOL: f64 = 1e-10;
         let Some(cell) = self.cell.as_ref() else { return };
         let pbc = self.pbc;
+        // inverted once, not per atom: the same product as cartesian_to_fractional (review R6-7)
+        let Some(inv) = cell.matrix.transpose().try_inverse() else { return };
         for p in &mut self.positions {
-            let Ok(f) = cell.cartesian_to_fractional(*p) else { return };
+            let f = inv * *p;
             let shift = Vector3::from_fn(|i, _| {
                 let out = f[i] < -WRAP_TOL || f[i] >= 1.0 + WRAP_TOL;
                 if pbc[i] && out { -f[i].floor() } else { 0.0 }

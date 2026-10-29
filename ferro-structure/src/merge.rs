@@ -124,8 +124,11 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
     let moved = |frame: &Frame, cell: &Cell, t: Vector3<f64>, name: &str| -> Result<Vec<Atom>> {
         let mut atoms = Vec::with_capacity(frame.n_atoms());
         let mut stranded = 0usize;
+        // inverted once, not per atom: the same product as cartesian_to_fractional (review R6-7)
+        let inv = cell.matrix.transpose().try_inverse()
+            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
         for atom in frame.atoms() {
-            let f = cell.cartesian_to_fractional(atom.position - cell.origin)?;
+            let f = inv * (atom.position - cell.origin);
             let mut a = atom.to_atom();
             for i in 0..3 {
                 if f[i] >= -WRAP_TOL && f[i] < 1.0 + WRAP_TOL { continue; }
