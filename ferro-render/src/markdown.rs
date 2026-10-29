@@ -304,14 +304,21 @@ fn inline(text: &str) -> Vec<Span> {
                 }
             }
             '$' if chars.get(i + 1).is_some_and(|n| !n.is_whitespace() && *n != '$') => {
-                match chars[i + 1..].iter().position(|&x| x == '$') {
-                    Some(k) => {
+                // Pandoc's rule: the closing `$` follows a non-blank and is not followed
+                // by a digit, so `$5 and $6` stays text (review R9-4)
+                let close = (i + 2..chars.len()).find(|&j| {
+                    chars[j] == '$'
+                        && !chars[j - 1].is_whitespace()
+                        && !chars.get(j + 1).is_some_and(|n| n.is_ascii_digit())
+                });
+                match close {
+                    Some(j) => {
                         flush(&mut out, &mut buf, look);
                         out.push(Span {
-                            text: chars[i + 1..i + 1 + k].iter().collect(),
+                            text: chars[i + 1..j].iter().collect(),
                             look: look.or(Look { math: true, ..Look::default() }),
                         });
-                        i += k + 2;
+                        i = j + 1;
                     }
                     None => {
                         buf.push(c);
@@ -877,6 +884,11 @@ mod tests {
         assert_eq!(s[0].text, "a_b * c");
         assert!(s[0].look.math);
         assert_eq!(s[1].text, " and $ 5");
+        // review R9-4: Pandoc's closing rule, so prices stay text
+        let s = inline("costs $5 and $6 each");
+        assert!(s.len() == 1 && !s[0].look.math && s[0].text == "costs $5 and $6 each", "{s:?}");
+        let s = inline("$x$1 then $y$");
+        assert!(s[0].look.math && s[0].text == "x$1 then $y", "a `$` before a digit does not close: {s:?}");
     }
 
     #[test]
