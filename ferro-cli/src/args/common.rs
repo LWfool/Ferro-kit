@@ -7,7 +7,7 @@ use clap::builder::TypedValueParser;
 use clap::Args;
 use ferro_analysis::GroupBy;
 use ferro_core::Trajectory;
-use ferro_io::{AtomStyle, LammpsUnits};
+use ferro_io::{AtomStyle, Format, LammpsUnits};
 use std::path::{Path, PathBuf};
 
 use crate::batch;
@@ -17,6 +17,10 @@ use crate::io_dispatch::{check_read_args, read_trajectory};
 /// a structure or trajectory through `io_dispatch::read_trajectory`.
 #[derive(Args, Clone, Debug, Default)]
 pub struct ReadArgs {
+    /// Read the input as this format, not by its name or content: qe/in, vasp/outcar, …
+    #[arg(long, value_name = "FMT", value_parser = |s: &str| Format::from_label(s).map_err(|e| e.to_string()))]
+    pub format_in: Option<Format>,
+
     /// LAMMPS units of a dump's velocity/force columns: real (Å/fs, kcal/mol/Å) or
     /// metal (Å/ps, eV/Å); required when the dump has them (never guessed)
     #[arg(

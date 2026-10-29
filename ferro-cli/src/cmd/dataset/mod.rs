@@ -41,7 +41,7 @@ use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::Trajectory;
 use ferro_io::{
     read_aimd_as, read_deepmd_npy, set_bounds, write_deepmd_npy,
-    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdFormat, AimdStats,
+    write_deepmd_npy_bounds, write_deepmd_npy_sets, write_extxyz_with, AimdFormat, AimdStats, Format,
     StressKey,
 };
 

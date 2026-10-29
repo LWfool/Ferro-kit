@@ -26,37 +26,18 @@ pub struct CollectCmd {
     pub out_type: CollectType,
 
     /// Read the inputs as this format instead of trusting their banner
-    #[arg(long, value_enum, value_name = "FMT")]
-    pub format: Option<InputFormat>,
+    #[arg(long, value_name = "FMT", value_parser = parse_aimd_label)]
+    pub format_in: Option<AimdFormat>,
 }
 
-/// The AIMD layout a file is to be read as, when the user names it.
-///
-/// The five values mirror [`AimdFormat`] one for one. VASP is two values rather
-/// than one `vasp/md`: OUTCAR and vasprun.xml record the same frames but decide
-/// convergence differently, so they drop a different number of them.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, clap::ValueEnum)]
-pub enum InputFormat {
-    #[value(name = "cp2k/md")]
-    Cp2kMd,
-    #[value(name = "cp2k/sp")]
-    Cp2kSp,
-    #[value(name = "vasp/outcar")]
-    VaspOutcar,
-    #[value(name = "vasp/xml")]
-    VaspXml,
-    #[value(name = "qe/pw")]
-    QePw,
-}
-
-impl From<InputFormat> for AimdFormat {
-    fn from(f: InputFormat) -> Self {
-        match f {
-            InputFormat::Cp2kMd => AimdFormat::Cp2kMd,
-            InputFormat::Cp2kSp => AimdFormat::Cp2kSp,
-            InputFormat::VaspOutcar => AimdFormat::VaspOutcar,
-            InputFormat::VaspXml => AimdFormat::VaspXml,
-            InputFormat::QePw => AimdFormat::QeOut,
+/// A `--format-in` name that stands for a program output: `collect` reads nothing else.
+fn parse_aimd_label(s: &str) -> std::result::Result<AimdFormat, String> {
+    match Format::from_label(s).map_err(|e| e.to_string())? {
+        Format::Aimd(f) => Ok(f),
+        _ => {
+            let outputs: Vec<&str> = Format::LABELS.iter()
+                .filter(|(_, f)| matches!(f, Format::Aimd(_))).map(|(l, _)| *l).collect();
+            Err(format!("'{s}' is not a program output; collect reads {}", outputs.join(" | ")))
         }
     }
 }
@@ -77,7 +58,7 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
         crate::outpath::ensure_dir(root, args.mkdir)?;
     }
 
-    let fmt = args.format.map(AimdFormat::from);
+    let fmt = args.format_in;
 
     let groups = group_by_directory(&inputs);
     // (source, reason, inputs it kept out of every system). The count is in input
@@ -321,7 +302,7 @@ fn collect_group(
     // frame): two files written independently have their own atom orders, and one
     // file does not promise a constant order from frame to frame either
     let mut parts: Vec<(PathBuf, Trajectory, AimdStats)> = Vec::new();
-    // 嗅探结果单独留一份：--format 一给，stats.format 就恒等于它，下面那条
+    // 嗅探结果单独留一份：--format-in 一给，stats.format 就恒等于它，下面那条
     // 「同目录两种格式」的守卫会失去比较的对象。嗅探本来就要跑（它出告警），
     // 守卫白拿
     let mut sniffed: Vec<(PathBuf, AimdFormat)> = Vec::new();
@@ -334,7 +315,7 @@ fn collect_group(
             // 用户说了算，但手滑写错与有意覆盖长得一样，所以说一声
             (Some(asked), Ok(seen)) if *seen != asked => {
                 crate::report::note(path.display(), format!(
-                    "looks like {} but --format says {}; reading as {}",
+                    "looks like {} but --format-in says {}; reading as {}",
                     seen.name(),
                     asked.name(),
                     asked.name()
@@ -346,7 +327,7 @@ fn collect_group(
                 Ok(f) => f,
                 Err(e) => {
                     // The banner check is ferro-io's, and knows nothing of this flag
-                    skipped.push((path.clone(), format!("{e:#} (--format reads it as a given program)"), 1));
+                    skipped.push((path.clone(), format!("{e:#} (--format-in reads it as a given program)"), 1));
                     continue;
                 }
             },
@@ -659,7 +640,7 @@ mod tests {
             mkdir: true,
             overwrite: false,
             out_type: CollectType::Deepmd,
-            format: None,
+            format_in: None,
         };
         assert_eq!(run_collect(&args).unwrap(), 1);
         assert!(root.join("out/good.db/type.raw").exists());

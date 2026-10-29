@@ -9,7 +9,9 @@
 /// The reader options of every command that reads a trajectory file.
 macro_rules! read_opts {
     () => {
-        "      --atom-style S      LAMMPS data input: atomic | charge | full (required)
+        "      --format-in FMT     Read as this format, not by name: qe/in, vasp/outcar,
+                          ... (`ferro convert` lists them)
+      --atom-style S      LAMMPS data input: atomic | charge | full (required)
       --units U           Dump vx/fx units: real | metal (required if present)
       --type-map M        Dump without element column: 1=Zr,2=O,..."
     };
@@ -759,14 +761,14 @@ pub fn print_dataset_collect() {
 
   Reads CP2K, VASP or Quantum ESPRESSO (pw.x) output and writes one DeePMD
   system per input DIRECTORY — the files of one directory are the restart
-  segments of one run. The format comes from each file's own banner; --format
-  overrides that.
+  segments of one run. The format comes from each file's own banner;
+  --format-in overrides that.
 
 Parameters:
   -i, --input  FILE...    AIMD output files; glob patterns allowed. PJM job
                           logs (x0-<job>.<id>.out) are skipped
   -o, --output DIR        Output root; default is beside each input
-      --format FMT        Read the inputs as this format instead of trusting
+      --format-in FMT     Read the inputs as this format instead of trusting
                           the banner. cp2k/md | cp2k/sp | vasp/outcar |
                           vasp/xml | qe/pw                       [from banner]
       --type   WHAT       deepmd (DeePMD system) | inspect (diagnostics only)

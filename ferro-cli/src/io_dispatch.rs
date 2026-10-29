@@ -10,13 +10,14 @@ use ferro_io::{Format, ReadOptions};
 use crate::args::common::ReadArgs;
 
 /// Fails when the reading options do not fit `path`: a LAMMPS data file with no
-/// `--atom-style`, or `--type-map` on anything but a LAMMPS dump.
+/// `--atom-style`, or `--type-map` on anything but a LAMMPS dump. The format is
+/// `--format-in`'s when given, else the one the name declares.
 ///
 /// The `Atoms` layout is not recoverable from the file: the `# style` comment is
 /// optional and charge/molecular share a column count, so it is never guessed.
 /// Batch commands call this on every input before reading the first one.
 pub fn check_read_args(path: &Path, opts: &ReadArgs) -> Result<()> {
-    let format = Format::from_name(path);
+    let format = opts.format_in.or_else(|| Format::from_name(path));
     if opts.type_map.is_some() && format != Some(Format::LammpsDump) {
         bail!("--type-map applies to LAMMPS dump input only, not {}", path.display());
     }
@@ -38,7 +39,10 @@ pub fn read_trajectory(path: &Path, opts: &ReadArgs) -> Result<Trajectory> {
         atom_style: opts.atom_style,
         type_map: opts.type_map.as_ref().map(|m| m.0.clone()),
     };
-    let (traj, report) = ferro_io::read(path, &options)?;
+    let (traj, report) = match opts.format_in {
+        Some(f) => ferro_io::read_as(path, f, &options)?,
+        None => ferro_io::read(path, &options)?,
+    };
     crate::report::notices(path, &report.warnings);
     Ok(traj)
 }
@@ -105,6 +109,12 @@ mod tests {
         assert!(check_read_args(Path::new("t.lammpstrj"), &opts).is_ok());
         let err = read_trajectory(Path::new("t.extxyz"), &opts).unwrap_err().to_string();
         assert!(err.contains("--type-map applies to LAMMPS dump input only"), "{err}");
+
+        // --format-in overrides the name in both directions
+        let data = ReadArgs { format_in: Some(Format::LammpsData), ..Default::default() };
+        assert!(check_read_args(Path::new("t.txt"), &data).unwrap_err().to_string().contains("--atom-style"));
+        let xyz = ReadArgs { format_in: Some(Format::Xyz), ..Default::default() };
+        assert!(check_read_args(Path::new("t.data"), &xyz).is_ok());
     }
 
     #[test]
