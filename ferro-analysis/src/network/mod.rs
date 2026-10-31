@@ -37,7 +37,6 @@ pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 use crate::check;
 use ferro_core::error::ChemError;
 use ferro_core::{Frame, Table, Trajectory};
-use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 
 /// Qn partner key: the Qn value, plus how many of those bridges lead to each partner
@@ -175,20 +174,6 @@ impl Moments {
         let delta = frac - self.mean;
         self.mean += delta / self.seen as f64;
         self.m2 += delta * (frac - self.mean);
-    }
-
-    /// Chan/Golub/LeVeque pairwise combination — needed because rayon reduces
-    /// partial accumulators rather than folding one sequence.
-    fn merge(&mut self, o: &Moments) {
-        if o.seen == 0 { return; }
-        if self.seen == 0 { *self = *o; return; }
-        let (na, nb) = (self.seen as f64, o.seen as f64);
-        let n = na + nb;
-        let delta = o.mean - self.mean;
-        self.count += o.count;
-        self.m2 += o.m2 + delta * delta * na * nb / n;
-        self.mean += delta * nb / n;
-        self.seen += o.seen;
     }
 
     /// Folds in the frames where this bin did not occur (each contributing `f = 0`),
@@ -728,27 +713,22 @@ fn network(
     let n_frames = traj.frames.len();
     let n_atoms = traj.frames[0].n_atoms();
 
-    type Kept = Vec<(usize, Vec<AtomType>)>;
-    let (acc, mut kept) = traj.frames
-        .par_iter()
-        .enumerate()
-        .map(|(k, frame)| {
-            let ft = classify_frame_detailed(frame, params)
-                .expect("checked at the entry by validate and check::all_periodic_cells");
-            let fd = compute_frame(&ft, frame, params);
-            (fd, keep_types.then_some((k, ft.types)))
-        })
-        .fold(
-            || (Accumulator::default(), Kept::new()),
-            |(mut acc, mut kept), (fd, types)| { acc.push(&fd); kept.extend(types); (acc, kept) },
-        )
-        .reduce(
-            || (Accumulator::default(), Kept::new()),
-            |(mut a, mut ka), (b, kb)| { a.merge(b); ka.extend(kb); (a, ka) },
-        );
-    kept.sort_unstable_by_key(|(k, _)| *k);
+    // Frames are classified in parallel but pushed in frame order, so the Welford moments
+    // are bit-identical whatever the thread count; a rayon fold/reduce merged them in an
+    // order set by the schedule (review 2026-10-30 A2-M1, as R3-1 did for md)
+    let mut acc = Accumulator::default();
+    let mut kept = Vec::new();
+    crate::md::util::par_map_in_order(&traj.frames, |frame| {
+        let ft = classify_frame_detailed(frame, params)
+            .expect("checked at the entry by validate and check::all_periodic_cells");
+        let fd = compute_frame(&ft, frame, params);
+        (fd, keep_types.then_some(ft.types))
+    }, |(fd, types)| {
+        acc.push(&fd);
+        kept.extend(types);
+    });
 
-    Ok((acc.finalize(n_frames, n_atoms, params.clone()), kept.into_iter().map(|(_, t)| t).collect()))
+    Ok((acc.finalize(n_frames, n_atoms, params.clone()), kept))
 }
 
 // ─── 单帧计算 ─────────────────────────────────────────────────────────────────
@@ -899,10 +879,6 @@ fn push_hist<K: Ord + Clone>(
     }
 }
 
-fn merge_keyed<K: Ord>(dst: &mut BTreeMap<K, Moments>, src: BTreeMap<K, Moments>) {
-    for (k, mo) in src { dst.entry(k).or_default().merge(&mo); }
-}
-
 impl Accumulator {
     fn push(&mut self, fd: &FrameData) {
         for (elem, (hist, total)) in &fd.qn {
@@ -938,33 +914,6 @@ impl Accumulator {
             for (key, &c) in &fd.linkage {
                 self.linkage.entry(key.clone()).or_default()
                     .push(c, c as f64 / fd.n_links as f64);
-            }
-        }
-    }
-
-    fn merge(&mut self, other: Self) {
-        self.n_edge_sharing += other.n_edge_sharing;
-        for (k, inner) in other.qn {
-            merge_keyed(self.qn.entry(k).or_default(), inner);
-        }
-        for (k, inner) in other.qn_partner {
-            merge_keyed(self.qn_partner.entry(k).or_default(), inner);
-        }
-        for (k, inner) in other.cn {
-            merge_keyed(self.cn.entry(k).or_default(), inner);
-        }
-        merge_keyed(&mut self.oxy, other.oxy);
-        for (k, inner) in other.ligand {
-            merge_keyed(self.ligand.entry(k).or_default(), inner);
-        }
-        merge_keyed(&mut self.linkage, other.linkage);
-        for (dst, src) in [(&mut self.qn_sum, other.qn_sum),
-                           (&mut self.cn_sum, other.cn_sum),
-                           (&mut self.n_bo_sum, other.n_bo_sum)] {
-            for (k, (s, n)) in src {
-                let e = dst.entry(k).or_insert((0.0, 0));
-                e.0 += s;
-                e.1 += n;
             }
         }
     }
@@ -1054,6 +1003,42 @@ mod tests {
         let mut c = BTreeMap::new();
         c.insert(("P".into(), "O".into()), p_o);
         TypeParams::new(c, BTreeMap::new())
+    }
+
+    /// Frames are pushed in frame order, so fraction and sd do not depend on the thread
+    /// count; a rayon fold/reduce merged the Welford moments by the schedule (A2-M1).
+    #[test]
+    fn test_result_is_bit_identical_across_thread_counts() {
+        // P on a 3 Å line, an O between each pair, jittered per frame so bonds come and go
+        let frames = (0..40u64).map(|k| {
+            let mut atoms = Vec::new();
+            for i in 0..8 {
+                let x = 3.0 * i as f64;
+                atoms.push(atom("P", x, 0.0, 0.0));
+                let jitter = ((k * 7 + i as u64 * 13) % 11) as f64 * 0.06;
+                atoms.push(atom("O", x + 1.5, jitter, 0.0));
+            }
+            cube(atoms)
+        }).collect();
+        let traj = traj_of(frames);
+        let run = |threads: usize| rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap()
+            .install(|| calc_network(&traj, &make_params(1.8)).unwrap());
+        let bits = |r: &NetworkResult| -> Vec<u64> {
+            let mut v: Vec<u64> = Vec::new();
+            for dist in [&r.qn_dist, &r.cn_dist] {
+                let mut keys: Vec<&String> = dist.keys().collect();
+                keys.sort();
+                for k in keys {
+                    for (_, b) in &dist[k] { v.extend([b.fraction.to_bits(), b.sd.to_bits()]); }
+                }
+            }
+            v
+        };
+        let one = bits(&run(1));
+        assert!(one.len() > 4, "the fixture must give several bins");
+        for _ in 0..5 {
+            assert_eq!(bits(&run(8)), one);
+        }
     }
 
     /// 取配体类型的 label → count 映射
@@ -1298,13 +1283,6 @@ mod tests {
         let bin = m.finish(5);
         assert_eq!(bin.sd, 0.0, "恒定序列的样本标准差必须精确为 0,实得 {}", bin.sd);
         assert_eq!(bin.count, 125);
-
-        // 并行归并路径同样精确
-        let (mut a, mut b) = (Moments::default(), Moments::default());
-        for _ in 0..2 { a.push(25, frac); }
-        for _ in 0..3 { b.push(25, frac); }
-        a.merge(&b);
-        assert_eq!(a.finish(5).sd, 0.0, "归并后仍须精确为 0");
     }
 
     /// 桥联表：两端各带元素 / 桥接数 / 配位数，且只存规范半边。
