@@ -233,6 +233,8 @@ A cutoff of 0 means the pair never bonds; a negative or non-finite one is an err
 | `--ncore N` | all cores | number of parallel threads |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  The statistics read neither, but a dump that carries them is refused without it; the values then reach `--export-traj extxyz` |
 | `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
+| `--atom-style <STYLE>` | — | `atomic`, `charge` or `full`: column layout of a LAMMPS data file's `Atoms` section (required for `.data` / `.lmp` / `.lammps` input) |
+| `--format-in <FMT>` | from the name | read the input as this format (`qe/in`, `vasp/outcar`, ...; see the format table in the CLI reference) |
 | `--modifier E,E` | — | comma-separated elements that count towards coordination number only.  Their cutoffs must be given as well |
 | `--qn E,E` | `B,P,Si` | comma-separated network formers to report Qn for.  **Replaces** the default list rather than adding to it |
 | `--export-traj [FMT]` | — | also write a labelled trajectory, `lammpstrj` (default) or `extxyz` |

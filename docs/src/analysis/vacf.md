@@ -91,6 +91,8 @@ pub struct VacfParams {
 | `--last-n` | all | keep only the last N frames before anything else |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of the dump velocities (required for a dump) |
 | `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
+| `--atom-style <STYLE>` | — | `atomic`, `charge` or `full`: column layout of a LAMMPS data file's `Atoms` section (required for `.data` / `.lmp` / `.lammps` input) |
+| `--format-in <FMT>` | from the name | read the input as this format (`qe/in`, `vasp/outcar`, ...; see the format table in the CLI reference) |
 
 ## Output
 

@@ -27,8 +27,9 @@ an input (`ferro traj gr --dr 0.1`) are an error, not a request for the page: th
 
 ## Common Flags
 
-Every command under `traj` / `map` / `net` takes these flags (`convert` / `info` / `bader` / `dataset`
-do **not**; each has its own parameters):
+Every command under `traj` / `map` / `net` takes these flags. `convert`, `info` and `build` take only
+the four reader flags (`--format-in`, `--units`, `--type-map`, `--atom-style`); `bader` and `dataset`
+take none of them and have their own parameters:
 
 | Flag | Description |
 |---|---|
@@ -41,6 +42,7 @@ do **not**; each has its own parameters):
 | `--units <UNITS>` | `real` (velocity Å/fs, force kcal/mol/Å) or `metal` (velocity Å/ps, force eV/Å): the LAMMPS unit system of a dump's velocity/force columns.  **Required whenever a dump has `vx`/`fx`-type columns** — a dump does not record its `units`, and the two systems differ by $10^3$ in velocity and ~23 in force, so the value is never guessed (DeePMD runs in `metal`).  Coordinates and cells are Å under either system; a dump with positions only reads without it |
 | `--type-map <MAP>` | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
 | `--atom-style <STYLE>` | `atomic`, `charge` or `full`: the column layout of a LAMMPS data file's `Atoms` section.  **Required whenever an input is `.data` / `.lmp` / `.lammps`**, checked before the first file is read; see the format notes below |
+| `--format-in <FMT>` | read the input as this format, not by its name (`qe/in`, `vasp/outcar`, …; column `--format-in` of the format table below) |
 
 ### Batch processing
 
@@ -410,6 +412,7 @@ Reading a LAMMPS dump that carries site labels prints the element/label split ma
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces.  Required when they are present |
 | `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
+| `--format-in <FMT>` | from the name | read the input as this format (`qe/in`, `vasp/outcar`, …; column `--format-in` of the format table) |
 
 ---
 

@@ -19,6 +19,9 @@ ferro build box -c ZnO:43 -c P2O5:43 -c Al2O3:15 --density 3.2
 | `--mkdir` | | create `-o` without asking (required when there is no terminal) |
 | `--format-out <EXT>` | the input's | output format as an extension: `vasp`, `cif`, `extxyz`, `data`, … |
 
+`supercell`, `vacuum` and `merge` also take the four reader flags `--format-in`, `--units`,
+`--type-map` and `--atom-style`, as in the CLI reference's Common Flags.
+
 Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext>`:
 `supercell_quartz.cif`, `vacuum_slab_s1.vasp`. `merge` names both inputs
 (`merge_<A>_<B>`), and `box`, which has none, is `box[_<suffix>].vasp`.
