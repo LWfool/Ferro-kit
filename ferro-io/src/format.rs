@@ -661,6 +661,10 @@ mod tests {
         for (i, (a, fa)) in Format::LABELS.iter().enumerate() {
             assert!(Format::LABELS[i + 1..].iter().all(|(_, fb)| fb != fa), "{a}: two labels for one format");
         }
+        // A format missing here cannot be named by `--format-in` or Python `read(format=)`
+        for f in Format::ALL {
+            assert!(Format::LABELS.iter().any(|(_, l)| *l == f), "{}: no label", f.name());
+        }
         assert_eq!(Format::from_label("QE/IN").unwrap(), Format::QeInput);
         let err = Format::from_label("qe").unwrap_err().to_string();
         assert!(err.contains("qe/in | qe/pw"), "{err}");
