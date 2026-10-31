@@ -533,8 +533,8 @@ Three `.dat` files modelled on the Henkelman group's bader output, `bader_<kind>
 The layout is close to, but not exactly, Henkelman's: parsers written for it (ASE, pymatgen) fail on these files.
 
 The three reports are **written next to the input file by default** (`-i run1/CHGCAR` →
-`run1/bader_ACF_CHGCAR.dat`), which makes this the only command in the repository that does not default to the
-current directory.  VASP charge densities are all called `CHGCAR`, and only landing next to the input, in
+`run1/bader_ACF_CHGCAR.dat`), not in the current directory (`dataset collect` likewise writes beside each
+input).  VASP charge densities are all called `CHGCAR`, and only landing next to the input, in
 their own run directories, do they avoid overwriting each other.  `-o <DIR>` collects them elsewhere, and `-s <SUFFIX>` tells two runs with different parameters on the same input apart (`bader_ACF_<stem>_<suffix>.dat`).
 
 ---

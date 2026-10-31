@@ -506,8 +506,7 @@ CP2K 输入另用 deepmd 环境的 cp2k-input-tools 0.9.1 离线校验过（它�
 - `ferro map chg-sdf` 的 `--cubes` 仍是多 cube 聚合成一张 SDF，与 `map` 其余模式
   「一输入一产物」相反（待办见 `plan/suspended.md`）
 - **`ferro bader` 的三个 `.dat` 默认写在输入文件旁边**（2026-09-20 起），名字是
-  `bader_ACF_<输入stem>[_<-s 后缀>].dat`（BCF / AVF 同形，`batch::product_name` 的规则），`-o` 可改目录。这是全仓唯一不默认当前目录的
-  命令：VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然互相覆盖
+  `bader_ACF_<输入stem>[_<-s 后缀>].dat`（BCF / AVF 同形，`batch::product_name` 的规则），`-o` 可改目录。与 `dataset collect`（不给 `-o` 时落在每个输入目录旁）一样不默认当前目录：VASP 的电荷密度一律叫 `CHGCAR`，默认 cwd 时两个体系必然互相覆盖
 - `ferro info` 的密度只报首尾两帧（手册 §info 已写明）。元素表里查不到质量的符号
   **报错并点名**（2026-10-20，A-3，用户定 4；此前回退 1 amu 把密度拉低）：`ferro info` 不打
   Density 行、其余照出、退出码 1
