@@ -46,13 +46,14 @@ fn parse_atom_style(atom_style: Option<&str>) -> PyResult<Option<AtomStyle>> {
     atom_style.map(|s| s.parse::<AtomStyle>().map_err(pyerr)).transpose()
 }
 
-/// Checks `units` / `atom_style` as `read` does, for `ferro-py` to call before reading the
+/// Checks `units` / `atom_style` / `format` as `read` does, for `ferro-py` to call before reading the
 /// first file: a typo is reported at once, not after a long trajectory has been read.
 #[pyfunction]
-#[pyo3(name = "_check_read_options", signature = (units = None, atom_style = None))]
-fn check_read_options(units: Option<&str>, atom_style: Option<&str>) -> PyResult<()> {
+#[pyo3(name = "_check_read_options", signature = (units = None, atom_style = None, format = None))]
+fn check_read_options(units: Option<&str>, atom_style: Option<&str>, format: Option<&str>) -> PyResult<()> {
     parse_units(units)?;
     parse_atom_style(atom_style)?;
+    format.map(Format::from_label).transpose().map_err(pyerr)?;
     Ok(())
 }
 

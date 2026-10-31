@@ -190,6 +190,7 @@ def test_job_mixed_compositions_write_nothing(tmp_path, job, capsys):
     (["--start", "3", "--end", "1"], "start 3 is past end 1"),
     (["--units", "lj"], "unknown LAMMPS units 'lj'"),
     (["--atom-style", "bond"], "unknown atom style 'bond'"),
+    (["--format-in", "vasp/xyz"], "unknown input format 'vasp/xyz'"),
 ])
 def test_job_parameter_errors_come_first(tmp_path, job, capsys, extra, message):
     # 输入文件不存在，也应先报参数错
@@ -206,6 +207,15 @@ def test_negative_frame_selection_is_a_usage_error(tmp_path, monkeypatch, capsys
         cli.main([command, "-s", "vasp", *head, "-i", str(NVT), "-o", str(tmp_path), option, "-1"])
     assert e.value.code == 2
     assert f"argument {option}: -1 is negative" in capsys.readouterr().err
+
+
+def test_job_reads_by_format_in(tmp_path, job):
+    """`--format-in` reads a file whatever its name, as the Rust CLI's reading commands do
+    (review 2026-10-30 A6-M-3)."""
+    odd = tmp_path / "frame.txt"
+    ferro.write(ferro.read(str(NVT)).tail(1), str(odd), format="extxyz")
+    assert job("-i", str(odd), "--format-in", "extxyz", "-o", str(tmp_path / "out"), "--mkdir") == 0
+    assert (tmp_path / "out" / "frame").is_dir()
 
 
 def test_job_needs_mkdir_without_terminal(tmp_path, job, capsys):

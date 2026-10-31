@@ -92,6 +92,7 @@ Parameters:
       --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
       --stride N        Take every Nth frame within [start, end]  [1]
       --number N        Take this many frames, spread evenly, both ends kept
+      --format-in FMT Read every -i as FMT, whatever its name: qe/in, vasp/poscar, ...
       --atom-style S    LAMMPS data input: atomic | charge | full  (required)
       --units U         Dump vx/fx units: real | metal  (required if present)
       --type-map M      Dump without element column: 1=Zr,2=O,...
@@ -239,6 +240,7 @@ def job_parser():
     p.add_argument("--end", type=nonneg_int)
     p.add_argument("--stride", type=nonneg_int)
     p.add_argument("--number", type=nonneg_int)
+    p.add_argument("--format-in")
     p.add_argument("--atom-style")
     p.add_argument("--units")
     p.add_argument("--type-map")
@@ -357,8 +359,8 @@ def run_job(argv):
 
 
 def check_read_args(args):
-    """The checks of `--units` / `--atom-style` and the frame selection, before the first file is read."""
-    ferro._check_read_options(args.units, args.atom_style)
+    """The checks of `--units` / `--atom-style` / `--format-in` and the frame selection, before the first file is read."""
+    ferro._check_read_options(args.units, args.atom_style, args.format_in)
     ferro._check_selection(args.start, args.end, args.stride, args.number)
 
 
@@ -371,7 +373,8 @@ def read_structures(files, args, type_map):
     dumps included, used to stay alive until the last job was built).
     """
     for f in files:
-        traj = ferro.read(f, units=args.units, atom_style=args.atom_style, type_map=type_map)
+        traj = ferro.read(f, units=args.units, atom_style=args.atom_style, type_map=type_map,
+                          format=args.format_in)
         yield f, [(Path(f).stem if len(traj) == 1 else f"{Path(f).stem}_{i:04d}", traj, i)
                   for i in traj.frame_indices(args.start, args.end, args.stride, args.number)]
 
@@ -410,6 +413,7 @@ Parameters:
       --end N           Last frame to take  (0-based, INCLUSIVE)  [last]
       --stride N        Take every Nth frame within [start, end]  [1]
       --number N        Take this many frames, spread evenly, both ends kept
+      --format-in FMT Read every -i as FMT, whatever its name: qe/in, vasp/poscar, ...
       --atom-style S    LAMMPS data input: atomic | charge | full  (required)
       --units U         Dump vx/fx units: real | metal  (required if present)
       --type-map M      Dump without element column: 1=Zr,2=O,...
@@ -475,6 +479,7 @@ def conv_parser():
     p.add_argument("--fine-grid", type=float)
     for name in ("--start", "--end", "--stride", "--number"):
         p.add_argument(name, type=nonneg_int)
+    p.add_argument("--format-in")
     p.add_argument("--atom-style")
     p.add_argument("--units")
     p.add_argument("--type-map")

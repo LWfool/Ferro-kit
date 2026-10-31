@@ -115,7 +115,9 @@ same options as `ferro convert`:
 LAMMPS inputs need what `ferro convert` needs: `--atom-style` for a data file,
 `--units` for a dump with velocities or forces, and `--type-map 1=Zr,2=O,…` for a
 dump without an element column. A dump whose atoms are still placeholders
-(`X1`, `X2`) is an error until `--type-map` names them.
+(`X1`, `X2`) is an error until `--type-map` names them. `--format-in FMT` reads every
+`-i` as FMT whatever its name (`pw.txt` with `--format-in qe/in`), with the names of
+`ferro convert --format-in`; a bad name is an error before any file is read.
 
 ## Output layout
 

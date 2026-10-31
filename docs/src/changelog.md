@@ -31,6 +31,7 @@ command line alike; regenerate it rather than migrating it.
   `vasp/xml`, `cp2k/inp`, `cp2k/restart`, `cp2k/md`, `cp2k/sp`, `lammps/data`, `lammps/dump`,
   `deepmd/npy`, and `xyz`, `extxyz`, `pdb`, `cif`. `ferro convert` lists them in its format table.
 - A QE input named `.qein` is recognised, as `.in` and `.qe` are.
+- `ferro-py job` and `ferro-py conv` take `--format-in FMT` too, with the same names.
 
 ### Code review fixes: readers that misread a broken file
 

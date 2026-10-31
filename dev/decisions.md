@@ -867,7 +867,8 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 - **名字表只在 `format.rs`**（`Format::LABELS`），CLI、collect、Python 共用，守「格式识别只在 format.rs」。
   collect 不再有自己的 `InputFormat` 枚举，从同表过滤 `Format::Aimd(_)`
 - **Python**：`read(format=)` 取同一套名字；`write(format=)` 不改名 —— 函数名已区分方向。`format` 加在
-  `read` 参数表末尾，按位置传参的旧调用不受影响
+  `read` 参数表末尾，按位置传参的旧调用不受影响。`ferro-py job` / `conv` 的 `--format-in` 2026-10-31 补上
+  （10-30 审查 A6-M-3），传给 `read(format=)`，名字经 `_check_read_options` 在读第一个文件前校验
 - **给了 `--format-in` 就不嗅探**（`read_as`），与 collect 不同：collect 的嗅探留着是为 NOTE 与「OUTCAR +
   vasprun.xml 同目录」守卫（见 2026-09-22 一节），单文件读入没有这两样需求
 
