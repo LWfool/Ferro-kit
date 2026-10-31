@@ -59,7 +59,8 @@ Parameters:
 Output:
   DIR/<input>[_<SUFFIX>].<EXT>, overwritten if present (noted). A format that
   holds one structure (Write = one per file) gives one file per frame,
-  numbered by the ORIGINAL frame index: DIR/traj_0002.cif.
+  numbered by the ORIGINAL frame index: DIR/traj_0002.cif; the index follows
+  -s, DIR/traj_700K_0002.cif.
 
 Examples:
   ferro convert -i input.cif -o . --format-out vasp

@@ -378,8 +378,11 @@ impl Output {
 /// `<mode>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.
 ///
 /// `segments` are mode, table, selection and input in that order; empty ones are
-/// skipped. The `-s` tag always comes last, so `ls *_<tag>.*` lists one batch, and
+/// skipped. The `-s` tag comes last, so `ls *_<tag>.*` lists one batch, and
 /// the selection precedes the input, so `ls gr_P-O_*` lists one pair across batches.
+/// One exception, by user decision (2026-10-31): the per-frame index that
+/// `ferro_io::write_numbered` adds for a single-structure format follows the tag
+/// (`traj_700K_0002.cif`), keeping one input's frames together; `ls *_<tag>_*` lists them.
 /// A per-input product (`map`, `net --export-traj`, `bader`) always carries its input
 /// label, even for a single input: whether a name has that segment must not depend on
 /// how many files a glob matched (user decision 2026-10-18).

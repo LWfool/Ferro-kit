@@ -32,7 +32,8 @@ Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext
   and the run stops before anything is read if it is missing.
 - **A single-structure format gets one file per frame**, as with `convert`:
   a two-frame trajectory written as POSCAR is `supercell_md_0000.vasp`,
-  `supercell_md_0001.vasp`.
+  `supercell_md_0001.vasp`. The frame index follows a `-s` tag (`supercell_md_t_0000.vasp`),
+  the one exception to the tag coming last.
 - **Atoms are written in (Z, symbol) order**, one block per element, as `convert` writes them.
 - **Energy, forces, stress, velocities, temperature and step are dropped.** They
   belong to a calculation, and the new structure has not been calculated.

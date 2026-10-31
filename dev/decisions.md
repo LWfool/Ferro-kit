@@ -3,6 +3,12 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## 逐帧序号排在 `-s` 之后（2026-10-31，用户定；10-30 审查 A5-M4）
+
+`convert` / `build` 写单结构格式时，`write_numbered` 把 `_NNNN` 接在已含 `-s` 的 stem 后：`traj_700K_0002.cif`。
+这是「`-s` 恒为末段」的**唯一例外**，**保留不改名**：同一输入的各帧挨着按序排列，比 `ls *_<tag>.*` 能列一批更常用；
+批次改用 `ls *_<tag>_*` 列。没选 `<input>_NNNN_<s>`：规则无例外，但逐帧产物名全变（破坏性）。
+
 ## map 产物名的选择段（2026-10-31，用户定；10-30 审查 A5-M1，破坏性）
 
 `map density / velocity / force / radius` 的 `--elements` 经 `batch::set_label` 进 selection 段（排序去重，不给写

@@ -34,7 +34,7 @@ do **not**; each has its own parameters):
 |---|---|
 | `-i <FILE>...` | input files; takes **several values** and expands glob patterns itself (quote them so the shell leaves them alone) |
 | `-o <DIR>` | the output goes into this directory, the current directory by default.  When it does not exist ferro **asks first** (`[y/N]`, on stderr); `--mkdir` skips the question |
-| `-s <SUFFIX>` | batch marker, the last segment of every product name: `<command>[_<table>][_<selection>][_<input>]_<suffix>.<ext>` |
+| `-s <SUFFIX>` | batch marker, the last segment of every product name: `<command>[_<table>][_<selection>][_<input>]_<suffix>.<ext>` (only a per-frame index of `convert` / `build` follows it: `traj_700K_0002.cif`) |
 | `--mkdir` | create the `-o` directory without asking.  **Required in non-interactive environments (scripts, CI)**, which otherwise error out |
 | `--last-n N` | use only the last N frames (skipping the equilibration stage) |
 | `--ncore N` | number of parallel threads (all cores by default) |
@@ -324,6 +324,9 @@ The index is inserted **before the extension** and is the **frame index in the o
 ```
 
 The index is zero-padded to at least 4 digits so that `ls` sorts by frame order.  **When only one frame is selected, one file is written with no index**, whatever the format.
+
+The index is the one exception to "`-s` comes last": it follows the tag, `-s 700K` giving `traj_700K_0002.cif`,
+so that one input's frames stay together in order.  List a batch of per-frame files with `ls *_700K_*`.
 
 `-i` currently accepts a **single file** only.  Several inputs plus frame selection would make the output
 names of different trajectories collide.
