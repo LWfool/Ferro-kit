@@ -119,8 +119,8 @@ command line alike; regenerate it rather than migrating it.
 
 ### `ferro convert`: `-o` is a directory
 
-- `-o` is now the output **directory** and `--format EXT` is required: `ferro convert -i a.dump -o b.xyz`
-  becomes `ferro convert -i a.dump -o . --format xyz`. A `-o` that does not exist yet and ends in a format
+- `-o` is now the output **directory** and `--format-out EXT` is required: `ferro convert -i a.dump -o b.xyz`
+  becomes `ferro convert -i a.dump -o . --format-out xyz`. A `-o` that does not exist yet and ends in a format
   extension (`-o b.xyz`) is refused rather than made into a directory.
 - Products are named after the input: `DIR/<input>.<EXT>`, and per-frame files are `<input>_NNNN.<EXT>`
   instead of `frame_NNNN.<EXT>`. A DeePMD directory keeps its whole name (`data.000` gives
@@ -129,7 +129,7 @@ command line alike; regenerate it rather than migrating it.
 
 ### Python: `ferro.write` takes the format explicitly
 
-- `ferro.write(traj, path, format, ...)`: `format` is required, as for `convert --format`
+- `ferro.write(traj, path, format, ...)`: `format` is required, as for `convert --format-out`
   (`ferro.write(t, "POSCAR")` becomes `ferro.write(t, "POSCAR", format="vasp")`). The path is no longer
   consulted: `ferro.write(t, "POSCAR_x.cif")` used to write a POSCAR, because of the name's prefix.
 
@@ -138,7 +138,7 @@ command line alike; regenerate it rather than migrating it.
 - New commands: `ferro build supercell` (replicate by `--dims`, or size by `--min-atoms` /
   `--min-length`), `vacuum`, `merge` and `box`, which before were reachable only from Python or
   not at all. `-o` is the output directory, `-s` the batch tag; the product is
-  `<op>_<input>[_<suffix>].<ext>` in the input's format unless `--format` says otherwise.
+  `<op>_<input>[_<suffix>].<ext>` in the input's format unless `--format-out` says otherwise.
   See `ferro doc build`.
 - `--min-length` is the interplanar spacing, not the lattice vector length: on a tilted cell
   a script that sized by vector length gives a thinner supercell than ferro does.
