@@ -267,7 +267,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
                 if params.oo_min > 0.0 {
                     let d = min_pair_distance(f, cell, "O", "O");
                     if let Some(d) = d {
-                        if d < params.oo_min {
+                        if d.is_nan() || d < params.oo_min {
                             flags |= Criterion::OoMin.bit();
                         }
                     }
@@ -520,6 +520,16 @@ mod tests {
         let r = filter_frames(&traj_of(&[1.0, 1.0, 1.0], &[0.0, nan, f64::INFINITY]),
                               &FilterParams { s_max: 1.0, ..Default::default() }).unwrap();
         assert_eq!(r.keep, vec![0], "NaN / inf 应力的帧应被应力判据删掉");
+    }
+
+    /// A NaN coordinate makes the O-O distance NaN, and that frame is dropped like a NaN
+    /// force; NaN compared false with `oo_min` and the frame passed (review 2026-10-30 A3-M-3).
+    #[test]
+    fn a_nan_coordinate_is_dropped_by_oo_min() {
+        let r = filter_frames(&oo_traj(&[2.5, f64::NAN, 2.5]),
+                              &FilterParams { f_max: 0.0, oo_min: 1.5, ..Default::default() }).unwrap();
+        assert_eq!(r.keep, vec![0, 2]);
+        assert!(r.verdicts[1].min_oo.unwrap().is_nan());
     }
 
     #[test]

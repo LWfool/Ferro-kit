@@ -10,7 +10,9 @@ use ferro_core::{Frame, PeriodicCell};
 
 /// Smallest distance between two atoms of the given elements, minimum image.
 ///
-/// `None` when the frame holds fewer than the two atoms the pair needs. When
+/// `None` when the frame holds fewer than the two atoms the pair needs; `NaN` when a
+/// coordinate is NaN, so the caller can drop the frame, as `filter` drops a NaN force
+/// or stress (a NaN compared false and was skipped; review 2026-10-30 A3-M-3). When
 /// `a == b` a distance is measured between distinct atoms only — the zero of an
 /// atom with itself is not a contact, while its periodic images are, and those
 /// are far away by construction (they sit at the box widths).
@@ -28,6 +30,9 @@ pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -
         for &j in rest {
             let d = cell.minimum_image(frame.positions()[j] - pi);
             let r2 = d.norm_squared();
+            if r2.is_nan() {
+                return Some(f64::NAN);
+            }
             if r2 < best {
                 best = r2;
             }
@@ -111,6 +116,13 @@ mod tests {
         // 盒子 10 Å，两个 O 相隔 9 Å —— 镜像只有 1 Å
         let (f, c) = cubic(10.0, vec![("O", [0.5, 0.0, 0.0]), ("O", [9.5, 0.0, 0.0])]);
         assert!((min_pair_distance(&f, &c, "O", "O").unwrap() - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_nan_coordinate_gives_nan() {
+        let (mut f, c) = cubic(10.0, vec![("O", [0.0; 3]), ("O", [2.5, 0.0, 0.0]), ("O", [5.0, 0.0, 0.0])]);
+        f.positions_mut()[2].y = f64::NAN;
+        assert!(min_pair_distance(&f, &c, "O", "O").unwrap().is_nan());
     }
 
     #[test]
