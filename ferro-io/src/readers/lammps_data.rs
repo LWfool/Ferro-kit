@@ -64,10 +64,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
     let comment = lines.first().context("empty file: no header comment line")?.trim().to_string();
     i += 1;
 
-    // Box bounds
-    let mut xlo = 0.0_f64; let mut xhi = 0.0_f64;
-    let mut ylo = 0.0_f64; let mut yhi = 0.0_f64;
-    let mut zlo = 0.0_f64; let mut zhi = 0.0_f64;
+    // Box bounds: x, y, z as (lo, hi), each required
+    let mut bounds: [Option<(f64, f64)>; 3] = [None; 3];
     let mut xy = 0.0_f64; let mut xz = 0.0_f64; let mut yz = 0.0_f64;
     let mut is_triclinic = false;
     let mut n_atoms: Option<usize> = None;
@@ -81,15 +79,9 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
             n_atoms = Some(n.parse().with_context(|| format!("bad atom count in '{line}'"))?);
         } else if line.ends_with("atom types") {
             // type count stored but not needed
-        } else if line.contains("xlo xhi") {
+        } else if let Some(k) = ["xlo xhi", "ylo yhi", "zlo zhi"].iter().position(|t| line.contains(t)) {
             let v = floats(line, 2)?;
-            xlo = v[0]; xhi = v[1];
-        } else if line.contains("ylo yhi") {
-            let v = floats(line, 2)?;
-            ylo = v[0]; yhi = v[1];
-        } else if line.contains("zlo zhi") {
-            let v = floats(line, 2)?;
-            zlo = v[0]; zhi = v[1];
+            bounds[k] = Some((v[0], v[1]));
         } else if line.contains("xy xz yz") {
             let v = floats(line, 3)?;
             xy = v[0]; xz = v[1]; yz = v[2];
@@ -100,10 +92,24 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
         i += 1;
     }
 
+    // A data file without its box is incomplete (user decision 2026-10-31): a missing axis used to
+    // give a zero-volume cell. LAMMPS read_data refuses hi <= lo as well
+    let mut lo = [0.0; 3];
+    let mut len = [0.0; 3];
+    for (k, axis) in ["x", "y", "z"].into_iter().enumerate() {
+        let (l, h) = bounds[k]
+            .with_context(|| format!("no '{axis}lo {axis}hi' line: a LAMMPS data file must give its box"))?;
+        // floats() takes `nan` / `inf`, which `h <= l` alone lets through
+        if !(l.is_finite() && h.is_finite()) || h <= l {
+            bail!("{axis}hi {h} is not above {axis}lo {l}");
+        }
+        lo[k] = l;
+        len[k] = h - l;
+    }
+    let [xlo, ylo, zlo] = lo;
+    let [lx, ly, lz] = len;
+
     // Build cell
-    let lx = xhi - xlo;
-    let ly = yhi - ylo;
-    let lz = zhi - zlo;
     let mut cell = if is_triclinic {
         Cell::from_matrix(Matrix3::new(
             lx,  0.0, 0.0,
@@ -428,9 +434,9 @@ Atoms # full
     fn test_empty_file_is_an_error() {
         let e = parse_lammps_data("", AtomStyle::Atomic).unwrap_err();
         assert!(format!("{e:#}").contains("empty file"), "{e:#}");
-        // A blank title and nothing else is not empty, but still has no atom count
+        // A blank title and nothing else is not empty, but its header is: the box is the first thing missed
         let e = parse_lammps_data("\n  \n# comment only\n", AtomStyle::Atomic).unwrap_err();
-        assert!(format!("{e:#}").contains("no Atoms section"), "{e:#}");
+        assert!(format!("{e:#}").contains("no 'xlo xhi' line"), "{e:#}");
     }
 
     #[test]
@@ -454,6 +460,13 @@ Atoms # full
         // 没有 N atoms
         let no_n = WATER_FULL.replace("6 atoms\n", "");
         assert!(err("w7.data", &no_n, AtomStyle::Full).contains("no 'N atoms'"));
+        // No box line, or an empty axis: a zero-volume cell used to be read with exit code 0 (review 2026-10-30 H4)
+        let no_y = WATER_FULL.replace("0.0 20.0 ylo yhi\n", "");
+        assert!(err("w8.data", &no_y, AtomStyle::Full).contains("no 'ylo yhi' line"));
+        let flat = WATER_FULL.replace("0.0 20.0 zlo zhi", "5.0 5.0 zlo zhi");
+        assert!(err("w9.data", &flat, AtomStyle::Full).contains("zhi 5 is not above zlo 5"));
+        let nan = WATER_FULL.replace("0.0 20.0 xlo xhi", "0.0 nan xlo xhi");
+        assert!(err("w10.data", &nan, AtomStyle::Full).contains("xhi NaN is not above xlo 0"));
     }
 
     // 审查 A-10：Masses 后接未登记的段时，其行被当成 Masses，O/H 两 type 都成 X 并合并

@@ -34,6 +34,8 @@ command line alike; regenerate it rather than migrating it.
   and the frame is dropped, as the MD reader already did; it used to be kept as converged.
 - LAMMPS dump: an `ITEM: ATOMS` line with none of `type`, `element` and `typelabel` is an error. Every
   atom used to be read as type 1, so `--type-map` made them all one element with exit code 0.
+- LAMMPS data: a file missing any of `xlo xhi`, `ylo yhi`, `zlo zhi`, or with a hi not above its lo, is an
+  error. It used to be read as a zero-volume cell (lengths 0, angles NaN) with exit code 0.
 
 ### Code review fixes: four silent wrong results
 

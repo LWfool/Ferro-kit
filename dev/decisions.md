@@ -16,6 +16,9 @@
   `converged in N steps`，读出帧数不变。
 - **H3 dump 缺元素来源**：type / element / typelabel 一列都没有时在帧头报错（读原子行之前），不猜 type 1。
   `id` 缺省为 0 不动：`sort_by_key` 是稳定排序，缺 `id` 时按文件顺序，不会错配原子。
+- **H4 data 缺盒子**：**用户定报错**（2026-10-31）—— data 文件必须有盒子，没有就是不完整的；**不**照 LAMMPS
+  `read_data` 的缺省值 -0.5 / 0.5（该值也未查证）。三轴任一缺 `lo hi` 行，或 hi 不大于 lo、非有限值（`floats` 收
+  `nan` / `inf`），一律报错（后者用户同意一并做）。只有空白标题的文件因此先报缺盒子，不再是「no Atoms section」。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 

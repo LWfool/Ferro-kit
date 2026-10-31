@@ -228,7 +228,9 @@ Things that trip people up:
   be read off the file: the `Atoms # full` comment is optional, and the column count is ambiguous
   (`charge` and `molecular` both have 6 columns).  Ferro guesses neither, and ignores the comment even
   when it is present.  A line whose column count does not match the style (with or without the three
-  image flags) is an error, as is an atom count different from the header's `N atoms`.  Image flags
+  image flags) is an error, as is an atom count different from the header's `N atoms`.  The header must
+  give all of `xlo xhi`, `ylo yhi` and `zlo zhi` with each hi above its lo; a file without its box is
+  incomplete and an error.  Image flags
   are applied, `x + ix·a + iy·b + iz·c`, as LAMMPS `read_data` and ASE do.  ferro's own data writer
   uses `full`, so reading its output back takes `--atom-style full`.
 
