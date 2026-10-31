@@ -151,11 +151,12 @@ pub fn calc_cube_density(
     params.validate()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
-    // periodic_cells rejects a mix, so either every frame has a cell or none does
-    let cells = check::periodic_cells(traj, None)?;
-    let pcs: Vec<&PeriodicCell> = cells.iter().map(Option::as_ref).collect::<Option<Vec<_>>>()
-        .filter(|pcs| !pcs.is_empty())
-        .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
+    // An empty trajectory is named as such: it used to be reported as "no frame has a
+    // periodic cell" (review 2026-10-30 A2-M2)
+    if traj.frames.is_empty() {
+        return Err(ChemError::ValidationError("trajectory is empty".into()));
+    }
+    let pcs = check::all_periodic_cells(traj, None)?;
     let ref_frame = &traj.frames[0];
     let ref_cell = ref_frame.cell.as_ref().expect("every frame has a cell");
     let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
@@ -171,7 +172,7 @@ pub fn calc_cube_density(
     }
 
     // Parallel over frames, summed in frame order
-    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(pcs).collect();
+    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(&pcs).collect();
     let mut count = Array3::<f64>::zeros((nx, ny, nz));
     let mut value_sum = Array3::<f64>::zeros((nx, ny, nz));
     let n_frames = pairs.len();
@@ -226,7 +227,7 @@ mod tests {
         traj.frames.push(frame);
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
-        assert!(err.contains("no frame has a periodic cell"), "{err}");
+        assert!(err.contains("all frames must have a periodic cell (frame 0 has none)"), "{err}");
     }
 
     /// The cells come from the entry's periodic_cells, not each frame on its own: an empty
@@ -236,7 +237,11 @@ mod tests {
     fn test_empty_or_mixed_cells_are_errors() {
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, ..Default::default() };
         let err = calc_cube_density(&Trajectory::new(), &params).err().unwrap().to_string();
-        assert!(err.contains("no frame has a periodic cell"), "{err}");
+        assert!(err.contains("trajectory is empty"), "{err}");
+        let err = crate::calc_cube_radius(&Trajectory::new(), &crate::CubeRadiusParams {
+            nx: 2, ny: 2, nz: 2, ..Default::default()
+        }).err().unwrap().to_string();
+        assert!(err.contains("trajectory is empty"), "{err}");
 
         let mut traj = make_traj(vec![(1.0, 1.0, 1.0)], vec!["H"]);
         let mut bare = Frame::default();

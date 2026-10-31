@@ -166,7 +166,7 @@ fn process_frame(
 /// Each voxel accumulates the total count of (frame, atom) pairs where
 /// the atom lies within `params.radius` Å of the voxel centre.
 ///
-/// Returns `Err` if a parameter is out of range, no frame has a periodic cell, or
+/// Returns `Err` if a parameter is out of range, the trajectory is empty, a frame has no periodic cell, or
 /// `radius` exceeds the minimum-image bound (half the smallest interplanar spacing) of
 /// any frame — beyond it a voxel sees the same atom through several images, and only
 /// the nearest would be counted.
@@ -177,17 +177,18 @@ pub fn calc_cube_radius(
     params.validate()?;
     let (nx, ny, nz) = (params.nx, params.ny, params.nz);
 
-    // periodic_cells rejects a mix, so either every frame has a cell or none does
-    let cells = check::periodic_cells(traj, Some(("radius", params.radius)))?;
-    let pcs: Vec<&PeriodicCell> = cells.iter().map(Option::as_ref).collect::<Option<Vec<_>>>()
-        .filter(|pcs| !pcs.is_empty())
-        .ok_or_else(|| ChemError::ValidationError("no frame has a periodic cell".into()))?;
+    // An empty trajectory is named as such: it used to be reported as "no frame has a
+    // periodic cell" (review 2026-10-30 A2-M2)
+    if traj.frames.is_empty() {
+        return Err(ChemError::ValidationError("trajectory is empty".into()));
+    }
+    let pcs = check::all_periodic_cells(traj, Some(("radius", params.radius)))?;
     let ref_frame = &traj.frames[0];
     let ref_cell = ref_frame.cell.as_ref().expect("every frame has a cell");
     let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
 
     // Parallel over frames, summed in frame order
-    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(pcs).collect();
+    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(&pcs).collect();
     let mut data = Array3::<f64>::zeros((nx, ny, nz));
     let n_frames = pairs.len();
     par_map_in_order(&pairs, |(f, pc)| process_frame(f, pc, params), |rho| data += &rho);
