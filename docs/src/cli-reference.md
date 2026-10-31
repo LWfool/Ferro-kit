@@ -155,7 +155,7 @@ keep their whole name.  `-s SUFFIX` makes it `DIR/traj_SUFFIX.extxyz`, so same-n
 runs (two `OUTCAR`s) can share one `-o`; an existing product is overwritten, with a note.  The directory
 is created only once there are frames to write, and a `-o` yet to be made that ends in a format extension
 (`-o out.extxyz`) is refused.
-The input format is decided by the **file name**; there is no `--from`.
+The input format is decided by the **file name**, unless `--format-in` names it.
 The one exception: a name that says nothing about its format — an `OUTCAR`, a
 `vasprun.xml`, a CP2K or pw.x `.out` log — is recognised by the program banner inside, and a
 directory holding `type.raw` is a DeePMD system.
