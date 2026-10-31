@@ -32,6 +32,8 @@ command line alike; regenerate it rather than migrating it.
   `Z`, the charge columns, `masses`, `magmoms` and `label` take 1, so non-collinear `magmoms:R:3` is refused.
 - CP2K single-point output: `*** SCF run terminated by external request ***` counts as not converged
   and the frame is dropped, as the MD reader already did; it used to be kept as converged.
+- LAMMPS dump: an `ITEM: ATOMS` line with none of `type`, `element` and `typelabel` is an error. Every
+  atom used to be read as type 1, so `--type-map` made them all one element with exit code 0.
 
 ### Code review fixes: four silent wrong results
 

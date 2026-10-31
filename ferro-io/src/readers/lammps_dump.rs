@@ -315,6 +315,11 @@ fn parse_frame(
         .find_map(|(a, b, c, s)| Some(([get_col(a)?, get_col(b)?, get_col(c)?], s)))
         .ok_or_else(|| FrameError::Invalid(
             "ITEM: ATOMS has no complete coordinate columns (x y z, xs ys zs, xu yu zu or xsu ysu zsu)".into()))?;
+    // Without any of these every atom used to become type 1, one element under --type-map
+    if ["type", "element", "typelabel"].iter().all(|c| !col.contains_key(c)) {
+        return Err(FrameError::Invalid(
+            "ITEM: ATOMS has no type, element or typelabel column, so nothing names the atoms' elements".into()));
+    }
 
     let mut atoms_raw: Vec<AtomRaw> = Vec::new();
 
@@ -344,7 +349,7 @@ fn parse_frame(
         let triple = |a, b, c| Some([get_col(a)?, get_col(b)?, get_col(c)?]);
 
         let atom_id = get_col("id").map(int).transpose()?.unwrap_or(0);
-        let tp = get_col("type").map(int).transpose()?.unwrap_or(1);
+        let tp = get_col("type").map(int).transpose()?;
 
         // element 列可能写的是位点类型标签（`O_b_P_P`、`Zn_f`），按第一个下划线
         // into element + label; a plain symbol without one passes as is. Without an element column the
@@ -352,7 +357,8 @@ fn parse_frame(
         let raw = get_col("element").or_else(|| get_col("typelabel"))
             .and_then(|c| parts.get(c))
             .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("X{tp}"));
+            // The header check guarantees a type column when element and typelabel are absent
+            .unwrap_or_else(|| format!("X{}", tp.unwrap_or_default()));
         let (element, label) = match split_element_label(&raw) {
             LabelSplit::Plain(e) => (e.to_string(), None),
             LabelSplit::Split { element, label } => {
@@ -839,6 +845,10 @@ ITEM: ATOMS id type element x y z
         assert!(err(tri_dump("x y z", ["2.1 4.05 nan?", "1 2 3"])).contains("z = 'nan?'"));
         assert!(err(tri_dump("x y z vx vy vz", ["1 2 3 0.1 x 0.3", "1 2 3 0 0 0"])).contains("vy = 'x'"));
         assert!(err(tri_dump("x y z q", ["1 2 3 -", "1 2 3 0"])).contains("q = '-'"));
+        // No type / element / typelabel column: every atom used to become type 1 (review 2026-10-30 H3)
+        let untyped = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n\
+                       0 10\n0 10\n0 10\nITEM: ATOMS id x y z\n1 0 0 0\n2 1 0 0\n";
+        assert!(err(untyped.to_string()).contains("no type, element or typelabel column"));
     }
 
     #[test]

@@ -333,7 +333,8 @@ priority); a dump with none of them is an error rather than atoms at the origin.
 converted by LAMMPS's own definition $x = x_{lo} + s \cdot L$, so an atom reads the same whichever kind
 was dumped (ASE leaves out $x_{lo}$ for scaled columns and so disagrees with its own `x` reading when the
 box does not start at 0).  Also read: `id` (atom order), `type`, `element`, `mass`, `q`, `vx vy vz`,
-`fx fy fz`; every other column (`mol`, `ix iy iz`, `c_*`, `f_*`, `v_*`, …) is ignored.  A value that
+`fx fy fz`; every other column (`mol`, `ix iy iz`, `c_*`, `f_*`, `v_*`, …) is ignored.  At least one of
+`type`, `element` and `typelabel` must be there, or the dump is an error.  A value that
 does not parse is an error naming the atom line and column, except on the very last line of the file,
 where it is a truncated final frame and is dropped with a warning.
 

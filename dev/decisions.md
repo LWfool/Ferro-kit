@@ -14,6 +14,8 @@
 - **H2 cp2k_sp 的 SCF 判定**：照搬 R1-1 的 MD 判据（相邻 `SCF` `run` token；收敛 = 含 `converged` 且无 `NOT`）。
   两个 reader 各留一份、注释互指，**不并进 `readers/cp2k.rs`**：只有两处（R6）。仓库两份真实 SP fixture 的判定行都是
   `converged in N steps`，读出帧数不变。
+- **H3 dump 缺元素来源**：type / element / typelabel 一列都没有时在帧头报错（读原子行之前），不猜 type 1。
+  `id` 缺省为 0 不动：`sort_by_key` 是稳定排序，缺 `id` 时按文件顺序，不会错配原子。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 
