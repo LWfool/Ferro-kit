@@ -139,13 +139,12 @@ MACE/NequIP 兼容格式仍未开始。（DeePMD npy 读写与 GPUMD/NEP 的 `tr
 - 10-11：（2026-10-14 删去已随修复补上的项）：Bader near-grid / off-grid 对解析密度的收敛；
 带速度的 dump fixture（C 用合成数据验过 vacf，仓库里仍无）。
 
-- 10-03：（2026-10-09 删去已随修复补上的项）：workflow 只有子串断言、无一条对照 CP2K / pw.x
-规则（M4–M12 全漏，随 QC 专项补）；`help_sync` 的 PAGES 不含 job 三页（约 35 个参数无防漂）；
-CLI 集成测试只有 bader 与 npt；gr 三斜数值（可用 27 镜像暴力对拍）；cube_sdf ≥8 P 的运行时上界与
+- 10-03：（2026-10-09 删去已随修复补上的项；2026-11-01 删去 workflow 与 job 页两条，`ferro job` / `ferro-workflow`
+已在 0.4.0 删除）：CLI 集成测试只有 bader 与 npt；gr 三斜数值（可用 27 镜像暴力对拍）；cube_sdf ≥8 P 的运行时上界与
 组内置换语义（随 B-6）；vanhove / angle 末 bin；rotcorr `--legendre 1` 头部；bondlife 对 MDA 定义
 钉死；spin 锕系 / 未知元素；weight BCF 与 ACF 一致性、ACF 用 ASE / pymatgen 回读（随 Bader 重写）；
 `wrap_position` 恰返 L；三斜下 `classify_frame`；dataset merge 乱序输入对 dpdata 端到端；
-`--last-n 0`；分派大小写、Python 写 CONTCAR；Python 绑定零测试（D-M1 只用临时 wheel 实测过）。
+`--last-n 0`；分派大小写、Python 写 CONTCAR。（「Python 绑定零测试」2026-11-01 删去：ferro-python 已有 pytest）
 
 - 10-01：（与上表对应）：dump writer 无「非下三角胞 + 力/速度」；POSCAR 无「元素交错 +
 速度」；QE / CP2K 只测了 `{}` 与 `.TRUE.`；lammps data 无「无注释 Atoms」；无截断 dump
