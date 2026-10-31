@@ -194,8 +194,9 @@ class Generator:
         if one.cell(0) is None or not all(one.pbc(0)):
             raise JobError("only periodic systems (a cell, periodic along a, b and c) are supported")
         # `X<type>` / `X` is what the Rust readers name an atom whose element they do not know
-        # (ferro-io readers/lammps_dump.rs and lammps_data.rs `X<type>`, cube.rs `X<Z>`, a label
-        # with no leading letter in readers/util.rs `element_from_label` and cif.rs `X`)
+        # (ferro-io readers/lammps_dump.rs `X<type>` without an element column, and a label with
+        # no leading letter in readers/util.rs `element_from_label`, used by the QE and CP2K readers;
+        # lammps_data, cube and cif refuse such atoms instead)
         placeholders = sorted(e for e in one.elements() if re.fullmatch(r"X\d*", e))
         if placeholders:
             raise JobError(
