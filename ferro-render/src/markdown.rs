@@ -776,8 +776,10 @@ fn render_table(lines: &[&str], width: usize, style: Style) -> String {
                 .iter()
                 .map(|c| {
                     // converted once here: the column widths measure each cell twice
-                    // and the final wrap a third time
-                    let spans = prerender(&inline(c), style);
+                    // and the final wrap a third time. `\|` is a bar even inside a code
+                    // span, as in GFM: `cells` has split at the real ones, so none is left
+                    // to mistake (review 2026-10-30 A4-M-1)
+                    let spans = prerender(&inline(&c.replace("\\|", "|")), style);
                     if k > 0 {
                         return spans;
                     }
@@ -1070,6 +1072,9 @@ mod tests {
     fn escaped_bar_renders_as_a_bar() {
         let out = render("| x |\n|---|\n| ENERGY\\| Total |\n", 80, PLAIN);
         assert!(out.contains("| ENERGY| Total |"), "{out}");
+        // Inside a code span too: `int \| None` is `int | None`
+        let out = render("| x |\n|---|\n| `int \\| None` |\n", 80, PLAIN);
+        assert!(out.contains("| `int | None` |"), "{out}");
     }
 
     #[test]

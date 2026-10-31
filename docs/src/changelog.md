@@ -83,6 +83,8 @@ command line alike; regenerate it rather than migrating it.
   LAMMPS data / QE inputs change slightly (≤ 2e-4 relative) for structures holding these elements.
 - Python `ferro.merge(a, b, ...)`: a trajectory of several frames is a `ValueError`, as `ferro build merge`
   refuses it; it used to take frame 0 silently. Take the frame you mean first: `traj.subset([i])`.
+- `ferro doc`: a `|` inside a code span in a table shows as `|`; it showed as `\|` (`MD\| Step number`,
+  `int \| None`).
 - `dataset filter --oo-min`: a frame with a NaN coordinate is dropped, as a NaN force or stress already
   was; the NaN distance compared false and the frame went into the training set.
 - Manual: `ferro bader`, `ferro map sdf` and `ferro map chg-sdf` gain a **Known issues** section listing the
