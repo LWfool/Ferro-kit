@@ -226,8 +226,8 @@ pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdSta
     // then joined to the run's other files (see the test below).
     if traj.frames.is_empty() {
         bail!(
-            "no usable frame: {} step(s), {} dropped ({})",
-            stats.n_steps, stats.n_dropped(), stats.breakdown()
+            "parsing {}: no usable frame: {} step(s), {} dropped ({})",
+            path.display(), stats.n_steps, stats.n_dropped(), stats.breakdown()
         );
     }
     Ok((traj, stats))

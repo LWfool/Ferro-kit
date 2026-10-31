@@ -89,7 +89,10 @@ struct Pending {
 
 /// Reads a VASP OUTCAR and reports what was dropped.
 pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
-    let path_ = path.display();
+    parse_outcar_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {}", path.display()))
+}
+
+fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, AimdStats)> {
     let mut stats = AimdStats::new(AimdFormat::VaspOutcar);
 
     let mut symbols: Vec<String> = Vec::new();
@@ -107,7 +110,7 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
     let mut want_atoms = 0usize;
     let mut skip_before_atoms = 0usize;
 
-    for line in super::util::text_lines(path)? {
+    for line in lines {
         let line = line?;
 
         // ── 头部:元素与计数 ──────────────────────────────────────────────
@@ -131,7 +134,7 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
             match &counts {
                 None => counts = Some(here),
                 Some(prev) if *prev != here => bail!(
-                    "{path_}: two `ions per type` lines disagree ({prev:?} vs {here:?})"
+                    "two `ions per type` lines disagree ({prev:?} vs {here:?})"
                 ),
                 Some(_) => {}
             }
@@ -144,7 +147,7 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
                 if scf == 1 {
                     // 第一帧开始前把头部定下来
                     if elements.is_empty() {
-                        elements = resolve_elements(&symbols, &counts, &mut symbols_seen, path)?;
+                        elements = resolve_elements(&symbols, &counts, &mut symbols_seen)?;
                     }
                     finish(&mut pending, &mut traj, &mut stats, &elements);
                     // 离子步倒退 = 又一段运行接在后面。VASP 重启通常另写一个
@@ -249,7 +252,7 @@ pub fn read_vasp_outcar(path: &Path) -> Result<(Trajectory, AimdStats)> {
     finish(&mut pending, &mut traj, &mut stats, &elements);
 
     if elements.is_empty() {
-        bail!("{path_}: no ionic step found (no `Iteration N( 1)` anchor)");
+        bail!("no ionic step found (no `Iteration N( 1)` anchor)");
     }
     Ok((traj, stats))
 }
@@ -259,18 +262,16 @@ fn resolve_elements(
     symbols: &[String],
     counts: &Option<Vec<usize>>,
     seen: &mut Vec<Vec<String>>,
-    path: &Path,
 ) -> Result<Vec<String>> {
-    let path_ = path.display();
     let counts = counts
         .as_ref()
-        .with_context(|| format!("{path_}: no `ions per type` line before the first step"))?;
+        .with_context(|| "no `ions per type` line before the first step")?;
     if counts.is_empty() {
-        bail!("{path_}: `ions per type` names no species");
+        bail!("`ions per type` names no species");
     }
     if symbols.len() < counts.len() {
         bail!(
-            "{path_}: {} VRHFIN symbol(s) for {} species in `ions per type`. \
+            "{} VRHFIN symbol(s) for {} species in `ions per type`. \
              A VASP <= 6.3 bug drops species names from OUTCAR; vasprun.xml \
              carries them properly",
             symbols.len(), counts.len()
@@ -286,7 +287,7 @@ fn resolve_elements(
         for other in seen.iter().skip(1) {
             if other != first {
                 bail!(
-                    "{path_}: the species list changes within the file ({first:?} \
+                    "the species list changes within the file ({first:?} \
                      then {other:?})"
                 );
             }

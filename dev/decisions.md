@@ -41,6 +41,12 @@ A3-M-1 / A3-M-2 / A4-M-3 与 A5-M7 一并挂起，随重写修。
   （建文件前查）、CIF（`type_symbol` 为 `?` / `.` / 空时回落到 label，同缺列；label 也取不出字母才报错）。
   **不动的两处**：dump 无 element 列的 `X{tp}`（供 `--type-map` 用，有意）；`element_from_label` 不查元素表
   （`3baec43` 那条判据：重名是用户的定义问题）。代价：没有 Masses 段的 data 文件读不了，须补 Masses。
+- **A1-M4 报错带路径**：**每个 reader 的文件级入口套一次 `parsing {path}`**，内部消息不再写路径；没照审查建议只在
+  `read_as` 套，因为 reader 本身也是公开入口（collect 调 `read_aimd_as`、filter / merge 调 `read_deepmd_npy`、Python
+  `read_aimd`、bader 调 `read_charge_grid`），只在 `read_as` 套会让这些路径丢掉。xyz / pdb / vasp_outcar / vasprun / cif
+  改为同一写法（`parse_*` 内层不知道路径）。不动的：`sniff` 的报错自带路径（它不是解析）；`text_lines` 的 UTF-8 / IO 报错
+  自带路径，经 reader 再套一次会出现两遍，与改前的 extxyz 等一致，未处理；deepmd 报错里的路径是系统目录内具体的 `.npy`，保留。
+  错误链须用 `{:#}` 打印才看得到内层原因（CLI 已如此）。
 
 ## 2026-10-30 全库审查高级项的修法（2026-10-31 起）
 

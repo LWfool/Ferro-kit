@@ -15,6 +15,10 @@ use super::util::capitalize_symbol;
 /// closed by `END` with no MODEL records (as ASE reads them). Those used to run
 /// together into one frame holding every block's atoms.
 pub fn read_pdb(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
+    parse_pdb_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {}", path.display()))
+}
+
+fn parse_pdb_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, Vec<Notice>)> {
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
     let mut current = Frame::new();
@@ -27,7 +31,7 @@ pub fn read_pdb(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
         }
     };
 
-    let mut lines = super::util::text_lines(path)?.enumerate().peekable();
+    let mut lines = lines.enumerate().peekable();
     while let Some((ln, line)) = lines.next() {
         let line = line?;
         let tag = col(&line, 0, 6);

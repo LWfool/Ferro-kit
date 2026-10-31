@@ -61,9 +61,12 @@ struct State {
 
 /// Reads a vasprun.xml and reports what was dropped.
 pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
-    let path_ = path.display();
-    let file = std::fs::File::open(path).with_context(|| format!("cannot open {path_}"))?;
-    let mut reader = Reader::from_reader(BufReader::new(file));
+    let file = std::fs::File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+    parse_vasprun(BufReader::new(file)).with_context(|| format!("parsing {}", path.display()))
+}
+
+fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)> {
+    let mut reader = Reader::from_reader(input);
     reader.config_mut().trim_text(true);
 
     let mut stats = AimdStats::new(AimdFormat::VaspXml);
@@ -77,7 +80,7 @@ pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
             // Every syntax error means the input ended inside a construct: a run killed
             // mid-write. Ill-formed markup (mismatched tags) is still an error
             Err(quick_xml::Error::Syntax(_)) | Ok(Event::Eof) => break,
-            Err(e) => bail!("{path_}: malformed XML at byte {}: {e}", reader.buffer_position()),
+            Err(e) => bail!("malformed XML at byte {}: {e}", reader.buffer_position()),
             Ok(Event::Start(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 let attr = |key: &str| -> Option<String> {
@@ -227,7 +230,7 @@ pub fn read_vasprun(path: &Path) -> Result<(Trajectory, AimdStats)> {
     }
 
     if st.elements.is_empty() {
-        bail!("{path_}: no <atominfo> species list found");
+        bail!("no <atominfo> species list found");
     }
     // The file ends inside a calculation: a step that was started but never finished
     if st.in_calculation {

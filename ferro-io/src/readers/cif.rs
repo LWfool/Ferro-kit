@@ -524,12 +524,14 @@ fn block_to_frame(block: &CifBlock) -> Result<Frame> {
 
 /// 读取 CIF 文件，每个 `data_` block 对应轨迹中的一帧。
 pub fn read_cif(path: &Path) -> Result<Trajectory> {
-    let path_ = path.display();
-    let input = super::util::read_text(path)?;
-    let tokens = tokenize(&input);
-    let blocks = parse_blocks(&tokens).with_context(|| format!("parsing {path_}"))?;
+    parse_cif(&super::util::read_text(path)?).with_context(|| format!("parsing {}", path.display()))
+}
 
-    ensure!(!blocks.is_empty(), "no data_ blocks found in {path_}");
+fn parse_cif(input: &str) -> Result<Trajectory> {
+    let tokens = tokenize(input);
+    let blocks = parse_blocks(&tokens)?;
+
+    ensure!(!blocks.is_empty(), "no data_ blocks found");
 
     // 没有 `_atom_site_` 循环的 block 不是结构（Acta Cryst / COD 常见的 `data_global`
     // 只放作者与期刊信息）—— 跳过，同 ASE / pymatgen；以前整份文件因它报错
@@ -538,7 +540,7 @@ pub fn read_cif(path: &Path) -> Result<Trajectory> {
     });
     if structs.is_empty() {
         let names: Vec<String> = skipped.iter().map(|b| format!("data_{}", b.name)).collect();
-        bail!("no data block in {path_} has an _atom_site_ loop ({})", names.join(", "));
+        bail!("no data block has an _atom_site_ loop ({})", names.join(", "));
     }
 
     let mut traj = Trajectory::new();

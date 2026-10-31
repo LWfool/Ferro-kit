@@ -8,7 +8,11 @@ use super::util::{drop_truncated, species_element};
 /// Reads an XYZ file, multi-frame (consecutive blocks), returning what the reader
 /// noticed: an incomplete last frame is dropped and named, as the LAMMPS dump reader does.
 pub fn read_xyz(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
-    let mut lines = super::util::text_lines(path)?.enumerate().map(|(i, l)| (i + 1, l)).peekable();
+    parse_xyz_lines(super::util::text_lines(path)?).with_context(|| format!("parsing {}", path.display()))
+}
+
+fn parse_xyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, Vec<Notice>)> {
+    let mut lines = lines.enumerate().map(|(i, l)| (i + 1, l)).peekable();
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
 
@@ -170,6 +174,6 @@ C  1.4  0.0  0.1
         assert_eq!(frame.atom(0).element, "O");
         assert_eq!(frame.atom(1).element, "H");
         let path = write_tmp("znum_bad.xyz", "1\n\n200 0 0 0\n");
-        assert!(read_xyz(&path).unwrap_err().to_string().contains("atomic number 200"));
+        assert!(format!("{:#}", read_xyz(&path).unwrap_err()).contains("atomic number 200"));
     }
 }
