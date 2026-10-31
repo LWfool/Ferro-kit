@@ -2,12 +2,17 @@
 
 use std::path::Path;
 use std::io::{BufWriter, Write};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use ferro_core::CubeData;
 use ferro_core::units::ANG_TO_BOHR;
 use ferro_core::data::elements::by_symbol;
 
 pub fn write_cube(cube: &CubeData, path: &Path) -> Result<()> {
+    // A cube atom line needs an atomic number: an unknown element is an error, checked before
+    // the file is created; it used to be written as Z = 0 (review 2026-10-30 A1-M2)
+    if let Some(atom) = cube.frame.atoms().find(|a| by_symbol(a.element).is_none()) {
+        bail!("cannot write {}: element {:?} has no atomic number", path.display(), atom.element);
+    }
     let path_ = path.display();
     let file = std::fs::File::create(path)
         .with_context(|| format!("cannot create {path_}"))?;
@@ -41,9 +46,7 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
 
     // 原子行：Z  0.000000  x  y  z（Å → Bohr）
     for atom in frame.atoms() {
-        let z = by_symbol(atom.element)
-            .map(|e| e.atomic_number as i32)
-            .unwrap_or(0);
+        let z = by_symbol(atom.element).expect("checked in write_cube").atomic_number;
         let x = atom.position.x * ANG_TO_BOHR;
         let y = atom.position.y * ANG_TO_BOHR;
         let z_pos = atom.position.z * ANG_TO_BOHR;
@@ -184,5 +187,17 @@ mod tests {
         assert_eq!(counts, [6, 2, 6, 2]);
         let second_column = text.lines().nth(9).unwrap().split_whitespace().next().unwrap();
         assert_eq!(second_column.parse::<f64>().unwrap(), 8.0);
+    }
+
+    /// An element with no atomic number is an error, and no file is left behind; it used to be Z = 0.
+    #[test]
+    fn test_unknown_element_is_an_error_before_the_file() {
+        let mut cube = make_test_cube();
+        cube.frame.add_atom(Atom::new("X1", Vector3::zeros()));
+        let path = std::env::temp_dir().join("ferro_unknown_element.cube");
+        let _ = std::fs::remove_file(&path);
+        let e = format!("{:#}", write_cube(&cube, &path).unwrap_err());
+        assert!(e.contains("element \"X1\" has no atomic number"), "{e}");
+        assert!(!path.exists());
     }
 }

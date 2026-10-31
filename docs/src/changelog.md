@@ -49,6 +49,12 @@ command line alike; regenerate it rather than migrating it.
 - A file that holds no frame is an error, `no frame found in <path>`, for every format. An empty `.xyz` /
   `.extxyz`, a `.pdb` with no ATOM record and a dump with no `ITEM: TIMESTEP` used to read as
   `Frames: 0` with exit code 0.
+- An atom whose element cannot be told is an error naming it, instead of a made-up `X…` element: a LAMMPS
+  data atom type with no `Masses` entry (was `X1`), or a mass within 0.5 amu of no element and no element
+  in its comment (was `X`); a cube atomic number outside the element table (was `X<z>`; 300 used to wrap
+  to 44). Writing a cube with such an element is an error too; it used to be written as Z = 0.
+- CIF: `?` or `.` in `_atom_site_type_symbol` takes the element from `_atom_site_label`, as a missing
+  column does; it used to give `X`. With no usable label either, it is an error.
 - `ferro build`: without `--format-out` the product takes the format the input was **read** as. An
   extended XYZ named `.xyz` gives `<op>_<input>.extxyz`; it used to be written as plain XYZ, losing
   the cell, energy and forces. `--format-in` is followed too: `-i conf.txt --format-in extxyz` gives

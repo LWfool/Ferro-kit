@@ -36,6 +36,11 @@ Zr 91.224→91.222（2024 修订）、Yb 173.04→173.05（2015 修订）。Tc /
 A3-M-1 / A3-M-2 / A4-M-3 与 A5-M7 一并挂起，随重写修。
 
 - **A1-M1 0 帧**：只在 `format::read_as` 出口判一次，各 reader 不各写。直接调单个 reader 的只有 crate 内部与测试。
+- **A1-M2 认不出的元素**：一律报错并点名（用户定），不造 `X…` 占位。覆盖 LAMMPS data（无 Masses 条目、质量 ±0.5 amu
+  内无元素且注释不是元素符号）、cube reader（Z 不是 1–255 的整数或不在元素表；先判范围，`as u8` 不再截断）、cube writer
+  （建文件前查）、CIF（`type_symbol` 为 `?` / `.` / 空时回落到 label，同缺列；label 也取不出字母才报错）。
+  **不动的两处**：dump 无 element 列的 `X{tp}`（供 `--type-map` 用，有意）；`element_from_label` 不查元素表
+  （`3baec43` 那条判据：重名是用户的定义问题）。代价：没有 Masses 段的 data 文件读不了，须补 Masses。
 
 ## 2026-10-30 全库审查高级项的修法（2026-10-31 起）
 

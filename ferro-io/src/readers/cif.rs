@@ -252,10 +252,17 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
             partial.push((k + 1, name.clone(), occ));
         }
 
+        // `?` / `.` in _atom_site_type_symbol falls back to the label, as a missing column does;
+        // with neither, the element is unknown and that is an error (review 2026-10-30 A1-M2)
         let element = idx_sym
-            .map(|i| clean_element(get(i)))
-            .or_else(|| idx_lbl.map(|i| element_from_label(get(i))))
-            .unwrap_or_else(|| "X".to_string());
+            .map(|i| get(i).trim())
+            .filter(|s| !matches!(*s, "?" | "." | ""))
+            .or_else(|| idx_lbl.map(get))
+            .map(element_from_label)
+            .filter(|e| e != "X");
+        let Some(element) = element else {
+            bail!("atom site {} ({name}): neither _atom_site_type_symbol nor _atom_site_label names an element", k + 1);
+        };
 
         let label = idx_lbl.map(|i| get(i).to_string());
 
@@ -558,15 +565,6 @@ fn parse_cif_float(s: &str) -> Option<f64> {
             let s = s.split('(').next().unwrap_or(s);
             s.parse().ok()
         }
-    }
-}
-
-/// 清理 `_atom_site_type_symbol`：去除电荷标注（如 "Fe2+" → "Fe"），
-/// 处理 "?" / "."。
-fn clean_element(s: &str) -> String {
-    match s.trim() {
-        "?" | "." | "" => "X".to_string(),
-        s => element_from_label(s),
     }
 }
 
@@ -893,5 +891,18 @@ Cl1  Cl  0.5  0.5  0.5
         // Decimal translations, and a translation written first, are still read
         let q = parse_symop("1/2+x,y-0.25,-z").unwrap().apply(Vector3::new(0.1, 0.5, 0.2));
         assert!((q - Vector3::new(0.6, 0.25, -0.2)).norm() < 1e-12);
+    }
+
+    /// `?` in _atom_site_type_symbol falls back to the label; with no usable label either,
+    /// the element is unknown and that is an error.
+    #[test]
+    fn test_unknown_type_symbol_falls_back_to_the_label() {
+        let q = P1_CIF.replace("Fe1  Fe ", "Fe1  ? ");
+        let traj = read_cif(&write_tmp("test_sym_q.cif", &q)).unwrap();
+        assert_eq!(traj.first().unwrap().atom(0).element, "Fe");
+
+        let bad = P1_CIF.replace("Fe1  Fe ", "1  . ");
+        let e = format!("{:#}", read_cif(&write_tmp("test_sym_none.cif", &bad)).unwrap_err());
+        assert!(e.contains("atom site 1 (1): neither"), "{e}");
     }
 }

@@ -156,7 +156,11 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
             let elem = match (from_comment, comment) {
                 (Some(e), _) => e,
                 (None, c) => {
-                    let e = element_from_mass(mass).to_string();
+                    let Some(e) = element_from_mass(mass) else {
+                        bail!("line {}: atom type {tid} has mass {mass}, which matches no element \
+                               within 0.5 amu; name the element in a comment: '{tid} {mass} # Fe'", k + 1);
+                    };
+                    let e = e.to_string();
                     if let Some(c) = c {
                         warnings.push(Notice::warning(Some(k + 1), format!(
                             "Masses comment {c:?} is not an element symbol; \
@@ -223,10 +227,12 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
 
     let mut frame = Frame::with_cell(cell, [true; 3]);
     for (_, tp, q, pos) in atoms_raw {
-        let elem = type_element.get(&tp)
-            .cloned()
-            .unwrap_or_else(|| format!("X{tp}"));
-        let mut atom = Atom::new(elem, pos);
+        // No Masses entry leaves the element unknown: an error, not an `X{tp}` placeholder
+        // (review 2026-10-30 A1-M2, user's call)
+        let Some(elem) = type_element.get(&tp) else {
+            bail!("atom type {tp} has no Masses entry, so its element is unknown");
+        };
+        let mut atom = Atom::new(elem.clone(), pos);
         atom.mass = type_mass.get(&tp).copied();
         // A charge / full charge column holds values, and 0 is one; it used to become None, the same
         // as having no charge column
@@ -258,7 +264,7 @@ fn is_section_header(line: &str) -> bool {
 }
 
 
-fn element_from_mass(mass: f64) -> &'static str {
+fn element_from_mass(mass: f64) -> Option<&'static str> {
     ferro_core::data::elements::ELEMENTS
         .iter()
         .filter(|e| (e.atomic_mass - mass).abs() < 0.5)
@@ -268,7 +274,6 @@ fn element_from_mass(mass: f64) -> &'static str {
                 .unwrap()
         })
         .map(|e| e.symbol)
-        .unwrap_or("X")
 }
 
 #[cfg(test)]
@@ -570,5 +575,17 @@ Atoms # full
                     Atoms # atomic\n\n1 1 0 0 0\n2 2 1 0 0\n\nMasses\n\n1 15.999  # O\n2 1.008  # H\n";
         let f = parse_lammps_data(text, AtomStyle::Atomic).unwrap().0.frames.remove(0);
         assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
+    }
+
+    /// An atom type whose element cannot be told is an error, not an `X{tp}` / `X` placeholder.
+    #[test]
+    fn test_unknown_element_is_an_error() {
+        let no_masses = WATER_FULL.replace("Masses\n\n1 15.999  # O\n2 1.008   # H\n", "");
+        let e = format!("{:#}", parse_lammps_data(&no_masses, AtomStyle::Full).unwrap_err());
+        assert!(e.contains("atom type 1 has no Masses entry"), "{e}");
+
+        let no_match = WATER_FULL.replace("2 1.008   # H", "2 300.0");
+        let e = format!("{:#}", parse_lammps_data(&no_match, AtomStyle::Full).unwrap_err());
+        assert!(e.contains("atom type 2 has mass 300,") && e.contains("matches no element"), "{e}");
     }
 }

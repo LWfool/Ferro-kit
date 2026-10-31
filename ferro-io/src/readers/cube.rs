@@ -108,12 +108,16 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     // 只有 Bader 那条路径需要相对网格原点，在 parse_cube_as_chg 里自己减
     for idx in 0..n_atoms {
         let fs = parse_floats(next(&format!("atom line {idx}"))?, 5)?;
-        let z = fs[0] as u8;
         let pos = Vector3::new(fs[2], fs[3], fs[4]) * BOHR_TO_ANG;
-        let symbol = by_number(z)
-            .map(|e| e.symbol.to_string())
-            .unwrap_or_else(|| format!("X{z}"));
-        frame.add_atom(Atom::new(symbol, pos));
+        // An atomic number outside the element table is an error, not an `X{z}` placeholder;
+        // the range test comes first so `as u8` cannot truncate (review 2026-10-30 A1-M2)
+        let element = (fs[0].fract() == 0.0 && (1.0..=255.0).contains(&fs[0]))
+            .then(|| by_number(fs[0] as u8))
+            .flatten();
+        let Some(element) = element else {
+            bail!("atom line {idx}: atomic number {} is not an element ferro knows", fs[0]);
+        };
+        frame.add_atom(Atom::new(element.symbol, pos));
     }
 
     // MO 列表：首个数是轨道数 NMO，后跟 NMO 个轨道号，可能折行（同 ASE 的读法）
@@ -480,5 +484,16 @@ comment
         let (frame, chg) = read_cube_as_chg(&path).unwrap();
         assert_eq!(frame.n_atoms(), 2);
         assert_eq!(chg.shape, [2, 2, 2]);
+    }
+
+    /// An atomic number outside the element table is an error, not `X{z}`; 300 must not
+    /// wrap to 44 through `as u8`.
+    #[test]
+    fn test_unknown_atomic_number_is_an_error() {
+        for z in ["0", "120", "300", "1.5"] {
+            let text = CUBE_H2.replacen("  1   0.000000   0.000000", &format!("  {z}   0.000000   0.000000"), 1);
+            let e = format!("{:#}", parse_cube(&text).unwrap_err());
+            assert!(e.contains("is not an element ferro knows"), "{z}: {e}");
+        }
     }
 }
