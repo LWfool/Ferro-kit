@@ -342,9 +342,21 @@ mod help_sync {
     /// Review E2-5: a page's `[x]` must be clap's default. `--qn` of `map chg-sdf`
     /// said 2 while clap used 3; the option-name checks above cannot see that.
     /// An option clap gives no default (`--ncore`, `--max-lag`) is not checked: its
-    /// `[all cores]` / `[N/2]` describes what the code does without one.
+    /// `[all cores]` / `[N/2]` describes what the code does without one. Except the
+    /// `Option` ones whose default is a constant in code (review D-4 made them `Option`
+    /// to tell "given" from "default"): the page is compared with the constant, listed
+    /// below (review 2026-10-30 A5-M9).
     #[test]
     fn every_default_on_a_page_is_clap_s_default() {
+        use crate::cmd::dataset::{DEFAULT_F_MAX, DEFAULT_S_MAX_GPA};
+        use ferro_analysis::ml::dataset::DEFAULT_SEED;
+        let constants: &[(&[&str], &str, String)] = &[
+            (&["dataset", "filter"], "f-max", DEFAULT_F_MAX.to_string()),
+            (&["dataset", "filter"], "s-max", DEFAULT_S_MAX_GPA.to_string()),
+            (&["dataset", "filter"], "seed", DEFAULT_SEED.to_string()),
+            (&["dataset", "merge"], "seed", DEFAULT_SEED.to_string()),
+        ];
+        let mut constants_seen = 0;
         let same = |page: &str, clap: &str| {
             page == clap
                 || matches!((page.parse::<f64>(), clap.parse::<f64>()), (Ok(a), Ok(b)) if a == b)
@@ -358,7 +370,11 @@ mod help_sync {
                     continue;
                 };
                 let defaults = arg.get_default_values();
-                let Some(clap) = defaults.first().map(|d| d.to_string_lossy().into_owned()) else {
+                let constant = constants.iter()
+                    .find(|(p, l, _)| p == path && *l == long)
+                    .map(|(_, _, v)| v.clone());
+                constants_seen += usize::from(constant.is_some());
+                let Some(clap) = defaults.first().map(|d| d.to_string_lossy().into_owned()).or(constant) else {
                     continue;
                 };
                 let written = block.iter().rev().find_map(|l| {
@@ -375,6 +391,7 @@ mod help_sync {
                 }
             }
         }
+        assert_eq!(constants_seen, constants.len(), "an entry of the constants table matches no option");
     }
 
     /// Review E2-5: every subcommand is listed on the overview page of its group

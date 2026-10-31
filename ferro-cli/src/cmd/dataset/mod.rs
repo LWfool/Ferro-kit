@@ -20,6 +20,7 @@ mod merge;
 
 pub use collect::CollectCmd;
 pub use filter::FilterCmd;
+pub use filter::{DEFAULT_F_MAX, DEFAULT_S_MAX_GPA};
 pub use merge::MergeCmd;
 use collect::run_collect;
 use filter::run_filter;

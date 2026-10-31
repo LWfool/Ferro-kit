@@ -79,11 +79,17 @@ pub struct FilterCmd {
     pub ratio: Option<String>,
 }
 
+/// `-f` when not given, eV/A. A constant, not a clap default (the option is an `Option`,
+/// review D-4), so help_sync compares the help page's `[x]` with it (review 2026-10-30 A5-M9)
+pub const DEFAULT_F_MAX: f64 = 20.0;
+/// `--s-max` when not given, GPa; see [`DEFAULT_F_MAX`]
+pub const DEFAULT_S_MAX_GPA: f64 = 10.0;
+
 impl FilterCmd {
     /// `-f` 的实际值，没给取默认
-    fn f_max(&self) -> f64 { self.f_max.unwrap_or(20.0) }
+    fn f_max(&self) -> f64 { self.f_max.unwrap_or(DEFAULT_F_MAX) }
     /// `-s` 的实际值（GPa），没给取默认
-    fn s_max(&self) -> f64 { self.s_max.unwrap_or(10.0) }
+    fn s_max(&self) -> f64 { self.s_max.unwrap_or(DEFAULT_S_MAX_GPA) }
 }
 
 pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
