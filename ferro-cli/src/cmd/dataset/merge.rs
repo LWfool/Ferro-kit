@@ -123,12 +123,11 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
     for (_, members) in groups {
         if let Err(e) = merge_group(&members, out_root, args) {
             crate::report::error(crate::report::PROGRAM, format!("{e:#}; group skipped"));
-            failures += 1;
+            // counted in inputs, as main's summary says and collect counts (review 2026-10-30 A5-M10)
+            failures += members.len();
         }
     }
-    if failures > 0 {
-        crate::report::error(crate::report::PROGRAM, format!("{failures} failure(s)"));
-    }
+    // main prints the one summary line
     Ok(failures)
 }
 

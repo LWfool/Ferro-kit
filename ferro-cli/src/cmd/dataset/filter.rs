@@ -233,9 +233,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
         )?;
     }
 
-    if failures > 0 {
-        crate::report::error(crate::report::PROGRAM, format!("{failures} of {} system(s) failed", jobs.len()));
-    }
+    // main prints the one summary line (review 2026-10-30 A5-M10)
     Ok(failures)
 }
 
