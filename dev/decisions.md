@@ -3,6 +3,15 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## 2026-10-30 全库审查高级项的修法（2026-10-31 起）
+
+逐条状态见 `plan/review-2026-10-30.md`。
+
+- **H1 extxyz 的 Properties 列数**：已知列名按固定宽度校验（`COLUMN_WIDTHS`：pos / forces / force / velocities /
+  vel / velo / momenta 为 3，species / Z / charges / charge / initial_charges / masses / magmoms / label 为 1），不符即报错；
+  未知列仍按声明的列数跳过。类型字母（`S` / `R` / `I` / `L`）**删去不校验**：从没被用过，列宽对上就不会错列。
+  `magmoms:R:3`（ASE 的非共线磁矩）**报错而不是只取 x 分量**：Ferro 的磁矩是标量，目前也没有非共线的使用场景（用户定）。
+
 ## 全库 code review 高级四条的修法（2026-10-25）
 
 逐条状态见 `plan/review-2026-10-24.md`。

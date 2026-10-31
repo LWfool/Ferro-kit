@@ -24,6 +24,13 @@ command line alike; regenerate it rather than migrating it.
   `deepmd/npy`, and `xyz`, `extxyz`, `pdb`, `cif`. `ferro convert` lists them in its format table.
 - A QE input named `.qein` is recognised, as `.in` and `.qe` are.
 
+### Code review fixes: readers that misread a broken file
+
+- Extended XYZ: a `Properties=` column with the wrong width for its name is an error naming the column.
+  `forces:R:1` used to crash ferro, and `pos:R:2` read the first force component as z with exit code 0.
+  Each of `pos`, `forces` / `force`, `velocities` / `vel` / `velo` and `momenta` takes 3 values; `species`,
+  `Z`, the charge columns, `masses`, `magmoms` and `label` take 1, so non-collinear `magmoms:R:3` is refused.
+
 ### Code review fixes: four silent wrong results
 
 - CP2K MD output: frames whose SCF did not converge are dropped, as documented. The verdict lines

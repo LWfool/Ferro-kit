@@ -127,15 +127,15 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
             .transpose()
             .with_context(|| format!("frame {frame_no} (line {comment_no}): bad Properties"))?
             .unwrap_or_else(|| vec![
-                ("species".to_string(), 'S', 1),
-                ("pos".to_string(), 'R', 3),
+                ("species".to_string(), 1),
+                ("pos".to_string(), 3),
             ]);
-        let ncols: usize = props.iter().map(|(_, _, c)| c).sum();
+        let ncols: usize = props.iter().map(|(_, c)| c).sum();
 
         // Build column → field map
         let mut col_idx: HashMap<&str, usize> = HashMap::new();
         let mut offset = 0;
-        for (name, _, count) in &props {
+        for (name, count) in &props {
             col_idx.insert(name.as_str(), offset);
             offset += count;
         }
@@ -472,20 +472,34 @@ fn close(a: &Matrix3<f64>, b: &Matrix3<f64>) -> bool {
     })
 }
 
-/// `name:type:count` triples. A count that is not a positive integer, or a spec that
-/// does not split into triples, is an error: taking it as 1 (as before) shifts every
-/// column after it onto the wrong field.
-fn parse_properties(spec: &str) -> Result<Vec<(String, char, usize)>> {
+/// Columns the reader takes, and how many values each holds. Unknown columns are skipped
+/// by their declared count.
+const COLUMN_WIDTHS: [(&str, usize); 15] = [
+    ("pos", 3), ("forces", 3), ("force", 3), ("velocities", 3), ("vel", 3), ("velo", 3), ("momenta", 3),
+    ("species", 1), ("z", 1), ("charges", 1), ("charge", 1), ("initial_charges", 1), ("masses", 1),
+    ("magmoms", 1), ("label", 1),
+];
+
+/// `name:type:count` triples as `(name, count)`; the type letter is not used. A count that
+/// is not a positive integer, or a spec that does not split into triples, is an error:
+/// taking it as 1 (as before) shifts every column after it onto the wrong field. So is a
+/// known column with the wrong count: `forces:R:1` used to panic, `pos:R:2` read a force
+/// component as z.
+fn parse_properties(spec: &str) -> Result<Vec<(String, usize)>> {
     let parts: Vec<&str> = spec.split(':').collect();
     if !parts.len().is_multiple_of(3) {
         bail!("{spec:?} is not a list of name:type:count triples");
     }
     parts.chunks(3).map(|t| {
         let name = t[0].to_lowercase();
-        let tc = t[1].chars().next().unwrap_or('S').to_ascii_uppercase();
         let count: usize = t[2].parse().ok().filter(|&c| c > 0)
             .with_context(|| format!("column {name}: count {:?} is not a positive integer", t[2]))?;
-        Ok((name, tc, count))
+        if let Some(&(_, width)) = COLUMN_WIDTHS.iter().find(|(n, _)| *n == name) {
+            if count != width {
+                bail!("column {name}: count {count}, but {name} takes {width}");
+            }
+        }
+        Ok((name, count))
     }).collect()
 }
 
@@ -906,10 +920,13 @@ Si 0.0 0.0 0.0
     }
 
     /// A bad count used to be taken as 1, shifting every later column onto the wrong field.
+    /// A known column with the wrong width used to panic (forces:R:1) or misread (pos:R:2).
     #[test]
     fn test_bad_properties_count_is_an_error() {
-        for spec in ["species:S:1:pos:R:x", "species:S:1:pos:R:0", "species:S:1:pos:R"] {
-            let text = format!("1\nProperties={spec}\nO 0 0 0\n");
+        for spec in ["species:S:1:pos:R:x", "species:S:1:pos:R:0", "species:S:1:pos:R",
+                     "species:S:1:pos:R:3:forces:R:1", "species:S:1:pos:R:2:forces:R:3",
+                     "species:S:2:pos:R:3", "species:S:1:pos:R:3:magmoms:R:3"] {
+            let text = format!("1\nProperties={spec}\nO 0 0 0 0.5 1 2 3\n");
             let err = format!("{:#}", parse_extxyz(&text).unwrap_err());
             assert!(err.contains("bad Properties"), "{spec}: {err}");
         }
