@@ -88,6 +88,8 @@ command line alike; regenerate it rather than migrating it.
   or written, as in `traj` / `map` / `net`; the inputs before it used to be written first.
 - `ferro dataset collect --type inspect`: an atom with no mass makes the exit code 1, as in `ferro info`;
   the `FerroError` was printed with exit code 0.
+- `ferro map chg-sdf --cubes` takes glob patterns, drops a file named twice and refuses a pattern that
+  matches nothing, as `-i` does. A file named twice used to be read twice and weigh double in the average.
 - `ferro doc`: a `|` inside a code span in a table shows as `|`; it showed as `\|` (`MD\| Step number`,
   `int \| None`).
 - `dataset filter --oo-min`: a frame with a NaN coordinate is dropped, as a NaN force or stress already

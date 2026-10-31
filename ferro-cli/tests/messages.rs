@@ -116,3 +116,18 @@ fn info_without_a_mass_leaves_out_the_density() {
                                   element table and no mass given; density not computed", xyz.display()), "{err}");
     assert_eq!(*lines.last().unwrap(), "ferro: FerroError: 1 input(s) failed; see the messages above");
 }
+
+/// `chg-sdf --cubes` is expanded and checked like `-i`: a pattern that matches nothing is an
+/// error before the output directory is made; it used to be read as a file name
+/// (review 2026-10-30 A5-M8).
+#[test]
+fn chg_sdf_cubes_are_expanded_like_inputs() {
+    let d = scratch("chg_sdf_cubes");
+    let pat = d.join("nomatch*.cube");
+    let o = d.join("out");
+    let out = ferro(&["map", "chg-sdf", "--cubes", pat.to_str().unwrap(), "--qn", "3",
+                      "-o", o.to_str().unwrap(), "--mkdir"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("no file matches"), "{}", text(&out.stderr));
+    assert!(!o.exists());
+}

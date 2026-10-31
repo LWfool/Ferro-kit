@@ -314,6 +314,9 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
 
     // 这个命令不走 CommonArgs(它吃 --cubes 而不是 -i),所以 Output 自己拼,-s 也自己查
     batch::check_suffix(c.suffix.as_deref())?;
+    // Expanded, de-duplicated and checked like `-i`: a file named twice used to be read
+    // twice and weigh double in the average (review 2026-10-30 A5-M8)
+    let cubes = batch::expand_inputs(&c.cube_files)?;
     let out = batch::Output {
         dir: c.output.clone(),
         suffix: c.suffix.clone(),
@@ -328,8 +331,8 @@ fn run_chg_sdf(c: &ChgSdfCmd) -> Result<()> {
         rayon::ThreadPoolBuilder::new().num_threads(n).build_global().ok();
     }
 
-    let mut pairs = Vec::with_capacity(c.cube_files.len());
-    for path in &c.cube_files {
+    let mut pairs = Vec::with_capacity(cubes.len());
+    for path in &cubes {
         let (frame, chg) = read_cube_as_chg(path)
             .map_err(|e| anyhow!("读取 {} 失败: {e}", path.display()))?;
         pairs.push((frame, chg));
