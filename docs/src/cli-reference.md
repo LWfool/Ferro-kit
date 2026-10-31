@@ -8,7 +8,7 @@ ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife   → st
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                      → six stacked csv
                                                                  + optional labelled trajectory
-ferro bader                                                    → ACF / BCF / AVF tables (Henkelman's layout)
+ferro bader                                                    → ACF / BCF / AVF tables (after Henkelman's)
 ferro convert | info                                           → structure files / a summary
 ferro build supercell | vacuum | merge | box                   → one structure file per input
 ferro dataset collect | filter | merge                         → DeePMD system directories
@@ -465,11 +465,30 @@ A cube must be in Bohr (positive voxel counts) and hold one value per grid point
 refused rather than read as a shifted or empty grid.  An orbital cube (negative atom count) with a
 single orbital is read, skipping its orbital list.
 
+### Known issues
+
+The Bader implementation is due to be rewritten; until then these are known to be wrong (measured on
+synthetic densities whose exact partition is known):
+
+- **The default `neargrid` gives the same result as `ongrid`.**  Its edge refinement climbs on-grid, so the
+  error (about 0.02 e on a two-peak test) hardly shrinks as the grid is refined.  `--refine 0` skips that
+  refinement and was within $10^{-4}$ e on the same test.
+- **`offgrid` is wrong.**  Its interpolated gradient is miscomputed: on a density with two maxima it finds
+  tens of thousands of volumes instead of 2, and the atomic charges are off by 0.1–0.2 e.  Do not use it.
+- **`weight` loses charge.**  It drops 0.1–0.3 e without converging, loses charge wholesale (NaN weights)
+  on flat density plateaus, writes the BCF charge column shifted by one volume, and reports one atom's
+  charge as the vacuum charge.  Do not use it.
+- **With a vacuum region** (density below `--vacval`), the grid methods report a vacuum charge of 0 and
+  a total short of the grid's, and the noise in the vacuum becomes thousands of spurious volumes.
+- **ACF's distance column** is the smallest distance from a volume's maximum to its atom, not the
+  distance to the Bader surface, and the layout is not exactly Henkelman's: ASE's and pymatgen's ACF
+  parsers fail on it.
+
 ```bash
 ferro bader                                # without -i: prints the methods and the output description
 ferro bader -i CHGCAR                      # VASP CHGCAR
 ferro bader -i charge.cube                 # Gaussian/QE cube
-ferro bader -i CHGCAR --method weight      # the Yu-Trinkle weight method
+ferro bader -i CHGCAR --refine 0           # near-grid without the edge refinement (see Known issues)
 ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 ```
 
@@ -487,22 +506,22 @@ ferro bader -i CHGCAR --refine 3 --vacval 1e-4
 
 | Method | Notes |
 |---|---|
-| `neargrid` | the default.  Gradient ascent with an accumulated off-grid correction plus edge refinement; accurate for ordinary cells |
+| `neargrid` | the default.  Gradient ascent with an accumulated off-grid correction plus edge refinement (as implemented, the refinement makes it equal to `ongrid`; see Known issues) |
 | `ongrid` | the cheapest, ascending steepest between grid points only.  The basin surfaces come out stepped and the charges are systematically a little off |
-| `offgrid` | an interpolated gradient: slower, but with no grid bias |
-| `weight` | Yu-Trinkle: a grid point is **split by weight** across several basins according to the flux, rather than assigned whole.  **Use it for strongly tilted (non-orthogonal) cells** — the gradient directions that on/near grid rely on have a known approximation error there |
+| `offgrid` | meant to ascend an interpolated gradient; wrong as implemented (Known issues) |
+| `weight` | after Yu-Trinkle: a grid point is meant to be **split by weight** across several basins according to the flux, rather than assigned whole; does not conserve charge as implemented (Known issues) |
 
 ### Output files
 
-Three `.dat` files in Henkelman format, `bader_<kind>_<input stem>[_<suffix>].dat`:
+Three `.dat` files modelled on the Henkelman group's bader output, `bader_<kind>_<input stem>[_<suffix>].dat`:
 
 | File | Content |
 |---|---|
-| `bader_ACF_<input stem>.dat` | Atomic Charges File — the Bader charge, volume and minimum distance to the surface, per atom |
+| `bader_ACF_<input stem>.dat` | Atomic Charges File — the Bader charge and volume per atom, and a distance column (not the distance to the surface; see Known issues) |
 | `bader_BCF_<input stem>.dat` | Bader Charge File — the charge, volume and coordinates of each Bader volume |
 | `bader_AVF_<input stem>.dat` | Atomic Volume File — the atom → Bader volume index mapping |
 
-These three follow the bader format of the Henkelman group and are parsed by external tools.
+The layout is close to, but not exactly, Henkelman's: parsers written for it (ASE, pymatgen) fail on these files.
 
 The three reports are **written next to the input file by default** (`-i run1/CHGCAR` →
 `run1/bader_ACF_CHGCAR.dat`), which makes this the only command in the repository that does not default to the

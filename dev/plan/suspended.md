@@ -167,7 +167,7 @@ D 组改写组的新结构（只给结构，条目见原组）：
 | B-3 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:614-627 build_reference_frame` | `map sdf` 参考结构多加一次 `(min+max)/2` 平移，与密度网格错位；现被 S-A 掩盖（实测仅 0.04 Å），S-A 修后显形 | 直接用 `pos`，删 `center`/`box_size` 参数；随 S-A 修，测试「参考原子落在各自密度峰上」 |
 | B-4 **挂起：cube_sdf 改写** | `md/cube_sdf.rs:401-404` | 以锚原子最小镜像取局部坐标，跨度超过半盒或逾渗的团簇被折断，无告警（推断，未构造算例） | BFS 展开 + 逾渗检测；结果计数被跳过的团簇。随 B-6 / S-A 一并做 |
 | D-10 **挂起：Bader 重写** | `dft/bader_weight.rs:107-113`、`:146-148` | S-C 的补充：weight 在等密度平台上 `tsum = 0` → 0/0 = NaN，电荷成片丢（floor=0.2 时 208.6 e 剩 97.2 e） | 随 S-C / Bader 重写；回归测试 Σionchg + vacchg == 网格总量 |
-| D-11 **挂起：Bader 重写** | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³ | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
+| D-11 **挂起：Bader 重写** | `docs/src/analysis/chg-sdf.md:85`；`dft/chg_sdf.rs:10`、`:345-347 build_family` | 手册教「除以体素体积」，应为晶胞体积（差 $N_1N_2N_3$ 倍）；写出的 cube 不是 e/Bohr³。**手册部分 2026-10-31 已随 10-30 审查 H9 改正**（改为除以源晶胞体积、加 Known issues），代码未动 | `build_family` 除以 V_cell_Bohr 还原 e/Bohr³ 再写；与「chg_sdf 跨文件平均 ρ·V_cell」口径一起定 |
 
 - **B-9**（挂到「`ferro map jump`：丢失的 CLI 入口」，补入口时一并定）：`cube_jump.rs:192-217` 滑窗重叠，τ > 1 时同一次
   跳跃计 τ 次，手册却称「raw count of jump events」。二选一：窗口不重叠（步长 τ），或改称「超阈值窗口数」

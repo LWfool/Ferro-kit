@@ -15,7 +15,8 @@ pub enum BaderMethod {
     NearGrid,
     /// Off-grid: trilinear interpolation continuous gradient ascent.
     OffGrid,
-    /// Weight: Yu-Trinkle Wigner-Seitz flow method (most accurate, slowest).
+    /// Weight: Yu-Trinkle Wigner-Seitz flow method (slowest). Does not conserve charge as
+    /// implemented; see the manual's Known issues for `ferro bader`.
     Weight,
 }
 

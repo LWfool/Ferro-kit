@@ -10,6 +10,15 @@
 
 The result reveals the orientationally averaged electron-density distribution around a specific local structural motif (e.g. Q2 $PO_4$ unit in a phosphate glass).
 
+> **Known issues** (due to be rewritten with `ferro map sdf`):
+>
+> - **The rotation is the transpose of the Kabsch solution** (see `ferro doc map sdf`), so each sub-grid is
+>   pulled through the inverse rotation and the average is smeared; the RMSD figures are not meaningful.
+> - **The values are not a density in any standard unit.**  They are averages of $\rho \cdot V_{cell}$;
+>   the manual used to say to divide by the voxel volume, which is off by a factor $N_1 N_2 N_3$.  Divide by
+>   the volume of the cell the density came from instead; the unit that gives for cube input has not been
+>   checked.
+
 ---
 
 ## Prerequisites
@@ -82,7 +91,7 @@ chg_sdf_fam1_Q2.cube
 
 The cube file contains:
 - **Atom positions**: the reference cluster atoms in a local Cartesian frame (anchor at origin).
-- **Density values**: averaged `ρ_phys × V_cell` in internal units.  To convert to physical electron density [e/Å³], divide by the voxel volume in Å³.
+- **Density values**: averaged `ρ_phys × V_cell` in internal units.  To recover a density, divide by the volume of the source cell, not of a voxel (Known issues).
 
 Console output reports per-family cluster count and alignment RMSD statistics:
 

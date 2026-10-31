@@ -48,6 +48,10 @@ command line alike; regenerate it rather than migrating it.
   reported. A `pw.in` with `nspin = 2` and neither `tot_magnetization` nor `starting_magnetization` is
   refused, since pw.x stops on it; a `nspin = 2` template without `--multiplicity` used to generate one.
 - `ferro-py job -s vasp`: `--multiplicity 1` on an `ISPIN = 2` template notes the `NUPDOWN = 0` it writes.
+- Manual: `ferro bader`, `ferro map sdf` and `ferro map chg-sdf` gain a **Known issues** section listing the
+  results known to be wrong until they are rewritten (`offgrid` and `weight` Bader, the default near-grid
+  matching on-grid, the SDF rotation). If you used `chg-sdf` values, the old advice to divide by the voxel
+  volume was off by $N_1 N_2 N_3$: divide by the source cell's volume.
 
 ### Code review fixes: four silent wrong results
 

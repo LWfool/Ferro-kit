@@ -104,15 +104,13 @@ pub fn print_bader() {
         r#"ferro bader — Bader charge partitioning from a DFT charge density
 
   Partitions the charge density into atomic basins along its zero-flux surfaces
-  and reports the charge, volume and surface distance of each.
+  and reports the charge and volume of each.
 
 Parameters:
   -i, --input  FILE       Charge density file; .cube is Gaussian / QE pp.x,
                           anything else is read as a VASP CHGCAR
-  -m, --method NAME       ongrid (cheapest, staircased basins) | neargrid
-                          (accurate on ordinary cells) | offgrid (interpolated,
-                          slower, no grid bias) | weight (Yu-Trinkle, for
-                          strongly skewed cells)                    [neargrid]
+  -m, --method NAME       ongrid | neargrid | offgrid | weight; read "Known
+                          issues" in `ferro doc bader` first        [neargrid]
   -r, --refine INT        Edge refinement: -1 auto, -2 single pass, N passes
                                                                           [-1]
   -v, --vacval FLOAT      Vacuum density threshold [e/Å³]               [1e-3]
@@ -122,12 +120,12 @@ Parameters:
   -h, --help              Short parameter table
 
 Output:
-  bader_ACF_<stem>.dat  bader_BCF_<stem>.dat  bader_AVF_<stem>.dat (Henkelman's
-  layout), written NEXT TO THE INPUT, not in the current directory; -o collects
-  them elsewhere
+  bader_ACF_<stem>.dat  bader_BCF_<stem>.dat  bader_AVF_<stem>.dat (after
+  Henkelman's), written NEXT TO THE INPUT, not in the current directory; -o
+  collects them elsewhere
 
 Examples:
-  ferro bader -i CHGCAR --method weight
+  ferro bader -i CHGCAR --refine 0
   ferro bader -i CHGCAR --method neargrid --refine 3 --vacval 1e-4
   ferro bader -i run1/CHGCAR -o reports -s weight --mkdir
 
@@ -162,7 +160,7 @@ Topology & charges
   net            Structural composition, Qn speciation, ligand types,
                  coordination numbers, bridge connectivity;
                  --export-traj also writes the classified trajectory
-  bader          Bader charge partitioning (ACF/BCF/AVF, Henkelman format)
+  bader          Bader charge partitioning (ACF/BCF/AVF reports)
 
 Structure I/O
   convert        Format conversion — run it bare for the read/write matrix

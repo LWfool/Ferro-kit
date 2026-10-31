@@ -34,6 +34,12 @@
   `tot_magnetization /= -10000`。故生成结果 `nspin = 2` 且两者皆无（`occupations = 'from_input'` 除外）时报
   `JobError`，不替用户猜初始磁矩（VASP 有缺省 MAGMOM，QE 没有）。原 `free` 用例（`nspin = 2` 模板、不给多重度）因此
   从「照样生成」改为报错 —— 它生成的 pw.in 本来就跑不起来（用户同意，2026-10-31）。
+- **H8 总览页约定**：`-o` 恒为目录；convert 产物沿用输入名；注明 convert / info / bader 只收一个字面路径、build merge
+  收两个。产物名公式改称「Analysis products」，不再声称覆盖全部命令。
+- **H9 挂起组的手册**：代码不动（用户定随重写一并修），只在手册加 **Known issues** 写用户可见后果与绕法，删去
+  accurate / no grid bias / for tilted cells / parsed by external tools 等正面断言。帮助页守五段规矩，只中性化措辞并指向
+  手册；示例把 `--method weight` 换成 `--refine 0`（D-8 实测 1e-4 e 级，是默认路径的现成绕法）。chg-sdf 的换算改为除以
+  源晶胞体积，cube 输入的单位注明未核实。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 
