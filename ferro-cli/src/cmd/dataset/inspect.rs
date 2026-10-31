@@ -36,7 +36,7 @@ pub fn write_all(
     dir: &Path,
     name: &str,
     sources: &[String],
-) -> Result<Vec<PathBuf>> {
+) -> Result<(Vec<PathBuf>, usize)> {
     // `collect_group` has checked `dir` with ensure_writable before reading any input
     std::fs::create_dir_all(dir)
         .with_context(|| format!("cannot create {}", dir.display()))?;
@@ -53,9 +53,10 @@ pub fn write_all(
     write_lammps_data(&last, &data, false)?;
 
     let info = dir.join(format!("{name}_info.csv"));
-    write_table(&info_table(traj, format, sources, &info), &info, TableFormat::Csv)?;
+    let (table, n_errors) = info_table(traj, format, sources, &info);
+    write_table(&table, &info, TableFormat::Csv)?;
 
-    Ok(vec![trj, data, info])
+    Ok((vec![trj, data, info], n_errors))
 }
 
 /// The per-frame table, plus the note a vasprun.xml run needs. An atom with no mass
@@ -65,7 +66,10 @@ pub fn write_all(
 /// so, the same run read from another file gives numbers nobody can explain.
 /// Decided by the reader the frames came through, not by a metadata string, which
 /// no reader ever set to "vasprun.xml" (review B4).
-fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String], dest: &Path) -> Table {
+///
+/// The errors are counted back to `collect`, which exits 1 on them as `info` does for the
+/// same missing mass; they used to be printed with exit code 0 (review 2026-10-30 A5-M5).
+fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String], dest: &Path) -> (Table, usize) {
     let (mut t, errors) = frame_table(traj, sources);
     for e in &errors {
         crate::report::error(dest.display(), e);
@@ -77,7 +81,7 @@ fn info_table(traj: &Trajectory, format: AimdFormat, sources: &[String], dest: &
                 .to_string(),
         );
     }
-    t
+    (t, errors.len())
 }
 
 #[cfg(test)]
@@ -105,8 +109,19 @@ mod tests {
     #[test]
     fn the_vasprun_temperature_note_follows_the_reader() {
         let traj = traj_of(&[Some(300.0), Some(310.0)], &[None, None]);
-        let note = |f| info_table(&traj, f, &["a".into(), "a".into()], Path::new("info.csv")).meta.join("\n");
+        let note = |f| info_table(&traj, f, &["a".into(), "a".into()], Path::new("info.csv")).0.meta.join("\n");
         assert!(note(AimdFormat::VaspXml).contains("derived from the ionic kinetic energy"));
         assert!(!note(AimdFormat::VaspOutcar).contains("derived"));
+    }
+
+    /// An atom with no mass is counted, so `collect --type inspect` exits 1 as `info` does
+    /// (review 2026-10-30 A5-M5).
+    #[test]
+    fn missing_masses_are_counted() {
+        let mut traj = traj_of(&[None], &[None]);
+        let dest = Path::new("info.csv");
+        assert_eq!(info_table(&traj, AimdFormat::Cp2kMd, &["a".into()], dest).1, 0);
+        traj.frames[0].add_atom(Atom::new("Xx", Vector3::new(2.0, 2.0, 2.0)));
+        assert_eq!(info_table(&traj, AimdFormat::Cp2kMd, &["a".into()], dest).1, 1);
     }
 }

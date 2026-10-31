@@ -86,6 +86,8 @@ command line alike; regenerate it rather than migrating it.
 - `ferro build supercell` / `vacuum` / `merge`: a reader option missing or misplaced for any input
   (`--atom-style` for a LAMMPS data file, `--type-map` on a non-dump) is an error before anything is read
   or written, as in `traj` / `map` / `net`; the inputs before it used to be written first.
+- `ferro dataset collect --type inspect`: an atom with no mass makes the exit code 1, as in `ferro info`;
+  the `FerroError` was printed with exit code 0.
 - `ferro doc`: a `|` inside a code span in a table shows as `|`; it showed as `\|` (`MD\| Step number`,
   `int \| None`).
 - `dataset filter --oo-min`: a frame with a NaN coordinate is dropped, as a NaN force or stress already

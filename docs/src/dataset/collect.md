@@ -404,7 +404,10 @@ run.
 The `#` header carries the run summary: atom count and composition, frame count,
 the frame-0 cell, and mean ± sd for temperature and density. A quantity no frame
 carries is left out of the header rather than reported as zero, and missing
-values in the table render as **empty fields**, never `0`.
+values in the table render as **empty fields**, never `0`. An atom with no mass (an
+element missing from the table, no mass in the file) leaves `density` empty, is reported
+as a `FerroError`, and makes the exit code 1, as in `ferro info`; the three files are
+still written.
 
 `-o` is refused with `--type inspect`: it means "where the dataset goes", and
 there is no dataset on this path. Silently ignoring it would send you looking for

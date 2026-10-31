@@ -65,6 +65,8 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
     // files, which is what main reports; a directory entry carries only the files
     // not already listed one by one, so no input is counted twice
     let mut failed: Vec<(PathBuf, String, usize)> = Vec::new();
+    // Systems written whose report holds an error (inspect: an atom with no mass)
+    let mut n_reported = 0;
 
     for group in &groups {
         let dest = if inspect {
@@ -73,11 +75,14 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
             collect_dest(args.output.as_deref(), group)
         };
         let before = failed.len();
-        if let Err(e) = collect_group(group, &dest, args.overwrite, inspect, fmt, &mut failed) {
-            // "No usable file" after every file failed on its own says nothing new
-            let rest = group.files.len() - (failed.len() - before);
-            if rest > 0 {
-                failed.push((group.dir.clone(), format!("{e:#}"), rest));
+        match collect_group(group, &dest, args.overwrite, inspect, fmt, &mut failed) {
+            Ok(n) => n_reported += usize::from(n > 0),
+            Err(e) => {
+                // "No usable file" after every file failed on its own says nothing new
+                let rest = group.files.len() - (failed.len() - before);
+                if rest > 0 {
+                    failed.push((group.dir.clone(), format!("{e:#}"), rest));
+                }
             }
         }
     }
@@ -98,7 +103,7 @@ pub(super) fn run_collect(args: &CollectCmd) -> Result<usize> {
             }
         }
     }
-    Ok(failures)
+    Ok(failures + n_reported)
 }
 
 /// Removes PJM job logs (`x0-<job>.<id>.out`) before grouping.
@@ -281,7 +286,8 @@ fn common_ancestor(dirs: &[PathBuf]) -> PathBuf {
     prefix.iter().collect()
 }
 
-/// Reads every file of a group, concatenates them, and writes one system.
+/// Reads every file of a group, concatenates them, and writes one system; returns the
+/// number of errors the written products report (inspect's missing masses).
 fn collect_group(
     group: &Group,
     dest: &Path,
@@ -289,7 +295,7 @@ fn collect_group(
     inspect: bool,
     format: Option<AimdFormat>,
     skipped: &mut Vec<(PathBuf, String, usize)>,
-) -> Result<()> {
+) -> Result<usize> {
     // Checked before any file is read, for both kinds: `dest` is the system directory or,
     // for inspect, `ferro_inspect/`. ensure_writable rather than a hand-made copy (review
     // E2-11, D-2): the copy inspect had missed a plain file in the way, which surfaced as
@@ -369,13 +375,14 @@ fn collect_group(
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "run".to_string());
-        for p in super::inspect::write_all(&all, parts[0].2.format, dest, &name, &sources)? {
+        let (made, n_errors) = super::inspect::write_all(&all, parts[0].2.format, dest, &name, &sources)?;
+        for p in made {
             println!("  -> {}", p.display());
         }
-    } else {
-        write_deepmd_npy(&all, dest)?;
+        return Ok(n_errors);
     }
-    Ok(())
+    write_deepmd_npy(&all, dest)?;
+    Ok(0)
 }
 
 /// One section per system, one line per source file.
