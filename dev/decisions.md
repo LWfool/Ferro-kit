@@ -851,7 +851,8 @@ Python `write(t, "POSCAR_x.cif")` 同病。
   按长度会得到过薄的胞。库函数 `find_supercell_dims` 本来就是面间距
 - **算出 1×1×1 照写**，参考脚本跳过：管道下游要找得到产物
 - **自动倍数按第 0 帧定、全轨迹共用**：每帧原子数不同的轨迹写不出去
-- **merge 拒绝多帧输入**：Python 的 `merge` 静默取首帧；CLI 不替用户挑帧，报错指向 `convert --start/--end`
+- **merge 拒绝多帧输入**：CLI 不替用户挑帧，报错指向 `convert --start/--end`。Python 的 `merge` 原先静默取首帧，
+  2026-10-31 用户定同 CLI 报错，提示 `.subset([i])`（10-30 审查 A6-M-5）
 - 产物按 (Z, 符号) 规范序写，丢弃能量 / 力 / 应力 / 速度（同 `convert`、同库函数）
 - Python 补 `build_box`（用户定），默认值与 CLI 相同
 

@@ -209,3 +209,16 @@ def test_gr_defaults_are_those_of_the_cli():
     assert g["r"][0] == pytest.approx(0.002) and g["r"][1] - g["r"][0] == pytest.approx(0.002)
     assert g == ferro.gr_pair(t, "P", "O", r_max=3.001, dr=0.002, r_min=0.001)
     assert ferro.gr_all(t, r_max=3.001)["r"] == g["r"]
+
+
+def test_merge_refuses_a_trajectory(tmp_path):
+    # Picking frame 0 silently is the caller's choice to make, as `ferro build merge` refuses it
+    # (review 2026-10-30 A6-M-5)
+    (tmp_path / "POSCAR").write_text(ZNO_POSCAR)
+    one = ferro.read(str(tmp_path / "POSCAR"))
+    traj = ferro.read(str(NVT))
+    with pytest.raises(ValueError, match=r"first trajectory holds 5 frames.*subset"):
+        ferro.merge(traj, one, "z", 2.0)
+    with pytest.raises(ValueError, match=r"second trajectory holds 5 frames"):
+        ferro.merge(one, traj, "z", 2.0)
+    assert ferro.merge(traj.subset([0]), one, "z", 2.0).n_frames() == 1

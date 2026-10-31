@@ -36,9 +36,11 @@ fn add_vacuum_layer(
     Ok(PyTrajectory::new(Trajectory { frames, metadata: traj.inner.metadata.clone() }))
 }
 
-/// 沿 `axis` 以 `gap` Å 间隙合并两个体系的首帧，返回单帧轨迹。
+/// Stacks two one-frame trajectories along `axis` with a `gap` Å, giving a one-frame trajectory.
 ///
-/// 两块都不拉伸、只整体平移；`gap` 沿界面法向量（同 `add_vacuum`），细节见 `merge_frames`。
+/// Neither block is strained, only translated; `gap` is along the interface normal (as in
+/// `add_vacuum`), see `merge_frames`. A trajectory of several frames is refused, as `ferro build
+/// merge` refuses it: which frame to take is the caller's to say (review 2026-10-30 A6-M-5).
 #[pyfunction]
 fn merge(
     a: &PyTrajectory,
@@ -46,14 +48,17 @@ fn merge(
     axis: &str,
     gap: f64,
 ) -> PyResult<PyTrajectory> {
-    let fa = a
-        .inner
-        .first()
-        .ok_or_else(|| PyValueError::new_err("first trajectory is empty"))?;
-    let fb = b
-        .inner
-        .first()
-        .ok_or_else(|| PyValueError::new_err("second trajectory is empty"))?;
+    fn one<'a>(t: &'a PyTrajectory, which: &str) -> PyResult<&'a ferro_core::Frame> {
+        match t.inner.frames.as_slice() {
+            [f] => Ok(f),
+            frames => Err(PyValueError::new_err(format!(
+                "{which} trajectory holds {} frames; merge stacks two structures — take one first \
+                 with .subset([i])",
+                frames.len()
+            ))),
+        }
+    }
+    let (fa, fb) = (one(a, "first")?, one(b, "second")?);
     let merged = merge_frames(fa, fb, axis, gap).map_err(pyerr)?;
     Ok(PyTrajectory::new(Trajectory::from_frame(merged)))
 }
