@@ -19,7 +19,10 @@ fn supercell(traj: &PyTrajectory, nx: usize, ny: usize, nz: usize) -> PyResult<P
     let frames = traj.inner.frames.iter()
         .map(|f| make_supercell(f, nx, ny, nz))
         .collect::<ferro_core::Result<Vec<_>>>().map_err(pyerr)?;
-    Ok(PyTrajectory::new(Trajectory { frames, metadata: traj.inner.metadata.clone() }))
+    let mut out = Trajectory { frames, metadata: traj.inner.metadata.clone() };
+    // make_supercell builds each frame's site table anew: share one again (review 2026-10-30 A4-M-2)
+    out.share_sites();
+    Ok(PyTrajectory::new(out))
 }
 
 /// 沿 `axis`（"x"/"y"/"z"）为每一帧添加 `thickness` Å 真空层。

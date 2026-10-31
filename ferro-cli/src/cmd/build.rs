@@ -319,7 +319,10 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
             n * nx * ny * nz, d[0], d[1], d[2],
             if dims == [1, 1, 1] { ", already large enough" } else { "" }
         );
-        let made = Trajectory { frames, metadata: traj.metadata.clone() };
+        let mut made = Trajectory { frames, metadata: traj.metadata.clone() };
+        // make_supercell builds each frame's site table anew; share one again, or a
+        // many-frame supercell holds a copy per frame (review 2026-10-30 A4-M-2)
+        made.share_sites();
         Ok((if c.dry_run { None } else { Some(made) }, note))
     })
 }
