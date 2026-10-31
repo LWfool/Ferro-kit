@@ -28,17 +28,20 @@ pub fn is_extxyz(path: &Path) -> Result<bool> {
     let Some(comment) = super::util::text_lines(path)?.nth(1).transpose()? else {
         return Ok(false);
     };
-    let tokens = comment.split_whitespace().any(|tok| {
-        let tok = tok.to_lowercase();
-        tok.starts_with("lattice=") || tok.starts_with("properties=")
-    });
     // The reader's own tokenizer, so `Lattice = "..."` counts too. A bare word parses
-    // as a flag ("T"), so "lattice energy study" is no key; a comment that does not
-    // parse (an apostrophe in free text) is plain, unless the token test above hit
-    let parsed = parse_comment(&comment).is_ok_and(|m| {
-        m.get("lattice").is_some_and(|v| v != "T") || m.get("properties").is_some_and(|v| v.contains(':'))
-    });
-    Ok(tokens || parsed)
+    // as a flag ("T"), so "lattice energy study" is no key, and a Lattice must be the
+    // nine numbers of a cell, so "lattice = 4.05 Angstrom" is no cell either: it used
+    // to send a plain file to this reader, which then refused it (review 2026-10-30 CR-4)
+    Ok(match parse_comment(&comment) {
+        Ok(m) => m.get("lattice").is_some_and(|v| parse_lattice(v).is_ok())
+            || m.get("properties").is_some_and(|v| v.contains(':')),
+        // A comment that does not parse (an apostrophe in free text) is plain, unless
+        // it names the keys outright
+        Err(_) => comment.split_whitespace().any(|tok| {
+            let tok = tok.to_lowercase();
+            tok.starts_with("lattice=") || tok.starts_with("properties=")
+        }),
+    })
 }
 
 #[cfg(test)]
@@ -579,6 +582,12 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
         // A plain comment stays plain, including free text that is no key=value list
         assert!(!is_extxyz(&tmp("sniff_plain.xyz", "1\nwater, it's cold\nO 0 0 0\n")).unwrap());
         assert!(!is_extxyz(&tmp("sniff_word.xyz", "1\nlattice energy study\nO 0 0 0\n")).unwrap());
+        // A lattice constant in prose is no cell (review 2026-10-30 CR-4)
+        for (name, c) in [("sniff_const.xyz", "lattice = 4.05 Angstrom"), ("sniff_const2.xyz", "Lattice=4.05")] {
+            let p = tmp(name, &format!("1\n{c}\nO 0 0 0\n"));
+            assert!(!is_extxyz(&p).unwrap(), "{c}");
+            assert_eq!(crate::read(&p, &Default::default()).unwrap().0.frames[0].n_atoms(), 1, "{c}");
+        }
     }
 
     /// A frame without a `pos` column used to read every atom at the origin, and one
