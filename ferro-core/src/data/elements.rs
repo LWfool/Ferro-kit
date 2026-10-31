@@ -1,5 +1,12 @@
 //! Static element table: atomic number, symbol and atomic mass (amu) of
 //! elements 1-86 (H to Rn).
+//!
+//! Masses are CIAAW's *Abridged Standard Atomic Weights 2024* (based on *Atomic
+//! Weights 2021*, Gd / Lu / Zr revised in 2024): five significant figures, the
+//! conventional value where the standard weight is an interval (Li 6.94, B 10.81).
+//! Tc, Pm, Po, At and Rn have no standard atomic weight; they carry the mass number
+//! of their longest-lived isotope (98, 145, 209, 210, 222), the usual convention.
+//! ASE uses IUPAC 2016 at full precision, so the two agree to the abridged rounding.
 
 pub struct ElementData {
     pub atomic_number: u8,
@@ -13,9 +20,9 @@ pub static ELEMENTS: &[ElementData] = &[
     ElementData { atomic_number: 1,  symbol: "H",     atomic_mass: 1.008 },
     ElementData { atomic_number: 2,  symbol: "He",       atomic_mass: 4.0026 },
     // 第二周期
-    ElementData { atomic_number: 3,  symbol: "Li",      atomic_mass: 6.941 },
+    ElementData { atomic_number: 3,  symbol: "Li",      atomic_mass: 6.94 },
     ElementData { atomic_number: 4,  symbol: "Be",    atomic_mass: 9.0122 },
-    ElementData { atomic_number: 5,  symbol: "B",        atomic_mass: 10.811 },
+    ElementData { atomic_number: 5,  symbol: "B",        atomic_mass: 10.81 },
     ElementData { atomic_number: 6,  symbol: "C",       atomic_mass: 12.011 },
     ElementData { atomic_number: 7,  symbol: "N",     atomic_mass: 14.007 },
     ElementData { atomic_number: 8,  symbol: "O",       atomic_mass: 15.999 },
@@ -25,11 +32,11 @@ pub static ELEMENTS: &[ElementData] = &[
     ElementData { atomic_number: 11, symbol: "Na",       atomic_mass: 22.990 },
     ElementData { atomic_number: 12, symbol: "Mg",    atomic_mass: 24.305 },
     ElementData { atomic_number: 13, symbol: "Al",     atomic_mass: 26.982 },
-    ElementData { atomic_number: 14, symbol: "Si",      atomic_mass: 28.086 },
+    ElementData { atomic_number: 14, symbol: "Si",      atomic_mass: 28.085 },
     ElementData { atomic_number: 15, symbol: "P",   atomic_mass: 30.974 },
     ElementData { atomic_number: 16, symbol: "S",       atomic_mass: 32.060 },
     ElementData { atomic_number: 17, symbol: "Cl",     atomic_mass: 35.450 },
-    ElementData { atomic_number: 18, symbol: "Ar",        atomic_mass: 39.948 },
+    ElementData { atomic_number: 18, symbol: "Ar",        atomic_mass: 39.95 },
     // 第四周期
     ElementData { atomic_number: 19, symbol: "K",    atomic_mass: 39.098 },
     ElementData { atomic_number: 20, symbol: "Ca",      atomic_mass: 40.078 },
@@ -53,7 +60,7 @@ pub static ELEMENTS: &[ElementData] = &[
     ElementData { atomic_number: 37, symbol: "Rb",     atomic_mass: 85.468 },
     ElementData { atomic_number: 38, symbol: "Sr",    atomic_mass: 87.620 },
     ElementData { atomic_number: 39, symbol: "Y",      atomic_mass: 88.906 },
-    ElementData { atomic_number: 40, symbol: "Zr",    atomic_mass: 91.224 },
+    ElementData { atomic_number: 40, symbol: "Zr",    atomic_mass: 91.222 },
     ElementData { atomic_number: 41, symbol: "Nb",      atomic_mass: 92.906 },
     ElementData { atomic_number: 42, symbol: "Mo",   atomic_mass: 95.950 },
     ElementData { atomic_number: 43, symbol: "Tc",   atomic_mass: 98.000 },
@@ -84,7 +91,7 @@ pub static ELEMENTS: &[ElementData] = &[
     ElementData { atomic_number: 67, symbol: "Ho",      atomic_mass: 164.93 },
     ElementData { atomic_number: 68, symbol: "Er",       atomic_mass: 167.26 },
     ElementData { atomic_number: 69, symbol: "Tm",      atomic_mass: 168.93 },
-    ElementData { atomic_number: 70, symbol: "Yb",    atomic_mass: 173.04 },
+    ElementData { atomic_number: 70, symbol: "Yb",    atomic_mass: 173.05 },
     ElementData { atomic_number: 71, symbol: "Lu",     atomic_mass: 174.97 },
     ElementData { atomic_number: 72, symbol: "Hf",      atomic_mass: 178.49 },
     ElementData { atomic_number: 73, symbol: "Ta",     atomic_mass: 180.95 },
@@ -171,6 +178,14 @@ mod tests {
     fn test_by_number() {
         let o = by_number(8).unwrap();
         assert_eq!(o.symbol, "O");
+    }
+
+    /// The six values that were older than CIAAW's 2024 abridged table (review 2026-10-30 A4-L-7).
+    #[test]
+    fn test_masses_follow_ciaaw_2024_abridged() {
+        for (sym, mass) in [("Li", 6.94), ("B", 10.81), ("Si", 28.085), ("Ar", 39.95), ("Zr", 91.222), ("Yb", 173.05)] {
+            assert_eq!(by_symbol(sym).unwrap().atomic_mass, mass, "{sym}");
+        }
     }
 
     #[test]

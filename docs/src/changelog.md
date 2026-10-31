@@ -48,6 +48,9 @@ command line alike; regenerate it rather than migrating it.
   reported. A `pw.in` with `nspin = 2` and neither `tot_magnetization` nor `starting_magnetization` is
   refused, since pw.x stops on it; a `nspin = 2` template without `--multiplicity` used to generate one.
 - `ferro-py job -s vasp`: `--multiplicity 1` on an `ISPIN = 2` template notes the `NUPDOWN = 0` it writes.
+- Element masses follow CIAAW's abridged standard atomic weights 2024 throughout. Six were older values:
+  Li 6.94, B 10.81, Si 28.085, Ar 39.95, Zr 91.222, Yb 173.05. Masses, densities and the masses written to
+  LAMMPS data / QE inputs change slightly (≤ 2e-4 relative) for structures holding these elements.
 - Python `ferro.merge(a, b, ...)`: a trajectory of several frames is a `ValueError`, as `ferro build merge`
   refuses it; it used to take frame 0 silently. Take the frame you mean first: `traj.subset([i])`.
 - Manual: `ferro bader`, `ferro map sdf` and `ferro map chg-sdf` gain a **Known issues** section listing the
