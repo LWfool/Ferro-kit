@@ -326,8 +326,8 @@ fn parse_qe_out_lines<I: Iterator<Item = Result<String>>>(
     // 而不是拿一条空轨迹去和同目录的其他文件比组成
     if frames.is_empty() {
         bail!(
-            "no usable frame: {} SCF step(s), {} dropped ({} SCF not converged, {} incomplete){}",
-            stats.n_steps, stats.n_dropped(), stats.n_scf_failed, stats.n_incomplete,
+            "no usable frame: {} SCF step(s), {} dropped ({}){}",
+            stats.n_steps, stats.n_dropped(), stats.breakdown(),
             // 没收敛就停的那份也一行力都没有，那里提 tprnfor 是误导
             if !has_forces && stats.n_incomplete > 0 { "; no forces printed at all: set tprnfor = .true." } else { "" }
         );

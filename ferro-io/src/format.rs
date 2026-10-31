@@ -338,10 +338,8 @@ fn aimd_warnings(stats: &AimdStats) -> Vec<Notice> {
     let mut out = Vec::new();
     if stats.n_dropped() > 0 {
         out.push(Notice::warning(None, format!(
-            "{} of {} step(s) dropped ({} SCF not converged ({}), {} incomplete, \
-             {} composition, {} no cell line)",
-            stats.n_dropped(), stats.n_steps, stats.n_scf_failed, stats.format.convergence_rule(),
-            stats.n_incomplete, stats.n_bad_composition, stats.n_no_cell
+            "{} of {} step(s) dropped ({})",
+            stats.n_dropped(), stats.n_steps, stats.breakdown()
         )));
     }
     if let Some(note) = &stats.version_note {

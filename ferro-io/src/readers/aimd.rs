@@ -114,6 +114,16 @@ impl AimdStats {
     pub fn n_dropped(&self) -> usize {
         self.n_scf_failed + self.n_incomplete + self.n_bad_composition + self.n_no_cell
     }
+
+    /// The parts of [`n_dropped`](Self::n_dropped), one wording for every message that
+    /// reports them, so they always add up (review 2026-10-30 A1-M3)
+    pub fn breakdown(&self) -> String {
+        format!(
+            "{} SCF not converged ({}), {} incomplete, {} composition, {} no cell line",
+            self.n_scf_failed, self.format.convergence_rule(), self.n_incomplete,
+            self.n_bad_composition, self.n_no_cell
+        )
+    }
 }
 
 /// The value of CP2K's `GLOBAL| Run type` line, when the head holds one.
@@ -216,9 +226,8 @@ pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdSta
     // then joined to the run's other files (see the test below).
     if traj.frames.is_empty() {
         bail!(
-            "no usable frame: {} step(s), {} dropped ({} SCF, {} incomplete, {} composition)",
-            stats.n_steps, stats.n_dropped(), stats.n_scf_failed,
-            stats.n_incomplete, stats.n_bad_composition
+            "no usable frame: {} step(s), {} dropped ({})",
+            stats.n_steps, stats.n_dropped(), stats.breakdown()
         );
     }
     Ok((traj, stats))
@@ -342,5 +351,18 @@ mod tests {
             // OUTCAR 打 5 位小数,vasprun 打分数坐标全精度
             assert!((pa - pb).norm() < 1e-4, "atom {i}: {pa:?} vs {pb:?}");
         }
+    }
+
+    /// Every part of `n_dropped` is in the breakdown; the old VASP message left out the
+    /// no-cell count, so "5 dropped (0 SCF, 0 incomplete, 0 composition)" could happen.
+    #[test]
+    fn breakdown_names_every_part_of_n_dropped() {
+        let mut s = AimdStats::new(AimdFormat::Cp2kMd);
+        (s.n_scf_failed, s.n_incomplete, s.n_bad_composition, s.n_no_cell) = (1, 2, 3, 4);
+        let b = s.breakdown();
+        for part in ["1 SCF not converged", "2 incomplete", "3 composition", "4 no cell line"] {
+            assert!(b.contains(part), "{part}: {b}");
+        }
+        assert_eq!(s.n_dropped(), 10);
     }
 }

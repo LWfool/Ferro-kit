@@ -499,9 +499,8 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
 
     if frames.is_empty() {
         bail!(
-            "no usable frame: {} energy block(s), {} dropped ({} SCF, {} incomplete, {} composition)",
-            stats.n_steps, stats.n_dropped(), stats.n_scf_failed,
-            stats.n_incomplete, stats.n_bad_composition
+            "no usable frame: {} energy block(s), {} dropped ({})",
+            stats.n_steps, stats.n_dropped(), stats.breakdown()
         );
     }
 

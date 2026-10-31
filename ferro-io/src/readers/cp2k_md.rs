@@ -558,10 +558,8 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
             ""
         };
         bail!(
-            "no usable frame: {} step(s), {} dropped ({} SCF, {} incomplete, {} no cell line, \
-             {} composition){hint}",
-            stats.n_steps, stats.n_dropped(), stats.n_scf_failed,
-            stats.n_incomplete, stats.n_no_cell, stats.n_bad_composition
+            "no usable frame: {} step(s), {} dropped ({}){hint}",
+            stats.n_steps, stats.n_dropped(), stats.breakdown()
         );
     }
 
