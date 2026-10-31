@@ -159,6 +159,7 @@ def upf_header(path):
 class QeGenerator(Generator):
     program = "qe"
     template_name = "pw.in"
+    npt_note = " (vc-md has no thermostat)"
 
     def pseudos(self, elements):
         """元素 → (文件名, 价电子数, wfc, rho)。索引 pseudo_dir 里全部 UPF，按头部的元素归类。"""
@@ -293,9 +294,6 @@ class QeGenerator(Generator):
                 qe.set("cell", "cell_dynamics", "bfgs")
                 qe.set("cell", "press_conv_thr", 0.5)
         if options.task == "aimd":
-            if options.ensemble not in (None, "nvt"):
-                raise JobError(f"QE jobs are NVT only (vc-md has no thermostat); --ensemble {options.ensemble} "
-                               "is a CP2K option")
             if options.temperature is not None:
                 qe.set("ions", "tempw", options.temperature)
             if options.steps is not None:

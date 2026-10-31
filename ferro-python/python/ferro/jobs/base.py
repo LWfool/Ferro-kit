@@ -161,6 +161,10 @@ class Generator:
 
     program = None
     template_name = None
+    # The ensembles an aimd task may ask for, and why the others are missing. One check for
+    # the generators and the CLI (review 2026-10-30 A6-M-4: vasp.py, qe.py and cli.py each had one)
+    ensembles = ("nvt",)
+    npt_note = ""
 
     def __init__(self, config):
         self.config = config
@@ -187,9 +191,18 @@ class Generator:
             raise JobError(f"no built-in {cls.program} template for task '{task}'")
         return path.read_text(encoding="utf-8")
 
+    @classmethod
+    def check_ensemble(cls, ensemble):
+        """An ensemble this program cannot run is an error, before anything is read."""
+        if ensemble not in (None, *cls.ensembles):
+            only = "NVT" if cls.ensembles == ("nvt",) else " / ".join(e.upper() for e in cls.ensembles)
+            raise JobError(f"{cls.program.upper()} jobs are {only} only{cls.npt_note}; "
+                           f"--ensemble {ensemble} is not supported")
+
     def generate(self, traj, frame, options, template=None, template_text=None):
         """``traj`` 的第 ``frame`` 帧 → InputSet。原子按 (Z, 符号) 排序，同 ``ferro convert``。"""
         options.check()
+        self.check_ensemble(options.ensemble)
         one = ferro.sort_atoms(traj.subset([frame]))
         if one.cell(0) is None or not all(one.pbc(0)):
             raise JobError("only periodic systems (a cell, periodic along a, b and c) are supported")

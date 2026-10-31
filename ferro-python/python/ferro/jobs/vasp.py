@@ -310,8 +310,6 @@ class VaspGenerator(Generator):
         if options.task == "opt" and options.vary_cell:
             incar["ISIF"] = 3
         if options.task == "aimd":
-            if options.ensemble not in (None, "nvt"):
-                raise JobError(f"VASP jobs are NVT only; --ensemble {options.ensemble} is a CP2K option")
             if options.temperature is not None:
                 incar["TEBEG"] = f"{options.temperature:g}"
                 if "TEEND" in incar:

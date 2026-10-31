@@ -11,7 +11,7 @@ import re
 
 import ferro
 from ferro import config as _config
-from ferro.jobs.base import DEFAULT_KSPACING, Generator, InputSet, JobError, kmesh, multiplicity
+from ferro.jobs.base import DEFAULT_KSPACING, ENSEMBLES, Generator, InputSet, JobError, kmesh, multiplicity
 
 
 class Cp2kInputError(ValueError):
@@ -188,6 +188,7 @@ def data_entries(path):
 class Cp2kGenerator(Generator):
     program = "cp2k"
     template_name = "cp2k.inp"
+    ensembles = ENSEMBLES
 
     def _files(self, dft, keyword):
         names = [k.value.split()[0] for k in dft.keywords(keyword) if k.value.split()]

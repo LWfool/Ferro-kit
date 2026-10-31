@@ -336,9 +336,9 @@ def run_job(argv):
         fine_grid=args.fine_grid,
     )
     options.check()
-    # NpT 只有 CP2K 有。生成器里也查（库接口要用），这里赶在读轨迹与赝势之前先报
-    if args.ensemble not in (None, "nvt") and args.software != "cp2k":
-        raise UsageError(f"{args.software} jobs are NVT only; --ensemble {args.ensemble} is a CP2K option")
+    # The generator checks it too (the library needs it); called here before any trajectory
+    # or pseudopotential is read. The same check, not a copy (review 2026-10-30 A6-M-4)
+    generator.check_ensemble(args.ensemble)
     type_map = parse_type_map(args.type_map) if args.type_map else None
     check_read_args(args)
     files = expand_inputs(args.input)
