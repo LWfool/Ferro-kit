@@ -444,8 +444,8 @@ mod tests {
         }
         use clap::Parser;
         for (args, want) in [
-            ("--stride 0", "stride must be >= 1"),
-            ("-N 0", "number must be >= 1"),
+            ("--stride 0", "stride must be at least 1"),
+            ("-N 0", "number must be at least 1"),
             ("--start 3 --end 1", "start 3 is past end 1"),
         ] {
             let mut argv = vec!["filter", "-i", "no_such_system_dir"];

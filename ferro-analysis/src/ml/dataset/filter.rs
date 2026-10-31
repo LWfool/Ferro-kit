@@ -129,21 +129,9 @@ impl FilterParams {
         if let Some(r) = self.al6_rcut {
             check::positive("al6", r)?;
         }
-        check::at_least_one("stride", self.stride)?;
-        if let Some(n) = self.number {
-            check::at_least_one("number", n)?;
-        }
-        if self.stride != 1 && self.number.is_some() {
-            return Err(ChemError::ValidationError(
-                "stride and number are two ways of saying the same thing; give only one".into(),
-            ));
-        }
-        if let Some(e) = self.end.filter(|&e| self.start > e) {
-            return Err(ChemError::ValidationError(format!(
-                "start {} is past end {e} (both are 0-based and inclusive)", self.start
-            )));
-        }
-        Ok(())
+        // stride 1 is the default, so it is "not given" here
+        Trajectory::check_selection(self.start, self.end, Some(self.stride).filter(|&s| s != 1), self.number)
+
     }
 
     /// The criteria these parameters switch on, in funnel order.
@@ -488,7 +476,7 @@ mod tests {
             (FilterParams { al6_rcut: Some(0.0), ..d() }, "al6"),
             (FilterParams { stride: 0, ..d() }, "stride"),
             (FilterParams { number: Some(0), ..d() }, "number"),
-            (FilterParams { stride: 2, number: Some(1), ..d() }, "stride and number"),
+            (FilterParams { stride: 2, number: Some(1), ..d() }, "stride or number"),
             (FilterParams { start: 1, end: Some(0), ..d() }, "start"),
         ] {
             let err = filter_frames(&traj, &p).err().map(|e| e.to_string()).unwrap_or_default();

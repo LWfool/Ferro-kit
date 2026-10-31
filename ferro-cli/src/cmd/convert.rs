@@ -77,21 +77,10 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
 
     // Parameter errors fail before the first file is read: a trajectory can be several
     // GB, and reading it all to report "--start is past --end" is a wasted wait.
-    // ferro-python's `Trajectory.frame_indices` has a twin (its errors use the Python
-    // parameter names; kept apart per R6)
-    // `dataset filter` checks its frame selection the same way (`FilterParams::validate`)
+    // `Trajectory::check_selection` is the one check, shared with `dataset filter` and
+    // Python's frame selection (review 2026-10-30 A6-M-6)
     let start = args.start.unwrap_or(0);
-    if let (Some(s), Some(e)) = (args.start, args.end) {
-        if s > e {
-            bail!("--start {s} is past --end {e} (both are 0-based and inclusive)");
-        }
-    }
-    if args.stride == Some(0) {
-        bail!("--stride must be at least 1");
-    }
-    if args.number == Some(0) {
-        bail!("--number must be at least 1");
-    }
+    Trajectory::check_selection(start, args.end, args.stride, args.number)?;
     crate::batch::check_suffix(args.suffix.as_deref())?;
     // The old habit `-o out.extxyz` would now make a directory of that name, and the
     // reader of out.extxyz meets "is a directory" far from the command that did it.
@@ -340,9 +329,9 @@ mod tests {
         type Case<'a> = (fn(&mut ConvertCmd), &'a str);
         // A missing --format-out has its own test (a_missing_format_is_refused_with_a_usable_hint)
         let cases: [Case; 4] = [
-            (|c| c.stride = Some(0), "--stride"),
-            (|c| c.number = Some(0), "--number"),
-            (|c| { c.start = Some(5); c.end = Some(2); }, "--start 5 is past --end 2"),
+            (|c| c.stride = Some(0), "stride must be at least 1"),
+            (|c| c.number = Some(0), "number must be at least 1"),
+            (|c| { c.start = Some(5); c.end = Some(2); }, "start 5 is past end 2"),
             (|c| c.format_out = Some("nosuchfmt".into()), "Unsupported output format"),
         ];
         for (tweak, want) in cases {
@@ -389,15 +378,15 @@ mod tests {
         c.start = Some(9);
         c.end = Some(2);
         let err = run(&c).unwrap_err();
-        assert!(err.to_string().contains("--start 9 is past --end 2"), "{err}");
+        assert!(err.to_string().contains("start 9 is past end 2"), "{err}");
 
         let mut c = cmd(Some("no_such_file.dump"), Some("out"));
         c.stride = Some(0);
-        assert!(run(&c).unwrap_err().to_string().contains("--stride"));
+        assert!(run(&c).unwrap_err().to_string().contains("stride must be at least 1"));
 
         let mut c = cmd(Some("no_such_file.dump"), Some("out"));
         c.number = Some(0);
-        assert!(run(&c).unwrap_err().to_string().contains("--number"));
+        assert!(run(&c).unwrap_err().to_string().contains("number must be at least 1"));
     }
 
     #[test]

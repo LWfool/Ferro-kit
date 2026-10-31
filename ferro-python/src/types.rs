@@ -32,26 +32,14 @@ impl PyTrajectory {
 }
 
 /// The checks of `frame_indices` that need no trajectory, so `ferro-py` can run them before
-/// reading the first file (`ferro._check_selection`).
+/// reading the first file (`ferro._check_selection`); the one copy is in ferro-core.
 pub(crate) fn check_selection(
     start: Option<usize>,
     end: Option<usize>,
     stride: Option<usize>,
     number: Option<usize>,
 ) -> PyResult<()> {
-    let s = start.unwrap_or(0);
-    if let Some(e) = end {
-        if s > e {
-            return Err(pyerr(format!("start {s} is past end {e} (both 0-based and inclusive)")));
-        }
-    }
-    if stride.is_some() && number.is_some() {
-        return Err(pyerr("give stride or number, not both"));
-    }
-    if stride == Some(0) || number == Some(0) {
-        return Err(pyerr("stride and number must be at least 1"));
-    }
-    Ok(())
+    Trajectory::check_selection(start.unwrap_or(0), end, stride, number).map_err(pyerr)
 }
 
 #[pymethods]

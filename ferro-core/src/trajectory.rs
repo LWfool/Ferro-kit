@@ -186,6 +186,34 @@ impl Trajectory {
         self.subset(&self.select_indices(start, end, stride))
     }
 
+    /// Checks a frame selection before any trajectory is read: `start` not past `end`
+    /// (both 0-based and inclusive), `stride` / `number` at least 1 and not both given.
+    ///
+    /// One check for `ferro convert`, `dataset filter` and Python's frame selection, which
+    /// each had a copy (review 2026-10-30 A6-M-6). The messages name the bare parameters,
+    /// since the callers spell them differently (`--start`, `start`).
+    pub fn check_selection(
+        start: usize,
+        end: Option<usize>,
+        stride: Option<usize>,
+        number: Option<usize>,
+    ) -> Result<()> {
+        if let Some(e) = end.filter(|&e| start > e) {
+            return Err(ChemError::ValidationError(format!(
+                "start {start} is past end {e} (both are 0-based and inclusive)"
+            )));
+        }
+        if stride.is_some() && number.is_some() {
+            return Err(ChemError::ValidationError("give stride or number, not both".into()));
+        }
+        for (name, n) in [("stride", stride), ("number", number)] {
+            if n == Some(0) {
+                return Err(ChemError::ValidationError(format!("{name} must be at least 1")));
+            }
+        }
+        Ok(())
+    }
+
     /// The frame indices [`Trajectory::select`] would pick.
     ///
     /// Callers that name one output file per frame need the ORIGINAL index, not the
@@ -262,6 +290,21 @@ mod tests {
     use super::*;
     use crate::atom::Atom;
     use nalgebra::Vector3;
+
+    #[test]
+    fn check_selection_refuses_what_selects_nothing() {
+        assert!(Trajectory::check_selection(2, Some(2), Some(3), None).is_ok());
+        assert!(Trajectory::check_selection(0, None, None, Some(4)).is_ok());
+        for (args, want) in [
+            ((3, Some(1), None, None), "start 3 is past end 1"),
+            ((0, None, Some(2), Some(3)), "not both"),
+            ((0, None, Some(0), None), "stride must be at least 1"),
+            ((0, None, None, Some(0)), "number must be at least 1"),
+        ] {
+            let e = Trajectory::check_selection(args.0, args.1, args.2, args.3).unwrap_err().to_string();
+            assert!(e.contains(want), "{want}: {e}");
+        }
+    }
 
     /// One frame of `elements` at x = 0, 1, 2…, with forces 0.0, 0.1, 0.2… along x.
     fn sort_input(elements: &[&str]) -> Trajectory {
