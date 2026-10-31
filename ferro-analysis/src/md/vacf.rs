@@ -16,7 +16,6 @@
 
 use crate::check;
 use super::util::{check_frame_spacing, par_map_in_order, select_atoms};
-use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 
@@ -106,11 +105,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
     let ref_frame = &traj.frames[0];
     let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = atom_indices.len();
-    let elements: Vec<String> = atom_indices.iter()
-        .map(|&i| ref_frame.element(i).to_string())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
+    let elements = super::util::selected_elements(ref_frame, &atom_indices);
 
     // 逐原子逐轴：Σₜ v(t)v(t+m) 的全原点和，再在原子间累加
     let plan = AutocorrPlan::new(n_frames);

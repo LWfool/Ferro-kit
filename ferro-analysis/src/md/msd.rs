@@ -12,7 +12,6 @@
 
 use crate::check;
 use super::util::{check_frame_spacing, par_map_in_order, select_atoms, unwrapped_series, Series};
-use std::collections::BTreeSet;
 use ferro_core::{Table, Trajectory};
 use ferro_core::error::ChemError;
 
@@ -182,11 +181,7 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
     let ref_frame = &traj.frames[0];
     let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = atom_indices.len();
-    let elements: Vec<String> = atom_indices.iter()
-        .map(|&i| ref_frame.element(i).to_string())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
+    let elements = super::util::selected_elements(ref_frame, &atom_indices);
 
     let cells = check::periodic_cells(traj, None)?;
     // periodic_cells rejects a mix, so either every frame has a cell or none does

@@ -74,6 +74,16 @@ pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result
     Ok(picked)
 }
 
+/// The distinct elements of the atoms `indices` of `frame`, sorted, for a result's
+/// `elements` field; msd, vacf and vanhove each wrote it out (review 2026-10-30 A2-M3).
+pub(crate) fn selected_elements(frame: &Frame, indices: &[usize]) -> Vec<String> {
+    indices.iter()
+        .map(|&i| frame.element(i).to_string())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 /// Packs a grid accumulated on `ref_cell` into a cube file: voxel `i` along an axis is
 /// `cell row / n` wide, and the values sit at voxel centres, so the origin is half a
 /// voxel in (the cube format places point `i` at `origin + i·spacing`; review B-2).

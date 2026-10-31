@@ -18,7 +18,6 @@ use crate::check;
 use super::correlate::resolve_max_lag;
 use super::util::{check_frame_spacing, select_atoms, unwrapped_series};
 use rayon::prelude::*;
-use std::collections::BTreeSet;
 use ferro_core::error::ChemError;
 use ferro_core::{Table, Trajectory};
 
@@ -140,11 +139,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     let shift = params.shift.max(1);
 
     // 收集元素列表（用于输出文件头）
-    let elements: Vec<String> = {
-        let mut set = BTreeSet::new();
-        for &i in &atom_indices { set.insert(ref_frame.element(i).to_string()); }
-        set.into_iter().collect()
-    };
+    let elements = super::util::selected_elements(ref_frame, &atom_indices);
 
     let (n_bins, dr) = super::util::bins(params.r_min, params.r_max, params.dr);
     if n_bins == 0 {
