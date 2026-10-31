@@ -141,17 +141,19 @@ DIR/traj_0000/POTCAR -> ../POTCAR      … linked from each job
 - The links are relative (`../POTCAR`), so the whole directory can be moved or
   copied with `rsync -a` to the cluster.
 
-Under each job ferro-py prints what it decided, for example
+For each job ferro-py prints the files it wrote on stdout, and what it decided as
+`FerroNote` lines on stderr, for example
 
 ```
 Wrote: md/traj_0000/  INCAR POSCAR POTCAR->../POTCAR
-  POTCAR: O P Zn
-  1110 electrons, multiplicity 1
-  PREC Accurate, KSPACING 0.5 -> mesh 1 x 1 x 1 (Gamma only: vasp_gam can run it)
-  no NCORE / NPAR / KPAR in the INCAR: add your machine's parallel settings
+md/traj_0000: FerroNote: POTCAR: O P Zn
+md/traj_0000: FerroNote: 1110 electrons, multiplicity 1
+md/traj_0000: FerroNote: PREC Accurate, KSPACING 0.5 -> mesh 1 x 1 x 1 (Gamma only: vasp_gam can run it)
+md/traj_0000: FerroNote: no NCORE / NPAR / KPAR in the INCAR: add your machine's parallel settings
 ```
 
-Read these lines: they are where a default you did not expect shows up.
+Read the notes: they are where a default you did not expect shows up. Redirecting
+stdout (`> log`) leaves them on the terminal.
 
 ## Errors are raised before files are read
 
