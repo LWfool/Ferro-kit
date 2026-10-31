@@ -36,6 +36,8 @@ command line alike; regenerate it rather than migrating it.
   atom used to be read as type 1, so `--type-map` made them all one element with exit code 0.
 - LAMMPS data: a file missing any of `xlo xhi`, `ylo yhi`, `zlo zhi`, or with a hi not above its lo, is an
   error. It used to be read as a zero-volume cell (lengths 0, angles NaN) with exit code 0.
+- CIF: a loop whose last row is short of values is an error naming the loop; the row used to be dropped,
+  so an atom went missing with exit code 0. A tag with no value is an error too; it used to be skipped.
 
 ### Code review fixes: four silent wrong results
 

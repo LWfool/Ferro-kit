@@ -105,7 +105,7 @@ struct CifBlock {
     loops: Vec<(Vec<String>, Vec<Vec<String>>)>,
 }
 
-fn parse_blocks(tokens: &[Token]) -> Vec<CifBlock> {
+fn parse_blocks(tokens: &[Token]) -> Result<Vec<CifBlock>> {
     let mut blocks = Vec::new();
     let mut current: Option<CifBlock> = None;
     let mut i = 0;
@@ -120,12 +120,14 @@ fn parse_blocks(tokens: &[Token]) -> Vec<CifBlock> {
             Token::Tag(tag) => {
                 let tag = tag.clone();
                 i += 1;
-                if let Some(Token::Value(val)) = tokens.get(i) {
-                    if let Some(b) = current.as_mut() {
-                        b.singles.insert(tag, val.clone());
-                    }
-                    i += 1;
+                // Every tag has a value in CIF; a missing one used to drop the tag silently
+                let Some(Token::Value(val)) = tokens.get(i) else {
+                    bail!("tag {tag} has no value");
+                };
+                if let Some(b) = current.as_mut() {
+                    b.singles.insert(tag, val.clone());
                 }
+                i += 1;
             }
             Token::Loop => {
                 i += 1;
@@ -145,6 +147,12 @@ fn parse_blocks(tokens: &[Token]) -> Vec<CifBlock> {
                     }
                     i += 1;
                 }
+                // Used to be dropped, and an atom with it; ASE raises on any loop too. Almost always a
+                // value with an unquoted space, which has already shifted the rows before it
+                if !row.is_empty() {
+                    bail!("loop starting {} ends with an incomplete row: {} of {ncols} values",
+                          headers[0], row.len());
+                }
                 if let Some(b) = current.as_mut() {
                     b.loops.push((headers, rows));
                 }
@@ -153,7 +161,7 @@ fn parse_blocks(tokens: &[Token]) -> Vec<CifBlock> {
         }
     }
     if let Some(b) = current { blocks.push(b); }
-    blocks
+    Ok(blocks)
 }
 
 // ─── Cell ─────────────────────────────────────────────────────────────────────
@@ -512,7 +520,7 @@ pub fn read_cif(path: &Path) -> Result<Trajectory> {
     let path_ = path.display();
     let input = super::util::read_text(path)?;
     let tokens = tokenize(&input);
-    let blocks = parse_blocks(&tokens);
+    let blocks = parse_blocks(&tokens).with_context(|| format!("parsing {path_}"))?;
 
     ensure!(!blocks.is_empty(), "no data_ blocks found in {path_}");
 
@@ -789,6 +797,19 @@ Cl1  Cl  0.5  0.5  0.5
         let by_hall = NACL_HM_ONLY_CIF.replace(
             "_symmetry_space_group_name_H-M  'F m -3 m'", "_space_group_name_Hall  '-F 4 2 3'");
         assert_eq!(n_atoms_of("test_nacl_hall.cif", &by_hall).unwrap(), 8);
+    }
+
+    /// A loop's incomplete last row used to be dropped (an atom gone, exit code 0), and a tag
+    /// followed by another tag skipped (review 2026-10-30 H5). ASE raises on the first as well.
+    #[test]
+    fn test_incomplete_loop_row_or_tag_without_value_is_an_error() {
+        let err = |name: &str, text: String| format!("{:#}", read_cif(&write_tmp(name, &text)).unwrap_err());
+        let ragged = BCC_CIF.replace("Fe1  Fe  0.00000  0.00000  0.00000\n",
+                                     "Fe1  Fe  0.00000  0.00000  0.00000\nFe2  Fe  0.5  0.5\n");
+        assert!(err("ragged.cif", ragged)
+            .contains("loop starting _atom_site_label ends with an incomplete row: 4 of 5 values"));
+        let no_value = BCC_CIF.replace("_cell_length_a   2.870000", "_cell_length_a");
+        assert!(err("no_value.cif", no_value).contains("tag _cell_length_a has no value"));
     }
 
     #[test]

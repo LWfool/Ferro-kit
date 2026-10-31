@@ -220,7 +220,8 @@ Things that trip people up:
   from the cell parameters; images of one site within $10^{-3}$ (fractional) are one atom, two sites on
   one position an error.  Partial occupancy (`_atom_site_occupancy` < 1) is refused, naming every such
   site — order the structure first; an unknown (`?`) or malformed coordinate is an error naming the site.
-  Blocks without an `_atom_site_` loop (a `data_global` block) are skipped.  Writing a CIF needs a cell;
+  Blocks without an `_atom_site_` loop (a `data_global` block) are skipped.  A loop whose last row is
+  short of values, or a tag with no value, is an error (as in ASE).  Writing a CIF needs a cell;
   write a non-periodic structure as `.xyz` or `.extxyz`.
 - VASP files often have no extension, so **both the prefix and the extension are recognised**: `POSCAR`,
   `CONTCAR`, `conf.vasp`, `conf.poscar` and `conf.pos` all go through the same reader/writer pair.

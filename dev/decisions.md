@@ -19,6 +19,10 @@
 - **H4 data 缺盒子**：**用户定报错**（2026-10-31）—— data 文件必须有盒子，没有就是不完整的；**不**照 LAMMPS
   `read_data` 的缺省值 -0.5 / 0.5（该值也未查证）。三轴任一缺 `lo hi` 行，或 hi 不大于 lo、非有限值（`floats` 收
   `nan` / `inf`），一律报错（后者用户同意一并做）。只有空白标题的文件因此先报缺盒子，不再是「no Atoms section」。
+- **H5 CIF 残行 / 无值标签**：**任何** loop 末尾残行都报错，不只 `_atom_site_`——同 ASE 3.29（`RuntimeError: CIF loop
+  ended unexpectedly with incomplete row`）；残行几乎总是值里有未加引号的空格，前面的行已经错位。标签后不是值也报错
+  （CIF 1.1 每个标签必有值；ASE 此时把下一行当值，同样不对）。`data_` 之外的孤立值仍跳过，不在本条。
+  回归：`examples/` 下 14 份真实 CIF 改前改后 `ferro info` 逐字节相同（`structures/water.cif` 内容是 PDB，改前就报错）。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 
