@@ -7,10 +7,13 @@
 参数选择上的一个不对称（无法回避，只能靠调另一侧对齐）：
   * dump2analysis 的 --rmax 默认是 20.005（其 -h 里写的 10.005 已过时），
     且它不做最小镜像截断；ferro 会把 r_max clamp 到最小面间距的一半。
-    取 15.0 是因为它同时小于 ferro 的 clamp 上界（本轨迹 15.16）。
+    取 15.005 是因为它同时小于 ferro 的 clamp 上界（本轨迹 15.16）。
 
 `--r-min` 自 0.1.15 起已上 CLI（默认 0.001），本脚本显式传 0.005 与 dump2analysis
-对齐 —— ferro 的 bin 中心是 `r_min + (i+0.5)·dr`，两侧同 r_min 同 dr 即逐点重合。
+对齐 —— ferro 的 bin 中心是 `r_min + (i+0.5)·dr`。**范围 r_max − r_min 必须是 dr 的
+整数倍**：2026-10-19 起 ferro 的 bin 数取 ceil、实际宽度取「范围 / bin 数」
+（`md/util.rs::bins`），范围不整除时宽度变窄，两侧网格不再逐点重合（原 r_max 15.0
+即如此，2026-10-30 审查 A6-M-1）。修正后**未与 dump2analysis 复跑对拍**（本机没有该程序）。
 
 另一处需要留意：dump2analysis 的 --rcut 只用于其输出头部那行
 `# distance: mean +/- std`，不进入 g(r)/CN(r)。ferro 在 0.1.11 已删除对应的
@@ -41,7 +44,7 @@ import ferrocmp as fc
 
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
 R_MIN = 0.005   # 两侧显式对齐（ferro 默认 0.001，dump2analysis 默认 0.0）
-R_MAX = 15.0
+R_MAX = 15.005  # r_max − r_min = 1500·dr：须为 dr 的整数倍，见文件头
 DR = 0.01
 R_CUT = 2.3     # 仅 dump2analysis 的键长统计用，不影响曲线
 
