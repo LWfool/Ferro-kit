@@ -190,11 +190,12 @@ struct AtomSites {
     frac: Vec<Vector3<f64>>,
 }
 
-/// A loop of atom sites. `_atom_site_aniso_*` (displacement parameters) shares the
-/// prefix but holds no positions; written before the site loop it was taken for it
-/// (review R1-8)
+/// The loop of atom positions: the one with a fract or Cartesian x column. Other loops share
+/// the `_atom_site_` prefix but hold no positions: `_atom_site_aniso_*` (review R1-8), magCIF
+/// `_atom_site_moment_*`, the Fourier loops of modulated structures; written before the
+/// position loop, any of them was taken for it (review 2026-10-30 CR-3)
 fn is_site_loop(hdrs: &[String]) -> bool {
-    hdrs.iter().any(|h| h.starts_with("_atom_site_") && !h.starts_with("_atom_site_aniso_"))
+    hdrs.iter().any(|h| h == "_atom_site_fract_x" || h == "_atom_site_cartn_x")
 }
 
 fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
@@ -540,7 +541,7 @@ fn parse_cif(input: &str) -> Result<Trajectory> {
     });
     if structs.is_empty() {
         let names: Vec<String> = skipped.iter().map(|b| format!("data_{}", b.name)).collect();
-        bail!("no data block has an _atom_site_ loop ({})", names.join(", "));
+        bail!("no data block has an _atom_site_ loop with positions ({})", names.join(", "));
     }
 
     let mut traj = Trajectory::new();
@@ -707,9 +708,13 @@ O1   O   0.5  0.5  0.5  1.0(0)
     #[test]
     fn test_aniso_loop_before_the_site_loop_is_not_the_site_loop() {
         let aniso = "loop_\n_atom_site_aniso_label\n_atom_site_aniso_U_11\nFe1 0.01\nFe2 0.01\n";
-        let text = P1_CIF.replacen("loop_\n", &format!("{aniso}loop_\n"), 1);
-        let traj = read_cif(&write_tmp("test_aniso_first.cif", &text)).unwrap();
-        assert_eq!(traj.first().unwrap().n_atoms(), 2);
+        // magCIF moments: `_atom_site_moment_label` is not `_atom_site_aniso_`, but holds no positions
+        let moment = "loop_\n_atom_site_moment_label\n_atom_site_moment_crystalaxis_x\nFe1 1.0\nFe2 -1.0\n";
+        for (name, extra) in [("aniso", aniso), ("moment", moment)] {
+            let text = P1_CIF.replacen("loop_\n", &format!("{extra}loop_\n"), 1);
+            let traj = read_cif(&write_tmp(&format!("test_{name}_first.cif"), &text)).unwrap();
+            assert_eq!(traj.first().unwrap().n_atoms(), 2, "{name}");
+        }
     }
 
     #[test]

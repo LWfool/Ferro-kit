@@ -55,6 +55,9 @@ command line alike; regenerate it rather than migrating it.
   to 44). Writing a cube with such an element is an error too; it used to be written as Z = 0.
 - CIF: `?` or `.` in `_atom_site_type_symbol` takes the element from `_atom_site_label`, as a missing
   column does; it used to give `X`. With no usable label either, it is an error.
+- CIF: the atom positions are read from the loop with `_atom_site_fract_x` or `_atom_site_cartn_x`. A
+  magCIF `_atom_site_moment_*` loop or a Fourier loop of a modulated structure written before it used
+  to be taken for it, and the file failed with "no position columns".
 - vasprun.xml: a byte that is not UTF-8, and a value ferro reads (NELM, `e_fr_energy`, `kinetic`, a cell /
   position / force / stress row) that is not a number or a row short of 3 values, are errors giving the
   byte position. The byte used to be replaced and the number skipped, so the frame was quietly counted
