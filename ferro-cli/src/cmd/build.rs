@@ -11,7 +11,7 @@ use clap::{Args, Subcommand};
 
 use crate::args::common::ReadArgs;
 use crate::batch;
-use crate::io_dispatch::read_trajectory;
+use crate::io_dispatch::{check_read_args, read_trajectory};
 use ferro_core::Trajectory;
 use ferro_io::{Format, WriteOptions};
 use ferro_structure::{
@@ -252,6 +252,9 @@ fn per_input(
     batch::check_suffix(out_args.suffix.as_deref())?;
     let inputs = batch::expand_trajectories(inputs)?;
     for p in &inputs {
+        // the reader options too, as traj / map / net check them: a data file without
+        // --atom-style used to be found only when its turn came (review 2026-10-30 A5-M2)
+        check_read_args(p, read)?;
         out_args.ext(p, read)?;
     }
     out_args.out().prepare()?;
@@ -350,6 +353,8 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
         bail!("--gap must be a finite length >= 0, got {gap}");
     }
     batch::check_suffix(c.out.suffix.as_deref())?;
+    check_read_args(a, &c.read)?;
+    check_read_args(b, &c.read)?;
     let ext = c.out.ext(a, &c.read)?;
     let labels = batch::unique_labels(&c.input);
     c.out.out().prepare()?;

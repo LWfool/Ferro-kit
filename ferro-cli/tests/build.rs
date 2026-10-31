@@ -178,3 +178,24 @@ fn a_read_only_input_format_needs_format() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("needs --format-out EXT"));
     assert!(!d.exists(), "-o was created for a run that could not write");
 }
+
+/// The reader options are checked for every input before the first is read, as traj / map /
+/// net do: a LAMMPS data file without --atom-style used to be found only when its turn came,
+/// after the dump before it had been written (review 2026-10-30 A5-M2).
+#[test]
+fn reader_options_are_checked_before_any_input_is_read() {
+    let d = scratch("read_args_first");
+    let data = d.join("b.data");
+    std::fs::write(&data, "x\n\n1 atoms\n1 atom types\n0 4 xlo xhi\n0 4 ylo yhi\n0 4 zlo zhi\n\n\
+                           Masses\n\n1 22.99\n\nAtoms # atomic\n\n1 1 0 0 0\n").unwrap();
+    let o = d.join("out");
+    let out = ferro(&["build", "supercell", "-i", TRICLINIC, data.to_str().unwrap(),
+                      "--dims", "2", "1", "1", "-o", o.to_str().unwrap(), "--mkdir"]);
+    assert_ne!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--atom-style"));
+    assert!(!o.exists(), "nothing may be written");
+    let out = ferro(&["build", "merge", "-i", TRICLINIC, data.to_str().unwrap(), "--gap", "1",
+                      "-o", o.to_str().unwrap(), "--mkdir"]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--atom-style"));
+    assert!(!o.exists(), "nothing may be written");
+}
