@@ -23,7 +23,11 @@ Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext
 `supercell_quartz.cif`, `vacuum_slab_s1.vasp`. `merge` names both inputs
 (`merge_<A>_<B>`), and `box`, which has none, is `box[_<suffix>].vasp`.
 
-- **The format follows the input.** A `POSCAR` / `CONTCAR` input gives `.vasp`. An
+- **The format follows the input**, as it was read: `--format-in` when given, and an extended
+  XYZ inside a `.xyz` gives `.extxyz` (written as plain XYZ it would lose the cell, energy and
+  forces). An input whose name declares the format it was read as keeps its extension (`.data`
+  stays `.data`); otherwise the product takes that format's own (`xyz`, `extxyz`, `pdb`, `dump`,
+  `cif`, `vasp`, `data`). A `POSCAR` / `CONTCAR` input gives `.vasp`. An
   input ferro only reads (OUTCAR, a program output, a QE input) needs `--format-out`,
   and the run stops before anything is read if it is missing.
 - **A single-structure format gets one file per frame**, as with `convert`:

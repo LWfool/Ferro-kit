@@ -59,21 +59,28 @@ impl OutArgs {
         batch::Output { dir: self.output.clone(), label: None, suffix: self.suffix.clone(), mkdir: self.mkdir }
     }
 
-    /// The extension of the product made from `input`: `--format-out`, else the input's own
-    /// (`POSCAR` / `CONTCAR` → `vasp`). Checked to be writable, so a read-only input
-    /// format (OUTCAR, a QE input) fails before anything is read.
-    fn ext(&self, input: &Path) -> Result<String> {
+    /// The extension of the product made from `input`: `--format-out`, else that of the format
+    /// the input is read as (`--format-in`, else what `Format::detect` finds, so an extended XYZ
+    /// `.xyz` gives `.extxyz`). The input's own extension stays when its name declares that
+    /// same format (`.data` stays `.data`); `POSCAR` / `CONTCAR` give `vasp`. Checked to be
+    /// writable, so a read-only input format (OUTCAR, a QE input) fails before anything is read.
+    fn ext(&self, input: &Path, read: &ReadArgs) -> Result<String> {
         if let Some(f) = &self.format_out {
             let ext = f.trim_start_matches('.').to_lowercase();
             Format::for_extension(&ext).with_context(|| format!("--format-out {f}"))?;
             return Ok(ext);
         }
-        match Format::from_name(input) {
-            Some(Format::Poscar) => Ok("vasp".to_string()),
-            Some(f) if f.can_write() => {
+        // detect looks inside: on an input that cannot be opened (the check before reading) fall
+        // back on its name, so that input fails at its own read and the batch skips only it
+        let format = read.format_in
+            .or_else(|| Format::detect(input).ok())
+            .or_else(|| Format::from_name(input));
+        match format.and_then(|f| Some((f, f.extension()?))) {
+            Some((f, _)) if f != Format::Poscar && Format::from_name(input) == Some(f) => {
                 Ok(input.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default())
             }
-            _ => bail!(
+            Some((_, ext)) => Ok(ext.to_string()),
+            None => bail!(
                 "{}: ferro does not write this input's format, so the product needs --format-out EXT \
                  (vasp, cif, extxyz, ...)",
                 input.display()
@@ -245,7 +252,7 @@ fn per_input(
     batch::check_suffix(out_args.suffix.as_deref())?;
     let inputs = batch::expand_trajectories(inputs)?;
     for p in &inputs {
-        out_args.ext(p)?;
+        out_args.ext(p, read)?;
     }
     out_args.out().prepare()?;
 
@@ -256,7 +263,7 @@ fn per_input(
             println!("  {note}");
             return Ok(());
         };
-        let ext = out_args.ext(&inp.path)?;
+        let ext = out_args.ext(&inp.path, read)?;
         println!("  {note} -> {}", write_product(out_args, &[op, &inp.label], &ext, &made, read.units)?);
         Ok(())
     });
@@ -340,7 +347,7 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
         bail!("--gap must be a finite length >= 0, got {gap}");
     }
     batch::check_suffix(c.out.suffix.as_deref())?;
-    let ext = c.out.ext(a)?;
+    let ext = c.out.ext(a, &c.read)?;
     let labels = batch::unique_labels(&c.input);
     c.out.out().prepare()?;
 
@@ -369,7 +376,7 @@ fn run_box(c: &BoxCmd) -> Result<()> {
     batch::check_suffix(c.out.suffix.as_deref())?;
     // 没有输入可沿用格式，默认写 POSCAR
     let ext = match &c.out.format_out {
-        Some(_) => c.out.ext(Path::new(""))?,
+        Some(_) => c.out.ext(Path::new(""), &ReadArgs::default())?,
         None => "vasp".to_string(),
     };
     // 先建盒再建目录：密度、最小间距、化学式的错误都由 build_box 报，不该先留下一个空目录

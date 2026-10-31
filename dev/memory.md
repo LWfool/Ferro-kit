@@ -46,6 +46,8 @@
 字符同样报 `Non-UTF-8 code`，脚本整个没执行、文件原样未改 —— 输出被折叠时很容易当成改成功了。
 2026-10-29 又犯三次（review 中级修复一轮）：`git commit -am` 中文乱码（已 amend）；heredoc
 Python 改测试、拆提交两次报 `Non-UTF-8 code` 未执行，其中一次让本该分开的 R9-1 / R9-2 并进同一提交。
+2026-10-31 又犯一次（10-30 审查 H6）：heredoc Python 往 `issues.md` 追加含中文的表格行。这次碰巧没乱码，
+事后用 `python -c` 核对过 —— 侥幸不是理由，规则照旧。
 
 **How to apply:** 提交信息先用 Write 写到 scratchpad 文件再 `git commit -F`；改含中文的源码、
 文档用 Edit / Write，不用 heredoc 里的 Python 替换；Bash 里 grep 中文也会报

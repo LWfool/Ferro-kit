@@ -23,6 +23,10 @@
   ended unexpectedly with incomplete row`）；残行几乎总是值里有未加引号的空格，前面的行已经错位。标签后不是值也报错
   （CIF 1.1 每个标签必有值；ASE 此时把下一行当值，同样不对）。`data_` 之外的孤立值仍跳过，不在本条。
   回归：`examples/` 下 14 份真实 CIF 改前改后 `ferro info` 逐字节相同（`structures/water.cif` 内容是 PDB，改前就报错）。
+- **H6 build 的产物格式**：按**读入时认定的格式**（`--format-in` → `Format::detect` → 文件名），不按文件名。
+  文件名声明的格式与之相同就保留输入原扩展名（`.data`、`.lammpstrj` 不变，现有产物名不动）；不同则取
+  `Format::extension()` 的规范扩展名。**extxyz 内容的 `.xyz` 出 `.extxyz`（用户定 A）**，而不是保留 `.xyz` 写 extxyz
+  内容（那要改走 `write_numbered` 显式传格式）。`can_write` 改由 `extension().is_some()` 推出，可写集合只写一处。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 

@@ -951,3 +951,4 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 读前参数检查（`check_read_args`、Python `read`） | 只看 `Format::from_name(path)` | 按有效格式 `format_in.or_else(\|\| from_name(path))` 判；否则 `-i x.txt --format-in lammps/data` 越过 `--atom-style` 检查，落到 io 的中性报错 |
 | 格式表的 `--format-in` 列 | 按 `Format::ALL` 的变体逐行查 `LABELS` | CP2K md / sp 两个变体共一行（`ALL` 只放 `Cp2kMd`），按 `name()` 归组才能两名同列 |
 | 加格式 | 只补 `ALL` 与各 match | `LABELS` 是数组，**不受 match 穷尽检查**：新变体须手动加一个名字；测试只查名字不重复 |
+| `build` 的产物格式（`OutArgs::ext`） | 只看文件名，或在读前预检里直接 `Format::detect(p)?` | 有效格式 = `format_in` → `detect` → `from_name`。`detect` 要打开文件，预检时它的 IO 错误**回落到文件名**，不能 `?` 中止整批 —— 坏输入应在自己那一步读失败、被跳过（审查 2026-10-30 H6） |

@@ -38,6 +38,11 @@ command line alike; regenerate it rather than migrating it.
   error. It used to be read as a zero-volume cell (lengths 0, angles NaN) with exit code 0.
 - CIF: a loop whose last row is short of values is an error naming the loop; the row used to be dropped,
   so an atom went missing with exit code 0. A tag with no value is an error too; it used to be skipped.
+- `ferro build`: without `--format-out` the product takes the format the input was **read** as. An
+  extended XYZ named `.xyz` gives `<op>_<input>.extxyz`; it used to be written as plain XYZ, losing
+  the cell, energy and forces. `--format-in` is followed too: `-i conf.txt --format-in extxyz` gives
+  `.extxyz` instead of asking for `--format-out`, and `-i x.lmp --format-in xyz` gives `.xyz`
+  instead of a LAMMPS data file.
 
 ### Code review fixes: four silent wrong results
 

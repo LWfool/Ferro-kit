@@ -126,11 +126,23 @@ impl Format {
     /// Whether ferro writes this format. The inputs and the program outputs are
     /// read-only: a full CP2K / QE input is a job generator's work, not a converter's.
     pub fn can_write(self) -> bool {
-        matches!(
-            self,
-            Format::Xyz | Format::Extxyz | Format::Pdb | Format::LammpsDump
-                | Format::Cif | Format::Poscar | Format::LammpsData
-        )
+        self.extension().is_some()
+    }
+
+    /// The extension a product in this format is named with, `None` for a format ferro
+    /// does not write. `ferro build` falls back on it when the input's own name declares
+    /// another format than the one it was read as (an extended XYZ inside a `.xyz`).
+    pub fn extension(self) -> Option<&'static str> {
+        Some(match self {
+            Format::Xyz => "xyz",
+            Format::Extxyz => "extxyz",
+            Format::Pdb => "pdb",
+            Format::LammpsDump => "dump",
+            Format::Cif => "cif",
+            Format::Poscar => "vasp",
+            Format::LammpsData => "data",
+            _ => return None,
+        })
     }
 
     /// Whether one file holds a whole trajectory. CIF can technically carry several
@@ -527,6 +539,16 @@ mod tests {
 
     /// `.vasp` / `.pos` go through the same reader and writer as a POSCAR name,
     /// and an upper-case extension is the same format.
+    /// Writing a product by its extension gives back the format the extension was taken from.
+    #[test]
+    fn every_writable_format_has_an_extension_naming_it() {
+        for f in Format::ALL {
+            if let Some(ext) = f.extension() {
+                assert_eq!(Format::for_extension(ext).unwrap(), f, "{ext}");
+            }
+        }
+    }
+
     #[test]
     fn vasp_extensions_and_case_round_trip() {
         let traj = one_atom_traj();

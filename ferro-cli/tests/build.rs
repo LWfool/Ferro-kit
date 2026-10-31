@@ -46,6 +46,37 @@ fn supercell_with_given_dims_replicates_every_frame() {
     }
 }
 
+/// The product takes the format the input was read as (`--format-in`, or an extended XYZ
+/// inside a `.xyz`), not the one its name says (review 2026-10-30 H6). An extended XYZ
+/// `.xyz` used to come out as plain XYZ, its cell lost; `--format-in` was ignored.
+#[test]
+fn supercell_writes_the_format_the_input_was_read_as() {
+    let d = scratch("sc_format_in");
+    let ext = "2\nLattice=\"4 0 0 0 4 0 0 0 4\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\n\
+               Na 0 0 0\nCl 2 2 2\n";
+    for name in ["a.xyz", "b.txt", "c.lmp"] {
+        std::fs::write(d.join(name), ext).unwrap();
+    }
+    let o = d.join("out");
+    let o = o.to_str().unwrap();
+    let run = |name: &str, extra: &[&str]| {
+        let input = d.join(name);
+        let mut args = vec!["build", "supercell", "-i", input.to_str().unwrap(), "--dims", "2", "1", "1",
+                            "-o", o, "--mkdir"];
+        args.extend_from_slice(extra);
+        ok(&ferro(&args));
+    };
+    run("a.xyz", &[]);
+    run("b.txt", &["--format-in", "extxyz"]);
+    run("c.lmp", &["--format-in", "extxyz"]);
+    for stem in ["a", "b", "c"] {
+        let made = read(&Path::new(o).join(format!("supercell_{stem}.extxyz")));
+        let f = &made.frames[0];
+        assert_eq!(f.n_atoms(), 4);
+        assert!((f.cell.as_ref().expect("cell lost").matrix[(0, 0)] - 8.0).abs() < 1e-9);
+    }
+}
+
 /// `--min-length` is reached by every interplanar spacing; the triclinic box is
 /// where that differs from the vector length.
 #[test]
