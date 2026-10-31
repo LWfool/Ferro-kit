@@ -96,10 +96,12 @@ pub struct SqResult {
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
 
-/// Resolve element symbol → atomic number Z, with pseudo-element fallback.
+/// Atomic number Z of an element, for the form factors and scattering lengths.
 ///
-/// Tries exact match, then 2-char (uppercase+lowercase), then 1-char.
-/// Returns 0 for unrecognised symbols.
+/// The argument is `GrResult::key_element`, the atoms' own element field, never a
+/// grouping label (`3baec43`: a label `Os` used to read as osmium). 0 for an unknown
+/// element, or `""` for a label spanning two elements; the caller then warns
+/// "no scattering data for …" rather than weighting silently.
 fn elem_z_local(symbol: &str) -> usize {
     let z = ferro_core::data::elements::symbol_to_z(symbol);
     if z == 255 { 0 } else { z as usize }
