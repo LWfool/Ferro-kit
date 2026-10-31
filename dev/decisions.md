@@ -3,6 +3,14 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## map 产物名的选择段（2026-10-31，用户定；10-30 审查 A5-M1，破坏性）
+
+`map density / velocity / force / radius` 的 `--elements` 经 `batch::set_label` 进 selection 段（排序去重，不给写
+`all`），与 `traj msd` 同一口径：`density_Li_<input>.cube`、`density_all_<input>.cube`。**不给 `--elements` 也写
+`all`**，所以不带过滤的旧产物名同样变了 —— 选了与 traj 一致，而不是「无选择时省去该段」的少改方案。`map sdf` 带
+`Q<n>`（`sdf_[fam<N>_]<type>_Q<n>_<input>.cube`），与 chg-sdf 对齐；`--former` 不进名字（chg-sdf 也不带）。起因：换
+`--elements` / `--qn` 重跑会静默覆盖上一次的 cube。
+
 ## 元素质量表：CIAAW 2024 约定值（2026-10-31，用户定；10-30 审查 A4-L-7）
 
 `ferro-core/src/data/elements.rs` 统一到 CIAAW *Abridged Standard Atomic Weights 2024*（ciaaw.org，以 *Atomic

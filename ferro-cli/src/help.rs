@@ -254,7 +254,7 @@ Common options:
 
 Output:
   One 3-D grid file per input, not a stacked table — nothing here stacks. The
-  name always carries the input stem (density_<stem>.cube), even for a single
+  name always carries the input stem (density_all_<stem>.cube), even for one
   input, so inputs cannot overwrite one another. No summary table."#
     );
 }
@@ -534,8 +534,8 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  density_<stem>[_<suffix>].cube, one per input — a Gaussian cube VESTA and
-  VMD read directly
+  density_<elements>_<stem>[_<suffix>].cube, one per input (<elements> is
+  --elements sorted, O-P, or all) — a Gaussian cube VESTA and VMD read
 
 Examples:
   ferro map density -i traj.dump
@@ -559,7 +559,8 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  velocity_<stem>[_<suffix>].cube, one per input
+  velocity_<elements>_<stem>[_<suffix>].cube, one per input
+  (<elements>: --elements sorted, O-P, or all)
 
 Examples:
   ferro map velocity -i traj.dump --nx 80 --ny 80 --nz 80
@@ -583,7 +584,8 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  force_<stem>[_<suffix>].cube, one per input
+  force_<elements>_<stem>[_<suffix>].cube, one per input
+  (<elements>: --elements sorted, O-P, or all)
 
 Examples:
   ferro map force -i traj.dump --elements O
@@ -610,7 +612,8 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  radius_<stem>[_<suffix>].cube, one per input
+  radius_<elements>_<stem>[_<suffix>].cube, one per input
+  (<elements>: --elements sorted, O-P, or all)
 
 Examples:
   ferro map radius -i traj.dump --elements Li --radius 0.7
@@ -642,8 +645,8 @@ Parameters:
 {COMMON_OPTS}
 
 Output:
-  sdf_<type>_<stem>[_<suffix>].cube per atom type, or
-  sdf_fam<N>_<type>_<stem>[_<suffix>].cube with more than one family.
+  sdf_<type>_Q<n>_<stem>[_<suffix>].cube per atom type, or
+  sdf_fam<N>_<type>_Q<n>_<stem>[_<suffix>].cube with more than one family.
   Types are P0..P3 (former Qn), Of/On/Ob (free / non-bridging / bridging
   ligand) and the element symbol for a modifier.
 

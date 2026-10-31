@@ -199,10 +199,12 @@ fn run_grid(c: &GridCmd, mode: CubeMode, name: &str) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
+    // --elements is the selection segment, `all` without it, as in traj msd (review 2026-10-30 A5-M1)
+    let selection = batch::set_label(c.grid.elements.as_ref())?;
     drive(&c.common, |traj, input, out| {
         let result = calc_cube_density(traj, &params)?;
 
-        let path = out.join(&batch::product_name(&[name, input], out.suffix.as_deref(), "cube"));
+        let path = out.join(&batch::product_name(&[name, &selection, input], out.suffix.as_deref(), "cube"));
         write_cube(&result.cube, &path)?;
         println!(
             "Cube ({name}) -> {}  [{} frames, {} atoms]",
@@ -222,10 +224,11 @@ fn run_radius(c: &RadiusCmd) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
+    let selection = batch::set_label(c.grid.elements.as_ref())?;
     drive(&c.common, |traj, input, out| {
         let result = calc_cube_radius(traj, &params)?;
 
-        let path = out.join(&batch::product_name(&["radius", input], out.suffix.as_deref(), "cube"));
+        let path = out.join(&batch::product_name(&["radius", &selection, input], out.suffix.as_deref(), "cube"));
         write_cube(&result.cube, &path)?;
         println!(
             "Cube (radius={:.3}Å) -> {}  [{} frames, {} atoms]",
@@ -250,6 +253,8 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
+    // Q<n> is the selection segment, as chg-sdf names it
+    let qn = format!("Q{}", c.cluster.qn);
     drive(&c.common, |traj, input, out| {
         let result = calc_cluster_sdf(traj, &params)?
             .ok_or_else(|| anyhow!("No Q{} clusters found in trajectory", c.cluster.qn))?;
@@ -266,7 +271,7 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
             let mut labels: Vec<_> = family.grids.keys().collect();
             labels.sort();
             for label in &labels {
-                let name = batch::product_name(&["sdf", &fam, label, input], out.suffix.as_deref(), "cube");
+                let name = batch::product_name(&["sdf", &fam, label, &qn, input], out.suffix.as_deref(), "cube");
                 write_cube(&family.grids[*label], &out.join(&name))?;
                 total_files += 1;
             }
@@ -277,7 +282,7 @@ fn run_sdf(c: &SdfCmd) -> Result<usize> {
                 family.rmsd_stats.mean,
                 family.rmsd_stats.max,
                 family.rmsd_stats.n_warned,
-                out.join(&batch::product_name(&["sdf", &fam, "*", input], out.suffix.as_deref(), "cube"))
+                out.join(&batch::product_name(&["sdf", &fam, "*", &qn, input], out.suffix.as_deref(), "cube"))
                     .display(),
             );
         }
@@ -396,6 +401,27 @@ mod tests {
             assert!(err.contains(want), "{args}：应报「{want}」，实际 {err}");
             assert!(!out.exists(), "{args}：参数错误时不该建 -o 目录");
         }
+    }
+
+    /// `--elements` is a selection segment, as in `traj msd`: a rerun with another selection
+    /// used to overwrite `density_<input>.cube` silently (review 2026-10-30 A5-M1).
+    #[test]
+    fn test_element_selection_is_in_the_product_name() {
+        let dir = std::env::temp_dir().join("ferro_map_selection_names");
+        let _ = std::fs::remove_dir_all(&dir);
+        let input = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/70Z30P00A_NVT_5.lammpstrj");
+        for extra in [&["density", "--elements", "P"][..], &["density", "--elements", "P,O,O"],
+                      &["density"], &["radius", "--elements", "P"]] {
+            let mut argv = vec!["map"];
+            argv.extend(extra);
+            argv.extend(["-i", input, "--nx", "4", "--ny", "4", "--nz", "4", "-o", dir.to_str().unwrap(), "--mkdir"]);
+            run(&Wrap::try_parse_from(&argv).unwrap().cmd).unwrap();
+        }
+        for name in ["density_P_70Z30P00A_NVT_5.cube", "density_O-P_70Z30P00A_NVT_5.cube",
+                     "density_all_70Z30P00A_NVT_5.cube", "radius_P_70Z30P00A_NVT_5.cube"] {
+            assert!(dir.join(name).exists(), "{name} missing");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// 审查 E2-6：全部输入都失败时 map 要像 traj / net 一样报错，而不是安静地返回

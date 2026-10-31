@@ -109,17 +109,20 @@ The cube format is directly accepted by VESTA, VMD, Ovito, and most electronic-s
 
 ```bash
 # Number density of all atoms
-ferro map density -i traj.dump --nx 80 --ny 80 --nz 80      # -> density_traj.cube
+ferro map density -i traj.dump --nx 80 --ny 80 --nz 80      # -> density_all_traj.cube
 
 # Li-only density
-ferro map density -i traj.dump --elements Li -s li           # -> density_traj_li.cube
+ferro map density -i traj.dump --elements Li -s li           # -> density_Li_traj_li.cube
 
 # Time-averaged velocity magnitude
-ferro map velocity -i traj.dump --units metal                # -> velocity_traj.cube
+ferro map velocity -i traj.dump --units metal                # -> velocity_all_traj.cube
 
 # Time-averaged force magnitude
-ferro map force -i traj.dump                                 # -> force_traj.cube
+ferro map force -i traj.dump                                 # -> force_all_traj.cube
 ```
+
+The `--elements` selection is part of the name (sorted, `O-P`; `all` without it), as in `ferro traj msd`,
+so runs with different selections do not overwrite one another.
 
 ```rust
 use ferro_analysis::{CubeDensityParams, CubeMode, calc_cube_density};

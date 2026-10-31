@@ -85,7 +85,9 @@ batches.
 | `traj rotcorr` | `--center`-`--neighbor` | `rotcorr_O-H.csv` (both are required, so `all` is never reached) |
 | `traj bondlife` | `--center`-`--neighbor` | `bondlife_Si-O.csv` and `bondlife_events_Si-O.csv` |
 | `traj sq` | none (see below) | `sq.csv` |
-| `ferro net`, `ferro map` | none | `network_qn.csv`, `density_<input>.cube` |
+| `map density` / `velocity` / `force` / `radius` | `--elements`, sorted and deduplicated | `density_Li_<input>.cube`, `density_all_<input>.cube` with no selection |
+| `map sdf` / `chg-sdf` | `--qn` as `Q<n>` | `sdf_P3_Q3_<input>.cube`, `chg_sdf_Q2.cube` |
+| `ferro net` | none | `network_qn.csv` |
 | `ferro build` | none | `supercell_<input>.vasp`, `merge_<A>_<B>.cif`, `box.vasp` |
 
 Two rules that are easily confused:
@@ -430,9 +432,10 @@ Trajectory analyses.  Each writes **one** csv for all its inputs (see
 ## `ferro map`
 
 3-D spatial distributions in Gaussian cube format.  **One `.cube` per input**, with no stackable table.
-Every name carries its input's name, a single input included (`density_<input>.cube`), so that none
-overwrites another and the name does not depend on how many files a glob matched.  `-s TAG` comes last:
-`density_<input>_TAG.cube`.  All products follow one rule,
+Every name carries its input's name, a single input included (`density_all_<input>.cube`), so that none
+overwrites another and the name does not depend on how many files a glob matched; the selection
+(`--elements`, or `Q<n>` for `sdf`) comes before it, so two selections do not overwrite each other
+either.  `-s TAG` comes last: `density_all_<input>_TAG.cube`.  All products follow one rule,
 `<mode>[_<table>][_<selection>][_<input>][_<suffix>].<ext>`.
 
 | Command | Computes | Manual |

@@ -121,8 +121,10 @@ pub struct ClusterSdfParams {
 
 One Gaussian cube file per atom type per family:
 
-- Single family: `sdf_<label>_<input>[_<suffix>].cube` (e.g. `sdf_P3_prod.cube`, `sdf_Ob_prod.cube`)
-- Multiple families: `sdf_fam0_<label>_<input>.cube`, `sdf_fam1_<label>_<input>.cube`, …
+- Single family: `sdf_<label>_Q<n>_<input>[_<suffix>].cube` (e.g. `sdf_P3_Q3_prod.cube`, `sdf_Ob_Q3_prod.cube`)
+- Multiple families: `sdf_fam0_<label>_Q<n>_<input>.cube`, `sdf_fam1_<label>_Q<n>_<input>.cube`, …
+
+`Q<n>` is the `--qn` selection, as `chg-sdf` names it, so runs for different $Q_n$ do not overwrite one another.
 
 All cube files within a family share the same grid origin and spacing, enabling direct overlay in VESTA or VMD.
 Positions are binned into voxels starting at the lower corner of the padded box; the header origin is that

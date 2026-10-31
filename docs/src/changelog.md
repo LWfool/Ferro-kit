@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro map`: the selection is part of the product name
+
+- **Edit your scripts:** `map density` / `velocity` / `force` / `radius` products carry the `--elements`
+  selection, sorted, before the input name, and `all` without one: `density_traj.cube` becomes
+  `density_all_traj.cube`, and `--elements Li` gives `density_Li_traj.cube`. `map sdf` products carry
+  `Q<n>`: `sdf_P3_prod.cube` becomes `sdf_P3_Q3_prod.cube`. A rerun with another selection used to
+  overwrite the previous cube silently.
+
 ### Input format by name: `--format-in`; `--format` becomes `--format-out`
 
 - **Edit your command lines:** `ferro convert` and `ferro build` take `--format-out EXT` where they took

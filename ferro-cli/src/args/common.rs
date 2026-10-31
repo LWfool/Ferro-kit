@@ -134,7 +134,8 @@ impl CommonArgs {
     /// Builds the naming/placement bundle for this run.
     ///
     /// `label` says what was analysed and lands in the file name; pass `None` for the
-    /// modes that have no type selection (`sq`, `net`, `map`).
+    /// modes that have no type selection (`sq`, `net`) and for `map`, which puts its
+    /// selection (`--elements`, `Q<n>`) into each per-input product name itself.
     pub fn out(&self, label: Option<String>) -> crate::batch::Output {
         crate::batch::Output {
             dir: self.output.clone(),
