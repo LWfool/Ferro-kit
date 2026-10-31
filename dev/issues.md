@@ -8,7 +8,7 @@
 | `msd.rs` FFT | `S1 − 2·S2` 是两个 ~\|r\|² 的大数相减，解包裹坐标离原点越远越吃有效位 | 每条序列先减均值（MSD 平移不变） |
 | TOR 单测 | 原子从未跨边界时 TOR 与格点视图结果**相同**，这种测试什么也证明不了 | 先跨一次边界、再让盒子伸缩（`test_tor_does_not_follow_lattice_scaling`） |
 | `cube_density.rs` | 原子坐标放格点边界会导致归属歧义 | 测试中用格点中心 `(n + 0.5) / N * L` |
-| `cell.rs` | `wrap_position` 负数行为 | 用 `rem_euclid(1.0)`，不要用 `x - x.floor()` |
+| `cell.rs` | `wrap_position` 负数行为 | 用 `rem_euclid(1.0)`，不要用 `x - x.floor()`；但 `rem_euclid` 对 -1e-17 这类极小负数返回 1.0 本身（结果在 [0, 1]，不是 [0, 1)），要 `< 1` 的再钳一次（`box_builder::wrap_into`），格点下标用 `% n` 或 `.min(n - 1)`（10-30 审查 A4-M-4） |
 | 全局 | clippy snake_case | 变量名不能用单大写字母（如 `L`），改为 `box_len` 等 |
 
 | `cube_density/radius/jump/sdf.rs` | ndarray `Array3` 仍在内部使用（分析阶段） | 在 `CubeData` 构造点用 `.into_iter().collect()` 转为 `Vec<f64>`；不要对外暴露 Array3 |

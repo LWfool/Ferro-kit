@@ -204,11 +204,13 @@ impl Cell {
 
     // ── 周期性处理 ────────────────────────────────────────────────────────────
 
-    /// Folds a Cartesian position into the cell, fractional coordinates in [0, 1) along
+    /// Folds a Cartesian position into the cell, fractional coordinates in [0, 1] along
     /// all three axes.
     ///
-    /// `rem_euclid(1.0)` keeps the output strictly in [0, 1), so the ~1e-15 error of the
-    /// matrix inverse cannot make `floor` jump at a boundary.
+    /// `rem_euclid(1.0)` rather than `x - x.floor()`, but its output is **not** strictly
+    /// below 1: a tiny negative such as -1e-17 rounds to 1.0 itself, so the position lands
+    /// on the far face (`cubic(10)` gives x = 10.0). A caller that needs `< 1` clamps, as
+    /// `ferro-structure`'s `wrap_into` does (review 2026-10-30 A4-M-4).
     /// Returns `Err` when the cell matrix is singular.
     ///
     /// One of three folds, kept apart (review A-16): this one ignores `pbc` and
@@ -216,7 +218,7 @@ impl Cell {
     /// follows `pbc`, moves only atoms outside by whole lattice vectors and folds about
     /// 0 (the cube grid it serves starts there); `ferro-structure`'s `merge_frames`
     /// folds about `origin` and refuses an atom outside along a non-periodic axis.
-    /// Three contracts, three callers that need each.
+    /// This one has no production caller; the msd tests build fixtures with it.
     pub fn wrap_position(&self, cart: Vector3<f64>) -> Result<Vector3<f64>> {
         let frac = self.cartesian_to_fractional(cart)?;
         let wrapped = Vector3::new(
