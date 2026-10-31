@@ -366,8 +366,13 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
             || starts_with_tokens(l, &["ENERGY|", "Total", "force_eval"])
         {
             anchors.push(i);
-        } else if l.contains("SCF run") {
-            scf.push((i, !l.contains("NOT")));
+        } else if let Some(w) = Some(l.split_whitespace().collect::<Vec<_>>())
+            .filter(|w| w.windows(2).any(|p| p == ["SCF", "run"]))
+        {
+            // Same verdict as cp2k_md.rs (parse_cp2k_md), kept as two copies with a note each
+            // (two sites, R6): converged only on `converged` without `NOT`, so `*** SCF run
+            // terminated by external request ***` counts as not converged
+            scf.push((i, w.contains(&"converged") && !w.contains(&"NOT")));
         } else if version.is_none() && starts_with_tokens(l, &["CP2K|", "version", "string:"]) {
             version = l.split_whitespace().last().map(|v| v.to_string());
         } else if run_type.is_none() && starts_with_tokens(l, &["GLOBAL|", "Run", "type"]) {
@@ -634,6 +639,15 @@ mod tests {
         let (traj, st) = parse_cp2k_sp(&format!("{MINI}{bad}")).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_scf_failed, 1);
+    }
+
+    /// `terminated by external request` has no `NOT`, yet the SCF stopped short (review 2026-10-30 H2).
+    #[test]
+    fn a_terminated_scf_is_not_converged() {
+        let bad = MINI.replace("*** SCF run converged in     4 steps ***",
+                               "*** SCF run terminated by external request ***");
+        let err = parse_cp2k_sp(&bad).unwrap_err().to_string();
+        assert!(err.contains("1 SCF"), "{err}");
     }
 
     /// A run without STRESS_TENSOR is good training data, minus the virial.

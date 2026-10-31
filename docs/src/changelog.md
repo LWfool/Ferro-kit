@@ -30,6 +30,8 @@ command line alike; regenerate it rather than migrating it.
   `forces:R:1` used to crash ferro, and `pos:R:2` read the first force component as z with exit code 0.
   Each of `pos`, `forces` / `force`, `velocities` / `vel` / `velo` and `momenta` takes 3 values; `species`,
   `Z`, the charge columns, `masses`, `magmoms` and `label` take 1, so non-collinear `magmoms:R:3` is refused.
+- CP2K single-point output: `*** SCF run terminated by external request ***` counts as not converged
+  and the frame is dropped, as the MD reader already did; it used to be kept as converged.
 
 ### Code review fixes: four silent wrong results
 

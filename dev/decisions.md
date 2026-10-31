@@ -11,6 +11,9 @@
   vel / velo / momenta 为 3，species / Z / charges / charge / initial_charges / masses / magmoms / label 为 1），不符即报错；
   未知列仍按声明的列数跳过。类型字母（`S` / `R` / `I` / `L`）**删去不校验**：从没被用过，列宽对上就不会错列。
   `magmoms:R:3`（ASE 的非共线磁矩）**报错而不是只取 x 分量**：Ferro 的磁矩是标量，目前也没有非共线的使用场景（用户定）。
+- **H2 cp2k_sp 的 SCF 判定**：照搬 R1-1 的 MD 判据（相邻 `SCF` `run` token；收敛 = 含 `converged` 且无 `NOT`）。
+  两个 reader 各留一份、注释互指，**不并进 `readers/cp2k.rs`**：只有两处（R6）。仓库两份真实 SP fixture 的判定行都是
+  `converged in N steps`，读出帧数不变。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 

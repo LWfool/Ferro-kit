@@ -523,7 +523,8 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
             // `SCF run` anywhere, not leading: CP2K writes `  *** SCF run converged in N
             // steps ***` and `*** WARNING in qs_scf.F:630 :: SCF run NOT converged ***`.
             // Converged only on the word `converged` without `NOT`, so `*** SCF run
-            // terminated by external request ***` counts as not converged
+            // terminated by external request ***` counts as not converged. cp2k_sp.rs keeps a
+            // copy of this verdict (two sites, R6)
             last_scf = Some(w.contains(&"converged") && !w.contains(&"NOT"));
         } else if line_matches(&l, tag::RESTART) {
             stats.n_restarts += 1;
