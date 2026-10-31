@@ -288,6 +288,7 @@ class VaspGenerator(Generator):
             incar["NUPDOWN"] = mult - 1
         elif options.multiplicity is not None and incar.get("ISPIN", "1").strip() == "2":
             incar["NUPDOWN"] = 0
+            notes.append("ISPIN = 2 kept from the template, NUPDOWN = 0 for --multiplicity 1")
         elif "NUPDOWN" in incar:
             old = incar.comment_out("NUPDOWN")
             notes.append(f"template NUPDOWN = {old} commented out: multiplicity 1, the moment relaxes "

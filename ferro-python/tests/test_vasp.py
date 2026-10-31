@@ -109,6 +109,10 @@ def test_template_electron_count_and_spin_are_commented_out(cfg, nvt, tmp_path):
     s = VaspGenerator(cfg).generate(nvt, 0, JobOptions("sp", charge=1), tpl)
     incar = Incar.from_str(s.files["INCAR"])
     assert incar["NELECT"] == str(electrons(nvt) - 1) and incar["NUPDOWN"] == "1"
+    # --multiplicity 1 on a spin-polarised template fixes the moment at 0, with a note as QE gives
+    s = VaspGenerator(cfg).generate(nvt, 0, JobOptions("sp", multiplicity=1), tpl)
+    assert Incar.from_str(s.files["INCAR"])["NUPDOWN"] == "0"
+    assert any("NUPDOWN = 0 for --multiplicity 1" in n for n in s.notes)
 
 
 def test_incar_comment_out():

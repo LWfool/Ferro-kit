@@ -257,6 +257,22 @@ class QeGenerator(Generator):
             # 模板要自旋极化、命令行要单重态：固定总磁矩为 0，两个意图都保住
             qe.set("system", "tot_magnetization", 0)
             notes.append("nspin = 2 kept from the template, tot_magnetization = 0 for --multiplicity 1")
+        elif qe.get("system", "tot_magnetization") is not None:
+            # A template's value belongs to the system it was tested on and would fix another
+            # multiplicity than the one reported below (review 2026-10-30 H7, as VASP's NUPDOWN in
+            # R8-1). Removed: the namelists are rewritten, so a comment would not survive
+            old = qe.get("system", "tot_magnetization")
+            qe.delete("system", "tot_magnetization")
+            notes.append(f"template tot_magnetization = {old} removed: multiplicity 1, the moment relaxes "
+                         "in the SCF (give --multiplicity to fix it)")
+        # pw.x stops on nspin = 2 with neither a fixed nor a starting moment (input.f90 iosys,
+        # "some starting_magnetization MUST be set"; fixed occupations are exempt)
+        if (qe.get("system", "nspin") == "2" and qe.get("system", "tot_magnetization") is None
+                and not any(k.startswith("starting_magnetization") for k in qe.namelists.get("system", {}))
+                and qe.get("system", "occupations", "").strip("'\"").lower() != "from_input"):
+            raise JobError("nspin = 2 with no tot_magnetization and no starting_magnetization: pw.x stops "
+                           "(\"some starting_magnetization MUST be set\"). Give --multiplicity (1 fixes the "
+                           "moment at 0), or set starting_magnetization in the template")
         notes.append(f"{n_valence - options.charge:g} electrons, multiplicity {mult}")
 
         for name, card in ferro.qe_structure_cards(one, {e: p[0] for e, p in chosen.items()}):

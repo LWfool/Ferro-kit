@@ -27,6 +27,13 @@
   文件名声明的格式与之相同就保留输入原扩展名（`.data`、`.lammpstrj` 不变，现有产物名不动）；不同则取
   `Format::extension()` 的规范扩展名。**extxyz 内容的 `.xyz` 出 `.extxyz`（用户定 A）**，而不是保留 `.xyz` 写 extxyz
   内容（那要改走 `write_numbered` 显式传格式）。`can_write` 改由 `extension().is_some()` 推出，可写集合只写一处。
+- **H7 QE 的 `tot_magnetization`**：多重度 1、未给 `--multiplicity` 时**删除**模板值并 note（VASP R8-1 是注释掉；QE 的
+  namelist 经 `write_namelists` 重写，注释留不住，旧值进 note）。**删掉后不能就此了事**：QE `develop` 的
+  `PW/src/input.f90`（`magnetization_iosys`）在 `lscf .AND. lsda .AND. .NOT. tfixed_occ .AND. .not. two_fermi_energies
+  .AND. sm_wasnt_set` 时 `errore('some starting_magnetization MUST be set')`，`two_fermi_energies` 即
+  `tot_magnetization /= -10000`。故生成结果 `nspin = 2` 且两者皆无（`occupations = 'from_input'` 除外）时报
+  `JobError`，不替用户猜初始磁矩（VASP 有缺省 MAGMOM，QE 没有）。原 `free` 用例（`nspin = 2` 模板、不给多重度）因此
+  从「照样生成」改为报错 —— 它生成的 pw.in 本来就跑不起来（用户同意，2026-10-31）。
 
 ## 全库 code review 高级四条的修法（2026-10-25）
 

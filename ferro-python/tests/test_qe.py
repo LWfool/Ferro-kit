@@ -83,8 +83,34 @@ def test_explicit_singlet_with_spin_polarised_template(cfg, nvt, tmp_path):
     s = QeGenerator(cfg).generate(nvt, 0, JobOptions("sp", multiplicity=1), tpl)
     qe = QeInput.from_str(s.files["pw.in"])
     assert (qe.get("system", "nspin"), qe.get("system", "tot_magnetization")) == ("2", "0")
-    free = QeInput.from_str(QeGenerator(cfg).generate(nvt, 0, JobOptions("sp"), tpl).files["pw.in"])
+    # Not given, the moment is left free, which pw.x refuses without a starting_magnetization
+    # (input.f90 iosys: "some starting_magnetization MUST be set"); this used to be generated
+    with pytest.raises(JobError, match="starting_magnetization"):
+        QeGenerator(cfg).generate(nvt, 0, JobOptions("sp"), tpl)
+    seeded = tmp_path / "seeded.in"
+    seeded.write_text(tpl.read_text().replace("  nspin = 2\n", "  nspin = 2\n  starting_magnetization(1) = 0.5\n"))
+    free = QeInput.from_str(QeGenerator(cfg).generate(nvt, 0, JobOptions("sp"), seeded).files["pw.in"])
     assert (free.get("system", "nspin"), free.get("system", "tot_magnetization")) == ("2", None)
+
+
+def test_template_tot_magnetization_is_removed_at_multiplicity_1(cfg, nvt, tmp_path):
+    # A tested pw.in from another system: its tot_magnetization would fix a triplet while the
+    # note reports multiplicity 1 (review 2026-10-30 H7). Removed as VASP comments out NUPDOWN
+    tpl = tmp_path / "pw.in"
+    tpl.write_text(QeGenerator.builtin_template("sp").replace(
+        "  ibrav = 0\n", "  ibrav = 0\n  nspin = 2\n  tot_magnetization = 2\n  starting_magnetization(1) = 0.5\n"))
+    s = QeGenerator(cfg).generate(nvt, 0, JobOptions("sp"), tpl)
+    qe = QeInput.from_str(s.files["pw.in"])
+    assert (qe.get("system", "nspin"), qe.get("system", "tot_magnetization")) == ("2", None)
+    assert any("tot_magnetization = 2" in n and "removed" in n for n in s.notes)
+    # Without a starting_magnetization to fall back on, pw.x would stop: refused instead
+    bare = tmp_path / "bare.in"
+    bare.write_text(tpl.read_text().replace("  starting_magnetization(1) = 0.5\n", ""))
+    with pytest.raises(JobError, match="starting_magnetization"):
+        QeGenerator(cfg).generate(nvt, 0, JobOptions("sp"), bare)
+    # A given multiplicity still overwrites it in place
+    s = QeGenerator(cfg).generate(nvt, 0, JobOptions("sp", multiplicity=3), bare)
+    assert QeInput.from_str(s.files["pw.in"]).get("system", "tot_magnetization") == "2"
 
 
 def test_vary_cell_and_kpoints(cfg, nvt, tmp_path):

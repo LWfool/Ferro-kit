@@ -39,6 +39,7 @@ The functional is the one of the UPF files: the template does not set
 | `&SYSTEM` | `tot_charge` | always | `--charge` |
 | `&SYSTEM` | `nspin`, `tot_magnetization` | multiplicity above 1 | 2, multiplicity − 1 |
 | `&SYSTEM` | `tot_magnetization` | `--multiplicity 1` given and the template has `nspin = 2` | 0 |
+| `&SYSTEM` | `tot_magnetization` | multiplicity 1, `--multiplicity` not given, and the template sets it | removed, with a note naming the old value: it belongs to the system the template was tested on |
 | cards | `ATOMIC_SPECIES` | always | element, mass, UPF file |
 | cards | `CELL_PARAMETERS {angstrom}` | always | the cell |
 | cards | `ATOMIC_POSITIONS {angstrom}` | always | Cartesian positions |
@@ -48,6 +49,12 @@ The functional is the one of the UPF files: the template does not set
 | `&IONS` | `tempw` | `aimd --temperature` | K |
 | `&CONTROL` | `nstep` | `aimd --steps` | steps |
 | `&CONTROL` | `dt` | `aimd --timestep` | fs ÷ 0.0483776865 (the Rydberg atomic time unit of QE's `constants.f90`: 1 fs = 20.6707) |
+
+A result with `nspin = 2` but neither `tot_magnetization` nor any
+`starting_magnetization(i)` is refused (unless `occupations = 'from_input'`): pw.x
+stops on it with "some starting_magnetization MUST be set" (`PW/src/input.f90`).
+Give `--multiplicity` (1 fixes the moment at 0), or set `starting_magnetization`
+in the template.
 
 The cell always comes from `CELL_PARAMETERS`, which is why `ibrav` is forced to
 0: with any other `ibrav`, pw.x builds the cell from `celldm` and ignores the

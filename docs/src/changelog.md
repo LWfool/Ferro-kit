@@ -43,6 +43,11 @@ command line alike; regenerate it rather than migrating it.
   the cell, energy and forces. `--format-in` is followed too: `-i conf.txt --format-in extxyz` gives
   `.extxyz` instead of asking for `--format-out`, and `-i x.lmp --format-in xyz` gives `.xyz`
   instead of a LAMMPS data file.
+- `ferro-py job -s qe`: a template's `tot_magnetization` is removed, with a note, when the multiplicity
+  is 1 and `--multiplicity` is not given; it used to stay and fix another multiplicity than the note
+  reported. A `pw.in` with `nspin = 2` and neither `tot_magnetization` nor `starting_magnetization` is
+  refused, since pw.x stops on it; a `nspin = 2` template without `--multiplicity` used to generate one.
+- `ferro-py job -s vasp`: `--multiplicity 1` on an `ISPIN = 2` template notes the `NUPDOWN = 0` it writes.
 
 ### Code review fixes: four silent wrong results
 
