@@ -323,6 +323,11 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
         }
     };
     let mut traj = traj;
+    // A file that reads as no frame at all is an error for every format, checked once here
+    // rather than in each reader (review 2026-10-30 A1-M1)
+    if traj.n_frames() == 0 {
+        bail!("no frame found in {}", path.display());
+    }
     // Every reader then stores one site table for a run of identical frames (review B15)
     traj.share_sites();
     Ok((traj, report))
@@ -434,6 +439,23 @@ mod tests {
 
     fn read_plain(path: &Path) -> Result<Trajectory> {
         Ok(read(path, &ReadOptions::default())?.0)
+    }
+
+    /// Files that hold no frame are errors, not an empty trajectory with exit code 0.
+    #[test]
+    fn zero_frames_is_an_error() {
+        let dir = tmp_dir("zero");
+        for (name, text) in [
+            ("empty.xyz", ""),
+            ("empty.extxyz", ""),
+            ("no_atoms.pdb", "REMARK nothing here\nEND\n"),
+            ("no_step.lammpstrj", ""),
+        ] {
+            let p = dir.join(name);
+            std::fs::write(&p, text).unwrap();
+            let err = read_plain(&p).unwrap_err();
+            assert!(format!("{err:#}").contains("no frame found"), "{name}: {err:#}");
+        }
     }
 
     /// An extxyz inside a `.xyz` must go to the extxyz reader, or the cell, energy,

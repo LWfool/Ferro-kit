@@ -46,6 +46,9 @@ command line alike; regenerate it rather than migrating it.
   error. It used to be read as a zero-volume cell (lengths 0, angles NaN) with exit code 0.
 - CIF: a loop whose last row is short of values is an error naming the loop; the row used to be dropped,
   so an atom went missing with exit code 0. A tag with no value is an error too; it used to be skipped.
+- A file that holds no frame is an error, `no frame found in <path>`, for every format. An empty `.xyz` /
+  `.extxyz`, a `.pdb` with no ATOM record and a dump with no `ITEM: TIMESTEP` used to read as
+  `Frames: 0` with exit code 0.
 - `ferro build`: without `--format-out` the product takes the format the input was **read** as. An
   extended XYZ named `.xyz` gives `<op>_<input>.extxyz`; it used to be written as plain XYZ, losing
   the cell, energy and forces. `--format-in` is followed too: `-i conf.txt --format-in extxyz` gives
