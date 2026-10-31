@@ -18,15 +18,17 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
         // cannot be written
         let mut masses = frame.atoms().filter(|a| a.element == elem).map(|a| a.effective_mass());
         let mass = masses.next().expect("an element of the frame has an atom")?;
+        // Same rule as writers/lammps_data.rs (1e-6 tolerance, shortest exact form); two places,
+        // not merged (R6) (review 2026-10-30 A1-M6)
         for m in masses {
-            if m? != mass {
+            if (m? - mass).abs() > 1e-6 {
                 anyhow::bail!("{elem} atoms carry different masses; QE writes one species (one mass) per element");
             }
         }
         let pseudo = pseudos.iter().find(|(e, _)| *e == elem)
             .map(|(_, p)| p)
             .with_context(|| format!("no pseudopotential given for {elem}"))?;
-        writeln!(w, "  {elem}  {mass:.4}  {pseudo}")?;
+        writeln!(w, "  {elem}  {mass}  {pseudo}")?;
     }
     let species = std::mem::take(&mut w);
 
@@ -69,7 +71,7 @@ mod tests {
             assert!(text.starts_with(name.as_str()) && text.ends_with('\n'), "{text}");
         }
         let cards: String = cards.iter().map(|(_, t)| format!("{t}\n")).collect();
-        assert!(cards.contains("  Fe  55.8450  Fe.pbe.UPF"), "{cards}");
+        assert!(cards.contains("  Fe  55.845  Fe.pbe.UPF"), "{cards}");
         let text = format!("&SYSTEM\n  ibrav = 0, nat = 2, ntyp = 1\n/\n{cards}");
         let f = read_qe_input(&tmp("bcc_cards.qe", &text)).unwrap().frames.remove(0);
         assert_eq!(f.n_atoms(), 2);
@@ -98,6 +100,9 @@ mod tests {
         // An explicit mass (an isotope) is written, not the table's
         let s = species(&with_masses([Some(57.9353), Some(57.9353)], "Fe"), "Fe").unwrap();
         assert!(s.contains("  Fe  57.9353  X.UPF"), "{s}");
+        // Written in full, not cut to 4 decimals; a difference within 1e-6 is one mass
+        let s = species(&with_masses([Some(57.93527425), Some(57.9352743)], "Fe"), "Fe").unwrap();
+        assert!(s.contains("  Fe  57.93527425  X.UPF"), "{s}");
         // No mass anywhere is an error, never 1 amu
         let e = species(&with_masses([None, None], "Fe1"), "Fe1").unwrap_err();
         assert!(format!("{e:#}").contains("no mass for element 'Fe1'"), "{e:#}");

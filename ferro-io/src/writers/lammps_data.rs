@@ -44,6 +44,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
         let masses = frame.atoms().filter(|a| a.element == *elem)
             .map(|a| a.effective_mass()).collect::<ferro_core::Result<Vec<f64>>>()?;
         let mass = masses[0]; // elem_order lists the frame's own elements
+        // Same rule in writers/qe.rs; two places, not merged (R6)
         match masses.iter().copied().find(|m| (m - mass).abs() > 1e-6) {
             Some(other) => bail!("atoms of element {elem} carry different masses ({mass} and {other}); \
                                   LAMMPS data gives one mass per atom type"),

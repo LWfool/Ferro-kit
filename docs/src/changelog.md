@@ -59,6 +59,8 @@ command line alike; regenerate it rather than migrating it.
   position / force / stress row) that is not a number or a row short of 3 values, are errors giving the
   byte position. The byte used to be replaced and the number skipped, so the frame was quietly counted
   as incomplete, or with NELM unread no frame was ever judged unconverged.
+- `ferro-py job -s qe`: `ATOMIC_SPECIES` writes the mass in full (`57.93527425`), as LAMMPS data already
+  does; it was cut to 4 decimals. Masses of one element within $10^{-6}$ amu count as one.
 - `ferro build`: without `--format-out` the product takes the format the input was **read** as. An
   extended XYZ named `.xyz` gives `<op>_<input>.extxyz`; it used to be written as plain XYZ, losing
   the cell, energy and forces. `--format-in` is followed too: `-i conf.txt --format-in extxyz` gives
