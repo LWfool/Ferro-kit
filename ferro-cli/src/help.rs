@@ -81,7 +81,7 @@ pub fn print_info() {
   Reads every format `ferro convert` reads (run `ferro convert` for the list).
 
 Parameters:
-  -i, --input  FILE       Input file (format from its name)
+  -i, --input  FILE       Input file (format: --format-in, name or content)
 {READ_OPTS}
   -h, --help              Short parameter table
 
@@ -186,13 +186,15 @@ Manual
 Conventions:
   -i takes several files and expands globs itself — quote them. Each input is
   analysed on its own and the results stack into ONE csv carrying a `file`
-  column; a failed input is skipped and the exit code is 1.
-  -o is a DIRECTORY for the commands that write several products, the output
-  FILE for `convert` (a directory with --format-out). Every product is named
+  column; a failed input is skipped and the exit code is 1. convert, info and
+  bader read one file, build merge two, named literally.
+  -o is always a DIRECTORY; a missing one is asked about, or made by --mkdir
+  (convert makes it). Analysis products are named
     <-o dir>/<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>
   where <input> appears on per-input products (map, bader, net --export-traj)
-  and -s gives <suffix>. A command typed without -i prints its own page; -h
-  gives the short table.
+  and -s gives <suffix>; convert names its product after the input,
+  <input>[_<suffix>].<EXT>. A command typed without -i prints its own page;
+  -h gives the short table.
 
 Full documentation:  ferro doc cli-reference"#,
         env!("CARGO_PKG_VERSION")

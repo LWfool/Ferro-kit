@@ -107,8 +107,8 @@ exit code 1; argument errors fail before the first file is read.
 <-o dir>/<command>[_<table>][_<label>][_<input>][_<suffix>].csv
 ```
 
-`-o` is where products go — a path, for every command: the output **directory** for the
-runs that write several products, the output **file** for `convert`. A missing
+`-o` is where products go — always a **directory**, for every command. `convert` also needs
+`--format-out` and names its product after the input, `<input>[_<suffix>].<EXT>`. A missing
 directory is created after a `[y/N]` prompt, or straight away with `--mkdir` (which
 scripts and CI must pass, having no terminal to answer). `-s` tags the batch. The label segment
 says what was analysed, so `traj gr -a P -b O` writes `gr_P-O.csv` and an unfiltered run
