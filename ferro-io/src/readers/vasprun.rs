@@ -20,7 +20,7 @@
 use std::path::Path;
 use std::io::BufReader;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use ferro_core::units::{convert_pressure, PressureUnit, BOLTZMANN_EV_K};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
@@ -51,6 +51,8 @@ struct State {
     reading_energy_name: Option<String>,
 
     rows: Vec<[f64; 3]>,
+    /// text of the element being read, parsed at its end tag
+    text: String,
     cell: Option<Matrix3<f64>>,
     positions: Vec<Vector3<f64>>,
     forces: Option<Vec<Vector3<f64>>>,
@@ -82,17 +84,21 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
             Err(quick_xml::Error::Syntax(_)) | Ok(Event::Eof) => break,
             Err(e) => bail!("malformed XML at byte {}: {e}", reader.buffer_position()),
             Ok(Event::Start(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                let attr = |key: &str| -> Option<String> {
-                    e.attributes().flatten().find_map(|a| {
-                        (a.key.as_ref() == key.as_bytes())
-                            .then(|| String::from_utf8_lossy(&a.value).trim().to_string())
-                    })
+                let at = reader.buffer_position();
+                st.text.clear();
+                let name = utf8(e.name().as_ref(), at)?.to_string();
+                let attr = |key: &str| -> Result<Option<String>> {
+                    for a in e.attributes().flatten() {
+                        if a.key.as_ref() == key.as_bytes() {
+                            return Ok(Some(utf8(&a.value, at)?.trim().to_string()));
+                        }
+                    }
+                    Ok(None)
                 };
                 match name.as_str() {
                     "atominfo" => st.in_atominfo = true,
                     "array" if st.in_atominfo => {
-                        st.in_atoms_array = attr("name").as_deref() == Some("atoms");
+                        st.in_atoms_array = attr("name")?.as_deref() == Some("atoms");
                     }
                     "rc" if st.in_atoms_array => st.atominfo_field = 0,
                     "c" if st.in_atoms_array => st.in_c = true,
@@ -111,9 +117,9 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                         st.n_scstep += 1;
                     }
                     "structure" if st.in_calculation => st.in_structure = true,
-                    "varray" => st.varray = attr("name"),
+                    "varray" => st.varray = attr("name")?,
                     "i" => {
-                        let n = attr("name");
+                        let n = attr("name")?;
                         if n.as_deref() == Some("NELM") && st.nelm.is_none() {
                             st.reading_nelm = true;
                         }
@@ -130,18 +136,11 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                 buf.clear();
             }
             Ok(Event::Text(t)) => {
-                let text = String::from_utf8_lossy(t.as_ref()).to_string();
-                if st.reading_nelm {
-                    st.nelm = text.trim().parse().ok();
-                    st.reading_nelm = false;
-                } else if let Some(field) = st.reading_energy_name.take() {
-                    if field == "e_fr_energy" {
-                        // 每帧覆盖:最后一个才是收敛值
-                        st.energy = text.trim().parse().ok();
-                    } else if field == "kinetic" {
-                        // 离子动能(eV),温度由它反算 —— vasprun 不打印温度本身
-                        st.kinetic = text.trim().parse().ok();
-                    }
+                let text = utf8(t.as_ref(), reader.buffer_position())?;
+                if st.reading_nelm || st.reading_energy_name.is_some() || st.varray.is_some() {
+                    // Parsed at the end tag, not here: a file cut inside a number never reaches
+                    // that tag, so the cut step counts as incomplete instead of a bad number
+                    st.text.push_str(text);
                 } else if st.in_atoms_array && st.in_c {
                     // rc/c 交替给出元素与 type 编号,取第一列
                     if st.atominfo_field == 0 {
@@ -152,26 +151,48 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                         }
                     }
                     st.atominfo_field += 1;
-                } else if st.varray.is_some() {
-                    let v: Vec<f64> =
-                        text.split_whitespace().filter_map(|x| x.parse().ok()).collect();
-                    if v.len() >= 3 {
-                        st.rows.push([v[0], v[1], v[2]]);
-                    }
                 }
                 buf.clear();
             }
             Ok(Event::End(e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                let at = reader.buffer_position();
+                let name = utf8(e.name().as_ref(), at)?.to_string();
+                let text = std::mem::take(&mut st.text);
+                let text = text.trim();
                 match name.as_str() {
                     "atominfo" => st.in_atominfo = false,
                     "array" => st.in_atoms_array = false,
                     "c" => st.in_c = false,
-                    // An empty `<i name="e_fr_energy"></i>` has no Text event: unless cleared here, the next text
-                    // node (another quantity) is taken as the energy (review 10-03, A minor)
+                    // Both flags are cleared here: an empty `<i name="e_fr_energy"></i>` has no Text
+                    // event, and a flag left armed took the next text node (another quantity) as the
+                    // energy (review 10-03, A minor). An empty value is a missing one, not a bad number
                     "i" => {
-                        st.reading_energy_name = None;
-                        st.reading_nelm = false;
+                        let field = st.reading_energy_name.take();
+                        if std::mem::take(&mut st.reading_nelm) && !text.is_empty() {
+                            st.nelm = Some(number(text, "NELM", at)?);
+                        } else if !text.is_empty() {
+                            match field.as_deref() {
+                                // 每帧覆盖:最后一个才是收敛值
+                                Some("e_fr_energy") => st.energy = Some(number(text, "e_fr_energy", at)?),
+                                // 离子动能(eV),温度由它反算 —— vasprun 不打印温度本身
+                                Some("kinetic") => st.kinetic = Some(number(text, "kinetic", at)?),
+                                _ => {}
+                            }
+                        }
+                    }
+                    // Only the four varrays read below need numbers; others (`selective`'s T/F,
+                    // one-column `weights`) are not this reader's business
+                    "v" if st.in_calculation
+                        && matches!(st.varray.as_deref(), Some("basis" | "positions" | "forces" | "stress")) =>
+                    {
+                        let v = text.split_whitespace()
+                            .map(|x| number(x, "varray value", at))
+                            .collect::<Result<Vec<f64>>>()?;
+                        let [x, y, z] = v[..] else {
+                            bail!("near byte {at}: a <varray name=\"{}\"> row has {} values, not 3",
+                                  st.varray.as_deref().unwrap_or(""), v.len());
+                        };
+                        st.rows.push([x, y, z]);
                     }
                     "scstep" => st.in_scstep = false,
                     "structure" => st.in_structure = false,
@@ -240,6 +261,20 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
         stats.steps = Some((stats.steps.map_or(step, |(lo, _)| lo), step));
     }
     Ok((traj, stats))
+}
+
+/// Bytes that are not UTF-8 are an error, as in every other text reader (review C-8),
+/// not replaced (review 2026-10-30 A1-M5). `at` is the parser's byte position.
+fn utf8(bytes: &[u8], at: u64) -> Result<&str> {
+    std::str::from_utf8(bytes).map_err(|e| {
+        anyhow!("near byte {at}: byte 0x{:02x} is not UTF-8 text", bytes[e.valid_up_to()])
+    })
+}
+
+/// A value this reader uses that does not parse is an error naming it; it used to be
+/// skipped, so a frame went quietly incomplete or NELM was never known.
+fn number<T: std::str::FromStr>(text: &str, what: &str, at: u64) -> Result<T> {
+    text.parse().map_err(|_| anyhow!("near byte {at}: {what} {text:?} is not a number"))
 }
 
 /// Turns the finished `<calculation>` into a frame, or counts why it cannot.
@@ -501,5 +536,32 @@ mod tests {
         let (got, _) = read_vasprun(&path).unwrap();
         assert!(got.frames[0].temperature.is_some());
         assert_eq!(got.frames[0].temperature, want.frames[0].temperature);
+    }
+
+    /// A bad number in a value this reader uses, and a byte that is not UTF-8, are errors;
+    /// they used to be skipped (the frame went quietly incomplete) or replaced.
+    #[test]
+    fn bad_numbers_and_bytes_are_errors() {
+        let text = std::fs::read_to_string(FIXTURE).unwrap();
+        let row = "<v>       5.61175521      -0.45541218       5.62845267 </v>";
+        let nelm = "<i type=\"int\" name=\"NELM\">   100</i>";
+        assert_eq!(text.matches(row).count(), 1);
+        for (name, edited, want) in [
+            ("bad_force", text.replacen(row, "<v>       5.61175521      -0.45541218       5.6x845267 </v>", 1),
+             "varray value \"5.6x845267\" is not a number"),
+            ("short_force", text.replacen(row, "<v>       5.61175521      -0.45541218 </v>", 1), "has 2 values, not 3"),
+            ("bad_nelm", text.replacen(nelm, "<i type=\"int\" name=\"NELM\">   1O0</i>", 1), "NELM \"1O0\""),
+        ] {
+            let path = crate::testutil::write_tmp(&format!("vasprun_{name}.xml"), &edited);
+            let e = format!("{:#}", read_vasprun(&path).unwrap_err());
+            assert!(e.contains(want), "{name}: {e}");
+        }
+        let mut bytes = text.into_bytes();
+        let at = bytes.windows(row.len()).position(|w| w == row.as_bytes()).unwrap() + 10;
+        bytes[at] = 0xff;
+        let path = std::env::temp_dir().join("ferro_vasprun_bad_byte.xml");
+        std::fs::write(&path, bytes).unwrap();
+        let e = format!("{:#}", read_vasprun(&path).unwrap_err());
+        assert!(e.contains("byte 0xff is not UTF-8"), "{e}");
     }
 }

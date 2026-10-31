@@ -47,6 +47,11 @@ A3-M-1 / A3-M-2 / A4-M-3 与 A5-M7 一并挂起，随重写修。
   改为同一写法（`parse_*` 内层不知道路径）。不动的：`sniff` 的报错自带路径（它不是解析）；`text_lines` 的 UTF-8 / IO 报错
   自带路径，经 reader 再套一次会出现两遍，与改前的 extxyz 等一致，未处理；deepmd 报错里的路径是系统目录内具体的 `.npy`，保留。
   错误链须用 `{:#}` 打印才看得到内层原因（CLI 已如此）。
+- **A1-M5 vasprun 严格解析**：**仍流式读**，不改 `read_text` 整读 —— 长 MD 的 vasprun 可达 GB 级（模块文档写明不建 DOM）。
+  UTF-8 在标签名、属性值、文本三处逐事件校验，坏字节报错带解析器字节位置（不是行列：XML 事件流里没有行号）。
+  NELM、`e_fr_energy`、`kinetic` 与 basis / positions / forces / stress 四个 varray 的行**在结束标签处**解析：文件截在
+  数字中间时到不了结束标签，那一步照旧计 incomplete，不会被当坏数报错（`a_truncated_file_keeps_the_finished_frames`
+  守着）。空的 `<i>` 视为缺值不报错；其余 varray（`selective` 的 T/F、一列的 `weights`）不解析。
 
 ## 2026-10-30 全库审查高级项的修法（2026-10-31 起）
 

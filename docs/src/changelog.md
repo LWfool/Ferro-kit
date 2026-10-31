@@ -55,6 +55,10 @@ command line alike; regenerate it rather than migrating it.
   to 44). Writing a cube with such an element is an error too; it used to be written as Z = 0.
 - CIF: `?` or `.` in `_atom_site_type_symbol` takes the element from `_atom_site_label`, as a missing
   column does; it used to give `X`. With no usable label either, it is an error.
+- vasprun.xml: a byte that is not UTF-8, and a value ferro reads (NELM, `e_fr_energy`, `kinetic`, a cell /
+  position / force / stress row) that is not a number or a row short of 3 values, are errors giving the
+  byte position. The byte used to be replaced and the number skipped, so the frame was quietly counted
+  as incomplete, or with NELM unread no frame was ever judged unconverged.
 - `ferro build`: without `--format-out` the product takes the format the input was **read** as. An
   extended XYZ named `.xyz` gives `<op>_<input>.extxyz`; it used to be written as plain XYZ, losing
   the cell, energy and forces. `--format-in` is followed too: `-i conf.txt --format-in extxyz` gives
