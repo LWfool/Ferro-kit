@@ -60,6 +60,10 @@ from trajcheck import partial_independence, report_order_stability, scan_traj
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
 R_MIN = 0.005   # dump2sq 的 --GRmin 与 gr 对拍用；ferro sq 没有 --r-min，恒从 0 积分（审查 B-1）
 R_MAX = 15.0    # 小于 ferro 的最小镜像 clamp 上界（本轨迹 15.16）
+# O-O g(r) 那一路从 R_MIN 起：范围须为 DR 的整数倍，否则 ferro 的末 bin 收窄、横轴与
+# dump2analysis 错开 0.005 Å（同 compare_rdf.py，审查 2026-10-30 A6-M-2）。S(q) 从 0 起，
+# 15.0 本就整除，不动
+GR_R_MAX = 15.005
 DR = 0.01
 Q_MIN = 0.1
 Q_MAX = 25.0
@@ -96,12 +100,12 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
     fe_gr = fc.run_ferro(
         ferro_bin,
         ["traj", "gr", "-a", "O", "-b", "O", "-i", traj, "-s", "cmp",
-         "--r-min", R_MIN, "--r-max", R_MAX, "--dr", DR],
+         "--r-min", R_MIN, "--r-max", GR_R_MAX, "--dr", DR],
         outdir,
         fc.product_name("gr", label=fc.file_label("O", "O"), suffix="cmp"))
     d2a_gr = outdir / "d2a_O-O.gr"
     fc.run([d2a_bin, "-m", "gr", "-x", "O", "-y", "O",
-            "--rmin", str(R_MIN), "--rmax", str(R_MAX), "--dr", str(DR),
+            "--rmin", str(R_MIN), "--rmax", str(GR_R_MAX), "--dr", str(DR),
             "-i", str(traj), "-o", str(d2a_gr)], d2a_gr)
 
     # ── S(q)：ferro 是宽表，直接按列名取 ────────────────────────────────────
@@ -134,7 +138,10 @@ def compute(traj, outdir, ferro_bin, d2sq_bin, d2a_bin):
     g_ref = fc.load_legacy(d2sq_gr)
     g_ref_names = fc.legacy_header(d2sq_gr, "Total")
 
-    m = min(len(g_fe), len(g_d2a), len(g_ref))
+    # 截断之前先确认三方横轴逐点一致：只按 min(len) 截断时，错位的横轴会被静默画在一起
+    r_fe = g_fe["r"].to_numpy()
+    m = min(fc.same_grid(r_fe, g_d2a[:, 0], "O-O g(r) vs dump2analysis"),
+            fc.same_grid(r_fe, g_ref[:, 0], "O-O g(r) vs dump2sq"))
     gr = {
         "r": g_fe["r"].to_numpy()[:m],
         "fe": g_fe["gr"].to_numpy()[:m],
