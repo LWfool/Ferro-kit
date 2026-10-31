@@ -48,6 +48,9 @@
 Python 改测试、拆提交两次报 `Non-UTF-8 code` 未执行，其中一次让本该分开的 R9-1 / R9-2 并进同一提交。
 2026-10-31 又犯一次（10-30 审查 H6）：heredoc Python 往 `issues.md` 追加含中文的表格行。这次碰巧没乱码，
 事后用 `python -c` 核对过 —— 侥幸不是理由，规则照旧。
+2026-10-31 又犯一次（10-30 审查 CR-5）：heredoc Python 的替换串里有 `Å`，报 `Non-UTF-8 code` 未执行，
+随后的 cargo test 照常 999 过（测的是旧代码），看结果文件里第一行的 SyntaxError 才发现。纯 ASCII 的
+heredoc 本轮用了十几次都没事 —— **动手前看一眼替换串里有没有 `Å`、`→`、`σ` 这类字符**，有就用 Edit。
 
 **How to apply:** 提交信息先用 Write 写到 scratchpad 文件再 `git commit -F`；改含中文的源码、
 文档用 Edit / Write，不用 heredoc 里的 Python 替换；Bash 里 grep 中文也会报
