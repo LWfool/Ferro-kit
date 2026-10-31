@@ -60,6 +60,8 @@ command line alike; regenerate it rather than migrating it.
   to be taken for it, and the file failed with "no position columns".
 - A plain `.xyz` whose comment mentions a lattice constant (`lattice = 4.05 Angstrom`) reads as plain XYZ;
   it used to be taken for extended XYZ and refused ("Lattice must have 9 values").
+- CP2K single-point output: an `ATOMIC COORDINATES IN bohr` table is converted to Å. Every such frame
+  used to be dropped as incomplete.
 - vasprun.xml: a byte that is not UTF-8, and a value ferro reads (NELM, `e_fr_energy`, `kinetic`, a cell /
   position / force / stress row) that is not a number or a row short of 3 values, are errors giving the
   byte position. The byte used to be replaced and the number skipped, so the frame was quietly counted
