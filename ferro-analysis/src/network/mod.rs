@@ -30,13 +30,13 @@ mod graph;
 pub mod qn_elements;
 
 pub use classify::{
-    AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame, classify_frame_detailed,
+    AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame,
 };
 pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 
 use crate::check;
 use ferro_core::error::ChemError;
-use ferro_core::{Frame, Table, Trajectory};
+use ferro_core::{Frame, PeriodicCell, Table, Trajectory};
 use std::collections::{BTreeMap, HashMap};
 
 /// Qn partner key: the Qn value, plus how many of those bridges lead to each partner
@@ -708,7 +708,7 @@ fn network(
     let ((a, b), rcut) = params.cutoffs.iter().chain(&params.modifier_cutoffs)
         .max_by(|x, y| x.1.total_cmp(y.1))
         .expect("cutoffs are not empty");
-    check::all_periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
+    let cells = check::all_periodic_cells(traj, Some((&format!("{a}-{b} cutoff"), *rcut)))?;
 
     let n_frames = traj.frames.len();
     let n_atoms = traj.frames[0].n_atoms();
@@ -718,8 +718,9 @@ fn network(
     // order set by the schedule (review 2026-10-30 A2-M1, as R3-1 did for md)
     let mut acc = Accumulator::default();
     let mut kept = Vec::new();
-    crate::md::util::par_map_in_order(&traj.frames, |frame| {
-        let ft = classify_frame_detailed(frame, params)
+    let pairs: Vec<(&Frame, &PeriodicCell)> = traj.frames.iter().zip(&cells).collect();
+    crate::md::util::par_map_in_order(&pairs, |&(frame, cell)| {
+        let ft = classify::classify_with_cell(frame, cell, params)
             .expect("checked at the entry by validate and check::all_periodic_cells");
         let fd = compute_frame(&ft, frame, params);
         (fd, keep_types.then_some(ft.types))

@@ -82,8 +82,8 @@ impl TypeParams {
         self
     }
 
-    /// Every cutoff finite and >= 0; 0 means the pair never bonds. [`classify_frame_detailed`]
-    /// runs it first, `ferro net` before reading any input (review C-2: a NaN cutoff used to
+    /// Every cutoff finite and >= 0; 0 means the pair never bonds. [`classify_frame`]
+    /// and `network` run it first, `ferro net` before reading any input (review C-2: a NaN cutoff used to
     /// bond nothing, a negative one bonded at its absolute value).
     pub fn validate(&self) -> Result<()> {
         for ((a, b), &c) in self.cutoffs.iter().chain(&self.modifier_cutoffs) {
@@ -263,19 +263,21 @@ pub struct FrameTypes {
 /// `Err` when the frame has no 3-D periodic cell, the cell is singular (e.g. a slab
 /// written with `c = 0`), or a cutoff exceeds its minimum-image bound.
 pub fn classify_frame(frame: &Frame, params: &TypeParams) -> Result<Vec<AtomType>> {
-    Ok(classify_frame_detailed(frame, params)?.types)
+    params.validate()?;
+    Ok(classify_with_cell(frame, &PeriodicCell::of(frame)?, params)?.types)
 }
 
-/// [`classify_frame`] plus the ligand→former adjacency, for pairwise statistics.
-pub fn classify_frame_detailed(frame: &Frame, params: &TypeParams) -> Result<FrameTypes> {
-    params.validate()?;
-    let cell = PeriodicCell::of(frame)?;
+/// The types plus the ligand→former adjacency, for pairwise statistics, for a caller that
+/// has validated `params` and built the frame's cell already: `network` checks both once
+/// for the whole trajectory. It went through a `classify_frame_detailed` that checked them
+/// again for every frame and rebuilt the cell (review 2026-10-30 A2-M4).
+pub(crate) fn classify_with_cell(frame: &Frame, cell: &PeriodicCell, params: &TypeParams) -> Result<FrameTypes> {
     // One neighbour list at the longest cutoff serves every pair; each pair is then
     // measured again against its own cutoff
     let rcut = params.cutoffs.values().chain(params.modifier_cutoffs.values())
         .copied().fold(0.0, f64::max);
     let nl = if rcut > 0.0 {
-        Some(NeighborList::build(frame.positions(), &cell, rcut)?)
+        Some(NeighborList::build(frame.positions(), cell, rcut)?)
     } else {
         None
     };
