@@ -764,6 +764,10 @@ def run_plot(argv):
     if figure not in PLOT_HELPS:
         raise UsageError(f"unknown figure '{figure}'; one of {', '.join(PLOT_HELPS)}")
     args = parse(plot_parser(figure), PLOT_HELPS[figure], argv[1:])
+    # Only the cn figure is split by element; the other tables used to drop it in silence
+    # (review 2026-10-30 A6-L8). Refused before any input is read
+    if figure == "net" and args.element and args.table != "cn":
+        raise UsageError(f"--element applies to the cn table only, not '{args.table}'")
     files = expand_inputs(args.input)
     extra = {}
     if figure == "msd":

@@ -43,6 +43,8 @@ command line alike; regenerate it rather than migrating it.
 - `build supercell` (and Python `supercell`): more than one copy along an axis whose `pbc` is false is an
   error; a slab used to be stacked into several slabs through its vacuum.
 - `ferro net`: a pair given twice (`--P-O=2.3 --P-O=2.5`) is an error; the second used to replace the first.
+- `ferro-py plot net`: `--element` with a table other than `cn` is an error; `qn`, `bridge` and `linkmap`
+  used to ignore it.
 - The closing line of a run with failures reads `ferro: FerroError: N failure(s); see the messages above`.
   It said `N input(s) failed`, but `dataset inspect` counts a system without masses, not an input file.
 

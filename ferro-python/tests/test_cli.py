@@ -245,6 +245,12 @@ def test_plot_overview_and_unknown_figure(capsys):
     assert "unknown figure 'rdf'; one of gr, sq, angle, msd, net" in capsys.readouterr().err
 
 
+def test_plot_net_element_is_for_cn_only(capsys):
+    # review 2026-10-30 A6-L8: refused before the (missing) input is looked at
+    assert cli.main(["plot", "net", "qn", "-i", "nowhere.csv", "--element", "P"]) == 1
+    assert "--element applies to the cn table only, not 'qn'" in capsys.readouterr().err
+
+
 GR_CSV = """\
 # ferro gr
 file,r,center,neighbor,gr,cn
