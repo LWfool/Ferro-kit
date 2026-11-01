@@ -25,11 +25,12 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
             let l = l.trim();
             // CP2K comments start with ! or #
             // ferro-python/python/ferro/jobs/cp2k.py `_split_comment` strips them too, but cuts at the
-            // first of the two outside quotes; this one cuts at `!` before `#` and ignores quotes. Not
+            // first of the two outside quotes; this one cuts at the first of the two and ignores quotes. Not
             // merged: one reads coordinates out of an input, the other rewrites a template and must
             // keep the comment, and a Rust helper would have to cross the FFI for one line
             // 剥完再 trim：段名按整行比较，`&CELL ! 注释` 剩下的行尾空格会让它失配
-            if let Some(p) = l.find('!').or_else(|| l.find('#')) { l[..p].trim_end() } else { l }
+            // The earlier of the two: `&CELL # note ! x` used to keep `&CELL # note` (review 2026-10-30 A1-L3)
+            if let Some(p) = l.find(['!', '#']) { l[..p].trim_end() } else { l }
         })
         .collect();
 
@@ -391,6 +392,14 @@ mod tests {
         assert_eq!(f.n_atoms(), 3);
         let [a, ..] = f.cell.as_ref().unwrap().lengths();
         assert!((a - 10.0).abs() < 1e-9, "胞应取 &CELL 的 ABC 10，不是 &CELL_REF 的 9 / 8：{a}");
+    }
+
+    #[test]
+    fn a_comment_starts_at_the_first_of_bang_and_hash() {
+        let text = WATER_INP.replace("    &CELL\n", "    &CELL # note ! more\n");
+        assert_ne!(text, WATER_INP, "fixture has no plain &CELL line");
+        let traj = read_cp2k_inp(&tmp("hash_bang.inp", &text)).unwrap();
+        assert!(traj.first().unwrap().cell.is_some());
     }
 
     #[test]
