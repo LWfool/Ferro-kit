@@ -135,9 +135,18 @@ fn command(chars: &[char], i: &mut usize) -> String {
             return if glued(chars, *i) { format!("({frac})") } else { frac };
         }
         "sqrt" => {
+            // The optional index `\sqrt[n]{x}` goes up front as a superscript, `ⁿ√x`; `[` used to
+            // be taken for the argument, rendering `√([)3]x` (review 2026-10-30 A4-L1)
+            let mut root = String::from("√");
+            if chars.get(*i) == Some(&'[') {
+                let end = chars[*i..].iter().position(|&c| c == ']').map_or(chars.len(), |k| *i + k);
+                let n: String = chars[*i + 1..end].iter().collect();
+                *i = (end + 1).min(chars.len());
+                root = format!("{}√", script('^', n.trim(), false));
+            }
             let a = grouped(&arg(i));
             // `\sqrt{2}x` would read as √(2x): the same rule as a fraction (review R9-9)
-            return if glued(chars, *i) && !a.starts_with('(') { format!("√({a})") } else { format!("√{a}") };
+            return if glued(chars, *i) && !a.starts_with('(') { format!("{root}({a})") } else { format!("{root}{a}") };
         }
         _ => {
             // 认不出的命令连同参数原样保留
@@ -291,6 +300,9 @@ mod tests {
             (r"\sqrt{2}x", "√(2)x"),
             (r"\sqrt{2} x", "√2 x"),
             (r"\sqrt{ab}c", "√(ab)c"),
+            (r"\sqrt[3]{x}", "³√x"),
+            (r"\sqrt[n]{x}", "ⁿ√x"),
+            (r"\sqrt[3]{2}x", "³√(2)x"),
             (r"\frac{a}{b}\rangle", "a/b⟩"),
             // Review R9-5
             (r"a = 1 \\ b = 2", "a = 1   b = 2"),
