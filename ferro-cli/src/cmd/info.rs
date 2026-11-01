@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::Args;
 use crate::args::common::ReadArgs;
 use crate::io_dispatch::read_trajectory;
@@ -26,10 +26,8 @@ pub fn wants_help(args: &InfoCmd) -> bool {
 /// Returns the number of failures: 1 when a density could not be computed, so the
 /// exit code says so while the rest is still printed (review A-3).
 pub fn run(args: &InfoCmd) -> Result<usize> {
-    // input 为空由 main 分派到帮助页，这里的 bail 只是防御
-    let Some(input) = &args.input else {
-        bail!("info needs an input file: -i <FILE>");
-    };
+    // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
+    let input = args.input.as_ref().expect("main sends a missing -i to the help page");
 
     let traj = read_trajectory(input, &args.read)?;
     let n = traj.frames.len();

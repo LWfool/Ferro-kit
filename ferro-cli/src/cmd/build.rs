@@ -345,9 +345,8 @@ fn run_vacuum(c: &VacuumCmd) -> Result<usize> {
 
 /// Not a batch: two inputs make one product, so a failure fails the run.
 fn run_merge(c: &MergeCmd) -> Result<()> {
-    let [a, b] = c.input.as_slice() else {
-        bail!("merge takes exactly two structures: -i A B, got {}", c.input.len());
-    };
+    // clap's num_args = 2 gives exactly two, and none goes to the help page (review 2026-10-30 A5-L7)
+    let [a, b] = c.input.as_slice() else { unreachable!("clap: num_args = 2") };
     let Some(gap) = c.gap else { bail!("give the gap between the two blocks: --gap LEN (0 allowed)") };
     if !(gap >= 0.0 && gap.is_finite()) {
         bail!("--gap must be a finite length >= 0, got {gap}");

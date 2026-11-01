@@ -54,10 +54,8 @@ pub fn wants_help(args: &ConvertCmd) -> bool {
 }
 
 pub fn run(args: &ConvertCmd) -> Result<()> {
-    // input 为空由 main 分派到帮助页，这里的 bail 只是防御
-    let Some(input) = &args.input else {
-        bail!("convert needs an input file: -i <FILE>");
-    };
+    // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
+    let input = args.input.as_ref().expect("main sends a missing -i to the help page");
     let Some(dir) = &args.output else {
         bail!("convert needs an output directory: -o <DIR>  (run `ferro convert` for the format list)");
     };

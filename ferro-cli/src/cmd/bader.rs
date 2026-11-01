@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::{Args, ValueEnum};
 use ferro_io::read_charge_grid;
 use ferro_analysis::{BaderAnalyzer, BaderMethod};
@@ -70,10 +70,8 @@ fn report_paths(args: &BaderCmd, input: &Path) -> [PathBuf; 3] {
 }
 
 pub fn run(args: &BaderCmd) -> Result<()> {
-    // input 为空由 main 分派到帮助页，这里的 bail 只是防御
-    let Some(input) = &args.input else {
-        bail!("bader needs an input file: -i <CHGCAR|FILE.cube>");
-    };
+    // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
+    let input = args.input.as_ref().expect("main sends a missing -i to the help page");
     // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等
     crate::batch::check_suffix(args.suffix.as_deref())?;
     let method = match args.method {
