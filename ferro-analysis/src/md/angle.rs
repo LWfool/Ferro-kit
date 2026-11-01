@@ -186,7 +186,19 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     // 多个标签（O_f / O_b_P_P）顺序可复现，而非随 HashSet 迭代序漂移。
     let first_frame = &traj.frames[0];
     let by = params.group_by;
-    let elements = sorted_types(first_frame, by)?;
+    // Every frame's types, not the first frame's: a label that first appears later used to
+    // skip the '-' check (and be split wrongly) and to be missing from `elements` (review
+    // 2026-10-30 A2-L7). Unlike gr, the set may change between frames (labels from
+    // `ferro net --export-traj` do): angle counts no per-type normalisation
+    let mut elements: Vec<String> = Vec::new();
+    for f in &traj.frames {
+        for t in sorted_types(f, by)? {
+            if !elements.contains(&t) {
+                elements.push(t);
+            }
+        }
+    }
+    elements.sort_by(|a, b| canonical_cmp(a, b));
 
     // Beyond the minimum-image bound each pair sees only its nearest image, so neighbours are missed
     let (rcut_name, max_rcut) = if params.r_cut_ab >= params.r_cut_bc {
@@ -583,6 +595,28 @@ mod tests {
         for t in &res.elements {
             assert!(!meta.lines().any(|l| l.trim() == t), "type {t} listed in the shared header:\n{meta}");
         }
+    }
+
+    #[test]
+    fn a_later_frame_is_checked_for_dashed_labels_and_adds_its_types() {
+        let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
+        let frame = |o_label: &str| {
+            let mut f = Frame::with_cell(cell.clone(), [true; 3]);
+            for (e, l, x, y) in [("P", "P_0", 0.0, 0.0), ("O", "O_f", 1.6, 0.0), ("O", o_label, 0.0, 1.6)] {
+                let mut a = Atom::new(e, Vector3::new(x, y, 0.0));
+                a.label = Some(l.to_string());
+                f.add_atom(a);
+            }
+            f
+        };
+        let p = AngleParams { group_by: GroupBy::Label, ..Default::default() };
+        let mut t = Trajectory::from_frame(frame("O_f"));
+        t.add_frame(frame("O_b"));
+        assert_eq!(calc_angle(&t, &p).unwrap().elements, ["O_b", "O_f", "P_0"]);
+        let mut t = Trajectory::from_frame(frame("O_f"));
+        t.add_frame(frame("O-b"));
+        let err = calc_angle(&t, &p).unwrap_err().to_string();
+        assert!(err.contains("'O-b'"), "{err}");
     }
 
     #[test]
