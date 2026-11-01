@@ -198,7 +198,7 @@ def compare(manifest, out_dir, ref=None, thresholds=None):
                "dP_kbar": math.nan, "dF_max_meV_A": math.nan, "dF_rms_meV_A": math.nan, "within": ""}
         if status == "ok":
             row["energy_eV"] = energy
-            row["n_atoms"] = str(len(forces)) if forces else ""
+            row["n_atoms"] = str(len(forces))  # "ok" means the forces were read
             if pressure is not None:
                 row["pressure_kbar"] = pressure
         if status == "ok" and r_status == "ok":

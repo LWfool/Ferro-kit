@@ -262,7 +262,7 @@ class Cp2kGenerator(Generator):
                 # POTENTIAL_UZH 的镧系占位条目下一行是 NA，没有电子数；求和得 0 会静默写错电荷
                 raise JobError(f"potential {potential} of {e} in {', '.join(potential_files)} lists no "
                                "electron counts (a placeholder entry); name another in [cp2k.kinds]")
-            out[e] =(basis, potential, sum(potentials[potential]))
+            out[e] = (basis, potential, sum(potentials[potential]))
         return out
 
     def build(self, one, options, template_text):
@@ -290,7 +290,7 @@ class Cp2kGenerator(Generator):
         if mult > 1:
             dft.set("UKS", "T")
         notes.append(f"{method}: " + ", ".join(f"{e} {b} / {p}" for e, (b, p, _) in kinds.items()))
-        notes.append(f"{n_electrons - options.charge} electrons, multiplicity {mult}")
+        notes.append(f"{n_electrons - options.charge:g} electrons, multiplicity {mult}")
 
         # 结构：&CELL / &COORD 用 Rust 写的两段，&KIND 每元素一个
         subsys = force_eval.section("SUBSYS", create=True)

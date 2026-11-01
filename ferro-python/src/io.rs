@@ -165,22 +165,20 @@ fn read_output(
     path: &str,
 ) -> PyResult<(PyTrajectory, std::collections::BTreeMap<String, Py<PyAny>>)> {
     let (traj, s) = py.detach(|| read_aimd(Path::new(path))).map_err(pyerr)?;
-    {
-        let mut stats = std::collections::BTreeMap::new();
-        let mut put = |k: &str, v: Py<PyAny>| { stats.insert(k.to_string(), v); };
-        put("format", s.format.name().into_pyobject(py)?.into_any().unbind());
-        for (k, v) in [("steps", s.n_steps), ("kept", s.n_kept), ("scf_failed", s.n_scf_failed),
-                       ("incomplete", s.n_incomplete), ("bad_composition", s.n_bad_composition),
-                       ("no_cell", s.n_no_cell), ("layout_drift", s.n_layout_drift),
-                       ("restarts", s.n_restarts)] {
-            put(k, v.into_pyobject(py)?.into_any().unbind());
-        }
-        put("version", s.version.into_pyobject(py)?.into_any().unbind());
-        put("version_note", s.version_note.into_pyobject(py)?.into_any().unbind());
-        put("step_range", s.steps.into_pyobject(py)?.into_any().unbind());
-
-        Ok((PyTrajectory::new(traj), stats))
+    let mut stats = std::collections::BTreeMap::new();
+    let mut put = |k: &str, v: Py<PyAny>| { stats.insert(k.to_string(), v); };
+    put("format", s.format.name().into_pyobject(py)?.into_any().unbind());
+    for (k, v) in [("steps", s.n_steps), ("kept", s.n_kept), ("scf_failed", s.n_scf_failed),
+                   ("incomplete", s.n_incomplete), ("bad_composition", s.n_bad_composition),
+                   ("no_cell", s.n_no_cell), ("layout_drift", s.n_layout_drift),
+                   ("restarts", s.n_restarts)] {
+        put(k, v.into_pyobject(py)?.into_any().unbind());
     }
+    put("version", s.version.into_pyobject(py)?.into_any().unbind());
+    put("version_note", s.version_note.into_pyobject(py)?.into_any().unbind());
+    put("step_range", s.steps.into_pyobject(py)?.into_any().unbind());
+
+    Ok((PyTrajectory::new(traj), stats))
 }
 
 /// Write a table in the format of ferro's other analysis products (`# ` metadata lines, a
