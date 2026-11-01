@@ -204,6 +204,10 @@ otherwise a `FerroError` names the offending pair.  `max_lag` in frames, default
 Returned keys: `"time"` [fs], `"msd"` (total), `"msd_x"`, `"msd_y"`, `"msd_z"` (Cartesian components,
 which add up to the total).
 
+There is no diffusion coefficient: the binding has no `--fit-range`, so it fits nothing. Fit the
+returned curve yourself, or run `ferro traj msd --fit-range` and read its `fit` table
+(`ferro.plot.msd` draws that one).
+
 ```python
 d = ferro.msd(t, dt=2.0, elements=["Li"])
 ```
