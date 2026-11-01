@@ -183,7 +183,8 @@ def test_job_mixed_compositions_write_nothing(tmp_path, job, capsys):
 @pytest.mark.parametrize("extra, message", [
     (["--temperature", "300"], "only apply to an aimd task"),
     (["--type-map", "1:Zr"], "is not TYPE=ELEMENT"),
-    (["--type-map=-1=Zr"], "type '-1' is not a number"),   # review R8-5: was an OverflowError
+    (["--type-map=-1=Zr"], "type -1 must be a whole number >= 0"),   # review R8-5, 2026-10-30 A6-L10
+    (["--type-map=x=Zr"], "type 'x' is not a number"),
     (["-s", "gaussian"], "unknown software 'gaussian'"),
     (["-t", "aimd", "--ensemble", "npt_i"], "NVT only"),
     (["--stride", "2", "--number", "3"], "give stride or number"),

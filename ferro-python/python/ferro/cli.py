@@ -249,7 +249,12 @@ def job_parser():
 
 
 def parse_type_map(text):
-    """``1=Zr,2=P`` → ``{1: "Zr", 2: "P"}``，语法同 CLI ``ferro`` 的 ``--type-map``。"""
+    """``1=Zr,2=P`` → ``{1: "Zr", 2: "P"}``, the syntax of ``ferro``'s ``--type-map``.
+
+    A second implementation of ``parse_type_map`` in ferro-cli ``args/common.rs``: the
+    binding takes the mapping already parsed, and crossing into Rust for one argument is not
+    worth it; kept apart on purpose, change both (R6, review 2026-10-30 A6-L10).
+    """
     mapping = {}
     for item in text.split(","):
         t, sep, element = item.partition("=")
@@ -257,12 +262,12 @@ def parse_type_map(text):
             raise UsageError(f"--type-map: '{item}' is not TYPE=ELEMENT (e.g. 1=Zr,2=O)")
         try:
             t = int(t)
-            # the binding takes a u32, as the Rust CLI does: a negative type is not a type
-            # (it used to escape as an OverflowError traceback, review R8-5)
-            if not 0 <= t <= 0xFFFFFFFF:
-                raise ValueError
         except ValueError:
             raise UsageError(f"--type-map: type '{t}' is not a number") from None
+        # the binding takes a u32, as the Rust CLI does: a negative type is not a type (it used
+        # to escape as an OverflowError traceback, review R8-5, then was called "not a number")
+        if not 0 <= t <= 0xFFFFFFFF:
+            raise UsageError(f"--type-map: type {t} must be a whole number >= 0")
         if t in mapping:
             raise UsageError(f"--type-map: type {t} is given twice")
         mapping[t] = element.strip()

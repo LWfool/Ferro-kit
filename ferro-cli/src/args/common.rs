@@ -50,7 +50,12 @@ pub struct ReadArgs {
 #[derive(Clone, Debug)]
 pub struct TypeMap(pub Vec<(u32, String)>);
 
-/// `1=Zr,2=P,3=O` → [(1, "Zr"), …]。元素符号是否认识由 ferro-io 查；这里只管语法与重复
+/// `1=Zr,2=P,3=O` → [(1, "Zr"), …]. Whether the symbols are elements is ferro-io's to check;
+/// this is syntax and repeats only.
+///
+/// ferro-py has a second implementation, `parse_type_map` in `ferro/cli.py`: the binding takes
+/// the parsed mapping, so it parses in Python. Kept apart on purpose, change both (R6, review
+/// 2026-10-30 A6-L10).
 fn parse_type_map(s: &str) -> Result<TypeMap> {
     let mut map: Vec<(u32, String)> = Vec::new();
     for item in s.split(',') {
