@@ -43,11 +43,7 @@ pub(crate) fn canonical_triplet(a: &str, b: &str, c: &str) -> String {
 /// order (Z, then string, so pseudo-element labels sharing a Z order deterministically).
 fn sort_triplet_keys(map: &BTreeMap<String, Vec<u64>>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
-    // "A-B-C": split_once('-') gives (A, "B-C"), a second one gives (B, C)
-    fn parts(k: &str) -> Option<(&str, &str, &str)> {
-        k.split_once('-').and_then(|(a, rest)| rest.split_once('-').map(|(b, c)| (a, b, c)))
-    }
-    keys.sort_by(|ka, kb| match (parts(ka), parts(kb)) {
+    keys.sort_by(|ka, kb| match (triplet_parts(ka), triplet_parts(kb)) {
         (Some((a1, b1, c1)), Some((a2, b2, c2))) => canonical_cmp(b1, b2)
             .then_with(|| canonical_cmp(a1, a2))
             .then_with(|| canonical_cmp(c1, c2)),
@@ -405,10 +401,14 @@ impl AngleResult {
 
 /// Split an `"A-B-C"` triplet key into its three type names.
 fn split_triplet(key: &str) -> (&str, &str, &str) {
-    match key.split_once('-').and_then(|(a, rest)| rest.split_once('-').map(|(b, c)| (a, b, c))) {
-        Some(t) => t,
-        None => (key, "", ""),
-    }
+    triplet_parts(key).unwrap_or((key, "", ""))
+}
+
+/// `"A-B-C"` as `(A, B, C)`, `None` when the key is not a triplet: split_once('-') gives
+/// (A, "B-C"), a second one gives (B, C). The one split, shared by [`split_triplet`] and
+/// [`sort_triplet_keys`], which each had a copy (review 2026-10-30 A2-L8)
+fn triplet_parts(k: &str) -> Option<(&str, &str, &str)> {
+    k.split_once('-').and_then(|(a, rest)| rest.split_once('-').map(|(b, c)| (a, b, c)))
 }
 
 #[cfg(test)]
