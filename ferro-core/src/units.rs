@@ -62,11 +62,13 @@ pub const ANG2_FS_TO_CM2_S: f64 = 0.1;
 /// Diffusion coefficient: Å²/fs → m²/s (1 Å² = 1e-20 m², 1 fs = 1e-15 s).
 pub const ANG2_FS_TO_M2_S: f64 = 1e-5;
 
-/// Boltzmann 常数（eV/K）。
+/// Boltzmann constant (eV/K).
 ///
-/// CODATA 2018 下 k_B = 1.380649e-23 J/K 与 e = 1.602176634e-19 C 都是精确值，
-/// 故这个比值也是精确的。用于从离子动能反算瞬时温度：`T = 2·E_kin/(3N·k_B)`。
-pub const BOLTZMANN_EV_K: f64 = 8.617_333_262e-5;
+/// Under CODATA 2018 both k_B = 1.380649e-23 J/K and e = 1.602176634e-19 C are exact,
+/// so their ratio is too; written to full f64 precision, not to the 10 digits CODATA
+/// prints (review 2026-10-30 A4-L8). Used to get the instantaneous temperature from the
+/// ionic kinetic energy, `T = 2·E_kin/(3N·k_B)`.
+pub const BOLTZMANN_EV_K: f64 = 8.617_333_262_145_179e-5;
 
 /// 1 fs 折合多少个 ASE 时间单位（Å·√(amu/eV)），即 `ase.units.fs`。
 ///
