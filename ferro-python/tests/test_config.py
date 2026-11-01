@@ -12,6 +12,14 @@ def test_missing_file_is_empty_config(tmp_path):
         config.require(c, "vasp", "potcar_dir")
 
 
+def test_require_names_the_file_that_was_read(tmp_path):
+    # review 2026-10-30 A6-L13: an explicit path, not the default location
+    path = tmp_path / "mine.toml"
+    path.write_text("[vasp]\n")
+    with pytest.raises(config.ConfigError, match="mine.toml"):
+        config.require(config.load(path), "vasp", "potcar_dir")
+
+
 def test_template_loads_as_empty_config(tmp_path):
     path = config.init(tmp_path / "sub" / "c.toml")
     assert config.load(path) == config.load(tmp_path / "none.toml"), "样板全是注释，读回应与无文件相同"

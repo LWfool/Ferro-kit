@@ -79,14 +79,22 @@ def config_path():
     return Path(env) if env else Path.home() / ".config" / "ferro" / "config.toml"
 
 
+class Config(dict):
+    """What :func:`load` returns: the sections as a dict, plus ``path``, the file it read
+    (or would have read), for :func:`require` to name. Compares as the plain dict."""
+
+    path = None
+
+
 def load(path=None):
     """读配置并校验，返回 ``{节: {键: 值}}``；没有文件时只有空的元素表。"""
     path = Path(path) if path is not None else config_path()
     # 元素表恒在（缺省为空表），用的地方直接查，不用先判有没有这一节
-    config = {
+    config = Config({
         section: {key: {} for key, kind in keys.items() if isinstance(kind, tuple)}
         for section, keys in SCHEMA.items()
-    }
+    })
+    config.path = path
     if not path.exists():
         return config
     try:
@@ -137,8 +145,11 @@ def require(config, section, key):
     """取一项必须有的配置；缺了就报错，指明要在哪个文件里加哪一行。"""
     value = config[section].get(key)
     if value is None:
+        # The file load() read, not the default location: a test or a library call that loads
+        # an explicit path used to be sent to the wrong file (review 2026-10-30 A6-L13)
+        where = getattr(config, "path", None) or config_path()
         raise ConfigError(
-            f"[{section}] {key} is not set in {config_path()} "
+            f"[{section}] {key} is not set in {where} "
             f"(create the file with `ferro-py config init`)"
         )
     return value
