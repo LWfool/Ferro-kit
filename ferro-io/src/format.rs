@@ -251,6 +251,11 @@ pub fn is_deepmd_system(dir: &Path) -> bool {
 }
 
 /// Reading choices a file cannot carry.
+///
+/// `units` and `atom_style` are ignored by the formats they do not apply to, so one batch
+/// can mix a data file, a dump and an xyz under the same flags. `type_map` is refused on
+/// anything but a LAMMPS dump: it renames elements, and a map that silently did nothing would
+/// leave the user believing the atoms were renamed (review 2026-10-30 A1-L15).
 #[derive(Debug, Clone, Default)]
 pub struct ReadOptions {
     /// LAMMPS units of a dump's velocity / force columns; never guessed
