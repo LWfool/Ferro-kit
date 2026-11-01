@@ -18,7 +18,6 @@ use crate::check;
 use super::correlate::resolve_max_lag;
 use super::util::{check_frame_spacing, select_atoms, unwrapped_series};
 use rayon::prelude::*;
-use ferro_core::error::ChemError;
 use ferro_core::{Table, Trajectory};
 
 // ─── 参数 ────────────────────────────────────────────────────────────────────
@@ -122,9 +121,10 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     params.validate()?;
     check_frame_spacing(traj)?;
     let n_steps = traj.n_frames();
-    if n_steps < 2 {
-        return Err(ChemError::ValidationError(format!("trajectory requires at least 2 frames, got {n_steps}")));
-    }
+    // The same rule as max-lag: None takes half the trajectory (n_steps - 1 would leave a
+    // single time origin), and τ must lie in 1 ..= n_steps − 1. It also refuses fewer than
+    // 2 frames, which this function used to check a second time (review 2026-10-30 A2-L2)
+    let tau = resolve_max_lag("tau", n_steps, params.tau)?;
     check::same_atoms(traj)?;
     let cells = check::periodic_cells(traj, None)?;
 
@@ -133,19 +133,13 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     let atom_indices = select_atoms(ref_frame, params.elements.as_deref())?;
     let n_atoms = atom_indices.len();
 
-    // The same rule as max-lag: None takes half the trajectory (n_steps - 1 would leave a
-    // single time origin), and τ must lie in 1 ..= n_steps − 1
-    let tau = resolve_max_lag("tau", n_steps, params.tau)?;
-    let shift = params.shift.max(1);
+    let shift = params.shift; // validate: at least 1
 
     // 收集元素列表（用于输出文件头）
     let elements = super::util::selected_elements(ref_frame, &atom_indices);
 
+    // At least one bin: validate requires a finite dr > 0 and r_max > r_min
     let (n_bins, dr) = super::util::bins(params.r_min, params.r_max, params.dr);
-    if n_bins == 0 {
-        // validate 已要求 dr 有限且 > 0、r_max > r_min，这里只是防御
-        return Err(ChemError::ValidationError(format!("dr = {} leaves no bin", params.dr)));
-    }
     // Everything downstream (histogram, normalisation, header) uses the width actually used
     let params = &VanHoveParams { dr, ..params.clone() };
 
@@ -154,11 +148,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
         .map(|k: usize| k * shift)
         .take_while(|&p| p + tau < n_steps)
         .collect();
-    let n_origins = p_values.len();
-    if n_origins == 0 {
-        // tau <= n_steps - 1 and shift >= 1 make p = 0 always fit; kept against later changes
-        return Err(ChemError::ValidationError(format!("no time origin fits tau = {tau} in {n_steps} frames")));
-    }
+    let n_origins = p_values.len(); // >= 1: tau <= n_steps - 1 lets p = 0 fit
 
     // Continuous Cartesian series (TOR-unwrapped when periodic), [atom][axis][frame]
     let series = unwrapped_series(traj, &cells, &atom_indices);
@@ -174,6 +164,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
                 let r = (dx*dx + dy*dy + dz*dz).sqrt();
                 if r >= params.r_min && r < params.r_max {
                     let bin = ((r - params.r_min) / params.dr) as usize;
+                    // r < r_max, but the division can still round up to n_bins
                     if bin < n_bins { local[bin] += 1; }
                 }
             }
