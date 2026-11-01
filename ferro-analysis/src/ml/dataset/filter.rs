@@ -376,7 +376,9 @@ impl FilterResult {
 
     pub fn meta_lines(&self) -> Vec<String> {
         let p = &self.params;
-        // the unit only follows a value: `off` carries none (review R5-3)
+        // the unit only follows a value: `off` carries none (review R5-3). The same closure is
+        // in ferro-cli cmd/dataset/filter.rs `report_params`; one line in two crates, not shared
+        // (R6, review 2026-10-30 CR-9)
         let off = |v: f64, unit: &str| if v > 0.0 { format!("{v} {unit}") } else { "off".to_string() };
         let mut v = vec![
             format!("frames in  = {}", self.n_input),
@@ -394,7 +396,8 @@ impl FilterResult {
                 ),
                 false => "s_max      = off".to_string(),
             },
-            format!("range      = [{}:{}]", p.start, p.end.map(|e| e.to_string()).unwrap_or_default()),
+            // Both ends inclusive, so not slice notation: `[2:5]` read as 2..5 (review 2026-10-30 CR-8)
+            format!("range      = [{}, {}]", p.start, p.end.map_or("last".to_string(), |e| e.to_string())),
         ];
         match p.number {
             Some(k) => v.push(format!("number     = {k}")),

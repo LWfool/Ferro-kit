@@ -239,7 +239,8 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
 
 /// The shared parameter block at the top of every report file.
 fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
-    // the unit only follows a value: `off` carries none (review R5-3)
+    // the unit only follows a value: `off` carries none (review R5-3). The same closure is in
+    // ferro-analysis ml/dataset/filter.rs `meta_lines`; not shared (R6, review 2026-10-30 CR-9)
     let off = |v: f64, unit: &str| if v > 0.0 { format!("{v} {unit}") } else { "off".to_string() };
     let mut v = vec![
         format!("f_max     = {}", off(args.f_max(), "eV/Å")),
