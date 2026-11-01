@@ -319,19 +319,25 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         let n = first.n_atoms();
         // All frames are held at once: cap the whole trajectory before allocating any
         check_supercell_total(traj.frames.iter().map(|f| f.n_atoms()), dims)?;
-        let frames = traj.frames.iter().map(|f| make_supercell(f, nx, ny, nz)).collect::<Result<Vec<_>, _>>()?;
+        // The spacings come from frame 0's supercell, so --dry-run builds that one only; it used
+        // to replicate every frame and then throw them away (review 2026-10-30 CR-6)
+        let first_sc = make_supercell(first, nx, ny, nz)?;
         // 面间距才是最小镜像截断的上界（r_cut ≤ d/2），斜胞上它比边长短
-        let d = frames[0].cell.as_ref().map(|cl| cl.interplanar_spacings()).transpose()?.unwrap_or([0.0; 3]);
+        let d = first_sc.cell.as_ref().map(|cl| cl.interplanar_spacings()).transpose()?.unwrap_or([0.0; 3]);
         let note = format!(
             "{nx}x{ny}x{nz} ({how}): {n} -> {} atoms, spacings {:.3} {:.3} {:.3} Å{}",
             n * nx * ny * nz, d[0], d[1], d[2],
             if dims == [1, 1, 1] { ", already large enough" } else { "" }
         );
+        if c.dry_run {
+            return Ok((None, note));
+        }
+        let frames = traj.frames.iter().map(|f| make_supercell(f, nx, ny, nz)).collect::<Result<Vec<_>, _>>()?;
         let mut made = Trajectory { frames, metadata: traj.metadata.clone() };
         // make_supercell builds each frame's site table anew; share one again, or a
         // many-frame supercell holds a copy per frame (review 2026-10-30 A4-M-2)
         made.share_sites();
-        Ok((if c.dry_run { None } else { Some(made) }, note))
+        Ok((Some(made), note))
     })
 }
 
