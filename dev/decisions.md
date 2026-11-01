@@ -64,6 +64,20 @@ A3-M-1 / A3-M-2 / A4-M-3 与 A5-M7 一并挂起，随重写修。
   比较同一元素各原子质量的容差相同，普通输入读出来没有显式质量，氘代输入往返不丢。代价：输入里写的 28.086
   这类与 CIAAW 约定值差 1e-3 的数也会成为显式质量；那是文件写明的值，照用。LAMMPS data 的 `Masses` 则一律保留
   （那里质量还决定元素），两者不合。
+- **A2-L6 键长截断的开闭**：只记口径，不改代码。现行：bondlife 用 `<=`（与 gmx `-contact` 及其手册一致），其余
+  （angle、rotcorr、network 分类与成图、cube_radius、cube_sdf）用 `<`。浮点距离恰落在截断上的对极少，两种写法给出的结果
+  实际不可分；`NeighborList::neighbors_of` 是含 1e-9 余量的超集，调用方各用自己的比较复测，所以混用不会漏对。
+  新分析默认用 `<`，要与外部程序对拍时随它。
+- **A2-L9 请求值与实际 bin 宽**：只记口径。gr 在 `params` 里留请求值、另存 `dr_used` / `r_max_used`，因为 r_max 会被
+  逐输入的最小镜像界截短，实际值随输入而变；angle / vanhove 的实际宽度只取决于批内共享参数，直接把 `params` 改写成实际值。
+  两种都对，`XxxResult.params` 的含义因此在三个分析里不同；读结果时以表头写的为准。
+- **A2-L15 空轨迹 / 无胞的返回**：只记口径。gr / angle / network 报 `trajectory is empty`；五个时间分析经
+  `resolve_max_lag` 报「requires at least 2 frames」（空轨迹也落在这条）；cube_density / radius 先报 empty 再要求有胞；
+  cube_sdf 的 `Ok(None)` 属挂起组 D-A3，随改写。报错各说各的前提，不强行统一成一句。
+- **A2-L11 bondlife 的 reduce 不改**：各和为整数或先取整再用，结果与线程调度无关；`map_init` 每线程一个 FFT worker。
+  计划原写改走 `par_map_in_order`，动手时改为注释留档。
+- **A3-L14 第三点（`bader_weight.rs` 多余的 `take`）不做**：计划把它列进第 2 批，但文件属 Bader 挂起组（用户定都不修），
+  随重写处理。
 
 ## 2026-10-30 全库审查高级项的修法（2026-10-31 起）
 
