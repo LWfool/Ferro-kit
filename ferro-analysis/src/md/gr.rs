@@ -212,7 +212,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         mic_max = mic_max.min(pc.mic_bound());
         volumes.push(frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume());
     }
-    let r_max = if mic_max.is_finite() { params.r_max.min(mic_max) } else { params.r_max };
+    let r_max = params.r_max.min(mic_max);
     // validate checked the requested range; the clamp can leave less than one bin, which
     // `bins` would turn into a single bin narrower than asked
     if r_max < params.r_max {
@@ -229,8 +229,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // width actually used, never `params.dr`, the request
 
     // ── 分组类型列表（元素或位点标签），按 (Z, 字符串) 升序 ──────────────
-    let first_frame = traj.frames.first()
-        .ok_or_else(|| ChemError::ValidationError("empty trajectory".into()))?;
+    let first_frame = &traj.frames[0]; // not empty: checked at the top
     let by = params.group_by;
     let types = sorted_types(first_frame, by)?;
     let n_types = types.len();
@@ -283,8 +282,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     let type_counts: Vec<f64> = first_counts.iter().map(|&c| c as f64).collect();
     let element_counts: BTreeMap<String, usize> = types
         .iter().cloned().zip(first_counts.iter().copied())
-        .filter(|&(_, c)| c > 0)
-        .collect();
+        .collect(); // every type comes from the first frame, so each count is at least 1
     let mut key_element: BTreeMap<String, String> = BTreeMap::new();
     for atom in first_frame.atoms() {
         let e = key_element.entry(group_key(atom, by).to_string())
@@ -305,9 +303,8 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         plain: vec![vec![0.0f64; n_bins]; n_upairs],
         vol_w: vec![vec![0.0f64; n_bins]; n_upairs],
     };
-    let frames: Vec<_> = traj.frames.iter().zip(&cells).collect();
-    par_map_in_order(&frames, |(frame, pc)| {
-            let vol = frame.cell.as_ref().expect("all_periodic_cells: every frame has a cell").volume();
+    let frames: Vec<_> = traj.frames.iter().zip(&cells).zip(&volumes).collect();
+    par_map_in_order(&frames, |&((frame, pc), &vol)| {
             let n_atoms = frame.n_atoms();
             let cl = NeighborList::build(frame.positions(), pc, r_max)
                 .expect("r_max is clamped to every frame's minimum-image bound");
@@ -340,10 +337,8 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     // ── normalisation ───────────────────────────────────────────────────────
     let n_frames = traj.frames.len();
     let nf = n_frames as f64;
+    // Positive: PeriodicCell::new (Cell::check) refused any volume below 1e-12
     let avg_volume = volumes.iter().sum::<f64>() / nf;
-    if avg_volume <= 0.0 {
-        return Err(ChemError::ValidationError("average cell volume is zero or negative".into()));
-    }
     // 两遍算法：⟨V²⟩−⟨V⟩² 在 V≈6e4 时抵消误差会放大到 1e-3 量级，定容轨迹也报不出 0
     let volume_std = (volumes.iter().map(|v| (v - avg_volume).powi(2)).sum::<f64>() / nf).sqrt();
     // ⟨ρ_f⟩ = N·⟨1/V⟩ —— 逐帧密度的平均，不是 N/⟨V⟩
@@ -369,8 +364,7 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     for ti in 0..n_types {
         for tj in 0..n_types {
             let n_a = type_counts[ti];
-            let n_b = type_counts[tj];
-            if n_a < 1.0 || n_b < 1.0 { continue; }
+            let n_b = type_counts[tj]; // both at least 1: the types come from the first frame
 
             let pidx = pair_lookup[ti][tj];
             let same_type = ti == tj;
