@@ -4,6 +4,7 @@ use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
+use crate::lammps_box::{bounding_box, cell_to_lammps, lammps_cell};
 
 /// 无胞帧的盒子取包围盒每侧外扩这么多（Å），坐标原样写（dump 与 data 都允许 lo ≠ 0）。
 /// 余量无物理意义，只保证 lo < hi（平面分子某维厚度为 0）、原子不落在 hi 边界上被
@@ -106,7 +107,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
     writeln!(w)?;
 
     // Build LAMMPS cell for coordinate transformation
-    let lammps_cell = lammps_cell_matrix(lx, ly, lz, xy, xz, yz);
+    let lammps_cell = lammps_cell(lx, ly, lz, xy, xz, yz);
 
     for (i, atom) in frame.atoms().enumerate() {
         let tp = elem_to_type[atom.element];
@@ -130,51 +131,6 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
 
     w.flush()?;
     Ok(())
-}
-
-// cell_to_lammps / lammps_cell_matrix / bounding_box 与 `writers/lammps_dump.rs` 逐字两份，有意不合
-// （R6：只有两个使用点，合并只多一个跨文件依赖）。改一处必须同改另一处
-/// Convert Cell to LAMMPS parameters: returns (lx, ly, lz, xy, xz, yz)
-fn cell_to_lammps(cell: &ferro_core::Cell) -> (f64, f64, f64, f64, f64, f64) {
-    let [a, b, c] = cell.lengths();
-    let [alpha, beta, gamma] = cell.angles();
-    let (al, be, ga) = (alpha.to_radians(), beta.to_radians(), gamma.to_radians());
-
-    let lx = a;
-    let xy = b * ga.cos();
-    let xz = c * be.cos();
-    let ly = (b * b - xy * xy).max(0.0).sqrt();
-    let yz = if ly > 1e-10 { (b * c * al.cos() - xy * xz) / ly } else { 0.0 };
-    let lz = (c * c - xz * xz - yz * yz).max(0.0).sqrt();
-    // 90° 的 cos 残留（~1e-16·L）会让正交盒被判成三斜；相对最大边长 1e-10 以下的倾斜置 0
-    let tol = 1e-10 * lx.max(ly).max(lz);
-    let snap = |t: f64| if t.abs() < tol { 0.0 } else { t };
-    let (xy, xz, yz) = (snap(xy), snap(xz), snap(yz));
-
-    (lx, ly, lz, xy, xz, yz)
-}
-
-fn lammps_cell_matrix(lx: f64, ly: f64, lz: f64, xy: f64, xz: f64, yz: f64) -> ferro_core::Cell {
-    use nalgebra::Matrix3;
-    ferro_core::Cell::from_matrix(Matrix3::new(
-        lx,  0.0, 0.0,
-        xy,  ly,  0.0,
-        xz,  yz,  lz,
-    ))
-}
-
-fn bounding_box(frame: &ferro_core::Frame) -> (f64, f64, f64, f64, f64, f64) {
-    let mut mn = [f64::MAX; 3];
-    let mut mx = [f64::MIN; 3];
-    for a in frame.atoms() {
-        mn[0] = mn[0].min(a.position.x);
-        mn[1] = mn[1].min(a.position.y);
-        mn[2] = mn[2].min(a.position.z);
-        mx[0] = mx[0].max(a.position.x);
-        mx[1] = mx[1].max(a.position.y);
-        mx[2] = mx[2].max(a.position.z);
-    }
-    (mn[0], mx[0], mn[1], mx[1], mn[2], mx[2])
 }
 
 #[cfg(test)]

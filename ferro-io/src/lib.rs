@@ -1,5 +1,6 @@
 // One public path per item (review A-12): everything is reached from the crate root
 mod format;
+mod lammps_box;
 mod notice;
 mod readers;
 mod writers;

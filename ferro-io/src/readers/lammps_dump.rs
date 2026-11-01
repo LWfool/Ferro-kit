@@ -190,7 +190,6 @@ fn parse_frame(
 
     // BOX BOUNDS
     let bb = seek(na + 2, "BOX BOUNDS")?;
-    let is_triclinic = lines[bb].contains("xy");
     // 边界标志 `pp pp ff`：首字母 p 为周期，f/s/m 为非周期。旧版 LAMMPS 不写标志，
     // 按周期处理（与此前的行为一致）
     let flags: Vec<&str> = lines[bb].split_whitespace()
@@ -253,19 +252,7 @@ fn parse_frame(
         let ly = (hi[1] - lo[1]) - yz.abs();
         let lz = hi[2] - lo[2];
 
-        let cell = if is_triclinic || xy != 0.0 || xz != 0.0 || yz != 0.0 {
-            Cell::from_matrix(Matrix3::new(
-                lx,  0.0, 0.0,
-                xy,  ly,  0.0,
-                xz,  yz,  lz,
-            ))
-        } else {
-            Cell::from_matrix(Matrix3::new(
-                lx,  0.0, 0.0,
-                0.0, ly,  0.0,
-                0.0, 0.0, lz,
-            ))
-        };
+        let cell = crate::lammps_box::lammps_cell(lx, ly, lz, xy, xz, yz);
 
         // Scaled coordinates are restored by LAMMPS's definition x = lo + s·L, lo being the box's real
         // origin, not the *_bound, so one atom written as x or as xs reads the same (ASE 3.29 does not

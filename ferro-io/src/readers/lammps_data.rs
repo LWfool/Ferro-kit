@@ -1,9 +1,9 @@
 use std::path::Path;
 use crate::Notice;
 use std::collections::HashMap;
-use ferro_core::{Atom, Cell, Frame, Trajectory};
+use ferro_core::{Atom, Frame, Trajectory};
 use ferro_core::data::elements::by_symbol;
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::Vector3;
 use anyhow::{bail, Context, Result};
 use super::util::floats;
 
@@ -67,7 +67,6 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
     // Box bounds: x, y, z as (lo, hi), each required
     let mut bounds: [Option<(f64, f64)>; 3] = [None; 3];
     let mut xy = 0.0_f64; let mut xz = 0.0_f64; let mut yz = 0.0_f64;
-    let mut is_triclinic = false;
     let mut n_atoms: Option<usize> = None;
 
     while i < lines.len() {
@@ -85,7 +84,6 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
         } else if line.contains("xy xz yz") {
             let v = floats(line, 3)?;
             xy = v[0]; xz = v[1]; yz = v[2];
-            is_triclinic = true;
         } else if is_section_header(line) {
             break;
         }
@@ -110,19 +108,8 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
     let [lx, ly, lz] = len;
 
     // Build cell
-    let mut cell = if is_triclinic {
-        Cell::from_matrix(Matrix3::new(
-            lx,  0.0, 0.0,
-            xy,  ly,  0.0,
-            xz,  yz,  lz,
-        ))
-    } else {
-        Cell::from_matrix(Matrix3::new(
-            lx,  0.0, 0.0,
-            0.0, ly,  0.0,
-            0.0, 0.0, lz,
-        ))
-    };
+    // Orthogonal, the tilts are still 0 (initialised above)
+    let mut cell = crate::lammps_box::lammps_cell(lx, ly, lz, xy, xz, yz);
     // data 的 lo 就是真实原点（不同于 dump 三斜的 *_bound），writer 写回（审查 A-12）
     cell.origin = nalgebra::Vector3::new(xlo, ylo, zlo);
 
