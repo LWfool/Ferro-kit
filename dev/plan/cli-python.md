@@ -33,7 +33,7 @@ vanhove 的归一化就不除 dr，与 GROMACS / pymatgen 相差 1/dr（手册�
 逐条判：口径已偏离 code1 的改写为描述 ferro 自己的做法（必要时对照行业实现）；只是记录
 「对拍时如何与它对齐」的保留。手册里 gr/msd/vacf/rotcorr 四页的 code1 提及是历史与对拍说明，已看过、不动。
 
-**2026-10-11 审查 G-9 的逐条判断**（25 处与上面实数吻合；改 11、删 2、留 12）：
+**2026-10-11 审查 G-9 的逐条判断**（25 处与上面实数吻合；改 11、删 2、留 12）。下面的行号已随后续修改漂移（如 `vanhove.rs:138` 现在在 `:106` 附近，2026-11-01 审查 2026-10-30 A7-L5），动手时按 `grep -n code1` 重定位：
 - **改**：`vanhove.rs:8,138`（优先：写「照 code1」却给出除以 dr 的公式，code1 不除；改为对照 GROMACS / pymatgen）；
   `cube_radius.rs:7`（路径错，应为 `private/code1`，且 M4 后搜索窗已不是 code1 的全遍历）；`angle.rs:20,170`；
   **`angle.rs:489`（用户可见：进 angle 产物 csv 头部，把私有代码名写进用户数据文件；改中性表述）**；
@@ -62,11 +62,10 @@ vanhove 的归一化就不除 dr，与 GROMACS / pymatgen 相差 1/dr（手册�
 
 收益：把格式从代码审查面里移除。代价三点：
 
-1. 一次性约 80 文件的大 diff，`git blame` 在这些行上全部指向那一次提交
+1. 一次性约 115 个文件、近 1900 处的大 diff（2026-10-21 实测，见 `dev/issues.md`「构建 / 工具链陷阱」），
+   `git blame` 在这些行上全部指向那一次提交
 2. 会拆掉现有的刻意列对齐（`gr.rs` 的 `WelfordStats`、`angle.rs` 的 `CellList`、
    `units.rs` 的枚举表）
-3. 生成文件要显式排除：`rustfmt.toml` 的 `ignore` 仅 nightly 可用，stable 上需给
-   `cp2k_basis_db.rs` 的静态表加 `#[rustfmt::skip]`
 
 若采用：单独一次纯格式提交（`style: adopt rustfmt`）+ 固定 `rustfmt.toml`，
 不要混进特性或依赖升级提交。
