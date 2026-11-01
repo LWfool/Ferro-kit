@@ -355,7 +355,8 @@ impl Frame {
     /// fractional -> Cartesian round trip: the round trip would leave a 1e-15
     /// rounding on every atom, inside ones included. "Outside" allows `WRAP_TOL`, so
     /// an atom at exactly 0 whose fraction comes out -1e-17 is not sent to the far
-    /// side. Does nothing without a cell or with a singular one.
+    /// side. Does nothing without a cell; panics on a singular one, which its caller has
+    /// refused at the entry (it used to return silently, review 2026-10-30 A4-L6).
     ///
     /// Folds about 0, not `Cell::origin`, on purpose: its one caller is the cube
     /// reference frame, whose grid starts at 0. Not merged with [`Cell::wrap_position`]
@@ -365,7 +366,7 @@ impl Frame {
         let Some(cell) = self.cell.as_ref() else { return };
         let pbc = self.pbc;
         // inverted once, not per atom: the same product as cartesian_to_fractional (review R6-7)
-        let Some(inv) = cell.matrix.transpose().try_inverse() else { return };
+        let inv = cell.matrix.transpose().try_inverse().expect("wrap_all: the cell is singular");
         for p in &mut self.positions {
             let f = inv * *p;
             let shift = Vector3::from_fn(|i, _| {

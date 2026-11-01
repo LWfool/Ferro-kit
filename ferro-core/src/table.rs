@@ -189,6 +189,7 @@ impl Table {
     /// Used to embed a small table (the per-input metadata summary) inside another
     /// table's comment block. Returns lines **without** the `#` prefix; the writer adds it.
     pub fn to_comment_lines(&self) -> Vec<String> {
+        debug_assert!(self.validate().is_ok(), "{:?}", self.validate());
         if self.cols.is_empty() {
             return Vec::new();
         }

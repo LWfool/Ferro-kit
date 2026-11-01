@@ -169,12 +169,10 @@ impl Cell {
     /// Returns `Err` when the cell is refused by [`Self::check`].
     pub fn interplanar_spacings(&self) -> Result<[f64; 3]> {
         self.check("cell matrix")?;
-        let inv = self.matrix.transpose().try_inverse()
-            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
-        let d = |i: usize| {
-            let n = inv.row(i).norm();
-            if n > 0.0 { 1.0 / n } else { f64::INFINITY }
-        };
+        // check() refused a singular cell, so the inverse exists and no row of it is zero
+        // (review 2026-10-30 A4-L6)
+        let inv = self.matrix.transpose().try_inverse().expect("check() refused a singular cell");
+        let d = |i: usize| 1.0 / inv.row(i).norm();
         Ok([d(0), d(1), d(2)])
     }
 
