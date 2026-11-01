@@ -42,7 +42,16 @@ const KNOWN: &[&str] = &["coord", "box", "energy", "force", "virial"];
 /// like a label that was never computed.
 pub fn read_deepmd_npy(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
     let types = read_type_indices(&dir.join("type.raw"))?;
-    let type_map = read_lines_tokens(&dir.join("type_map.raw"))?;
+    // Optional to DeePMD-kit (its input.json can carry the map), required here: type.raw holds
+    // only indices, and ferro reads no input.json, so without it no atom has an element
+    // (review 2026-10-30 A1-L16)
+    let map_path = dir.join("type_map.raw");
+    if !map_path.is_file() {
+        bail!("{}: no type_map.raw; ferro needs it to name the elements of type.raw's indices \
+               (DeePMD-kit can take the map from input.json instead, which ferro does not read)",
+              dir.display());
+    }
+    let type_map = read_lines_tokens(&map_path)?;
     let natoms = types.len();
     if natoms == 0 {
         bail!("{}: type.raw is empty", dir.display());
@@ -235,6 +244,16 @@ mod tests {
     use crate::writers::write_deepmd_npy;
     use ferro_core::Trajectory;
     use nalgebra::Matrix3;
+
+    #[test]
+    fn a_missing_type_map_says_why_it_is_needed() {
+        let d = crate::testutil::tmp_path("deepmd_no_map");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("type.raw"), "0\n").unwrap();
+        let _ = std::fs::remove_file(d.join("type_map.raw"));
+        let err = format!("{:#}", read_deepmd_npy(&d).unwrap_err());
+        assert!(err.contains("no type_map.raw") && err.contains("input.json"), "{err}");
+    }
     use ndarray::Array2;
     use ndarray_npy::write_npy;
 
