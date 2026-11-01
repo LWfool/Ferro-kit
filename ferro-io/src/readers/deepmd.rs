@@ -158,6 +158,8 @@ pub fn read_deepmd_npy(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
         bail!("{}: no frames found under set.*", dir.display());
     }
     let mut traj = Trajectory { frames, metadata: Default::default() };
+    // `format::read_as` shares the sites again on its way out; this one is for the dataset
+    // commands, which call this reader directly (review 2026-10-30 A1-L13)
     traj.share_sites();
     Ok((traj, warnings))
 }

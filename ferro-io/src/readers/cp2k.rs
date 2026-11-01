@@ -11,11 +11,6 @@ pub fn read_cp2k_inp(path: &Path) -> Result<Trajectory> {
     parse_cp2k(&content).with_context(|| format!("parsing {path_}"))
 }
 
-/// CP2K restart 与 inp 格式相同，共用同一解析器。
-pub fn read_cp2k_restart(path: &Path) -> Result<Trajectory> {
-    read_cp2k_inp(path)
-}
-
 fn parse_cp2k(content: &str) -> Result<Trajectory> {
     let lines: Vec<&str> = content.lines().collect();
 

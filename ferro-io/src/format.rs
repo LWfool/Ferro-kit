@@ -12,7 +12,7 @@ use ferro_core::{ChargeGrid, Frame, Trajectory};
 use crate::Notice;
 
 use crate::readers::{
-    apply_type_map, is_extxyz, read_aimd_as, read_chgcar, read_cif, read_cp2k_inp, read_cp2k_restart, read_cube_as_chg,
+    apply_type_map, is_extxyz, read_aimd_as, read_chgcar, read_cif, read_cp2k_inp, read_cube_as_chg,
     read_deepmd_npy, read_extxyz, read_lammps_data, read_lammps_dump,
     read_pdb, read_poscar, read_qe_input, read_xyz, sniff, AimdFormat, AimdStats,
     AtomStyle, LammpsUnits,
@@ -81,7 +81,8 @@ impl Format {
         }
     }
 
-    /// Short name, for the format matrix and messages.
+    /// Short name, for the format matrix and messages. The AIMD logs have a longer one for
+    /// their own messages, [`AimdFormat::name`]; kept apart on purpose (review 2026-10-30 A1-L13).
     pub fn name(self) -> &'static str {
         match self {
             Format::Xyz => "XYZ",
@@ -313,7 +314,8 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
         }
         Format::QeInput => read_qe_input(path)?,
         Format::Cp2kInput => read_cp2k_inp(path)?,
-        Format::Cp2kRestart => read_cp2k_restart(path)?,
+        // A restart file is an input file, read by the same parser (review 2026-10-30 A1-L13)
+        Format::Cp2kRestart => read_cp2k_inp(path)?,
         Format::Deepmd => warned(read_deepmd_npy(path)?),
         Format::Aimd(fmt) => {
             let (traj, stats) = read_aimd_as(path, fmt)?;

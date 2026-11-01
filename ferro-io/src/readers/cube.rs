@@ -31,8 +31,6 @@ struct ParsedCube {
     shape: [usize; 3],
     /// 体素步向量（Bohr），step_bohr[i] = v_i
     step_bohr: [[f64; 3]; 3],
-    /// 体素步向量（Å），step_ang[i] = v_i × BOHR_TO_ANG
-    step_ang: [[f64; 3]; 3],
     /// 原子列表（位置已转换为 Å）
     frame: Frame,
     /// 原始密度值，cube 存储顺序：i1 最慢，i3 最快（i3-fastest）
@@ -153,7 +151,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
               raw.len(), nrho, shape[0], shape[1], shape[2]);
     }
 
-    Ok(ParsedCube { origin_bohr, shape, step_bohr, step_ang, frame, raw })
+    Ok(ParsedCube { origin_bohr, shape, step_bohr, frame, raw })
 }
 
 // ─── 公共入口：CubeData（可视化 / 密度图）────────────────────────────────────
@@ -173,10 +171,10 @@ pub fn read_cube(path: &Path) -> Result<CubeData> {
 fn parse_cube(content: &str) -> Result<CubeData> {
     let pc = parse_header(content)?;
     let spacing = Matrix3::new(
-        pc.step_ang[0][0], pc.step_ang[0][1], pc.step_ang[0][2],
-        pc.step_ang[1][0], pc.step_ang[1][1], pc.step_ang[1][2],
-        pc.step_ang[2][0], pc.step_ang[2][1], pc.step_ang[2][2],
-    );
+        pc.step_bohr[0][0], pc.step_bohr[0][1], pc.step_bohr[0][2],
+        pc.step_bohr[1][0], pc.step_bohr[1][1], pc.step_bohr[1][2],
+        pc.step_bohr[2][0], pc.step_bohr[2][1], pc.step_bohr[2][2],
+    ) * BOHR_TO_ANG;
     // CubeData 保留 cube 原始数据顺序（i3 最快）和原始数值（不缩放）
     Ok(CubeData {
         frame: pc.frame,
@@ -221,13 +219,8 @@ fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
     let v_voxel_bohr = vm.determinant().abs();
     let v_cell_bohr = nrho as f64 * v_voxel_bohr;
 
-    // 建 Å 单元格（ChargeGrid 要求）
-    let cell_mat = Matrix3::new(
-        n1 as f64 * pc.step_ang[0][0], n1 as f64 * pc.step_ang[0][1], n1 as f64 * pc.step_ang[0][2],
-        n2 as f64 * pc.step_ang[1][0], n2 as f64 * pc.step_ang[1][1], n2 as f64 * pc.step_ang[1][2],
-        n3 as f64 * pc.step_ang[2][0], n3 as f64 * pc.step_ang[2][1], n3 as f64 * pc.step_ang[2][2],
-    );
-    let cell = Cell::from_matrix(cell_mat);
+    // The Å cell ChargeGrid needs: parse_header has built it once already (review 2026-10-30 A1-L13)
+    let cell = pc.frame.cell.clone().expect("parse_header gives the frame a cell");
 
     // 索引转置 + 密度缩放
     //
@@ -258,9 +251,6 @@ fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
     let chg = ChargeGrid::new(rho, pc.shape, &cell);
     Ok((frame, chg))
 }
-
-// ─── 内部辅助 ─────────────────────────────────────────────────────────────────
-
 
 // ─── 测试 ─────────────────────────────────────────────────────────────────────
 

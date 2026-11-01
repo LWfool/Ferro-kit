@@ -21,7 +21,9 @@ pub enum AimdFormat {
 }
 
 impl AimdFormat {
-    /// Human-readable name, for messages.
+    /// Human-readable name, for messages. Not [`crate::Format::name`], which is the short
+    /// name in the format table (`CP2K output` for both CP2K logs): two audiences, two
+    /// wordings, kept apart on purpose (review 2026-10-30 A1-L13).
     pub fn name(self) -> &'static str {
         match self {
             Self::Cp2kMd => "CP2K MD output",

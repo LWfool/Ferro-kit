@@ -30,7 +30,7 @@ pub use chgcar::read_chgcar;
 pub use extxyz::{is_extxyz, read_extxyz};
 pub use lammps_data::{read_lammps_data, AtomStyle};
 pub use lammps_dump::{read_lammps_dump, apply_type_map, LammpsUnits};
-pub use cp2k::{read_cp2k_inp, read_cp2k_restart};
+pub use cp2k::read_cp2k_inp;
 pub use aimd::{read_aimd_as, read_aimd, sniff, AimdFormat, AimdStats};
 pub use deepmd::read_deepmd_npy;
 pub use qe_out::read_qe_out;
