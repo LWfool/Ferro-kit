@@ -3,7 +3,7 @@ use crate::Notice;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use ferro_core::data::elements::by_symbol;
 use ferro_core::{Atom, Cell, Frame, Trajectory};
-use ferro_core::units::{convert_time, TimeUnit, KCAL_MOL_TO_EV};
+use ferro_core::units::{convert_energy, convert_time, EnergyUnit, TimeUnit};
 use nalgebra::{Matrix3, Vector3};
 use anyhow::{bail, Context, Result};
 
@@ -382,7 +382,9 @@ fn parse_frame(
         // Force: real kcal/(mol·Å) → eV/Å, metal eV/Å already
         let fscale = match units {
             Some(LammpsUnits::Metal) => 1.0,
-            _ => KCAL_MOL_TO_EV,
+            // Through the unit enum, as the velocity scale goes through convert_time
+            // (review 2026-10-30 A4-L9); 1 kcal/mol in eV, the same factor as before
+            _ => convert_energy(1.0, EnergyUnit::KcalPerMol, EnergyUnit::EV),
         };
         let force = triple("fx", "fy", "fz").map(vec3).transpose()?.map(|f| f * fscale);
 

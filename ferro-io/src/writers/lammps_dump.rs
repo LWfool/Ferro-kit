@@ -1,7 +1,7 @@
 use std::path::Path;
 use crate::readers::lammps_dump::LammpsUnits;
 use ferro_core::{AtomRef, Trajectory};
-use ferro_core::units::{convert_time, TimeUnit, EV_TO_KCAL_MOL};
+use ferro_core::units::{convert_energy, convert_time, EnergyUnit, TimeUnit};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
@@ -173,7 +173,8 @@ pub fn write_lammps_dump(
                 // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
                 let fscale = match units {
                     Some(LammpsUnits::Metal) => 1.0,
-                    _ => EV_TO_KCAL_MOL,
+                    // The reader's inverse, through the unit enum (review 2026-10-30 A4-L9)
+                    _ => convert_energy(1.0, EnergyUnit::EV, EnergyUnit::KcalPerMol),
                 };
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale));
             }
