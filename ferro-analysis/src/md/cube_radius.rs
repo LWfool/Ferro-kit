@@ -63,7 +63,7 @@ pub struct CubeRadiusResult {
     pub cube: CubeData,
     /// Number of frames that contributed to the grid
     pub n_frames: usize,
-    /// Number of selected atoms (counted from first valid frame)
+    /// Number of selected atoms (counted in the first frame)
     pub n_atoms: usize,
     pub params: CubeRadiusParams,
 }

@@ -1,7 +1,7 @@
 //! Glass network trajectory statistics: bridging-ligand speciation (Qn for P),
 //! ligand type distribution, coordination numbers.
 //!
-//! Atom-level classification is delegated to `ferro_core::classify_frame`.
+//! Atom-level classification is delegated to [`classify_frame`] (`classify.rs`).
 //! This module accumulates per-frame [`AtomType`]s into time-averaged distributions.
 //!
 //! # What "fraction ± sd" means
@@ -16,7 +16,7 @@
 //!
 //! # Usage
 //! ```ignore
-//! use ferro_core::TypeParams;
+//! use ferro_analysis::{calc_network, TypeParams};
 //! use std::collections::BTreeMap;
 //!
 //! let mut cutoffs = BTreeMap::new();

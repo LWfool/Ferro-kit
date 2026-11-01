@@ -12,7 +12,8 @@
 //! **CLI**: `ferro map density|velocity|force` picks the mode; `--nx --ny --nz` set the
 //! grid (default 50 each) and `--elements Li,Na` the atoms (default: all).
 //!
-//! Parallelism: per-frame `par_iter`; each frame independently produces (count, value_sum) arrays, then reduced.
+//! Parallelism: each frame produces its (count, value_sum) arrays in parallel, summed in frame
+//! order (`par_map_in_order`), so the result does not depend on the thread count.
 
 use crate::check;
 use ferro_core::error::ChemError;
@@ -81,7 +82,7 @@ pub struct CubeDensityResult {
     pub cube: CubeData,
     /// Number of frames that contributed to the grid
     pub n_frames: usize,
-    /// Number of selected atoms per frame (counted from first valid frame)
+    /// Number of selected atoms per frame (counted in the first frame)
     pub n_atoms: usize,
     pub params: CubeDensityParams,
 }

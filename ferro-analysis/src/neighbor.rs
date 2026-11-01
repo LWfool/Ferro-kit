@@ -1,7 +1,8 @@
 //! Linked-cell neighbour search in a 3-D periodic cell.
 //!
-//! Every distance-cutoff analysis here (g(r), angles, bond lifetimes, rotcorr, the
-//! network classification) goes through it. It lived in `ferro-core` while the network
+//! g(r), angles, rotcorr, bond lifetimes in a periodic cell and the network
+//! classification go through it; cube_radius, the cube_sdf modifier search and bondlife
+//! without a cell measure their pairs themselves. It lived in `ferro-core` while the network
 //! classification did; both are analysis (review A-1), and the periodic cell it
 //! builds on, [`PeriodicCell`], stays in core for io and structure to measure with.
 
