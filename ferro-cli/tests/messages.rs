@@ -41,7 +41,7 @@ fn batch_notes_and_failures() {
                                   labelled '43Z43P15A_NPT_5_2'", twin.display()), "{err}");
     assert!(lines[2].starts_with(&format!("{}: FerroError: ", broken.display())) && lines[2].ends_with("; skipped"),
             "{err}");
-    assert_eq!(*lines.last().unwrap(), "ferro: FerroError: 1 input(s) failed; see the messages above");
+    assert_eq!(*lines.last().unwrap(), "ferro: FerroError: 1 failure(s); see the messages above");
     assert!(!text(&out.stdout).contains("Note"), "notes left stdout");
 }
 
@@ -114,7 +114,7 @@ fn info_without_a_mass_leaves_out_the_density() {
     let lines: Vec<&str> = err.lines().collect();
     assert_eq!(lines[0], format!("{}: FerroError: frame 0: no mass for 1 atom(s) (Xx\u{d7}1): not in the \
                                   element table and no mass given; density not computed", xyz.display()), "{err}");
-    assert_eq!(*lines.last().unwrap(), "ferro: FerroError: 1 input(s) failed; see the messages above");
+    assert_eq!(*lines.last().unwrap(), "ferro: FerroError: 1 failure(s); see the messages above");
 }
 
 /// `chg-sdf --cubes` is expanded and checked like `-i`: a pattern that matches nothing is an

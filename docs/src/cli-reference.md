@@ -129,7 +129,7 @@ Everything ferro says outside its products is **one line on stderr**, in the lay
 traj.pdb:57: FerroWarning: last MODEL (frame 2) has no ENDMDL; kept
 sets/a.db: FerroNote: no virial; the default stress criterion is off for it
 runs/b/prod.lammpstrj: FerroError: trajectory is empty; skipped
-ferro: FerroError: 1 input(s) failed; see the messages above
+ferro: FerroError: 1 failure(s); see the messages above
 ```
 
 | Part | Meaning |

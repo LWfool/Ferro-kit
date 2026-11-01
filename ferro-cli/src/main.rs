@@ -190,7 +190,7 @@ fn run() -> Result<()> {
         // 不承诺失败原因在哪个文件里：`[inputs]` 块只有分析命令的 csv 才有，
         // 而 dataset 的产物是目录。原因每个 SKIP 行都已经说过了，这句的
         // 唯一职责是解释退出码 —— 指错地方比不指路更糟
-        report::error(report::PROGRAM, format!("{failures} input(s) failed; see the messages above"));
+        report::error(report::PROGRAM, format!("{failures} failure(s); see the messages above"));
         std::process::exit(1);
     }
     Ok(())
