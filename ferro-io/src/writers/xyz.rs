@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let path = std::env::temp_dir().join("roundtrip_water.xyz");
+        let path = crate::testutil::tmp_path("roundtrip_water.xyz");
         let path_str = &path;
         let original = make_traj();
         write_xyz(&original, path_str).unwrap();

@@ -130,7 +130,7 @@ mod tests {
         add("Fe", Some("Fe1"), 1.0);
         add("O", Some("O a"), 2.0);
         add("O", Some("O a"), 3.0);
-        let path = std::env::temp_dir().join("ferro_cif_labels.cif");
+        let path = crate::testutil::tmp_path("ferro_cif_labels.cif");
         write_cif(&Trajectory::from_frame(frame), &path).unwrap();
         let back = read_cif(&path).unwrap();
         let labels: Vec<_> = back.frames[0].atoms().map(|a| a.label.map(str::to_string)).collect();
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_periodic() {
-        let path = std::env::temp_dir().join("bcc_fe_rt.cif");
+        let path = crate::testutil::tmp_path("bcc_fe_rt.cif");
         let path_str = &path;
 
         let mut traj = Trajectory::from_frame(crate::testutil::bcc_fe());
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_cell_less_frame_is_an_error() {
-        let path = std::env::temp_dir().join("water_nocell.cif");
+        let path = crate::testutil::tmp_path("water_nocell.cif");
         let _ = std::fs::remove_file(&path);
 
         let mut frame = Frame::new();

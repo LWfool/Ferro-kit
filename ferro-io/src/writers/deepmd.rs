@@ -295,7 +295,7 @@ mod tests {
     }
 
     pub(super) fn out_dir(name: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(name);
+        let d = crate::testutil::tmp_path(name);
         let _ = fs::remove_dir_all(&d);
         d
     }

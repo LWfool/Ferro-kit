@@ -264,7 +264,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(name);
+        let d = crate::testutil::tmp_path(name);
         let _ = std::fs::remove_dir_all(&d);
         d
     }

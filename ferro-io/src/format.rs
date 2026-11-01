@@ -431,7 +431,7 @@ mod tests {
     }
 
     fn tmp_dir(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("ferro_format_{name}"));
+        let d = crate::testutil::tmp_path(&format!("ferro_format_{name}"));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d

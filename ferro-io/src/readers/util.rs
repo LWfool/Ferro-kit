@@ -137,7 +137,7 @@ mod tests {
     /// and the line-by-line path; good text reads unchanged, `\r\n` included.
     #[test]
     fn non_utf8_names_the_line_and_column() {
-        let path = std::env::temp_dir().join("ferro_util_not_utf8.txt");
+        let path = crate::testutil::tmp_path("ferro_util_not_utf8.txt");
         std::fs::write(&path, b"first\r\nsec\xffond\nthird\n").unwrap();
         for err in [
             read_text(&path).unwrap_err(),

@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let path = std::env::temp_dir().join("bcc_rt.lammps");
+        let path = crate::testutil::tmp_path("bcc_rt.lammps");
         let p = &path;
         write_lammps_data(&bcc_traj(), p, false).unwrap();
 
@@ -163,7 +163,7 @@ mod tests {
     fn test_element_with_no_mass_is_an_error() {
         let mut traj = bcc_traj();
         traj.frames[0].add_atom(Atom::new("Xx", Vector3::new(0.5, 0.5, 0.5)));
-        let path = std::env::temp_dir().join("ferro_data_nomass.lammps");
+        let path = crate::testutil::tmp_path("ferro_data_nomass.lammps");
         let _ = std::fs::remove_file(&path);
         let e = write_lammps_data(&traj, &path, false).unwrap_err();
         assert!(format!("{e:#}").contains("no mass for element 'Xx'"), "{e:#}");
@@ -173,12 +173,12 @@ mod tests {
     // Review R2-10: no cell and no atoms used to give a ±f64::MAX box
     #[test]
     fn test_empty_cellless_frame_is_refused() {
-        let path = std::env::temp_dir().join("ferro_data_empty.lammps");
+        let path = crate::testutil::tmp_path("ferro_data_empty.lammps");
         let _ = std::fs::remove_file(&path);
         let e = write_lammps_data(&Trajectory::from_frame(Frame::new()), &path, false).unwrap_err();
         assert!(format!("{e:#}").contains("no cell and no atoms"), "{e:#}");
         assert!(!path.exists(), "a refused write must not leave a file");
-        let dump = std::env::temp_dir().join("ferro_dump_empty.lammpstrj");
+        let dump = crate::testutil::tmp_path("ferro_dump_empty.lammpstrj");
         let _ = std::fs::remove_file(&dump);
         let e = crate::writers::lammps_dump::write_lammps_dump(
             &Trajectory::from_frame(Frame::new()), &dump, None, false).unwrap_err();
@@ -193,7 +193,7 @@ mod tests {
         f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
         f.add_atom(Atom::new("H", Vector3::new(1.76, 2.59, 3.0)));
         f.add_atom(Atom::new("H", Vector3::new(0.24, 2.59, 3.0)));
-        let path = std::env::temp_dir().join("ferro_data_cellless.lammps");
+        let path = crate::testutil::tmp_path("ferro_data_cellless.lammps");
         write_lammps_data(&Trajectory::from_frame(f.clone()), &path, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         for (lo, hi, tag) in [(-0.76, 2.76, "xlo xhi"), (1.0, 3.59, "ylo yhi"), (2.0, 4.0, "zlo zhi")] {
@@ -210,7 +210,7 @@ mod tests {
     // 审查 A14：90° 的 cos 残留让正交盒写出 xy xz yz 行
     #[test]
     fn test_orthogonal_cell_from_angles_is_not_triclinic() {
-        let path = std::env::temp_dir().join("ferro_data_ortho.lammps");
+        let path = crate::testutil::tmp_path("ferro_data_ortho.lammps");
         write_lammps_data(&bcc_traj(), &path, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(!text.contains("xy xz yz"), "正交盒不应写倾斜量：\n{text}");
@@ -223,8 +223,8 @@ mod tests {
     fn test_isotope_mass_is_written_in_full() {
         let text = "t\n\n1 atoms\n1 atom types\n\n0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n\
                     Masses\n\n1 2.014101778  # H\n\nAtoms # full\n\n1 1 1 0.0 1.0 1.0 1.0\n";
-        let src = std::env::temp_dir().join("ferro_data_isotope_in.lammps");
-        let dst = std::env::temp_dir().join("ferro_data_isotope_out.lammps");
+        let src = crate::testutil::tmp_path("ferro_data_isotope_in.lammps");
+        let dst = crate::testutil::tmp_path("ferro_data_isotope_out.lammps");
         std::fs::write(&src, text).unwrap();
         write_lammps_data(&read_lammps_data(&src, AtomStyle::Full).unwrap().0, &dst, false).unwrap();
         let back = read_lammps_data(&dst, AtomStyle::Full).unwrap().0;
@@ -235,8 +235,8 @@ mod tests {
     fn test_box_origin_survives_roundtrip() {
         let text = "test\n\n1 atoms\n1 atom types\n\n1.5 11.5 xlo xhi\n-2.0 8.0 ylo yhi\n3.0 13.0 zlo zhi\n\
                     2.0 -1.0 0.5 xy xz yz\n\nMasses\n\n1 15.999  # O\n\nAtoms # full\n\n1 1 1 0.0 2.0 -1.0 12.0\n";
-        let src = std::env::temp_dir().join("ferro_data_origin_in.lammps");
-        let dst = std::env::temp_dir().join("ferro_data_origin_out.lammps");
+        let src = crate::testutil::tmp_path("ferro_data_origin_in.lammps");
+        let dst = crate::testutil::tmp_path("ferro_data_origin_out.lammps");
         std::fs::write(&src, text).unwrap();
         let a = read_lammps_data(&src, AtomStyle::Full).unwrap().0;
         write_lammps_data(&a, &dst, false).unwrap();

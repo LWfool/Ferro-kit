@@ -85,7 +85,7 @@ mod tests {
     use ferro_core::Table;
 
     fn tmp(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(name)
+        crate::testutil::tmp_path(name)
     }
 
     fn sample() -> Table {

@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let path = std::env::temp_dir().join("roundtrip_water.pdb");
+        let path = crate::testutil::tmp_path("roundtrip_water.pdb");
         let path_str = &path;
         let original = make_traj();
         write_pdb(&original, path_str).unwrap();
@@ -135,7 +135,7 @@ mod tests {
     #[test]
     fn test_cryst1_per_model() {
         let traj = Trajectory { frames: vec![cubic_frame(10.0), cubic_frame(11.0)], ..Default::default() };
-        let path = std::env::temp_dir().join("ferro_pdb_cryst1_per_model.pdb");
+        let path = crate::testutil::tmp_path("ferro_pdb_cryst1_per_model.pdb");
         write_pdb(&traj, &path).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();
@@ -171,7 +171,7 @@ mod tests {
         frame.cell = Some(cell);
         frame.pbc = [true; 3];
 
-        let path = std::env::temp_dir().join("ferro_pdb_rotated_cell.pdb");
+        let path = crate::testutil::tmp_path("ferro_pdb_rotated_cell.pdb");
         write_pdb(&Trajectory::from_frame(frame), &path).unwrap();
 
         let loaded = read_pdb(&path).unwrap().0;
@@ -186,7 +186,7 @@ mod tests {
     /// A coordinate wider than the 8-column field used to push every later column over.
     #[test]
     fn test_coordinate_out_of_field_is_an_error() {
-        let path = std::env::temp_dir().join("ferro_pdb_wide.pdb");
+        let path = crate::testutil::tmp_path("ferro_pdb_wide.pdb");
         let one = |x: f64| {
             let mut f = Frame::new();
             f.add_atom(Atom::new("O", Vector3::new(x, 0.0, -999.999)));
@@ -202,7 +202,7 @@ mod tests {
     /// in the message is 0-based like the other writers'.
     #[test]
     fn test_refusal_leaves_no_file() {
-        let path = std::env::temp_dir().join("ferro_pdb_refused.pdb");
+        let path = crate::testutil::tmp_path("ferro_pdb_refused.pdb");
         let _ = std::fs::remove_file(&path);
         let mut bad = cubic_frame(10.0);
         bad.positions_mut()[0] = Vector3::new(1.0e5, 0.0, 0.0);
@@ -217,7 +217,7 @@ mod tests {
     fn test_serial_wraps_at_100000() {
         let mut f = Frame::new();
         for _ in 0..100_001 { f.add_atom(Atom::new("H", Vector3::zeros())); }
-        let path = std::env::temp_dir().join("ferro_pdb_serial.pdb");
+        let path = crate::testutil::tmp_path("ferro_pdb_serial.pdb");
         write_pdb(&Trajectory::from_frame(f), &path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let last = text.lines().rfind(|l| l.starts_with("ATOM")).unwrap();

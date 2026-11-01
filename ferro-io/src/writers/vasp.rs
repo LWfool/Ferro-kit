@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let path = std::env::temp_dir().join("bcc_rt.poscar");
+        let path = crate::testutil::tmp_path("bcc_rt.poscar");
         let p = &path;
         let orig = bcc_traj();
         write_poscar(&orig, p).unwrap();
@@ -106,7 +106,7 @@ mod tests {
             frame.add_atom(Atom::new(el, Vector3::new(x, 0.0, 0.0)));
         }
         frame.set_velocities(Some((1..=4).map(|k| Vector3::new(k as f64 / 10.0, 0.0, 0.0)).collect())).unwrap();
-        let path = std::env::temp_dir().join("interleaved_vel.poscar");
+        let path = crate::testutil::tmp_path("interleaved_vel.poscar");
         write_poscar(&Trajectory::from_frame(frame), &path).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();

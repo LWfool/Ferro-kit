@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let original = make_test_cube();
-        let path = std::env::temp_dir().join("roundtrip.cube");
+        let path = crate::testutil::tmp_path("roundtrip.cube");
         let path_str = &path;
 
         write_cube(&original, path_str).expect("write_cube failed");
@@ -132,7 +132,7 @@ mod tests {
         let mut original = make_test_cube();
         original.origin = Vector3::new(-3.0, 1.5, 2.0);
         original.frame.positions_mut()[0] = Vector3::new(-2.5, 2.0, 2.5);
-        let path = std::env::temp_dir().join("roundtrip_origin.cube");
+        let path = crate::testutil::tmp_path("roundtrip_origin.cube");
         write_cube(&original, &path).unwrap();
         let once = read_cube(&path).unwrap();
         write_cube(&once, &path).unwrap();
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn test_write_produces_valid_header() {
         let cube = make_test_cube();
-        let path = std::env::temp_dir().join("header_check.cube");
+        let path = crate::testutil::tmp_path("header_check.cube");
         write_cube(&cube, &path).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn test_write_atomic_number() {
         let cube = make_test_cube();
-        let path = std::env::temp_dir().join("z_check.cube");
+        let path = crate::testutil::tmp_path("z_check.cube");
         write_cube(&cube, &path).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
@@ -194,7 +194,7 @@ mod tests {
     fn test_unknown_element_is_an_error_before_the_file() {
         let mut cube = make_test_cube();
         cube.frame.add_atom(Atom::new("X1", Vector3::zeros()));
-        let path = std::env::temp_dir().join("ferro_unknown_element.cube");
+        let path = crate::testutil::tmp_path("ferro_unknown_element.cube");
         let _ = std::fs::remove_file(&path);
         let e = format!("{:#}", write_cube(&cube, &path).unwrap_err());
         assert!(e.contains("element \"X1\" has no atomic number"), "{e}");

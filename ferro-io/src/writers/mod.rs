@@ -123,7 +123,7 @@ mod tests {
         let mut frame = Frame::with_cell(flat, [true; 3]);
         frame.add_atom(Atom::new("Fe", Vector3::zeros()));
         let traj = Trajectory::from_frame(frame);
-        let dir = std::env::temp_dir().join(format!("ferro_singular_{}", std::process::id()));
+        let dir = crate::testutil::tmp_path(&format!("ferro_singular_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         type Writer = fn(&Trajectory, &std::path::Path) -> anyhow::Result<()>;
         let writers: [(&str, Writer); 3] = [
@@ -149,7 +149,7 @@ mod tests {
         let mut traj = Trajectory::from_frame(frame.clone());
         traj.add_frame(frame);
 
-        let dir = std::env::temp_dir().join(format!("ferro_single_{}", std::process::id()));
+        let dir = crate::testutil::tmp_path(&format!("ferro_single_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         type Writer = fn(&Trajectory, &std::path::Path) -> anyhow::Result<()>;
         let writers: [(&str, Writer); 3] = [
@@ -202,7 +202,7 @@ mod tests {
         frame.add_atom(na);
         frame.add_atom(Atom::new("O", Vector3::new(2.0, 0.0, 0.0)));
         let traj = Trajectory::from_frame(frame);
-        let dir = std::env::temp_dir().join(format!("ferro_partial_{}", std::process::id()));
+        let dir = crate::testutil::tmp_path(&format!("ferro_partial_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for name in ["x.extxyz", "x.lammpstrj", "x.data"] {
             let path = dir.join(name);
@@ -233,7 +233,7 @@ mod tests {
         frame.add_atom(Atom::new("Si", cell.fractional_to_cartesian(Vector3::new(0.1, 0.2, 0.3))));
         frame.add_atom(Atom::new("O", cell.fractional_to_cartesian(Vector3::new(0.6, 0.7, 0.9))));
         let traj = Trajectory::from_frame(frame.clone());
-        let dir = std::env::temp_dir().join(format!("ferro_skew_{}", std::process::id()));
+        let dir = crate::testutil::tmp_path(&format!("ferro_skew_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for name in ["x.data", "x.lammpstrj"] {
             let path = dir.join(name);

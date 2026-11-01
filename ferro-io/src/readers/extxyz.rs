@@ -653,7 +653,7 @@ Si 0.0 0.0 0.0
         assert!((t - 866.567046).abs() < 1e-9, "got {t}");
 
         // 写侧不带它出去
-        let out = std::env::temp_dir().join("temp_out.extxyz");
+        let out = crate::testutil::tmp_path("temp_out.extxyz");
         crate::writers::extxyz::write_extxyz(&traj, &out).unwrap();
         let text = std::fs::read_to_string(&out).unwrap();
         assert!(

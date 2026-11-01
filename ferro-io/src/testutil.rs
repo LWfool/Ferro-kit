@@ -6,9 +6,18 @@
 
 use std::path::PathBuf;
 
-/// Writes `content` under the OS temp dir and returns the path.
+/// `name` in this test process's own directory under the OS temp dir. Tests used to share
+/// fixed names in the temp dir itself, so two `cargo test` runs at once could overwrite each
+/// other's files (review 2026-10-30 A1-L14); a per-process directory keeps them apart.
+pub(crate) fn tmp_path(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("ferro-io-tests-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join(name)
+}
+
+/// Writes `content` to [`tmp_path`]`(name)` and returns the path.
 pub(crate) fn write_tmp(name: &str, content: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(name);
+    let path = tmp_path(name);
     std::fs::write(&path, content).unwrap();
     path
 }

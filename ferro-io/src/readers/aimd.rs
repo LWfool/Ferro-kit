@@ -257,7 +257,7 @@ mod tests {
     fn a_file_with_no_usable_frame_is_an_error_for_vasp_too() {
         let text = std::fs::read_to_string(p("vasp_OUTCAR_2frames")).unwrap();
         let head: String = text.lines().take(1800).map(|l| format!("{l}\n")).collect();
-        let f = std::env::temp_dir().join(format!("ferro_outcar_no_frame_{}", std::process::id()));
+        let f = crate::testutil::tmp_path(&format!("ferro_outcar_no_frame_{}", std::process::id()));
         std::fs::write(&f, head).unwrap();
         let err = read_aimd_as(&f, AimdFormat::VaspOutcar).unwrap_err().to_string();
         assert!(err.contains("no usable frame"), "{err}");
@@ -292,7 +292,7 @@ mod tests {
     /// "MD| Step number not found", an error about the wrong thing entirely.
     #[test]
     fn a_cp2k_file_without_a_run_type_says_so() {
-        let f = std::env::temp_dir().join("ferro_no_run_type.out");
+        let f = crate::testutil::tmp_path("ferro_no_run_type.out");
         std::fs::write(&f, " CP2K| version string: CP2K version 2025.2\n hello\n").unwrap();
         let msg = format!("{:#}", sniff(&f).unwrap_err());
         assert!(msg.contains("Run type"), "{msg}");
@@ -303,7 +303,7 @@ mod tests {
     /// banner is still read as CP2K and the run type still found (review C-9).
     #[test]
     fn a_late_cp2k_run_type_is_still_found() {
-        let f = std::env::temp_dir().join("ferro_late_run_type.out");
+        let f = crate::testutil::tmp_path("ferro_late_run_type.out");
         let echo: String = (0..300).map(|i| format!(" ECHO| line {i}\n")).collect();
         let text = format!(" CP2K| version string: CP2K version 2025.2\n{echo} GLOBAL| Run type    ENERGY_FORCE\n");
         std::fs::write(&f, text).unwrap();
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn an_unrecognised_file_names_what_is_recognised() {
-        let f = std::env::temp_dir().join("nothing.out");
+        let f = crate::testutil::tmp_path("nothing.out");
         std::fs::write(&f, "hello\nworld\n").unwrap();
         let e = sniff(&f).unwrap_err();
         let msg = format!("{e:#}");

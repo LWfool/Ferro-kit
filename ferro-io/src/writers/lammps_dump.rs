@@ -224,7 +224,7 @@ mod tests {
         let traj = Trajectory { frames: vec![mk(&["P_2", "P_4", "O_b"]), mk(&["P_2", "O_b"])],
                                 metadata: Default::default() };
 
-        let path = std::env::temp_dir().join("type_stable.lammpstrj");
+        let path = crate::testutil::tmp_path("type_stable.lammpstrj");
         let p = &path;
         write_lammps_dump(&traj, p, Some(LammpsUnits::Real), false).unwrap();
 
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         use crate::readers::lammps_dump::LammpsUnits;
-        let path = std::env::temp_dir().join("bcc_rt.dump");
+        let path = crate::testutil::tmp_path("bcc_rt.dump");
         let p = &path;
         let orig = bcc_traj();
         write_lammps_dump(&orig, p, Some(LammpsUnits::Real), false).unwrap();
@@ -266,7 +266,7 @@ mod tests {
             frame.sites_mut()[0].label = Some("Fe_3".into());
             frame.sites_mut()[1].label = Some("Fe1".into());
         }
-        let path = std::env::temp_dir().join(format!("labels_rt_{}.dump", std::process::id()));
+        let path = crate::testutil::tmp_path(&format!("labels_rt_{}.dump", std::process::id()));
         write_lammps_dump(&traj, &path, Some(LammpsUnits::Real), false).unwrap();
         let back = read_lammps_dump(&path, Some(LammpsUnits::Real)).unwrap().0;
         let f = back.first().unwrap();
@@ -321,7 +321,7 @@ mod tests {
             frame.add_atom(Atom::new("Si", Vector3::from(r)));
             frame.set_velocities(Some(vec![Vector3::from(v)])).unwrap();
             frame.set_forces(Some(vec![Vector3::from(f)])).unwrap();
-            let path = std::env::temp_dir().join(format!("rot_{name}.dump"));
+            let path = crate::testutil::tmp_path(&format!("rot_{name}.dump"));
             // metal：力不换算，速度 Å/fs → Å/ps 乘 1000
             write_lammps_dump(&Trajectory::from_frame(frame), &path, Some(LammpsUnits::Metal), false).unwrap();
 
@@ -360,7 +360,7 @@ mod tests {
         frame.add_atom(Atom::new("Si", Vector3::new(0.5, 0.5, 0.5)));
         let mut traj = Trajectory::new();
         traj.add_frame(frame);
-        let path = std::env::temp_dir().join("tri_w.dump");
+        let path = crate::testutil::tmp_path("tri_w.dump");
         write_lammps_dump(&traj, &path, Some(crate::readers::lammps_dump::LammpsUnits::Metal), false).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();
@@ -400,7 +400,7 @@ mod tests {
     // 平面分子得到厚度 0 的盒子，边界还硬写 pp
     #[test]
     fn test_cellless_frame_gets_padded_box_and_ff() {
-        let path = std::env::temp_dir().join("ferro_dump_cellless.lammpstrj");
+        let path = crate::testutil::tmp_path("ferro_dump_cellless.lammpstrj");
         write_lammps_dump(&Trajectory::from_frame(water()), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS ff ff ff\n"), "无胞帧应写 ff ff ff：\n{text}");
@@ -423,7 +423,7 @@ mod tests {
         let cell = Cell::from_lengths_angles(10.0, 11.0, 12.0, 90.0, 90.0, 90.0).unwrap();
         let mut f = Frame::with_cell(cell, [true; 3]);
         f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
-        let path = std::env::temp_dir().join("ferro_dump_ortho.lammpstrj");
+        let path = crate::testutil::tmp_path("ferro_dump_ortho.lammpstrj");
         write_lammps_dump(&Trajectory::from_frame(f), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS pp pp pp\n"), "正交盒不应写倾斜量：\n{text}");
@@ -435,7 +435,7 @@ mod tests {
         let cell = Cell::from_matrix(nalgebra::Matrix3::from_diagonal(&Vector3::new(10.0, 10.0, 30.0)));
         let mut f = Frame::with_cell(cell, [true, true, false]);
         f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
-        let path = std::env::temp_dir().join("ferro_dump_slab.lammpstrj");
+        let path = crate::testutil::tmp_path("ferro_dump_slab.lammpstrj");
         write_lammps_dump(&Trajectory::from_frame(f), &path, None, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("ITEM: BOX BOUNDS pp pp ff\n"), "slab 应写 pp pp ff：\n{text}");
@@ -449,8 +449,8 @@ mod tests {
         let tri = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n1\nITEM: BOX BOUNDS xy xz yz pp pp pp\n\
                    0.0 12.0 2.0\n-1.0 8.0 -1.0\n3.0 13.0 0.0\nITEM: ATOMS id type element x y z\n1 1 O 2.0 1.0 12.0\n";
         for (tag, text) in [("ortho", ortho), ("tri", tri)] {
-            let src = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_in.lammpstrj"));
-            let dst = std::env::temp_dir().join(format!("ferro_dump_origin_{tag}_out.lammpstrj"));
+            let src = crate::testutil::tmp_path(&format!("ferro_dump_origin_{tag}_in.lammpstrj"));
+            let dst = crate::testutil::tmp_path(&format!("ferro_dump_origin_{tag}_out.lammpstrj"));
             std::fs::write(&src, text).unwrap();
             let a = read_lammps_dump(&src, None).unwrap().0;
             write_lammps_dump(&a, &dst, None, false).unwrap();
@@ -462,7 +462,7 @@ mod tests {
             assert!((fa.positions()[0] - fb.positions()[0]).norm() < 1e-9, "{tag}: 坐标应往返不变");
         }
         // 第一个盒子的原点就是 lo；三斜的原点是 lo_bound 减去倾斜外探量
-        let src = std::env::temp_dir().join("ferro_dump_origin_ortho_in.lammpstrj");
+        let src = crate::testutil::tmp_path("ferro_dump_origin_ortho_in.lammpstrj");
         let o = read_lammps_dump(&src, None).unwrap().0.frames[0].cell.as_ref().unwrap().origin;
         assert!((o - Vector3::new(1.5, -2.0, 3.0)).norm() < 1e-12, "正交盒原点应为 lo，实得 {o:?}");
     }

@@ -463,7 +463,7 @@ mod tests {
         .unwrap();
         use crate::readers::extxyz::read_extxyz;
         use crate::writers::extxyz::{write_extxyz_with, StressKey};
-        let p = std::env::temp_dir().join("ferro_vasprun_virial_roundtrip.xyz");
+        let p = crate::testutil::tmp_path("ferro_vasprun_virial_roundtrip.xyz");
         write_extxyz_with(&traj, &p, StressKey::Virial, false).unwrap();
         let back = read_extxyz(&p).unwrap().0;
         let (s0, s1) = (traj.frames[0].stress.unwrap(), back.frames[0].stress.unwrap());
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn malformed_xml_is_an_error_not_an_empty_trajectory() {
-        let p = std::env::temp_dir().join("broken.xml");
+        let p = crate::testutil::tmp_path("broken.xml");
         std::fs::write(&p, "<?xml version=\"1.0\"?><modeling><calculation>").unwrap();
         // 截断的 XML 要么报错、要么给出 0 帧,但绝不能装作读到了东西
         match read_vasprun(&p) {
@@ -556,7 +556,7 @@ mod tests {
         let mut bytes = text.into_bytes();
         let at = bytes.windows(row.len()).position(|w| w == row.as_bytes()).unwrap() + 10;
         bytes[at] = 0xff;
-        let path = std::env::temp_dir().join("ferro_vasprun_bad_byte.xml");
+        let path = crate::testutil::tmp_path("ferro_vasprun_bad_byte.xml");
         std::fs::write(&path, bytes).unwrap();
         let e = format!("{:#}", read_vasprun(&path).unwrap_err());
         assert!(e.contains("byte 0xff is not UTF-8"), "{e}");

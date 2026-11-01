@@ -220,7 +220,7 @@ mod tests {
         }
         let traj = Trajectory::from_frame(frame);
 
-        let path = std::env::temp_dir().join("label_col.extxyz");
+        let path = crate::testutil::tmp_path("label_col.extxyz");
         let p = &path;
         write_extxyz(&traj, p).unwrap();
 
@@ -249,7 +249,7 @@ mod tests {
         frame.add_atom(Atom::new("H", Vector3::new(0.96, 0.0, 0.0)));
         let v = vec![Vector3::new(0.01, -0.02, 0.03), Vector3::new(0.1, 0.2, -0.3)];
         frame.set_velocities(Some(v.clone())).unwrap();
-        let path = std::env::temp_dir().join("ferro_momenta.extxyz");
+        let path = crate::testutil::tmp_path("ferro_momenta.extxyz");
         write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
 
         let text = std::fs::read_to_string(&path).unwrap();
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        let path = std::env::temp_dir().join("bcc_rt.extxyz");
+        let path = crate::testutil::tmp_path("bcc_rt.extxyz");
         let p = &path;
         let orig = bcc_traj();
         write_extxyz(&orig, p).unwrap();
@@ -297,7 +297,7 @@ mod tests {
             0.01, 0.002, 0.003,
             0.002, 0.02, 0.004,
             0.003, 0.004, 0.03));
-        let path = std::env::temp_dir().join("stress_sign.extxyz");
+        let path = crate::testutil::tmp_path("stress_sign.extxyz");
         write_extxyz(&traj, &path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let line = text.lines().nth(1).unwrap();
@@ -320,7 +320,7 @@ mod tests {
                                  0.002, 0.02, 0.004,
                                  0.003, 0.004, 0.03);
         traj.frames[0].stress = Some(-sigma);       // σ_ferro = -σ_ase
-        let path = std::env::temp_dir().join("virial_key.extxyz");
+        let path = crate::testutil::tmp_path("virial_key.extxyz");
         write_extxyz_with(&traj, &path, StressKey::Virial, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         let line = text.lines().nth(1).unwrap();
@@ -347,7 +347,7 @@ mod tests {
         let mut traj = bcc_traj();
         traj.frames[0].cell = None;
         traj.frames[0].stress = Some(Matrix3::identity());
-        let path = std::env::temp_dir().join("virial_nocell.extxyz");
+        let path = crate::testutil::tmp_path("virial_nocell.extxyz");
         let _ = std::fs::remove_file(&path);
         let e = write_extxyz_with(&traj, &path, StressKey::Virial, false)
             .unwrap_err();
@@ -362,7 +362,7 @@ mod tests {
         let mut frame = Frame::new();
         frame.add_atom(Atom::new("O", Vector3::zeros()));
         frame.add_atom(Atom::new("Xx", Vector3::new(1.0, 0.0, 0.0)));
-        let path = std::env::temp_dir().join("ferro_extxyz_nomass.extxyz");
+        let path = crate::testutil::tmp_path("ferro_extxyz_nomass.extxyz");
         let _ = std::fs::remove_file(&path);
         // No velocities and no explicit mass: no masses column, nothing to look up
         write_extxyz(&Trajectory::from_frame(frame.clone()), &path).unwrap();
@@ -382,7 +382,7 @@ mod tests {
         d.mass = Some(2.014);
         frame.add_atom(d);
         frame.add_atom(Atom::new("O", Vector3::new(0.96, 0.0, 0.0)));
-        let path = std::env::temp_dir().join("ferro_extxyz_mass.extxyz");
+        let path = crate::testutil::tmp_path("ferro_extxyz_mass.extxyz");
         write_extxyz(&Trajectory::from_frame(frame), &path).unwrap();
         let back = read_extxyz(&path).unwrap().0.frames.remove(0);
         assert_eq!(back.atom(0).mass, Some(2.014));
@@ -403,7 +403,7 @@ mod tests {
         let mut a = Atom::new("O", Vector3::zeros());
         a.label = Some("O a".into());
         frame.add_atom(a);
-        let path = std::env::temp_dir().join("ferro_extxyz_blank_label.xyz");
+        let path = crate::testutil::tmp_path("ferro_extxyz_blank_label.xyz");
         let _ = std::fs::remove_file(&path);
         let e = write_extxyz(&Trajectory::from_frame(frame), &path).unwrap_err();
         assert!(format!("{e:#}").contains("'O a'"), "{e:#}");
