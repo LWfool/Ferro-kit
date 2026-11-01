@@ -450,8 +450,8 @@ either.  `-s TAG` comes last: `density_all_<input>_TAG.cube`.  All products foll
 | `density` | atom number density per voxel | [3-D density maps](analysis/cube-density.md) |
 | `velocity` / `force` | mean speed / mean force magnitude per voxel | [3-D density maps](analysis/cube-density.md) |
 | `radius` | hard-sphere occupancy | [Hard-sphere occupancy](analysis/cube-radius.md) |
-| `sdf` | cluster spatial distribution function around $Q_n$ clusters | [Cluster SDF](analysis/cube-sdf.md) |
-| `chg-sdf` | orientation-averaged charge density around $Q_n$ clusters; takes `--cubes` (QE pp.x cubes) instead of `-i` and writes **one** SDF from all of them | [Charge-density SDF](analysis/chg-sdf.md) |
+| `sdf` | cluster spatial distribution function around $Q^n$ clusters | [Cluster SDF](analysis/cube-sdf.md) |
+| `chg-sdf` | orientation-averaged charge density around $Q^n$ clusters; takes `--cubes` (QE pp.x cubes) instead of `-i` and writes **one** SDF from all of them | [Charge-density SDF](analysis/chg-sdf.md) |
 
 ---
 

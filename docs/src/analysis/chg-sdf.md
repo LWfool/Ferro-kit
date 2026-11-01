@@ -1,8 +1,8 @@
 # Averaged Charge-Density SDF (`chg-sdf`)
 
-`ferro map chg-sdf` computes the **averaged electron-density spatial distribution function** over a set of Qn-type network clusters.  Given a collection of QE `pp.x` charge-density cube files (one per MD snapshot), the tool:
+`ferro map chg-sdf` computes the **averaged electron-density spatial distribution function** over a set of $Q^n$-type network clusters.  Given a collection of QE `pp.x` charge-density cube files (one per MD snapshot), the tool:
 
-1. Identifies every Qn cluster in each snapshot using the same Kabsch-alignment pipeline as `ferro map sdf`.
+1. Identifies every $Q^n$ cluster in each snapshot using the same Kabsch-alignment pipeline as `ferro map sdf`.
 2. Extracts a cubic sub-grid of the electron density centred on the cluster anchor atom, interpolating the raw charge-density grid with trilinear interpolation (PBC-safe).
 3. Rotates the sub-grid to align with the first-encountered reference cluster via the Kabsch rotation matrix, using "pull" interpolation (`output[r] = input[R⁻¹ r]`).
 4. Accumulates rotated sub-grids; divides by the cluster count to obtain the averaged density.
@@ -59,7 +59,7 @@ ferro map chg-sdf \
 | Flag | Default | Description |
 |---|---|---|
 | `--cubes <files…>` | (required) | One or more QE pp.x cube files; each file = one MD frame |
-| `--qn` | `3` | Target Qn cluster level (0, 1, 2, or 3) |
+| `--qn` | `3` | Target $Q^n$ cluster level (0, 1, 2, or 3) |
 | `--former` | `P` | Network-former element symbol |
 | `--ligand` | `O` | Bridging-ligand element symbol |
 | `--cutoff-fl` | `2.4` | Former–ligand bond cutoff [Å] |
@@ -82,7 +82,7 @@ For a single signature family (`-s TAG` appends `_TAG`):
 chg_sdf_Q2.cube
 ```
 
-For multiple families (distinct cluster topologies at the same Qn):
+For multiple families (distinct cluster topologies at the same $Q^n$):
 ```
 chg_sdf_fam0_Q2.cube
 chg_sdf_fam1_Q2.cube
@@ -105,7 +105,7 @@ ChgSDF Q2 done: 50 frames, 142 clusters total, 1 cube file written
 ## Algorithm Details
 
 ### Cluster identification
-Identical to `ferro map sdf`: finds all Qn-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.
+Identical to `ferro map sdf`: finds all $Q^n$-type connected components of former atoms sharing bridging ligands, using Union-Find on the former–ligand–former connectivity graph.
 
 ### Sub-grid extraction
 For each cluster anchor position `c` (Cartesian, Å):

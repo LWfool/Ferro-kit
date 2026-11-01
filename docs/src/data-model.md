@@ -195,7 +195,7 @@ any source, not only the ones `ferro net` writes.
 
 | Label | Meaning |
 |---|---|
-| `P_0` … `P_4` | Qn network former; the number is the count of **same-element** connections n (P–O–P), see `network.md` |
+| `P_0` … `P_4` | $Q^n$ network former; the number is the count of **same-element** connections n (P–O–P), see `network.md` |
 | `Al_4` `Al_5` `Al_6` | non-Qn network former; the number is the **coordination number** |
 | `O_f` | free ligand (bonded to no network former) |
 | `O_n` | non-bridging ligand (bonded to one) |

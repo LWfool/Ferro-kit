@@ -2,7 +2,7 @@
 
 **ferro** is a Rust library and command-line toolkit for post-processing molecular dynamics (MD) trajectories and computational chemistry data.  It is designed for periodic systems (crystals, surfaces, glasses) and covers:
 
-- **Structural analysis** — g(r), S(q), bond angle distributions, Qn speciation
+- **Structural analysis** — g(r), S(q), bond angle distributions, $Q^n$ speciation
 - **Dynamical analysis** — MSD, VACF, van Hove correlation, rotational correlation, bond lifetimes
 - **Spatial maps** — 3-D density/velocity/force grids, hard-sphere occupancy, cluster SDF
 - **ML datasets** — collect AIMD output into DeePMD systems, filter bad frames, merge and split (`ferro dataset`)

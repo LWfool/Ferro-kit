@@ -82,7 +82,7 @@ df.pivot_table(index="label", columns="category", values="percent")
 
 | Table | Reads | Figure |
 |---|---|---|
-| `qn` | `network_qn.csv` | one panel per Qn former; 100 % stacked bars over composition, bands $Q^0 \ldots Q^4$ |
+| `qn` | `network_qn.csv` | one panel per $Q^n$ former; 100 % stacked bars over composition, bands $Q^0 \ldots Q^4$ |
 | `cn` | `network_coordination.csv` | one panel per element with more than one coordination number (`--element` to choose) |
 | `bridge` | `network_linkage.csv` | left: the four ligand species `O_f` / `O_n` / `O_b` / `O_t`; right: the share of each former–former linkage (Al–O–Al, Al–O–P, P–O–P …) |
 | `linkmap` | `network_linkage.csv` | heat maps; rows are compositions, columns are former pairs (3 for two formers, 6 for three), cells are the states at both ends |
@@ -101,10 +101,10 @@ What the numbers mean:
 - **Triclusters count as connections.** `ferro net` expands a ligand shared by $k$
   formers into $C(k,2)$ pairs, and both figures use all of them, as $Q^n$ does. How
   many ligands are triclusters is shown by the `O_t` band.
-- **Heat-map axes**: a Qn former is placed by $n$, its number of homonuclear
+- **Heat-map axes**: a $Q^n$ former is placed by $n$, its number of homonuclear
   connections; any other former is placed by its coordination number. In the Al–P
   map, $Q^0$ therefore means a P bonded to Al but with no P–O–P. Which elements are
-  Qn formers is read from the `mean_qn` column of `[inputs]`.
+  $Q^n$ formers is read from the `mean_qn` column of `[inputs]`.
 - **Each map sums to 100 %** on its own; the colour scale is shared down a column so
   compositions compare directly. Maps of one element (P–O–P) show the upper
   triangle only, because a bridge has no direction and is stored once.

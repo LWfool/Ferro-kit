@@ -265,7 +265,7 @@ sense and the cross-tabulation stays a single table.
 
 Coordination comes from the **same classifier `ferro net` uses**
 (`classify_frame`), so the number means the same thing in both commands. Only
-the Al–O cutoff is needed: Al is not in the default Qn element set `{B,P,Si}`,
+the Al–O cutoff is needed: Al is not in the default $Q^n$ element set `{B,P,Si}`,
 so it takes the "non-Qn former" branch where the label's digit *is* the
 coordination number.
 

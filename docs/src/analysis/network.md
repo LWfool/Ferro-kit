@@ -6,7 +6,7 @@ atom a **structured type**, and accumulates the distributions over the whole tra
 | Quantity | Table | Meaning |
 |---|---|---|
 | **Structural composition** | `composition` | one species per row: `P-Q2` `Al_4` `O_b` `Zn_4`, each as a fraction of its own element |
-| Qn distribution | `qn` | the **homonuclear** connection count $n$ of a Qn network former (P–O–P), the $n$ of the literature's $Q^n_m$ |
+| $Q^n$ distribution | `qn` | the **homonuclear** connection count $n$ of a $Q^n$ network former (P–O–P), the $n$ of the literature's $Q^n_m$ |
 | Heteronuclear bridge decomposition | `qn_partner` | the table above split one dimension further by partner element, i.e. $Q^n(m\mathrm{Al})$ |
 | Ligand classification | `ligand_type` | `O_f` / `O_n` / `O_b` / `O_t`, with the partner elements given as data columns |
 | Coordination number | `coordination` | the total coordination-number distribution of network formers and modifiers |
@@ -15,7 +15,7 @@ atom a **structured type**, and accumulates the distributions over the whole tra
 `composition` is a **summary of the other tables**, not a new measurement: read it to take in the structural
 composition of the glass at a glance, and go to the source tables when the partner decomposition or the state at both ends is needed.
 
-> **Qn is reported only for Qn elements.** Qn is the notation for tetrahedral network formers, so by
+> **$Q^n$ is reported only for $Q^n$ elements.** $Q^n$ is the notation for tetrahedral network formers, so by
 > default only `B` / `P` / `Si` appear in the `qn` and `qn_partner` tables; **network formers such as Al
 > are characterised by coordination number** (written Al[4] / Al[5] / Al[6] in the literature).  They still
 > take part in the bridging-oxygen decision, in `ligand_type` and in `linkage` — what they leave is only the *rows* of those two tables.  `--qn` replaces this list as a whole.
@@ -81,19 +81,19 @@ bridges (it does connect that former into the network), at the price of $\sum(\t
 > Al in the reference trajectory (the `ligand_type` table has no `O_n, Al` row at all), so the two
 > distribution tables agree bin by bin.  Switch to a system where Al carries non-bridging oxygens and the two part ways at once.  Whenever you read "the coordination number of Al", take it from `coordination`.
 
-### Qn is only for Qn network formers
+### $Q^n$ is only for $Q^n$ network formers
 
 $Q^n$ is the notation for tetrahedral network formers: on a site whose coordination number is essentially
 fixed, one number says everything about how it is connected.  Al does not meet that premise — its coordination number is itself one of the quantities to be reported.  Hence:
 
 | | Appears in `qn` / `qn_partner` | Number in the label | Characterised by |
 |---|---|---|---|
-| Qn network former (B, P, Si by default) | yes | $n$ (homonuclear connection count) | the Qn distribution |
+| $Q^n$ network former (B, P, Si by default) | yes | $n$ (homonuclear connection count) | the $Q^n$ distribution |
 | other network formers (Al, …) | **no** | **coordination number** | the `coordination` table |
 | modifiers (Zn, …) | no | no suffix | the `coordination` table |
 
 The list is a **default**: `--qn Si,Al` replaces it as a whole rather than adding to it — whether an element
-counts as a Qn network former is a property of the system: in aluminosilicates people do report $Q^n(m\mathrm{Si})$ for Al.
+counts as a $Q^n$ network former is a property of the system: in aluminosilicates people do report $Q^n(m\mathrm{Si})$ for Al.
 
 ### $n$ counts homonuclear bridges only — the statement used in the literature
 
@@ -155,10 +155,10 @@ $$(\underbrace{\text{element},\; n_\text{bridge},\; \text{CN}}_{\text{A end}}),\
   \text{ligand element},\; n_\text{formers}$$
 
 **Both** ends carry all three fields.  This differs from common implementations, which store a single
-number per element (Qn for P, CN for Al) and therefore cannot answer "how many bridges does a four-coordinate Al have".
+number per element ($Q^n$ for P, CN for Al) and therefore cannot answer "how many bridges does a four-coordinate Al have".
 
 - **The `linkage` display column**: a human-readable form such as `Al_4-O-P_2`, where the number follows
-  each one's own convention (Qn for Qn network formers, coordination number for the rest), in the same
+  each one's own convention ($Q^n$ for $Q^n$ network formers, coordination number for the rest), in the same
   vocabulary as the labels of the exported trajectory.  **Filter on the numeric columns**; do not take this one apart with a regex.
 - **The `ligand` column**: the element of the atom in the middle of the bridge.  With several ligand species
   `Al-O-P` and `Al-F-P` are two different bridges and never share a row — merging their counts would report a number no experiment can correspond to.
@@ -236,7 +236,7 @@ A cutoff of 0 means the pair never bonds; a negative or non-finite one is an err
 | `--atom-style <STYLE>` | — | `atomic`, `charge` or `full`: column layout of a LAMMPS data file's `Atoms` section (required for `.data` / `.lmp` / `.lammps` input) |
 | `--format-in <FMT>` | from the name | read the input as this format (`qe/in`, `vasp/outcar`, ...; see the format table in the CLI reference) |
 | `--modifier E,E` | — | comma-separated elements that count towards coordination number only.  Their cutoffs must be given as well |
-| `--qn E,E` | `B,P,Si` | comma-separated network formers to report Qn for.  **Replaces** the default list rather than adding to it |
+| `--qn E,E` | `B,P,Si` | comma-separated network formers to report $Q^n$ for.  **Replaces** the default list rather than adding to it |
 | `--export-traj [FMT]` | — | also write a labelled trajectory, `lammpstrj` (default) or `extxyz` |
 
 ---
@@ -250,19 +250,19 @@ the whole block automatically).  The table below therefore only says which file 
 | File | One row per | Columns |
 |---|---|---|
 | `network_composition.csv` | species | `label, element, count, fraction, sd` |
-| `network_qn.csv` | (network former, Qn) | `label, former, qn, count, fraction, sd` |
-| `network_qn_partner.csv` | (network former, Qn, partner decomposition) | `label, former, qn, m_<X>…, count, fraction, sd` |
+| `network_qn.csv` | (network former, $Q^n$) | `label, former, qn, count, fraction, sd` |
+| `network_qn_partner.csv` | (network former, $Q^n$, partner decomposition) | `label, former, qn, m_<X>…, count, fraction, sd` |
 | `network_ligand_type.csv` | (ligand type, partner pair) | `label, type, former_a, former_b, count, fraction, sd` |
 | `network_coordination.csv` | (element, coordination number) | `element, cn, count, fraction, sd` |
 | `network_linkage.csv` | (ligand, state at both ends) | `linkage, ligand, elem_a, qn_a, cn_a, elem_b, qn_b, cn_b, n_formers, count, fraction, sd` |
 
 The `label` column is the human-readable anchor; the numeric columns `former` / `qn` / `cn` are what
-filtering and plotting use — both are kept rather than one or the other, otherwise "select Qn ≥ 3" would mean slicing strings.
+filtering and plotting use — both are kept rather than one or the other, otherwise "select $Q^n$ ≥ 3" would mean slicing strings.
 
-The value columns of the distribution tables mean different things (Qn / type label / coordination number),
+The value columns of the distribution tables mean different things ($Q^n$ / type label / coordination number),
 so merging them would make `groupby` meaningless and each gets its own table.  `qn` vs `qn_partner`, and `composition`, are all cases of **a different granularity deserving a separate table**.
 
-**When there is no Qn network former the first two files are not written at all**, and the reason is printed
+**When there is no $Q^n$ network former the first two files are not written at all**, and the reason is printed
 to the screen.  A CSV with nothing but a header reads as "measured, and the result was zero", while in fact nothing was measured.
 
 In batch mode, inputs with different element sets take the **union of the columns; what is missing stays
@@ -296,7 +296,7 @@ file,label,element,count,fraction,sd
 **The denominator is always the atom count of that element**: Q2 out of all P, `Al_4` out of all Al, `O_b`
 out of all O.  So **the `fraction` of each element sums to 1** — an identity that can be checked the moment the file is opened.
 
-Each element appears under **one characterisation only**: Qn for Qn network formers, coordination number
+Each element appears under **one characterisation only**: $Q^n$ for $Q^n$ network formers, coordination number
 for the other formers and the modifiers, type for ligands.  P has no coordination row here (that is in `network_coordination.csv`).
 
 The `O_b` row is aggregated from three rows of `ligand_type` (Al-Al / Al-P / P-P), and its `sd` is
@@ -358,7 +358,7 @@ of each file says so.  Rows like `Al_4-O-P_0` are common: that P is connected to
 but has no P–O–P of its own and is therefore $Q^0$.  A `qn_a=0` on the Al end means there is no Al–O–Al.
 
 The **atom vocabulary** is used here (`P_3`, not `P-Q3`): a linkage describes the connection between two
-atoms, while Qn names a structural unit containing several atoms.  This matches the labels of the exported trajectory.
+atoms, while $Q^n$ names a structural unit containing several atoms.  This matches the labels of the exported trajectory.
 
 ### Analysing `linkage` with pandas
 
@@ -404,7 +404,7 @@ otherwise in batch mode the second input would overwrite the first (the same rea
 
 | Role | Label | The number is |
 |---|---|---|
-| Qn network former | `P_0` `P_1` … `Si_4` | **n** (same-element connection count, P–O–P; heteronuclear connections excluded) |
+| $Q^n$ network former | `P_0` `P_1` … `Si_4` | **n** (same-element connection count, P–O–P; heteronuclear connections excluded) |
 | other network formers | `Al_4` `Al_5` `Al_6` | **coordination number** |
 | free ligand | `O_f` | — |
 | non-bridging ligand | `O_n` | — |
@@ -413,14 +413,14 @@ otherwise in batch mode the second input would overwrite the first (the same rea
 | modifier | `Zn` | no suffix |
 
 `ferro net` prints this table once per run with the actual elements filled in, because which element
-reports Qn and which reports coordination number depends on `--qn` and on which cutoffs were given.
+reports $Q^n$ and which reports coordination number depends on `--qn` and on which cutoffs were given.
 
 ### Two vocabularies: unit and atom
 
 | Vocabulary | Looks like | Used in | Why |
 |---|---|---|---|
-| **unit** | `P-Q2`, `Al_4` | `composition` / `qn` / `qn_partner` | these three tables count "how many Q2 units there are", and Qn is by origin the notation for a structural unit |
-| **atom** | `P_2`, `Al_4` | `linkage`, the exported trajectory | a linkage describes a connection **between atoms**, while one Qn unit contains several atoms |
+| **unit** | `P-Q2`, `Al_4` | `composition` / `qn` / `qn_partner` | these three tables count "how many Q2 units there are", and $Q^n$ is by origin the notation for a structural unit |
+| **atom** | `P_2`, `Al_4` | `linkage`, the exported trajectory | a linkage describes a connection **between atoms**, while one $Q^n$ unit contains several atoms |
 
 For non-Qn network formers the two vocabularies happen to coincide (both `Al_4`), because Al has no unit notation available.
 
@@ -428,7 +428,7 @@ For non-Qn network formers the two vocabularies happen to coincide (both `Al_4`)
 > `P_2`, not `P-Q2` — a trajectory label has to be splittable back into an element by the dump reader at
 > the first underscore, and the `Q` of `Q2` is not an element.  So it is `traj gr -x P_2`, not `-x P-Q2`.
 
-The element prefix (`P-Q2` rather than `Q2`) is there because in systems with two Qn network formers
+The element prefix (`P-Q2` rather than `Q2`) is there because in systems with two $Q^n$ network formers
 (B+P in borophosphates, Si+Al in aluminosilicates) `Q0`…`Q4` would each appear twice, and **no neighbouring column can resolve a name collision across elements**.
 
 All of them follow the `<element>_<suffix>` convention and are split at the **first underscore**.  Modifiers
@@ -467,7 +467,7 @@ ferro traj gr -i network_types_run.lammpstrj -x Al_5 -y O_b --last-n 1
 ```
 
 > **Selecting by label only holds for a single frame.** `g(r)` requires the per-type particle count to be
-> conserved, but labels are dynamic — a P changes its own Qn as the trajectory advances (measured on the
+> conserved, but labels are dynamic — a P changes its own $Q^n$ as the trajectory advances (measured on the
 > reference trajectory, `P_3` is 149 / 152 / 150 / 150 / 150 frame by frame).  Selecting by label on a
 > multi-frame labelled trajectory is rejected with a "per-type atom counts change" error; that is a guard, not a defect.  Select by element for multiple frames.
 

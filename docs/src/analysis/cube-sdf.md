@@ -2,11 +2,11 @@
 
 ## Theory
 
-The cluster SDF identifies all phosphate clusters of a specified $Q_n$ type from an MD trajectory, aligns them to a common reference frame using rigid-body superposition, and accumulates per-atom-type 3-D probability densities.  The result reveals the average local geometry and spatial spread of the cluster type in a simulation-cell-independent local coordinate frame.
+The cluster SDF identifies all phosphate clusters of a specified $Q^n$ type from an MD trajectory, aligns them to a common reference frame using rigid-body superposition, and accumulates per-atom-type 3-D probability densities.  The result reveals the average local geometry and spatial spread of the cluster type in a simulation-cell-independent local coordinate frame.
 
-### $Q_n$ Classification
+### $Q^n$ Classification
 
-Each network-former atom (e.g. P) is assigned a $Q_n$ label based on the number of bridging ligands (e.g. O) it shares with other former atoms:
+Each network-former atom (e.g. P) is assigned a $Q^n$ label based on the number of bridging ligands (e.g. O) it shares with other former atoms:
 
 | Label | Bridging ligands | Description |
 |---|---|---|
@@ -17,7 +17,7 @@ Each network-former atom (e.g. P) is assigned a $Q_n$ label based on the number 
 
 ### Cluster Identification
 
-Connected components of former atoms sharing bridging ligands are found by graph traversal.  Each component is classified by the **highest individual $Q_n$** within it: a component containing one $Q_3$ and two $Q_1$ atoms is a $Q_3$ cluster.
+Connected components of former atoms sharing bridging ligands are found by graph traversal.  Each component is classified by the **highest individual $Q^n$** within it: a component containing one $Q_3$ and two $Q_1$ atoms is a $Q_3$ cluster.
 
 ### Atom-Type Labels
 
@@ -25,7 +25,7 @@ Each atom in the cluster receives one of the following labels:
 
 | Label | Meaning |
 |---|---|
-| `P0` / `P1` / `P2` / `P3` | Former atom with its individual $Q_n$ |
+| `P0` / `P1` / `P2` / `P3` | Former atom with its individual $Q^n$ |
 | `Of` | Free (non-bridging) oxygen bonded to exactly one former |
 | `On` | Non-bridging oxygen bonded to one former + one modifier |
 | `Ob` | Bridging oxygen shared by two formers |
@@ -106,7 +106,7 @@ pub struct ClusterSdfParams {
 
 | Flag | Default | Description |
 |---|---|---|
-| `--qn` | 3 | target $Q_n$ level (0–3) |
+| `--qn` | 3 | target $Q^n$ level (0–3) |
 | `--former` | `P` | network former element |
 | `--ligand` | `O` | bridging ligand element |
 | `--cutoff-fl` | 2.4 | network former–ligand cutoff [Å] |
@@ -124,7 +124,7 @@ One Gaussian cube file per atom type per family:
 - Single family: `sdf_<label>_Q<n>_<input>[_<suffix>].cube` (e.g. `sdf_P3_Q3_prod.cube`, `sdf_Ob_Q3_prod.cube`)
 - Multiple families: `sdf_fam0_<label>_Q<n>_<input>.cube`, `sdf_fam1_<label>_Q<n>_<input>.cube`, …
 
-`Q<n>` is the `--qn` selection, as `chg-sdf` names it, so runs for different $Q_n$ do not overwrite one another.
+`Q<n>` is the `--qn` selection, as `chg-sdf` names it, so runs for different $Q^n$ do not overwrite one another.
 
 All cube files within a family share the same grid origin and spacing, enabling direct overlay in VESTA or VMD.
 Positions are binned into voxels starting at the lower corner of the padded box; the header origin is that
