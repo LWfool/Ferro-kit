@@ -42,6 +42,7 @@ command line alike; regenerate it rather than migrating it.
   (counted as 0) is named in a warning.
 - `build supercell` (and Python `supercell`): more than one copy along an axis whose `pbc` is false is an
   error; a slab used to be stacked into several slabs through its vacuum.
+- `ferro net`: a pair given twice (`--P-O=2.3 --P-O=2.5`) is an error; the second used to replace the first.
 
 ### Code review fixes: readers that misread a broken file
 

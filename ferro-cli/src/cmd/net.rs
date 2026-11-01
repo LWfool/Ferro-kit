@@ -436,7 +436,11 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option
                 .map_err(|_| anyhow!("Invalid cutoff value in '{arg}' (a number or auto)"))?;
             Some(c)
         };
-        map.insert((former.to_string(), ligand.to_string()), cutoff);
+        // A second value for the same pair used to replace the first in silence; clap
+        // refuses a repeated ordinary flag, and so does this (review 2026-10-30 A5-L4)
+        if map.insert((former.to_string(), ligand.to_string()), cutoff).is_some() {
+            bail!("--{former}-{ligand} is given twice");
+        }
     }
     Ok(map)
 }
@@ -449,6 +453,13 @@ mod tests {
 
     fn args(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_pair_given_twice_is_an_error() {
+        let err = parse_pairs(&args(&["--P-O=2.3", "--P-O=2.5"])).unwrap_err().to_string();
+        assert!(err.contains("--P-O is given twice"), "{err}");
+        assert_eq!(parse_pairs(&args(&["--P-O=2.3", "--Al-O=auto"])).unwrap().len(), 2);
     }
 
     #[test]
