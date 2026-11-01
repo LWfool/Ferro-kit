@@ -322,7 +322,7 @@ fn filter_one(
 
     // 诊断表恒算：实测 1110 帧 / 302 原子挂钟时间与不算时相同（rayon 跑满），
     // 而它是选阈值的依据，只在只读模式算就等于永远落不了盘
-    let diagnostics = filter_diagnostics(&traj, &result, &params)?;
+    let diagnostics = filter_diagnostics(&traj, &result)?;
     let mut tables = result.to_tables();
     tables.extend(diagnostics.iter().cloned());
     let min_oo = if params.oo_min > 0.0 {

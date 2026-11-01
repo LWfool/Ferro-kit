@@ -15,7 +15,7 @@ use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 use ferro_core::{Table, Trajectory};
 
-use super::filter::{FilterParams, FilterResult};
+use super::filter::FilterResult;
 
 use super::geometry::{coordination_histogram, count_with_coordination};
 use crate::check;
@@ -205,11 +205,14 @@ pub fn coordination_table(hist: &[(u32, usize)]) -> Table {
 /// rather than by the structure, and a minimum distance drawn from a smooth
 /// distribution has no outliers to remove — neither is visible from the funnel
 /// alone. Only the criteria that are switched on contribute a table.
+///
+/// The thresholds are the ones the filter ran with, `r.params`: a second `&FilterParams`
+/// argument could disagree with them (review 2026-10-30 A3-L10).
 pub fn filter_diagnostics(
     traj: &Trajectory,
     r: &FilterResult,
-    params: &FilterParams,
 ) -> ferro_core::Result<Vec<(String, Table)>> {
+    let params = &r.params;
     let mut out = Vec::new();
     if params.oo_min > 0.0 {
         let v: Vec<f64> = r.verdicts.iter().filter_map(|x| x.min_oo).collect();
@@ -376,6 +379,7 @@ fn mean_sd_line(label: &str, values: &[f64], unit: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::filter::FilterParams;
 
     fn run_of(temps: &[Option<f64>], steps: &[Option<i64>]) -> Trajectory {
         use ferro_core::{Atom, Cell, Frame};
@@ -408,7 +412,7 @@ mod tests {
         let t = Trajectory::from_frame(f);
         let p = FilterParams { al6_rcut: Some(2.4), ..Default::default() };
         let r = super::super::filter::filter_frames(&t, &p).unwrap();
-        let tables = filter_diagnostics(&t, &r, &p).unwrap();
+        let tables = filter_diagnostics(&t, &r).unwrap();
         let (_, scan) = tables.iter().find(|(n, _)| n == "rcut_scan").unwrap();
         assert_eq!(scan.n_rows(), 5, "2.1 .. 2.5, not 2.6 or 2.7");
     }
