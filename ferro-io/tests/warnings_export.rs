@@ -2,7 +2,7 @@
 //! Scan B-13 exported the four `_with_warnings` readers for this; P3 took the per-format
 //! readers off the crate root again, so the same checks now go through `read`.
 
-use ferro_io::{read, write_pdb, AtomStyle, Level, ReadOptions};
+use ferro_io::{read, write, AtomStyle, Level, ReadOptions, WriteOptions};
 use ferro_core::{Atom, Frame, Trajectory};
 use nalgebra::Vector3;
 use std::path::PathBuf;
@@ -40,7 +40,7 @@ fn pdb_last_block_without_end_is_reported() {
     let mut f = Frame::new();
     f.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.0)));
     let p = std::env::temp_dir().join("ferro_export_noend.pdb");
-    write_pdb(&Trajectory::from_frame(f), &p).unwrap();
+    write(&Trajectory::from_frame(f), &p, &WriteOptions::default()).unwrap();
     let one = std::fs::read_to_string(&p).unwrap();
     let p = tmp("ferro_export_noend.pdb", &format!("{one}{}", one.trim_end_matches("END\n")));
     let (traj, r) = read(&p, &ReadOptions::default()).unwrap();
