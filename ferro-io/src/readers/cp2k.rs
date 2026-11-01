@@ -281,7 +281,10 @@ fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3], [usize; 3])>
 
 /// A CP2K periodicity value (`&CELL PERIODIC`, the output header's `CELL| Periodicity`) → pbc per
 /// axis. Values X Y Z XY XZ YZ XYZ NONE (input_cp2k_subsys.F), case-insensitive; `None` when not one
-/// of them. Shared by cp2k.rs, cp2k_sp.rs and cp2k_md.rs.
+/// of them. Shared by cp2k.rs, cp2k_sp.rs and cp2k_md.rs, which treat `None` differently on
+/// purpose: the input reader errors (a user typed it, and a guessed pbc changes every distance),
+/// while the two output readers fall back to XYZ, CP2K's default, because CP2K itself printed the
+/// value and only accepts the names above (review 2026-10-30 A1-L4).
 pub(crate) fn cp2k_periodic(v: &str) -> Option<[bool; 3]> {
     let v = v.to_uppercase();
     match v.as_str() {

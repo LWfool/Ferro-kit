@@ -548,6 +548,7 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
     }
     let mut frames = acc.frames;
     for f in &mut frames {
+        // XYZ when unrecognised or absent, unlike the input reader: see `cp2k_periodic`
         f.pbc = pbc.unwrap_or([true; 3]);
     }
 

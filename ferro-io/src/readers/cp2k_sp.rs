@@ -244,7 +244,7 @@ fn read_cell(lines: &[&str], lo: usize, hi: usize) -> Option<(Matrix3<f64>, [boo
             continue;
         }
         if f.get(1) == Some(&"Periodicity") {
-            // 输出里的取值恒合法；认不出时按周期（CP2K 缺省 XYZ）
+            // XYZ (CP2K's default) when unrecognised, unlike the input reader: see `cp2k_periodic`
             pbc = f.get(2).and_then(|p| super::cp2k::cp2k_periodic(p)).unwrap_or([true; 3]);
             continue;
         }
