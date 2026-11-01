@@ -263,13 +263,7 @@ pub fn run(topic: &[String]) -> Result<()> {
         return Ok(());
     }
     let asked = topic.join(" ").to_lowercase();
-    let resolved = ALIASES
-        .iter()
-        .find(|(from, _)| *from == asked)
-        .map(|(_, to)| *to)
-        .unwrap_or(&asked);
-
-    match PAGES.iter().find(|p| p.topic == resolved) {
+    match find_page(&asked) {
         Some(page) => page_out(&body(page)),
         None => {
             // A mistyped topic gets the list, not just "no": it is right at hand
@@ -280,6 +274,17 @@ pub fn run(topic: &[String]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The page a (lower-cased) topic names, through [`ALIASES`] first. Shared by [`run`]
+/// and the test that every help page's `ferro doc <topic>` line resolves.
+fn find_page(asked: &str) -> Option<&'static Page> {
+    let resolved = ALIASES
+        .iter()
+        .find(|(from, _)| *from == asked)
+        .map(|(_, to)| *to)
+        .unwrap_or(asked);
+    PAGES.iter().find(|p| p.topic == resolved)
 }
 
 /// The part of the page this topic addresses.
@@ -368,6 +373,28 @@ fn page_out(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Review 2026-10-30 A5-L3: the `ferro doc <topic>` a help page sends the reader to
+    /// must exist; CLAUDE.md says a page missing from PAGES leaves it pointing nowhere,
+    /// and that was kept by memory alone
+    #[test]
+    fn every_doc_topic_named_in_the_help_pages_resolves() {
+        let help = include_str!("help.rs");
+        let mut n = 0;
+        for (i, m) in help.match_indices("ferro doc ") {
+            let line = help[i + m.len()..].lines().next().unwrap_or("");
+            let topic: String = line.chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '-')
+                .collect();
+            let topic = topic.trim();
+            if topic.is_empty() {
+                continue; // `ferro doc <topic>` in prose
+            }
+            n += 1;
+            assert!(find_page(&topic.to_lowercase()).is_some(), "help.rs sends to `ferro doc {topic}`, which has no page");
+        }
+        assert!(n >= 20, "only {n} `ferro doc` references found; the scan is broken");
+    }
 
     #[test]
     fn every_topic_is_unique() {

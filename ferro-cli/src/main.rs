@@ -285,6 +285,9 @@ mod help_sync {
     fn every_option_appears_on_its_page() {
         for (path, fname) in PAGES {
             let text = page(fname);
+            // A short name counts only in the parameter table: `-o ` in an Examples line is
+            // a use, not a description (review 2026-10-30 A5-L3)
+            let table: String = option_blocks(&text).iter().flatten().copied().collect::<Vec<_>>().join("\n");
             for arg in subcommand(path).get_arguments() {
                 let Some(long) = arg.get_long() else { continue };
                 if long == "help" || long == "version" {
@@ -296,7 +299,7 @@ mod help_sync {
                 // 页里写短名（`-a ELEM`、`-o SUFFIX`）也算写了 —— 要断言的是
                 // 这个参数被交代过,不是它以哪种拼法出现
                 let named = text.contains(&format!("--{long}"))
-                    || arg.get_short().is_some_and(|c| text.contains(&format!("-{c} ")));
+                    || arg.get_short().is_some_and(|c| table.contains(&format!("-{c} ")));
                 assert!(
                     named,
                     "`ferro {}` takes --{long} but {fname} never mentions it; \
@@ -429,11 +432,16 @@ mod help_sync {
         let mut known: Vec<String> = Vec::new();
         collect_longs(&super::Cli::command(), &mut known);
 
-        for (_, fname) in PAGES {
+        // The overview pages too: they name options in their examples (review 2026-10-30 A5-L3)
+        let overviews = ["print_overview", "print_traj_overview", "print_map_overview",
+                         "print_dataset_overview", "print_build_overview"];
+        for fname in PAGES.iter().map(|(_, f)| *f).chain(overviews) {
             for line in page(fname).lines() {
                 // 「there is no --from / --to flag」这类**否定陈述**正是在做对的事:
                 // 明说某个拼法不存在。断言它存在会把这句话判成错的
-                if line.contains("no --") {
+                // Only the sentence that says so: a bare `no --` also skipped lines such as
+                // "no --elements -> msd_all.csv" (review 2026-10-30 A5-L3)
+                if line.contains("there is no --") {
                     continue;
                 }
                 for name in longs_in(line) {
