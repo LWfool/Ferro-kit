@@ -99,7 +99,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
         None | Some("auto") => None,
         Some(v) => Some(
             v.parse::<f64>()
-                .with_context(|| format!("--al6 expects a cutoff in Angstrom or nothing, got `{v}`"))?,
+                .with_context(|| format!("--al6 expects a cutoff in Å or nothing, got `{v}`"))?,
         ),
     };
     let split = filter_split(args)?;
@@ -206,7 +206,7 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
         let lo = auto_rcuts.iter().cloned().fold(f64::INFINITY, f64::min);
         let hi = auto_rcuts.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         println!(
-            "Al-O cutoff over {} system(s): mean {mean:.3} A  (range {lo:.3} - {hi:.3})",
+            "Al-O cutoff over {} system(s): mean {mean:.3} Å  (range {lo:.3} - {hi:.3})",
             auto_rcuts.len()
         );
     }
@@ -242,13 +242,13 @@ fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
     // the unit only follows a value: `off` carries none (review R5-3)
     let off = |v: f64, unit: &str| if v > 0.0 { format!("{v} {unit}") } else { "off".to_string() };
     let mut v = vec![
-        format!("f_max     = {}", off(args.f_max(), "eV/Ang")),
+        format!("f_max     = {}", off(args.f_max(), "eV/Å")),
         format!("s_max     = {}", off(args.s_max(), "GPa")),
-        format!("oo_min    = {}", off(params.oo_min, "Ang")),
+        format!("oo_min    = {}", off(params.oo_min, "Å")),
         match args.al6.as_deref() {
             None => "al6       = off".to_string(),
             Some("auto") => "al6       = on (cutoff from the Al-O RDF, per system)".to_string(),
-            Some(v) => format!("al6       = on (cutoff {v} Ang)"),
+            Some(v) => format!("al6       = on (cutoff {v} Å)"),
         },
         format!("set_size  = {}", args.set_size),
     ];
@@ -303,12 +303,12 @@ fn filter_one(
             .map_err(|e| anyhow::anyhow!("{e}"))?[0]
             .context("no Al-O pair in this system, so --al6 has no cutoff to derive")?;
         println!(
-            "  Al-O first shell: peak {:.2} A (g={:.1}), cutoff {:.2} A (g={:.3})",
+            "  Al-O first shell: peak {:.2} Å (g={:.1}), cutoff {:.2} Å (g={:.3})",
             shell.peak_r, shell.peak_g, shell.min_r, shell.depth
         );
         if shell.depth > 0.5 {
             crate::report::warn(sys.display(), format!(
-                "the Al-O g(r) minimum at {:.2} A is shallow (g={:.2}); Al-O may have no clear shell here",
+                "the Al-O g(r) minimum at {:.2} Å is shallow (g={:.2}); Al-O may have no clear shell here",
                 shell.min_r, shell.depth
             ));
         }

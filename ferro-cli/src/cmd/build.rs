@@ -180,8 +180,8 @@ pub struct BoxCmd {
     pub relax_steps: usize,
 
     /// Random seed; the same seed gives the same box, atom for atom
-    // 与 `dataset --seed` 同一默认值
-    #[arg(long, default_value_t = 666)]
+    // The same default as `dataset --seed`, by name (review 2026-10-30 A5-L5)
+    #[arg(long, default_value_t = ferro_analysis::ml::dataset::DEFAULT_SEED)]
     pub seed: u64,
 
     #[command(flatten)]

@@ -401,13 +401,13 @@ fn resolve_auto(
             "--{a}-{b}=auto: g(r) of {a}-{b} has no first peak above 1 in this input \
              ({a} and {b} are not bonded); give the cutoff as a number"))?;
         println!(
-            "        {a}-{b} cutoff {:.3} A  (first shell peak {:.2} A, g(min) = {:.3})",
+            "        {a}-{b} cutoff {:.3} Å  (first shell peak {:.2} Å, g(min) = {:.3})",
             s.min_r, s.peak_r, s.depth
         );
         // Same threshold as the matching warning in dataset filter --al6 (cmd/dataset/filter.rs filter_one)
         if s.depth > 0.5 {
             crate::report::warn(source.display(), format!(
-                "{a}-{b}: the g(r) minimum at {:.2} A is shallow (g = {:.2}); \
+                "{a}-{b}: the g(r) minimum at {:.2} Å is shallow (g = {:.2}); \
                  there is no clean gap behind the first shell, so the coordination \
                  numbers depend on where inside the trough the cutoff falls",
                 s.min_r, s.depth
