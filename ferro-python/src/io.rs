@@ -71,11 +71,11 @@ fn check_selection(
 
 /// Reads a structure / trajectory file, recognising its format as `ferro convert` does.
 ///
-/// Recognised by name (any case): xyz, extxyz, pdb, cif, POSCAR/CONTCAR/vasp/pos,
-/// in/qe/qein (Quantum ESPRESSO input), inp/restart (CP2K), lammpstrj/dump (LAMMPS dump),
-/// data/lmp/lammps (LAMMPS data). A file whose name says nothing (OUTCAR, vasprun.xml,
-/// a CP2K / pw.x `.out`) is read by its program banner, dropping unconverged frames;
-/// a directory holding `type.raw` is a DeePMD system. What the reader noticed (a
+/// Recognised by name the way `ferro convert` recognises it: the same table, which
+/// `ferro convert -h` prints (not copied here, where it drifted, review 2026-10-30 A6-L3).
+/// A file whose name says nothing (OUTCAR, vasprun.xml, a CP2K / pw.x `.out`) is read by its
+/// program banner, dropping unconverged frames; a directory holding `type.raw` is a DeePMD
+/// system. What the reader noticed (a
 /// dropped frame, a site-label split) arrives as `ferro.FerroWarning` / `ferro.FerroNote`
 /// (both `UserWarning`s), the path at the front of the text.
 ///
