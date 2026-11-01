@@ -254,7 +254,7 @@ mod help_sync {
         &[(&["traj", "gr"], "atom-c"), (&["traj", "gr"], "label-z")];
 
     /// The body of `fn <name>(` up to the closing brace in column 0, with the
-    /// shared option blocks it names (`{COMMON_OPTS}`, `{READ_OPTS}`) spelled out.
+    /// shared option blocks it names (`{COMMON_OPTS}`, `{READ_OPTS}`, `{OUT_OPTS}`) spelled out.
     fn page(name: &str) -> String {
         let needle = format!("fn {name}() {{");
         let at = HELP_SRC
@@ -265,6 +265,7 @@ mod help_sync {
         rest[..end]
             .replace("{COMMON_OPTS}", ferro::help::COMMON_OPTS)
             .replace("{READ_OPTS}", ferro::help::READ_OPTS)
+            .replace("{OUT_OPTS}", ferro::help::OUT_OPTS)
     }
 
     fn subcommand(path: &[&str]) -> clap::Command {

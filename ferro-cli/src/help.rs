@@ -20,6 +20,13 @@ macro_rules! read_opts {
 /// `read_opts!` as a value, for `convert` and `info`.
 pub const READ_OPTS: &str = read_opts!();
 
+/// `-o / -s / --mkdir` of the commands that take `OutArgs` or the same three flags
+/// (`build`, `map chg-sdf`): one wording, which the build pages had let drift
+/// ("every" / "the product name", review 2026-10-30 A5-L2).
+pub const OUT_OPTS: &str = "  -o, --output DIR        Output directory                       [current dir]
+  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
+      --mkdir             Create -o without asking (needed with no terminal)";
+
 /// The options of `CommonArgs`, shared by `traj`, `map` and `net`.
 pub const COMMON_OPTS: &str = concat!(
     "  -i, --input  FILE...    Input trajectory file(s); globs allowed (quote them)
@@ -29,7 +36,8 @@ pub const COMMON_OPTS: &str = concat!(
       --last-n N          Use only the last N frames
       --ncore  N          Parallel threads                         [all cores]
 ",
-    read_opts!()
+    read_opts!(),
+    "\n  -h, --help              Short parameter table"
 );
 
 /// `ferro convert` with no `-i`: the read/write format matrix.
@@ -679,9 +687,8 @@ Parameters:
       --chg-padding FLOAT Sub-grid boundary margin [Å]                   [6.0]
       --rmsd-warn FLOAT   RMSD warning threshold [Å]                     [0.5]
       --ncore     N       Parallel threads                         [all cores]
-  -o, --output DIR        Output directory                       [current dir]
-  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
-      --mkdir             Create -o without asking (needed with no terminal)
+{OUT_OPTS}
+  -h, --help              Short parameter table
 
 Output:
   chg_sdf_Q<n>[_<suffix>].cube (chg_sdf_fam<N>_Q<n>.cube with more than one
@@ -776,6 +783,7 @@ Parameters:
                                                                       [deepmd]
       --mkdir             Create -o without asking (needed with no terminal)
       --overwrite         Allow writing into an existing non-empty directory
+  -h, --help              Short parameter table
 
 Output:
   <dir>.db/       one system per input directory: type.raw type_map.raw
@@ -825,6 +833,7 @@ Parameters:
       --ratio  A:B:C      Split train:valid:test, e.g. 8:1:1; two fields
                           mean train:test (9:1). Weights, not fractions
       --overwrite         Allow writing into an existing non-empty directory
+  -h, --help              Short parameter table
 
 Output:
   <-o>/<path below -i>.train/  filtered systems (one .xyz with --type nep)
@@ -863,6 +872,7 @@ Parameters:
                           shares, else .train; inputs from different parts of
                           a split are refused rather than silently relabelled
       --overwrite         Allow writing into an existing non-empty directory
+  -h, --help              Short parameter table
 
 Output:
   <-o>/<natoms>_<formula>/     one directory per composition, e.g. 7_Al2O4Zn
@@ -913,9 +923,7 @@ Parameters:
                           the perpendicular thickness, which bounds a cutoff
                           (r_cut <= LEN/2), not the lattice vector length
       --dry-run           Print the replicas and atom counts, write nothing
-  -o, --output DIR        Output directory                       [current dir]
-  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
-      --mkdir             Create -o without asking (needed with no terminal)
+{OUT_OPTS}
       --format-out EXT    Output format: vasp, cif, extxyz, data...  [input's]
 {READ_OPTS}
   -h, --help              Short parameter table
@@ -948,9 +956,7 @@ Parameters:
   -i, --input  FILE...    Input structure(s); globs allowed (quote them)
       --axis X            Lattice vector to lengthen: x = a, y = b, z = c  [z]
       --thickness LEN     Vacuum thickness [Å]
-  -o, --output DIR        Output directory                       [current dir]
-  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
-      --mkdir             Create -o without asking (needed with no terminal)
+{OUT_OPTS}
       --format-out EXT    Output format: vasp, cif, extxyz, data...  [input's]
 {READ_OPTS}
   -h, --help              Short parameter table
@@ -981,9 +987,7 @@ Parameters:
   -i, --input  A B        The two structures, bottom first; one frame each
       --axis X            Lattice vector to stack along: x, y, z           [z]
       --gap LEN           Gap between the blocks [Å]; 0 allowed
-  -o, --output DIR        Output directory                       [current dir]
-  -s, --suffix SUFFIX     Batch tag, the last segment of the product name
-      --mkdir             Create -o without asking (needed with no terminal)
+{OUT_OPTS}
       --format-out EXT    Output format: vasp, cif, extxyz, data...      [A's]
 {READ_OPTS}
   -h, --help              Short parameter table
@@ -1016,9 +1020,7 @@ Parameters:
       --min-dist LEN      Closest allowed distance between atoms [Å]     [1.5]
       --relax-steps N     Relaxation steps                               [500]
       --seed N            Random seed; the same seed gives the same box  [666]
-  -o, --output DIR        Output directory                       [current dir]
-  -s, --suffix SUFFIX     Batch tag, the last segment of the product name
-      --mkdir             Create -o without asking (needed with no terminal)
+{OUT_OPTS}
       --format-out EXT    Output format: vasp, cif, extxyz, data...     [vasp]
   -h, --help              Short parameter table
 
