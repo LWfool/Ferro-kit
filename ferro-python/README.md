@@ -32,18 +32,7 @@ extension is `ferro._ferro`, pure-Python modules live in `python/ferro/`, and
 import ferro
 
 t = ferro.read("traj.lammpstrj", units="metal")   # -> Trajectory
-print(len(t), t.n_atoms(), t.elements())
-
-sc = ferro.supercell(t, 2, 2, 1)
-ferro.write(sc, "POSCAR", format="vasp")
-
-# one pair -> {"r", "P-O_gr", "P-O_cn"}
 g = ferro.gr_pair(t, "P", "O", r_max=10.0, dr=0.02)
-
-# every ordered pair in one pass -> {"r", "<A>-<B>_gr", "<A>-<B>_cn", ...}
-ga = ferro.gr_all(t, by="label")
-
-d = ferro.msd(t, dt=2.0, elements=["Li"])            # "time","msd","msd_x/y/z"
 ```
 
 The full API — every function, the `Trajectory` methods, the warning classes — is in
