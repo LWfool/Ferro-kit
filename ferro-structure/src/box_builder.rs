@@ -168,7 +168,12 @@ fn resolve_component(spec: &str) -> Result<(HashMap<String, usize>, f64)> {
 /// - `density`: target total density in g/cm³.
 ///
 /// V = Σ(n_i × M_i) / (ρ × N_A), L = V^(1/3).
-pub fn estimate_box_length(components: &[Component], density: f64) -> Result<f64> {
+///
+/// Test-only: nothing outside the tests called it, and `build_box` sums the masses in
+/// its own parse. Kept as the tests' entry to `box_length` rather than exported
+/// (review 2026-10-30 A4-L3).
+#[cfg(test)]
+fn estimate_box_length(components: &[Component], density: f64) -> Result<f64> {
     let mut total_mass = 0.0_f64; // g/mol
     for comp in components {
         if comp.n_molecules == 0 {
