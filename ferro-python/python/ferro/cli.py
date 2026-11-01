@@ -633,7 +633,7 @@ ferro-py plot gr — g(r) and CN(r)
 
   One panel per csv, one curve per input of the ferro run, one colour per input in
   every panel: g(r) solid on the left axis, CN(r) dashed on the right. A csv holding
-  more than one pair (gr_all.csv) is refused; select the pair with -a / -b.
+  more than one pair (gr_all.csv) is refused; rerun `ferro traj gr -a ... -b ...`.
 
 Parameters:
 {PLOT_OPTS}
