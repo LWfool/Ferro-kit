@@ -3,4 +3,5 @@
 # (see ferro-core/src/array_order.rs).
 disallowed-methods = [
     { path = "nalgebra::Matrix::as_slice", reason = "column-major; use ferro_core::matrix3_row_major for I/O" },
+    { path = "nalgebra::Matrix::as_mut_slice", reason = "column-major, as as_slice; write through matrix3_row_major" },
 ]
