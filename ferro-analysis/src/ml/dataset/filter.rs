@@ -217,6 +217,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
     let type_params = params.al6_rcut.map(|r| {
         let mut cut = BTreeMap::new();
         cut.insert(("Al".to_string(), "O".to_string()), r);
+        // The same one-cutoff classifier as diagnostics.rs (cutoff_scan, filter_diagnostics); not merged (R6)
         TypeParams::new(cut, Default::default())
     });
 

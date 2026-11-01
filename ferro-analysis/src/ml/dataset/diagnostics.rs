@@ -17,7 +17,7 @@ use ferro_core::{Table, Trajectory};
 
 use super::filter::{FilterParams, FilterResult};
 
-use super::geometry::coordination_histogram;
+use super::geometry::{coordination_histogram, count_with_coordination};
 use crate::check;
 
 /// How a coordination selection responds to its cutoff.
@@ -60,19 +60,18 @@ pub fn cutoff_scan(
     rcuts
         .iter()
         .map(|&rcut| {
+            // A classifier with one former-ligand cutoff and nothing else, built the same way
+            // in `filter_diagnostics` below and in filter.rs (the Al6 criterion); three lines each, not
+            // merged (R6, review 2026-10-30 A3-L8)
             let mut cut = BTreeMap::new();
             cut.insert((elem.to_string(), ligand.to_string()), rcut);
             let params = TypeParams::new(cut, Default::default());
             let mut hit = 0usize;
             let mut total = 0usize;
+            // Every frame has a cell: periodic_cells above refuses a frame without one
+            // (review 2026-10-30 A3-L9)
             for &i in &sampled {
-                let f = &traj.frames[i];
-                if f.cell.is_none() { continue }
-                let n_target: usize = coordination_histogram(f, &params, elem)?
-                    .into_iter()
-                    .filter(|(cn, _)| *cn == target_cn)
-                    .map(|(_, c)| c)
-                    .sum();
+                let n_target = count_with_coordination(&traj.frames[i], &params, elem, target_cn)?;
                 if n_target > 0 {
                     hit += 1;
                 }
@@ -94,9 +93,11 @@ pub fn pooled_coordination(
     params: &TypeParams,
     elem: &str,
 ) -> ferro_core::Result<Vec<(u32, usize)>> {
+    // Refused up front rather than skipped: a skipped frame still counted in a caller's
+    // denominator (review 2026-10-30 A3-L9)
+    check::all_periodic_cells(traj, None)?;
     let mut hist: BTreeMap<u32, usize> = BTreeMap::new();
     for f in &traj.frames {
-        if f.cell.is_none() { continue }
         for (cn, n) in coordination_histogram(f, params, elem)? {
             *hist.entry(cn).or_default() += n;
         }
@@ -222,6 +223,7 @@ pub fn filter_diagnostics(
         out.push(("al6".to_string(), count_histogram("n_al6", &n6)));
     }
 
+    // One-cutoff classifier, as in cutoff_scan above and filter.rs (review 2026-10-30 A3-L8)
     let mut cut = BTreeMap::new();
     cut.insert(("Al".to_string(), "O".to_string()), rcut);
     let tp = TypeParams::new(cut, Default::default());
