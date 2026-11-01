@@ -31,6 +31,7 @@
 | **`triclinic_2frames.lammpstrj`**（2026-09-21） | 合成 | 三斜盒子（lx/ly/lz=10/12/14，xy/xz/yz=2/-3/1），cell 与 ASE 读出的逐位相同。三斜没有真实来源，而正交胞上三斜的 bug 完全不可见。由 `lammps_dump.rs` 的 `test_triclinic_bounds_are_not_xlo_xhi` 读（瘦身 A-8） |
 | **`qe75_{sp,sp_spin,sp_noconv,md,vcmd}.out`**（2026-10-17，超算实算） | QE 7.5 pw.x，6 原子 $AlPO_4$，PBE-D3，`verbosity = 'high'`，共 410 KB；`ferro-python/scripts/qe_fixtures_hpc.sh` 生成，输入与作业脚本在 `examples/qe/pwx/` | 总力后跟七组力分量；`nspin = 2`；`electron_maxstep = 3` 不收敛；5 步 SVR md 与 5 步 vc-md。能量、力与 dpdata 一致到 1e-10，其余与 ASE 一致到 1e-7 |
 | **`vasp651_sp/frame_{0011,0161,0194}/`**（2026-10-13，用户提供） | VASP 6.5.1 单点（r2SCAN-D3，302 原子）200 帧中挑 3 帧，`OUTCAR` + `vasprun.xml` 原样，1.3 MB | 单点布局。全部 200 帧当时与 dpdata 1.0.2 逐帧对拍（两条路），box / coord / energy / force 逐位相同，virial 差 1.4e-6 eV（换算常数 160.2176634 vs 160.2176621）。原数据随后由用户删除，测试钉住 3 帧的 dpdata 参考值。0011 的 xml 应力非对称最大，读侧取对称部分（见 `plan.md` 归档「vasprun 的非对称应力」） |
+| `Experiment.xlsx` | 实验数据 | 不是测试 fixture：只被 `scripts/compare_sq_experiment.py` 当实验 S(q) 读来对照 |
 
 ## scripts/
 
