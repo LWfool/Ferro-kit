@@ -105,7 +105,8 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
 
     for (i, atom) in frame.atoms().enumerate() {
         let tp = elem_to_type[atom.element];
-        let q = if use_charge { atom.charge.unwrap_or(0.0) } else { 0.0 };
+        // use_charge comes from partial_column: every atom has one
+        let q = if use_charge { atom.charge.expect("partial_column checked") } else { 0.0 };
 
         // Transform position to LAMMPS coordinate frame
         let pos = match &frame.cell {

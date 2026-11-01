@@ -115,8 +115,11 @@ pub fn write_lammps_dump(
         }
 
         // ATOMS header
-        let has_vel = frame.velocities().is_some();
-        let has_force = frame.forces().is_some();
+        // A frame's velocity / force arrays have one entry per atom (`set_velocities` checks)
+        let vels = frame.velocities();
+        let forces = frame.forces();
+        let has_vel = vels.is_some();
+        let has_force = forces.is_some();
         let has_charge = has_charge[ts];
 
         let mut header = "ITEM: ATOMS id type element x y z".to_string();
@@ -138,7 +141,7 @@ pub fn write_lammps_dump(
 
         for (i, atom) in frame.atoms().enumerate() {
             let name = dump_name(atom);
-            let tp = elem_types.iter().position(|e| *e == name).unwrap_or(0) + 1;
+            let tp = elem_types.iter().position(|e| *e == name).expect("elem_types lists every name") + 1;
 
             // 旋转绕盒子原点做：非规范取向的胞带非零原点时，原点那段平移不能跟着转
             let o = frame.cell.as_ref().map_or_else(nalgebra::Vector3::zeros, |c| c.origin);
@@ -147,12 +150,8 @@ pub fn write_lammps_dump(
             let mut line = format!("{} {tp} {} {:.10} {:.10} {:.10}",
                 i + 1, name, pos.x, pos.y, pos.z);
 
-            if has_vel {
-                let v = frame.velocities()
-                    .and_then(|vv| vv.get(i))
-                    .copied()
-                    .unwrap_or_default();
-                let v = to_lammps(v)?;
+            if let Some(vv) = vels {
+                let v = to_lammps(vv[i])?;
                 // real: Å/fs (no-op), metal: Å/fs → Å/ps by the factor that turns 1 ps into fs (×1000),
                 // the reader's inverse. With units None a trajectory with velocities or forces was
                 // refused at the start
@@ -162,12 +161,8 @@ pub fn write_lammps_dump(
                 };
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale));
             }
-            if has_force {
-                let f = frame.forces()
-                    .and_then(|ff| ff.get(i))
-                    .copied()
-                    .unwrap_or_default();
-                let f = to_lammps(f)?;
+            if let Some(ff) = forces {
+                let f = to_lammps(ff[i])?;
                 // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
                 let fscale = match units {
                     Some(LammpsUnits::Metal) => 1.0,
@@ -176,7 +171,8 @@ pub fn write_lammps_dump(
                 line.push_str(&format!(" {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale));
             }
             if has_charge {
-                line.push_str(&format!(" {:.6}", atom.charge.unwrap_or(0.0)));
+                // partial_column has made sure every atom has one
+                line.push_str(&format!(" {:.6}", atom.charge.expect("partial_column checked")));
             }
 
             writeln!(w, "{line}")?;

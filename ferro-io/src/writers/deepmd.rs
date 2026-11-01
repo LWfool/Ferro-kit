@@ -152,10 +152,8 @@ pub fn write_deepmd_npy_bounds(
     }
     if let Some(force_frames) = all_or_none(frames.iter().map(|f| f.forces()), "forces")? {
         let mut force = Vec::with_capacity(nf * natoms * 3);
+        // check_same_atoms above, and set_forces keeps one force per atom
         for fs_ in force_frames {
-            if fs_.len() != natoms {
-                bail!("a frame carries {} force vectors for {natoms} atoms", fs_.len());
-            }
             for v in fs_ {
                 force.extend_from_slice(&[v.x, v.y, v.z]);
             }

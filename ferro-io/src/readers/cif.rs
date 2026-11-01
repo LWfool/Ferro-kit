@@ -234,7 +234,8 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
     let mut partial: Vec<(usize, String, f64)> = Vec::new();
 
     for (k, row) in rows.iter().enumerate() {
-        let get = |i: usize| row.get(i).map(|s| s.as_str()).unwrap_or("?");
+        // Every row is full: the loop parser bails on a short last row
+        let get = |i: usize| row[i].as_str();
         let name = idx_lbl.or(idx_sym).map(|i| get(i).to_string()).unwrap_or_default();
         // 坐标与占位度的坏值报错并点名位点 —— 以前坐标 `unwrap_or(0.0)`，`?` 或写坏的数
         // 把原子静默放到原点（与审查 L6 同一类）
@@ -274,9 +275,7 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
                 num(iz, "_atom_site_fract_z")?,
             )
         } else if let (Some(ix), Some(iy), Some(iz)) = (idx_cx, idx_cy, idx_cz) {
-            // Cartesian → fractional. Column presence is guaranteed by the
-            // ensure! above; checked locally so the invariant is self-contained
-            // and a future edit to ensure! cannot silently introduce a panic.
+            // Cartesian → fractional
             let cart = Vector3::new(
                 num(ix, "_atom_site_Cartn_x")?,
                 num(iy, "_atom_site_Cartn_y")?,
@@ -284,7 +283,7 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
             );
             cell.cartesian_to_fractional(cart)?
         } else {
-            bail!("atom site has neither fractional nor Cartesian coordinate columns");
+            unreachable!("the ensure! above requires a full fract or cartn triple");
         };
 
         sites.elements.push(element);

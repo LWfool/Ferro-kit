@@ -173,13 +173,13 @@ fn match_hm<'t>(table: &'t [Setting], hm: &str) -> Result<Vec<&'t Setting>> {
 
     if let Some(sfx) = suffix {
         // `:1` 也要匹配正交群的 `1cab` 这类组合 choice（轴序已由符号本身确定）
-        let sfx = sfx.to_lowercase();
+        let want = sfx.to_lowercase();
         found.retain(|s| {
             let c = s.choice.to_lowercase();
-            c == sfx || (matches!(sfx.as_str(), "1" | "2") && c.starts_with(&sfx))
+            c == want || (matches!(want.as_str(), "1" | "2") && c.starts_with(&want))
         });
         if found.is_empty() {
-            bail!("setting ':{}' does not exist for '{}'", suffix.unwrap_or_default(), base.trim());
+            bail!("setting ':{sfx}' does not exist for '{}'", base.trim());
         }
     }
     Ok(found)

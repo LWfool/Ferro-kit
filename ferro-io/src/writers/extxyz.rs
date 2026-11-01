@@ -166,10 +166,11 @@ pub fn write_extxyz_with(
                 }
             }
             if has_charge {
-                line.push_str(&format!(" {}", fmt(atom.charge.unwrap_or(0.0))));
+                // has_charge / has_magmom come from partial_column: every atom has one
+                line.push_str(&format!(" {}", fmt(atom.charge.expect("partial_column checked"))));
             }
             if has_magmom {
-                line.push_str(&format!(" {}", fmt(atom.magmom.unwrap_or(0.0))));
+                line.push_str(&format!(" {}", fmt(atom.magmom.expect("partial_column checked"))));
             }
             if has_label {
                 // 无标签的原子回退为元素符号:S 列不能留空,否则列数对不齐

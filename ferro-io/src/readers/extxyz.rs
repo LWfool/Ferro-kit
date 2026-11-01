@@ -85,8 +85,8 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
             None => break,
             Some(l) => l,
         };
+        // Not empty: the loop above skipped blank lines
         let count_line = count_line.trim();
-        if count_line.is_empty() { break; }
 
         let n: usize = count_line.parse()
             .with_context(|| format!("expected atom count, got {count_line:?}"))?;
@@ -197,7 +197,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
                         Err(e) => return Ok(Err(anyhow::anyhow!("frame {frame_no}, line {line_no}: {e}"))),
                     },
                     None => {
-                        let c = find("z").unwrap_or_default(); // names are lowercased
+                        let c = find("z").expect("species or Z checked above"); // names are lowercased
                         let z: u8 = cols[c].parse().with_context(|| format!(
                             "frame {frame_no}, line {line_no}: invalid Z value {:?}", cols[c]))?;
                         match ferro_core::data::elements::by_number(z) {

@@ -130,9 +130,6 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                     }
                     _ => {}
                 }
-                if name == "v" || name == "c" {
-                    // 由 Text 事件处理
-                }
                 buf.clear();
             }
             Ok(Event::Text(t)) => {
