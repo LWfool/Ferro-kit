@@ -19,6 +19,7 @@ import math
 import matplotlib.lines as mlines
 import numpy as np
 
+import ferro
 from ferro.plot import common
 
 # ── Settings: the quantities one changes ─────────────────────────────────────
@@ -66,8 +67,8 @@ def fit_of(inputs, name):
 
 def d_label(fit):
     r"""``$D = (1.75 \pm 1.45)\times10^{-8}$ cm$^2$/s``, the exponent taken from D itself."""
-    d = fit["d_ang2_per_fs"] * 0.1          # Å²/fs → cm²/s
-    err = fit["d_err"] * 0.1
+    d = fit["d_ang2_per_fs"] * ferro.ANG2_FS_TO_CM2_S
+    err = fit["d_err"] * ferro.ANG2_FS_TO_CM2_S
     exp = math.floor(math.log10(abs(d))) if d != 0 else 0
     m = d / 10 ** exp
     body = f"{m:.2f}" if math.isnan(err) else f"({m:.2f} \\pm {err / 10 ** exp:.2f})"

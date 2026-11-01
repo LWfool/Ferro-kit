@@ -65,7 +65,9 @@ fn _ferro(m: &Bound<'_, PyModule>) -> PyResult<()> {
     analysis::register(m)?;
     doc::register(m)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    // The one pressure conversion the Python side needs, from ferro's units (CODATA 2018)
+    // The conversions the Python side needs, from ferro's units: pressure (CODATA 2018) ...
     m.add("EV_ANG3_TO_KBAR", ferro_core::units::EV_ANG3_TO_GPA * ferro_core::units::GPA_TO_KBAR)?;
+    // ... and the diffusion one, for ferro.plot.msd (it used to write 0.1 itself, review 2026-10-30 A6-L5)
+    m.add("ANG2_FS_TO_CM2_S", ferro_core::units::ANG2_FS_TO_CM2_S)?;
     Ok(())
 }

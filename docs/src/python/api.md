@@ -147,6 +147,7 @@ These return text for a calculation input; atoms are written in the order they a
 | `write_namelists(namelists)` | The inverse: namelists back to text |
 | `interplanar_spacings(cell)` | `(d_a, d_b, d_c)` [Å] of a cell given as rows a, b, c: the spacing of the lattice planes normal to each reciprocal vector, `1 / \|b_i\|` with 2π not included.  The k-point mesh of `ferro-py job` is ⌈2π / (d_i · kspacing)⌉.  A singular cell is an error |
 | `EV_ANG3_TO_KBAR` | 1 eV/Å³ in kbar (1602.176634, CODATA 2018), the constant ferro's own pressure columns use |
+| `ANG2_FS_TO_CM2_S` | 1 Å²/fs in cm²/s (0.1), the factor of ferro's diffusion coefficients |
 
 ## Structure operations
 
