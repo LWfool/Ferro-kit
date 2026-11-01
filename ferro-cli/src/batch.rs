@@ -26,7 +26,6 @@ pub struct Input {
 
 /// One input that could not be analysed. Collected rather than fatal.
 pub struct Failure {
-    pub path: PathBuf,
     pub label: String,
     pub reason: String,
     /// Position in the input list, so [`Summary::failed`] can put the row back where
@@ -187,7 +186,6 @@ pub fn map_inputs<T>(
                 // On stderr, as dataset's are (review E2-8)
                 crate::report::error(input.path.display(), format!("{e:#}; skipped"));
                 failed.push(Failure {
-                    path: input.path,
                     label: input.label,
                     reason: format!("{e:#}"),
                     index: i,
@@ -398,7 +396,7 @@ pub fn product_name(segments: &[&str], suffix: Option<&str>, ext: &str) -> Strin
 /// A stacked table's path: `<-o dir>/<mode>[_<table>][_<selection>][_<suffix>].csv`.
 ///
 /// The table name is dropped when it merely repeats the mode (the single-table case).
-pub fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
+fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
     let table = if table == mode { "" } else { table };
     let label = out.label.as_deref().unwrap_or("");
     out.join(&product_name(&[mode, table, label], out.suffix.as_deref(), "csv"))
@@ -470,7 +468,7 @@ pub struct Summary {
 
 /// Compact rendering for the summary block: integers stay integers, everything else
 /// gets four significant digits. Non-finite values render as `-`.
-pub fn fmt_compact(v: f64) -> String {
+fn fmt_compact(v: f64) -> String {
     if !v.is_finite() {
         "-".to_string()
     } else if v.fract() == 0.0 && v.abs() < 1e9 {
