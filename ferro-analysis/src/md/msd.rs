@@ -40,7 +40,8 @@ impl MsdParams {
         check::frame_interval(self.dt)?;
         check::at_least_one_if_given("max-lag", self.max_lag)?;
         if let Some((fmin, fmax)) = self.fit_range {
-            // 与 fit_diffusion 内的同一判据，提前到重计算（及 CLI 读文件）之前
+            // The only check of the window: before the computation (and before the CLI reads a
+            // file). fit_diffusion used to repeat it word for word (review 2026-10-30 A2-L3)
             let ok = (0.0..=1.0).contains(&fmin) && (0.0..=1.0).contains(&fmax) && fmin < fmax;
             if !ok {
                 return Err(ChemError::ValidationError(format!(
@@ -211,26 +212,16 @@ pub fn calc_msd(traj: &Trajectory, params: &MsdParams) -> ferro_core::Result<Msd
 /// mapped to indices `i_lo = round(fmin·(n-1))`, `i_hi = round(fmax·(n-1))`.
 ///
 /// Returns slope/intercept, `D = slope / 6` (Einstein, 3-D isotropic), the
-/// fit `R²` and `d_err` from refitting each half of the window. Errors on
-/// invalid range, length mismatch, or a window with fewer than 2 points /
-/// zero x-variance.
+/// fit `R²` and `d_err` from refitting each half of the window. Errors on a
+/// window with fewer than 2 points / zero x-variance. The range itself is checked
+/// by [`MsdParams::validate`]; the one caller, `calc_msd`, runs it first.
 pub fn fit_diffusion(
     time: &[f64],
     msd: &[f64],
     frac: (f64, f64),
 ) -> ferro_core::Result<MsdFit> {
     let (fmin, fmax) = frac;
-    if !(0.0..=1.0).contains(&fmin) || !(0.0..=1.0).contains(&fmax) || fmin >= fmax {
-        return Err(ChemError::ValidationError(format!(
-            "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]"
-        )));
-    }
-    let n = time.len();
-    if n != msd.len() {
-        return Err(ChemError::ValidationError(
-            "fit_diffusion: time/msd length mismatch".into(),
-        ));
-    }
+    let n = time.len(); // == msd.len(): calc_msd builds both from the same lags
     if n < 2 {
         return Err(ChemError::ValidationError(
             "MSD curve has fewer than 2 points; cannot fit".into(),
@@ -714,11 +705,10 @@ mod tests {
 
     #[test]
     fn test_fit_range_invalid() {
-        let time: Vec<f64> = (0..10).map(|i| i as f64).collect();
-        let msd = time.clone();
-        assert!(fit_diffusion(&time, &msd, (0.8, 0.3)).is_err()); // fmin>=fmax
-        assert!(fit_diffusion(&time, &msd, (-0.1, 0.5)).is_err()); // out of range
-        assert!(fit_diffusion(&time, &msd, (0.2, 1.5)).is_err()); // out of range
+        for fr in [(0.8, 0.3), (-0.1, 0.5), (0.2, 1.5)] { // fmin >= fmax, out of range twice
+            let p = MsdParams { dt: 1.0, fit_range: Some(fr), ..Default::default() };
+            assert!(p.validate().is_err(), "{fr:?}");
+        }
         let t2 = vec![0.0, 1.0];
         let m2 = vec![0.0, 1.0];
         assert!(fit_diffusion(&t2, &m2, (0.0, 0.001)).is_err()); // <2 points
