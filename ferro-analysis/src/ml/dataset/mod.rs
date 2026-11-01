@@ -6,9 +6,9 @@
 //! submodules are visible only inside the crate.
 
 pub(crate) mod diagnostics;
-pub(crate) mod filter;
+mod filter;
 mod geometry;
-pub(crate) mod merge;
+mod merge;
 mod split;
 
 pub use diagnostics::{filter_diagnostics, frame_table, quantiles};

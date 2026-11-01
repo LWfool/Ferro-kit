@@ -9,7 +9,7 @@
 //! Criteria run in a fixed order and each one narrows the survivors:
 //!
 //! ```text
-//! all frames -> |F|max -> |sigma|max -> [start:end:stride|number]
+//! all frames -> |F|max -> |sigma|max -> min d(O-O) -> n(Al6) -> [start:end:stride|number] -> shuffle
 //! ```
 //!
 //! **The range applies to the survivors, not to original frame numbers.**
