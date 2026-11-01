@@ -45,6 +45,8 @@ command line alike; regenerate it rather than migrating it.
   to come halfway through the atoms and leave a partial file behind.
 - CP2K MD output: the first frame's force block is checked against its coordinates, as every later frame's
   already was; a mismatch there used to become the reference composition.
+- CP2K MD and single-point output: a stress block cut short of its three rows counts the frame as
+  incomplete; the frame used to be kept without stress, and `dataset` only reported "frame(s) lack stress".
 - Extended XYZ: a `Properties=` column with the wrong width for its name is an error naming the column.
   `forces:R:1` used to crash ferro, and `pos:R:2` read the first force component as z with exit code 0.
   Each of `pos`, `forces` / `force`, `velocities` / `vel` / `velo` and `momenta` takes 3 values; `species`,

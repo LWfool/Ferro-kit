@@ -446,7 +446,13 @@ fn parse_step(
                     row += 1;
                 }
             }
-            if row == 3 { Some(t) } else { None }
+            // A header with fewer than three rows is a truncated block: the frame is
+            // incomplete, not a frame without stress (review 2026-10-30 A1-L11)
+            if row < 3 {
+                stats.n_incomplete += 1;
+                return Ok(());
+            }
+            Some(t)
         }
         None => None,
     };
@@ -799,6 +805,16 @@ mod tests {
         // frame 2 is unconverged, so with frame 1 refused nothing is left
         let err = format!("{:#}", parse_cp2k_md(&text).unwrap_err());
         assert!(err.contains("1 composition"), "{err}");
+    }
+
+    /// Review 2026-10-30 A1-L11: a stress block cut short is an incomplete frame, not a
+    /// frame without stress (it used to surface only as "N frame(s) lack stress" downstream)
+    #[test]
+    fn a_short_stress_block_is_counted_incomplete() {
+        let z_row = " STRESS|      z        0.00000000000E+00   0.00000000000E+00   3.00000000000E+04\n";
+        assert_eq!(MINI.matches(z_row).count(), 2);
+        let err = format!("{:#}", parse_cp2k_md(&MINI.replacen(z_row, "", 1)).unwrap_err());
+        assert!(err.contains("1 incomplete"), "{err}");
     }
 
     #[test]

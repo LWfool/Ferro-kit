@@ -475,7 +475,15 @@ fn parse_cp2k_sp(content: &str) -> Result<(Trajectory, AimdStats)> {
             starts_with_tokens(lines[i], &["STRESS|", "Analytical", "stress", "tensor"])
                 || starts_with_tokens(lines[i], &["STRESS", "TENSOR"])
         }) {
-            Some(s) => read_stress(&lines, s, hi)?,
+            // A header with fewer than three rows is a truncated block: the frame is
+            // incomplete, not a frame without stress (review 2026-10-30 A1-L11)
+            Some(s) => match read_stress(&lines, s, hi)? {
+                Some(t) => Some(t),
+                None => {
+                    stats.n_incomplete += 1;
+                    continue;
+                }
+            },
             None => None,
         };
 
