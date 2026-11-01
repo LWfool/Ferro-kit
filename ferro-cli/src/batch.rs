@@ -339,7 +339,7 @@ pub fn set_label(parts: Option<&Vec<String>>) -> Result<String> {
 
 /// Where a batch's products go and what they are called.
 ///
-/// Collected into one struct because the three fields always travel together and
+/// Collected into one struct because the four fields (dir, label, suffix, mkdir) always travel together and
 /// `write_all` would otherwise take eight positional arguments.
 #[derive(Clone, Debug, Default)]
 pub struct Output {

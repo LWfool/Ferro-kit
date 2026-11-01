@@ -72,7 +72,7 @@ pub fn supported_formats() -> String {
 {rows}
   Without --format-in the format comes from the file NAME: an extension in
   any case, or a POSCAR/CONTCAR prefix. Then from the content:
-  * a .xyz whose line 2 declares Lattice= or Properties= is extended XYZ;
+  - a .xyz whose line 2 declares Lattice= or Properties= is extended XYZ;
     writing .xyz still gives plain XYZ, use extxyz to keep the cell
   - a name that says nothing (OUTCAR, vasprun.xml, .out) is read by its
     program banner; frames whose SCF did not converge are dropped

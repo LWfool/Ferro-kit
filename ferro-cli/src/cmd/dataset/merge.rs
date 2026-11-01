@@ -291,7 +291,6 @@ mod tests {
     use super::*;
     use super::super::test_ids::*;
 
-    /// merge 打乱、重排原子、切 set 之后，每帧的能量、盒子、应力、坐标与力仍属同一帧同一原子
     /// `--dir-suffix` is glued onto a directory name: one with `/` or `..` used to write
     /// outside `-o`. Refused before any input is read or any directory created.
     #[test]
@@ -375,6 +374,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// After merge shuffles, reorders the atoms and cuts sets, every frame's energy, box,
+    /// stress, coordinates and forces still belong to the same frame and the same atom
+    /// (this doc sat on the test above, review 2026-10-30 A5-L10)
     #[test]
     fn merge_shuffle_keeps_every_label_with_its_frame_and_atom() {
         #[derive(clap::Parser)]

@@ -170,7 +170,7 @@ fn merge_refuses_a_trajectory() {
 
 /// An OUTCAR cannot be written back, and that is known before it is read.
 #[test]
-fn a_read_only_input_format_needs_format() {
+fn a_read_only_input_format_needs_format_out() {
     let d = scratch("sc_readonly").join("new");
     let out = ferro(&["build", "supercell", "-i", OUTCAR, "--dims", "2", "1", "1",
                       "-o", d.to_str().unwrap(), "--mkdir"]);
