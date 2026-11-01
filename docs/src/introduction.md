@@ -8,7 +8,7 @@
 - **ML datasets** — collect AIMD output into DeePMD systems, filter bad frames, merge and split (`ferro dataset`)
 - **Charge analysis** — Bader decomposition (on-/near-/off-grid, Yu-Trinkle weight), averaged charge-density SDF
 - **Input generation** — VASP, CP2K and Quantum ESPRESSO inputs (single point, optimisation, AIMD) and convergence tests, in the Python package (`ferro-py job`, `ferro-py conv`)
-- **I/O** — readers and writers for LAMMPS dump, VASP POSCAR/OUTCAR/CHGCAR, XYZ, PDB, CIF, Gaussian cube; CP2K and QE inputs read-only; CP2K, VASP and QE AIMD output into DeePMD datasets
+- **I/O** — readers and writers for LAMMPS dump and data, VASP POSCAR, XYZ / extended XYZ, PDB, CIF; read-only: VASP OUTCAR / vasprun.xml / CHGCAR, Gaussian cube (written only as `ferro map` output), CP2K and QE inputs; CP2K, VASP and QE AIMD output into DeePMD datasets
 - **Structure building** — supercells, vacuum layers, stacking two structures, random mixed-compound boxes ([`ferro build`](build.md))
 - **Python bindings** — `import ferro`: read/write, supercell/vacuum/merge/box, g(r) & MSD ([details](python/api.md))
 
