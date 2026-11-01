@@ -15,7 +15,7 @@ pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult,
 pub use md::{
     GrParams, GrResult, GroupBy, calc_gr,
     SqParams, SqResult, SqWeighting, calc_sq_from_gr,
-    MsdParams, MsdResult, calc_msd,
+    MsdFit, MsdParams, MsdResult, calc_msd,
     AngleParams, AngleResult, calc_angle,
     VanHoveParams, VanHoveResult, calc_vanhove,
     VacfParams, VacfResult, calc_vacf,
