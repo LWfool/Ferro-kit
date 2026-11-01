@@ -1,9 +1,9 @@
-pub mod box_builder;
+mod box_builder;
 mod compounds;
-pub mod merge;
-pub mod supercell;
-pub mod typing;
-pub mod vacuum;
+mod merge;
+mod supercell;
+mod typing;
+mod vacuum;
 
 pub use box_builder::{build_box, Component};
 pub use merge::merge_frames;
