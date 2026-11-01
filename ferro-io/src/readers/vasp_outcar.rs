@@ -112,6 +112,8 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
 
     for line in lines {
         let line = line?;
+        // Split once per line, for every has_tokens below (review R1-10, 2026-10-30 A1-L7)
+        let toks: Vec<&str> = line.split_whitespace().collect();
 
         // ── 头部:元素与计数 ──────────────────────────────────────────────
         if line.contains("VRHFIN") {
@@ -125,7 +127,7 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
             }
             continue;
         }
-        if has_tokens(&line.split_whitespace().collect::<Vec<_>>(), &["ions", "per", "type"]) {
+        if has_tokens(&toks, &["ions", "per", "type"]) {
             let here: Vec<usize> = line
                 .split('=')
                 .nth(1)
@@ -204,7 +206,6 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
         }
 
         // ── 帧内锚点 ─────────────────────────────────────────────────────
-        let toks: Vec<&str> = line.split_whitespace().collect();
         if has_tokens(&toks, &["aborting", "loop"]) {
             p.converged = Some(line.contains("EDIFF is reached"));
             continue;
