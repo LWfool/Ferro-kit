@@ -59,6 +59,11 @@ pub enum ExportFormat {
     Extxyz,
 }
 
+/// An exception to "the CLI names no format itself, `Format` does" (CLAUDE.md), on purpose
+/// (review 2026-10-30 A5-L6): the lammpstrj export folds the label into the element column
+/// through `dump_name`, which `ferro_io::write` has no option for, so both writers are called
+/// directly; and its products have always been `.lammpstrj`, while `Format::LammpsDump`
+/// names its products `.dump`. Taking the extension from `Format` would rename them.
 impl ExportFormat {
     fn ext(self) -> &'static str {
         match self {
