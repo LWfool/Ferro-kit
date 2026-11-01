@@ -209,7 +209,10 @@ class Generator:
         # `X<type>` / `X` is what the Rust readers name an atom whose element they do not know
         # (ferro-io readers/lammps_dump.rs `X<type>` without an element column, and a label with
         # no leading letter in readers/util.rs `element_from_label`, used by the QE and CP2K readers;
-        # lammps_data, cube and cif refuse such atoms instead)
+        # lammps_data, cube and cif refuse such atoms instead). Not replaced by a look-up in the
+        # element table (review 2026-10-30 A6-L11): that table ends at Rn, so U or Th, which a
+        # VASP or CP2K job takes today, would be refused. A reader that renames its placeholder
+        # must change this pattern too.
         placeholders = sorted(e for e in one.elements() if re.fullmatch(r"X\d*", e))
         if placeholders:
             raise JobError(
