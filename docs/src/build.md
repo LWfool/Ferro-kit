@@ -24,7 +24,8 @@ ferro build box -c ZnO:43 -c P2O5:43 -c Al2O3:15 --density 3.2
 
 Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext>`:
 `supercell_quartz.cif`, `vacuum_slab_s1.vasp`. `merge` names both inputs
-(`merge_<A>_<B>`), and `box`, which has none, is `box[_<suffix>].vasp`.
+(`merge_<A>_<B>`), and `box`, which has none, is `box[_<suffix>].<ext>`, vasp unless
+`--format-out` names another.
 
 - **The format follows the input**, as it was read: `--format-in` when given, and an extended
   XYZ inside a `.xyz` gives `.extxyz` (written as plain XYZ it would lose the cell, energy and

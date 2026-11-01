@@ -90,7 +90,7 @@ batches.
 | `map density` / `velocity` / `force` / `radius` | `--elements`, sorted and deduplicated | `density_Li_<input>.cube`, `density_all_<input>.cube` with no selection |
 | `map sdf` / `chg-sdf` | `--qn` as `Q<n>` | `sdf_P3_Q3_<input>.cube`, `chg_sdf_Q2.cube` |
 | `ferro net` | none | `network_qn.csv` |
-| `ferro build` | none | `supercell_<input>.vasp`, `merge_<A>_<B>.cif`, `box.vasp` |
+| `ferro build` | none | `supercell_<input>.vasp`, `merge_<A>_<B>.cif`, `box.<ext>` (vasp unless `--format-out`) |
 
 Two rules that are easily confused:
 
@@ -313,7 +313,7 @@ Three points of semantics to remember:
 | holds a trajectory (`.xyz` `.extxyz` `.pdb` `.dump`/`.lammpstrj`) | **one** multi-frame file |
 | holds a single structure (`.cif` `POSCAR` `.vasp`/`.poscar`/`.pos` `.lmp`/`.data`/`.lammps`) | **one file per frame** |
 
-The inputs (QE `.in`/`.qe`, CP2K `.inp`/`.restart`), the program outputs and DeePMD systems are read-only.
+The inputs (QE `.in`/`.qe`/`.qein`, CP2K `.inp`/`.restart`), the program outputs and DeePMD systems are read-only.
 
 Writing 20 frames as POSCAR can only ever be 20 files, so there is no switch for the user to remember.
 
@@ -356,6 +356,7 @@ where it is a truncated final frame and is dropped with a warning.
 | `--format-in <FMT>` | from the name | read the input as this format (`qe/in`, `vasp/outcar`, …; column `--format-in` above) |
 | `-s, --suffix <SUFFIX>` | — | tag appended to the product name: `DIR/<stem>_<SUFFIX>.<EXT>` |
 | `--start` / `--end` / `--stride` / `--number` | see above | frame selection |
+| `--drop-partial` | off | leave out a charge / magnetic-moment column only some atoms carry (an error otherwise; see above) |
 | `--units <UNITS>` | — | `real` or `metal`: LAMMPS units of dump velocities/forces, on read and on write.  Required when they are present |
 | `--type-map <MAP>` | — | LAMMPS dump without an `element` or `typelabel` column: type number → element, e.g. `1=Zr,2=P,3=O`.  Without it such atoms read as `X1`, `X2`, …; a dump that names its elements in either column refuses it |
 | `--atom-style <STYLE>` | (none) | `atomic` / `charge` / `full`; required when `-i` is a LAMMPS data file |
@@ -550,7 +551,7 @@ input's format unless `--format-out` names another. It does not take the common 
 | `supercell` | replicate a cell, given (`--dims`) or sized by `--min-atoms` / `--min-length` |
 | `vacuum` | add a vacuum layer along one lattice vector |
 | `merge` | stack two structures with a gap, `merge_<A>_<B>` |
-| `box` | pack molecules at random into a cubic box of a given density, `box.vasp` |
+| `box` | pack molecules at random into a cubic box of a given density, `box[_<suffix>].<ext>` (vasp by default) |
 
 Parameters and the reasoning behind them: [Building structures](build.md).
 

@@ -102,7 +102,7 @@ Writes in `format`, an extension as for `ferro convert --format-out` (case and a
 matter): `xyz`, `extxyz`, `pdb`, `cif`, `vasp`/`poscar`/`pos` (POSCAR format),
 `data`/`lmp`/`lammps`, `lammpstrj`/`dump`.  `format` is required and `path` is never consulted for
 it — `"POSCAR"` with `format="vasp"` is fine, and `"POSCAR_x.cif"` with `format="cif"` is CIF, not
-the POSCAR its prefix would suggest.  QE (`in`/`qe`) and CP2K (`inp`/`restart`) inputs,
+the POSCAR its prefix would suggest.  QE (`in`/`qe`/`qein`) and CP2K (`inp`/`restart`) inputs,
 the program outputs and DeePMD directories are read-only.  Writing velocities or forces to a dump requires `units`.
 
 `xyz`, `extxyz`, `pdb` and the dump hold a whole trajectory in one file. CIF, POSCAR and
