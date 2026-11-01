@@ -412,6 +412,6 @@ mod tests {
             nx: 4, ny: 5, nz: 6, tau: 1, threshold: 1.0, ..Default::default()
         };
         let res = calc_cube_jump(&traj, &params).unwrap();
-        assert_eq!(res.cube.shape(), (4, 5, 6));
+        assert_eq!(res.cube.shape, [4, 5, 6]);
     }
 }

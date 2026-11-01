@@ -30,11 +30,6 @@ pub struct CubeData {
 }
 
 impl CubeData {
-    /// Grid dimensions as `(nx, ny, nz)`.
-    pub fn shape(&self) -> (usize, usize, usize) {
-        (self.shape[0], self.shape[1], self.shape[2])
-    }
-
     /// Flat index for voxel `(ix, iy, iz)` in C-order layout.
     #[inline]
     pub fn idx(&self, ix: usize, iy: usize, iz: usize) -> usize {
@@ -45,12 +40,5 @@ impl CubeData {
     #[inline]
     pub fn get(&self, ix: usize, iy: usize, iz: usize) -> f64 {
         self.data[self.idx(ix, iy, iz)]
-    }
-
-    /// Mutable reference to the value at voxel `(ix, iy, iz)`.
-    #[inline]
-    pub fn get_mut(&mut self, ix: usize, iy: usize, iz: usize) -> &mut f64 {
-        let i = self.idx(ix, iy, iz);
-        &mut self.data[i]
     }
 }

@@ -392,7 +392,7 @@ mod tests {
         let traj = make_traj(vec![(1.0, 1.0, 1.0)], vec!["Li"]);
         let params = CubeDensityParams { nx: 2, ny: 3, nz: 4, ..Default::default() };
         let res = calc_cube_density(&traj, &params).unwrap();
-        assert_eq!(res.cube.shape(), (2, 3, 4));
+        assert_eq!(res.cube.shape, [2, 3, 4]);
     }
 
     #[test]

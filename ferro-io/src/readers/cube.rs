@@ -363,7 +363,7 @@ comment
     #[test]
     fn test_read_grid_shape() {
         let cd = parse_cube(CUBE_H2).unwrap();
-        assert_eq!(cd.shape(), (2, 2, 2));
+        assert_eq!(cd.shape, [2, 2, 2]);
     }
 
     #[test]

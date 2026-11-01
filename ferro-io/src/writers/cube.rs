@@ -23,7 +23,7 @@ pub fn write_cube(cube: &CubeData, path: &Path) -> Result<()> {
 fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
     let frame = &cube.frame;
     let n_atoms = frame.n_atoms();
-    let (nx, ny, nz) = cube.shape();
+    let [nx, ny, nz] = cube.shape;
 
     // 2行注释
     writeln!(w, "Cube file written by ferro")?;
@@ -117,9 +117,9 @@ mod tests {
         let [a1, ..] = loaded.frame.cell.as_ref().unwrap().lengths();
         assert!((a0 - a1).abs() < 1e-4, "cell drift = {:.2e}", (a0-a1).abs());
         // 网格形状
-        assert_eq!(loaded.shape(), original.shape());
+        assert_eq!(loaded.shape, original.shape);
         // 体积数据值
-        let (nx, ny, nz) = original.shape();
+        let [nx, ny, nz] = original.shape;
         for ix in 0..nx { for iy in 0..ny { for iz in 0..nz {
             let diff = (loaded.get(ix, iy, iz) - original.get(ix, iy, iz)).abs();
             assert!(diff < 1e-4, "data[{ix},{iy},{iz}] diff = {:.2e}", diff);

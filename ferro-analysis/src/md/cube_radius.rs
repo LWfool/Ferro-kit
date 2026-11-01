@@ -325,7 +325,7 @@ mod tests {
         let traj = make_traj(vec![(5.0, 5.0, 5.0)], vec!["Li"]);
         let params = CubeRadiusParams { nx: 4, ny: 5, nz: 6, radius: 0.7, elements: None };
         let res = calc_cube_radius(&traj, &params).unwrap();
-        assert_eq!(res.cube.shape(), (4, 5, 6));
+        assert_eq!(res.cube.shape, [4, 5, 6]);
     }
 
     /// 对照：照 `code1/cube_radius.c` 遍历**全部** voxel，最小像取分数坐标 rint，
