@@ -19,6 +19,8 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let cell = frame.cell.as_ref().context(
         "the frame has no cell; CIF requires a periodic frame (write a non-periodic \
          structure as .xyz or .extxyz)")?;
+    // A singular cell fails the fractional conversion halfway through the atoms (review 2026-10-30 A1-L9)
+    cell.check("the cell")?;
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 

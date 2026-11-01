@@ -28,6 +28,10 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
     }
     let with_charge = frame.atoms().filter(|a| a.charge.is_some()).count();
     let use_charge = super::partial_column("charge", with_charge, n, 0, drop_partial)?;
+    // A singular cell fails the fractional conversion halfway through the atoms (review 2026-10-30 A1-L9)
+    if let Some(c) = &frame.cell {
+        c.check("the cell")?;
+    }
 
     // Unique elements in first-appearance order → type IDs
     let elem_order = frame.unique_elements();

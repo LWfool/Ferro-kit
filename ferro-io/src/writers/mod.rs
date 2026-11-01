@@ -115,6 +115,31 @@ mod tests {
     use nalgebra::Vector3;
 
     /// POSCAR, CIF and LAMMPS data hold one structure: several frames are refused
+    /// A singular cell is refused before the file is created: the fractional conversion
+    /// used to fail mid-file and leave half of it behind (review 2026-10-30 A1-L9).
+    #[test]
+    fn a_singular_cell_is_refused_before_the_file_is_created() {
+        let flat = Cell::from_matrix(nalgebra::Matrix3::new(3.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0));
+        let mut frame = Frame::with_cell(flat, [true; 3]);
+        frame.add_atom(Atom::new("Fe", Vector3::zeros()));
+        let traj = Trajectory::from_frame(frame);
+        let dir = std::env::temp_dir().join(format!("ferro_singular_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        type Writer = fn(&Trajectory, &std::path::Path) -> anyhow::Result<()>;
+        let writers: [(&str, Writer); 3] = [
+            ("x.cif", write_cif),
+            ("x.data", |t, p| write_lammps_data(t, p, false)),
+            ("x.dump", |t, p| write_lammps_dump(t, p, None, false)),
+        ];
+        for (name, write) in writers {
+            let path = dir.join(name);
+            let err = format!("{:#}", write(&traj, &path).unwrap_err());
+            assert!(err.contains("singular"), "{name}: {err}");
+            assert!(!path.exists(), "{name}: file left behind");
+        }
+    }
+
+    /// POSCAR, CIF and LAMMPS data hold one structure: several frames are refused
     /// (before any file is created) instead of silently writing the first one.
     #[test]
     fn single_structure_writers_refuse_several_frames() {

@@ -56,6 +56,12 @@ pub fn write_lammps_dump(
         let with = f.atoms().filter(|a| a.charge.is_some()).count();
         super::partial_column("charge", with, f.n_atoms(), k, drop_partial)
     }).collect::<Result<_>>()?;
+    // A singular cell fails the fractional conversion halfway through the file (review 2026-10-30 A1-L9)
+    for (k, f) in trajectory.frames.iter().enumerate() {
+        if let Some(c) = &f.cell {
+            c.check(&format!("frame {k}: the cell"))?;
+        }
+    }
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
