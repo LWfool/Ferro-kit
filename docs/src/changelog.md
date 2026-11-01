@@ -37,6 +37,9 @@ command line alike; regenerate it rather than migrating it.
 
 - `traj msd` / `vacf` / `vanhove`: the `species` line of the summary lists the elements by atomic number,
   as `gr` and `angle` already did (`Na Cl`, not `Cl Na`).
+- `traj sq`: a site label shared by atoms of two elements is reported as such, not as missing element
+  symbols; with `--weighting neutron` / `both`, an element without a published coherent scattering length
+  (counted as 0) is named in a warning.
 
 ### Code review fixes: readers that misread a broken file
 

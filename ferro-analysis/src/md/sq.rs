@@ -123,9 +123,9 @@ fn elem_z_local(symbol: &str) -> usize {
 /// XRD weights:  w_ij = (2−δᵢⱼ)·cᵢcⱼfᵢ(q)fⱼ(q) / [Σₖ cₖfₖ(q)]²
 /// Neutron weights: same formula with fᵢ → bcoh_i (q-independent)
 ///
-/// Scattering factors are looked up from the atomic number, which is resolved through
-/// the element prefix — so site labels (`O_f`, `P_0`) map to the same factor as their
-/// element.
+/// Scattering factors are looked up from the atomic number of each type's real element,
+/// [`GrResult::key_element`] — so site labels (`O_f`, `P_0`) map to the same factor as
+/// their element. A label shared by atoms of two elements has none.
 ///
 /// A label-resolved decomposition therefore reproduces the element-resolved total, but
 /// only up to an O(1/N) term: same-type partials normalise by `N_A(N_A−1)` whereas summing
@@ -213,7 +213,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
                 (e.as_str(), c, elem_z_local(gr.key_element.get(e).map_or("", String::as_str)))
             })
             .collect();
-        warnings.extend(missing_scattering_data(&elems));
+        warnings.extend(missing_scattering_data(&elems, &gr.key_element, want_neu));
 
         if want_neu {
             let w = build_neutron_weights(&elems, &gr.gr);
@@ -282,16 +282,44 @@ where
 /// Reachable whenever the element column holds something the periodic table does not
 /// recognise — e.g. a LAMMPS dump without an `element` column, where types degrade to
 /// `X1`/`X2`. The weighted totals would otherwise be silently meaningless.
-fn missing_scattering_data(elems: &[(&str, f64, usize)]) -> Option<String> {
-    let missing: Vec<&str> = elems.iter()
+fn missing_scattering_data(
+    elems: &[(&str, f64, usize)],
+    key_element: &BTreeMap<String, String>,
+    neutron: bool,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let (mixed, unknown): (Vec<&str>, Vec<&str>) = elems.iter()
         .filter(|(_, _, z)| *z == 0)
         .map(|(e, _, _)| *e)
-        .collect();
-    (!missing.is_empty()).then(|| format!(
-        "no scattering data for {} — weighted total S(q) is meaningless. \
-         Check that the trajectory carries real element symbols.",
-        missing.join(", ")
-    ))
+        .partition(|e| key_element.get(*e).is_some_and(String::is_empty));
+    // The cause differs, so does the advice (review 2026-10-30 A2-L10): a label over two
+    // elements used to be told to "carry real element symbols", which it already did
+    if !unknown.is_empty() {
+        out.push(format!(
+            "no scattering data for {} — weighted total S(q) is meaningless. \
+             Check that the trajectory carries real element symbols.",
+            unknown.join(", ")));
+    }
+    if !mixed.is_empty() {
+        out.push(format!(
+            "no scattering data for {}: the label is shared by atoms of different elements, \
+             so it has no single scattering factor — weighted total S(q) is meaningless. \
+             Group by element, or give each element its own labels.",
+            mixed.join(", ")));
+    }
+    // A known element without a published b_coh is 0 in the table and scatters nothing
+    if neutron {
+        let no_b: Vec<&str> = elems.iter()
+            .filter(|(_, _, z)| *z != 0 && neutron_bcoh(*z) == 0.0)
+            .map(|(e, _, _)| *e)
+            .collect();
+        if !no_b.is_empty() {
+            out.push(format!(
+                "no neutron b_coh for {}: counted as 0 in the neutron-weighted total S(q)",
+                no_b.join(", ")));
+        }
+    }
+    out
 }
 
 /// Build Faber-Ziman XRD weights w_ij at a single q value.
@@ -521,7 +549,27 @@ mod tests {
             q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: SqWeighting::Xrd,
         }).unwrap();
         assert_eq!(sq_res.warnings.len(), 1);
-        assert!(sq_res.warnings[0].contains("no scattering data for M"), "{:?}", sq_res.warnings);
+        assert!(sq_res.warnings[0].contains("no scattering data for M")
+            && sq_res.warnings[0].contains("shared by atoms of different elements"), "{:?}", sq_res.warnings);
+    }
+
+    /// Review 2026-10-30 A2-L10: an element without a published b_coh is reported when the
+    /// neutron weighting is asked for, and only then
+    #[test]
+    fn an_element_without_neutron_data_is_a_neutron_warning() {
+        let z = (1..=98).find(|&z| neutron_bcoh(z) == 0.0).expect("the table has a gap");
+        let sym = ferro_core::data::elements::by_number(z as u8).expect("in the element table").symbol;
+        let mut frame = sc_crystal(3, 2.87, &["Fe"]);
+        for a in frame.sites_mut() { a.element = sym.into(); }
+        let gr_res = calc_gr(&Trajectory::from_frame(frame), &GrParams {
+            r_min: 0.0, r_max: 3.9, dr: 0.01, ..Default::default()
+        }).unwrap();
+        for (weighting, want) in [(SqWeighting::Neutron, 1), (SqWeighting::Xrd, 0)] {
+            let sq_res = calc_sq_from_gr(&gr_res, &SqParams {
+                q_min: 1.0, q_max: 10.0, dq: 0.5, weighting: weighting.clone(),
+            }).unwrap();
+            assert_eq!(sq_res.warnings.len(), want, "{weighting:?}: {:?}", sq_res.warnings);
+        }
     }
 
     #[test]
