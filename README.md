@@ -105,7 +105,7 @@ path. A failing input is skipped, listed in the `[inputs]` block of the output, 
 exit code 1; argument errors fail before the first file is read.
 
 ```
-<-o dir>/<command>[_<table>][_<label>][_<input>][_<suffix>].csv
+<-o dir>/<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>
 ```
 
 `-o` is where products go — always a **directory**, for every command. `convert` also needs

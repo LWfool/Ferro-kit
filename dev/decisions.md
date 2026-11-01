@@ -898,7 +898,7 @@ ferro 做的是 ①–③，C-D1 后仍缺：多解取「总和最大」而非�
 - **给了 `--format-in` 就不嗅探**（`read_as`），与 collect 不同：collect 的嗅探留着是为 NOTE 与「OUTCAR +
   vasprun.xml 同目录」守卫（见 2026-09-22 一节），单文件读入没有这两样需求
 
-### 写出格式一律由用户显式给出：`convert --format`、Python `write(format=)`（2026-10-24，用户定）
+### 写出格式一律由用户显式给出：`convert --format`、Python `write(format=)`（2026-10-24，用户定） （现 `--format-out`）
 
 起因：`convert` 改为产物沿用输入名后，`-i POSCAR --format extxyz` 写出的是 POSCAR —— 产物名
 `POSCAR.extxyz` 交给 `write` 重新推断格式，`Format::from_name` 先认 POSCAR / CONTCAR 前缀。
