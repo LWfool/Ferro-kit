@@ -167,7 +167,8 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
     }
 
     // vasprun's <?xml is always line 1, and OUTCAR's " vasp.6.4.2 ..." is in the first
-    // few lines. CP2K's banner comes a little later, but within the first 64 lines
+    // few lines. CP2K's banner comes later, within the head read above (96 lines, longer
+    // while a CP2K banner waits for its run type)
     if head.contains("<?xml") || head.contains("<modeling>") {
         return Ok(AimdFormat::VaspXml);
     }

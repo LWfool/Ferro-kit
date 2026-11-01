@@ -1,4 +1,4 @@
-//! Helpers shared by more than two readers.
+//! Helpers shared by two or more readers.
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};

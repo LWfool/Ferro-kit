@@ -10,7 +10,8 @@ use anyhow::{bail, Context, Result};
 /// `f` 边界判丢。与 `writers/lammps_dump.rs` 同值
 const CELLLESS_PAD: f64 = 1.0;
 
-/// 写 LAMMPS data 文件，atom_style full，real 单位（长度 Å）。
+/// Writes a LAMMPS data file, atom_style full, lengths in Å (the same numbers under real
+/// and metal units: a data file carries no velocities or forces here).
 /// 周期性帧写晶格信息；非周期性帧写最小包围盒。
 ///
 /// Every atom needs a value in the full style's charge column: with no charges at all it is 0

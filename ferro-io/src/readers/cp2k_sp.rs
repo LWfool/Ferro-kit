@@ -96,8 +96,8 @@ fn version_note(version: Option<&str>) -> Option<String> {
     }
     Some(format!(
         "CP2K {v}: ferro implements {SUPPORTED_GENERATIONS} and has a fixture only \
-         for 2025-2026. This file was read with the older layout (`energy [a.u.]:` \
-         and the `ATOMIC FORCES` table) — spot-check one frame's energy and forces \
+         for 2025-2026. This release is outside that fixture; the file was read with \
+         whichever of the two layouts it matched — spot-check one frame's energy and forces \
          before training on it"
     ))
 }

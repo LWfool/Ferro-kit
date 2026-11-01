@@ -136,7 +136,7 @@ fn version_note(version: Option<&str>) -> Option<String> {
     }
     Some(format!(
         "CP2K {v}: ferro's layout is verified for 2025 and 2026 only. This file \
-         parsed, but the block layout is older and was matched on token anchors \
+         parsed, but its block layout is unverified and was matched on token anchors \
          alone — spot-check one frame's energy and forces before training on it"
     ))
 }

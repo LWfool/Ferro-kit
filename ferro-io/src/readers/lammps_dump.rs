@@ -95,7 +95,7 @@ fn parse_dump_lines(
     let is_step = |l: &str| l.trim().starts_with("ITEM: TIMESTEP");
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
-    // element 列原始串 → 拆分后的元素符号；仅用于读取结束时打印一次映射表
+    // Raw element column -> split element symbol; returned once as a Notice at the end of the read
     let mut site_map: BTreeMap<String, String> = BTreeMap::new();
     let mut unknown_prefixes: BTreeSet<String> = BTreeSet::new();
 

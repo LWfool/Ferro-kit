@@ -110,7 +110,7 @@ impl Format {
             Format::Pdb => ".pdb",
             Format::LammpsDump => ".dump  .lammpstrj",
             Format::Cif => ".cif",
-            Format::Poscar => ".vasp .poscar .pos POSCAR*",
+            Format::Poscar => ".vasp .poscar .pos POSCAR* CONTCAR*",
             Format::LammpsData => ".lammps  .data  .lmp",
             Format::QeInput => ".in  .qe  .qein",
             Format::Cp2kInput => ".inp",
