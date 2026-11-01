@@ -39,7 +39,8 @@ struct Page {
     section: Option<&'static str>,
 }
 
-/// Every page of `docs/src/`, in `SUMMARY.md` order.
+/// Every page of `docs/src/` except `python/`, which only `ferro-py doc` serves (CLAUDE.md),
+/// in `SUMMARY.md` order.
 ///
 /// The order is the manual's own, not alphabetical: `ferro doc` with no topic
 /// prints this list, and a reader scanning it should meet the pages in the order
@@ -253,7 +254,8 @@ const ALIASES: &[(&str, &str)] = &[
     ("bondlife", "traj bondlife"),
     ("collect", "dataset collect"),
     ("filter", "dataset filter"),
-    ("merge", "dataset merge"),
+    // No bare "merge": `build merge` exists too, and the alias sent it to dataset only
+    // (review 2026-10-30 A7-L10); `ferro doc merge` now lists the topics
 ];
 
 /// Prints one topic, or the list of topics when none is given.

@@ -45,6 +45,8 @@ command line alike; regenerate it rather than migrating it.
 - `ferro net`: a pair given twice (`--P-O=2.3 --P-O=2.5`) is an error; the second used to replace the first.
 - `ferro-py plot net`: `--element` with a table other than `cn` is an error; `qn`, `bridge` and `linkmap`
   used to ignore it.
+- `ferro doc merge` no longer opens the `dataset merge` page: `build merge` exists too. Name the one you
+  mean (`ferro doc dataset merge`, `ferro doc build merge`); a bare `merge` lists the topics.
 - The closing line of a run with failures reads `ferro: FerroError: N failure(s); see the messages above`.
   It said `N input(s) failed`, but `dataset inspect` counts a system without masses, not an input file.
 
