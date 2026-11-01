@@ -24,7 +24,8 @@ pyo3::create_exception!(
     ferro,
     FerroError,
     pyo3::exceptions::PyRuntimeError,
-    "An error reported by ferro's Rust libraries (a file that cannot be read, a missing cell, ...). \
+    "An error reported by ferro: its Rust libraries (a file that cannot be read, a missing cell, ...) \
+     or its own Python modules (ferro.plot: a missing column, nothing left to plot). \
      A subclass of RuntimeError, so `except RuntimeError` written before it existed still catches it."
 );
 

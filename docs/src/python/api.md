@@ -209,9 +209,10 @@ d = ferro.msd(t, dt=2.0, elements=["Li"])
 
 ## Errors
 
-What ferro's Rust libraries report (a file that cannot be read, a missing cell, a bad
-`units=` value, frames that are not evenly spaced) is raised as `ferro.FerroError`, with the
-whole message.  It is a subclass of `RuntimeError`, so code written as `except RuntimeError`
+What ferro reports is raised as `ferro.FerroError`, with the whole message: its Rust
+libraries (a file that cannot be read, a missing cell, a bad `units=` value, frames that are
+not evenly spaced) and its own Python modules (`ferro.plot`: a column missing from a csv,
+a `labels.csv` that hides every row).  It is a subclass of `RuntimeError`, so code written as `except RuntimeError`
 still catches it; `except ferro.FerroError` catches ferro's errors without Python's own.
 
 The line between the two is where the value is checked. A value the binding itself reads
