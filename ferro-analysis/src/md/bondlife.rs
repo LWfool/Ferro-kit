@@ -261,6 +261,10 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
             }
             out
         })
+        // A rayon reduce, not `util::par_map_in_order` (review 2026-10-30 A2-L11): the sums are
+        // order-free here. num_c / den_* add integers (exact in f64), and num_i, the one FFT sum
+        // with rounding, is rounded to an integer in `ratio` before use. The map_init keeps one
+        // FFT worker per thread, which par_map_in_order has no slot for
         .reduce(zero, |mut a, b| {
             for (aa, bb) in a.iter_mut().zip(&b) {
                 for (x, y) in aa.iter_mut().zip(bb) { *x += y; }
