@@ -35,6 +35,8 @@ command line alike; regenerate it rather than migrating it.
 
 ### Code review fixes: readers that misread a broken file
 
+- Extended XYZ: `pbc=` must hold three of T / F (True / False / 1 / 0 also, any case). An unrecognised word
+  (`pbc="T, T, T"`) used to read as F and a short list was padded with F, giving a slab with exit code 0.
 - Extended XYZ: a `Properties=` column with the wrong width for its name is an error naming the column.
   `forces:R:1` used to crash ferro, and `pos:R:2` read the first force component as z with exit code 0.
   Each of `pos`, `forces` / `force`, `velocities` / `vel` / `velo` and `momenta` takes 3 values; `species`,

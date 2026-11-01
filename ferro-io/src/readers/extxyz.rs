@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use ferro_core::{matrix3_row_major, Atom, Cell, Frame, Trajectory};
 use ferro_core::units::ASE_FS;
 use nalgebra::{Matrix3, Vector3};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use super::util::{drop_truncated, species_element};
 
 /// One parsed atom line: the atom, and its force and velocity when the file has them.
@@ -103,7 +103,10 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
         let (cell, pbc) = match kv.get("lattice") {
             Some(lat) => {
                 let c = parse_lattice(lat).context("invalid Lattice")?;
-                let pbc = kv.get("pbc").map(|s| parse_pbc(s)).unwrap_or([true; 3]);
+                let pbc = match kv.get("pbc") {
+                    Some(s) => parse_pbc(s).with_context(|| format!("frame {frame_no} (line {comment_no})"))?,
+                    None => [true; 3],
+                };
                 (Some(c), pbc)
             }
             None => (None, [false; 3]),
@@ -353,12 +356,20 @@ fn parse_lattice(s: &str) -> Result<Cell> {
     )))
 }
 
-fn parse_pbc(s: &str) -> [bool; 3] {
+/// Three of T / F (also True / False / 1 / 0, any case). Anything else is an error: an
+/// unrecognised word used to read as F, and a short list was padded with F (review 2026-10-30 A1-L5)
+fn parse_pbc(s: &str) -> Result<[bool; 3]> {
+    let toks: Vec<&str> = s.split_whitespace().collect();
+    ensure!(toks.len() == 3, "pbc={s:?}: need three values (T or F), got {}", toks.len());
     let mut pbc = [false; 3];
-    for (i, tok) in s.split_whitespace().take(3).enumerate() {
-        pbc[i] = matches!(tok.to_uppercase().as_str(), "T" | "TRUE" | "1");
+    for (p, tok) in pbc.iter_mut().zip(&toks) {
+        *p = match tok.to_uppercase().as_str() {
+            "T" | "TRUE" | "1" => true,
+            "F" | "FALSE" | "0" => false,
+            _ => bail!("pbc={s:?}: {tok:?} is not T or F"),
+        };
     }
-    pbc
+    Ok(pbc)
 }
 
 /// Relative tolerance for the symmetry check and the stress/virial cross-check.
@@ -566,6 +577,17 @@ H        1.00000000       1.00000000       1.00000000      -0.10000000      -0.2
 
     fn err_of(name: &str, text: &str) -> String {
         format!("{:#}", read_extxyz(&tmp(name, text)).unwrap_err())
+    }
+
+    #[test]
+    fn a_pbc_it_cannot_read_is_an_error() {
+        let slab = SINGLE.replace(r#"pbc="T T T""#, r#"pbc="t True 0""#);
+        let (t, _) = read_extxyz(&tmp("pbc_ok.extxyz", &slab)).unwrap();
+        assert_eq!(t.frames[0].pbc, [true, true, false]);
+        for (bad, want) in [(r#"pbc="T, T, T""#, "is not T or F"), (r#"pbc="T T""#, "need three values")] {
+            let err = err_of("pbc_bad.extxyz", &SINGLE.replace(r#"pbc="T T T""#, bad));
+            assert!(err.contains(want), "{bad}: {err}");
+        }
     }
 
     use crate::testutil::write_tmp as tmp;
