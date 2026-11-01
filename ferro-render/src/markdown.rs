@@ -422,6 +422,10 @@ fn contains(hay: &[char], needle: &[char]) -> bool {
         if hay[j] == '`' {
             let run = run_len(hay, j, '`');
             j = find_run(hay, j + run, '`', run).map_or(j + run, |k| k + run);
+        } else if needle == ['*'] && hay[j..].starts_with(&['*', '*']) {
+            // A lone `*` is not closed by half of a `**`: `2*x with **bold**` used to run
+            // italic from `x` to the end of the line (review 2026-10-30 A4-L2)
+            j += 2;
         } else if hay[j..].starts_with(needle) {
             return true;
         } else {
@@ -931,6 +935,10 @@ mod tests {
         assert!(s.iter().any(|s| s.look.code && s.text == "x**y"), "{s:?}");
         let s = inline("a * b `*p` c");
         assert!(s.iter().all(|s| !s.look.italic), "{s:?}");
+        // review 2026-10-30 A4-L2: a lone star does not pair with half of a later `**`
+        let s = inline("2*x with **bold** here.");
+        assert!(s.iter().all(|s| !s.look.italic), "{s:?}");
+        assert!(s.iter().any(|s| s.look.bold && s.text == "bold"), "{s:?}");
     }
 
     #[test]
