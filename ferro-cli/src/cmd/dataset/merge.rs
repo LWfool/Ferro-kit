@@ -240,6 +240,9 @@ fn merge_group(
 }
 
 /// The split `merge` was asked for; the seed is shared with `--mode shuffle`.
+///
+/// Same body as `filter_split` in filter.rs; two copies of five lines over two argument
+/// types, not merged (R6, review 2026-10-30 A5-L8). Change one, change the other.
 fn merge_split(args: &MergeCmd) -> Result<Split> {
     let seed = args.seed.unwrap_or(DEFAULT_SEED);
     match &args.ratio {

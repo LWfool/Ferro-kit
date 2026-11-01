@@ -241,6 +241,11 @@ fn write_product(out_args: &OutArgs, segments: &[&str], ext: &str, made: &Trajec
 /// `<op>_<input>[_<suffix>].<ext>`, atoms in (Z, symbol) order as `convert` writes
 /// them. `make` returns `None` to write nothing (`--dry-run`) and a note for the
 /// input's line.
+///
+/// Its first half (check the suffix, expand the inputs, prepare `-o`, map the inputs,
+/// stop when none succeeded) is `batch::drive`'s, error text included; not shared because
+/// `drive` returns tables to stack and this writes structures, one per input (R6,
+/// review 2026-10-30 A5-L8). A change there is a change here.
 fn per_input(
     op: &str,
     inputs: &[PathBuf],

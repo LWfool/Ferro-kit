@@ -378,6 +378,9 @@ fn filter_one(
 }
 
 /// The split `filter` was asked for; the seed is shared with `--shuffle`.
+///
+/// Same body as `merge_split` in merge.rs; two copies of five lines over two argument
+/// types, not merged (R6, review 2026-10-30 A5-L8). Change one, change the other.
 fn filter_split(args: &FilterCmd) -> Result<Split> {
     let seed = args.seed.unwrap_or(DEFAULT_SEED);
     match &args.ratio {
