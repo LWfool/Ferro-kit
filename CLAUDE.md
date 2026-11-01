@@ -81,7 +81,7 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 当前版本见 `dev/progress.md` 顶部，历次版本批次与破坏性改动（含走 patch 位的例外）见
 `dev/overview.md`。何时升版本号的细则见 `dev/memory.md`「版本号更新规则」。
 
-**`-o` 恒为路径**：写多个产物的命令指目录，`convert` 也指目录；批次标记走
+**`-o` 恒为目录**：每个命令都指目录，只写一个产物的也一样；批次标记走
 `-s/--suffix`。目录缺失时经 `outpath.rs` 询问，非交互环境须给 `--mkdir`。
 **`convert` 例外**：`--format-out EXT` 必填，产物沿用输入名（`DIR/<stem>.<EXT>`）；
 缺失目录直接建，没有 `--mkdir`。
@@ -122,7 +122,7 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 | `ferro-analysis/src/` 顶层 | `neighbor.rs`（crate 内共用的 `NeighborList`）、`check.rs`（各 `validate` 共用的范围检查） |
 | `ferro-analysis/src/dft/` | `bader*`、`chg_sdf`（Bader 算法规格见 `dev/bader.md`） |
 | `ferro-analysis/src/ml/dataset/` | `filter`（帧筛选 + 交叉表）、`geometry`（最小间距、配位、RDF 壳层）、`diagnostics`（只读四表、inspect 逐帧表）、`merge`（分组、重启分段拼接、打乱）、`split`（`--ratio`） |
-| `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`outpath.rs`（`-o` 的目录创建与确认）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制） |
+| `ferro-cli/src/` | `main.rs` 子命令树 + `mod help_sync`（帮助/clap 防漂测试）、`batch.rs` 多输入驱动（对结果类型泛型）、`outpath.rs`（`-o` 的目录创建与确认）、`io_dispatch.rs`（读入分派、`--format-in`、convert 格式表）、`args/common.rs`（`ReadArgs` / `CommonArgs`）、`cmd/`、`help.rs`、`doc.rs`（`ferro doc`，手册经 `include_str!` 编译进二进制） |
 | `ferro-render/src/` | `markdown.rs`（块切分、行内标记、折行、表格）、`latex.rs`（公式 → Unicode） |
 
 **几条容易违反的**（完整清单在 `dev/issues.md`）：
@@ -137,7 +137,8 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 - 列并集下缺失值填 `f64::NAN`（渲染为空字段），**绝不补零** —— 零是「测到了 0」
 - 批内单文件失败：跳过 + 记入 `[inputs]` + **退出码 1**；参数错误在读第一个文件前快速失败
 - 全部帮助页（含 `ferro net`）在 `help.rs`；`traj` / `map` / `net` 共用的参数只写一份
-  `COMMON_OPTS`，页面里写 `{COMMON_OPTS}`。排版一条：参数占 2–25 列，说明从 26 列起，
+  `COMMON_OPTS`，页面里写 `{COMMON_OPTS}`；convert / info / build 共用的读入参数是 `READ_OPTS`，
+  build 与 chg-sdf 的 `-o/-s/--mkdir` 是 `OUT_OPTS`，写法同。排版一条：参数占 2–25 列，说明从 26 列起，
   默认值写成 `[x]` 右对齐到 78 列
 - 帮助页与 clap 是**两处手写同一份事实**，靠 `help_sync` 测试盯着（参数名双向、`[x]` 等于
   clap 默认值、总览页列全子命令）。别放宽它的断言来让测试变绿：有意不写的进白名单并写明理由
