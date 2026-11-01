@@ -172,14 +172,14 @@ fn parse_cell(block: &CifBlock) -> Result<Cell> {
             .with_context(|| format!("missing {tag}"))?;
         parse_cif_float(s).with_context(|| format!("invalid value for {tag}: {s}"))
     };
-    Cell::from_lengths_angles(
+    Ok(Cell::from_lengths_angles(
         get("_cell_length_a")?,
         get("_cell_length_b")?,
         get("_cell_length_c")?,
         get("_cell_angle_alpha")?,
         get("_cell_angle_beta")?,
         get("_cell_angle_gamma")?,
-    ).map_err(|e| anyhow::anyhow!("{e}"))
+    )?)
 }
 
 // ─── Atom sites ───────────────────────────────────────────────────────────────

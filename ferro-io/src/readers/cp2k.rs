@@ -271,8 +271,7 @@ fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3], [usize; 3])>
             c[0], c[1], c[2],
         ))
     } else if let Some([a, b, c]) = abc {
-        Cell::from_lengths_angles(a, b, c, angles[0], angles[1], angles[2])
-            .map_err(|e| anyhow::anyhow!("{e}"))?
+        Cell::from_lengths_angles(a, b, c, angles[0], angles[1], angles[2])?
     } else {
         bail!("cannot parse &CELL: need A/B/C vectors or ABC lengths")
     };
