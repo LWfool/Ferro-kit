@@ -391,14 +391,14 @@ fn parse_step(
     comp.sort();
     let mut fcomp: Vec<String> = f_syms.clone();
     fcomp.sort();
-    match &acc.ref_comp {
-        None => acc.ref_comp = Some(comp.clone()),
-        Some(r) => {
-            if &comp != r || &fcomp != r {
-                stats.n_bad_composition += 1;
-                return Ok(());
-            }
-        }
+    // The force block is checked against the coordinates on the first frame too, which
+    // used to only set the reference (review 2026-10-30 A1-L10)
+    if fcomp != comp || acc.ref_comp.as_ref().is_some_and(|r| &comp != r) {
+        stats.n_bad_composition += 1;
+        return Ok(());
+    }
+    if acc.ref_comp.is_none() {
+        acc.ref_comp = Some(comp);
     }
 
     // 块相对锚点的偏移在同一 ensemble 下是固定的；漂移说明有额外输出插入
@@ -789,6 +789,18 @@ mod tests {
 
     // VELOCITIES 也打到 __STD_OUT__ 时多出一个同构 xyz 块；它若排在力块之前，
     // 「第二个块」读到的是速度却当力存。认不出哪块是力，整份报错
+    /// Review 2026-10-30 A1-L10: a force block naming other elements than the coordinates
+    /// on the first frame used to become the reference instead of being counted
+    #[test]
+    fn the_first_frame_compares_its_force_block_with_its_coordinates() {
+        let o_force = "  O        -0.0100000000";
+        assert_eq!(MINI.matches(o_force).count(), 2);
+        let text = MINI.replacen(o_force, " Al        -0.0100000000", 1);
+        // frame 2 is unconverged, so with frame 1 refused nothing is left
+        let err = format!("{:#}", parse_cp2k_md(&text).unwrap_err());
+        assert!(err.contains("1 composition"), "{err}");
+    }
+
     #[test]
     fn a_third_xyz_block_is_an_error() {
         let coords = concat!(

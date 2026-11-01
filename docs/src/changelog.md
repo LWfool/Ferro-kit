@@ -43,6 +43,8 @@ command line alike; regenerate it rather than migrating it.
   (`CELL_PARAMETERS{angstrom}`, which pw.x accepts) is found.
 - CIF, LAMMPS data and LAMMPS dump writers refuse a singular cell before creating the file; the error used
   to come halfway through the atoms and leave a partial file behind.
+- CP2K MD output: the first frame's force block is checked against its coordinates, as every later frame's
+  already was; a mismatch there used to become the reference composition.
 - Extended XYZ: a `Properties=` column with the wrong width for its name is an error naming the column.
   `forces:R:1` used to crash ferro, and `pos:R:2` read the first force component as z with exit code 0.
   Each of `pos`, `forces` / `force`, `velocities` / `vel` / `velo` and `momenta` takes 3 values; `species`,
