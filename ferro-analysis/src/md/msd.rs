@@ -83,7 +83,7 @@ pub struct MsdResult {
     /// lag (lag `m` averages `n_frames − m`)
     pub min_origins: usize,
     pub params: MsdParams,
-    /// Elements included (sorted alphabetically)
+    /// Elements included, by atomic number (`canonical_cmp`)
     pub elements: Vec<String>,
     /// Linear-fit / self-diffusion result (`None` unless `fit_range` was set)
     pub fit: Option<MsdFit>,

@@ -33,6 +33,11 @@ command line alike; regenerate it rather than migrating it.
 - A QE input named `.qein` is recognised, as `.in` and `.qe` are.
 - `ferro-py job` and `ferro-py conv` take `--format-in FMT` too, with the same names.
 
+### Code review fixes: smaller consistency changes
+
+- `traj msd` / `vacf` / `vanhove`: the `species` line of the summary lists the elements by atomic number,
+  as `gr` and `angle` already did (`Na Cl`, not `Cl Na`).
+
 ### Code review fixes: readers that misread a broken file
 
 - Extended XYZ: `pbc=` must hold three of T / F (True / False / 1 / 0 also, any case). An unrecognised word

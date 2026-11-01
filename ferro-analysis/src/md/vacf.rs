@@ -78,7 +78,7 @@ pub struct VacfResult {
     /// Time origins at the longest lag, `n_frames − max_lag`
     pub min_origins: usize,
     pub params: VacfParams,
-    /// Element types included, sorted alphabetically
+    /// Element types included, by atomic number (`canonical_cmp`)
     pub elements: Vec<String>,
 }
 

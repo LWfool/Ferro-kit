@@ -74,14 +74,15 @@ pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result
     Ok(picked)
 }
 
-/// The distinct elements of the atoms `indices` of `frame`, sorted, for a result's
-/// `elements` field; msd, vacf and vanhove each wrote it out (review 2026-10-30 A2-M3).
+/// The distinct elements of the atoms `indices` of `frame`, for a result's `elements`
+/// field; msd, vacf and vanhove each wrote it out (review 2026-10-30 A2-M3). Sorted by
+/// `canonical_cmp` (atomic number, then symbol), the order of gr and angle: these three
+/// used to sort alphabetically (review 2026-10-30 A2-L5).
 pub(crate) fn selected_elements(frame: &Frame, indices: &[usize]) -> Vec<String> {
-    indices.iter()
-        .map(|&i| frame.element(i).to_string())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect()
+    let mut out: Vec<String> = indices.iter().map(|&i| frame.element(i).to_string()).collect();
+    out.sort_by(|a, b| ferro_core::data::elements::canonical_cmp(a, b));
+    out.dedup();
+    out
 }
 
 /// Packs a grid accumulated on `ref_cell` into a cube file: voxel `i` along an axis is
@@ -307,6 +308,15 @@ mod tests {
     use super::*;
     use ferro_core::Atom;
     use nalgebra::Matrix3;
+
+    #[test]
+    fn selected_elements_are_in_atomic_number_order() {
+        let mut f = Frame::new();
+        for e in ["Cl", "Na", "Cl", "Na"] {
+            f.add_atom(Atom::new(e, nalgebra::Vector3::zeros()));
+        }
+        assert_eq!(selected_elements(&f, &[0, 1, 2, 3]), ["Na", "Cl"]);
+    }
 
     /// Spacing rows are the cell rows over the grid counts, and the origin sits half a
     /// voxel in along each — checked on a triclinic cell, where the two differ per axis
