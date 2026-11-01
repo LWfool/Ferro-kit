@@ -46,18 +46,22 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     // over valence electrons), not μB, and extxyz output took it for a moment (user's call, 2026-10-19)
 
     // ── ATOMIC_SPECIES card ───────────────────────────────────────────────────
-    // label → element (first line word treated as label, second as mass (ignored), third as pseudo)
-    let mut species: HashMap<String, String> = HashMap::new(); // label → element
+    // label → (element, mass): `label mass pseudo` per line. Blank lines are skipped, as in the
+    // other two cards (review 2026-10-30 A1-L6)
+    let mut species: HashMap<String, (String, f64)> = HashMap::new();
     if let Some(start) = find_card(&stripped, "ATOMIC_SPECIES") {
         for l in stripped[start+1..].iter() {
             let l = l.trim();
-            if l.is_empty() || is_card_or_namelist(l) { break; }
+            if l.is_empty() { continue; }
+            if is_card_or_namelist(l) { break; }
             let parts: Vec<&str> = l.split_whitespace().collect();
             if parts.len() >= 2 {
                 let label = parts[0].to_string();
                 // Try to extract element: first alphabetic chars of label
                 let elem = element_from_label(&label);
-                species.insert(label, elem);
+                let mass = ffloat(parts[1])
+                    .with_context(|| format!("ATOMIC_SPECIES {label}: mass {:?} is not a number", parts[1]))?;
+                species.insert(label, (elem, mass));
             }
         }
     }
@@ -141,11 +145,17 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
         let v = fortran_vec3(&parts[1..].join(" "))
             .with_context(|| format!("invalid ATOMIC_POSITIONS line {l:?}"))?;
         // 未声明的标签 pw.x 拒收；以前按标签字母猜元素，磁矩也随之静默丢失
-        let elem = species.get(&label).cloned().with_context(|| {
+        let (elem, mass) = species.get(&label).cloned().with_context(|| {
             format!("ATOMIC_POSITIONS label {label:?} is not declared in ATOMIC_SPECIES")
         })?;
 
         let mut atom = Atom::new(elem, to_cart(v));
+        // The species mass is kept when it is not the table's (an isotope, D for H), within the
+        // writer's 1e-6 (writers/qe.rs), so a plain file reads with no explicit masses and a
+        // deuterated one round-trips (review 2026-10-30 A1-L6)
+        if atom.effective_mass().map_or(true, |t| (t - mass).abs() > 1e-6) {
+            atom.mass = Some(mass);
+        }
         atom.label = Some(label);
         frame.add_atom(atom);
     }
@@ -296,10 +306,15 @@ fn namelist_items(line: &str) -> Vec<String> {
     items
 }
 
+/// A line's first word, upper-cased, ended by a blank or an option bracket: pw.x accepts
+/// `CELL_PARAMETERS{angstrom}` (review 2026-10-30 A1-L6).
+fn first_word(l: &str) -> String {
+    let up = l.trim_start().to_uppercase();
+    up.split(|c: char| c.is_whitespace() || c == '{' || c == '(').next().unwrap_or("").to_string()
+}
+
 fn find_card(lines: &[&str], card: &str) -> Option<usize> {
-    lines.iter().position(|l| {
-        l.to_uppercase().split_whitespace().next() == Some(card)
-    })
+    lines.iter().position(|l| first_word(l) == card)
 }
 
 /// 卡片行上的选项：去掉卡片名后忽略 `{}()`、空白与大小写。`{bohr}`、`(bohr)`、
@@ -327,13 +342,12 @@ fn fortran_vec3(line: &str) -> Result<Vector3<f64>> {
 /// The card names are pw.x's full list (QE 7.x `INPUT_PW`): any one missing here
 /// is read as a data line of the block before it (review R1-6)
 fn is_card_or_namelist(l: &str) -> bool {
-    let up = l.to_uppercase();
     matches!(
-        up.split_whitespace().next().unwrap_or(""),
+        first_word(l).as_str(),
         "ATOMIC_POSITIONS" | "ATOMIC_SPECIES" | "CELL_PARAMETERS" |
         "K_POINTS" | "ADDITIONAL_K_POINTS" | "CONSTRAINTS" | "OCCUPATIONS" |
         "ATOMIC_VELOCITIES" | "ATOMIC_FORCES" | "SOLVENTS" | "HUBBARD"
-    ) || up.trim().starts_with('&')
+    ) || l.trim().starts_with('&')
 }
 
 #[cfg(test)]
@@ -390,6 +404,20 @@ CELL_PARAMETERS {angstrom}
 ";
 
     use crate::testutil::write_tmp as tmp;
+
+    /// Review 2026-10-30 A1-L6: a blank line inside ATOMIC_SPECIES, a card name glued to its
+    /// option, and a species mass that is not the table's (D) kept on its atoms
+    #[test]
+    fn species_masses_blank_lines_and_glued_card_options() {
+        let text = "&SYSTEM\n ibrav=0, nat=2, ntyp=2\n/\nATOMIC_SPECIES\nO 15.999 O.upf\n\n\
+                    H1 2.014 H.upf\nCELL_PARAMETERS{angstrom}\n10 0 0\n0 10 0\n0 0 10\n\
+                    ATOMIC_POSITIONS(angstrom)\nO 0 0 0\nH1 0.96 0 0\n";
+        let t = read_qe_input(&tmp("deut.qe", text)).unwrap();
+        let f = &t.frames[0];
+        assert_eq!((f.atom(1).element, f.atom(1).mass), ("H", Some(2.014)));
+        assert_eq!(f.atom(0).mass, None, "O at the table's mass stays implicit");
+        assert!((f.cell.as_ref().unwrap().lengths()[0] - 10.0).abs() < 1e-12);
+    }
 
     #[test]
     fn test_water() {
