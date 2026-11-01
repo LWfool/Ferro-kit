@@ -129,6 +129,11 @@ pub struct RotCorrResult {
 
 // ─── 计算 ────────────────────────────────────────────────────────────────────
 
+/// Squared length below which an orientation vector counts as zero (no neighbour in
+/// that frame): one threshold for the unit vectors and the valid-frame count, which
+/// each wrote `1e-30` (review 2026-10-30 A2-L12).
+const ZERO_NORM2: f64 = 1e-30;
+
 /// Computes C₂(t), or C₁(t) with `legendre: Legendre::P1` (see [`Legendre`]), averaging
 /// each lag over all valid (molecule, origin) pairs.
 ///
@@ -197,10 +202,18 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         }).collect(),
         RotVector::Bond => {
             // 第一帧定键，之后按原子身份一直跟踪（gmx rotacf -d）：不再看距离
+            // Candidates from a neighbour list when periodic, as in Sum mode; it lists them by
+            // index like the full scan, so the pairs keep their order (review 2026-10-30 A2-L12)
+            let nl = cells[0].as_ref().map(|pc| NeighborList::build(ref_frame.positions(), pc, params.r_cut)
+                .expect("r_cut checked against every frame's bound at the entry"));
             let pairs: Vec<(usize, usize)> = center_indices.iter()
-                .flat_map(|&ci| (0..ref_frame.n_atoms())
-                    .filter(move |&ni| is_neighbor(ni, ci))
-                    .map(move |ni| (ci, ni)))
+                .flat_map(|&ci| {
+                    let around: Vec<usize> = match &nl {
+                        Some(nl) => nl.neighbors_of(ci).into_iter().map(|(j, _, _)| j).collect(),
+                        None => (0..ref_frame.n_atoms()).collect(),
+                    };
+                    around.into_iter().filter(move |&ni| is_neighbor(ni, ci)).map(move |ni| (ci, ni))
+                })
                 .filter(|&(ci, ni)| bond(0, ci, ni).norm_squared() < r_cut2)
                 .collect();
             if pairs.is_empty() {
@@ -238,7 +251,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 let [a, b, c] = step[k];
                 let n2 = a * a + b * b + c * c;
                 // 零向量：该帧没有邻居，无取向可言
-                (n2 >= 1e-30).then(|| { let n = n2.sqrt(); [a / n, b / n, c / n] })
+                (n2 >= ZERO_NORM2).then(|| { let n = n2.sqrt(); [a / n, b / n, c / n] })
             }).collect();
             let (mut sq, mut cnt) = zero();
             for &(i, j, w) in comps {
@@ -262,7 +275,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         });
 
     let n_valid = orient.iter()
-        .map(|step| step.iter().filter(|u| u.iter().map(|c| c * c).sum::<f64>() >= 1e-30).count())
+        .map(|step| step.iter().filter(|u| u.iter().map(|c| c * c).sum::<f64>() >= ZERO_NORM2).count())
         .sum::<usize>();
     if n_valid == 0 {
         return Err(ChemError::ValidationError(format!(
