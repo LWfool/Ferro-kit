@@ -214,7 +214,11 @@ What ferro's Rust libraries report (a file that cannot be read, a missing cell, 
 whole message.  It is a subclass of `RuntimeError`, so code written as `except RuntimeError`
 still catches it; `except ferro.FerroError` catches ferro's errors without Python's own.
 
-A few argument errors raise Python's usual classes instead:
+The line between the two is where the value is checked. A value the binding itself reads
+(`by=`, a frame index) raises Python's usual class; a value it passes on to the Rust library
+(`axis=`, `units=`, a cutoff) is refused there and raises `FerroError`, whatever kind of
+mistake it is. So a misspelt `axis="w"` is a `FerroError`, a misspelt `by="lbl"` a `ValueError`.
+The binding's own argument errors are:
 
 | Exception | When |
 |---|---|
