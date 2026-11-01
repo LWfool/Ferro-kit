@@ -52,9 +52,11 @@ pub const KBAR_TO_GPA: f64 = 0.1;
 /// Avogadro 常数
 pub const AVOGADRO: f64 = 6.022_140_76e23;
 
-/// 质量密度：amu/Å³ → g/cm³。
+/// Mass density: amu/Å³ → g/cm³.
 ///
-/// 1 amu = 1/N_A g 且 1 Å³ = 1e-24 cm³，两者之比即 `1e24 / AVOGADRO`。
+/// 1 Å³ = 1e-24 cm³ and 1 amu ≈ 1/N_A g, so the factor is `1e24 / AVOGADRO`. Since SI 2019
+/// the amu-gram relation is no longer exact (they differ by 3.4e-10 relative), far below
+/// any density this is used for (review 2026-10-30 A4-L10).
 pub const AMU_ANG3_TO_G_CM3: f64 = 1e24 / AVOGADRO;
 
 /// Diffusion coefficient: Å²/fs → cm²/s (1 Å² = 1e-16 cm², 1 fs = 1e-15 s).

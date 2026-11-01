@@ -44,7 +44,8 @@ pub struct Frame {
     // ── Results ──────────────────────────────────────────────────────────────
     /// Total energy \[eV\]
     pub energy: Option<f64>,
-    /// Stress tensor (eV/Å³), row-major, **positive = compression**.
+    /// Stress tensor (eV/Å³), row `i` = tensor row `i` (stored column-major by nalgebra;
+    /// see `array_order.rs`, review 2026-10-30 A4-L10), **positive = compression**.
     ///
     /// This is the sign CP2K, VASP and QE print, and the opposite of ASE's
     /// (positive = tension); readers of ASE-flavoured formats negate on the way
