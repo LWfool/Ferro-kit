@@ -46,8 +46,8 @@
 CIF reader 的空间群数据表 `ferro-io/src/readers/spacegroups.dat`；`crosscheck_spacegroups.py`
 把 ferro 的 CIF 展开与 spglib、ASE 逐设置对拍。两者都用 deepmd 环境的 python 跑。
 
-对拍侧的产物名一律由 `ferrocmp.product_name()` 拼（`batch::product_name` 的镜像），
-调用点不写文件名字符串；四个脚本均已按 label 段复跑验证（2026-08-14）。
+四个对拍脚本均已按 label 段复跑验证（2026-08-14）；产物名怎么拼是规则，见 `issues.md`
+「外部脚本调用 ferro 的陷阱」。
 
 **2026-09-20 起未复跑**：`-o` 改为输出目录之后，四个脚本传给 ferro 的批次标记
 从 `-o` 改成了 `-s`（它们以 outdir 为 cwd，用不到 `-o`）。改动是机械的，但没有
