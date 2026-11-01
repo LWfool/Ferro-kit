@@ -160,6 +160,15 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         )
     })?;
     cell.check("make_supercell: the cell")?;
+    // Copies along an axis the frame is not periodic in would be stacked through its vacuum:
+    // a slab made into several slabs (review 2026-10-30 A4-L11)
+    for ((axis, n), periodic) in ["a", "b", "c"].iter().zip([nx, ny, nz]).zip(frame.pbc) {
+        if n > 1 && !periodic {
+            return Err(ChemError::ValidationError(format!(
+                "cannot replicate {n} times along {axis}: the frame is not periodic along it \
+                 (pbc = {:?}); give 1 for that axis (CLI: --dims)", frame.pbc)));
+        }
+    }
 
     // ── 新格子矩阵（各行独立缩放）────────────────────────────────────────────
     let m = &cell.matrix;
@@ -215,6 +224,16 @@ mod tests {
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("Fe", Vector3::new(a * 0.5, a * 0.5, a * 0.5)));
         frame
+    }
+
+    /// Review 2026-10-30 A4-L11: a slab replicates in plane, not across its vacuum
+    #[test]
+    fn a_non_periodic_axis_takes_no_copies() {
+        let mut slab = bcc_frame(2.87);
+        slab.pbc = [true, true, false];
+        assert_eq!(make_supercell(&slab, 2, 2, 1).unwrap().n_atoms(), 8);
+        let err = make_supercell(&slab, 1, 1, 2).unwrap_err().to_string();
+        assert!(err.contains("along c") && err.contains("not periodic"), "{err}");
     }
 
     #[test]

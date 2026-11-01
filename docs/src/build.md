@@ -62,6 +62,11 @@ input cell, then the axis with the thinnest supercell grows by one until the ato
 count reaches `--min-atoms`. Growing the thinnest axis keeps the box as close to
 isotropic as it can be.
 
+A non-periodic axis takes no copies: more than 1 along an axis whose `pbc` is false is
+an error, since the copies would be stacked through the vacuum (a slab made into
+several). The automatic sizing does not look at `pbc`, so for a slab give `--dims` with
+1 on its normal.
+
 **`--min-length` is a spacing, not a vector length.** The spacing $d_i$ is the
 distance between the lattice planes spanned by the other two vectors — the
 thickness of the cell along that axis. It is what bounds a minimum-image cutoff,
@@ -127,6 +132,11 @@ the in-plane sizes differ a lot.
 - The two interfaces must be parallel (normals within 1°): a gap along the normal
   means nothing otherwise.
 - Each block is first folded into its own cell along its periodic axes.
+- Only the lengths of the in-plane vectors are compared, not their shape: B with a
+  different in-plane shape (hexagonal on orthorhombic) can stick out of the merged
+  cell, and its atoms folded back may overlap B's own images. Check the result, or
+  bring both blocks to one in-plane cell first.
+- The result is periodic as A is; B's `pbc` is not consulted.
 - A trajectory is refused rather than reduced to its first frame. Take the frame you
   want with `ferro convert -i md.dump -o DIR --format-out extxyz --start K --end K`.
 - The output format is A's unless `--format-out` says otherwise.

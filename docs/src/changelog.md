@@ -40,6 +40,8 @@ command line alike; regenerate it rather than migrating it.
 - `traj sq`: a site label shared by atoms of two elements is reported as such, not as missing element
   symbols; with `--weighting neutron` / `both`, an element without a published coherent scattering length
   (counted as 0) is named in a warning.
+- `build supercell` (and Python `supercell`): more than one copy along an axis whose `pbc` is false is an
+  error; a slab used to be stacked into several slabs through its vacuum.
 
 ### Code review fixes: readers that misread a broken file
 

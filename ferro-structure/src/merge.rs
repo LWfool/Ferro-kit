@@ -31,6 +31,11 @@ use ferro_core::frame::Frame;
 /// (relative to `Cell::origin`) along its periodic axes; the box may start anywhere,
 /// as a LAMMPS box with `xlo ≠ 0` does.
 ///
+/// Only the lengths of the in-plane vectors are compared, not their shape: a `frame_b`
+/// whose in-plane cell differs in shape from `frame_a`'s (hexagonal on orthorhombic) can
+/// reach outside the merged cell, and folded back its atoms may overlap its own images.
+/// `frame_b`'s `pbc` is not consulted (review 2026-10-30 A4-L11).
+///
 /// The atoms of `frame_a` come first, then those of `frame_b`, each with its label,
 /// mass, magnetic moment and charge. The result takes `frame_a`'s `pbc` and a box origin
 /// of 0; `energy`, `forces`, `stress`, `velocities`, `temperature` and `step` are `None`.
