@@ -27,8 +27,11 @@ pub(crate) fn same_atoms(traj: &Trajectory) -> Check {
 /// so a library caller that never sets it is told so: a default of 1.0 used to compute
 /// silently in 1 fs steps, while the CLI and Python both require it.
 pub(crate) fn frame_interval(dt: f64) -> Check {
+    // NaN is the Default's "not set", but Python passes a NaN the user did give: the message
+    // covers both rather than claiming it was missing (review 2026-10-30 A6-L2)
     if dt.is_nan() {
-        return fail("dt (the stored frame interval [fs]) must be given".into());
+        return fail("dt (the stored frame interval [fs]) must be a finite number > 0, got NaN \
+                     (not set?)".into());
     }
     positive("dt", dt)
 }
@@ -190,7 +193,7 @@ mod tests {
         macro_rules! case_dt {
             ($ty:ident, $( $field:ident : $bad:expr ),+ $(,)?) => {{
                 let err = $ty::default().validate().unwrap_err().to_string();
-                assert!(err.contains("must be given"), "{}: {err}", stringify!($ty));
+                assert!(err.contains("got NaN (not set?)"), "{}: {err}", stringify!($ty));
                 let base = $ty { dt: 1.0, ..$ty::default() };
                 assert!(base.validate().is_ok(), "{} with dt is valid", stringify!($ty));
                 $(
