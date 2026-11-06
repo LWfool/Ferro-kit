@@ -51,7 +51,8 @@ pub fn read_deepmd_npy(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
                (DeePMD-kit can take the map from input.json instead, which ferro does not read)",
               dir.display());
     }
-    let type_map = read_lines_tokens(&map_path)?;
+    let type_map: Vec<String> =
+        super::util::read_text(&map_path)?.split_whitespace().map(str::to_string).collect();
     let natoms = types.len();
     if natoms == 0 {
         bail!("{}: type.raw is empty", dir.display());
@@ -231,11 +232,6 @@ fn read_type_indices(path: &Path) -> Result<Vec<usize>> {
                 .with_context(|| format!("{}: `{t}` is not an atom type index", path.display()))
         })
         .collect()
-}
-
-fn read_lines_tokens(path: &Path) -> Result<Vec<String>> {
-    let text = super::util::read_text(path)?;
-    Ok(text.split_whitespace().map(|s| s.to_string()).collect())
 }
 
 #[cfg(test)]

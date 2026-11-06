@@ -120,19 +120,16 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
         }
     }
 
-    let mut frame = Frame::with_cell(cell.clone(), pbc);
+    let mut frame = Frame::with_cell(cell, pbc);
 
-    for l in &coord_section[1..coord_section.len().saturating_sub(1)] {
-        let l = l.trim();
+    for &l in &coord_section[1..coord_section.len().saturating_sub(1)] {
         let first = l.split_whitespace().next().map(|s| s.to_lowercase());
         if l.is_empty() || matches!(first.as_deref(), Some("unit" | "scaled")) { continue; }
 
         // 行格式 `KIND x y z [分子名 ...]`（第 5 列起是分子名，不是速度 ——
         // 速度在独立的 &VELOCITY 段，单位 bohr/au_time，本 reader 不读）
         let parts: Vec<&str> = l.split_whitespace().collect();
-        let xyz: Option<Vec<f64>> = parts.get(1..4)
-            .map(|p| p.iter().map_while(|s| s.parse().ok()).collect());
-        let Some([x, y, z]) = xyz.as_deref().and_then(|v| <[f64; 3]>::try_from(v).ok()) else {
+        let Some([x, y, z]) = parse_vec3(&parts[1..]) else {
             bail!("invalid &COORD line {l:?}: expected KIND x y z");
         };
 
@@ -260,11 +257,7 @@ fn parse_cell_section(section: &[&str]) -> Result<(Cell, [bool; 3], [usize; 3])>
     }
 
     let cell = if let (Some(a), Some(b), Some(c)) = (vecs[0], vecs[1], vecs[2]) {
-        Cell::from_matrix(Matrix3::new(
-            a[0], a[1], a[2],
-            b[0], b[1], b[2],
-            c[0], c[1], c[2],
-        ))
+        Cell::from_matrix(Matrix3::from_row_slice([a, b, c].as_flattened()))
     } else if let Some([a, b, c]) = abc {
         Cell::from_lengths_angles(a, b, c, angles[0], angles[1], angles[2])?
     } else {
@@ -308,13 +301,14 @@ fn cp2k_logical(value: Option<&str>, lone: bool) -> Result<bool> {
     }
 }
 
+/// `lines` are the trimmed, comment-stripped lines of `parse_cp2k`.
 fn find_end(lines: &[&str], start: usize) -> Option<usize> {
     let mut depth = 0usize;
     for (j, l) in lines[start..].iter().enumerate() {
-        let low = l.to_lowercase().trim().to_string();
-        if low.starts_with('&') && !low.starts_with("&end") {
+        let is_end = l.get(..4).is_some_and(|p| p.eq_ignore_ascii_case("&end"));
+        if l.starts_with('&') && !is_end {
             depth += 1;
-        } else if low.starts_with("&end") {
+        } else if is_end {
             depth = depth.saturating_sub(1);
             if depth == 0 { return Some(start + j); }
         }

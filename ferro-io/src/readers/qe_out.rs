@@ -106,6 +106,9 @@ fn number_after(line: &str, key: &str) -> Option<f64> {
 }
 
 /// Card option `(angstrom)` / `{bohr}` / `(alat= 8.10497200)` → (unit, alat if given).
+///
+/// `qe.rs::card_option` parses the input file's card options; not merged, see there
+/// (R6, review 2026-11-06 A2-17).
 fn card_unit(line: &str) -> (String, Option<f64>) {
     let opt = line.split_whitespace().skip(1).collect::<Vec<_>>().join(" ");
     let opt = opt.trim_matches(|c| matches!(c, '(' | ')' | '{' | '}')).to_lowercase();
@@ -387,10 +390,9 @@ impl Steps {
             stats.n_incomplete += 1;
             return Ok(());
         };
-        let forces = match window.clone().find(|&i| starts_with_tokens(lines[i], &["Forces", "acting", "on", "atoms"])) {
-            Some(f) => read_forces(lines, f, hi, nat),
-            None => None,
-        };
+        let forces = window.clone()
+            .find(|&i| starts_with_tokens(lines[i], &["Forces", "acting", "on", "atoms"]))
+            .and_then(|f| read_forces(lines, f, hi, nat));
         let stress = window.clone()
             .find(|&i| starts_with_tokens(lines[i], &["total", "stress"]))
             .and_then(|s| read_stress(lines, s));

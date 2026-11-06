@@ -153,6 +153,7 @@ const SNIFF_MAX_LINES: usize = 5000;
 pub fn sniff(path: &Path) -> Result<AimdFormat> {
     let mut lines = super::util::text_lines(path)?;
     let mut head = String::new();
+    let mut cp2k = false;
     // Every banner is in the first few lines, but CP2K's `GLOBAL| Run type` comes
     // after its input echo and the build information, which grow with the input
     // (line 46 in a fixture). So: 96 lines, and past that keep going only while a
@@ -160,9 +161,9 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
     for n in 0.. {
         let Some(line) = lines.next().transpose()? else { break };
         let found_run_type = line.contains("GLOBAL| Run type");
+        cp2k |= line.contains("CP2K|");
         head.push_str(&line);
         head.push('\n');
-        let cp2k = head.contains("CP2K|");
         if found_run_type || (n >= 96 && !cp2k) || n >= SNIFF_MAX_LINES {
             break;
         }

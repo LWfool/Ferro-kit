@@ -308,6 +308,21 @@ fn parse_frame(
             "ITEM: ATOMS has no type, element or typelabel column, so nothing names the atoms' elements".into()));
     }
 
+    // Velocity: real Å/fs (internal), metal Å/ps. A velocity in Å/ps is per ps, so it becomes
+    // Å/fs by the factor that turns 1 fs into ps (×1e-3). With units None a file with velocity or
+    // force columns was refused above, so the None arm is never used here
+    let vscale = match units {
+        Some(LammpsUnits::Metal) => convert_time(1.0, TimeUnit::Femtosecond, TimeUnit::Picosecond),
+        _ => 1.0,
+    };
+    // Force: real kcal/(mol·Å) → eV/Å, metal eV/Å already
+    let fscale = match units {
+        Some(LammpsUnits::Metal) => 1.0,
+        // Through the unit enum, as the velocity scale goes through convert_time
+        // (review 2026-10-30 A4-L9); 1 kcal/mol in eV, the same factor as before
+        _ => convert_energy(1.0, EnergyUnit::KcalPerMol, EnergyUnit::EV),
+    };
+
     let mut atoms_raw: Vec<AtomRaw> = Vec::new();
 
     for k in 0..n {
@@ -370,22 +385,7 @@ fn parse_frame(
         // LAMMPS 的 mass 在 real 与 metal 下都是 g/mol，即 amu
         atom.mass = get_col("mass").map(num).transpose()?;
 
-        // Velocity: real Å/fs (internal), metal Å/ps. A velocity in Å/ps is per ps, so it becomes
-        // Å/fs by the factor that turns 1 fs into ps (×1e-3). With units None a file with velocity or
-        // force columns was refused above, so the None arm is never used here
-        let vscale = match units {
-            Some(LammpsUnits::Metal) => convert_time(1.0, TimeUnit::Femtosecond, TimeUnit::Picosecond),
-            _ => 1.0,
-        };
         let vel = triple("vx", "vy", "vz").map(vec3).transpose()?.map(|v| v * vscale);
-
-        // Force: real kcal/(mol·Å) → eV/Å, metal eV/Å already
-        let fscale = match units {
-            Some(LammpsUnits::Metal) => 1.0,
-            // Through the unit enum, as the velocity scale goes through convert_time
-            // (review 2026-10-30 A4-L9); 1 kcal/mol in eV, the same factor as before
-            _ => convert_energy(1.0, EnergyUnit::KcalPerMol, EnergyUnit::EV),
-        };
         let force = triple("fx", "fy", "fz").map(vec3).transpose()?.map(|f| f * fscale);
 
         atoms_raw.push((atom_id, atom, vel, force));

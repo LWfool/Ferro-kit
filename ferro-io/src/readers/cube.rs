@@ -20,7 +20,7 @@ use anyhow::{bail, Context, Result};
 use ferro_core::{Atom, Cell, ChargeGrid, CubeData, Frame};
 use ferro_core::units::BOHR_TO_ANG;
 use ferro_core::data::elements::by_number;
-use super::util::floats as parse_floats;
+use super::util::{floats, parse_fortran_float};
 
 // ─── 内部中间结构 ─────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     next("comment 2")?;
 
     // 第 3 行：n_atoms  ox  oy  oz（Bohr）
-    let f3 = parse_floats(next("atom count line")?, 4)?;
+    let f3 = floats(next("atom count line")?, 4)?;
     // n_atoms < 0 是 Gaussian 轨道 cube 的写法：原子行之后多一段 MO 列表
     let has_mo_list = f3[0] < 0.0;
     let n_atoms = f3[0].abs() as usize;
@@ -71,7 +71,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     let mut step_ang  = [[0.0f64; 3]; 3];
 
     for i in 0..3 {
-        let fs = parse_floats(next(&format!("grid line {i}"))?, 4)?;
+        let fs = floats(next(&format!("grid line {i}"))?, 4)?;
         // 规范里 N_i < 0 表示该轴步长以 Å 计；原点与原子坐标此时用什么单位规范没说，
         // 各程序不一致，按任一种读都是猜。以前 `as usize` 把负数饱和成 0，读出空网格、
         // bader 报 0 e 且退出码 0
@@ -89,11 +89,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
 
     // 原子行：Z  charge  x  y  z（Bohr）
     // 单元格用 Å 的步向量构建
-    let cell_mat = Matrix3::new(
-        shape[0] as f64 * step_ang[0][0], shape[0] as f64 * step_ang[0][1], shape[0] as f64 * step_ang[0][2],
-        shape[1] as f64 * step_ang[1][0], shape[1] as f64 * step_ang[1][1], shape[1] as f64 * step_ang[1][2],
-        shape[2] as f64 * step_ang[2][0], shape[2] as f64 * step_ang[2][1], shape[2] as f64 * step_ang[2][2],
-    );
+    let cell_mat = Matrix3::from_fn(|i, j| shape[i] as f64 * step_ang[i][j]);
     let cell = Cell::from_matrix(cell_mat);
     let pbc = [
         cell_mat.row(0).norm() > 1e-10,
@@ -105,7 +101,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     // 原子位置：绝对 Bohr → Å，保持绝对坐标（与 writer、CubeData 的约定一致）；
     // 只有 Bader 那条路径需要相对网格原点，在 parse_cube_as_chg 里自己减
     for idx in 0..n_atoms {
-        let fs = parse_floats(next(&format!("atom line {idx}"))?, 5)?;
+        let fs = floats(next(&format!("atom line {idx}"))?, 5)?;
         let pos = Vector3::new(fs[2], fs[3], fs[4]) * BOHR_TO_ANG;
         // An atomic number outside the element table is an error, not an `X{z}` placeholder;
         // the range test comes first so `as u8` cannot truncate (review 2026-10-30 A1-M2)
@@ -139,7 +135,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     for (k, l) in lines.enumerate() {
         for tok in l.split_whitespace() {
             // Fortran drops the `E` of a three-digit exponent (`0.12345-100`), as in CHGCAR
-            let v = super::chgcar::parse_fortran_float(tok).with_context(|| {
+            let v = parse_fortran_float(tok).with_context(|| {
                 format!("line {}: invalid volumetric value {tok:?}", first + k)
             })?;
             raw.push(v);
@@ -170,11 +166,7 @@ pub fn read_cube(path: &Path) -> Result<CubeData> {
 #[allow(dead_code)]
 fn parse_cube(content: &str) -> Result<CubeData> {
     let pc = parse_header(content)?;
-    let spacing = Matrix3::new(
-        pc.step_bohr[0][0], pc.step_bohr[0][1], pc.step_bohr[0][2],
-        pc.step_bohr[1][0], pc.step_bohr[1][1], pc.step_bohr[1][2],
-        pc.step_bohr[2][0], pc.step_bohr[2][1], pc.step_bohr[2][2],
-    ) * BOHR_TO_ANG;
+    let spacing = Matrix3::from_row_slice(pc.step_bohr.as_flattened()) * BOHR_TO_ANG;
     // CubeData 保留 cube 原始数据顺序（i3 最快）和原始数值（不缩放）
     Ok(CubeData {
         frame: pc.frame,
@@ -210,11 +202,7 @@ fn parse_cube_as_chg(content: &str) -> Result<(Frame, ChargeGrid)> {
     let nrho = n1 * n2 * n3;
 
     // 步向量矩阵（Bohr）：行 i = v_i
-    let vm = Matrix3::new(
-        pc.step_bohr[0][0], pc.step_bohr[0][1], pc.step_bohr[0][2],
-        pc.step_bohr[1][0], pc.step_bohr[1][1], pc.step_bohr[1][2],
-        pc.step_bohr[2][0], pc.step_bohr[2][1], pc.step_bohr[2][2],
-    );
+    let vm = Matrix3::from_row_slice(pc.step_bohr.as_flattened());
     // V_cell_Bohr = N1*N2*N3 × |det(v1, v2, v3)|
     let v_voxel_bohr = vm.determinant().abs();
     let v_cell_bohr = nrho as f64 * v_voxel_bohr;

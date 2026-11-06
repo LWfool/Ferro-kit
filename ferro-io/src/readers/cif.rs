@@ -206,19 +206,17 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
         None => bail!("no _atom_site_ loop found"),
     };
 
-    let col = |names: &[&str]| -> Option<usize> {
-        names.iter().find_map(|n| headers.iter().position(|h| h == n))
-    };
+    let col = |name: &str| headers.iter().position(|h| h == name);
 
-    let idx_sym = col(&["_atom_site_type_symbol"]);
-    let idx_lbl = col(&["_atom_site_label"]);
-    let idx_fx  = col(&["_atom_site_fract_x"]);
-    let idx_fy  = col(&["_atom_site_fract_y"]);
-    let idx_fz  = col(&["_atom_site_fract_z"]);
-    let idx_cx  = col(&["_atom_site_cartn_x"]);
-    let idx_cy  = col(&["_atom_site_cartn_y"]);
-    let idx_cz  = col(&["_atom_site_cartn_z"]);
-    let idx_occ = col(&["_atom_site_occupancy"]);
+    let idx_sym = col("_atom_site_type_symbol");
+    let idx_lbl = col("_atom_site_label");
+    let idx_fx  = col("_atom_site_fract_x");
+    let idx_fy  = col("_atom_site_fract_y");
+    let idx_fz  = col("_atom_site_fract_z");
+    let idx_cx  = col("_atom_site_cartn_x");
+    let idx_cy  = col("_atom_site_cartn_y");
+    let idx_cz  = col("_atom_site_cartn_z");
+    let idx_occ = col("_atom_site_occupancy");
 
     ensure!(idx_sym.is_some() || idx_lbl.is_some(), "no element/label column");
     ensure!(

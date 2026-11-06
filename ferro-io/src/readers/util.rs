@@ -129,6 +129,20 @@ fn not_utf8(path: &Path, line: usize, column: usize, byte: u8) -> anyhow::Error 
     )
 }
 
+/// Parses a number, also in the Fortran form that drops the `E` of a three-digit
+/// exponent (`0.1234-100` = 0.1234E-100). VASP's CHGCAR writes these for the tiny
+/// densities in a vacuum region; Gaussian-style cube files can too.
+pub(crate) fn parse_fortran_float(tok: &str) -> Result<f64> {
+    if let Ok(v) = tok.parse::<f64>() {
+        return Ok(v);
+    }
+    // An `E` goes before the last sign past position 0; an `E`/`e` already before it is a bad value
+    let split = tok.rfind(['+', '-']).filter(|&i| i > 0 && !tok[..i].contains(['E', 'e']));
+    split
+        .and_then(|i| format!("{}E{}", &tok[..i], &tok[i..]).parse::<f64>().ok())
+        .ok_or_else(|| anyhow::anyhow!("not a number"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

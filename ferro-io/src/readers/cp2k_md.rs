@@ -302,15 +302,11 @@ fn parse_step(
     let hi = lines.len();
     // 温度在锚点之后、坐标块之前。MD_INI| 的那一行在第一个锚点之前，
     // 按锚点定位天然排除，不必像参考脚本那样另做一次掩码
-    let mut temperature = None;
-    for l in lines.iter().take(hi).skip(a) {
-        if line_matches(l, tag::TEMPERATURE) {
-            // 两个数：瞬时、累计平均。取第一个 —— 取第二个不会报错，
-            // 只会得到一条越来越平的曲线
-            temperature = l.split_whitespace().find_map(|t| t.parse::<f64>().ok());
-            break;
-        }
-    }
+    // Two numbers: instantaneous and running average. The first is taken; the second
+    // raises no error, it only gives a curve that flattens out
+    let temperature = lines.iter().take(hi).skip(a)
+        .find(|l| line_matches(l, tag::TEMPERATURE))
+        .and_then(|l| l.split_whitespace().find_map(|t| t.parse::<f64>().ok()));
 
     let mut heads: Vec<(usize, usize)> = Vec::new(); // (行号, 原子数)
     let mut i = a;
@@ -351,13 +347,7 @@ fn parse_step(
     };
 
     // 力块之后第一行非空行是 cell 行: step time + 9 分量 + 体积
-    let mut cell_line = None;
-    for l in lines.iter().take(hi).skip(heads[1].0 + 2 + natoms) {
-        if !l.trim().is_empty() {
-            cell_line = Some(*l);
-            break;
-        }
-    }
+    let cell_line = lines.iter().take(hi).skip(heads[1].0 + 2 + natoms).find(|l| !l.trim().is_empty());
     // 读不到 cell 行单独计数（审查 A-17）：多半是没把 &CELL 打到 __STD_OUT__，
     // 混进 incomplete 时报告说不出缺的是什么
     let Some(cell_fields) = cell_line.map(|l| l.split_whitespace().collect::<Vec<_>>()) else {
@@ -370,26 +360,15 @@ fn parse_step(
         return Ok(());
     }
     let nine = &cell_fields[cell_fields.len() - 10..cell_fields.len() - 1];
-    let mut m = [0.0_f64; 9];
-    let mut ok = true;
-    for (slot, s) in m.iter_mut().zip(nine) {
-        match s.parse::<f64>() {
-            Ok(v) => *slot = v,
-            Err(_) => {
-                ok = false;
-                break;
-            }
-        }
-    }
-    if !ok {
+    let Ok(m) = nine.iter().map(|s| s.parse::<f64>()).collect::<Result<Vec<f64>, _>>() else {
         stats.n_no_cell += 1;
         return Ok(());
-    }
+    };
 
     // 组成必须与首帧一致；不一致多半是块错位而非体系真变了
     let mut comp: Vec<String> = c_syms.clone();
     comp.sort();
-    let mut fcomp: Vec<String> = f_syms.clone();
+    let mut fcomp: Vec<String> = f_syms;
     fcomp.sort();
     // The force block is checked against the coordinates on the first frame too, which
     // used to only set the reference (review 2026-10-30 A1-L10)
@@ -501,13 +480,14 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
     let mut pending: Option<(usize, bool)> = None;
     for l in lines {
         let l = l?;
-        if pbc.is_none() {
-            let f: Vec<&str> = l.split_whitespace().collect();
-            if f.len() >= 3 && f[0] == "CELL|" && f[1] == "Periodicity" {
-                pbc = super::cp2k::cp2k_periodic(f[2]);
-            }
+        // Split once per line: these files run to hundreds of MB (review 2026-11-06 A2-11).
+        // `is(tag)` is `line_matches` on the split line
+        let w: Vec<&str> = l.split_whitespace().collect();
+        let is = |candidates: &[&[&str]]| candidates.iter().any(|t| w.starts_with(t));
+        if pbc.is_none() && w.len() >= 3 && w[0] == "CELL|" && w[1] == "Periodicity" {
+            pbc = super::cp2k::cp2k_periodic(w[2]);
         }
-        if line_matches(&l, tag::FRAME) {
+        if is(tag::FRAME) {
             if let Some((a, converged)) = pending.take() {
                 let view: Vec<&str> = window.iter().map(|l| l.as_str()).collect();
                 parse_step(&view, a, base, converged, &mut stats, &mut acc)?;
@@ -517,26 +497,24 @@ fn parse_cp2k_md_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(T
             }
             stats.n_steps += 1;
             // 行末是步号本身；解析不出就不记，锚点本身仍然有效
-            if let Some(n) = l.split_whitespace().last().and_then(|t| t.parse::<i64>().ok()) {
+            if let Some(n) = w.last().and_then(|t| t.parse::<i64>().ok()) {
                 first_last = Some((first_last.map_or(n, |(f, _)| f), n));
             }
             // SCF 收敛与否：锚点上方最近的那一行；没有 SCF 行可依时不因此丢帧
             // take(): a step without its own verdict line must not inherit this one
             pending = Some((window.len(), last_scf.take().unwrap_or(true)));
-        } else if let Some(w) = Some(l.split_whitespace().collect::<Vec<_>>())
-            .filter(|w| w.windows(2).any(|p| p == ["SCF", "run"]))
-        {
+        } else if w.windows(2).any(|p| p == ["SCF", "run"]) {
             // `SCF run` anywhere, not leading: CP2K writes `  *** SCF run converged in N
             // steps ***` and `*** WARNING in qs_scf.F:630 :: SCF run NOT converged ***`.
             // Converged only on the word `converged` without `NOT`, so `*** SCF run
             // terminated by external request ***` counts as not converged. cp2k_sp.rs keeps a
             // copy of this verdict (two sites, R6)
             last_scf = Some(w.contains(&"converged") && !w.contains(&"NOT"));
-        } else if line_matches(&l, tag::RESTART) {
+        } else if is(tag::RESTART) {
             stats.n_restarts += 1;
-        } else if version.is_none() && line_matches(&l, tag::VERSION) {
+        } else if version.is_none() && is(tag::VERSION) {
             // 行尾是版本号本身（`CP2K| version string: CP2K version 2024.1`）
-            version = l.split_whitespace().last().map(|v| v.to_string());
+            version = w.last().map(|v| v.to_string());
         }
         window.push(l);
     }

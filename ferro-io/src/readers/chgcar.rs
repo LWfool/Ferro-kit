@@ -7,6 +7,7 @@ use std::path::Path;
 use ferro_core::{ChargeGrid, Frame};
 use anyhow::{ensure, Context, Result};
 use super::vasp::parse_poscar_header;
+use super::util::parse_fortran_float;
 
 /// Read a VASP CHGCAR file, returning the structural frame and charge density grid.
 pub fn read_chgcar(path: &Path) -> Result<(Frame, ChargeGrid)> {
@@ -63,19 +64,6 @@ fn parse_chgcar(content: &str) -> Result<(Frame, ChargeGrid)> {
     Ok((frame, chg))
 }
 
-
-/// 解析一个数，兼容 Fortran 在三位指数时省掉 `E` 的写法（`0.1234-100` = 0.1234E-100）。
-/// VASP 的 CHGCAR 在真空区的极小密度上会写出这种数。
-pub(crate) fn parse_fortran_float(tok: &str) -> Result<f64> {
-    if let Ok(v) = tok.parse::<f64>() {
-        return Ok(v);
-    }
-    // 第 0 位之后最后一个正负号前补 E；前面不能已经有 E/e（那是真坏值）
-    let split = tok.rfind(['+', '-']).filter(|&i| i > 0 && !tok[..i].contains(['E', 'e']));
-    split
-        .and_then(|i| format!("{}E{}", &tok[..i], &tok[i..]).parse::<f64>().ok())
-        .ok_or_else(|| anyhow::anyhow!("not a number"))
-}
 
 #[cfg(test)]
 mod tests {

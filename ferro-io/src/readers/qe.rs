@@ -18,7 +18,7 @@ fn strip_comments(content: &str) -> Vec<&str> {
     content.lines()
         .map(|l| {
             let t = l.trim();
-            if let Some(p) = t.find(['!', '#']) { &t[..p] } else { t }
+            if let Some(p) = t.find(['!', '#']) { t[..p].trim_end() } else { t }
         })
         .collect()
 }
@@ -50,8 +50,7 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     // other two cards (review 2026-10-30 A1-L6)
     let mut species: HashMap<String, (String, f64)> = HashMap::new();
     if let Some(start) = find_card(&stripped, "ATOMIC_SPECIES") {
-        for l in stripped[start+1..].iter() {
-            let l = l.trim();
+        for &l in &stripped[start+1..] {
             if l.is_empty() { continue; }
             if is_card_or_namelist(l) { break; }
             let parts: Vec<&str> = l.split_whitespace().collect();
@@ -100,9 +99,8 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     };
 
     let mut cell_vecs: Vec<Vector3<f64>> = Vec::with_capacity(3);
-    for l in stripped[cell_start + 1..].iter() {
+    for &l in &stripped[cell_start + 1..] {
         if cell_vecs.len() == 3 { break; }
-        let l = l.trim();
         if l.is_empty() { continue; }
         if is_card_or_namelist(l) { break; }
         let v = fortran_vec3(l).with_context(|| format!("invalid CELL_PARAMETERS line {l:?}"))?;
@@ -118,14 +116,6 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
     let pos_opt = card_option(stripped[pos_start], "ATOMIC_POSITIONS");
     // 坐标的 alat 在没有 celldm(1)/A 时取 |a1|（pw.x 同上处；ASE 不支持这一情形）
     let pos_alat = alat.unwrap_or_else(|| cell.matrix.row(0).norm());
-    let to_cart = |v: Vector3<f64>| -> Vector3<f64> {
-        match pos_opt.as_str() {
-            "angstrom" => v,
-            "bohr" => v * BOHR_TO_ANG,
-            "crystal" => cell.fractional_to_cartesian(v),
-            _ => v * pos_alat, // alat 或未写（pw.x 的默认）
-        }
-    };
     match pos_opt.as_str() {
         "angstrom" | "bohr" | "crystal" | "alat" | "" => {}
         "crystal_sg" => bail!("ATOMIC_POSITIONS crystal_sg (Wyckoff positions) is not supported"),
@@ -133,16 +123,25 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
             "unknown ATOMIC_POSITIONS option {other:?} (expected alat, bohr, angstrom or crystal)"
         ),
     }
+    let to_cart = |v: Vector3<f64>| -> Vector3<f64> {
+        match pos_opt.as_str() {
+            "angstrom" => v,
+            "bohr" => v * BOHR_TO_ANG,
+            "crystal" => cell.fractional_to_cartesian(v),
+            // alat, or no option (pw.x's default)
+            "alat" | "" => v * pos_alat,
+            _ => unreachable!("the option was checked above"),
+        }
+    };
 
     let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
 
-    for l in stripped[pos_start+1..].iter() {
-        let l = l.trim();
+    for &l in &stripped[pos_start+1..] {
         if l.is_empty() { continue; }
         if is_card_or_namelist(l) { break; }
-        let parts: Vec<&str> = l.split_whitespace().collect();
-        let label = parts[0].to_string();
-        let v = fortran_vec3(&parts[1..].join(" "))
+        let (label, rest) = l.split_once(char::is_whitespace).unwrap_or((l, ""));
+        let label = label.to_string();
+        let v = fortran_vec3(rest)
             .with_context(|| format!("invalid ATOMIC_POSITIONS line {l:?}"))?;
         // 未声明的标签 pw.x 拒收；以前按标签字母猜元素，磁矩也随之静默丢失
         let (elem, mass) = species.get(&label).cloned().with_context(|| {
@@ -319,6 +318,10 @@ fn find_card(lines: &[&str], card: &str) -> Option<usize> {
 
 /// 卡片行上的选项：去掉卡片名后忽略 `{}()`、空白与大小写。`{bohr}`、`(bohr)`、
 /// `bohr` 是同一个选项（pw.x 与 ASE 都按关键字匹配，不要求括号）；未写返回空串
+///
+/// `qe_out.rs::card_unit` parses the same options as pw.x echoes them in its output,
+/// where `(alat= 8.1)` also carries a value. Not merged: the input and the output
+/// format change for different reasons (R6, review 2026-11-06 A2-17).
 fn card_option(line: &str, card: &str) -> String {
     line.trim()[card.len()..]
         .chars()

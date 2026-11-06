@@ -82,11 +82,7 @@ pub(super) fn parse_poscar_header(lines: &mut std::str::Lines<'_>) -> Result<(St
             .with_context(|| format!("invalid lattice vector {i}"))?;
         *row = [v[0] * scale, v[1] * scale, v[2] * scale];
     }
-    let cell = Cell::from_matrix(Matrix3::new(
-        m[0][0], m[0][1], m[0][2],
-        m[1][0], m[1][1], m[1][2],
-        m[2][0], m[2][1], m[2][2],
-    ));
+    let cell = Cell::from_matrix(Matrix3::from_row_slice(m.as_flattened()));
 
     // An element line, then counts (VASP 5 on). Counts with no element line are the VASP 4 format,
     // no longer read (user's call, 2026-10-19): its placeholder elements `X1`, `X2` made densities,

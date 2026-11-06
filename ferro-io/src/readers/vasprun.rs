@@ -86,7 +86,7 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
             Ok(Event::Start(e)) => {
                 let at = reader.buffer_position();
                 st.text.clear();
-                let name = utf8(e.name().as_ref(), at)?.to_string();
+                let name = utf8(e.name().into_inner(), at)?;
                 let attr = |key: &str| -> Result<Option<String>> {
                     for a in e.attributes().flatten() {
                         if a.key.as_ref() == key.as_bytes() {
@@ -95,7 +95,7 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                     }
                     Ok(None)
                 };
-                match name.as_str() {
+                match name {
                     "atominfo" => st.in_atominfo = true,
                     "array" if st.in_atominfo => {
                         st.in_atoms_array = attr("name")?.as_deref() == Some("atoms");
@@ -153,10 +153,10 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
             }
             Ok(Event::End(e)) => {
                 let at = reader.buffer_position();
-                let name = utf8(e.name().as_ref(), at)?.to_string();
+                let name = utf8(e.name().into_inner(), at)?;
                 let text = std::mem::take(&mut st.text);
                 let text = text.trim();
-                match name.as_str() {
+                match name {
                     "atominfo" => st.in_atominfo = false,
                     "array" => st.in_atoms_array = false,
                     "c" => st.in_c = false,
@@ -199,11 +199,7 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                         if st.in_calculation {
                             match which.as_deref() {
                                 Some("basis") if st.in_structure && rows.len() == 3 => {
-                                    st.cell = Some(Matrix3::new(
-                                        rows[0][0], rows[0][1], rows[0][2],
-                                        rows[1][0], rows[1][1], rows[1][2],
-                                        rows[2][0], rows[2][1], rows[2][2],
-                                    ));
+                                    st.cell = Some(Matrix3::from_row_slice(rows.as_flattened()));
                                 }
                                 Some("positions") if st.in_structure => {
                                     st.positions = rows
@@ -219,11 +215,7 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                                     );
                                 }
                                 Some("stress") if rows.len() == 3 => {
-                                    st.stress_kb = Some(Matrix3::new(
-                                        rows[0][0], rows[0][1], rows[0][2],
-                                        rows[1][0], rows[1][1], rows[1][2],
-                                        rows[2][0], rows[2][1], rows[2][2],
-                                    ));
+                                    st.stress_kb = Some(Matrix3::from_row_slice(rows.as_flattened()));
                                 }
                                 _ => {}
                             }
@@ -299,7 +291,7 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
         let cart = cell.transpose() * f;
         frame.add_atom(Atom::new(sym.clone(), cart));
     }
-    frame.set_forces(st.forces.clone()).expect("one force per atom, checked above");
+    frame.set_forces(st.forces.take()).expect("one force per atom, checked above");
     frame.energy = Some(energy);
     // vasprun 没有温度字段(只有输入参数 TEBEG),按 T = 2*E_kin/(3N*k_B) 反算。
     // 除数是 3N 不是 3N-3:OUTCAR 的 EKIN=4.268142 eV / N=296 与它自己打印的

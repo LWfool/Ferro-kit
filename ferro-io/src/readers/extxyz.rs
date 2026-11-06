@@ -349,11 +349,7 @@ fn parse_lattice(s: &str) -> Result<Cell> {
         .map(|x| x.parse::<f64>().context("float"))
         .collect::<Result<_>>()?;
     anyhow::ensure!(v.len() == 9, "Lattice must have 9 values");
-    Ok(Cell::from_matrix(Matrix3::new(
-        v[0], v[1], v[2],
-        v[3], v[4], v[5],
-        v[6], v[7], v[8],
-    )))
+    Ok(Cell::from_matrix(Matrix3::from_row_slice(&v)))
 }
 
 /// Three of T / F (also True / False / 1 / 0, any case). Anything else is an error: an

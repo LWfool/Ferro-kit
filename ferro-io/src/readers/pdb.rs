@@ -21,6 +21,8 @@ pub fn read_pdb(path: &Path) -> Result<(Trajectory, Vec<Notice>)> {
 fn parse_pdb_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Trajectory, Vec<Notice>)> {
     let mut traj = Trajectory::new();
     let mut warnings = Vec::new();
+    // One notice for a placeholder CRYST1, however many frames repeat it
+    let mut placeholder_noted = false;
     let mut current = Frame::new();
     let mut open_model: Option<usize> = None; // line of an open MODEL, until its ENDMDL
     let mut cell: Option<Cell> = None;
@@ -49,7 +51,7 @@ fn parse_pdb_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Traje
                 // PDB format: a structure not determined crystallographically carries the placeholder
                 // CRYST1 1 1 1 90 90 90 (MDAnalysis reads it as no cell too)
                 if cell.as_ref().is_some_and(is_placeholder_cell) {
-                    if !warnings.iter().any(|w: &Notice| w.message.contains("CRYST1")) {
+                    if !std::mem::replace(&mut placeholder_noted, true) {
                         warnings.push(Notice::warning(Some(ln + 1),
                             "CRYST1 1 1 1 90 90 90 is the PDB placeholder for \
                              a structure with no unit cell; read as non-periodic"));

@@ -55,23 +55,8 @@ fn floats(line: &str) -> Vec<f64> {
 /// `Iteration  <ionic>( <scf>)` → the two integers.
 fn iteration_numbers(line: &str) -> Option<(i64, i64)> {
     let rest = line.split("Iteration").nth(1)?;
-    let mut nums = Vec::new();
-    let mut cur = String::new();
-    for c in rest.chars() {
-        if c.is_ascii_digit() {
-            cur.push(c);
-        } else if !cur.is_empty() {
-            nums.push(cur.parse::<i64>().ok()?);
-            cur.clear();
-            if nums.len() == 2 {
-                break;
-            }
-        }
-    }
-    if !cur.is_empty() && nums.len() < 2 {
-        nums.push(cur.parse::<i64>().ok()?);
-    }
-    (nums.len() == 2).then(|| (nums[0], nums[1]))
+    let mut nums = rest.split(|c: char| !c.is_ascii_digit()).filter(|t| !t.is_empty());
+    Some((nums.next()?.parse().ok()?, nums.next()?.parse().ok()?))
 }
 
 /// Everything a frame needs, filled as its lines go by.
@@ -179,11 +164,7 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
                 cell_rows.push([v[0], v[1], v[2]]);
                 want_cell -= 1;
                 if want_cell == 0 && cell_rows.len() == 3 {
-                    p.cell = Some(Matrix3::new(
-                        cell_rows[0][0], cell_rows[0][1], cell_rows[0][2],
-                        cell_rows[1][0], cell_rows[1][1], cell_rows[1][2],
-                        cell_rows[2][0], cell_rows[2][1], cell_rows[2][2],
-                    ));
+                    p.cell = Some(Matrix3::from_row_slice(cell_rows.as_flattened()));
                 }
             }
             continue;
@@ -329,7 +310,7 @@ fn finish(
     for (i, sym) in elements.iter().enumerate() {
         frame.add_atom(Atom::new(sym.clone(), p.positions[i]));
     }
-    frame.set_forces(Some(p.forces.clone())).expect("one force per atom, checked above");
+    frame.set_forces(Some(p.forces)).expect("one force per atom, checked above");
     frame.energy = Some(energy);
     frame.temperature = p.temperature;
     frame.step = Some(p.step);
