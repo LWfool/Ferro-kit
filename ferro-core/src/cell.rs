@@ -95,11 +95,7 @@ impl Cell {
 
     /// 三个晶格角 [α, β, γ]（度）：α = ∠(b,c)，β = ∠(a,c)，γ = ∠(a,b)。
     pub fn angles(&self) -> [f64; 3] {
-        let row = |i: usize| Vector3::new(
-            self.matrix[(i, 0)],
-            self.matrix[(i, 1)],
-            self.matrix[(i, 2)],
-        );
+        let row = |i: usize| self.matrix.row(i).transpose();
         let a = row(0);
         let b = row(1);
         let c = row(2);

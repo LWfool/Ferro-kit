@@ -26,7 +26,7 @@ use crate::error::{ChemError, Result};
 /// whole `Atom` with two strings. The per-atom arrays are private so their lengths
 /// cannot drift from the atom count (review B5): [`Frame::set_forces`] and
 /// [`Frame::set_velocities`] refuse a wrong length.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Frame {
     sites: Arc<Vec<Site>>,
     positions: Vec<Vector3<f64>>,
@@ -76,19 +76,7 @@ pub struct Frame {
 impl Frame {
     /// An empty, non-periodic frame.
     pub fn new() -> Self {
-        Self {
-            sites: Arc::new(Vec::new()),
-            positions: Vec::new(),
-            charges: None,
-            forces: None,
-            velocities: None,
-            cell: None,
-            pbc: [false; 3],
-            energy: None,
-            stress: None,
-            temperature: None,
-            step: None,
-        }
+        Self::default()
     }
 
     /// A periodic frame (the usual entry for crystals and surfaces).
@@ -262,7 +250,12 @@ impl Frame {
             charges: self.charges.as_ref().map(|c| order.iter().map(|&i| c[i]).collect()),
             forces: self.forces.as_deref().map(pick),
             velocities: self.velocities.as_deref().map(pick),
-            ..self.clone_without_atoms()
+            cell: self.cell.clone(),
+            pbc: self.pbc,
+            energy: self.energy,
+            stress: self.stress,
+            temperature: self.temperature,
+            step: self.step,
         }
     }
 
@@ -278,23 +271,6 @@ impl Frame {
         }
         if let Some(c) = &mut self.charges {
             c.truncate(n);
-        }
-    }
-
-    /// The frame-level fields, with no atoms.
-    fn clone_without_atoms(&self) -> Frame {
-        Frame {
-            sites: Arc::new(Vec::new()),
-            positions: Vec::new(),
-            charges: None,
-            forces: None,
-            velocities: None,
-            cell: self.cell.clone(),
-            pbc: self.pbc,
-            energy: self.energy,
-            stress: self.stress,
-            temperature: self.temperature,
-            step: self.step,
         }
     }
 
@@ -378,12 +354,6 @@ impl Frame {
                 *p += cell.fractional_to_cartesian(shift);
             }
         }
-    }
-}
-
-impl Default for Frame {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

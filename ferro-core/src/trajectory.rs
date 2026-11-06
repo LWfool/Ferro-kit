@@ -18,7 +18,7 @@ pub fn select_range(n: usize, start: usize, end: Option<usize>, stride: usize) -
     if n == 0 || start > end {
         return Vec::new();
     }
-    (start..=end).step_by(stride.max(1)).collect()
+    (start..=end).step_by(stride).collect()
 }
 
 /// Indices of `count` items spread evenly over `[start, end]`, both ends taken.
@@ -28,7 +28,7 @@ pub fn select_range(n: usize, start: usize, end: Option<usize>, stride: usize) -
 pub fn spread_range(n: usize, start: usize, end: Option<usize>, count: usize) -> Vec<usize> {
     let last = n.saturating_sub(1);
     let end = end.unwrap_or(last).min(last);
-    if n == 0 || count == 0 || start > end {
+    if n == 0 || start > end {
         return Vec::new();
     }
     let available = end - start + 1;
@@ -64,7 +64,7 @@ pub struct TrajectoryMetadata {
 ///
 /// 单帧结构文件也以 `Trajectory { frames: vec![frame] }` 形式存储，
 /// 保证所有模块的 API 签名统一，无需区分单帧/多帧。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Trajectory {
     pub frames: Vec<Frame>,
     pub metadata: TrajectoryMetadata,
@@ -73,10 +73,7 @@ pub struct Trajectory {
 impl Trajectory {
     /// 创建空轨迹。
     pub fn new() -> Self {
-        Self {
-            frames: Vec::new(),
-            metadata: TrajectoryMetadata::default(),
-        }
+        Self::default()
     }
 
     /// 由单帧构造轨迹（结构文件读取的常用路径）。
@@ -180,7 +177,8 @@ impl Trajectory {
     /// The inclusive upper bound matches the frame numbering `ferro info` prints,
     /// so `--end 4` selects the frame shown as `Frame 4`. `end` of `None` means the
     /// last frame. Out-of-range bounds clamp rather than panic; a `start` past the
-    /// end yields an empty trajectory. A `stride` of 0 is treated as 1.
+    /// end yields an empty trajectory. `stride` must be at least 1 (0 panics);
+    /// entry points reject 0 up front with [`Trajectory::check_selection`].
     /// Metadata is preserved unchanged.
     pub fn select(&self, start: usize, end: Option<usize>, stride: usize) -> Trajectory {
         self.subset(&self.select_indices(start, end, stride))
@@ -259,32 +257,30 @@ impl Trajectory {
     /// constant atom order, and files written independently disagree. Consecutive
     /// frames with the same element sequence reuse the previous permutation.
     pub fn canonically_sorted(&self) -> Trajectory {
-        let mut out = self.clone();
         // (element sequence, permutation), reused while consecutive frames keep the sequence
-        let mut cached: Option<(Vec<String>, Vec<usize>)> = None;
-        for f in &mut out.frames {
-            let elements: Vec<String> = f.symbols().into_iter().map(str::to_string).collect();
-            if cached.as_ref().is_none_or(|(e, _)| *e != elements) {
-                let order = canonical_order(&elements);
-                cached = Some((elements, order));
-            }
-            let (_, order) = cached.as_ref().expect("cached above");
-            if order.iter().enumerate().all(|(i, &j)| i == j) {
-                continue;
-            }
-            // Frame::permuted moves forces, velocities and charges with the atoms;
-            // energy, cell and stress do not depend on atom numbering
-            *f = f.permuted(order);
-        }
+        let mut cached: Option<(Vec<&str>, Vec<usize>)> = None;
+        let frames = self
+            .frames
+            .iter()
+            .map(|f| {
+                let elements = f.symbols();
+                if cached.as_ref().is_none_or(|(e, _)| *e != elements) {
+                    let order = canonical_order(&elements);
+                    cached = Some((elements, order));
+                }
+                let (_, order) = cached.as_ref().expect("cached above");
+                if order.iter().enumerate().all(|(i, &j)| i == j) {
+                    return f.clone();
+                }
+                // Frame::permuted moves forces, velocities and charges with the atoms;
+                // energy, cell and stress do not depend on atom numbering
+                f.permuted(order)
+            })
+            .collect();
+        let mut out = Trajectory { frames, metadata: self.metadata.clone() };
         // Each permuted frame got a site table of its own; equal ones are shared again
         out.share_sites();
         out
-    }
-}
-
-impl Default for Trajectory {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -463,8 +459,6 @@ mod tests {
         assert!(traj.select(99, None, 1).frames.is_empty());
         // start > end → 空
         assert!(traj.select(4, Some(2), 1).frames.is_empty());
-        // stride 0 当作 1，不是除零
-        assert_eq!(picked(&traj.select(0, Some(2), 0)), vec![0, 1, 2]);
         // 空轨迹不 panic
         assert!(Trajectory::new().select(0, None, 1).frames.is_empty());
     }
@@ -493,9 +487,8 @@ mod tests {
         // 要的比有的多 → 每帧一次，不是补重复
         assert_eq!(traj.spread_indices(0, None, 99), vec![0, 1, 2, 3, 4]);
         assert_eq!(traj.spread_indices(0, None, 5), vec![0, 1, 2, 3, 4]);
-        // 要 1 个给起点；要 0 个给空
+        // Asking for 1 gives the start.
         assert_eq!(traj.spread_indices(2, None, 1), vec![2]);
-        assert!(traj.spread_indices(0, None, 0).is_empty());
     }
 
     #[test]

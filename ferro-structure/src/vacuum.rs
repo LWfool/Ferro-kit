@@ -23,6 +23,8 @@ use ferro_core::frame::Frame;
 /// - `ValidationError` if the cell is singular (e.g. c = 0, the ASE convention for 2D materials)
 ///   or not finite (`Cell::check`).
 pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
+    // Same parsing as `merge_frames`; not shared, since a one-match helper across files
+    // costs more than it saves (R6, review 2026-11-06 A1-13)
     let axis_idx = match axis {
         "x" => 0,
         "y" => 1,
@@ -55,9 +57,7 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
     // 面间距 d_i = V / |a_j × a_k| 与 |a_i| 成正比，所以按 d_i 求缩放比即可（同 ASE 的
     // vacuum / cosθ）
     let m = &cell.matrix;
-    let (j, k) = ((axis_idx + 1) % 3, (axis_idx + 2) % 3);
-    let face = m.row(j).cross(&m.row(k)).norm();
-    let spacing = m.determinant().abs() / face;
+    let spacing = cell.interplanar_spacings()?[axis_idx];
     let scale = (spacing + thickness) / spacing;
 
     let mut new_m = *m;

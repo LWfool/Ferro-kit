@@ -49,6 +49,8 @@ use ferro_core::frame::Frame;
 ///   1° apart): a gap along the normal has no meaning then.
 /// - `ValidationError` if an atom lies outside its cell along a non-periodic axis.
 pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> Result<Frame> {
+    // Same parsing as `add_vacuum`; not shared, since a one-match helper across files
+    // costs more than it saves (R6, review 2026-11-06 A1-13)
     let join = match axis {
         "x" => 0,
         "y" => 1,

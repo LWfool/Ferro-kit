@@ -1,6 +1,6 @@
 //! Supercell construction.
 
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::Matrix3;
 
 use ferro_core::cell::Cell;
 use ferro_core::error::{ChemError, Result};
@@ -77,19 +77,10 @@ pub fn find_supercell_dims(
 
     // Step 2: grow the thinnest axis until there are enough atoms
     while n[0] * n[1] * n[2] * per_cell < min_atoms {
-        let super_lengths = [
-            n[0] as f64 * lengths[0],
-            n[1] as f64 * lengths[1],
-            n[2] as f64 * lengths[2],
-        ];
-        // The thinnest axis (partial_cmp cannot panic: the cell passed `Cell::check`,
-        // so every spacing is finite)
-        let shortest = super_lengths
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(i, _)| i)
-            .unwrap();
+        // The thinnest axis
+        let shortest = (0..3)
+            .min_by(|&i, &j| (n[i] as f64 * lengths[i]).total_cmp(&(n[j] as f64 * lengths[j])))
+            .expect("three axes");
         n[shortest] += 1;
     }
     // The last step adds a whole slab, which can carry the count past min_atoms
@@ -172,19 +163,15 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
 
     // ── 新格子矩阵（各行独立缩放）────────────────────────────────────────────
     let m = &cell.matrix;
-    #[rustfmt::skip]
-    let new_matrix = Matrix3::new(
-        m[(0,0)] * nx as f64, m[(0,1)] * nx as f64, m[(0,2)] * nx as f64,
-        m[(1,0)] * ny as f64, m[(1,1)] * ny as f64, m[(1,2)] * ny as f64,
-        m[(2,0)] * nz as f64, m[(2,1)] * nz as f64, m[(2,2)] * nz as f64,
-    );
+    let new_matrix =
+        Matrix3::from_rows(&[m.row(0) * nx as f64, m.row(1) * ny as f64, m.row(2) * nz as f64]);
     // 副本沿 +a/+b/+c 展开，盒子原点不动（审查 A-12：from_matrix 会把 LAMMPS 的 lo 清零）
     let new_cell = Cell { matrix: new_matrix, origin: cell.origin };
 
     // ── 晶格行向量（用于 Cartesian 偏移计算）──────────────────────────────────
-    let a_vec = Vector3::new(m[(0, 0)], m[(0, 1)], m[(0, 2)]);
-    let b_vec = Vector3::new(m[(1, 0)], m[(1, 1)], m[(1, 2)]);
-    let c_vec = Vector3::new(m[(2, 0)], m[(2, 1)], m[(2, 2)]);
+    let a_vec = m.row(0).transpose();
+    let b_vec = m.row(1).transpose();
+    let c_vec = m.row(2).transpose();
 
     // ── 扩展原子列表 ──────────────────────────────────────────────────────────
     let n_orig = frame.n_atoms();
@@ -215,6 +202,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nalgebra::Vector3;
     use ferro_core::atom::Atom;
 
     /// 构造一个正交晶胞，含两个原子（分数坐标 0,0,0 和 0.5,0.5,0.5）

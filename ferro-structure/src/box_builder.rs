@@ -308,6 +308,10 @@ struct CellList {
     n_bins: usize,
     inv_bin_size: f64,
     bins: Vec<Vec<usize>>,
+    /// Per-axis bin shifts to visit (-1, 0, +1 as `n_bins - 1, 0, 1`), with shifts that
+    /// fold onto the same bin dropped. With `n_bins <= 2` the wrap maps two shifts to one
+    /// bin, and visiting it twice would count its atoms twice (the repulsion multiplied).
+    shifts: Vec<usize>,
 }
 
 impl CellList {
@@ -323,10 +327,17 @@ impl CellList {
         let n_bins = nf as usize;
         let inv_bin_size = n_bins as f64 / box_len;
         let total = n_bins * n_bins * n_bins;
+        let mut shifts: Vec<usize> = Vec::with_capacity(3);
+        for d in [n_bins - 1, 0, 1] {
+            if !shifts.iter().any(|&s| s % n_bins == d % n_bins) {
+                shifts.push(d);
+            }
+        }
         Self {
             n_bins,
             inv_bin_size,
             bins: vec![Vec::new(); total],
+            shifts,
         }
     }
 
@@ -356,18 +367,14 @@ impl CellList {
     fn neighbors(&self, atoms: &[Atom], i: usize) -> Vec<usize> {
         let (ix, iy, iz) = self.bin_index(&atoms[i].position);
         let mut result = Vec::new();
-        // 检查 27 个相邻 bin；盒子过小（n_bins ≤ 2）时 rem 折叠会让同一 bin 被多次
-        // 映射，用 seen 去重避免把近邻原子重复计入（否则弛豫斥力被成倍累加）。
-        let mut seen: Vec<usize> = Vec::with_capacity(27);
-        for dx in [self.n_bins - 1, 0, 1] {
-            for dy in [self.n_bins - 1, 0, 1] {
-                for dz in [self.n_bins - 1, 0, 1] {
+        // The up-to-27 neighbouring bins, each once (see `shifts`).
+        for &dx in &self.shifts {
+            for &dy in &self.shifts {
+                for &dz in &self.shifts {
                     let nx = (ix + dx) % self.n_bins;
                     let ny = (iy + dy) % self.n_bins;
                     let nz = (iz + dz) % self.n_bins;
                     let idx = self.flat_index(nx, ny, nz);
-                    if seen.contains(&idx) { continue; }
-                    seen.push(idx);
                     for &j in &self.bins[idx] {
                         if j != i {
                             result.push(j);

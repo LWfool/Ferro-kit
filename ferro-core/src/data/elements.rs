@@ -138,9 +138,9 @@ pub fn canonical_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 ///
 /// Stable: atoms of one element keep their relative order, so a system already
 /// in canonical order is left untouched rather than reshuffled.
-pub fn canonical_order(elements: &[String]) -> Vec<usize> {
+pub fn canonical_order<S: AsRef<str>>(elements: &[S]) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..elements.len()).collect();
-    idx.sort_by(|&a, &b| canonical_cmp(&elements[a], &elements[b]).then_with(|| a.cmp(&b)));
+    idx.sort_by(|&a, &b| canonical_cmp(elements[a].as_ref(), elements[b].as_ref()).then_with(|| a.cmp(&b)));
     idx
 }
 
