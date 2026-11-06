@@ -24,7 +24,7 @@ impl PyTrajectory {
         Self { inner }
     }
 
-    fn frame_ref(&self, index: usize) -> PyResult<&ferro_core::Frame> {
+    pub(crate) fn frame_ref(&self, index: usize) -> PyResult<&ferro_core::Frame> {
         self.inner
             .frame(index)
             .ok_or_else(|| PyIndexError::new_err(format!("frame index {index} out of range")))

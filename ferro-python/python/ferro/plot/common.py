@@ -146,22 +146,13 @@ def read_header(path):
     return shared, inputs.set_index("file")
 
 
-def files_in(df):
-    """The values of the ``file`` column, **in order of appearance**.
-
-    The order is not alphabetical: it is the order of ``ferro -i`` (``expand_inputs`` keeps it,
-    ``concat_union`` joins the parts in order), so the order of a composition series is set on
-    the command line. A categorical x axis uses this order; do not sort it.
-    """
-    return list(dict.fromkeys(df["file"]))
-
-
 # ── Colours ──────────────────────────────────────────────────────────────────
 
 def color_map(names):
     """Map names onto the style's colour cycle, wrapping around.
 
-    Callers pass ``files_in(df)``, so one trajectory has one colour in every figure.
+    Callers pass the run's files in order of appearance (see ``context``), so one trajectory
+    has one colour in every figure.
     """
     cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     return {n: cycle[i % len(cycle)] for i, n in enumerate(names)}
@@ -224,7 +215,7 @@ class Context:
         if not self.names:
             raise ferro.FerroError(f"{self.path} sets show=0 for every composition of this run: "
                                    "nothing to draw")
-        self._groups_shown = {g for g in groups if g in shown}
+        self.groups_shown = {g for g in groups if g in shown}
         self.colors = color_map(self.names)
         self.rows = []
 
@@ -232,9 +223,6 @@ class Context:
         """The compositions in df with ``show=1``, in the row order of ``labels.csv``."""
         present = set(df["file"])
         return [n for n in self.names if n in present]
-
-    def group_shown(self, group):
-        return group in self._groups_shown
 
     def label(self, key):
         return self._label.get(key, key)
@@ -258,7 +246,10 @@ class Context:
 def context(frames, outdir=None, groups=()):
     """frames: [(path, df)]. The compositions are every ``file`` in all products, in order of
     appearance."""
-    files = list(dict.fromkeys(f for _, df in frames for f in files_in(df)))
+    # In order of appearance, not alphabetical: the order of ``ferro -i`` (``expand_inputs``
+    # keeps it, ``concat_union`` joins the parts in order), so the order of a composition
+    # series is set on the command line. A categorical x axis uses this order; do not sort it
+    files = list(dict.fromkeys(f for _, df in frames for f in df["file"]))
     return Context(files, outdir, groups)
 
 

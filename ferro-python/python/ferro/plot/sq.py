@@ -8,7 +8,6 @@ decomposition that adds up to the total, not drawn here: ``ferro traj sq`` alway
 into the same csv, select the columns in pandas to look at them.
 """
 
-import matplotlib.pyplot as plt
 
 import ferro
 from ferro.plot import common
@@ -60,14 +59,10 @@ def build_row(df, axes, ctx, path):
 
 
 def build_figure(frames, ctx):
-    nrows = len(frames)
+    # One row per product, one column per panel: the shared grid with every cell used
     ncols = len(CFG["panels"])
-    fig, axes = plt.subplots(
-        nrows, ncols,
-        figsize=(CFG["panel_w"] * ncols, CFG["panel_h"] * nrows),
-        squeeze=False,
-    )
-    fig.subplots_adjust(wspace=CFG["wspace"], hspace=CFG["hspace"])
+    fig, flat = common.panel_grid(len(frames) * ncols, {**CFG, "ncols": ncols})
+    axes = flat.reshape(len(frames), ncols)
 
     for row, (path, df) in zip(axes, frames):
         build_row(df, row, ctx, path)

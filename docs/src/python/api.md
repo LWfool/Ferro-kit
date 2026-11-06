@@ -229,5 +229,5 @@ The binding's own argument errors are:
 | Exception | When |
 |---|---|
 | `IndexError` | a frame index past the end of the trajectory |
-| `ValueError` | `by=` other than `"element"` / `"label"`; `merge` of an empty trajectory |
+| `ValueError` | `by=` other than `"element"` / `"label"`; `merge` of a trajectory that does not hold exactly one frame |
 | `KeyError` | `gr_pair` asked for a pair the trajectory does not hold |

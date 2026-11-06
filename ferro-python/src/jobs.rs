@@ -2,17 +2,10 @@
 //! QE namelist 的拆分与写回、原子排序。格式规范只在 ferro-io 一份，这里只做转换。
 
 use ferro_io::{Namelist, QeInputParts};
-use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 
 use crate::pyerr;
 use crate::types::PyTrajectory;
-
-fn frame(traj: &PyTrajectory, index: usize) -> PyResult<&ferro_core::Frame> {
-    traj.inner
-        .frame(index)
-        .ok_or_else(|| PyIndexError::new_err(format!("frame index {index} out of range")))
-}
 
 /// 逐帧按 (原子序数, 符号) 重排原子（同元素成块、块按周期表序，同元素内保持原相对顺序），
 /// 与 `ferro convert` 对所有产物的排法相同。逐帧各取各的置换。
@@ -25,7 +18,7 @@ fn sort_atoms(traj: &PyTrajectory) -> PyTrajectory {
 #[pyfunction]
 #[pyo3(signature = (traj, frame_index = 0, comment = "ferro"))]
 fn poscar_string(traj: &PyTrajectory, frame_index: usize, comment: &str) -> PyResult<String> {
-    ferro_io::poscar_string(frame(traj, frame_index)?, comment).map_err(pyerr)
+    ferro_io::poscar_string(traj.frame_ref(frame_index)?, comment).map_err(pyerr)
 }
 
 /// 指定帧的 QE 三张结构卡片 `[(卡片名, 原文)]`；`pseudos` 为 元素 → 赝势文件名，须覆盖全部元素。
@@ -37,14 +30,14 @@ fn qe_structure_cards(
     frame_index: usize,
 ) -> PyResult<Vec<(String, String)>> {
     let pseudos: Vec<(String, String)> = pseudos.into_iter().collect();
-    ferro_io::qe_structure_cards(frame(traj, frame_index)?, &pseudos).map_err(pyerr)
+    ferro_io::qe_structure_cards(traj.frame_ref(frame_index)?, &pseudos).map_err(pyerr)
 }
 
 /// 指定帧的 CP2K `&CELL` 与 `&COORD` 两段。
 #[pyfunction]
 #[pyo3(signature = (traj, frame_index = 0))]
 fn cp2k_structure_sections(traj: &PyTrajectory, frame_index: usize) -> PyResult<String> {
-    ferro_io::cp2k_structure_sections(frame(traj, frame_index)?).map_err(pyerr)
+    ferro_io::cp2k_structure_sections(traj.frame_ref(frame_index)?).map_err(pyerr)
 }
 
 /// Python 侧的一个 namelist：`(名, [(键, 值原文), …])`

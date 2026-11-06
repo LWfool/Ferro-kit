@@ -79,8 +79,7 @@ class InputSet:
         links = links or {}
         for name, text in self.files.items():
             path = directory / name
-            if path.is_symlink() or path.exists():
-                path.unlink()
+            path.unlink(missing_ok=True)
             if name in links:
                 path.symlink_to(links[name])
             else:

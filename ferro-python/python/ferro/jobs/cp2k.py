@@ -271,6 +271,7 @@ class Cp2kGenerator(Generator):
         dft = root.section("FORCE_EVAL/DFT")
         if force_eval is None or dft is None:
             raise JobError("the template has no &FORCE_EVAL / &DFT")
+        # Same reading as conv.py's GAPW check; two sites, not shared (R6)
         method = (root.section("FORCE_EVAL/DFT/QS") or Section()).get("METHOD", "GPW").split()[0].upper()
         # GAPW_XC 不是全电子（CP2K 对它配 ALL 直接 CPABORT），配赝势时用户以有限差分
         # 验证过力有错：不支持

@@ -270,7 +270,7 @@ class QeGenerator(Generator):
         # "some starting_magnetization MUST be set"; fixed occupations are exempt)
         if (qe.get("system", "nspin") == "2" and qe.get("system", "tot_magnetization") is None
                 and not any(k.startswith("starting_magnetization") for k in qe.namelists.get("system", {}))
-                and qe.get("system", "occupations", "").strip("'\"").lower() != "from_input"):
+                and unquote(qe.get("system", "occupations", "")).lower() != "from_input"):
             raise JobError("nspin = 2 with no tot_magnetization and no starting_magnetization: pw.x stops "
                            "(\"some starting_magnetization MUST be set\"). Give --multiplicity (1 fixes the "
                            "moment at 0), or set starting_magnetization in the template")
@@ -301,7 +301,7 @@ class QeGenerator(Generator):
             if options.timestep is not None:
                 qe.set("control", "dt", round(options.timestep / RY_TIME_FS, 4))
                 # SVR 的时间常数 nraise 以步计，改 dt 热浴跟着变快或变慢
-                if qe.get("ions", "ion_temperature", "").strip("'\"").lower() == "svr":
+                if unquote(qe.get("ions", "ion_temperature", "")).lower() == "svr":
                     raw = qe.get("ions", "nraise", "1")
                     try:
                         nraise = int(raw)

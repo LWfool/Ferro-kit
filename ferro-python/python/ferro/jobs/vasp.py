@@ -255,14 +255,15 @@ class VaspGenerator(Generator):
         # meta-GGA（r2SCAN 等）用 ALGO = All + ISEARCH = 1：Normal（Davidson）对 meta-GGA
         # 收敛差，用户在 r2SCAN 标注里实测过这一组
         metagga = incar.get("METAGGA", "").strip().upper()
-        if metagga and metagga not in ("NONE", "--"):
+        is_metagga = metagga not in ("", "NONE", "--")
+        if is_metagga:
             if incar.get("ALGO", "").strip().upper() != "ALL" or incar.get("ISEARCH", "").strip() != "1":
                 incar["ALGO"] = "All"
                 incar["ISEARCH"] = 1
                 notes.append(f"METAGGA = {metagga}: ALGO = All, ISEARCH = 1")
         # meta-GGA 的 egg-box 噪声对细网格敏感：显式写 NGXF/NGYF/NGZF（模板已写且未给
         # --fine-grid 就沿用模板）。GGA 给了 --fine-grid 也照写，只提示多半用不着
-        if options.fine_grid is not None or (metagga not in ("", "NONE", "--") and "NGXF" not in incar):
+        if options.fine_grid is not None or (is_metagga and "NGXF" not in incar):
             factor = options.fine_grid if options.fine_grid is not None else 2
             encut = float(incar["ENCUT"]) if "ENCUT" in incar else enmax
             coarse, fine = fine_grid(one.cell(0), encut, factor, prec)
@@ -270,7 +271,7 @@ class VaspGenerator(Generator):
                 incar[key] = n
             notes.append(f"fine grid {factor:g} x NG {coarse} (PREC {prec}) -> NGXF/NGYF/NGZF {fine}"
                          + (" (Zn present: a factor of 3 may be needed)" if "Zn" in elements and factor < 3 else ""))
-            if metagga in ("", "NONE", "--"):
+            if not is_metagga:
                 notes.append("no METAGGA: a GGA rarely needs an explicit fine grid")
 
         n_valence = sum(c * z for c, z in zip(counts, zval))

@@ -59,8 +59,9 @@ def _qe_set(key):
 
 def _cp2k_needs_gapw(apply):
     def check(text, value, options):
-        qs = Section.from_str(text).section("FORCE_EVAL/DFT/QS")
-        method = (qs.get("METHOD", "GPW") if qs else "GPW").split()[0].upper()
+        # Same reading as cp2k.py's generate; two sites, not shared (R6)
+        method = (Section.from_str(text).section("FORCE_EVAL/DFT/QS") or Section()).get(
+            "METHOD", "GPW").split()[0].upper()
         if method != "GAPW":
             raise JobError("GAPW_ACCURATE_XCINT only acts with &QS METHOD GAPW (all-electron)")
         return apply(text, value, options)
@@ -155,6 +156,8 @@ def read_result(directory, software):
     candidates = []
     for pattern in OUTPUT_NAMES[software]:
         candidates += sorted(directory.glob(pattern))
+    # cp2k.out is also a *.out: each file once, in first-match order
+    candidates = list(dict.fromkeys(candidates))
     if not candidates:
         return None, None, None, "no output"
     last_error = None

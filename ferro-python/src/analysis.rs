@@ -26,19 +26,19 @@ fn gr_pair(
     dr: f64,
     r_min: f64,
 ) -> PyResult<HashMap<String, Vec<f64>>> {
-    let res = run_gr(traj, by, r_max, dr, r_min)?;
+    let mut res = run_gr(traj, by, r_max, dr, r_min)?;
     let key = format!("{a}-{b}");
-    let g = res.gr.get(&key).ok_or_else(|| {
+    let g = res.gr.remove(&key).ok_or_else(|| {
         pyo3::exceptions::PyKeyError::new_err(format!(
             "pair '{key}' not present; available types: {:?}", res.elements
         ))
     })?;
-    let cn = &res.cn[&key];
+    let cn = res.cn.remove(&key).expect("gr and cn have the same pairs");
 
     let mut out: HashMap<String, Vec<f64>> = HashMap::new();
-    out.insert("r".to_string(), res.r.clone());
-    out.insert(format!("{key}_gr"), g.clone());
-    out.insert(format!("{key}_cn"), cn.clone());
+    out.insert("r".to_string(), res.r);
+    out.insert(format!("{key}_gr"), g);
+    out.insert(format!("{key}_cn"), cn);
     Ok(out)
 }
 

@@ -76,7 +76,6 @@ def build_panel(path, df, ax, ctx):
     ax.set_xlim(*CFG["xlim"])
     ax.set_ylim(*CFG["gr_ylim"])
     ax_cn.set_ylim(*CFG["cn_ylim"])
-    return ax_cn
 
 
 def build_figure(frames, ctx):

@@ -6,6 +6,7 @@ use std::path::Path;
 use ferro_io::{AtomStyle, Format, LammpsUnits, ReadOptions, read_aimd, TableFormat};
 use ferro_core::Table;
 use pyo3::prelude::*;
+use pyo3::IntoPyObjectExt;
 
 use crate::pyerr;
 use crate::types::PyTrajectory;
@@ -167,16 +168,16 @@ fn read_output(
     let (traj, s) = py.detach(|| read_aimd(Path::new(path))).map_err(pyerr)?;
     let mut stats = std::collections::BTreeMap::new();
     let mut put = |k: &str, v: Py<PyAny>| { stats.insert(k.to_string(), v); };
-    put("format", s.format.name().into_pyobject(py)?.into_any().unbind());
+    put("format", s.format.name().into_py_any(py)?);
     for (k, v) in [("steps", s.n_steps), ("kept", s.n_kept), ("scf_failed", s.n_scf_failed),
                    ("incomplete", s.n_incomplete), ("bad_composition", s.n_bad_composition),
                    ("no_cell", s.n_no_cell), ("layout_drift", s.n_layout_drift),
                    ("restarts", s.n_restarts)] {
-        put(k, v.into_pyobject(py)?.into_any().unbind());
+        put(k, v.into_py_any(py)?);
     }
-    put("version", s.version.into_pyobject(py)?.into_any().unbind());
-    put("version_note", s.version_note.into_pyobject(py)?.into_any().unbind());
-    put("step_range", s.steps.into_pyobject(py)?.into_any().unbind());
+    put("version", s.version.into_py_any(py)?);
+    put("version_note", s.version_note.into_py_any(py)?);
+    put("step_range", s.steps.into_py_any(py)?);
 
     Ok((PyTrajectory::new(traj), stats))
 }

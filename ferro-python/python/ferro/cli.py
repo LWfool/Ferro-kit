@@ -156,6 +156,8 @@ def parse(parser, help_text, argv):
 
 def new_parser(prog):
     parser = argparse.ArgumentParser(prog=prog, add_help=False)
+    # `parse` answers -h before argparse runs; registered so that the help-sync test
+    # (tests/test_cli.py) finds -h among the parser's options as on the help page
     parser.add_argument("-h", "--help", action="store_true")
     return parser
 
@@ -535,7 +537,10 @@ def run_conv(argv):
         except (ValueError, ferro.FerroError) as e:
             raise UsageError(str(e)) from None
         built += jobs
-        manifest = part if manifest is None else {**manifest, "jobs": manifest["jobs"] + part["jobs"]}
+        if manifest is None:
+            manifest = part
+        else:
+            manifest["jobs"] += part["jobs"]
         n_structures += len(structures)
     # build lists value by value; per file that became file by file. A stable sort on the
     # value restores the one-call order (jobs and manifest entries are built in step)
@@ -583,8 +588,8 @@ def run_conv_analyze(argv):
             f"reference: {conv.label(ref)}",
             f"thresholds (hints): |dE| <= {limits['de']:g} meV/atom, |dP| <= {limits['dp']:g} kbar, "
             f"dF_rms <= {limits['df_rms']:g} meV/A, dF_max <= {limits['df_max']:g} meV/A"]
-    ferro.write_table(str(out), [(c, [r[c] for r in rows]) if isinstance(rows[0][c], str)
-                                 else (c, [float(r[c]) for r in rows]) for c in columns], meta)
+    # The binding tells a column of numbers from one of strings
+    ferro.write_table(str(out), [(c, [r[c] for r in rows]) for c in columns], meta)
 
     print(f"{manifest['parameter']} (reference {conv.label(ref)}), worst frame of each value:")
     print(f"  {'value':>10} {'frames':>7} {'dE meV/at':>10} {'dP kbar':>9} {'dF_max':>8} {'dF_rms':>8}  within")
@@ -740,6 +745,8 @@ Examples:
 Full documentation:  ferro-py doc plot""",
 }
 
+# The same names as the keys of plot/net.py's RUN and NEEDS. Not imported from there:
+# that module loads matplotlib, which run_plot imports only for the figure asked for
 NET_TABLES = ("qn", "cn", "bridge", "linkmap")
 
 
@@ -778,8 +785,9 @@ def run_plot(argv):
     if figure == "msd":
         extra = {"components": args.components, "loglog": args.loglog}
     if figure == "net":
-        extra = {"table": args.table, "elements": args.element and
-                 [e.strip() for e in args.element.split(",") if e.strip()]}
+        elements = ([e.strip() for e in args.element.split(",") if e.strip()]
+                    if args.element else args.element)
+        extra = {"table": args.table, "elements": elements}
     if args.output is not None:
         ensure_dir(args.output, args.mkdir)
     module = importlib.import_module(f"ferro.plot.{figure}")

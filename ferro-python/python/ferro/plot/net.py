@@ -449,13 +449,12 @@ def run_linkmap(frames, ctx, elements):
             for end in ("a", "b"):
                 axis.setdefault((pair, end), set()).update(int(v) for v in sel[f"v_{end}"])
     axis = {k: sorted(vs) for k, vs in axis.items()}
-    if any(a == b for _, a, b in pairs):
-        # A map of one element with itself uses one axis for both ends; only then does the
-        # upper triangle mean something
-        for pair in pairs:
-            if pair[1] == pair[2]:
-                both = sorted(set(axis[(pair, "a")]) | set(axis[(pair, "b")]))
-                axis[(pair, "a")] = axis[(pair, "b")] = both
+    # A map of one element with itself uses one axis for both ends; only then does the
+    # upper triangle mean something
+    for pair in pairs:
+        if pair[1] == pair[2]:
+            both = sorted(set(axis[(pair, "a")]) | set(axis[(pair, "b")]))
+            axis[(pair, "a")] = axis[(pair, "b")] = both
 
     # Rows = (group, composition); with several groups the row name carries the group
     rows = [(p, suffix_of(p), f) for p, df in frames for f in ctx.shown(df)]
@@ -592,7 +591,7 @@ def plot(inputs, table, outdir=None, suffix=None, elements=None):
         groups = [suffix_of(p) for p, _ in frames] if len(frames) > 1 else []
         ctx = common.context(frames, outdir, groups=groups)
         # A group with show=0 in labels.csv is left out whole
-        frames = [(p, df) for p, df in frames if not groups or ctx.group_shown(suffix_of(p))]
+        frames = [(p, df) for p, df in frames if not groups or suffix_of(p) in ctx.groups_shown]
         if not frames:
             raise ferro.FerroError(f"{ctx.path} sets show=0 for every group of this run: "
                                    "nothing to draw")
