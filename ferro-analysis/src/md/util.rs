@@ -22,6 +22,11 @@ pub(crate) const WHOLE_STEPS_TOL: f64 = 1e-9;
 /// The three analyses used to differ: gr dropped a partial last bin (floor), vanhove and
 /// angle kept it but normalised it as a full one, so with `--r-max 1.0 --dr 0.07` the
 /// last vanhove bin read 3.5 times too low. Returns 0 bins for `hi <= lo`.
+///
+/// Mapping a value to its bin, `((x - lo) / width) as usize`, stays written at each of
+/// the three sites (gr, vanhove, angle): one line each, and the range test around it
+/// differs (angle keeps `angle_max` itself in the last bin), so not shared (R6, review
+/// 2026-11-06 A8-15).
 pub(crate) fn bins(lo: f64, hi: f64, step: f64) -> (usize, f64) {
     let ratio = (hi - lo) / step;
     if ratio.is_nan() || ratio <= 0.0 {

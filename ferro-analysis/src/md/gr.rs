@@ -516,6 +516,9 @@ mod tests {
 
     /// 构造合成 NPT 轨迹：同一 O/Si 晶体逐帧按 `scales` 缩放，晶胞与坐标同比变化，
     /// 故每帧都是合法晶体而体积逐帧不同。用于检验体积归一化口径。
+    ///
+    /// sq.rs's tests have a `make_npt_traj` of their own, with the elements as a parameter;
+    /// test helpers are not shared across modules (R6, review 2026-11-06 A8-18).
     fn make_npt_traj(n: usize, scales: &[f64]) -> Trajectory {
         let base = sc_crystal(n, 3.0, &["O", "Si"]);
         let base_cell = base.cell.as_ref().unwrap().matrix;

@@ -833,7 +833,7 @@ mod tests {
     /// triclinic cell, with two kinds sharing one element.
     #[test]
     fn the_old_layout_agrees_with_cp2kdata_on_a_real_file() {
-        let (traj, st) = read_cp2k_sp(Path::new("../tests/cp2k_sp_v61.out")).unwrap();
+        let (traj, st) = read_cp2k_sp(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/cp2k_sp_v61.out"))).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_dropped(), 0);
         assert_eq!(st.version.as_deref(), Some("6.1"));
@@ -883,7 +883,7 @@ mod tests {
     #[test]
     fn reads_the_reference_single_point() {
         let (traj, st) =
-            read_cp2k_sp(Path::new("../tests/5Al_0003_1500K_f394.out")).unwrap();
+            read_cp2k_sp(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/5Al_0003_1500K_f394.out"))).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert_eq!(st.n_dropped(), 0);
         assert_eq!(st.version.as_deref(), Some("2025.2"));

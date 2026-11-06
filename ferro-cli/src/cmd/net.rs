@@ -579,7 +579,7 @@ mod tests {
         let v = nalgebra::Vector3::new(0.001, 0.0, 0.0); // 内部 Å/fs = metal 的 1 Å/ps
         traj.frames[0].set_velocities(Some(vec![v; n])).unwrap();
         let (p, _) = build_params(&args(&["--P-O=2.0"]), None, None).unwrap();
-        let dir = std::env::temp_dir().join("ferro_net_export_units");
+        let dir = std::env::temp_dir().join(format!("ferro_net_export_units_{}", std::process::id()));
         let out = batch::Output { dir: Some(dir.clone()), label: None, suffix: None, mkdir: true };
         out.prepare().unwrap();
         let (_, types) = calc_network_typed(&traj, &p).unwrap();

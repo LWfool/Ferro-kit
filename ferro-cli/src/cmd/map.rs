@@ -386,7 +386,7 @@ mod tests {
     /// 目录，测试结束时它就在
     #[test]
     fn test_bad_values_fail_before_any_file_or_directory() {
-        let out = std::env::temp_dir().join("ferro_m3_map_must_not_exist");
+        let out = std::env::temp_dir().join(format!("ferro_m3_map_must_not_exist_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&out);
         for (args, want) in [
             ("density --nx 0", "nx must be >= 1"),
@@ -410,7 +410,7 @@ mod tests {
     /// used to overwrite `density_<input>.cube` silently (review 2026-10-30 A5-M1).
     #[test]
     fn test_element_selection_is_in_the_product_name() {
-        let dir = std::env::temp_dir().join("ferro_map_selection_names");
+        let dir = std::env::temp_dir().join(format!("ferro_map_selection_names_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let input = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/70Z30P00A_NVT_5.lammpstrj");
         for extra in [&["density", "--elements", "P"][..], &["density", "--elements", "P,O,O"],
@@ -430,7 +430,7 @@ mod tests {
     /// 审查 E2-6：全部输入都失败时 map 要像 traj / net 一样报错，而不是安静地返回
     #[test]
     fn test_every_input_failing_is_an_error() {
-        let dir = std::env::temp_dir().join("ferro_map_all_fail");
+        let dir = std::env::temp_dir().join(format!("ferro_map_all_fail_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let bad = dir.join("broken.lammpstrj");
         std::fs::write(&bad, "not a dump\n").unwrap();

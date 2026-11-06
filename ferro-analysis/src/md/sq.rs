@@ -773,6 +773,9 @@ mod tests {
     }
 
     /// 合成 NPT 轨迹：同一晶体逐帧按 `scales` 缩放，体积随之变化。
+    ///
+    /// gr.rs's tests have a `make_npt_traj` of their own (O/Si fixed); test helpers are not
+    /// shared across modules (R6, review 2026-11-06 A8-18).
     fn make_npt_traj(n: usize, elems: &[&str], scales: &[f64]) -> Trajectory {
         let base = sc_crystal(n, 3.0, elems);
         let base_cell = base.cell.as_ref().unwrap().matrix;

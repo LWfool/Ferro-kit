@@ -321,7 +321,7 @@ mod tests {
     /// or the input read, leaving no empty directory behind
     #[test]
     fn bad_values_fail_before_the_directory_is_made() {
-        let dir = std::env::temp_dir().join("ferro_d_m15_convert_must_not_exist");
+        let dir = std::env::temp_dir().join(format!("ferro_d_m15_convert_must_not_exist_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         type Case<'a> = (fn(&mut ConvertCmd), &'a str);
         // A missing --format-out has its own test (a_missing_format_is_refused_with_a_usable_hint)

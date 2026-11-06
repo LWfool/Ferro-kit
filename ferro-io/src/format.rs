@@ -622,7 +622,7 @@ mod tests {
     /// decision: strict, not replaced).
     #[test]
     fn a_non_utf8_byte_in_a_log_names_its_line() {
-        let mut bytes = std::fs::read("../tests/cp2k_sp_v61.out").unwrap();
+        let mut bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/cp2k_sp_v61.out")).unwrap();
         let at = bytes.iter().enumerate().filter(|(_, &c)| c == b'\n').nth(199).unwrap().0 + 1;
         bytes.insert(at, 0xff);
         let path = tmp_dir("utf8").join("bad.out");
@@ -637,7 +637,7 @@ mod tests {
     /// `convert` / `info` / `traj` read them like any structure file (review C-2).
     #[test]
     fn program_outputs_and_deepmd_systems_are_detected() {
-        let fx = Path::new("../tests");
+        let fx = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests"));
         for (name, want) in [
             ("vasp_OUTCAR_2frames", Format::Aimd(AimdFormat::VaspOutcar)),
             ("vasp651_sp/frame_0011/OUTCAR", Format::Aimd(AimdFormat::VaspOutcar)),
@@ -689,7 +689,7 @@ mod tests {
         let (t, _) = read_as(&dir.join("pw.txt"), Format::from_label("qe/in").unwrap(), &ReadOptions::default()).unwrap();
         assert_eq!(t.frames[0].element(0), "Si");
 
-        let fx = Path::new("../tests/vasp_OUTCAR_2frames");
+        let fx = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp_OUTCAR_2frames"));
         let (t, _) = read_as(fx, Format::from_label("vasp/outcar").unwrap(), &ReadOptions::default()).unwrap();
         assert_eq!(t.n_frames(), 2);
     }

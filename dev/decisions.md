@@ -3,6 +3,17 @@
 > 已执行完的审查与计划留下的**判据、用户定、被实测推翻的原计划**，原文搬自 `dev/plan.md`（2026-10-21）。
 > 「改了什么」看手册 `docs/src/changelog.md`，「怎么改的」翻 git 历史。按需读取，不必通读。
 
+## 2026-11-06 精简审查低级项的修法（2026-11-07）
+
+- **A1-17 选 (b)（用户定 2026-11-06）**：`select_range` / `spread_range` 不再把 stride 0 当 1、
+  count 0 给空；入口（`convert`、`dataset filter`、Python 的帧选择）由 `Trajectory::check_selection`
+  拒收 0，库调用方直接传 0 即 panic（`step_by(0)`）。理由：只写正常路径，校验只在入口一处。
+- **范围检查三套不合（A8-13，R6）**：`ferro-analysis/src/check.rs`、`ferro-structure` 各函数内联的
+  判断、CLI 的 clap `value_parser` / 入口检查，变化原因不同——报错里的参数名拼法（`r_cut` / `--r-cut`）、
+  触发时机（读文件前 / 算到时）各属一层，合成一份要么丢掉参数名、要么让中间层知道 CLI 拼法。
+- 其余 R6「不合、两处互指」的留档在代码注释里：A1-13（axis 解析）、A2-17（QE 卡片选项）、
+  A7-26（`&QS METHOD`）、A8-15（值→bin）、A8-18（`make_npt_traj`）。
+
 ## 逐帧序号排在 `-s` 之后（2026-10-31，用户定；10-30 审查 A5-M4）
 
 `convert` / `build` 写单结构格式时，`write_numbered` 把 `_NNNN` 接在已含 `-s` 的 stem 后：`traj_700K_0002.cif`。

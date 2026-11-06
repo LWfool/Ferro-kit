@@ -8,7 +8,7 @@ use nalgebra::Vector3;
 use std::path::PathBuf;
 
 fn tmp(name: &str, text: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(name);
+    let p = std::env::temp_dir().join(format!("{}_{name}", std::process::id()));
     std::fs::write(&p, text).unwrap();
     p
 }
@@ -39,7 +39,7 @@ fn extxyz_truncated_last_frame_is_reported() {
 fn pdb_last_block_without_end_is_reported() {
     let mut f = Frame::new();
     f.add_atom(Atom::new("O", Vector3::new(0.0, 0.0, 0.0)));
-    let p = std::env::temp_dir().join("ferro_export_noend.pdb");
+    let p = std::env::temp_dir().join(format!("ferro_export_noend_{}.pdb", std::process::id()));
     write(&Trajectory::from_frame(f), &p, &WriteOptions::default()).unwrap();
     let one = std::fs::read_to_string(&p).unwrap();
     let p = tmp("ferro_export_noend.pdb", &format!("{one}{}", one.trim_end_matches("END\n")));

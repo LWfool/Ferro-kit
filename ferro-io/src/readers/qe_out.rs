@@ -429,7 +429,7 @@ mod tests {
     use crate::testutil::write_tmp;
 
     fn fixture(name: &str) -> String {
-        std::fs::read_to_string(format!("../tests/{name}")).unwrap()
+        std::fs::read_to_string(format!("{}/../tests/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
     }
 
     fn close(a: f64, b: f64, tol: f64) -> bool {
@@ -572,7 +572,7 @@ mod tests {
     #[test]
     fn sniff_tells_pw_x_from_other_quantum_espresso_programs() {
         use super::super::aimd::sniff;
-        assert_eq!(sniff(Path::new("../tests/qe75_md.out")).unwrap(), AimdFormat::QeOut);
+        assert_eq!(sniff(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/qe75_md.out"))).unwrap(), AimdFormat::QeOut);
         let gipaw = fixture("qe75_sp.out").replacen("Program PWSCF", "Program GIPAW", 1);
         let err = sniff(&write_tmp("ferro_qe_gipaw.out", &gipaw)).unwrap_err().to_string();
         assert!(err.contains("`GIPAW` output") && err.contains("pw.x"), "{err}");

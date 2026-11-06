@@ -317,7 +317,7 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
 mod tests {
     use super::*;
 
-    const FIXTURE: &str = "../tests/vasp_vasprun_2frames.xml";
+    const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp_vasprun_2frames.xml");
 
     /// vasprun has no temperature field, so it is derived from the ionic
     /// kinetic energy with `T = 2*E_kin/(3N*k_B)`. The divisor is 3N, not 3N-3:
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn derives_temperature_from_ionic_kinetic_energy() {
         let (traj, _) =
-            read_vasprun(Path::new("../tests/vasp_vasprun_2frames.xml")).unwrap();
+            read_vasprun(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp_vasprun_2frames.xml"))).unwrap();
         let n = traj.frames[0].n_atoms() as f64;
         for (i, f) in traj.frames.iter().enumerate() {
             let t = f.temperature.expect("temperature should be derived");
@@ -418,7 +418,7 @@ mod tests {
               14.743517079585551, -4.227800258983086, -49.20522737762933]),
         ];
         for (dir, e, a, i, pos, force, virial) in cases {
-            let path = format!("../tests/vasp651_sp/{dir}/vasprun.xml");
+            let path = format!("{}/../tests/vasp651_sp/{dir}/vasprun.xml", env!("CARGO_MANIFEST_DIR"));
             let (traj, stats) = read_vasprun(Path::new(&path)).unwrap();
             assert_eq!((traj.n_frames(), stats.n_dropped()), (1, 0), "{dir}");
             let f = &traj.frames[0];
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn asymmetric_vasp_stress_round_trips_through_extxyz_virial() {
         let (traj, _) = read_vasprun(Path::new(
-            "../tests/vasp651_sp/frame_0011/vasprun.xml",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp651_sp/frame_0011/vasprun.xml"),
         ))
         .unwrap();
         use crate::readers::extxyz::read_extxyz;

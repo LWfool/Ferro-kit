@@ -330,7 +330,7 @@ fn finish(
 mod tests {
     use super::*;
 
-    const FIXTURE: &str = "../tests/vasp_OUTCAR_2frames";
+    const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp_OUTCAR_2frames");
 
     /// Two frames with DIFFERENT cells, so a reader that reads the cell once
     /// and reuses it fails here. Real fixed-cell runs cannot catch that bug —
@@ -459,7 +459,7 @@ mod tests {
               14.74407329827738, -4.227802874056789, -49.205234994157856]),
         ];
         for (dir, e, a, i, pos, force, virial) in cases {
-            let path = format!("../tests/vasp651_sp/{dir}/OUTCAR");
+            let path = format!("{}/../tests/vasp651_sp/{dir}/OUTCAR", env!("CARGO_MANIFEST_DIR"));
             let (traj, stats) = read_vasp_outcar(Path::new(&path)).unwrap();
             assert_eq!((traj.n_frames(), stats.n_dropped()), (1, 0), "{dir}");
             let f = &traj.frames[0];
@@ -576,7 +576,7 @@ mod tests {
     #[test]
     fn reads_ion_temperature_not_the_lattice_one() {
         let (traj, _) =
-            read_vasp_outcar(Path::new("../tests/vasp_OUTCAR_2frames")).unwrap();
+            read_vasp_outcar(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp_OUTCAR_2frames"))).unwrap();
         assert_eq!(traj.n_frames(), 2);
         let got: Vec<f64> = traj.frames.iter().map(|f| f.temperature.unwrap()).collect();
         assert!((got[0] - 0.0).abs() < 1e-9, "frame 0: got {}", got[0]);

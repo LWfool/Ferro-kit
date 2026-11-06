@@ -880,7 +880,7 @@ mod tests {
     #[test]
     fn reads_temperature_from_the_instantaneous_column() {
         let (traj, st) =
-            read_cp2k_md(Path::new("../tests/cp2k_md_3frames.out")).unwrap();
+            read_cp2k_md(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/cp2k_md_3frames.out"))).unwrap();
         assert_eq!(traj.n_frames(), 3, "stats: {st:?}");
         let want = [964.909119, 866.567046, 724.603525];
         for (i, w) in want.iter().enumerate() {
@@ -891,7 +891,7 @@ mod tests {
 
     #[test]
     fn periodicity_comes_from_the_cell_header_line_only() {
-        let text = std::fs::read_to_string("../tests/cp2k_md_3frames.out").unwrap();
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/cp2k_md_3frames.out")).unwrap();
         let (traj, _) = parse_cp2k_md(&text).unwrap();
         assert!(traj.frames.iter().all(|f| f.pbc == [true; 3]));
         // 只改 ` CELL| Periodicity`；CELL_TOP / CELL_REF 仍是 XYZ，不能被它们带偏

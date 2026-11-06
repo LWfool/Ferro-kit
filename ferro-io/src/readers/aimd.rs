@@ -248,7 +248,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn p(name: &str) -> PathBuf {
-        PathBuf::from("../tests").join(name)
+        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests")).join(name)
     }
 
     /// A file whose every step was dropped is an error for every format, not an empty

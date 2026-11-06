@@ -524,7 +524,7 @@ mod tests {
     /// the raw io error of listing it (review E2-11).
     #[test]
     fn a_file_in_the_way_of_the_system_directory_is_refused() {
-        let dir = std::env::temp_dir().join("ferro_collect_file_in_the_way");
+        let dir = std::env::temp_dir().join(format!("ferro_collect_file_in_the_way_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.out"), sp_text(true)).unwrap();
@@ -540,7 +540,7 @@ mod tests {
     /// the group does not exist, so reading first would fail differently (review D-2)
     #[test]
     fn a_file_in_the_way_of_the_inspect_directory_is_refused_before_reading() {
-        let dir = std::env::temp_dir().join("ferro_collect_inspect_in_the_way");
+        let dir = std::env::temp_dir().join(format!("ferro_collect_inspect_in_the_way_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let dest = dir.join(super::super::inspect::DIR_NAME);
@@ -558,7 +558,7 @@ mod tests {
     /// was an error message holding two identical formulas.
     #[test]
     fn files_whose_atom_order_differs_collect_into_one_system() {
-        let dir = std::env::temp_dir().join("ferro_collect_atom_order");
+        let dir = std::env::temp_dir().join(format!("ferro_collect_atom_order_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.out"), sp_text(true)).unwrap();
@@ -600,7 +600,7 @@ mod tests {
     }
 
     fn collect_dir(name: &str, files: &[(&str, String)]) -> (PathBuf, Result<Trajectory>) {
-        let dir = std::env::temp_dir().join(name);
+        let dir = std::env::temp_dir().join(format!("{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         for (file, text) in files {
@@ -634,7 +634,7 @@ mod tests {
     /// skipped file and once more as the directory left with no usable file
     #[test]
     fn a_directory_whose_only_file_is_unusable_counts_as_one_failure() {
-        let root = std::env::temp_dir().join("ferro_collect_one_failure");
+        let root = std::env::temp_dir().join(format!("ferro_collect_one_failure_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let failed = sp_text(true).replace("SCF run converged", "SCF run NOT converged");
         for (d, text) in [("bad", failed), ("good", sp_text(true))] {
@@ -658,7 +658,7 @@ mod tests {
     /// virial = 应力 × 体积（同号，正 = 受压）
     #[test]
     fn quantum_espresso_outputs_collect() {
-        let fixture = |n: &str| std::fs::read_to_string(format!("../tests/{n}")).unwrap();
+        let fixture = |n: &str| std::fs::read_to_string(format!("{}/../tests/{n}", env!("CARGO_MANIFEST_DIR"))).unwrap();
         let (dir, read) = collect_dir("ferro_collect_qe_sp",
             &[("a.out", fixture("qe75_sp_noconv.out")), ("b.out", fixture("qe75_sp.out"))]);
         let sp = read.unwrap();
@@ -669,7 +669,7 @@ mod tests {
         let (dir, read) = collect_dir("ferro_collect_qe_md", &[("pw.out", fixture("qe75_md.out"))]);
         let md = read.unwrap();
         assert_eq!(md.n_frames(), 5);
-        let direct = ferro_io::read_qe_out(Path::new("../tests/qe75_md.out")).unwrap().0;
+        let direct = ferro_io::read_qe_out(Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/qe75_md.out"))).unwrap().0;
         for (a, b) in md.frames.iter().zip(&direct.frames) {
             assert!((a.energy.unwrap() - b.energy.unwrap()).abs() < 1e-9);
             let ds = (a.stress.unwrap() - b.stress.unwrap()).abs().max();

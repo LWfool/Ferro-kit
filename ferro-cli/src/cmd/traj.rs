@@ -727,7 +727,7 @@ mod tests {
     /// 目录，测试结束时它就在
     #[test]
     fn test_bad_values_fail_before_any_file_or_directory() {
-        let out = std::env::temp_dir().join("ferro_m3_traj_must_not_exist");
+        let out = std::env::temp_dir().join(format!("ferro_m3_traj_must_not_exist_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&out);
         for (args, want) in [
             ("gr --dr 0", "dr must be"),
