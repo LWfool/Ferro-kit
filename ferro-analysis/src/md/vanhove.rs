@@ -144,10 +144,7 @@ pub fn calc_vanhove(traj: &Trajectory, params: &VanHoveParams) -> ferro_core::Re
     let params = &VanHoveParams { dr, ..params.clone() };
 
     // origin 起始帧：访问 cart[p] 和 cart[p+tau]，均需 < n_steps
-    let p_values: Vec<usize> = (0..)
-        .map(|k: usize| k * shift)
-        .take_while(|&p| p + tau < n_steps)
-        .collect();
+    let p_values: Vec<usize> = (0..n_steps - tau).step_by(shift).collect();
     let n_origins = p_values.len(); // >= 1: tau <= n_steps - 1 lets p = 0 fit
 
     // Continuous Cartesian series (TOR-unwrapped when periodic), [atom][axis][frame]

@@ -27,7 +27,7 @@ bader.md 没有的一条：`ChargeGrid` 不对外暴露 ndarray —— 存储用
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `network/classify.rs` `build_nf_map` | 若形成子元素同时也是配体元素（如 Si-O 且 O-O），同一原子会同时出现在 former 和 ligand 中 | 当前跳过 `fa_idx == la_idx`；实际体系不会出现，无需处理 |
+| `network/classify.rs` `build_nf_map` | 若形成子元素同时也是配体元素（如 Si-O 且 O-O），同一原子会同时出现在 former 和 ligand 中 | 自身由近邻表排除（`NeighborList::neighbors_of` 只给 `i` 以外的原子），`build_nf_map` 不另判；实际体系不会出现，无需处理 |
 | `classify_frame` 形成子标签 | 桥接数来自桥氧计数，桥氧定义为 NF 邻居数 ≥ 2（含三配位氧 `O_t`） | 0.2.1 起由 `AtomType::Former.bridging` 直接携带；**任何从标签字符串回推数字的写法都不要写**，这正是 0.2.1 重构消除的五处缺陷 |
 | `ferro-cli` 解构 `cli` | `let Some(x) = cli.field` 是部分移动，后续不能再借用 `cli` | 用 `let Cli { field1, field2, .. } = cli;` 一次性解构，再分别传参 |
 

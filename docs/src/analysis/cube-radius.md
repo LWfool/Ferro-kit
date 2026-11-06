@@ -2,7 +2,7 @@
 
 ## Theory
 
-The hard-sphere occupancy map treats each atom as a sphere of radius $r$.  For each (frame, atom) pair, every voxel whose centre lies within $r$ of the atom is incremented by 1.  The resulting 3-D grid represents the cumulative time-averaged occupancy: high values indicate regions of space that are frequently occupied by the selected atom type.
+The hard-sphere occupancy map treats each atom as a sphere of radius $r$.  For each (frame, atom) pair, every voxel whose centre lies within $r$ of the atom is incremented by 1.  The resulting 3-D grid represents the cumulative occupancy: high values indicate regions of space that are frequently occupied by the selected atom type.
 
 Distances use the minimum-image convention, so **$r$ may not exceed half the smallest interplanar
 spacing of any frame**; beyond that a voxel would see the same atom through several periodic images

@@ -48,7 +48,6 @@ pub(crate) fn par_map_in_order<T: Sync, R: Send>(
     map: impl Fn(&T) -> R + Sync,
     mut consume: impl FnMut(R),
 ) {
-    use rayon::prelude::*;
     let batch = 2 * rayon::current_num_threads().max(1);
     for chunk in items.chunks(batch) {
         let out: Vec<R> = chunk.par_iter().map(&map).collect();
@@ -60,7 +59,9 @@ pub(crate) fn par_map_in_order<T: Sync, R: Send>(
 ///
 /// Selection is made once, on one frame, and applied to the whole trajectory; callers
 /// check `same_atoms` first. An empty selection is an error: an analysis of no atoms
-/// would write zeros that look like a measurement.
+/// would write zeros that look like a measurement. `cube_density` and `cube_radius`
+/// take only the count (the first frame's, which they report) and the error: they do not
+/// check `same_atoms`, and they filter by element again in every frame.
 pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result<Vec<usize>> {
     let picked: Vec<usize> = frame.atoms().enumerate()
         .filter(|(_, a)| elements.is_none_or(|els| els.iter().any(|e| e == a.element)))

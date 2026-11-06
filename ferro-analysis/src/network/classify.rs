@@ -311,7 +311,7 @@ pub(crate) fn classify_with_cell(frame: &Frame, cell: &PeriodicCell, params: &Ty
     for (idx, t) in classify_formers(params, &elem_map, &nf_map) {
         types[idx] = t;
     }
-    for (idx, t) in classify_modifiers_inner(frame, params, &elem_map, &near) {
+    for (idx, t) in classify_modifiers(frame, params, &elem_map, &near) {
         types[idx] = t;
     }
     Ok(FrameTypes { types, ligand_formers })
@@ -339,24 +339,19 @@ fn build_nf_map(
 ) -> HashMap<usize, Vec<(String, usize)>> {
     let mut nf_map: HashMap<usize, Vec<(String, usize)>> = HashMap::new();
 
-    // Every ligand atom gets an entry, bonded or not
-    for ligand in params.ligands() {
-        if let Some(idxs) = elem_map.get(&ligand) {
-            for &idx in idxs { nf_map.entry(idx).or_default(); }
-        }
-    }
-
     for ligand in params.ligands() {
         let Some(ligand_idxs) = elem_map.get(&ligand) else { continue };
         let former_pairs = params.formers_for_ligand(&ligand);
 
         for &la_idx in ligand_idxs {
+            // Every ligand atom gets an entry, bonded or not
+            let nf = nf_map.entry(la_idx).or_default();
             let around = near(la_idx);
             for (former, cutoff) in &former_pairs {
                 for &(fa_idx, d) in &around {
                     if frame.element(fa_idx) != *former { continue; }
                     if d < *cutoff {
-                        nf_map.entry(la_idx).or_default().push((former.clone(), fa_idx));
+                        nf.push((former.clone(), fa_idx));
                     }
                 }
             }
@@ -433,7 +428,7 @@ fn classify_formers(
 /// Modifier classification: coordination number only.  A modifier never enters the
 /// ligands' NF list, so it neither carries a bridging count nor affects how a ligand
 /// is classified — that separation is the whole point of `--modifier`.
-fn classify_modifiers_inner(
+fn classify_modifiers(
     frame: &Frame,
     params: &TypeParams,
     elem_map: &HashMap<String, Vec<usize>>,

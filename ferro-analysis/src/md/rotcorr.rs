@@ -231,6 +231,17 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     };
 
     let n_units = orient[0].len();
+    // Checked before the autocorrelations, which would only produce an all-NaN curve
+    let n_valid = orient.iter()
+        .map(|step| step.iter().filter(|u| u.iter().map(|c| c * c).sum::<f64>() >= ZERO_NORM2).count())
+        .sum::<usize>();
+    if n_valid == 0 {
+        return Err(ChemError::ValidationError(format!(
+            "no {} atom has an orientation in any frame: either no {} neighbor within \
+             r_cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
+             use --vector bond)",
+            params.center, params.neighbor, params.r_cut)));
+    }
 
     // 逐分子：单位向量的 6 个分量 q_ij（无效帧为 0）与有效性指示 χ，各做全原点自相关
     let plan = AutocorrPlan::new(n_frames);
@@ -273,17 +284,6 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
             for (x, y) in sq.iter_mut().zip(&c) { *x += y; }
             for (x, y) in cnt.iter_mut().zip(&d) { *x += y; }
         });
-
-    let n_valid = orient.iter()
-        .map(|step| step.iter().filter(|u| u.iter().map(|c| c * c).sum::<f64>() >= ZERO_NORM2).count())
-        .sum::<usize>();
-    if n_valid == 0 {
-        return Err(ChemError::ValidationError(format!(
-            "no {} atom has an orientation in any frame: either no {} neighbor within \
-             r_cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
-             use --vector bond)",
-            params.center, params.neighbor, params.r_cut)));
-    }
 
     // 有效配对数是 0/1 序列的自相关，FFT 下带舍入：四舍五入回整数；为 0 的 lag 给 NaN
     let rotcorr: Vec<f64> = sq.iter().zip(&cnt).map(|(&q, &k)| {

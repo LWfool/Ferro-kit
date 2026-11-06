@@ -1,7 +1,8 @@
 //! Glass network trajectory statistics: bridging-ligand speciation (Qn for P),
 //! ligand type distribution, coordination numbers.
 //!
-//! Atom-level classification is delegated to [`classify_frame`] (`classify.rs`).
+//! Atom-level classification is delegated to `classify_with_cell` (`classify.rs`; the
+//! public per-frame form is [`classify_frame`]), with one `PeriodicCell` per frame.
 //! This module accumulates per-frame [`AtomType`]s into time-averaged distributions.
 //!
 //! # What "fraction ± sd" means
@@ -27,7 +28,7 @@
 
 mod classify;
 mod graph;
-pub mod qn_elements;
+mod qn_elements;
 
 pub use classify::{
     AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame,
@@ -451,7 +452,6 @@ impl NetworkResult {
 
     /// `ligand_type` — partner elements as data columns, not encoded into the label.
     fn ligand_type_table(&self) -> (String, Table) {
-        // ligand_type：伙伴元素以数据列给出,不编码进标签
         let (mut lbl, mut ty) = (Vec::new(), Vec::new());
         let (mut fa, mut fb) = (Vec::new(), Vec::new());
         let mut bins = Vec::new();
@@ -486,7 +486,6 @@ impl NetworkResult {
 
     /// `coordination` — formers and modifiers share one table.
     fn coordination_table(&self, elems: &[&String]) -> (String, Table) {
-        // coordination：形成子与修饰子共用一张表
         let (mut e_col, mut v_col) = (Vec::new(), Vec::new());
         let mut bins = Vec::new();
         for elem in elems {
@@ -515,9 +514,9 @@ impl NetworkResult {
 
     /// `composition` — one row per species, the denominator always *that element*'s atom count.
     fn composition_table(&self, formers: &[&String], elems: &[&String]) -> (String, Table) {
-        // composition：一物种一行,分母恒为**该元素**的原子数。
-        // 每个元素只出现一种刻画:Qn 形成子出 Qn,其余形成子与修饰子出配位数,
-        // 配体出类型。故「每个元素的 fraction 求和为 1」是一条可核对的恒等式
+        // Each element is described one way only: Qn formers by Qn, the other formers and
+        // the modifiers by coordination number, ligands by type. So "the fractions of each
+        // element sum to 1" is an identity that can be checked
         let (mut l_col, mut e_col) = (Vec::new(), Vec::new());
         let mut bins = Vec::new();
         for former in formers {
@@ -850,52 +849,43 @@ struct Accumulator {
     ligand: HashMap<String, BTreeMap<LigandKey, Moments>>,
     /// 桥联组合 → 矩
     linkage: BTreeMap<LinkKey, Moments>,
-    /// 元素 → (Σ值·计数, Σ计数)，用于池化均值
-    qn_sum: HashMap<String, (f64, usize)>,
-    cn_sum: HashMap<String, (f64, usize)>,
-    /// 桥氧个数的池化均值。与 qn_sum 是两个量：qn 只数同元素连接，
-    /// n_bo 数桥氧个数，三簇氧下 n_bo < qn + Σm
+    /// Element → (Σ value·count, Σ count) of the bridging-oxygen count, for its pooled
+    /// mean. Not the pooled Qn: qn counts same-element links, n_bo counts bridging
+    /// oxygens, and with three-coordinated oxygens n_bo < qn + Σm. (The pooled Qn and
+    /// CN means come from `Moments::count` of their histograms.)
     n_bo_sum: HashMap<String, (f64, usize)>,
     /// 全轨迹累计的共边形成子对数
     n_edge_sharing: usize,
 }
 
 /// Folds one frame's histogram into `dst`, converting counts to fractions with
-/// `total` as the denominator, and updating the pooled sum via `value_of`.
+/// `total` as the denominator.
 fn push_hist<K: Ord + Clone>(
     dst: &mut HashMap<String, BTreeMap<K, Moments>>,
-    sums: &mut HashMap<String, (f64, usize)>,
     elem: &str,
     hist: &HashMap<K, usize>,
     total: usize,
-    value_of: impl Fn(&K) -> f64,
 ) {
     if total == 0 { return; }
     let slot = dst.entry(elem.to_string()).or_default();
-    let sum = sums.entry(elem.to_string()).or_insert((0.0, 0));
     for (k, &c) in hist {
         slot.entry(k.clone()).or_default().push(c, c as f64 / total as f64);
-        sum.0 += value_of(k) * c as f64;
-        sum.1 += c;
     }
 }
 
 impl Accumulator {
     fn push(&mut self, fd: &FrameData) {
         for (elem, (hist, total)) in &fd.qn {
-            push_hist(&mut self.qn, &mut self.qn_sum, elem, hist, *total,
-                      |n| *n as f64);
+            push_hist(&mut self.qn, elem, hist, *total);
         }
-        // 池化均值只从边际取一次,故这里传一个丢弃用的累加器
-        let mut ignored = HashMap::new();
         for (elem, (hist, total)) in &fd.qn_partner {
-            push_hist(&mut self.qn_partner, &mut ignored, elem, hist, *total, |_| 0.0);
+            push_hist(&mut self.qn_partner, elem, hist, *total);
         }
         for (elem, (hist, total)) in &fd.cn {
-            push_hist(&mut self.cn, &mut self.cn_sum, elem, hist, *total, |v| *v as f64);
+            push_hist(&mut self.cn, elem, hist, *total);
         }
         for (elem, (hist, total)) in &fd.ligand {
-            push_hist(&mut self.ligand, &mut ignored, elem, hist, *total, |_| 0.0);
+            push_hist(&mut self.ligand, elem, hist, *total);
         }
         // oxy 的分母是该配体元素的原子数,与 ligand 一致
         for (key, &c) in &fd.oxy {
@@ -929,6 +919,13 @@ impl Accumulator {
                 _ => f64::NAN,
             }
         };
+        // Pooled mean of a histogram: Σ value·count / Σ count over every frame. The
+        // products and sums are integers held exactly in f64, so the order is immaterial
+        let pooled = |m: &BTreeMap<u32, Moments>| -> f64 {
+            let (s, n) = m.iter()
+                .fold((0.0, 0usize), |(s, n), (&v, mo)| (s + v as f64 * mo.count as f64, n + mo.count));
+            if n > 0 { s / n as f64 } else { f64::NAN }
+        };
 
         // 只保留轨迹里真正出现过的元素。参数里点名但不存在的元素若留下,
         // 均值会算成 0.0,把「不存在」伪装成「平均值为零」;长表下缺席就是不出行
@@ -940,12 +937,12 @@ impl Accumulator {
                 (e.clone(), rows)
             })
             .collect();
-        let mean_qn: HashMap<_, _> = self.qn.keys()
-            .map(|e| (e.clone(), mean_of(&self.qn_sum, e))).collect();
+        let mean_qn: HashMap<_, _> = self.qn.iter()
+            .map(|(e, m)| (e.clone(), pooled(m))).collect();
         let cn_dist: HashMap<_, _> = self.cn.iter()
             .map(|(e, m)| (e.clone(), to_dist(m))).collect();
-        let mean_cn: HashMap<_, _> = self.cn.keys()
-            .map(|e| (e.clone(), mean_of(&self.cn_sum, e))).collect();
+        let mean_cn: HashMap<_, _> = self.cn.iter()
+            .map(|(e, m)| (e.clone(), pooled(m))).collect();
         // 键取自 n_bo_sum 而非 qn:非 Qn 形成子(Al)也有桥氧数
         let mean_n_bo: HashMap<_, _> = self.n_bo_sum.keys()
             .map(|e| (e.clone(), mean_of(&self.n_bo_sum, e))).collect();

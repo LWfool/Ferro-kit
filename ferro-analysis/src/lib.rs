@@ -9,7 +9,7 @@ mod network;
 mod dft;
 pub mod ml;
 
-pub use network::{NetworkResult, calc_network, calc_network_typed, AtomType, CutoffTable, TypeParams};
+pub use network::{Bin, NetworkResult, calc_network, calc_network_typed, AtomType, CutoffTable, TypeParams};
 pub use dft::{BaderAnalyzer, BaderMethod, BaderParams, BaderResult,
               ChgSdfParams, ChgSdfResult, ChgSdfFamily, ChgRmsdStats, calc_chg_sdf};
 pub use md::{

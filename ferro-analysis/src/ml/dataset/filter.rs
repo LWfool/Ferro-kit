@@ -207,9 +207,9 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
     // 最小镜像只在关心的距离小于最小面间距的一半时严格成立
     let cells = if geometric {
         let want = params.oo_min.max(params.al6_rcut.unwrap_or(0.0));
-        check::periodic_cells(traj, Some(("cutoff", want)))?
+        check::all_periodic_cells(traj, Some(("cutoff", want)))?
     } else {
-        vec![None; traj.n_frames()]
+        Vec::new()
     };
 
     // Al6 走 network 的分类器，故只需给出 Al-O 一个截断；
@@ -252,7 +252,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
             }
             let mut min_oo = None;
             let mut n_al6 = None;
-            if let Some(cell) = &cells[i] {
+            if let Some(cell) = cells.get(i) {
                 if params.oo_min > 0.0 {
                     let d = min_pair_distance(f, cell, "O", "O");
                     if let Some(d) = d {
@@ -264,7 +264,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
                 }
                 if let Some(tp) = &type_params {
                     let n = count_with_coordination(f, tp, "Al", 6)
-                        .expect("checked at the entry by check::periodic_cells");
+                        .expect("checked at the entry by check::all_periodic_cells");
                     // 「保留含 Al6 的帧」与「删除不含 Al6 的帧」是同一件事，
                     // 表达成后者，判据语义就和其余三条一致，交叉表也不必分裂
                     if n == 0 {

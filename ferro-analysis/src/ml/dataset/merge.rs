@@ -24,7 +24,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use ferro_core::data::elements::canonical_order;
+use ferro_core::data::elements::canonical_cmp;
 use ferro_core::error::ChemError;
 use ferro_core::Trajectory;
 use rand::seq::SliceRandom;
@@ -40,8 +40,7 @@ pub fn composition_key(traj: &Trajectory) -> Vec<String> {
         .first()
         .map(|f| f.atoms().map(|a| a.element.to_string()).collect())
         .unwrap_or_default();
-    let order = canonical_order(&v);
-    v = order.into_iter().map(|i| v[i].clone()).collect();
+    v.sort_by(|a, b| canonical_cmp(a, b));
     v
 }
 
@@ -186,17 +185,15 @@ fn composition_diff(a: &[String], b: &[String]) -> String {
 
 /// A deterministic shuffle of `0..n`.
 pub fn shuffle_order(n: usize, seed: u64) -> Vec<usize> {
-    let mut idx: Vec<usize> = (0..n).collect();
-    // 不用 StdRng：rand 声明它的算法可能随版本更换，同 seed 的划分就复现不了
-    let mut rng = chacha20::ChaCha12Rng::seed_from_u64(seed);
-    idx.shuffle(&mut rng);
-    idx
+    shuffle_within(&[(0, n)], seed)
 }
 
 /// A deterministic shuffle of each `lo..hi` span on its own: a frame moves only
 /// within its span. One generator serves the spans in turn, so two spans of
 /// equal length do not get the same permutation.
 pub fn shuffle_within(spans: &[(usize, usize)], seed: u64) -> Vec<usize> {
+    // Not StdRng: rand says its algorithm may change between versions, and the same
+    // seed would then no longer reproduce a split
     let mut rng = chacha20::ChaCha12Rng::seed_from_u64(seed);
     let mut order = Vec::new();
     for &(lo, hi) in spans {
