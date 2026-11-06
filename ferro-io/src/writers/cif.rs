@@ -60,14 +60,14 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     // `_2`, `_3`, ...
     let explicit: HashSet<&str> = frame.atoms().filter_map(|a| a.label).collect();
     let mut used: HashSet<String> = HashSet::new();
-    let mut counters: HashMap<String, usize> = HashMap::new();
+    let mut counters: HashMap<&str, usize> = HashMap::new();
     for atom in frame.atoms() {
         let label = if let Some(l) = atom.label {
             (1..).map(|k| if k == 1 { l.to_string() } else { format!("{l}_{k}") })
                 .find(|c| !used.contains(c) && (c == l || !explicit.contains(c.as_str())))
                 .expect("an unbounded range finds a free name")
         } else {
-            let n = counters.entry(atom.element.to_string()).or_insert(0);
+            let n = counters.entry(atom.element).or_insert(0);
             loop {
                 *n += 1;
                 let c = format!("{}{n}", atom.element);

@@ -29,28 +29,21 @@ fn write_cube_to<W: Write>(w: &mut W, cube: &CubeData) -> Result<()> {
     writeln!(w, "Cube file written by ferro")?;
     writeln!(w, "OUTER LOOP: X, MIDDLE LOOP: Y, INNER LOOP: Z")?;
 
-    // 原点（Å → Bohr）
-    let ox = cube.origin.x * ANG_TO_BOHR;
-    let oy = cube.origin.y * ANG_TO_BOHR;
-    let oz = cube.origin.z * ANG_TO_BOHR;
-    writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}", n_atoms, ox, oy, oz)?;
+    // Origin (Å → Bohr)
+    let o = cube.origin * ANG_TO_BOHR;
+    writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}", n_atoms, o.x, o.y, o.z)?;
 
-    // 3行体素定义：n_i  vx  vy  vz（Å → Bohr）
-    let ns = [nx, ny, nz];
-    for (i, &n) in ns.iter().enumerate() {
-        let vx = cube.spacing[(i, 0)] * ANG_TO_BOHR;
-        let vy = cube.spacing[(i, 1)] * ANG_TO_BOHR;
-        let vz = cube.spacing[(i, 2)] * ANG_TO_BOHR;
-        writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}", n, vx, vy, vz)?;
+    // Three voxel lines: n_i  vx  vy  vz (Å → Bohr)
+    for (i, n) in [nx, ny, nz].into_iter().enumerate() {
+        let v = cube.spacing.row(i) * ANG_TO_BOHR;
+        writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}", n, v[0], v[1], v[2])?;
     }
 
-    // 原子行：Z  0.000000  x  y  z（Å → Bohr）
+    // Atom lines: Z  0.000000  x  y  z (Å → Bohr)
     for atom in frame.atoms() {
         let z = by_symbol(atom.element).expect("checked in write_cube").atomic_number;
-        let x = atom.position.x * ANG_TO_BOHR;
-        let y = atom.position.y * ANG_TO_BOHR;
-        let z_pos = atom.position.z * ANG_TO_BOHR;
-        writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}  {:12.6}", z, 0.0, x, y, z_pos)?;
+        let p = atom.position * ANG_TO_BOHR;
+        writeln!(w, "{:5}  {:12.6}  {:12.6}  {:12.6}  {:12.6}", z, 0.0, p.x, p.y, p.z)?;
     }
 
     // Volumetric data in scientific notation; each z column (the nz values of one ix, iy) starts a

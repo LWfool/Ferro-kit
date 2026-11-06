@@ -30,9 +30,12 @@ pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
 
     // Unique elements in first-appearance order
     let elem_order = frame.unique_elements();
-    let counts: Vec<usize> = elem_order.iter()
-        .map(|e| frame.count_element(e))
-        .collect();
+    let mut groups: Vec<Vec<usize>> = vec![Vec::new(); elem_order.len()];
+    for (i, a) in frame.atoms().enumerate() {
+        let g = elem_order.iter().position(|e| e == a.element).expect("unique_elements lists every element");
+        groups[g].push(i);
+    }
+    let counts: Vec<usize> = groups.iter().map(Vec::len).collect();
 
     // Element and count lines (VASP5)
     writeln!(w, "  {}", elem_order.join("   "))?;
@@ -41,11 +44,7 @@ pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
     // 原子按元素分组写出（与计数行对应）。分组后的下标序只算一次，坐标与速度都按它
     // 遍历 —— 速度块必须与坐标块逐行对应（VASP 文档：velocities of each ion defined
     // in the "Ion positions" section），此前速度按原序写，元素交错时对错了原子
-    let order: Vec<usize> = elem_order.iter()
-        .flat_map(|elem| frame.atoms().enumerate()
-            .filter(move |(_, a)| a.element == *elem)
-            .map(|(i, _)| i))
-        .collect();
+    let order: Vec<usize> = groups.concat();
 
     writeln!(w, "Direct")?;
     for &i in &order {

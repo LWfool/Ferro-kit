@@ -45,7 +45,7 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
     }
 
     let path_ = path.display();
-    let file = File::create(path).context(format!("cannot create {path_}"))?;
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut writer = BufWriter::new(file);
 
     if let Some(source) = &trajectory.metadata.title {

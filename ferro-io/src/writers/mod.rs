@@ -88,7 +88,7 @@ pub(crate) fn reduce_tilts(lx: f64, ly: f64, xy: f64, xz: f64, yz: f64) -> (f64,
 
 /// Zero-padded width for frame indices, at least 4 so `ls` sorts the products in
 /// frame order.
-pub fn index_width(max_index: usize) -> usize {
+pub(crate) fn index_width(max_index: usize) -> usize {
     max_index.to_string().len().max(4)
 }
 
@@ -98,7 +98,7 @@ pub fn index_width(max_index: usize) -> usize {
 /// The number goes before the extension so the product keeps the extension its
 /// format is detected by; extension-less VASP names keep their POSCAR prefix, which
 /// is what detects them.
-pub fn indexed_path(base: &Path, frame_idx: usize, width: usize) -> PathBuf {
+pub(crate) fn indexed_path(base: &Path, frame_idx: usize, width: usize) -> PathBuf {
     let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("frame");
     let mut name = format!("{stem}_{frame_idx:0width$}");
     if let Some(ext) = base.extension().and_then(|e| e.to_str()) {

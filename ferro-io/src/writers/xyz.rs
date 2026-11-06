@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 /// 将轨迹写入 XYZ 文件。多帧轨迹写为连续的多个 XYZ block。
 pub fn write_xyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let path_ = path.display();
-    let file = File::create(path).context(format!("cannot create {path_}"))?;
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut writer = BufWriter::new(file);
 
     for (i, frame) in trajectory.frames.iter().enumerate() {

@@ -29,9 +29,8 @@ pub enum TableFormat {
 ///
 /// The table is validated first — a ragged table fails before the file is created.
 pub fn write_table(table: &Table, path: &Path, format: TableFormat) -> Result<()> {
-    let path_ = path.display();
     if let Err(e) = table.validate() {
-        bail!("refusing to write {path_}: {e}");
+        bail!("refusing to write {}: {e}", path.display());
     }
     match format {
         TableFormat::Csv => write_csv(table, path),
@@ -40,7 +39,7 @@ pub fn write_table(table: &Table, path: &Path, format: TableFormat) -> Result<()
 
 fn write_csv(table: &Table, path: &Path) -> Result<()> {
     let path_ = path.display();
-    let file = File::create(path).context(format!("cannot create {path_}"))?;
+    let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
     // A meta line holding a newline is written as several, each behind its own `#`

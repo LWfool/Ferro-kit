@@ -78,6 +78,22 @@ pub fn write_lammps_dump(
         }
     }
 
+    let type_of: std::collections::HashMap<&str, usize> =
+        elem_types.iter().enumerate().map(|(i, e)| (*e, i + 1)).collect();
+    // real: Å/fs (no-op), metal: Å/fs → Å/ps by the factor that turns 1 ps into fs (×1000),
+    // the reader's inverse. With units None a trajectory with velocities or forces was
+    // refused at the start
+    let vscale = match units {
+        Some(LammpsUnits::Metal) => convert_time(1.0, TimeUnit::Picosecond, TimeUnit::Femtosecond),
+        _ => 1.0,
+    };
+    // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
+    let fscale = match units {
+        Some(LammpsUnits::Metal) => 1.0,
+        // The reader's inverse, through the unit enum (review 2026-10-30 A4-L9)
+        _ => convert_energy(1.0, EnergyUnit::EV, EnergyUnit::KcalPerMol),
+    };
+
     for (ts, frame) in trajectory.frames.iter().enumerate() {
         let n = frame.n_atoms();
 
@@ -146,44 +162,28 @@ pub fn write_lammps_dump(
             })
         };
 
+        // The rotation is about the box origin: for a cell in a non-canonical orientation with a
+        // nonzero origin, the translation to the origin must not rotate along
+        let o = frame.cell.as_ref().map_or_else(nalgebra::Vector3::zeros, |c| c.origin);
         for (i, atom) in frame.atoms().enumerate() {
             let name = dump_name(atom);
-            let tp = elem_types.iter().position(|e| *e == name).expect("elem_types lists every name") + 1;
-
-            // 旋转绕盒子原点做：非规范取向的胞带非零原点时，原点那段平移不能跟着转
-            let o = frame.cell.as_ref().map_or_else(nalgebra::Vector3::zeros, |c| c.origin);
+            let tp = type_of[name];
             let pos = to_lammps(atom.position - o)? + o;
 
-            let mut line = format!("{} {tp} {} {:.10} {:.10} {:.10}",
-                i + 1, name, pos.x, pos.y, pos.z);
-
+            write!(w, "{} {tp} {} {:.10} {:.10} {:.10}", i + 1, name, pos.x, pos.y, pos.z)?;
             if let Some(vv) = vels {
                 let v = to_lammps(vv[i])?;
-                // real: Å/fs (no-op), metal: Å/fs → Å/ps by the factor that turns 1 ps into fs (×1000),
-                // the reader's inverse. With units None a trajectory with velocities or forces was
-                // refused at the start
-                let vscale = match units {
-                    Some(LammpsUnits::Metal) => convert_time(1.0, TimeUnit::Picosecond, TimeUnit::Femtosecond),
-                    _ => 1.0,
-                };
-                line.push_str(&format!(" {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale));
+                write!(w, " {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale)?;
             }
             if let Some(ff) = forces {
                 let f = to_lammps(ff[i])?;
-                // real: eV/Å → kcal/(mol·Å), metal: eV/Å (no-op)
-                let fscale = match units {
-                    Some(LammpsUnits::Metal) => 1.0,
-                    // The reader's inverse, through the unit enum (review 2026-10-30 A4-L9)
-                    _ => convert_energy(1.0, EnergyUnit::EV, EnergyUnit::KcalPerMol),
-                };
-                line.push_str(&format!(" {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale));
+                write!(w, " {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale)?;
             }
             if has_charge {
                 // partial_column has made sure every atom has one
-                line.push_str(&format!(" {:.6}", atom.charge.expect("partial_column checked")));
+                write!(w, " {:.6}", atom.charge.expect("partial_column checked"))?;
             }
-
-            writeln!(w, "{line}")?;
+            writeln!(w)?;
         }
     }
 

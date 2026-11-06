@@ -148,35 +148,36 @@ pub fn write_extxyz_with(
         let vels = frame.velocities().unwrap_or(&dummy_vels);
 
         for (i, atom) in frame.atoms().enumerate() {
-            let mut line = format!("{} {} {} {}",
+            write!(w, "{} {} {} {}",
                 atom.element,
-                fmt(atom.position.x), fmt(atom.position.y), fmt(atom.position.z));
+                fmt(atom.position.x), fmt(atom.position.y), fmt(atom.position.z))?;
 
             if let Some(f) = forces.get(i) {
-                line.push_str(&format!(" {} {} {}", fmt(f.x), fmt(f.y), fmt(f.z)));
+                write!(w, " {} {} {}", fmt(f.x), fmt(f.y), fmt(f.z))?;
             }
             // Velocities imply has_mass; every mass was checked before the file was created
             if has_mass {
                 let m = atom.effective_mass()?;
-                line.push_str(&format!(" {}", fmt(m)));
+                write!(w, " {}", fmt(m))?;
                 if let Some(v) = vels.get(i) {
                     // Å/fs -> amu·Å/(ASE time unit)
                     let p = v * (m / ASE_FS);
-                    line.push_str(&format!(" {} {} {}", fmt(p.x), fmt(p.y), fmt(p.z)));
+                    write!(w, " {} {} {}", fmt(p.x), fmt(p.y), fmt(p.z))?;
                 }
             }
             if has_charge {
                 // has_charge / has_magmom come from partial_column: every atom has one
-                line.push_str(&format!(" {}", fmt(atom.charge.expect("partial_column checked"))));
+                write!(w, " {}", fmt(atom.charge.expect("partial_column checked")))?;
             }
             if has_magmom {
-                line.push_str(&format!(" {}", fmt(atom.magmom.expect("partial_column checked"))));
+                write!(w, " {}", fmt(atom.magmom.expect("partial_column checked")))?;
             }
             if has_label {
-                // 无标签的原子回退为元素符号:S 列不能留空,否则列数对不齐
-                line.push_str(&format!(" {}", atom.label.unwrap_or(atom.element)));
+                // An atom without a label falls back to its element: an S column cannot be
+                // left empty, or the columns would not line up
+                write!(w, " {}", atom.label.unwrap_or(atom.element))?;
             }
-            writeln!(w, "{line}")?;
+            writeln!(w)?;
         }
     }
 
