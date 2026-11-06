@@ -300,6 +300,12 @@ pub fn print_help(cmd: &TrajCmd) {
 
 // ─── 各分析 ──────────────────────────────────────────────────────────────────
 
+/// `--dt`, which the time-correlation analyses need and clap leaves optional (the other
+/// analyses share the flag group).
+fn required_dt(dt: Option<f64>, analysis: &str) -> Result<f64> {
+    dt.ok_or_else(|| anyhow!("--dt is required for {analysis} (run without -i to see help)"))
+}
+
 fn run_gr(c: &GrCmd) -> Result<usize> {
     let (group_by, pair) = c.select.resolve_pair()?;
     let params = c.knobs.params(group_by);
@@ -414,7 +420,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
         )),
     };
     let params = MsdParams {
-        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for msd (run without -i to see help)"))?,
+        dt: required_dt(c.time.dt, "msd")?,
         max_lag: c.time.max_lag,
         elements: c.elements.clone(),
         fit_range,
@@ -475,14 +481,11 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
 }
 
 fn run_angle(c: &AngleCmd) -> Result<usize> {
-    let (group_by, slots) = c.select.resolve_triplet()?;
+    let (group_by, triplet) = c.select.resolve_triplet()?;
 
     // 点名三元组时把端原子顺序原样传下去：--r-cut-ab 归 -a/-x 写的那一端，
     // --r-cut-bc 归 -c/-z 的那一端，不再按原子序数派发（见 AngleParams::ends）
-    let ends = match (&slots[0], &slots[2]) {
-        (Some(a), Some(c2)) => Some((a.clone(), c2.clone())),
-        _ => None,
-    };
+    let ends = triplet.as_ref().map(|[a, _, c2]| (a.clone(), c2.clone()));
     let params = AngleParams {
         r_cut_ab: c.r_cut_ab,
         r_cut_bc: c.r_cut_bc,
@@ -494,23 +497,12 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
     };
     // 取值范围在建目录、读第一个文件之前查完（审查 M3）
     params.validate()?;
-    let label = match slots.iter().all(|s| s.is_some()) {
-        true => batch::file_label(&[
-            slots[0].as_ref().unwrap(),
-            slots[1].as_ref().unwrap(),
-            slots[2].as_ref().unwrap(),
-        ])?,
-        false => batch::file_label::<&str>(&[])?,
+    let label = match &triplet {
+        Some(t) => batch::file_label(t)?,
+        None => batch::file_label::<&str>(&[])?,
     };
 
-    let triplet_keys = slots.iter().all(|s| s.is_some()).then(|| {
-        let (a, b, cc) = (
-            slots[0].as_ref().unwrap(),
-            slots[1].as_ref().unwrap(),
-            slots[2].as_ref().unwrap(),
-        );
-        (format!("{a}-{b}-{cc}"), format!("{cc}-{b}-{a}"))
-    });
+    let triplet_keys = triplet.as_ref().map(|[a, b, cc]| (format!("{a}-{b}-{cc}"), format!("{cc}-{b}-{a}")));
 
     let (results, failures, out) = batch::drive(&c.common, Some(label), |_, traj, _| {
         let mut result = calc_angle(traj, &params)?;
@@ -548,7 +540,7 @@ fn run_angle(c: &AngleCmd) -> Result<usize> {
 
 fn run_vacf(c: &VacfCmd) -> Result<usize> {
     let params = VacfParams {
-        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for vacf (run without -i to see help)"))?,
+        dt: required_dt(c.time.dt, "vacf")?,
         max_lag: c.time.max_lag,
         elements: c.elements.clone(),
     };
@@ -593,7 +585,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         center,
         neighbor,
         r_cut: c.r_cut,
-        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for rotcorr (run without -i to see help)"))?,
+        dt: required_dt(c.time.dt, "rotcorr")?,
         max_lag: c.time.max_lag,
         vector: c.vector.into(),
         legendre: if c.legendre == 1 { Legendre::P1 } else { Legendre::P2 },
@@ -616,12 +608,8 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
 
     batch::write_all(
         "rotcorr",
-        // --legendre 1 used to be titled <P2> too
-        if c.legendre == 1 {
-            "Rotational Autocorrelation Function C(t) = <P1(cos theta)>"
-        } else {
-            "Rotational Autocorrelation Function C(t) = <P2(cos theta)>"
-        },
+        // --legendre 1 used to be titled <P2> too; clap limits it to 1 or 2
+        &format!("Rotational Autocorrelation Function C(t) = <P{}(cos theta)>", c.legendre),
         &results[0].1.meta_lines(),
         &summary.into_table(),
         tables,
@@ -643,7 +631,7 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
         r_break: c.r_break,
         intermittency: c.intermittency,
         max_lag: c.time.max_lag,
-        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for bondlife (run without -i to see help)"))?,
+        dt: required_dt(c.time.dt, "bondlife")?,
     };
     // 取值范围（含 r-break >= r-bond）在建目录、读第一个文件之前查完
     params.validate()?;
@@ -678,7 +666,7 @@ fn run_bondlife(c: &BondlifeCmd) -> Result<usize> {
 fn run_vanhove(c: &VanhoveCmd) -> Result<usize> {
     let params = VanHoveParams {
         tau: c.time.tau,
-        dt: c.time.dt.ok_or_else(|| anyhow!("--dt is required for vanhove (run without -i to see help)"))?,
+        dt: required_dt(c.time.dt, "vanhove")?,
         shift: c.time.shift,
         r_max: c.r_max,
         dr: c.dr,

@@ -3,11 +3,19 @@
 //! flags, the reader warnings printed to stderr, and the help-page format matrix.
 
 use std::path::Path;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use ferro_core::Trajectory;
 use ferro_io::{Format, ReadOptions};
 
 use crate::args::common::ReadArgs;
+
+/// `--format-out EXT`: the extension as products are named (no leading dot, lowercase) and
+/// its format. Unknown formats fail here, before any directory is made or input read.
+pub fn format_out(given: &str) -> Result<(String, Format)> {
+    let ext = given.trim_start_matches('.').to_lowercase();
+    let format = Format::for_extension(&ext).with_context(|| format!("--format-out {given}"))?;
+    Ok((ext, format))
+}
 
 /// Fails when the reading options do not fit `path`: a LAMMPS data file with no
 /// `--atom-style`, or `--type-map` on anything but a LAMMPS dump. The format is

@@ -168,7 +168,7 @@ fn is_pjm_log(name: &str) -> bool {
 /// their number. Either way the name carries `.db`, so a downstream `filter -i`
 /// sees one shape.
 fn collect_dest(root: Option<&Path>, group: &Group) -> PathBuf {
-    let with_suffix = |p: &Path| -> PathBuf {
+    let with_db = |p: &Path| -> PathBuf {
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("system");
         // 已经带着 .db 的不叠加（重跑同一条命令时 -i 可能指到上一轮的产物旁）
         if name.ends_with(COLLECT_SUFFIX) {
@@ -188,10 +188,10 @@ fn collect_dest(root: Option<&Path>, group: &Group) -> PathBuf {
     };
     match root {
         Some(r) if group.rel.as_os_str().is_empty() => {
-            with_suffix(&r.join(dir.file_name().unwrap_or("system".as_ref())))
+            with_db(&r.join(dir.file_name().unwrap_or("system".as_ref())))
         }
-        Some(r) => with_suffix(&r.join(&group.rel)),
-        None => with_suffix(&dir),
+        Some(r) => with_db(&r.join(&group.rel)),
+        None => with_db(&dir),
     }
 }
 

@@ -407,7 +407,7 @@ fn out_path(mode: &str, table: &str, out: &Output) -> PathBuf {
 /// Version, title, the analysis parameters, then a per-input summary table listing
 /// every input — successes and failures alike, so "which files went in" has a single
 /// source of truth. Not machine-readable by design: `read_csv(comment="#")` drops it.
-pub fn meta_block(title: &str, params: &[String], summary: &Table) -> Vec<String> {
+fn meta_block(title: &str, params: &[String], summary: &Table) -> Vec<String> {
     let mut v = vec![
         format!("ferro v{}", env!("CARGO_PKG_VERSION")),
         title.to_string(),
@@ -439,11 +439,9 @@ pub fn write_all(
 ) -> Result<()> {
     let meta = meta_block(title, params, summary);
     for (name, mut table) in tables {
-        if table.meta.is_empty() {
-            table.meta = meta.clone();
-        } else {
-            let own = std::mem::take(&mut table.meta);
-            table.meta = meta.clone();
+        // The shared block first, then the table's own lines (if any) behind a rule
+        let own = std::mem::replace(&mut table.meta, meta.clone());
+        if !own.is_empty() {
             table.meta.extend(own);
             table.meta.push("-".repeat(60));
         }

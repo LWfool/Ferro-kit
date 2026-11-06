@@ -528,15 +528,18 @@ fn visible_len(spans: &[Span], style: Style) -> usize {
 fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
     let spans = &prerender(spans, style);
     let mut words: Vec<Vec<Span>> = Vec::new();
-    // 上一个词是否还能继续往后粘(中间没遇到空白)
+    // Whether the last word can still be glued onto (no whitespace met since)
     let mut open = false;
+    let glue = |words: &mut Vec<Vec<Span>>, open: bool, s: Span| {
+        if !open {
+            words.push(Vec::new());
+        }
+        words.last_mut().expect("a word is open or was just started").push(s);
+    };
     for s in spans {
         let opaque = s.look.code || s.look.math;
         if opaque && screen_len(&shown(s, style)) <= width {
-            if !open {
-                words.push(Vec::new());
-            }
-            words.last_mut().unwrap().push(s.clone());
+            glue(&mut words, open, s.clone());
             open = true;
             continue;
         }
@@ -553,10 +556,7 @@ fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
         for c in s.text.chars() {
             if c.is_whitespace() {
                 if !buf.is_empty() {
-                    if !open {
-                        words.push(Vec::new());
-                    }
-                    words.last_mut().unwrap().push(Span { text: std::mem::take(&mut buf), look: s.look });
+                    glue(&mut words, open, Span { text: std::mem::take(&mut buf), look: s.look });
                 }
                 open = false;
             } else {
@@ -564,10 +564,7 @@ fn wrap(spans: &[Span], width: usize, style: Style) -> Vec<String> {
             }
         }
         if !buf.is_empty() {
-            if !open {
-                words.push(Vec::new());
-            }
-            words.last_mut().unwrap().push(Span { text: buf, look: s.look });
+            glue(&mut words, open, Span { text: buf, look: s.look });
             open = true;
         }
     }
@@ -603,10 +600,9 @@ fn rule(c: char, width: usize) -> String {
 }
 
 fn render_heading(level: usize, text: &str, width: usize, style: Style) -> String {
-    let spans = inline(text);
-    let bold: Vec<Span> = spans
-        .iter()
-        .map(|s| Span { text: s.text.clone(), look: s.look.or(Look { bold: true, ..Look::default() }) })
+    let bold: Vec<Span> = inline(text)
+        .into_iter()
+        .map(|s| Span { text: s.text, look: s.look.or(Look { bold: true, ..Look::default() }) })
         .collect();
     // Without bold, headings below level 2 keep their `#` marks to stand out from the text
     let marked = level > 2 && !style.ansi;

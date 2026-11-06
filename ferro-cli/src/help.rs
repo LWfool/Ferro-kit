@@ -17,7 +17,7 @@ macro_rules! read_opts {
     };
 }
 
-/// `read_opts!` as a value, for `convert` and `info`.
+/// `read_opts!` as a value, for `convert`, `info` and `build supercell` / `vacuum` / `merge`.
 pub const READ_OPTS: &str = read_opts!();
 
 /// `-o / -s / --mkdir` of the commands that take `OutArgs` or the same three flags

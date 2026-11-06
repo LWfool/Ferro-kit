@@ -121,10 +121,11 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
     }
 
     for (_, members) in groups {
-        if let Err(e) = merge_group(&members, out_root, args) {
+        let n_members = members.len();
+        if let Err(e) = merge_group(members, out_root, args) {
             crate::report::error(crate::report::PROGRAM, format!("{e:#}; group skipped"));
             // counted in inputs, as main's summary says and collect counts (review 2026-10-30 A5-M10)
-            failures += members.len();
+            failures += n_members;
         }
     }
     // main prints the one summary line
@@ -132,15 +133,15 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
 }
 
 fn merge_group(
-    members: &[(PathBuf, ferro_core::Trajectory)],
+    members: Vec<(PathBuf, ferro_core::Trajectory)>,
     out_root: &Path,
     args: &MergeCmd,
 ) -> Result<()> {
     // 各 system 的原子排列与 type_map 顺序都可能不同；统一到规范序，
     // 逐原子数据跟着同一个置换走。DP 对原子编号置换不变，改的是记法不是物理
     let sorted: Vec<(PathBuf, ferro_core::Trajectory)> = members
-        .iter()
-        .map(|(p, t)| (p.clone(), t.canonically_sorted()))
+        .into_iter()
+        .map(|(p, t)| (p, t.canonically_sorted()))
         .collect();
 
     let name = group_name(&sorted[0].1);
@@ -171,18 +172,18 @@ fn merge_group(
     };
     let dest = out_root.join(format!("{name}{suffix}"));
 
-    let mut all = ferro_core::Trajectory::new();
+    let n_systems = sorted.len();
+    let mut all = ferro_core::Trajectory { metadata: sorted[0].1.metadata.clone(), ..Default::default() };
     let mut source_spans: Vec<(PathBuf, usize, usize)> = Vec::new();
-    for (p, t) in &sorted {
+    for (p, t) in sorted {
         let lo = all.frames.len();
-        all.frames.extend(t.frames.iter().cloned());
-        source_spans.push((p.clone(), lo, all.frames.len()));
+        all.frames.extend(t.frames);
+        source_spans.push((p, lo, all.frames.len()));
     }
-    all.metadata = sorted[0].1.metadata.clone();
 
     println!(
         "{name}{suffix}: {} system(s), {} frames",
-        sorted.len(),
+        n_systems,
         all.n_frames()
     );
     for (p, lo, hi) in &source_spans {

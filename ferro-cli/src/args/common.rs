@@ -224,16 +224,16 @@ impl SelectArgs {
     }
 
     /// Triplet selection for angle: all three or none.
-    pub fn resolve_triplet(&self) -> Result<(GroupBy, [Option<String>; 3])> {
+    pub fn resolve_triplet(&self) -> Result<(GroupBy, Option<[String; 3]>)> {
         let (mode, slots) = self.resolve()?;
-        let n_given = slots.iter().filter(|x| x.is_some()).count();
-        if n_given > 0 && n_given < 3 {
-            return Err(anyhow!(
+        match slots {
+            [Some(a), Some(b), Some(c)] => Ok((mode, Some([a, b, c]))),
+            [None, None, None] => Ok((mode, None)),
+            _ => Err(anyhow!(
                 "angle filter needs all three: -a END_A -b CENTRE -c END_C (by element) \
                  or -x END_A -y CENTRE -z END_C (by label)"
-            ));
+            )),
         }
-        Ok((mode, slots))
     }
 }
 

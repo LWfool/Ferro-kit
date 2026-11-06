@@ -318,14 +318,14 @@ fn filter_one(
     }
 
     let result = filter_frames(&traj, &params)?;
+    let mut tables = result.to_tables();
+    let n_report = tables.len();
     println!("{}", sys.display());
-    print_report(&result);
+    print_report(&result, &tables);
 
     // 诊断表恒算：实测 1110 帧 / 302 原子挂钟时间与不算时相同（rayon 跑满），
     // 而它是选阈值的依据，只在只读模式算就等于永远落不了盘
-    let diagnostics = filter_diagnostics(&traj, &result)?;
-    let mut tables = result.to_tables();
-    tables.extend(diagnostics.iter().cloned());
+    tables.extend(filter_diagnostics(&traj, &result)?);
     let min_oo = if params.oo_min > 0.0 {
         quantiles(&result.verdicts.iter().filter_map(|x| x.min_oo).collect::<Vec<_>>())
     } else {
@@ -334,7 +334,7 @@ fn filter_one(
 
     if args.output.is_none() {
         // 只读模式：四张诊断表也打出来，但一个字不落盘
-        for (name, table) in &diagnostics {
+        for (name, table) in &tables[n_report..] {
             println!("  [{name}]");
             if let (Some(q), "min_oo") = (min_oo, name.as_str()) {
                 println!(
@@ -390,13 +390,14 @@ fn filter_split(args: &FilterCmd) -> Result<Split> {
     }
 }
 
-fn print_report(r: &FilterResult) {
+/// `tables` is `r.to_tables()`.
+fn print_report(r: &FilterResult, tables: &[(String, ferro_core::Table)]) {
     for line in r.meta_lines() {
         println!("  {line}");
     }
-    for (name, table) in r.to_tables() {
+    for (name, table) in tables {
         println!("  [{name}]");
-        print_table(&table);
+        print_table(table);
     }
 }
 

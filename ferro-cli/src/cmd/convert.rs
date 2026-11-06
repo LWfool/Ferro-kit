@@ -66,12 +66,11 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
             dir.display()
         );
     };
-    let ext = given.trim_start_matches('.').to_lowercase();
     // The format comes from --format-out alone, never from the product name: that name is
     // the input's, and `Format::from_name` takes anything starting POSCAR / CONTCAR for
     // a POSCAR whatever its extension. Checked here, so an unknown format is refused
     // before the directory is made or the input read (review D-M15)
-    let format = ferro_io::Format::for_extension(&ext).with_context(|| format!("--format-out {given}"))?;
+    let (ext, format) = crate::io_dispatch::format_out(given)?;
 
     // Parameter errors fail before the first file is read: a trajectory can be several
     // GB, and reading it all to report "--start is past --end" is a wasted wait.

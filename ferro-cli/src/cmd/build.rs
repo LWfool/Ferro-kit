@@ -6,12 +6,12 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::{Args, Subcommand};
 
 use crate::args::common::ReadArgs;
 use crate::batch;
-use crate::io_dispatch::{check_read_args, read_trajectory};
+use crate::io_dispatch::{check_read_args, format_out, read_trajectory};
 use ferro_core::Trajectory;
 use ferro_io::{Format, WriteOptions};
 use ferro_structure::{
@@ -66,9 +66,7 @@ impl OutArgs {
     /// writable, so a read-only input format (OUTCAR, a QE input) fails before anything is read.
     fn ext(&self, input: &Path, read: &ReadArgs) -> Result<String> {
         if let Some(f) = &self.format_out {
-            let ext = f.trim_start_matches('.').to_lowercase();
-            Format::for_extension(&ext).with_context(|| format!("--format-out {f}"))?;
-            return Ok(ext);
+            return Ok(format_out(f)?.0);
         }
         // detect looks inside: on an input that cannot be opened (the check before reading) fall
         // back on its name, so that input fails at its own read and the batch skips only it
@@ -256,11 +254,13 @@ fn per_input(
     // 参数级错误（-s、目标格式）在建目录、读第一个文件之前查完
     batch::check_suffix(out_args.suffix.as_deref())?;
     let inputs = batch::expand_trajectories(inputs)?;
+    // Each input's product extension, found once (it may look inside the file)
+    let mut exts = std::collections::HashMap::new();
     for p in &inputs {
         // the reader options too, as traj / map / net check them: a data file without
         // --atom-style used to be found only when its turn came (review 2026-10-30 A5-M2)
         check_read_args(p, read)?;
-        out_args.ext(p, read)?;
+        exts.insert(p.clone(), out_args.ext(p, read)?);
     }
     out_args.out().prepare()?;
 
@@ -271,8 +271,8 @@ fn per_input(
             println!("  {note}");
             return Ok(());
         };
-        let ext = out_args.ext(&inp.path, read)?;
-        println!("  {note} -> {}", write_product(out_args, &[op, &inp.label], &ext, &made, read.units)?);
+        let ext = &exts[&inp.path];
+        println!("  {note} -> {}", write_product(out_args, &[op, &inp.label], ext, &made, read.units)?);
         Ok(())
     });
     if ok.is_empty() {
@@ -394,7 +394,7 @@ fn run_box(c: &BoxCmd) -> Result<()> {
     batch::check_suffix(c.out.suffix.as_deref())?;
     // 没有输入可沿用格式，默认写 POSCAR
     let ext = match &c.out.format_out {
-        Some(_) => c.out.ext(Path::new(""), &ReadArgs::default())?,
+        Some(f) => format_out(f)?.0,
         None => "vasp".to_string(),
     };
     // 先建盒再建目录：密度、最小间距、化学式的错误都由 build_box 报，不该先留下一个空目录
