@@ -98,10 +98,9 @@ pub fn write_deepmd_npy_bounds(
         .map(|e| species.iter().position(|s| s == e).expect("element in species"))
         .collect();
 
+    // Writes box.npy only when every frame has a cell. A mix of no cell and a non-periodic cell is
+    // nopbc throughout; a mix with a periodic frame is refused below (review 2026-11-06 A3-3)
     let has_cell = frames.iter().all(|f| f.cell.is_some());
-    if !has_cell && frames.iter().any(|f| f.cell.is_some()) {
-        bail!("some frames carry a cell and some do not; a DeePMD system is either periodic or not");
-    }
     // DeePMD only knows periodic along all three axes or not at all (`nopbc`); a slab
     // (`pbc = T T F`) used to be written as fully periodic.
     if let Some(k) = frames.iter().position(|f| f.cell.is_some() && f.pbc != [true; 3] && f.pbc != [false; 3]) {
@@ -178,8 +177,9 @@ pub fn write_deepmd_npy_bounds(
     // to leave a rejected rewrite with nothing but type.raw
     fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     // A rewrite clears the old set.* first, or fewer frames would leave the previous tail behind
-    for entry in fs::read_dir(dir)?.filter_map(|e| e.ok()) {
-        let p = entry.path();
+    // An entry that cannot be read is an error, not skipped (review 2026-11-06 A2-33)
+    for entry in fs::read_dir(dir)? {
+        let p = entry?.path();
         if p.is_dir()
             && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("set."))
         {
@@ -194,7 +194,13 @@ pub fn write_deepmd_npy_bounds(
 
     let nopbc = dir.join("nopbc");
     if nopbc_frames == 0 {
-        let _ = fs::remove_file(&nopbc);
+        // Absent is the goal; any other failure leaves a stale nopbc behind, so it is an error
+        match fs::remove_file(&nopbc) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(e).with_context(|| format!("cannot remove {}", nopbc.display()));
+            }
+            _ => {}
+        }
     } else {
         fs::write(&nopbc, "")?;
     }
@@ -313,6 +319,16 @@ mod tests {
         }
     }
 
+    /// A stale `nopbc` that cannot be removed is an error; it used to be ignored, leaving a
+    /// periodic system marked non-periodic (review 2026-11-06 A2-33)
+    #[test]
+    fn a_stale_nopbc_that_cannot_be_removed_is_an_error() {
+        let d = out_dir("ferro_dp_stale_nopbc");
+        fs::create_dir_all(d.join("nopbc")).unwrap();
+        let err = format!("{:#}", write_deepmd_npy(&demo_traj(), &d).unwrap_err());
+        assert!(err.contains("cannot remove") && err.contains("nopbc"), "{err}");
+    }
+
     #[test]
     fn rejects_a_changing_composition() {
         let mut t = demo_traj();
@@ -373,6 +389,23 @@ mod tests {
             f.stress = None;
         }
         let d = out_dir("ferro_dp_nopbc");
+        write_deepmd_npy(&t, &d).unwrap();
+        assert!(d.join("nopbc").exists());
+        assert!(!d.join("set.000/box.npy").exists());
+    }
+
+    /// A frame without a cell next to one whose cell is non-periodic: both are non-periodic, so
+    /// the system is nopbc without box; it used to be refused as "either periodic or not"
+    /// (review 2026-11-06 A3-3)
+    #[test]
+    fn no_cell_and_a_non_periodic_cell_write_nopbc() {
+        let mut t = demo_traj();
+        t.frames[0].cell = None;
+        t.frames[1].pbc = [false; 3];
+        for f in &mut t.frames {
+            f.stress = None;
+        }
+        let d = out_dir("ferro_dp_mixed_nopbc");
         write_deepmd_npy(&t, &d).unwrap();
         assert!(d.join("nopbc").exists());
         assert!(!d.join("set.000/box.npy").exists());

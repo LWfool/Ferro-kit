@@ -57,6 +57,8 @@ struct State {
     positions: Vec<Vector3<f64>>,
     forces: Option<Vec<Vector3<f64>>>,
     stress_kb: Option<Matrix3<f64>>,
+    /// a stress varray without three rows: the step is incomplete
+    stress_bad: bool,
     energy: Option<f64>,
     kinetic: Option<f64>,
 }
@@ -109,6 +111,7 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                         st.positions.clear();
                         st.forces = None;
                         st.stress_kb = None;
+                        st.stress_bad = false;
                         st.energy = None;
                         st.kinetic = None;
                     }
@@ -217,6 +220,7 @@ fn parse_vasprun(input: impl std::io::BufRead) -> Result<(Trajectory, AimdStats)
                                 Some("stress") if rows.len() == 3 => {
                                     st.stress_kb = Some(Matrix3::from_row_slice(rows.as_flattened()));
                                 }
+                                Some("stress") => st.stress_bad = true,
                                 _ => {}
                             }
                         }
@@ -280,7 +284,7 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
         stats.n_incomplete += 1;
         return;
     };
-    if st.positions.len() != n || st.forces.as_ref().is_none_or(|f| f.len() != n) {
+    if st.positions.len() != n || st.forces.as_ref().is_none_or(|f| f.len() != n) || st.stress_bad {
         stats.n_incomplete += 1;
         return;
     }
@@ -481,6 +485,18 @@ mod tests {
             Err(e) => assert!(format!("{e:#}").contains("atominfo") || format!("{e:#}").contains("XML")),
             Ok((t, _)) => assert_eq!(t.n_frames(), 0),
         }
+    }
+
+    /// A stress varray without three rows is an incomplete step, not a frame without stress
+    /// (review 2026-11-06 A2-3)
+    #[test]
+    fn a_short_stress_varray_is_counted_incomplete() {
+        let text = std::fs::read_to_string(FIXTURE).unwrap();
+        let row = "   <v>       3.63419744     -19.22146779      -2.89830625 </v>\n";
+        assert_eq!(text.matches(row).count(), 1);
+        let path = crate::testutil::write_tmp("vasprun_short_stress.xml", &text.replace(row, ""));
+        let (traj, stats) = read_vasprun(&path).unwrap();
+        assert_eq!((traj.n_frames(), stats.n_incomplete), (1, 1));
     }
 
     /// A run killed mid-write leaves the file cut anywhere — inside a tag or inside a text

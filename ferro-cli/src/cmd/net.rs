@@ -20,7 +20,7 @@ use ferro_analysis::{first_shell_cutoffs, ShellCutoff};
 use ferro_analysis::{calc_network, calc_network_typed, AtomType, NetworkResult, TypeParams};
 use ferro_core::Trajectory;
 use std::path::Path;
-use ferro_io::{dump_name, write_extxyz, write_lammps_dump, LammpsUnits};
+use ferro_io::{dump_name, write_numbered, Format, LammpsUnits, WriteOptions};
 use ferro_structure::apply_type_labels;
 use std::collections::BTreeMap;
 
@@ -59,16 +59,22 @@ pub enum ExportFormat {
     Extxyz,
 }
 
-/// An exception to "the CLI names no format itself, `Format` does" (CLAUDE.md), on purpose
-/// (review 2026-10-30 A5-L6): the lammpstrj export folds the label into the element column
-/// through `dump_name`, which `ferro_io::write` has no option for, so both writers are called
-/// directly; and its products have always been `.lammpstrj`, while `Format::LammpsDump`
-/// names its products `.dump`. Taking the extension from `Format` would rename them.
+/// Written through `Format` like every other product: the LAMMPS dump writer folds the label
+/// into the element column itself (`dump_name`). The extension is kept apart: the products
+/// have always been `.lammpstrj`, while `Format::LammpsDump` names its products `.dump`, and
+/// taking it from `Format` would rename them (review 2026-11-06 A3-1).
 impl ExportFormat {
     fn ext(self) -> &'static str {
         match self {
             ExportFormat::Lammpstrj => "lammpstrj",
             ExportFormat::Extxyz => "extxyz",
+        }
+    }
+
+    fn format(self) -> Format {
+        match self {
+            ExportFormat::Lammpstrj => Format::LammpsDump,
+            ExportFormat::Extxyz => Format::Extxyz,
         }
     }
 }
@@ -263,11 +269,10 @@ fn export_labelled(
     let out_traj = Trajectory { frames, metadata: traj.metadata.clone() };
 
     let path = out.join(&batch::product_name(&["network", "types", label], out.suffix.as_deref(), fmt.ext()));
-    match fmt {
-        // 同 convert：沿用读入时的 --units；没给而帧里有速度 / 力时由 writer 报错要求给出
-        ExportFormat::Lammpstrj => write_lammps_dump(&out_traj, &path, units, false)?,
-        ExportFormat::Extxyz => write_extxyz(&out_traj, &path)?,
-    }
+    // As convert: the --units the input was read with; without one, frames with velocities or
+    // forces are refused by the writer. Both formats are multi-frame: one file, numbers unused
+    let numbers: Vec<usize> = (0..out_traj.n_frames()).collect();
+    write_numbered(&out_traj, &path, fmt.format(), &WriteOptions { units, drop_partial: false }, &numbers)?;
     if skipped > 0 {
         crate::report::note(path.display(), format!(
             "{skipped} label(s) not of the form <element>_<suffix>; wrote the element instead"

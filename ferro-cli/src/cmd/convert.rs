@@ -96,12 +96,11 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // The product is named after the input: `traj.dump` -> DIR/traj.<EXT>, and a
     // format holding one structure per file numbers it, DIR/traj_0000.<EXT>.
     // A name without an extension (POSCAR) is the name as a whole, and so is a DeePMD
-    // directory: DP-GEN's data.000 / data.001 must not both become `data`. Taken from
-    // the resolved path, so `-i .` and `-i ..` name the directory they stand for
+    // directory: DP-GEN's data.000 / data.001 must not both become `data`. `-i .` and
+    // `-i ..` name the directory they stand for. The same rule as the batch labels
     let real = input.canonicalize().with_context(|| format!("cannot open {}", input.display()))?;
-    let name = if real.is_dir() { real.file_name() } else { real.file_stem() }
-        .with_context(|| format!("{}: no name to give the product", input.display()))?
-        .to_string_lossy();
+    let name = crate::batch::input_name(input)
+        .with_context(|| format!("{}: no name to give the product", input.display()))?;
     let product = crate::batch::product_name(&[&name], args.suffix.as_deref(), &ext);
     let output = &dir.join(&product);
 

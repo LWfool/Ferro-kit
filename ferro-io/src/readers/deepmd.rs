@@ -176,9 +176,11 @@ pub fn read_deepmd_npy(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
 
 /// `set.*` subdirectories in name order, which is also frame order.
 fn set_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
+    // An entry that cannot be read is an error, not skipped (review 2026-11-06 A2-33)
     let mut out: Vec<PathBuf> = std::fs::read_dir(dir)
+        .and_then(|it| it.map(|e| e.map(|e| e.path())).collect::<std::io::Result<Vec<_>>>())
         .with_context(|| format!("cannot list {}", dir.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
+        .into_iter()
         .filter(|p| {
             p.is_dir()
                 && p.file_name()
@@ -194,8 +196,10 @@ fn set_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn extra_keys(set: &Path) -> Result<Vec<String>> {
-    let mut out: Vec<String> = std::fs::read_dir(set)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
+    let mut out: Vec<String> = std::fs::read_dir(set)
+        .and_then(|it| it.map(|e| e.map(|e| e.path())).collect::<std::io::Result<Vec<_>>>())
+        .with_context(|| format!("cannot list {}", set.display()))?
+        .into_iter()
         .filter_map(|p| {
             let stem = p.file_stem()?.to_str()?.to_string();
             (p.extension().and_then(|e| e.to_str()) == Some("npy")

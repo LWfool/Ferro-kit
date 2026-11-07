@@ -17,7 +17,7 @@ enum Token {
     Value(String),
 }
 
-fn tokenize(input: &str) -> Vec<Token> {
+fn tokenize(input: &str) -> Result<Vec<Token>> {
     let mut tokens = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     let mut i = 0;
@@ -27,6 +27,7 @@ fn tokenize(input: &str) -> Vec<Token> {
 
         // Semicolon-delimited multiline string — MUST start at column 0
         if line.starts_with(';') {
+            let open = i + 1;
             let mut text = String::new();
             i += 1;
             while i < lines.len() && !lines[i].starts_with(';') {
@@ -34,6 +35,8 @@ fn tokenize(input: &str) -> Vec<Token> {
                 text.push_str(lines[i]);
                 i += 1;
             }
+            // Unclosed, it used to swallow the rest of the file (review 2026-11-06 A2-28)
+            ensure!(i < lines.len(), "line {open}: ';' text field is never closed");
             tokens.push(Token::Value(text.trim().to_string()));
             i += 1; // closing ';'
             continue;
@@ -42,12 +45,12 @@ fn tokenize(input: &str) -> Vec<Token> {
         let line = strip_comment(line);
         let trimmed = line.trim();
         if !trimmed.is_empty() {
-            tokenize_line(trimmed, &mut tokens);
+            tokenize_line(trimmed, &mut tokens).with_context(|| format!("line {}", i + 1))?;
         }
         i += 1;
     }
 
-    tokens
+    Ok(tokens)
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -64,16 +67,16 @@ fn strip_comment(line: &str) -> &str {
     line
 }
 
-fn tokenize_line(mut s: &str, out: &mut Vec<Token>) {
+fn tokenize_line(mut s: &str, out: &mut Vec<Token>) -> Result<()> {
     loop {
         s = s.trim_start();
         if s.is_empty() { break; }
 
         if let Some(quote) = s.chars().next().filter(|&c| c == '\'' || c == '"') {
             s = &s[1..];
-            let end = s.find(quote).unwrap_or(s.len());
+            let end = s.find(quote).with_context(|| format!("unclosed {quote} quote"))?;
             out.push(Token::Value(s[..end].to_string()));
-            s = if end < s.len() { &s[end + 1..] } else { "" };
+            s = &s[end + 1..];
         } else {
             let end = s.find(char::is_whitespace).unwrap_or(s.len());
             let tok = &s[..end];
@@ -81,6 +84,7 @@ fn tokenize_line(mut s: &str, out: &mut Vec<Token>) {
             s = &s[end..];
         }
     }
+    Ok(())
 }
 
 fn make_token(s: &str) -> Token {
@@ -526,7 +530,7 @@ pub fn read_cif(path: &Path) -> Result<Trajectory> {
 }
 
 fn parse_cif(input: &str) -> Result<Trajectory> {
-    let tokens = tokenize(input);
+    let tokens = tokenize(input)?;
     let blocks = parse_blocks(&tokens)?;
 
     ensure!(!blocks.is_empty(), "no data_ blocks found");
@@ -657,6 +661,18 @@ Mg1  Mg  0.0  0.0  0.0  0.5
 Fe1  Fe  0.0  0.0  0.0  0.5
 O1   O   0.5  0.5  0.5  1.0(0)
 ";
+
+    /// An unclosed `;` text field or quote is an error naming its line; it used to swallow the
+    /// rest of the file or line silently (review 2026-11-06 A2-28)
+    #[test]
+    fn test_unclosed_text_field_or_quote_is_an_error() {
+        let text = P1_CIF.replace("_space_group_IT_number  1\n", "_space_group_IT_number  1\n_publ_section_title\n;\nopen\n");
+        let err = format!("{:#}", parse_cif(&text).unwrap_err());
+        assert!(err.contains("line 11: ';' text field is never closed"), "{err}");
+        let text = P1_CIF.replace("'P 1'", "'P 1");
+        let err = format!("{:#}", parse_cif(&text).unwrap_err());
+        assert!(err.contains("line 8") && err.contains("unclosed ' quote"), "{err}");
+    }
 
     #[test]
     fn test_bad_coordinate_or_occupancy_is_an_error_naming_the_site() {

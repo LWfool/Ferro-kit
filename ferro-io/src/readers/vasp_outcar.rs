@@ -26,7 +26,7 @@
 
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use ferro_core::{Atom, Cell, Frame, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 
@@ -66,6 +66,8 @@ struct Pending {
     converged: Option<bool>,
     cell: Option<Matrix3<f64>>,
     stress_kb: Option<[f64; 6]>,
+    /// an `in kB` line without six numbers (`*****` overflow): the step is incomplete
+    stress_bad: bool,
     positions: Vec<Vector3<f64>>,
     forces: Vec<Vector3<f64>>,
     energy: Option<f64>,
@@ -95,7 +97,7 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
     let mut want_atoms = 0usize;
     let mut skip_before_atoms = 0usize;
 
-    for line in lines {
+    for (no, line) in lines.enumerate() {
         let line = line?;
         // Split once per line, for every has_tokens below (review R1-10, 2026-10-30 A1-L7)
         let toks: Vec<&str> = line.split_whitespace().collect();
@@ -113,11 +115,11 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
             continue;
         }
         if has_tokens(&toks, &["ions", "per", "type"]) {
-            let here: Vec<usize> = line
-                .split('=')
-                .nth(1)
-                .map(|r| r.split_whitespace().filter_map(|t| t.parse().ok()).collect())
-                .unwrap_or_default();
+            let here = line.split('=').nth(1).unwrap_or_default()
+                .split_whitespace()
+                .map(|t| t.parse::<usize>()
+                    .map_err(|_| anyhow!("line {}: `ions per type` count '{t}' is not a number", no + 1)))
+                .collect::<Result<Vec<usize>>>()?;
             match &counts {
                 None => counts = Some(here),
                 Some(prev) if *prev != here => bail!(
@@ -205,6 +207,8 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
             let v = floats(&line);
             if v.len() >= 6 {
                 p.stress_kb = Some([v[0], v[1], v[2], v[3], v[4], v[5]]);
+            } else {
+                p.stress_bad = true;
             }
             continue;
         }
@@ -302,7 +306,7 @@ fn finish(
         stats.n_incomplete += 1;
         return;
     };
-    if p.positions.len() != n || p.forces.len() != n || p.converged.is_none() {
+    if p.positions.len() != n || p.forces.len() != n || p.converged.is_none() || p.stress_bad {
         stats.n_incomplete += 1;
         return;
     }
@@ -530,6 +534,26 @@ mod tests {
         assert_eq!(traj.n_frames(), 0);
         assert_eq!(stats.n_scf_failed, 2);
         assert_eq!(stats.n_kept, 0);
+    }
+
+    /// A count in `ions per type` that does not parse is an error naming the line; it used to
+    /// be skipped, and the error came later with the wrong reason (review 2026-11-06 A2-4)
+    #[test]
+    fn an_unreadable_ions_per_type_count_names_the_line() {
+        let body = VARIABLE_CELL.replace("ions per type =               1   1", "ions per type =               1   x");
+        let err = format!("{:#}", read_vasp_outcar(&tmp("ipt.outcar", &body)).unwrap_err());
+        assert!(err.contains("ions per type") && err.contains("'x'") && err.contains("line "), "{err}");
+    }
+
+    /// An `in kB` line VASP overflowed (`*****`) is an incomplete step, not a frame without
+    /// stress (review 2026-11-06 A2-3)
+    #[test]
+    fn an_overflowed_stress_line_is_counted_incomplete() {
+        let row = "  in kB      10.00000    20.00000";
+        assert_eq!(VARIABLE_CELL.matches(row).count(), 2);
+        let body = VARIABLE_CELL.replacen(row, "  in kB    **********    20.00000", 1);
+        let (traj, stats) = read_vasp_outcar(&tmp("overflow.outcar", &body)).unwrap();
+        assert_eq!((traj.n_frames(), stats.n_incomplete), (1, 1));
     }
 
     #[test]

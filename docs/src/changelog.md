@@ -33,6 +33,37 @@ command line alike; regenerate it rather than migrating it.
 - A QE input named `.qein` is recognised, as `.in` and `.qe` are.
 - `ferro-py job` and `ferro-py conv` take `--format-in FMT` too, with the same names.
 
+### Code review fixes (2026-11-06): broken files, empty fields, names
+
+- `build box`: a formula is matched case-sensitively (names still are not): `C2H6Os` is osmium and no longer
+  takes dmso's mass with sulfur; `h2o` is an error, write `H2O` or `water`.
+- LAMMPS dump: a complete last frame whose `TIMESTEP`, `NUMBER OF ATOMS` or `BOX BOUNDS` value does not parse
+  is an error; it used to be dropped as cut off, with exit code 0. A frame cut off at the end of the file is
+  still dropped with a warning.
+- CP2K MD output: a step without its `ENERGY|` line is counted incomplete and dropped, as the other output
+  readers do; it used to be kept with no energy.
+- OUTCAR / vasprun.xml: a stress VASP overflowed (`*****` in the `in kB` line) or a short stress block makes
+  the step incomplete; the frame used to be kept without stress.
+- OUTCAR: a count in `ions per type` that is not a number is an error naming the line; it used to be skipped
+  and the error came later with a wrong reason.
+- Extended XYZ: every error names `frame k, line n` of the file; an atom line used to be named by its index
+  within the frame.
+- LAMMPS data: `Velocities`, `Bonds` and the other per-atom or topology sections the reader does not keep are
+  named in a `FerroNote`.
+- CP2K input: an unclosed `&KIND` is an error. QE input: an `ATOMIC_SPECIES` line without a mass is an error
+  naming the line. CIF: an unclosed `;` text field or quote is an error naming its line; it used to swallow
+  the rest of the file or line.
+- DeePMD: a directory entry that cannot be read, or a stale `nopbc` that cannot be removed, is an error.
+  Frames without a cell next to frames with a non-periodic cell are written as one `nopbc` system; they used
+  to be refused.
+- `traj sq --weighting xrd|neutron|both` without element information (every scattering factor 0): the
+  weighted columns are empty fields; they were 0.
+- `dataset` summaries: a temperature or density from one frame reads `= 300.0000 K`, not `+/- 0.0000`.
+- A DeePMD directory input is labelled by its whole name (`data.000`, not `data`) in the `file` column and
+  product names, and `-i .` / `-i ./` by the directory it stands for, as `convert` already did.
+- `ferro-py`: an existing `-i` name with `[ ]` is that file, not a pattern, and a file given twice is read
+  once with a note, as in `ferro`.
+
 ### Code review fixes: smaller consistency changes
 
 - `traj msd` / `vacf` / `vanhove`: the `species` line of the summary lists the elements by atomic number,

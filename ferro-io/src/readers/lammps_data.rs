@@ -227,6 +227,16 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
         frame.add_atom(atom);
     }
 
+    // Per-atom and topology sections this reader does not keep are named, not dropped silently
+    // (review 2026-11-06 A2-6). Coeffs sections are force field, not structure: no note
+    let not_read: Vec<&str> = lines.iter().map(|l| strip_comment(l))
+        .filter(|l| matches!(*l, "Velocities" | "Ellipsoids" | "Lines" | "Triangles" | "Bodies"
+            | "Bonds" | "Angles" | "Dihedrals" | "Impropers"))
+        .collect();
+    if !not_read.is_empty() {
+        warnings.push(Notice::note(None, format!("sections not read: {}", not_read.join(", "))));
+    }
+
     let mut traj = Trajectory::from_frame(frame);
     if !comment.is_empty() { traj.metadata.title = Some(comment); }
     Ok((traj, warnings))
@@ -469,6 +479,17 @@ Atoms # full
         let traj = read_lammps_data(&tmp("pairij.data", &text), AtomStyle::Full).unwrap().0;
         let f = traj.first().unwrap();
         assert_eq!((f.atom(0).element, f.atom(1).element), ("O", "H"));
+    }
+
+    /// Per-atom and topology sections the reader does not keep are named in a note, not dropped
+    /// silently (review 2026-11-06 A2-6); force-field Coeffs sections are not structure, no note
+    #[test]
+    fn test_sections_not_read_are_named() {
+        let text = format!("{WATER_FULL}\nVelocities\n\n1 0.1 0 0\n2 0 0 0\n3 0 0 0\n\nBonds\n\n1 1 1 2\n");
+        let (_, notes) = read_lammps_data(&tmp("vel.data", &text), AtomStyle::Full).unwrap();
+        assert!(notes.iter().any(|n| n.message.contains("Velocities, Bonds")), "{notes:?}");
+        let (_, notes) = read_lammps_data(&tmp("plain.data", WATER_FULL), AtomStyle::Full).unwrap();
+        assert!(notes.is_empty(), "{notes:?}");
     }
 
     // LAMMPS 的段可任意排序：Masses 写在 Atoms 之后也得读到

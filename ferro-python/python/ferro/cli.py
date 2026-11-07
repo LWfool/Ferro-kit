@@ -277,16 +277,30 @@ def parse_type_map(text):
 
 
 def expand_inputs(patterns):
-    """带通配符的 -i 自己展开（加了引号，shell 没展开）；不带的原样，不存在留给读取时报错。"""
-    files = []
+    """Expand -i globs the shell did not (quoted); a name without wildcards is kept as given and
+    a missing one is left for the reader to report.
+
+    As ferro-cli ``batch.rs`` ``expand_with`` (review 2026-11-06 A8-1; change both): an existing
+    path is taken literally before any globbing (``a[1].xyz`` is not the class ``a1.xyz``), and
+    a file given twice (by pattern and by name, or ``x/../a``) is read once, with a note.
+    """
+    files, seen, duplicates = [], set(), 0
     for pattern in patterns:
-        if any(c in pattern for c in "*?["):
+        if any(c in pattern for c in "*?[") and not os.path.exists(pattern):
             found = sorted(glob.glob(pattern))
             if not found:
                 raise UsageError(f"-i '{pattern}' matches no file")
-            files += found
         else:
-            files.append(pattern)
+            found = [pattern]
+        for f in found:
+            key = os.path.realpath(f)
+            if key in seen:
+                duplicates += 1
+            else:
+                seen.add(key)
+                files.append(f)
+    if duplicates:
+        print(f"{PROGRAM}: FerroNote: {duplicates} duplicate input(s) skipped", file=sys.stderr)
     return files
 
 

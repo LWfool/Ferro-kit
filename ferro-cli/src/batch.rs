@@ -37,9 +37,24 @@ pub struct Failure {
 /// (`runs/700K/prod.lammpstrj` → `prod`). Legends and `groupby("file")` both want
 /// something short. Within a batch use [`unique_labels`], which renames repeats.
 fn label_of(path: &Path) -> String {
-    path.file_stem()
+    input_name(path).unwrap_or_else(|| path.to_string_lossy().into_owned())
+}
+
+/// The name an input gives its products and label: a file's stem, a directory's whole name
+/// (DP-GEN's `data.000` / `data.001` must not both become `data`). A path with no name of its
+/// own (`.`, `./`, `a/..`) is resolved first, so it names the directory it stands for; any
+/// other path is taken as given, so a symlink is named by the link. `None` for `/` (review
+/// 2026-11-06 A6-1: convert and the batch commands used to name inputs two ways).
+pub fn input_name(path: &Path) -> Option<String> {
+    let real;
+    let path = if path.file_name().is_none() {
+        real = path.canonicalize().ok()?;
+        &real
+    } else {
+        path
+    };
+    if path.is_dir() { path.file_name() } else { path.file_stem() }
         .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
 /// Labels for a whole batch: the file stem, made unique.
@@ -104,6 +119,8 @@ pub fn expand_dirs(patterns: &[PathBuf]) -> Result<Vec<PathBuf>> {
     expand_with(patterns, |p| p.is_dir(), "DIR", "directory")
 }
 
+/// ferro-py's `cli.py` `expand_inputs` repeats the literal-first and dedup rules for its own
+/// `-i`; crossing into Rust for an argument list is not worth it, so change both (A8-1).
 fn expand_with(
     patterns: &[PathBuf],
     keep: fn(&std::path::Path) -> bool,
@@ -632,6 +649,26 @@ mod tests {
     #[test]
     fn test_label_is_the_stem() {
         assert_eq!(label_of(Path::new("runs/700K/prod.lammpstrj")), "prod");
+    }
+
+    /// Review 2026-11-06 A6-1: a directory input is named whole (DP-GEN's `data.000` and
+    /// `data.001` both became `data`), and `.` / `./` name the directory they stand for (they
+    /// gave `.` and `./`), as convert names its product
+    #[test]
+    fn test_a_directory_label_is_its_whole_name() {
+        let dir = std::env::temp_dir().join(format!("ferro_label_dir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for d in ["data.000", "data.001"] {
+            std::fs::create_dir_all(dir.join(d)).unwrap();
+        }
+        assert_eq!(unique_labels(&[dir.join("data.000"), dir.join("data.001/")]), ["data.000", "data.001"]);
+        let here = std::env::current_dir().unwrap();
+        let name = here.file_name().unwrap().to_string_lossy().into_owned();
+        for p in [".", "./"] {
+            assert_eq!(label_of(Path::new(p)), name, "{p}");
+        }
+        assert_eq!(label_of(&dir.join("data.000/..")), dir.file_name().unwrap().to_string_lossy());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

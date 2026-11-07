@@ -149,14 +149,6 @@ enum FrameError {
     Invalid(String),
 }
 
-impl From<String> for FrameError {
-    fn from(s: String) -> Self { FrameError::Incomplete(s) }
-}
-
-impl From<&str> for FrameError {
-    fn from(s: &str) -> Self { FrameError::Incomplete(s.to_string()) }
-}
-
 /// Parse the frame whose `ITEM: TIMESTEP` line is at `*i`, advancing `*i` past it.
 ///
 /// Whether an `Err` is fatal is the caller's call: see [`FrameError`].
@@ -169,24 +161,33 @@ fn parse_frame(
     unknown_prefixes: &mut BTreeSet<String>,
 ) -> std::result::Result<Frame, FrameError> {
     // 找本帧的下一个段头；先撞上下一帧的 TIMESTEP 或到文件尾，都说明本帧缺这一段
-    let seek = |from: usize, tag: &str| -> std::result::Result<usize, String> {
+    let seek = |from: usize, tag: &str| -> std::result::Result<usize, FrameError> {
         for (k, l) in lines.iter().enumerate().skip(from) {
             if l.contains(tag) { return Ok(k); }
             if l.trim().starts_with("ITEM: TIMESTEP") { break; }
         }
-        Err(format!("no ITEM: {tag} section"))
+        Err(FrameError::Incomplete(format!("no ITEM: {tag} section")))
+    };
+    // Line `idx` fails to read: a cut only if the line is missing or is the file's last line
+    // (truncation cuts there, often mid-number); a complete line that is wrong is a broken file
+    let fail_at = |idx: usize, msg: String| {
+        if idx >= lines.len() || (last_in_file && idx == lines.len() - 1) {
+            FrameError::Incomplete(msg)
+        } else {
+            FrameError::Invalid(msg)
+        }
     };
 
     // TIMESTEP 的值紧跟段头；时间相关分析靠它查重复帧与不等间隔
     let step: i64 = lines.get(*i + 1)
         .and_then(|l| l.trim().parse().ok())
-        .ok_or("ITEM: TIMESTEP has no step number")?;
+        .ok_or_else(|| fail_at(*i + 1, "ITEM: TIMESTEP has no step number".into()))?;
 
     // NUMBER OF ATOMS
     let na = seek(*i + 1, "NUMBER OF ATOMS")?;
     let n: usize = lines.get(na + 1)
         .and_then(|l| l.trim().parse().ok())
-        .ok_or("NUMBER OF ATOMS has no count")?;
+        .ok_or_else(|| fail_at(na + 1, "NUMBER OF ATOMS has no count".into()))?;
 
     // BOX BOUNDS
     let bb = seek(na + 2, "BOX BOUNDS")?;
@@ -215,7 +216,8 @@ fn parse_frame(
                 .map(|l| l.split_whitespace().map_while(|s| s.parse().ok()).collect())
                 .unwrap_or_default();
             let Ok(v) = <[f64; 4]>::try_from(vals.get(..4).unwrap_or_default()) else {
-                return Err(format!("BOX BOUNDS abc origin line {} of 3 is missing or cut short", dim + 1).into());
+                return Err(fail_at(bb + 1 + dim,
+                    format!("BOX BOUNDS abc origin line {} of 3 is missing or cut short", dim + 1)));
             };
             *row = v;
         }
@@ -232,7 +234,8 @@ fn parse_frame(
                 .map(|l| l.split_whitespace().map_while(|s| s.parse().ok()).collect())
                 .unwrap_or_default();
             if vals.len() < 2 {
-                return Err(format!("BOX BOUNDS line {} of 3 is missing or cut short", dim + 1).into());
+                return Err(fail_at(bb + 1 + dim,
+                    format!("BOX BOUNDS line {} of 3 is missing or cut short", dim + 1)));
             }
             lo[dim] = vals[0];
             hi[dim] = vals[1];
@@ -329,11 +332,10 @@ fn parse_frame(
         // 文件尾、下一个段头、空行都说明原子段没写完；列数不足是最后一行被截在中间
         let line = lines.get(ah + 1 + k)
             .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("ITEM:"))
-            .ok_or_else(|| format!("only {k} of {n} atom lines"))?;
+            .ok_or_else(|| fail_at(ah + 1 + k, format!("only {k} of {n} atom lines")))?;
         let parts: Vec<&str> = line.split_whitespace().collect();
         // 截断只会切在文件最后一行（常切在数字中间）；别处的列数不足或坏字段是文件写错了
-        let at_eof = last_in_file && ah + 1 + k == lines.len() - 1;
-        let fail = |msg: String| if at_eof { FrameError::Incomplete(msg) } else { FrameError::Invalid(msg) };
+        let fail = |msg: String| fail_at(ah + 1 + k, msg);
         if parts.len() < col_names.len() {
             return Err(fail(format!(
                 "atom line {} of {n} has {} of {} columns",
@@ -852,6 +854,28 @@ ITEM: ATOMS id type element x y z
     }
 
     #[test]
+    fn test_broken_header_of_a_complete_last_frame_is_an_error() {
+        // The last frame is complete but a header value is not a number: truncation cannot
+        // explain it, so it is an error, not a dropped frame (review 2026-11-06 A2-1)
+        let cases = [
+            ("TIMESTEP", DUMP_ORTHO.replace("TIMESTEP\n10\n", "TIMESTEP\nabc\n"), "TIMESTEP"),
+            ("NUMBER OF ATOMS", DUMP_ORTHO.replacen("ATOMS\n2\n", "ATOMS\nabc\n", 2)
+                .replacen("ATOMS\nabc\n", "ATOMS\n2\n", 1), "NUMBER OF ATOMS"),
+            ("BOX BOUNDS", format!("{}0 x\n0 2.87\n0 2.87\n{}", head(19 - 3),
+                DUMP_ORTHO.lines().skip(19).map(|l| format!("{l}\n")).collect::<String>()), "BOX BOUNDS"),
+        ];
+        for (what, text, needle) in cases {
+            let err = parse_traj(&text, Some(LammpsUnits::Real))
+                .expect_err(&format!("{what}: a broken header in a complete frame must be an error"));
+            let msg = format!("{err:#}");
+            assert!(msg.contains("frame 1") && msg.contains(needle), "{what}: {msg}");
+        }
+        // The same broken value as the file's last line is a cut, the frame is dropped
+        let traj = parse_traj(&(head(12) + "1a"), Some(LammpsUnits::Real)).unwrap();
+        assert_eq!(traj.n_frames(), 1);
+    }
+
+    #[test]
     fn test_bad_field_is_truncation_only_on_the_last_line_of_the_file() {
         // 截断切在最后一行的数字中间（`1.4e`）：末帧丢弃，前面的帧照常
         let cut = DUMP_ORTHO.replace("2 1 Fe 1.445 1.435 1.435\n", "2 1 Fe 1.445 1.435 1.4e");
@@ -901,7 +925,7 @@ ITEM: ATOMS id type element x y z
         // One number short is an error (it used to give an empty trajectory and a warning)
         let bad = text.replace("-4 0 0 2", "-4 0 0");
         let err = format!("{:#}", parse_lammps_dump(&bad, None).unwrap_err());
-        assert!(err.contains("only frame") && err.contains("abc origin line 2"), "{err}");
+        assert!(err.contains("frame 0") && err.contains("abc origin line 2"), "{err}");
     }
 
     /// A dump with a `typelabel` column and no `element` column used to give `X<type>`.

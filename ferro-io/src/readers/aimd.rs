@@ -218,7 +218,7 @@ pub fn sniff(path: &Path) -> Result<AimdFormat> {
 /// The format is a parameter rather than something decided here, so a caller
 /// holding a better answer than the banner — the user, typically — can say so.
 pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdStats)> {
-    let (traj, stats) = match fmt {
+    let (mut traj, stats) = match fmt {
         AimdFormat::Cp2kMd => super::cp2k_md::read_cp2k_md(path),
         AimdFormat::Cp2kSp => super::cp2k_sp::read_cp2k_sp(path),
         AimdFormat::VaspOutcar => super::vasp_outcar::read_vasp_outcar(path),
@@ -234,6 +234,9 @@ pub fn read_aimd_as(path: &Path, fmt: AimdFormat) -> Result<(Trajectory, AimdSta
             path.display(), stats.n_steps, stats.n_dropped(), stats.breakdown()
         );
     }
+    // One site table for a run of identical frames, as `read_as` leaves it; Python's
+    // `read_output` and `collect` come this way (review 2026-11-06 A8-2)
+    traj.share_sites();
     Ok((traj, stats))
 }
 
@@ -263,6 +266,17 @@ mod tests {
         let err = read_aimd_as(&f, AimdFormat::VaspOutcar).unwrap_err().to_string();
         assert!(err.contains("no usable frame"), "{err}");
         let _ = std::fs::remove_file(&f);
+    }
+
+    /// Every AIMD format leaves one shared site table, as `read_as` does; cp2k and qe used to give
+    /// each frame its own on this path, which Python's `read_output` and collect take
+    /// (review 2026-11-06 A8-2)
+    #[test]
+    fn frames_share_one_site_table() {
+        for f in ["cp2k_md_3frames.out", "qe75_md.out", "vasp_OUTCAR_2frames"] {
+            let (traj, _) = read_aimd(&p(f)).unwrap();
+            assert!(traj.frames.iter().all(|fr| fr.shares_sites_with(&traj.frames[0])), "{f}");
+        }
     }
 
     #[test]

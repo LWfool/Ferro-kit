@@ -63,7 +63,8 @@ Brace expansion `{a,b}` is not supported; leave that to the shell.
 Commands whose output is per-input (the cubes of `ferro map`, the trajectory of `ferro net --export-traj`)
 are the exception: the input stem has to be part of the file name, otherwise the second input would overwrite the first.  `-o` applies to these two as well.
 
-The `file` column and those file names use the input's **stem**.  When two inputs share a stem
+The `file` column and those file names use the input's **stem** — for a DeePMD system directory its whole
+name (`data.000`, not `data`), and for `-i .` the name of the directory it stands for.  When two inputs share a stem
 (`runs/700K/prod.lammpstrj`, `runs/900K/prod.lammpstrj`), the second and later become `prod_2`, `prod_3`, … in
 input order, and ferro prints a `FerroNote` naming each renamed file.  Stems are compared ignoring case
 (`Prod` and `prod` clash), because the macOS and Windows file systems do.

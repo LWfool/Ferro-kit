@@ -88,23 +88,23 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
         // Not empty: the loop above skipped blank lines
         let count_line = count_line.trim();
 
-        let n: usize = count_line.parse()
-            .with_context(|| format!("expected atom count, got {count_line:?}"))?;
-
         let frame_no = traj.n_frames();
+        let n: usize = count_line.parse()
+            .with_context(|| format!("frame {frame_no}, line {count_no}: expected atom count, got {count_line:?}"))?;
+
         let Some((comment_no, comment)) = lines.next() else {
             drop_truncated(&mut warnings, frame_no, count_no, "no comment line")?;
             break;
         };
         let kv = parse_comment(&comment)
-            .with_context(|| format!("frame {frame_no} (line {comment_no}): bad comment line"))?;
+            .with_context(|| format!("frame {frame_no}, line {comment_no}: bad comment line"))?;
 
         // Cell and pbc
         let (cell, pbc) = match kv.get("lattice") {
             Some(lat) => {
-                let c = parse_lattice(lat).context("invalid Lattice")?;
+                let c = parse_lattice(lat).with_context(|| format!("frame {frame_no}, line {comment_no}: invalid Lattice"))?;
                 let pbc = match kv.get("pbc") {
-                    Some(s) => parse_pbc(s).with_context(|| format!("frame {frame_no} (line {comment_no})"))?,
+                    Some(s) => parse_pbc(s).with_context(|| format!("frame {frame_no}, line {comment_no}"))?,
                     None => [true; 3],
                 };
                 (Some(c), pbc)
@@ -117,7 +117,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
         let scalar = |key: &str| -> Result<Option<f64>> {
             kv.get(key)
                 .map(|v| v.parse::<f64>().with_context(|| {
-                    format!("frame {frame_no} (line {comment_no}): invalid {key} {v:?}")
+                    format!("frame {frame_no}, line {comment_no}: invalid {key} {v:?}")
                 }))
                 .transpose()
         };
@@ -126,12 +126,12 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
         // 有就别丢）；写侧不写 —— 见 writers/extxyz.rs
         let temperature = scalar("temperature")?;
         let stress = read_stress(&kv, cell.as_ref())
-            .with_context(|| format!("frame {}", traj.n_frames()))?;
+            .with_context(|| format!("frame {frame_no}, line {comment_no}"))?;
 
         // Properties column spec
         let props = kv.get("properties").map(|s| parse_properties(s))
             .transpose()
-            .with_context(|| format!("frame {frame_no} (line {comment_no}): bad Properties"))?
+            .with_context(|| format!("frame {frame_no}, line {comment_no}: bad Properties"))?
             .unwrap_or_else(|| vec![
                 ("species".to_string(), 1),
                 ("pos".to_string(), 3),
@@ -149,10 +149,10 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
         let find = |name: &str| col_idx.get(name).copied();
         // Without these an atom used to land at the origin, or be named X, silently
         let Some(pos_col) = find("pos") else {
-            bail!("frame {frame_no}: Properties has no pos column (pos:R:3)");
+            bail!("frame {frame_no}, line {comment_no}: Properties has no pos column (pos:R:3)");
         };
         if find("species").is_none() && find("z").is_none() {
-            bail!("frame {frame_no}: Properties has neither a species nor a Z column");
+            bail!("frame {frame_no}, line {comment_no}: Properties has neither a species nor a Z column");
         }
 
         let mut frame = match cell {
@@ -180,7 +180,7 @@ fn parse_frames(lines: impl Iterator<Item = String>) -> Result<(Trajectory, Vec<
             let parsed = (|| -> Result<Result<AtomLine>> {
                 let cols: Vec<&str> = line.split_whitespace().collect();
                 if cols.len() < ncols {
-                    bail!("atom line {i}: expected {ncols} columns, got {}", cols.len());
+                    bail!("frame {frame_no}, line {line_no}: expected {ncols} columns, got {}", cols.len());
                 }
                 // Every parse failure is an error: a 0 would pose as "measured 0", a None as "no such column"
                 let num = |name: &str, c: usize| -> Result<f64> {
@@ -903,7 +903,9 @@ Si 0.0 0.0 0.0
         }
         // An incomplete middle frame is still an error
         let bad = format!("2\nProperties=species:S:1:pos:R:3\nC 0 0 0\n{head}");
-        assert!(parse_extxyz(&bad).is_err());
+        // Named by frame and file line, not by the atom's index in the frame (review 2026-11-06 A2-5)
+        let err = format!("{:#}", parse_extxyz(&bad).unwrap_err());
+        assert!(err.contains("frame 0, line 4: expected 4 columns"), "{err}");
         // A bad number on a line that is not the last is a bad file (scan B-2)
         let bad = format!("{head}{head}").replacen("C 1.4 0 0", "C 1.4 0 -", 1);
         let err = format!("{:#}", parse_extxyz(&bad).unwrap_err());

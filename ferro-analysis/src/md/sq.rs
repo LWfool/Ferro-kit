@@ -218,7 +218,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
         if want_neu {
             let w = build_neutron_weights(&elems, &gr.gr);
             let (parts, total) = apply_weights(&sq_map, n_q, |key, _qi| {
-                w.get(key).copied().unwrap_or(0.0)
+                w[key]
             });
             sq_neutron = parts;
             total_neutron = Some(total);
@@ -229,7 +229,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
                 .map(|&q| build_xrd_weights_at_q(&elems, q, &gr.gr))
                 .collect();
             let (parts, total) = apply_weights(&sq_map, n_q, |key, qi| {
-                w_per_q[qi].get(key).copied().unwrap_or(0.0)
+                w_per_q[qi][key]
             });
             sq_xrd = parts;
             total_xrd = Some(total);
@@ -353,9 +353,10 @@ fn weights_from_factors(
     gr_gr: &BTreeMap<String, Vec<f64>>,
 ) -> BTreeMap<String, f64> {
     let avg: f64 = elems.iter().zip(factors).map(|((_, c, _), fi)| c * fi).sum();
-    let denom = avg * avg;
+    // Every factor 0 (no element column, Z = 0) leaves the weights undefined: NaN, never 0,
+    // which would pose as "measured 0" (review 2026-11-06 A4-1)
+    let denom = if (avg * avg).abs() < 1e-30 { f64::NAN } else { avg * avg };
     let mut w: BTreeMap<String, f64> = BTreeMap::new();
-    if denom.abs() < 1e-30 { return w; }
     // 上三角遍历（ib 从 ia 起），每个对称对只访问一次，异种对乘 (2−δᵢⱼ)。
     // 与参考实现 code2/dump2sq.c:326-338 的 `for k=j` 循环一致。
     // 全 n² 遍历会让异种对被累加两次（w_ij 翻倍、Σw > 1、加权总 S(q) 整体偏大）。
@@ -612,6 +613,21 @@ mod tests {
         for (k, want) in [("A-A", 0.0625), ("A-B", 0.375), ("B-B", 0.5625)] {
             assert!((w[k] - want).abs() < 1e-15, "{k}: {}", w[k]);
         }
+    }
+
+    /// Every factor 0 (no element column, Z = 0) leaves `<f>² = 0`: the weights and the total are
+    /// undefined, NaN (an empty field), not 0 posing as "measured 0" (review 2026-11-06 A4-1)
+    #[test]
+    fn test_zero_denominator_gives_nan_not_zero() {
+        let elems = [("A", 0.5, 0), ("B", 0.5, 0)];
+        let gr: BTreeMap<String, Vec<f64>> =
+            ["A-A", "A-B", "B-B"].iter().map(|k| (k.to_string(), vec![])).collect();
+        let w = weights_from_factors(&elems, &[0.0, 0.0], &gr);
+        assert!(w.len() == 3 && w.values().all(|v| v.is_nan()), "{w:?}");
+        let sq: BTreeMap<String, Vec<f64>> = gr.keys().map(|k| (k.clone(), vec![1.2, f64::NAN])).collect();
+        let (parts, total) = apply_weights(&sq, 2, |key, _| w[key]);
+        assert!(total.iter().all(|t| t.is_nan()), "{total:?}");
+        assert!(parts.values().flatten().all(|v| v.is_nan()));
     }
 
     #[test]

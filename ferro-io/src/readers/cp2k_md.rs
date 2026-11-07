@@ -297,6 +297,11 @@ fn parse_step(
             break;
         }
     }
+    // No energy is an incomplete step, as in the other output readers (review 2026-11-06 A2-2)
+    if energy.is_none() {
+        stats.n_incomplete += 1;
+        return Ok(());
+    }
 
     // 帧的后半在锚点之后，上界是下一个锚点（窗口的末尾）
     let hi = lines.len();
@@ -792,6 +797,16 @@ mod tests {
         let z_row = " STRESS|      z        0.00000000000E+00   0.00000000000E+00   3.00000000000E+04\n";
         assert_eq!(MINI.matches(z_row).count(), 2);
         let err = format!("{:#}", parse_cp2k_md(&MINI.replacen(z_row, "", 1)).unwrap_err());
+        assert!(err.contains("1 incomplete"), "{err}");
+    }
+
+    /// Review 2026-11-06 A2-2: a step without its `ENERGY|` line is incomplete, as in the
+    /// other output readers; it used to be kept with no energy
+    #[test]
+    fn a_step_without_energy_is_counted_incomplete() {
+        let e_row = " ENERGY| Total FORCE_EVAL ( QS ) energy [hartree]          -10.500000000000000\n";
+        assert_eq!(MINI.matches(e_row).count(), 1);
+        let err = format!("{:#}", parse_cp2k_md(&MINI.replace(e_row, "")).unwrap_err());
         assert!(err.contains("1 incomplete"), "{err}");
     }
 

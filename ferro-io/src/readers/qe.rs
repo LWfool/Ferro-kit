@@ -54,14 +54,15 @@ fn parse_qe(content: &str) -> Result<Trajectory> {
             if l.is_empty() { continue; }
             if is_card_or_namelist(l) { break; }
             let parts: Vec<&str> = l.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let label = parts[0].to_string();
-                // Try to extract element: first alphabetic chars of label
-                let elem = element_from_label(&label);
-                let mass = ffloat(parts[1])
-                    .with_context(|| format!("ATOMIC_SPECIES {label}: mass {:?} is not a number", parts[1]))?;
-                species.insert(label, (elem, mass));
+            if parts.len() < 2 {
+                bail!("ATOMIC_SPECIES line {l:?} is not 'label mass pseudo'");
             }
+            let label = parts[0].to_string();
+            // Try to extract element: first alphabetic chars of label
+            let elem = element_from_label(&label);
+            let mass = ffloat(parts[1])
+                .with_context(|| format!("ATOMIC_SPECIES {label}: mass {:?} is not a number", parts[1]))?;
+            species.insert(label, (elem, mass));
         }
     }
 
@@ -420,6 +421,15 @@ CELL_PARAMETERS {angstrom}
         assert_eq!((f.atom(1).element, f.atom(1).mass), ("H", Some(2.014)));
         assert_eq!(f.atom(0).mass, None, "O at the table's mass stays implicit");
         assert!((f.cell.as_ref().unwrap().lengths()[0] - 10.0).abs() < 1e-12);
+    }
+
+    /// A species line without its mass is an error naming it; it used to be skipped, and the
+    /// error came later as "label not declared" (review 2026-11-06 A2-18)
+    #[test]
+    fn a_short_species_line_is_an_error() {
+        let text = WATER_QE.replace("H  1.008   H.pbesol.UPF", "H");
+        let err = format!("{:#}", read_qe_input(&tmp("short_sp.qe", &text)).unwrap_err());
+        assert!(err.contains("ATOMIC_SPECIES line \"H\""), "{err}");
     }
 
     #[test]

@@ -357,7 +357,7 @@ fn summary_lines(traj: &Trajectory, temps: &[f64], densities: &[f64]) -> Vec<Str
     out
 }
 
-/// `mean +/- sd` over the finite values, or `None` when there are none.
+/// `mean +/- sd` over the finite values (the mean alone for one), or `None` when there are none.
 ///
 /// Two-pass, as `ferro-analysis` does elsewhere: `<x^2> - <x>^2` loses most of its
 /// significant digits when the spread is small next to the mean, which is exactly
@@ -368,11 +368,11 @@ fn mean_sd_line(label: &str, values: &[f64], unit: &str) -> Option<String> {
         return None;
     }
     let mean = xs.iter().sum::<f64>() / xs.len() as f64;
-    let sd = if xs.len() > 1 {
-        (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (xs.len() - 1) as f64).sqrt()
-    } else {
-        0.0
-    };
+    // One value has no sample sd: the mean alone, not a +/- 0 (review 2026-11-06 A5-1)
+    if xs.len() == 1 {
+        return Some(format!("{label} = {mean:.4} {unit}"));
+    }
+    let sd = (xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (xs.len() - 1) as f64).sqrt();
     Some(format!("{label} = {mean:.4} +/- {sd:.4} {unit}"))
 }
 
@@ -463,6 +463,9 @@ mod tests {
         let line = mean_sd_line("temperature", &[300.0, 300.0, 300.0], "K").unwrap();
         assert_eq!(line, "temperature = 300.0000 +/- 0.0000 K");
         assert!(mean_sd_line("x", &[f64::NAN], "K").is_none());
+        // One value has no spread: the mean alone, not a +/- 0 that claims a measured sd
+        // (review 2026-11-06 A5-1)
+        assert_eq!(mean_sd_line("temperature", &[300.0, f64::NAN], "K").unwrap(), "temperature = 300.0000 K");
     }
 
     #[test]

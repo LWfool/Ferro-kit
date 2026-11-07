@@ -51,12 +51,10 @@ pub static COMPOUNDS: &[CompoundData] = &[
     CompoundData { name: "ethyleneglycol", formula: "C2H6O2",  molecular_mass: 62.068 },
 ];
 
-/// 按名称或化学式查找（大小写不敏感）
+/// Look up by name (case-insensitive) or by formula (exact: `C2H6Os` is osmium, not dmso).
 pub fn find(query: &str) -> Option<&'static CompoundData> {
     let q = query.to_lowercase();
-    COMPOUNDS.iter().find(|c| {
-        c.name == q.as_str() || c.formula.to_lowercase() == q.as_str()
-    })
+    COMPOUNDS.iter().find(|c| c.name == q || c.formula == query)
 }
 
 #[cfg(test)]
@@ -74,5 +72,13 @@ mod tests {
     fn test_find_by_formula() {
         let c = find("CHCl3").unwrap();
         assert_eq!(c.name, "chloroform");
+    }
+
+    #[test]
+    fn test_find_formula_is_case_sensitive() {
+        // Os (osmium) must not hit dmso's S (sulfur).
+        assert!(find("C2H6Os").is_none());
+        assert!(find("h2o").is_none());
+        assert_eq!(find("DMSO").unwrap().formula, "C2H6OS");
     }
 }

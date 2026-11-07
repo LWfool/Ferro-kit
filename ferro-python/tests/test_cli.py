@@ -325,3 +325,17 @@ def test_plot_net_names_the_wrong_table(tmp_path, capsys):
     (tmp_path / "gr.csv").write_text(GR_CSV)
     assert cli.main(["plot", "net", "qn", "-i", str(tmp_path / "gr.csv"), "-o", str(tmp_path)]) == 1
     assert "'qn' needs column(s) count, former, qn" in capsys.readouterr().err
+
+
+def test_expand_inputs_takes_an_existing_name_literally_and_drops_duplicates(tmp_path, capsys):
+    """Review 2026-11-06 A8-1, as ferro-cli batch.rs expand_with: `a[1].xyz` that exists is
+    that file, not the class `a1.xyz`; the same file given twice is read once, with a note."""
+    for name in ["a[1].xyz", "a1.xyz"]:
+        (tmp_path / name).write_text("")
+    literal = str(tmp_path / "a[1].xyz")
+    assert cli.expand_inputs([literal]) == [literal]
+    other = str(tmp_path / "x" / ".." / "a1.xyz")
+    (tmp_path / "x").mkdir()
+    assert cli.expand_inputs([str(tmp_path / "a1.xyz"), other, str(tmp_path / "a?.xyz")]) \
+        == [str(tmp_path / "a1.xyz")]
+    assert "2 duplicate input(s) skipped" in capsys.readouterr().err

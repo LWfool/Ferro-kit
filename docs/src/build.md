@@ -157,7 +157,8 @@ Packs molecules at random into a cubic box of a given density.
 
 A component is a formula — nested brackets allowed, `Ca3(PO4)2`, `K4[Fe(CN)6]` — or
 one of the known solvent names (`water`, `methanol`, `ethanol`, `acetone`, `dmso`,
-`dmf`, `thf`, `benzene`, `toluene`, …), whose tabulated molar mass is used. Quote a
+`dmf`, `thf`, `benzene`, `toluene`, …), whose tabulated molar mass is used. Names are
+case-insensitive, formulas are not: `C2H6Os` is osmium, not dmso's sulfur. Quote a
 formula with brackets for the shell. Hydrate notation ($CuSO_4 \cdot 5H_2O$) is not
 accepted: list the water as its own component.
 

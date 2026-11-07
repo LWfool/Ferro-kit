@@ -50,7 +50,11 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
             // `&KIND` 行带 kind 名（`&KIND O`），比较第一个词
             if low.split_whitespace().next() == Some("&kind") {
                 let label = low.strip_prefix("&kind").unwrap_or("").trim().to_string();
-                let end = find_end(subsys, j).unwrap_or(subsys.len() - 1);
+                // An unclosed &KIND is closed by depth at `&END SUBSYS`: the end line must be a
+                // bare `&END` or `&END KIND` (review 2026-11-06 A2-7)
+                let end = find_end(subsys, j)
+                    .filter(|&e| subsys[e].split_whitespace().nth(1).is_none_or(|n| n.eq_ignore_ascii_case("kind")))
+                    .with_context(|| format!("&END KIND not found for &KIND {label}"))?;
                 for l in &subsys[j..=end] {
                     let kv: Vec<&str> = l.split_whitespace().collect();
                     if kv.first().map(|s| s.to_lowercase()) == Some("element".to_string()) {
@@ -383,6 +387,16 @@ mod tests {
         assert_eq!(f.n_atoms(), 3);
         let [a, ..] = f.cell.as_ref().unwrap().lengths();
         assert!((a - 10.0).abs() < 1e-9, "胞应取 &CELL 的 ABC 10，不是 &CELL_REF 的 9 / 8：{a}");
+    }
+
+    /// An unclosed `&KIND` is an error like every other unclosed section; it used to run on to
+    /// `&END SUBSYS` silently (review 2026-11-06 A2-7)
+    #[test]
+    fn an_unclosed_kind_is_an_error() {
+        let text = FE_INP.replacen("      ELEMENT Fe\n    &END KIND\n", "      ELEMENT Fe\n", 1);
+        assert_ne!(text, FE_INP);
+        let err = format!("{:#}", read_cp2k_inp(&tmp("open_kind.inp", &text)).unwrap_err());
+        assert!(err.contains("&END KIND not found for &KIND fe1"), "{err}");
     }
 
     #[test]
