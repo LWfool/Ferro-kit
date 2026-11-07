@@ -104,7 +104,11 @@ ferro-cli / ferro-python        ← 唯一允许组合多个 crate 的层
 不收 —— 一份手册两处收录迟早走样（用户定）。`ferro doc python` 只读 `docs/src/python.md`：
 ferro-python 的构成、依赖、职责与架构，不写用法。
 
-**加结构操作**：`ferro-structure/src/` 收发 `Trajectory` → `ferro-python/src/structure.rs`
+**结构操作只收单帧**（用户定 2026-11-07）：`ferro-structure` 是单帧结构变换（收发 `Frame`，
+不认识 `Trajectory`）；CLI / Python 入口遇多帧输入**报错**、要求先取一帧，不逐帧循环。结构操作用来建
+初始结构，从一条轨迹批量建没有意义。理由与范围见 `dev/decisions.md`「`ferro build`」。
+
+**加结构操作**：`ferro-structure/src/` 收发 `Frame` → `ferro-python/src/structure.rs`
 → CLI `ferro-cli/src/cmd/build.rs`（帮助页、`help_sync` 的 `PAGES`、手册 `docs/src/build.md` 一节 +
 `doc.rs` 的 `PAGES` 一条）。
 

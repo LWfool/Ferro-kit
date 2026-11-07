@@ -12,6 +12,14 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### `ferro build`: one structure per input
+
+- **Edit your scripts:** `ferro build supercell` / `vacuum`, and Python's `ferro.supercell` /
+  `ferro.add_vacuum_layer`, take one structure. An input of several frames is an error (skipped, exit
+  code 1, in a `ferro build` batch), as it already was for `merge`; take the frame you want first with
+  `ferro convert --start K --end K`, or `.subset([i])` in Python. They used to work every frame of a
+  trajectory. Several input files, one frame each, are still fine.
+
 ### `ferro map`: the selection is part of the product name
 
 - **Edit your scripts:** `map density` / `velocity` / `force` / `radius` products carry the `--elements`

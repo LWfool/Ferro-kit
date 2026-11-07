@@ -177,13 +177,15 @@ def test_supercell_smoke(tmp_path):
     assert sum(sc.cell(0), []) == pytest.approx([10, 0, 0, 0, 10, 0, 0, 0, 10])
 
 
-def test_supercell_over_the_trajectory_total_is_refused(tmp_path):
-    # Each frame stays under the 1e8 cap (2 atoms x 3e7), the two frames together do not
-    frame = 'Lattice="5 0 0 0 5 0 0 0 5" Properties=species:S:1:pos:R:3 pbc="T T T"\nZn 0 0 0\nO 2.5 2.5 2.5\n'
-    (tmp_path / "two.extxyz").write_text(("2\n" + frame) * 2)
-    traj = ferro.read(str(tmp_path / "two.extxyz"))
-    with pytest.raises(ferro.FerroError, match="120000000 atoms in total"):
-        ferro.supercell(traj, 6000, 5000, 1)
+def test_supercell_and_vacuum_refuse_a_trajectory():
+    # A structure operation builds a starting structure: a trajectory is refused, not replicated
+    # frame by frame, as `ferro build` refuses it (user, 2026-11-07)
+    traj = ferro.read(str(NVT))
+    with pytest.raises(ValueError, match=r"holds 5 frames.*subset"):
+        ferro.supercell(traj, 2, 1, 1)
+    with pytest.raises(ValueError, match=r"holds 5 frames.*subset"):
+        ferro.add_vacuum_layer(traj, "z", 5.0)
+    assert ferro.supercell(traj.subset([0]), 2, 1, 1).n_frames() == 1
 
 
 def test_add_vacuum_layer_smoke(tmp_path):

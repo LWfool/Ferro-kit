@@ -26,23 +26,48 @@ fn ok(out: &Output) {
 
 /// Three atoms in a triclinic box, two frames.
 const TRICLINIC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/triclinic_2frames.lammpstrj");
+/// Frame 0 of `TRICLINIC` alone, as extended XYZ: structure operations take one structure.
+fn triclinic(d: &Path) -> PathBuf {
+    let src = read(Path::new(TRICLINIC));
+    let path = d.join("triclinic.extxyz");
+    let one = Trajectory::from_frame(src.frames[0].clone());
+    ferro_io::write(&one, &path, &ferro_io::WriteOptions::default()).unwrap();
+    path
+}
+
 const OUTCAR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp651_sp/frame_0011/OUTCAR");
 
 #[test]
-fn supercell_with_given_dims_replicates_every_frame() {
+fn supercell_with_given_dims_replicates_the_cell() {
     let d = scratch("sc_dims");
-    let o = d.to_str().unwrap();
-    ok(&ferro(&["build", "supercell", "-i", TRICLINIC, "--dims", "2", "1", "3",
-                "--format-out", "extxyz", "-o", o, "-s", "t"]));
-    let src = read(Path::new(TRICLINIC));
-    let made = read(&d.join("supercell_triclinic_2frames_t.extxyz"));
-    assert_eq!(made.n_frames(), 2);
-    for (a, b) in src.frames.iter().zip(&made.frames) {
-        assert_eq!(b.n_atoms(), a.n_atoms() * 6);
-        let (ca, cb) = (a.cell.as_ref().unwrap().matrix, b.cell.as_ref().unwrap().matrix);
-        for (row, n) in [(0, 2.0), (1, 1.0), (2, 3.0)] {
-            assert!((cb.row(row) - ca.row(row) * n).norm() < 1e-9, "row {row}");
-        }
+    let input = triclinic(&d);
+    let o = d.join("out");
+    ok(&ferro(&["build", "supercell", "-i", input.to_str().unwrap(), "--dims", "2", "1", "3",
+                "--format-out", "extxyz", "-o", o.to_str().unwrap(), "--mkdir", "-s", "t"]));
+    let (a, b) = (&read(&input).frames[0], &read(&o.join("supercell_triclinic_t.extxyz")));
+    assert_eq!(b.n_frames(), 1);
+    let b = &b.frames[0];
+    assert_eq!(b.n_atoms(), a.n_atoms() * 6);
+    let (ca, cb) = (a.cell.as_ref().unwrap().matrix, b.cell.as_ref().unwrap().matrix);
+    for (row, n) in [(0, 2.0), (1, 1.0), (2, 3.0)] {
+        assert!((cb.row(row) - ca.row(row) * n).norm() < 1e-9, "row {row}");
+    }
+}
+
+/// A structure operation builds a starting structure: a trajectory is refused, not
+/// replicated frame by frame, and the error says how to take one frame (user, 2026-11-07).
+#[test]
+fn supercell_and_vacuum_refuse_a_trajectory() {
+    let d = scratch("sc_traj");
+    for args in [&["supercell", "--dims", "2", "1", "1"][..], &["vacuum", "--thickness", "5"][..]] {
+        let mut all = vec!["build", args[0], "-i", TRICLINIC];
+        all.extend_from_slice(&args[1..]);
+        all.extend_from_slice(&["--format-out", "extxyz", "-o", d.to_str().unwrap()]);
+        let out = ferro(&all);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{}: {err}", args[0]);
+        assert!(err.contains("holds 2 frames") && err.contains("--start K --end K"), "{}: {err}", args[0]);
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0, "{}: nothing may be written", args[0]);
     }
 }
 
@@ -82,9 +107,11 @@ fn supercell_writes_the_format_the_input_was_read_as() {
 #[test]
 fn supercell_auto_reaches_min_length_and_min_atoms() {
     let d = scratch("sc_auto");
-    ok(&ferro(&["build", "supercell", "-i", TRICLINIC, "--min-length", "25", "--min-atoms", "100",
-                "--format-out", "extxyz", "-o", d.to_str().unwrap()]));
-    let made = read(&d.join("supercell_triclinic_2frames.extxyz"));
+    let input = triclinic(&d);
+    let o = d.join("out");
+    ok(&ferro(&["build", "supercell", "-i", input.to_str().unwrap(), "--min-length", "25", "--min-atoms", "100",
+                "--format-out", "extxyz", "-o", o.to_str().unwrap(), "--mkdir"]));
+    let made = read(&o.join("supercell_triclinic.extxyz"));
     let f = &made.frames[0];
     assert!(f.n_atoms() >= 100);
     for s in f.cell.as_ref().unwrap().interplanar_spacings().unwrap() {
@@ -95,24 +122,14 @@ fn supercell_auto_reaches_min_length_and_min_atoms() {
 #[test]
 fn supercell_dry_run_writes_nothing() {
     let d = scratch("sc_dry");
-    let out = ferro(&["build", "supercell", "-i", TRICLINIC, "--dims", "2", "2", "2",
-                      "--dry-run", "-o", d.to_str().unwrap()]);
+    let input = triclinic(&d);
+    let o = d.join("out");
+    std::fs::create_dir(&o).unwrap();
+    let out = ferro(&["build", "supercell", "-i", input.to_str().unwrap(), "--dims", "2", "2", "2",
+                      "--dry-run", "-o", o.to_str().unwrap()]);
     ok(&out);
     assert!(String::from_utf8_lossy(&out.stdout).contains("2x2x2 (given): 3 -> 24 atoms"));
-    assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
-}
-
-/// Each frame stays under the 1e8 cap (3 atoms x 2e7), the two-frame trajectory does
-/// not; it is refused before any supercell is built (review fb7d8c3-1).
-#[test]
-fn supercell_over_the_trajectory_total_is_refused() {
-    let d = scratch("sc_total");
-    let out = ferro(&["build", "supercell", "-i", TRICLINIC, "--dims", "200", "200", "500",
-                      "--format-out", "extxyz", "-o", d.to_str().unwrap()]);
-    assert_ne!(out.status.code(), Some(0));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("120000000 atoms in total"),
-            "{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(std::fs::read_dir(&d).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(&o).unwrap().count(), 0);
 }
 
 /// A parameter error, so it fails before the (missing) input is read.
@@ -128,17 +145,16 @@ fn supercell_min_atoms_over_the_cap_fails_before_reading() {
 #[test]
 fn vacuum_grows_the_spacing_along_its_axis() {
     let d = scratch("vac");
-    ok(&ferro(&["build", "vacuum", "-i", TRICLINIC, "--axis", "y", "--thickness", "7.5",
-                "--format-out", "extxyz", "-o", d.to_str().unwrap()]));
-    let src = read(Path::new(TRICLINIC));
-    let made = read(&d.join("vacuum_triclinic_2frames.extxyz"));
-    assert_eq!(made.n_frames(), 2);
-    for (a, b) in src.frames.iter().zip(&made.frames) {
-        let sa = a.cell.as_ref().unwrap().interplanar_spacings().unwrap();
-        let sb = b.cell.as_ref().unwrap().interplanar_spacings().unwrap();
-        assert!((sb[1] - sa[1] - 7.5).abs() < 1e-9 && (sb[0] - sa[0]).abs() < 1e-9 && (sb[2] - sa[2]).abs() < 1e-9,
-                "{sa:?} -> {sb:?}");
-    }
+    let input = triclinic(&d);
+    let o = d.join("out");
+    ok(&ferro(&["build", "vacuum", "-i", input.to_str().unwrap(), "--axis", "y", "--thickness", "7.5",
+                "--format-out", "extxyz", "-o", o.to_str().unwrap(), "--mkdir"]));
+    let made = read(&o.join("vacuum_triclinic.extxyz"));
+    assert_eq!(made.n_frames(), 1);
+    let sa = read(&input).frames[0].cell.as_ref().unwrap().interplanar_spacings().unwrap();
+    let sb = made.frames[0].cell.as_ref().unwrap().interplanar_spacings().unwrap();
+    assert!((sb[1] - sa[1] - 7.5).abs() < 1e-9 && (sb[0] - sa[0]).abs() < 1e-9 && (sb[2] - sa[2]).abs() < 1e-9,
+            "{sa:?} -> {sb:?}");
 }
 
 /// A box built twice with one seed is the same file; merging it with itself doubles it.

@@ -913,7 +913,8 @@ pub fn print_build_supercell() {
 
   Give the replicas, or the size to reach: the smallest supercell whose
   interplanar spacings reach --min-length, grown along its thinnest axis
-  until it holds --min-atoms. Every frame of a trajectory is replicated.
+  until it holds --min-atoms. Each input is one structure: a trajectory is
+  refused (take one frame with convert --start K --end K).
 
 Parameters:
   -i, --input  FILE...    Input structure(s); globs allowed (quote them)
@@ -929,10 +930,9 @@ Parameters:
   -h, --help              Short parameter table
 
 Output:
-  supercell_<input>[_<suffix>].<ext>, atoms in (Z, symbol) order. Sizes are
-  taken from the first frame and applied to all; a single-structure format
-  (POSCAR, CIF) gets one file per frame. Energy, forces, stress and velocities
-  are dropped: they belong to the calculation, not the structure
+  supercell_<input>[_<suffix>].<ext>, atoms in (Z, symbol) order. Energy,
+  forces, stress and velocities are dropped: they belong to the calculation,
+  not the structure
 
 Examples:
   ferro build supercell -i quartz.cif --dims 2 2 3
@@ -951,6 +951,7 @@ pub fn print_build_vacuum() {
   Lengthens one lattice vector so that the gap between periodic images grows
   by --thickness, measured perpendicular to the other two vectors. Atoms are
   not moved or centred: a slab crossing the cell boundary is split by the gap.
+  Each input is one structure: a trajectory is refused.
 
 Parameters:
   -i, --input  FILE...    Input structure(s); globs allowed (quote them)
@@ -962,9 +963,8 @@ Parameters:
   -h, --help              Short parameter table
 
 Output:
-  vacuum_<input>[_<suffix>].<ext>, atoms in (Z, symbol) order, every frame
-  of a trajectory treated alike. Energy, forces, stress and velocities are
-  dropped
+  vacuum_<input>[_<suffix>].<ext>, atoms in (Z, symbol) order. Energy,
+  forces, stress and velocities are dropped
 
 Examples:
   ferro build vacuum -i slab.vasp --thickness 15

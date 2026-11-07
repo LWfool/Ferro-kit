@@ -12,11 +12,10 @@ use clap::{Args, Subcommand};
 use crate::args::common::ReadArgs;
 use crate::batch;
 use crate::io_dispatch::{check_read_args, format_out, read_trajectory};
-use ferro_core::Trajectory;
+use ferro_core::{Frame, Trajectory};
 use ferro_io::{Format, WriteOptions};
 use ferro_structure::{
-    add_vacuum, build_box, check_supercell_total, find_supercell_dims, make_supercell, merge_frames, Component,
-    MAX_SUPERCELL_ATOMS,
+    add_vacuum, build_box, find_supercell_dims, make_supercell, merge_frames, Component, MAX_SUPERCELL_ATOMS,
 };
 
 #[derive(Subcommand, Debug)]
@@ -235,7 +234,23 @@ fn write_product(out_args: &OutArgs, segments: &[&str], ext: &str, made: &Trajec
     })
 }
 
-/// Reads each input, hands it to `make`, and writes what comes back as
+/// Reads `path` as one structure. A structure operation builds a starting structure, so a
+/// trajectory is refused rather than worked frame by frame, and which frame to take is the
+/// user's to say (user, 2026-11-07; merge refused it before). The one-frame trajectory is
+/// returned whole: the writers take the file's title from its metadata.
+fn read_structure(path: &Path, read: &ReadArgs, op: &str) -> Result<Trajectory> {
+    let traj = read_trajectory(path, read)?;
+    if traj.n_frames() != 1 {
+        bail!(
+            "{} holds {} frames; {op} works on one structure — take one first with \
+             `ferro convert -i {} -o DIR --format-out extxyz --start K --end K`",
+            path.display(), traj.n_frames(), path.display()
+        );
+    }
+    Ok(traj)
+}
+
+/// Reads each input as one structure, hands it to `make`, and writes what comes back as
 /// `<op>_<input>[_<suffix>].<ext>`, atoms in (Z, symbol) order as `convert` writes
 /// them. `make` returns `None` to write nothing (`--dry-run`) and a note for the
 /// input's line.
@@ -249,7 +264,7 @@ fn per_input(
     inputs: &[PathBuf],
     read: &ReadArgs,
     out_args: &OutArgs,
-    make: impl Fn(&Trajectory) -> Result<(Option<Trajectory>, String)>,
+    make: impl Fn(&Frame) -> Result<(Option<Frame>, String)>,
 ) -> Result<usize> {
     // 参数级错误（-s、目标格式）在建目录、读第一个文件之前查完
     batch::check_suffix(out_args.suffix.as_deref())?;
@@ -265,14 +280,14 @@ fn per_input(
     out_args.out().prepare()?;
 
     let (ok, failed) = batch::map_inputs(&inputs, |inp| {
-        let traj = read_trajectory(&inp.path, read)?;
-        let (made, note) = make(&traj)?;
+        let traj = read_structure(&inp.path, read, op)?;
+        let (made, note) = make(&traj.frames[0])?;
         let Some(made) = made else {
             println!("  {note}");
             return Ok(());
         };
         let ext = &exts[&inp.path];
-        println!("  {note} -> {}", write_product(out_args, &[op, &inp.label], ext, &made, read.units)?);
+        println!("  {note} -> {}", write_product(out_args, &[op, &inp.label], ext, &Trajectory { frames: vec![made], metadata: traj.metadata }, read.units)?);
         Ok(())
     });
     if ok.is_empty() {
@@ -303,9 +318,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         }
     }
 
-    per_input("supercell", &c.input, &c.read, &c.out, |traj| {
-        let first = traj.first().expect("ferro_io::read_as refuses a file with no frame");
-        // 自动模式按第 0 帧定倍数，整条轨迹用同一组：每帧原子数不同的轨迹写不出去
+    per_input("supercell", &c.input, &c.read, &c.out, |first| {
         let (dims, how) = match &c.dims {
             Some(d) => ([d[0], d[1], d[2]], "given"),
             None => {
@@ -317,10 +330,6 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         };
         let [nx, ny, nz] = dims;
         let n = first.n_atoms();
-        // All frames are held at once: cap the whole trajectory before allocating any
-        check_supercell_total(traj.frames.iter().map(|f| f.n_atoms()), dims)?;
-        // The spacings come from frame 0's supercell, so --dry-run builds that one only; it used
-        // to replicate every frame and then throw them away (review 2026-10-30 CR-6)
         let first_sc = make_supercell(first, nx, ny, nz)?;
         // 面间距才是最小镜像截断的上界（r_cut ≤ d/2），斜胞上它比边长短
         let d = first_sc.cell.as_ref().expect("make_supercell keeps the cell").interplanar_spacings()?;
@@ -329,15 +338,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
             n * nx * ny * nz, d[0], d[1], d[2],
             if dims == [1, 1, 1] { ", already large enough" } else { "" }
         );
-        if c.dry_run {
-            return Ok((None, note));
-        }
-        let frames = traj.frames.iter().map(|f| make_supercell(f, nx, ny, nz)).collect::<Result<Vec<_>, _>>()?;
-        let mut made = Trajectory { frames, metadata: traj.metadata.clone() };
-        // make_supercell builds each frame's site table anew; share one again, or a
-        // many-frame supercell holds a copy per frame (review 2026-10-30 A4-M-2)
-        made.share_sites();
-        Ok((Some(made), note))
+        Ok(((!c.dry_run).then_some(first_sc), note))
     })
 }
 
@@ -347,10 +348,8 @@ fn run_vacuum(c: &VacuumCmd) -> Result<usize> {
     if !(t > 0.0 && t.is_finite()) {
         bail!("--thickness must be a finite length > 0, got {t}");
     }
-    per_input("vacuum", &c.input, &c.read, &c.out, |traj| {
-        let frames = traj.frames.iter().map(|f| add_vacuum(f, &c.axis, t)).collect::<Result<Vec<_>, _>>()?;
-        let note = format!("{t} Å of vacuum along {}, {} frame(s)", c.axis, frames.len());
-        Ok((Some(Trajectory { frames, metadata: traj.metadata.clone() }), note))
+    per_input("vacuum", &c.input, &c.read, &c.out, |frame| {
+        Ok((Some(add_vacuum(frame, &c.axis, t)?), format!("{t} Å of vacuum along {}", c.axis)))
     })
 }
 
@@ -369,18 +368,7 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
     let labels = batch::unique_labels(&c.input);
     c.out.out().prepare()?;
 
-    // 只拼两个结构：多帧时取哪一帧该由用户说（convert --start），不默认取第 0 帧
-    let one = |p: &Path| -> Result<ferro_core::Frame> {
-        let traj = read_trajectory(p, &c.read)?;
-        match traj.frames.len() {
-            1 => Ok(traj.frames.into_iter().next().expect("one frame")),
-            n => bail!(
-                "{} holds {n} frames; merge stacks two structures — take one first with \
-                 `ferro convert -i {} -o DIR --format-out extxyz --start K --end K`",
-                p.display(), p.display()
-            ),
-        }
-    };
+    let one = |p: &Path| -> Result<Frame> { Ok(read_structure(p, &c.read, "merge")?.frames.remove(0)) };
     let (fa, fb) = (one(a)?, one(b)?);
     let merged = merge_frames(&fa, &fb, &c.axis, gap)?;
     let note = format!("{} + {} atoms along {}, gap {gap} Å", fa.n_atoms(), fb.n_atoms(), c.axis);

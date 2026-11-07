@@ -34,10 +34,10 @@ Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext
   `cif`, `vasp`, `data`). A `POSCAR` / `CONTCAR` input gives `.vasp`. An
   input ferro only reads (OUTCAR, a program output, a QE input) needs `--format-out`,
   and the run stops before anything is read if it is missing.
-- **A single-structure format gets one file per frame**, as with `convert`:
-  a two-frame trajectory written as POSCAR is `supercell_md_0000.vasp`,
-  `supercell_md_0001.vasp`. The frame index follows a `-s` tag (`supercell_md_t_0000.vasp`),
-  the one exception to the tag coming last.
+- **Each input is one structure.** These operations make a starting structure, and
+  building one from every frame of a trajectory has no use, so an input of several frames
+  is refused rather than worked frame by frame or reduced to its first frame. Take the
+  frame you want with `ferro convert -i md.dump -o DIR --format-out extxyz --start K --end K`.
 - **Atoms are written in (Z, symbol) order**, one block per element, as `convert` writes them.
 - **Energy, forces, stress, velocities, temperature and step are dropped.** They
   belong to a calculation, and the new structure has not been calculated.
@@ -75,15 +75,11 @@ $r_\text{cut} \le d_\text{min} / 2$, so "every spacing at least 12 Å" is the co
 for a 6 Å cutoff. On an orthogonal cell the two are the same; on a tilted cell the
 spacing is shorter, and sizing by vector length gives a cell that is too thin.
 
-The replicas are worked out from the **first frame** and applied to every frame, so
-all frames have the same number of atoms. When the input is already large enough,
-`1x1x1` is printed and the copy is written all the same: a script that expects the
+When the input is already large enough, `1x1x1` is printed and the copy is written all the same: a script that expects the
 product finds it.
 
-The supercelled trajectory is held in memory at once, so it is capped at $10^8$ atoms
-in total (frames times atoms per frame); `--min-atoms` above that fails before any
-input is read. A long trajectory over the cap is refused before anything is built:
-supercell a single frame instead.
+A supercell is capped at $10^8$ atoms; `--min-atoms` above that fails before any
+input is read.
 
 The line printed for each input shows the replicas, how they were chosen (`given`
 or `auto`), the atom counts and the supercell's three spacings:
@@ -138,8 +134,6 @@ the in-plane sizes differ a lot.
   cell, and its atoms folded back may overlap B's own images. Check the result, or
   bring both blocks to one in-plane cell first.
 - The result is periodic as A is; B's `pbc` is not consulted.
-- A trajectory is refused rather than reduced to its first frame. Take the frame you
-  want with `ferro convert -i md.dump -o DIR --format-out extxyz --start K --end K`.
 - The output format is A's unless `--format-out` says otherwise.
 
 ## `ferro build box`

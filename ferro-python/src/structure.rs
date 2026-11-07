@@ -2,7 +2,7 @@
 
 use ferro_core::{matrix3_from_row_major, Cell, Trajectory};
 use ferro_structure::{
-    add_vacuum, build_box as build_mixed_box, check_supercell_total, make_supercell, merge_frames, Component,
+    add_vacuum, build_box as build_mixed_box, make_supercell, merge_frames, Component,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -10,33 +10,36 @@ use pyo3::prelude::*;
 use crate::pyerr;
 use crate::types::PyTrajectory;
 
-/// 对轨迹每一帧构建 nx×ny×nz 超胞，返回新轨迹。
-#[pyfunction]
-fn supercell(traj: &PyTrajectory, nx: usize, ny: usize, nz: usize) -> PyResult<PyTrajectory> {
-    // Every frame is held at once: cap the whole trajectory before the copy (review fb7d8c3-1)
-    check_supercell_total(traj.inner.frames.iter().map(|f| f.n_atoms()), [nx, ny, nz]).map_err(pyerr)?;
-    // Each frame is built anew, so the input frames are not deep-copied first (review R8-10)
-    let frames = traj.inner.frames.iter()
-        .map(|f| make_supercell(f, nx, ny, nz))
-        .collect::<ferro_core::Result<Vec<_>>>().map_err(pyerr)?;
-    let mut out = Trajectory { frames, metadata: traj.inner.metadata.clone() };
-    // make_supercell builds each frame's site table anew: share one again (review 2026-10-30 A4-M-2)
-    out.share_sites();
-    Ok(PyTrajectory::new(out))
+/// The one frame of `t`. A structure operation builds a starting structure, so a trajectory is
+/// refused rather than worked frame by frame, and which frame to take is the caller's to say,
+/// as `ferro build` refuses it (user, 2026-11-07; merge refused it before, review 2026-10-30 A6-M-5).
+fn one<'a>(t: &'a PyTrajectory, which: &str, op: &str) -> PyResult<&'a ferro_core::Frame> {
+    match t.inner.frames.as_slice() {
+        [f] => Ok(f),
+        frames => Err(PyValueError::new_err(format!(
+            "{which} holds {} frames; {op} works on one structure — take one first with .subset([i])",
+            frames.len()
+        ))),
+    }
 }
 
-/// 沿 `axis`（"x"/"y"/"z"）为每一帧添加 `thickness` Å 真空层。
+/// The `nx` × `ny` × `nz` supercell of a one-frame trajectory, as a one-frame trajectory.
+#[pyfunction]
+fn supercell(traj: &PyTrajectory, nx: usize, ny: usize, nz: usize) -> PyResult<PyTrajectory> {
+    let made = make_supercell(one(traj, "the trajectory", "supercell")?, nx, ny, nz).map_err(pyerr)?;
+    Ok(PyTrajectory::new(Trajectory { frames: vec![made], metadata: traj.inner.metadata.clone() }))
+}
+
+/// A `thickness` Å vacuum layer along `axis` ("x"/"y"/"z") of a one-frame trajectory, as a
+/// one-frame trajectory.
 #[pyfunction]
 fn add_vacuum_layer(
     traj: &PyTrajectory,
     axis: &str,
     thickness: f64,
 ) -> PyResult<PyTrajectory> {
-    // Each frame is built anew, so the input frames are not deep-copied first (review R8-10)
-    let frames = traj.inner.frames.iter()
-        .map(|f| add_vacuum(f, axis, thickness))
-        .collect::<ferro_core::Result<Vec<_>>>().map_err(pyerr)?;
-    Ok(PyTrajectory::new(Trajectory { frames, metadata: traj.inner.metadata.clone() }))
+    let made = add_vacuum(one(traj, "the trajectory", "add_vacuum_layer")?, axis, thickness).map_err(pyerr)?;
+    Ok(PyTrajectory::new(Trajectory { frames: vec![made], metadata: traj.inner.metadata.clone() }))
 }
 
 /// Stacks two one-frame trajectories along `axis` with a `gap` Å, giving a one-frame trajectory.
@@ -51,17 +54,7 @@ fn merge(
     axis: &str,
     gap: f64,
 ) -> PyResult<PyTrajectory> {
-    fn one<'a>(t: &'a PyTrajectory, which: &str) -> PyResult<&'a ferro_core::Frame> {
-        match t.inner.frames.as_slice() {
-            [f] => Ok(f),
-            frames => Err(PyValueError::new_err(format!(
-                "{which} trajectory holds {} frames; merge stacks two structures — take one first \
-                 with .subset([i])",
-                frames.len()
-            ))),
-        }
-    }
-    let (fa, fb) = (one(a, "first")?, one(b, "second")?);
+    let (fa, fb) = (one(a, "the first trajectory", "merge")?, one(b, "the second trajectory", "merge")?);
     let merged = merge_frames(fa, fb, axis, gap).map_err(pyerr)?;
     Ok(PyTrajectory::new(Trajectory::from_frame(merged)))
 }

@@ -93,30 +93,6 @@ pub fn find_supercell_dims(
 
 // ── 扩胞 ──────────────────────────────────────────────────────────────────────
 
-/// Checks that supercelling every frame by `dims` stays within [`MAX_SUPERCELL_ATOMS`]
-/// in total. `make_supercell` caps one frame; callers that build all frames at once
-/// call this first, or a long trajectory of frames each under the cap still exhausts
-/// memory (review fb7d8c3-1).
-///
-/// `atoms_per_frame` gives each input frame's atom count.
-pub fn check_supercell_total(atoms_per_frame: impl IntoIterator<Item = usize>, dims: [usize; 3]) -> Result<()> {
-    let (mut frames, mut atoms) = (0usize, Some(0usize));
-    for n in atoms_per_frame {
-        frames += 1;
-        atoms = atoms.and_then(|a| a.checked_add(n));
-    }
-    let [nx, ny, nz] = dims;
-    let total = atoms.and_then(|a| a.checked_mul(nx)).and_then(|v| v.checked_mul(ny)).and_then(|v| v.checked_mul(nz));
-    if total.is_none_or(|t| t > MAX_SUPERCELL_ATOMS) {
-        let shown = total.map_or("more than usize can hold".into(), |t| t.to_string());
-        return Err(ChemError::ValidationError(format!(
-            "a {nx}x{ny}x{nz} supercell of {frames} frame(s) would hold {shown} atoms in total, \
-             over {MAX_SUPERCELL_ATOMS}; supercell a single frame instead"
-        )));
-    }
-    Ok(())
-}
-
 /// Build a supercell by replicating `frame` by `(nx, ny, nz)` along the
 /// three lattice vectors.
 ///
@@ -239,21 +215,6 @@ mod tests {
         assert!(find_supercell_dims(&cell, 2, 0.0, usize::MAX).is_err());
         assert!(make_supercell(&frame, 1 << 22, 1 << 22, 1 << 22).is_err());
         assert!(make_supercell(&frame, 1000, 1000, 1000).is_err());
-    }
-
-    /// Each frame is under the cap, the trajectory is not (review fb7d8c3-1).
-    #[test]
-    fn a_trajectory_over_the_total_cap_is_rejected() {
-        let err = check_supercell_total([1000; 2000], [10, 10, 10]).unwrap_err().to_string();
-        assert!(err.contains("2000 frame(s)") && err.contains("2000000000"), "{err}");
-        assert!(check_supercell_total([usize::MAX, 1], [1, 1, 1]).is_err());
-        assert!(check_supercell_total([1, 1], [usize::MAX, 2, 1]).is_err());
-    }
-
-    #[test]
-    fn a_trajectory_at_the_total_cap_passes() {
-        assert!(check_supercell_total([1000; 100], [10, 10, 10]).is_ok());
-        assert!(check_supercell_total([1000; 101], [10, 10, 10]).is_err());
     }
 
     /// The error names the supercell that is too big, not min_length / min_atoms that

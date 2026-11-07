@@ -182,7 +182,7 @@ pip install target/wheels/*.whl
 import ferro
 
 t  = ferro.read("traj.lammpstrj", units="metal")
-sc = ferro.supercell(t, 2, 2, 1)
+sc = ferro.supercell(t.subset([0]), 2, 2, 1)   # one structure: a trajectory is refused
 ferro.write(sc, "POSCAR", format="vasp")
 
 g = ferro.gr_pair(t, "P", "O", by="element", r_max=10.0, dr=0.02)
