@@ -555,7 +555,7 @@ fn run_vacf(c: &VacfCmd) -> Result<usize> {
     let mut summary = Summary::new(&["max_lag", "min_origins", "diffusion_end"]);
     for (input, r) in &results {
         summary.ok(input.label.clone(), r.n_frames, r.n_atoms, &[
-            (r.time.len() - 1) as f64, r.min_origins as f64, *r.diffusion.last().unwrap(),
+            (r.time.len() - 1) as f64, r.min_origins as f64, *r.diffusion.last().expect("calc_vacf returns max_lag + 1 >= 2 points"),
         ]);
         summary.note("species", r.elements.join(" "));
     }

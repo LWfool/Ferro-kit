@@ -118,7 +118,7 @@ pub fn calc_vacf(traj: &Trajectory, params: &VacfParams) -> ferro_core::Result<V
             let mut out = zero();
             for (axis, o) in out.iter_mut().enumerate() {
                 for (xk, f) in x.iter_mut().zip(&traj.frames) {
-                    *xk = f.velocities().unwrap()[i][axis];
+                    *xk = f.velocities().expect("checked for every frame above")[i][axis];
                 }
                 ac.sums(x, s);
                 o.copy_from_slice(s);

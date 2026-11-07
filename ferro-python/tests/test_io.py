@@ -41,7 +41,7 @@ def test_format_is_explicit_and_never_read_off_the_path(tmp_path):
     # A leading dot and upper case are the same format name
     ferro.write(t, str(tmp_path / "a.out"), format=".EXTXYZ")
     assert "Properties=" in (tmp_path / "a.out").read_text().splitlines()[1]
-    with pytest.raises(ferro.FerroError, match="Unsupported output format"):
+    with pytest.raises(ferro.FerroError, match="unsupported output format"):
         ferro.write(t, str(tmp_path / "b.xyz"), format="nosuchfmt")
     with pytest.raises(TypeError):
         ferro.write(t, str(tmp_path / "c.xyz"))

@@ -216,12 +216,12 @@ impl Format {
         match Format::from_name(path) {
             Some(f) if f.can_write() => Ok(f),
             Some(Format::QeInput) => bail!(
-                "Unsupported output format: .{} (QE input is read-only here; \
+                "unsupported output format: .{} (QE input is read-only here; \
                  generate a pw.x input with `ferro-py job -s qe`)", ext()
             ),
-            Some(_) => bail!("Unsupported output format: .{} (read-only)", ext()),
-            None if path.extension().is_some() => bail!("Unsupported output format: .{}", ext()),
-            None => bail!("Cannot determine format (no extension): {}", path.display()),
+            Some(_) => bail!("unsupported output format: .{} (read-only)", ext()),
+            None if path.extension().is_some() => bail!("unsupported output format: .{}", ext()),
+            None => bail!("cannot determine format (no extension): {}", path.display()),
         }
     }
 
@@ -420,7 +420,7 @@ fn write_one(traj: &Trajectory, path: &Path, format: Format, opts: &WriteOptions
         Format::Cif => write_cif(traj, path),
         Format::Poscar => write_poscar(traj, path),
         Format::LammpsData => write_lammps_data(traj, path, opts.drop_partial),
-        other => bail!("Unsupported output format: {}", other.name()),
+        other => bail!("unsupported output format: {}", other.name()),
     }
 }
 
@@ -513,7 +513,7 @@ mod tests {
         for ext in ["inp", "restart", "in", "qe", "qein", "out", "xml"] {
             let path = dir.join(format!("t.{ext}"));
             let err = write(&traj, &path, &WriteOptions { units: Some(LammpsUnits::Real), ..Default::default() }).unwrap_err();
-            assert!(err.to_string().contains("Unsupported output format"), ".{ext}: {err}");
+            assert!(err.to_string().contains("unsupported output format"), ".{ext}: {err}");
             assert!(!path.exists(), ".{ext} must not leave a file");
         }
     }
@@ -633,7 +633,7 @@ mod tests {
     fn unknown_extension_is_rejected_both_ways() {
         let traj = one_atom_traj();
         let path = tmp_dir("unknown").join("t.nosuchfmt");
-        assert!(write(&traj, &path, &WriteOptions::default()).unwrap_err().to_string().contains("Unsupported output format"));
+        assert!(write(&traj, &path, &WriteOptions::default()).unwrap_err().to_string().contains("unsupported output format"));
         std::fs::write(&path, "hello\n").unwrap();
         let err = format!("{:#}", read_plain(&path).unwrap_err());
         assert!(err.contains("Unsupported input format: .nosuchfmt"), "{err}");

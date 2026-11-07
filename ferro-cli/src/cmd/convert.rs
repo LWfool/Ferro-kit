@@ -132,7 +132,7 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     if format.multi_frame() || indices.len() == 1 {
         let target = dir.canonicalize().with_context(|| format!("-o {}", dir.display()))?.join(&product);
         if target == real {
-            bail!("Input and output paths are identical");
+            bail!("input and output paths are identical");
         }
     }
     // Same-named inputs from different runs (OUTCAR, vasprun.xml) share a product name;
@@ -328,7 +328,7 @@ mod tests {
             (|c| c.stride = Some(0), "stride must be at least 1"),
             (|c| c.number = Some(0), "number must be at least 1"),
             (|c| { c.start = Some(5); c.end = Some(2); }, "start 5 is past end 2"),
-            (|c| c.format_out = Some("nosuchfmt".into()), "Unsupported output format"),
+            (|c| c.format_out = Some("nosuchfmt".into()), "unsupported output format"),
         ];
         for (tweak, want) in cases {
             let mut c = cmd(Some("no_such_input.xyz"), dir.to_str());
@@ -358,7 +358,7 @@ mod tests {
         let mut c = cmd(poscar.to_str(), dir.join("bad").to_str());
         c.format_out = Some("nosuchfmt".into());
         let err = format!("{:#}", run(&c).unwrap_err());
-        assert!(err.contains("Unsupported output format"), "{err}");
+        assert!(err.contains("unsupported output format"), "{err}");
         assert!(!dir.join("bad").exists(), "an unknown format must not create -o");
         let _ = std::fs::remove_dir_all(&dir);
     }

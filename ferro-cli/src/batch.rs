@@ -534,7 +534,7 @@ impl Summary {
             Some(s) => s,
             None => {
                 self.extra.push((name.to_string(), vec!["-".to_string(); rows - 1]));
-                self.extra.last_mut().unwrap()
+                self.extra.last_mut().expect("pushed on the line above")
             }
         };
         while slot.1.len() < rows - 1 {

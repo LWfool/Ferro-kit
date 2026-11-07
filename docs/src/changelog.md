@@ -69,7 +69,9 @@ command line alike; regenerate it rather than migrating it.
   by the line it starts on, as in XYZ and LAMMPS dump; `traj bondlife` / `rotcorr` spell the parameter
   `r-bond` / `r-cut` as on the command line; `map velocity` / `force` name the map, not `mode Velocity`;
   a QE input whose atoms of one element carry two masses names both; the DeePMD writer names the file a
-  write failed on.
+  write failed on. A cube atom line is counted from 1 out of the total (`atom line 2 of 2`), as in
+  LAMMPS dump. Error messages start in lower case throughout (`unsupported output format`,
+  `no pair cutoffs specified`, ...).
 - `ferro doc <unknown>`: the topic list comes first and the error line last, as for every other command.
 - Python: `ferro.jobs.qe.QeInput.from_str` lets the parser's `ferro.FerroError` through, as every other
   call into ferro does; it used to raise `QeInputError` (a `ValueError`) for it.

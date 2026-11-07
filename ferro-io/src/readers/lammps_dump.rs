@@ -24,14 +24,16 @@ pub enum LammpsUnits {
     Metal,
 }
 
+impl LammpsUnits {
+    /// Every accepted name; the CLI's possible values come from here.
+    pub const NAMES: [(&'static str, LammpsUnits); 2] = [("real", LammpsUnits::Real), ("metal", LammpsUnits::Metal)];
+}
+
 impl std::str::FromStr for LammpsUnits {
     type Err = String;
     fn from_str(s: &str) -> std::result::Result<Self, String> {
-        match s {
-            "real" => Ok(LammpsUnits::Real),
-            "metal" => Ok(LammpsUnits::Metal),
-            _ => Err(format!("unknown LAMMPS units '{s}' (expected real or metal)")),
-        }
+        LammpsUnits::NAMES.iter().find(|(n, _)| *n == s).map(|&(_, u)| u)
+            .ok_or_else(|| format!("unknown LAMMPS units '{s}' (expected real or metal)"))
     }
 }
 

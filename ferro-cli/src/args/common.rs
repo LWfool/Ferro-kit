@@ -26,8 +26,8 @@ pub struct ReadArgs {
     #[arg(
         long,
         value_name = "UNITS",
-        value_parser = clap::builder::PossibleValuesParser::new(["real", "metal"])
-            .map(|s| s.parse::<LammpsUnits>().expect("取值已由 PossibleValuesParser 限定")),
+        value_parser = clap::builder::PossibleValuesParser::new(LammpsUnits::NAMES.map(|(n, _)| n))
+            .map(|s| s.parse::<LammpsUnits>().expect("PossibleValuesParser admits only these names")),
     )]
     pub units: Option<LammpsUnits>,
 
@@ -35,8 +35,8 @@ pub struct ReadArgs {
     #[arg(
         long,
         value_name = "STYLE",
-        value_parser = clap::builder::PossibleValuesParser::new(["atomic", "charge", "full"])
-            .map(|s| s.parse::<AtomStyle>().expect("取值已由 PossibleValuesParser 限定")),
+        value_parser = clap::builder::PossibleValuesParser::new(AtomStyle::NAMES.map(|(n, _)| n))
+            .map(|s| s.parse::<AtomStyle>().expect("PossibleValuesParser admits only these names")),
     )]
     pub atom_style: Option<AtomStyle>,
 

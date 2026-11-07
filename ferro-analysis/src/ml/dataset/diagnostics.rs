@@ -119,7 +119,7 @@ pub fn quantiles(values: &[f64]) -> Option<[f64; 6]> {
     if v.is_empty() {
         return None;
     }
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v.sort_by(f64::total_cmp);
     let q = |p: f64| -> f64 {
         let i = ((v.len() - 1) as f64 * p).round() as usize;
         v[i]

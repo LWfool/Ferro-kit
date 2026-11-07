@@ -146,7 +146,7 @@ pub(crate) fn cube_from_grid(traj: &Trajectory, ref_cell: &Cell, data: Array3<f6
 /// a singular cell were unreachable (review 2026-11-06 A4-3). The cell is inverted once, not
 /// per atom; the products are the same, so the result is bit for bit as before.
 pub(crate) fn build_avg_frame(traj: &Trajectory) -> Frame {
-    let ref_f = traj.frames.first().unwrap();
+    let ref_f = traj.frames.first().expect("the cube analyses refuse an empty trajectory at their entry");
     let n = ref_f.n_atoms();
     let mut out = ref_f.clone();
     let pc = PeriodicCell::of(ref_f).expect("the cube analyses check every frame's periodic cell");

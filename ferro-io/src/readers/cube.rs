@@ -101,7 +101,8 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
     // 原子位置：绝对 Bohr → Å，保持绝对坐标（与 writer、CubeData 的约定一致）；
     // 只有 Bader 那条路径需要相对网格原点，在 parse_cube_as_chg 里自己减
     for idx in 0..n_atoms {
-        let fs = floats(next(&format!("atom line {idx}"))?, 5)?;
+        let line_no = format!("atom line {} of {n_atoms}", idx + 1);
+        let fs = floats(next(&line_no)?, 5)?;
         let pos = Vector3::new(fs[2], fs[3], fs[4]) * BOHR_TO_ANG;
         // An atomic number outside the element table is an error, not an `X{z}` placeholder;
         // the range test comes first so `as u8` cannot truncate (review 2026-10-30 A1-M2)
@@ -109,7 +110,7 @@ fn parse_header(content: &str) -> Result<ParsedCube> {
             .then(|| by_number(fs[0] as u8))
             .flatten();
         let Some(element) = element else {
-            bail!("atom line {idx}: atomic number {} is not an element ferro knows", fs[0]);
+            bail!("{line_no}: atomic number {} is not an element ferro knows", fs[0]);
         };
         frame.add_atom(Atom::new(element.symbol, pos));
     }
@@ -462,6 +463,14 @@ comment
         let (frame, chg) = read_cube_as_chg(&path).unwrap();
         assert_eq!(frame.n_atoms(), 2);
         assert_eq!(chg.shape, [2, 2, 2]);
+    }
+
+    /// Atom lines are numbered from 1 out of the count, as the LAMMPS dump reader does.
+    #[test]
+    fn test_atom_line_errors_count_from_one() {
+        let text = CUBE_H2.replacen("  1   0.000000   1.889726", "  300   0.000000   1.889726", 1);
+        let e = format!("{:#}", parse_cube(&text).unwrap_err());
+        assert!(e.contains("atom line 2 of 2"), "{e}");
     }
 
     /// An atomic number outside the element table is an error, not `X{z}`; 300 must not

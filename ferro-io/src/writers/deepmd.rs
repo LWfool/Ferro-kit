@@ -135,7 +135,7 @@ pub fn write_deepmd_npy_bounds(
     if has_cell {
         let mut boxes = Vec::with_capacity(nf * 9);
         for f in frames {
-            boxes.extend_from_slice(&matrix3_row_major(&f.cell.as_ref().unwrap().matrix));
+            boxes.extend_from_slice(&matrix3_row_major(&f.cell.as_ref().expect("has_cell: every frame has one").matrix));
         }
         arrays.push(("box", boxes, 9));
     }

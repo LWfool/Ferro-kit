@@ -621,8 +621,8 @@ fn render_heading(level: usize, text: &str, width: usize, style: Style) -> Strin
         .collect::<Vec<_>>()
         .join("\n");
     match level {
-        1 => write!(out, "\n{}", rule(if style.unicode { '═' } else { '=' }, n)).unwrap(),
-        2 => write!(out, "\n{}", rule(if style.unicode { '─' } else { '-' }, n)).unwrap(),
+        1 => write!(out, "\n{}", rule(if style.unicode { '═' } else { '=' }, n)).expect("writing to a String cannot fail"),
+        2 => write!(out, "\n{}", rule(if style.unicode { '─' } else { '-' }, n)).expect("writing to a String cannot fail"),
         _ => {}
     }
     out
@@ -848,7 +848,7 @@ fn render_table(lines: &[&str], width: usize, style: Style) -> String {
                     Align::Right => (gap, 0),
                     Align::Center => (gap / 2, gap - gap / 2),
                 };
-                write!(line, " {}{text}{} {v}", " ".repeat(l), " ".repeat(r)).unwrap();
+                write!(line, " {}{text}{} {v}", " ".repeat(l), " ".repeat(r)).expect("writing to a String cannot fail");
             }
             out.push(line);
         }

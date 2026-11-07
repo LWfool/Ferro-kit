@@ -91,11 +91,11 @@ pub fn wants_help(cmd: &NetCmd) -> bool {
 pub fn run(cmd: &NetCmd, pair_args: &[String]) -> Result<usize> {
     // 参数错误在读第一个文件之前就失败
     if pair_args.is_empty() {
-        bail!("No pair cutoffs specified. Use --Former-Ligand=cutoff, e.g. --P-O=2.3");
+        bail!("no pair cutoffs specified; use --Former-Ligand=cutoff, e.g. --P-O=2.3");
     }
     let (params, auto) = build_params(pair_args, cmd.modifier.as_deref(), cmd.qn.as_deref())?;
     if params.cutoffs.is_empty() {
-        bail!("Every cutoff names a modifier element; at least one former is required");
+        bail!("every cutoff names a modifier element; at least one former is required");
     }
 
     print_label_scheme(&params);
@@ -437,13 +437,13 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option
         // split_pair_args only passes arguments holding '='
         let (pair, cutoff_str) = inner.split_once('=').expect("a pair argument holds '='");
         let (former, ligand) = pair.split_once('-')
-            .ok_or_else(|| anyhow!("Invalid pair argument (missing '-'): {arg}"))?;
+            .ok_or_else(|| anyhow!("invalid pair argument (missing '-'): {arg}"))?;
         let cutoff = if cutoff_str == "auto" {
             None
         } else {
             // The range is checked in build_params, by TypeParams::validate
             let c: f64 = cutoff_str.parse()
-                .map_err(|_| anyhow!("Invalid cutoff value in '{arg}' (a number or auto)"))?;
+                .map_err(|_| anyhow!("invalid cutoff value in '{arg}' (a number or auto)"))?;
             Some(c)
         };
         // A second value for the same pair used to replace the first in silence; clap

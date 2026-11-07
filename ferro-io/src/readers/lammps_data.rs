@@ -16,6 +16,10 @@ use super::util::floats;
 pub enum AtomStyle { Atomic, Charge, Full }
 
 impl AtomStyle {
+    /// Every accepted name; the CLI's possible values come from here.
+    pub const NAMES: [(&'static str, AtomStyle); 3] =
+        [("atomic", AtomStyle::Atomic), ("charge", AtomStyle::Charge), ("full", AtomStyle::Full)];
+
     /// 不含 image flag 的列数；带 image flag 时再多 3 列。
     fn columns(self) -> usize {
         match self { AtomStyle::Atomic => 5, AtomStyle::Charge => 6, AtomStyle::Full => 7 }
@@ -25,12 +29,8 @@ impl AtomStyle {
 impl std::str::FromStr for AtomStyle {
     type Err = String;
     fn from_str(s: &str) -> std::result::Result<Self, String> {
-        match s {
-            "atomic" => Ok(AtomStyle::Atomic),
-            "charge" => Ok(AtomStyle::Charge),
-            "full" => Ok(AtomStyle::Full),
-            _ => Err(format!("unknown atom style '{s}' (expected atomic, charge or full)")),
-        }
+        AtomStyle::NAMES.iter().find(|(n, _)| *n == s).map(|&(_, a)| a)
+            .ok_or_else(|| format!("unknown atom style '{s}' (expected atomic, charge or full)"))
     }
 }
 
@@ -263,11 +263,8 @@ fn element_from_mass(mass: f64) -> Option<&'static str> {
     ferro_core::data::elements::ELEMENTS
         .iter()
         .filter(|e| (e.atomic_mass - mass).abs() < 0.5)
-        .min_by(|a, b| {
-            (a.atomic_mass - mass).abs()
-                .partial_cmp(&(b.atomic_mass - mass).abs())
-                .unwrap()
-        })
+        // The filter above admits finite differences only (a NaN mass passes nothing)
+        .min_by(|a, b| (a.atomic_mass - mass).abs().total_cmp(&(b.atomic_mass - mass).abs()))
         .map(|e| e.symbol)
 }
 

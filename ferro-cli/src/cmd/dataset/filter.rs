@@ -298,8 +298,7 @@ fn filter_one(
     }
     let mut derived = None;
     if args.al6.as_deref() == Some("auto") {
-        let shell = first_shell_cutoffs(&traj, &[("Al", "O")])
-            .map_err(|e| anyhow::anyhow!("{e}"))?[0]
+        let shell = first_shell_cutoffs(&traj, &[("Al", "O")])?[0]
             .context("no Al-O pair in this system, so --al6 has no cutoff to derive")?;
         println!(
             "  Al-O first shell: peak {:.2} Å (g={:.1}), cutoff {:.2} Å (g={:.3})",

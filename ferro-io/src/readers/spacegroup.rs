@@ -30,25 +30,25 @@ struct Setting {
 fn table() -> &'static [Setting] {
     static TABLE: OnceLock<Vec<Setting>> = OnceLock::new();
     TABLE.get_or_init(|| {
-        // 数据文件随源码编译进来，格式错是构建产物的错，panic 即可（测试会先抓到）
+        // The data file is compiled in: a malformed line is a build defect, so panic (the tests catch it first)
         let mut out: Vec<Setting> = Vec::with_capacity(530);
         for line in DATA.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
             if line.contains('\t') {
                 let f: Vec<&'static str> = line.split('\t').collect();
-                assert_eq!(f.len(), 8, "spacegroups.dat 表头列数不对: {line}");
+                assert_eq!(f.len(), 8, "spacegroups.dat: a header line needs 8 columns: {line}");
                 out.push(Setting {
-                    hall: f[0].parse().unwrap(),
-                    number: f[1].parse().unwrap(),
+                    hall: f[0].parse().expect("spacegroups.dat: Hall number"),
+                    number: f[1].parse().expect("spacegroups.dat: space-group number"),
                     choice: if f[2] == "-" { "" } else { f[2] },
                     hall_symbol: f[3],
                     hm_setting: f[4],
                     hm_full: f[6],
-                    ops: Vec::with_capacity(f[7].parse().unwrap()),
+                    ops: Vec::with_capacity(f[7].parse().expect("spacegroups.dat: operation count")),
                 });
             } else {
-                let v: Vec<i32> = line.split_whitespace().map(|s| s.parse().unwrap()).collect();
-                let op: IntOp = v.try_into().expect("spacegroups.dat 操作行应为 12 个整数");
-                out.last_mut().expect("操作行出现在第一个表头之前").ops.push(op);
+                let v: Vec<i32> = line.split_whitespace().map(|s| s.parse().expect("spacegroups.dat: operations are integers")).collect();
+                let op: IntOp = v.try_into().expect("spacegroups.dat: an operation line has 12 integers");
+                out.last_mut().expect("spacegroups.dat: an operation line before the first header").ops.push(op);
             }
         }
         out
