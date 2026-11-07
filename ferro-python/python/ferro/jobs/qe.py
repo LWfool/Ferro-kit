@@ -73,10 +73,8 @@ class QeInput:
 
     @classmethod
     def from_str(cls, text):
-        try:
-            parsed, rest = ferro.parse_qe_input_parts(text)
-        except ferro.FerroError as e:
-            raise QeInputError(str(e)) from None
+        # The parser's refusal stays a FerroError, as every Rust call's does (review 2026-11-06 A7-10)
+        parsed, rest = ferro.parse_qe_input_parts(text)
         namelists = {}
         for name, entries in parsed:
             if name in namelists:

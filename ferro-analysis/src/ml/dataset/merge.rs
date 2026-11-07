@@ -57,16 +57,11 @@ pub fn composition_key(traj: &Trajectory) -> Vec<String> {
 /// as a name in an `ls` listing, that one is read stacked against a second formula in a
 /// mismatch message, where the padded columns are what make the difference visible.
 pub fn group_name(traj: &Trajectory) -> String {
-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    if let Some(f) = traj.frames.first() {
-        for a in f.atoms() {
-            *counts.entry(a.element.to_string()).or_default() += 1;
-        }
-    }
+    let counts = traj.frames.first().map(|f| counts(f.atoms().map(|a| a.element))).unwrap_or_default();
     let n: usize = counts.values().sum();
     let formula: String = counts
         .iter()
-        .map(|(e, c)| if *c == 1 { e.clone() } else { format!("{e}{c}") })
+        .map(|(e, c)| if *c == 1 { e.to_string() } else { format!("{e}{c}") })
         .collect();
     format!("{n}_{formula}")
 }
@@ -144,11 +139,17 @@ fn symbols_of(traj: &Trajectory) -> Vec<String> {
 /// formulas in a mismatch message are read one above the other, and dropping the `1`s
 /// misaligns the element that differs.  Directory names have the opposite need.
 fn formula_of(symbols: &[String]) -> String {
-    let mut count: BTreeMap<&str, usize> = BTreeMap::new();
+    counts(symbols.iter().map(String::as_str)).iter().map(|(el, n)| format!("{el}{n}")).collect()
+}
+
+/// Atoms per element, alphabetical: the one count behind [`group_name`], [`formula_of`] and
+/// [`composition_diff`] (review 2026-11-06 A5-11).
+fn counts<'a>(symbols: impl Iterator<Item = &'a str>) -> BTreeMap<&'a str, usize> {
+    let mut m = BTreeMap::new();
     for s in symbols {
-        *count.entry(s.as_str()).or_default() += 1;
+        *m.entry(s).or_default() += 1;
     }
-    count.iter().map(|(el, n)| format!("{el}{n}")).collect()
+    m
 }
 
 /// The elements whose counts differ, as `Al 2 vs 3`.
@@ -158,14 +159,7 @@ fn formula_of(symbols: &[String]) -> String {
 /// the comparison ran on unsorted sequences and the formulas could not show it.
 /// The sequences are canonical now, so every remaining difference is a count.
 fn composition_diff(a: &[String], b: &[String]) -> String {
-    let count = |v: &[String]| {
-        let mut m: BTreeMap<String, usize> = BTreeMap::new();
-        for s in v {
-            *m.entry(s.clone()).or_default() += 1;
-        }
-        m
-    };
-    let (ca, cb) = (count(a), count(b));
+    let (ca, cb) = (counts(a.iter().map(String::as_str)), counts(b.iter().map(String::as_str)));
     let diffs: Vec<String> = ca
         .keys()
         .chain(cb.keys())

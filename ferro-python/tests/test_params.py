@@ -100,7 +100,8 @@ def test_qe_values():
     assert [format_value(v) for v in (False, 3, 1e-10, "x")] == [".false.", "3", "1e-10", "'x'"]
     with pytest.raises(QeInputError, match="single quote"):
         format_value("it's")
-    with pytest.raises(QeInputError, match="not closed"):
+    # What the Rust parser reports is a FerroError, as every Rust call's is (review 2026-11-06 A7-10)
+    with pytest.raises(ferro.FerroError, match="not closed"):
         QeInput.from_str("&control\n calculation='scf'\n")
 
 

@@ -71,6 +71,8 @@ command line alike; regenerate it rather than migrating it.
   a QE input whose atoms of one element carry two masses names both; the DeePMD writer names the file a
   write failed on.
 - `ferro doc <unknown>`: the topic list comes first and the error line last, as for every other command.
+- Python: `ferro.jobs.qe.QeInput.from_str` lets the parser's `ferro.FerroError` through, as every other
+  call into ferro does; it used to raise `QeInputError` (a `ValueError`) for it.
 
 ### Code review fixes: smaller consistency changes
 
