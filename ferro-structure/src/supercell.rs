@@ -7,8 +7,7 @@ use ferro_core::error::{ChemError, Result};
 use ferro_core::frame::Frame;
 
 /// Largest supercell built, in atoms: past it a typo in `min_length` or the multiples
-/// used to overflow `usize` or abort on the allocation instead of reporting. Also the
-/// cap on a whole supercelled trajectory, which is held in memory at once.
+/// used to overflow `usize` or abort on the allocation instead of reporting.
 pub const MAX_SUPERCELL_ATOMS: usize = 100_000_000;
 
 fn too_many(what: &str) -> ChemError {

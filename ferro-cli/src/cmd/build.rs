@@ -227,11 +227,9 @@ fn write_product(out_args: &OutArgs, segments: &[&str], ext: &str, made: &Trajec
     let out = out_args.out();
     let path = out.join(&batch::product_name(segments, out.suffix.as_deref(), ext));
     let opts = WriteOptions { units, drop_partial: false };
-    let written = ferro_io::write(&made.canonically_sorted(), &path, &opts)?;
-    Ok(match written.as_slice() {
-        [one] => one.display().to_string(),
-        many => format!("{} files  {} ... {}", many.len(), many[0].display(), many[many.len() - 1].display()),
-    })
+    // One frame always lands in `path` itself: `write` numbers files only for several frames
+    ferro_io::write(&made.canonically_sorted(), &path, &opts)?;
+    Ok(path.display().to_string())
 }
 
 /// Reads `path` as one structure. A structure operation builds a starting structure, so a
