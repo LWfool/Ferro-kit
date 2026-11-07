@@ -59,9 +59,9 @@ pub struct AngleParams {
     ///
     /// Which physical end counts as "A" is decided by `ends`: when the caller names the
     /// triplet, A is the end they wrote first; otherwise A is the lower-Z end.
-    pub r_cut_ab: f64,
-    /// Distance cutoff from end atom C to the center B \[Å\] (default: 2.3). See `r_cut_ab`.
-    pub r_cut_bc: f64,
+    pub rcut_ab: f64,
+    /// Distance cutoff from end atom C to the center B \[Å\] (default: 2.3). See `rcut_ab`.
+    pub rcut_bc: f64,
     /// Lower edge of the histogram \[degrees\] (default: 0.0)
     pub angle_min: f64,
     /// Upper edge of the histogram \[degrees\] (default: 180.0)
@@ -72,9 +72,9 @@ pub struct AngleParams {
     pub group_by: GroupBy,
     /// End-atom order exactly as the caller wrote it — `(A, C)` from `-a`/`-c` (or `-x`/`-z`).
     ///
-    /// `r_cut_ab` is applied to A and `r_cut_bc` to C. Without this the two cutoffs would
+    /// `rcut_ab` is applied to A and `rcut_bc` to C. Without this the two cutoffs would
     /// be handed out by the canonical (Z, symbol) order, which silently ignores the order
-    /// the caller typed: `-a Zn -b O -c P --r-cut-ab 2.5 --r-cut-bc 2.0` would give 2.5 to
+    /// the caller typed: `-a Zn -b O -c P --rcut-ab 2.5 --rcut-bc 2.0` would give 2.5 to
     /// P, because Z(P)=15 < Z(Zn)=30.
     ///
     /// `None` (the default, and the only option when scanning every triplet at once) falls
@@ -87,8 +87,8 @@ impl AngleParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
-        check::positive("r-cut-ab", self.r_cut_ab)?;
-        check::positive("r-cut-bc", self.r_cut_bc)?;
+        check::positive("rcut-ab", self.rcut_ab)?;
+        check::positive("rcut-bc", self.rcut_bc)?;
         check::positive("d-angle", self.d_angle)?;
         check::non_negative("angle-min", self.angle_min)?;
         check::ordered("angle-min", self.angle_min, "angle-max", self.angle_max)?;
@@ -102,8 +102,8 @@ impl AngleParams {
 impl Default for AngleParams {
     fn default() -> Self {
         AngleParams {
-            r_cut_ab: 2.3,
-            r_cut_bc: 2.3,
+            rcut_ab: 2.3,
+            rcut_bc: 2.3,
             angle_min: 0.0,
             angle_max: 180.0,
             d_angle: 0.1,
@@ -158,10 +158,10 @@ pub struct AngleResult {
 /// The factor cancels out of `p` and the peak positions.
 ///
 /// # Cutoff assignment
-/// `r_cut_ab` goes to end A and `r_cut_bc` to end C, where A/C are taken from
+/// `rcut_ab` goes to end A and `rcut_bc` to end C, where A/C are taken from
 /// `params.ends` when the caller named the triplet, and from the canonical (Z, symbol)
 /// order otherwise. When both ends are the same type, which one is "A" would depend on
-/// the neighbour enumeration order, so `min(r_cut_ab, r_cut_bc)` is applied to both —
+/// the neighbour enumeration order, so `min(rcut_ab, rcut_bc)` is applied to both —
 /// the only assignment that gives a reproducible result.
 pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result<AngleResult> {
     params.validate()?;
@@ -194,10 +194,10 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
     elements.sort_by(|a, b| canonical_cmp(a, b));
 
     // Beyond the minimum-image bound each pair sees only its nearest image, so neighbours are missed
-    let (rcut_name, max_rcut) = if params.r_cut_ab >= params.r_cut_bc {
-        ("r-cut-ab", params.r_cut_ab)
+    let (rcut_name, max_rcut) = if params.rcut_ab >= params.rcut_bc {
+        ("rcut-ab", params.rcut_ab)
     } else {
-        ("r-cut-bc", params.r_cut_bc)
+        ("rcut-bc", params.rcut_bc)
     };
     let cells = check::all_periodic_cells(traj, Some((rcut_name, max_rcut)))?;
 
@@ -239,7 +239,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                         // 规范排序：低 Z 端 → rcut_ab，高 Z 端 → rcut_bc
                         // 相同元素两端使用 min(rcut_ab, rcut_bc)
                         // The same canonical_cmp order as canonical_triplet (`types` is sorted
-                        // by it); otherwise which of two same-Z labels gets r_cut_ab would
+                        // by it); otherwise which of two same-Z labels gets rcut_ab would
                         // follow neighbour order
                         let (a_t, c_t) = (ti[a_idx], ti[c_idx]);
                         let (lo_t, lo_dist, lo_vec, hi_t, hi_dist, hi_vec) =
@@ -253,18 +253,18 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                         let (rcut_lo, rcut_hi) = if lo_t == hi_t {
                             // 两端同类型时谁被排成 lo 取决于邻居枚举顺序，
                             // 只有取两者较小值才能给出可复现的结果
-                            let m = params.r_cut_ab.min(params.r_cut_bc);
+                            let m = params.rcut_ab.min(params.rcut_bc);
                             (m, m)
                         } else {
                             match &params.ends {
-                                // 调用方点名了三元组：--r-cut-ab 归它写在前面的那一端。
+                                // 调用方点名了三元组：--rcut-ab 归它写在前面的那一端。
                                 // 仅当用户的 A 落在 hi 端时才需要互换。
                                 Some((ea, ec))
                                     if hi_elem == ea.as_str() && lo_elem == ec.as_str() =>
                                 {
-                                    (params.r_cut_bc, params.r_cut_ab)
+                                    (params.rcut_bc, params.rcut_ab)
                                 }
-                                _ => (params.r_cut_ab, params.r_cut_bc),
+                                _ => (params.rcut_ab, params.rcut_bc),
                             }
                         };
 
@@ -307,8 +307,8 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
 
     if total_hist.is_empty() {
         return Err(ChemError(format!(
-            "no triplet within the cutoffs (r-cut-ab {}, r-cut-bc {}) and the window [{}, {}] in any frame",
-            params.r_cut_ab, params.r_cut_bc, params.angle_min, params.angle_max)));
+            "no triplet within the cutoffs (rcut-ab {}, rcut-bc {}) and the window [{}, {}] in any frame",
+            params.rcut_ab, params.rcut_bc, params.angle_min, params.angle_max)));
     }
 
     // 角度轴（bin 中心）
@@ -382,8 +382,8 @@ impl AngleResult {
             None => ("low-Z end".to_string(), "high-Z end".to_string()),
         };
         vec![
-            format!("r_cut_ab = {} Ang  ({end_a} to center)", self.params.r_cut_ab),
-            format!("r_cut_bc = {} Ang  ({end_c} to center)", self.params.r_cut_bc),
+            format!("rcut_ab  = {} Ang  ({end_a} to center)", self.params.rcut_ab),
+            format!("rcut_bc  = {} Ang  ({end_c} to center)", self.params.rcut_bc),
             format!("angle    = {} .. {} deg", self.params.angle_min, self.params.angle_max),
             format!("d_angle  = {} deg", self.params.d_angle),
             "counting : each geometric angle once  \
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn test_angle_90deg() {
         let traj = make_90deg_angle();
-        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
+        let params = AngleParams { rcut_ab: 2.0, rcut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params).unwrap();
 
         // 键 "O-Si-O"：Z(O)=8 < Z(Si)=14，规范 key 为 "O-Si-O"
@@ -473,7 +473,7 @@ mod tests {
     fn test_coincident_atom_has_no_angle() {
         let mut traj = make_90deg_angle();
         traj.frames[0].add_atom(Atom::new("Si", Vector3::new(0.0, 0.0, 0.0)));
-        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
+        let params = AngleParams { rcut_ab: 2.0, rcut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params).unwrap();
         let (theta, n) = single_angle(&res, "O-Si-O");
         assert!((theta - 90.0).abs() < 1.0 && n == 2, "one O-Si-O per Si: {theta} x {n}");
@@ -484,7 +484,7 @@ mod tests {
     #[test]
     fn test_angle_180deg() {
         let traj = make_180deg_angle();
-        let params = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
+        let params = AngleParams { rcut_ab: 2.0, rcut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params).unwrap();
 
         let (theta, n) = single_angle(&res, "O-Si-O");
@@ -523,7 +523,7 @@ mod tests {
         frame.add_atom(Atom::new("O",  Vector3::new(0.0, 4.0, 0.0))); // 超出截断
         let traj = Trajectory::from_frame(frame);
 
-        let params = AngleParams { r_cut_ab: 2.3, r_cut_bc: 2.3, d_angle: 1.0, ..Default::default() };
+        let params = AngleParams { rcut_ab: 2.3, rcut_bc: 2.3, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &params);
 
         // 只有 1 个 O 在截断内，无法形成三元组 → 结果为 Err 或 O-Si-O 计数为 0
@@ -693,7 +693,7 @@ mod tests {
     /// Zn-O-P：中心 O，Zn 在 2.4 Å、P 在 2.0 Å。
     ///
     /// Z(P)=15 < Z(Zn)=30，所以规范顺序里 P 是 lo 端、Zn 是 hi 端 —— 与用户写的
-    /// `-a Zn -c P` 正好相反。取 r_cut_ab=2.5 / r_cut_bc=2.2 时两种分配给出
+    /// `-a Zn -c P` 正好相反。取 rcut_ab=2.5 / rcut_bc=2.2 时两种分配给出
     /// 完全不同的结果，足以把这个行为钉死。
     fn make_zn_o_p() -> Trajectory {
         let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
@@ -707,7 +707,7 @@ mod tests {
     #[test]
     fn test_cutoff_follows_caller_end_order() {
         let traj = make_zn_o_p();
-        let base = AngleParams { r_cut_ab: 2.5, r_cut_bc: 2.2, d_angle: 1.0, ..Default::default() };
+        let base = AngleParams { rcut_ab: 2.5, rcut_bc: 2.2, d_angle: 1.0, ..Default::default() };
 
         // 用户写 -a Zn -c P：Zn 拿 2.5（2.4 < 2.5 ✓），P 拿 2.2（2.0 < 2.2 ✓）→ 计入
         let named = AngleParams {
@@ -730,11 +730,11 @@ mod tests {
 
     #[test]
     fn test_symmetric_ends_ignore_order() {
-        // 两端同类型时 ends 不生效，始终取 min(r_cut_ab, r_cut_bc)：
+        // 两端同类型时 ends 不生效，始终取 min(rcut_ab, rcut_bc)：
         // 谁被排成 lo 端取决于邻居枚举顺序，否则结果不可复现
         let traj = make_90deg_angle();
         let p = AngleParams {
-            r_cut_ab: 2.0, r_cut_bc: 1.5, d_angle: 1.0,
+            rcut_ab: 2.0, rcut_bc: 1.5, d_angle: 1.0,
             ends: Some(("O".to_string(), "O".to_string())), ..Default::default()
         };
         // 两个 O 都在 1.6 Å，min(2.0, 1.5) = 1.5 → 全部落选
@@ -750,7 +750,7 @@ mod tests {
         // 收窄到 [80, 100)：角度轴从 80 起、bin 中心带 angle_min 偏移
         let inside = AngleParams {
             angle_min: 80.0, angle_max: 100.0, d_angle: 1.0,
-            r_cut_ab: 2.0, r_cut_bc: 2.0, ..Default::default()
+            rcut_ab: 2.0, rcut_bc: 2.0, ..Default::default()
         };
         let res = calc_angle(&traj, &inside).unwrap();
         assert_eq!(res.angle.len(), 20);
@@ -762,7 +762,7 @@ mod tests {
         // 窗口挪开后该角被丢弃，没有任何三元组留下
         let outside = AngleParams {
             angle_min: 100.0, angle_max: 180.0, d_angle: 1.0,
-            r_cut_ab: 2.0, r_cut_bc: 2.0, ..Default::default()
+            rcut_ab: 2.0, rcut_bc: 2.0, ..Default::default()
         };
         assert!(calc_angle(&traj, &outside).is_err());
     }
@@ -771,7 +771,7 @@ mod tests {
     fn test_180deg_stays_in_last_bin() {
         // acos(-1) 恰好是 180.0；上界若按半开区间处理会把共线三元组整个丢掉
         let traj = make_180deg_angle();
-        let p = AngleParams { r_cut_ab: 2.0, r_cut_bc: 2.0, d_angle: 1.0, ..Default::default() };
+        let p = AngleParams { rcut_ab: 2.0, rcut_bc: 2.0, d_angle: 1.0, ..Default::default() };
         let res = calc_angle(&traj, &p).unwrap();
         let bins = &res.hist["O-Si-O"];
         assert_eq!(bins[bins.len() - 1], 1, "180° 应落在最后一个 bin");

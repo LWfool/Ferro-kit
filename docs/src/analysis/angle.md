@@ -11,7 +11,7 @@ For a triplet (A, B, C) with B as centre:
 $$\theta = \arccos\!\left(\frac{\overrightarrow{BA} \cdot \overrightarrow{BC}}{|\overrightarrow{BA}||\overrightarrow{BC}|}\right)$$
 
 The vectors $\overrightarrow{BA}$ and $\overrightarrow{BC}$ use the minimum-image convention for periodic cells.
-The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a cutoff (the larger of `--r-cut-ab` and `--r-cut-bc`) beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
+The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a cutoff (the larger of `--rcut-ab` and `--rcut-bc`) beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
 
 ### Selection Criteria
 
@@ -19,16 +19,16 @@ An atom pair (A, B) forms a bond if $|\overrightarrow{BA}| < r_\text{cut,AB}$.
 Similarly for (B, C): $|\overrightarrow{BC}| < r_\text{cut,BC}$.
 
 **Which physical end is "A"** is decided by the order *you* wrote it. When the triplet is
-named on the command line, `--r-cut-ab` goes to the atom given by `-a` / `-x` and
-`--r-cut-bc` to the one given by `-c` / `-z`, regardless of atomic number:
+named on the command line, `--rcut-ab` goes to the atom given by `-a` / `-x` and
+`--rcut-bc` to the one given by `-c` / `-z`, regardless of atomic number:
 
 ```bash
 # Zn gets 2.5, P gets 2.0 — exactly as written
-ferro traj angle -a Zn -b O -c P -i traj.dump --r-cut-ab 2.5 --r-cut-bc 2.0
+ferro traj angle -a Zn -b O -c P -i traj.dump --rcut-ab 2.5 --rcut-bc 2.0
 ```
 
 Without a named triplet (scanning every triplet at once) there is no user order to follow,
-so the canonical (Z, symbol) order is used: `r_cut_ab` → lower-Z end, `r_cut_bc` → higher-Z end.
+so the canonical (Z, symbol) order is used: `rcut_ab` → lower-Z end, `rcut_bc` → higher-Z end.
 
 When both end atoms are the same type, which one gets sorted first depends on the neighbour
 enumeration order, so $r_\text{cut} = \min(r_\text{cut,AB}, r_\text{cut,BC})$ is applied
@@ -96,8 +96,8 @@ taken over the raw counts.
 
 ```rust
 pub struct AngleParams {
-    pub r_cut_ab: f64,   // cutoff from end A to centre [Å]; default: 2.3
-    pub r_cut_bc: f64,   // cutoff from end C to centre [Å]; default: 2.3
+    pub rcut_ab: f64,    // cutoff from end A to centre [Å]; default: 2.3
+    pub rcut_bc: f64,    // cutoff from end C to centre [Å]; default: 2.3
     pub angle_min: f64,  // histogram lower edge [degrees]; default: 0.0
     pub angle_max: f64,  // histogram upper edge [degrees]; default: 180.0
     pub d_angle: f64,    // histogram bin width [degrees]; default: 0.1
@@ -108,8 +108,8 @@ pub struct AngleParams {
 
 | CLI flag | Field | Default |
 |---|---|---|
-| `--r-cut-ab` | `r_cut_ab` | 2.3 |
-| `--r-cut-bc` | `r_cut_bc` | 2.3 |
+| `--rcut-ab` | `rcut_ab` | 2.3 |
+| `--rcut-bc` | `rcut_bc` | 2.3 |
 | `--angle-min` | `angle_min` | 0.0 |
 | `--angle-max` | `angle_max` | 180.0 |
 | `--d-angle` | `d_angle` | 0.1 |
@@ -129,7 +129,7 @@ One csv for all inputs, stacked with a `file` column; see [Output format convent
 ## Usage
 
 ```bash
-ferro traj angle -i traj.dump --r-cut-ab 2.3 --r-cut-bc 2.3 -s run1
+ferro traj angle -i traj.dump --rcut-ab 2.3 --rcut-bc 2.3 -s run1
 
 # one triplet, narrowed to the tetrahedral region
 ferro traj angle -a O -b P -c O -i traj.dump \
@@ -142,8 +142,8 @@ use ferro_io::{write_table, TableFormat};
 use std::path::Path;
 
 let params = AngleParams {
-    r_cut_ab: 2.4,
-    r_cut_bc: 2.4,
+    rcut_ab: 2.4,
+    rcut_bc: 2.4,
     d_angle: 0.5,
     ..AngleParams::default()
 };

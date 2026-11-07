@@ -375,8 +375,8 @@ Parameters:
   -a ELEM -b ELEM -c ELEM Triplet by element, B is the centre (all three are
                           required; excludes -x/-y/-z)
   -x LBL  -y LBL  -z LBL  Triplet by site label, Y is the centre
-      --r-cut-ab  FLOAT   End-A-to-centre-B cutoff [Å]                   [2.3]
-      --r-cut-bc  FLOAT   End-C-to-centre-B cutoff [Å]                   [2.3]
+      --rcut-ab   FLOAT   End-A-to-centre-B cutoff [Å]                   [2.3]
+      --rcut-bc   FLOAT   End-C-to-centre-B cutoff [Å]                   [2.3]
                           A is what -a/-x names, C what -c/-z names. Without a
                           named triplet both fall back to canonical (Z, symbol)
                           order; equal end types take min(ab, bc).
@@ -392,7 +392,7 @@ Output:
   no triplet -> angle_all.csv
 
 Examples:
-  ferro traj angle -i traj.dump -a O -b P -c O --r-cut-ab 2.0 --r-cut-bc 2.0
+  ferro traj angle -i traj.dump -a O -b P -c O --rcut-ab 2.0 --rcut-bc 2.0
   ferro traj angle -i traj.dump -x O_b -y P_2 -z O_n --last-n 1
   ferro traj angle -i traj.dump -a O -b P -c O --angle-min 90 --angle-max 130
 
@@ -440,9 +440,9 @@ pub fn print_rotcorr() {
 Parameters:
       --center    ELEM    Central atom element, e.g. O (required)
       --neighbor  ELEM    Neighbour atom element, e.g. H (required)
-      --r-cut     FLOAT   Bond search cutoff [Å]                         [1.2]
+      --rcut      FLOAT   Bond search cutoff [Å]                         [1.2]
       --vector    MODE    sum  = sum of the centre's bonds, found per frame
-                          bond = each bond within --r-cut in frame 0,
+                          bond = each bond within --rcut in frame 0,
                                  followed by atom identity (gmx rotacf -d);
                                  use it for tetrahedra, whose summed bonds
                                  cancel                                  [sum]
@@ -458,7 +458,7 @@ Output:
 Examples:
   ferro traj rotcorr -i traj.xyz --center O --neighbor H --dt 2.0
   ferro traj rotcorr -i traj.dump --center O --neighbor H --dt 2.0
-  ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond --dt 1000
+  ferro traj rotcorr -i glass.dump --center P --neighbor O --rcut 1.8 --vector bond --dt 1000
 
 Full documentation:  ferro doc traj rotcorr"#
     );
@@ -922,7 +922,7 @@ Parameters:
       --min-atoms N       At least N atoms
       --min-length LEN    Every interplanar spacing at least LEN [Å]; this is
                           the perpendicular thickness, which bounds a cutoff
-                          (r_cut <= LEN/2), not the lattice vector length
+                          (rcut <= LEN/2), not the lattice vector length
       --dry-run           Print the replicas and atom counts, write nothing
 {OUT_OPTS}
       --format-out EXT    Output format: vasp, cif, extxyz, data...  [input's]

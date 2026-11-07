@@ -21,7 +21,7 @@ fn too_many(what: &str) -> ChemError {
 ///
 /// - `min_length`: minimum required **interplanar spacing** of the supercell along each
 ///   axis (Å) — the perpendicular thickness, which is what bounds a minimum-image cutoff
-///   (`r_cut ≤ min_length / 2`). For a non-orthogonal cell it is smaller than the vector
+///   (`rcut ≤ min_length / 2`). For a non-orthogonal cell it is smaller than the vector
 ///   length. Pass `0.0` to skip the length constraint.
 /// - `min_atoms`: minimum required total atom count.
 ///   Pass `0` to skip the atom-count constraint.

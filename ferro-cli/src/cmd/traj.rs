@@ -137,10 +137,10 @@ pub struct AngleCmd {
 
     /// Cutoff for the A-to-centre bond [Å]; A is the atom given by -a / -x
     #[arg(long, default_value = "2.3")]
-    pub r_cut_ab: f64,
+    pub rcut_ab: f64,
     /// Cutoff for the centre-to-C bond [Å]; C is the atom given by -c / -z
     #[arg(long, default_value = "2.3")]
-    pub r_cut_bc: f64,
+    pub rcut_bc: f64,
     /// Histogram lower edge [°]
     #[arg(long, default_value = "0.0")]
     pub angle_min: f64,
@@ -202,7 +202,7 @@ pub struct RotcorrCmd {
     pub neighbor: Option<String>,
     /// Bond search cutoff [Å]
     #[arg(long, default_value = "1.2")]
-    pub r_cut: f64,
+    pub rcut: f64,
     /// Orientation vector: sum of the centre's bonds, or each bond fixed in frame 0
     #[arg(long, value_enum, default_value_t = RotVectorCli::Sum)]
     pub vector: RotVectorCli,
@@ -483,12 +483,12 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
 fn run_angle(c: &AngleCmd) -> Result<usize> {
     let (group_by, triplet) = c.select.resolve_triplet()?;
 
-    // 点名三元组时把端原子顺序原样传下去：--r-cut-ab 归 -a/-x 写的那一端，
-    // --r-cut-bc 归 -c/-z 的那一端，不再按原子序数派发（见 AngleParams::ends）
+    // 点名三元组时把端原子顺序原样传下去：--rcut-ab 归 -a/-x 写的那一端，
+    // --rcut-bc 归 -c/-z 的那一端，不再按原子序数派发（见 AngleParams::ends）
     let ends = triplet.as_ref().map(|[a, _, c2]| (a.clone(), c2.clone()));
     let params = AngleParams {
-        r_cut_ab: c.r_cut_ab,
-        r_cut_bc: c.r_cut_bc,
+        rcut_ab: c.rcut_ab,
+        rcut_bc: c.rcut_bc,
         angle_min: c.angle_min,
         angle_max: c.angle_max,
         d_angle: c.d_angle,
@@ -584,7 +584,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
     let params = RotCorrParams {
         center,
         neighbor,
-        r_cut: c.r_cut,
+        rcut: c.rcut,
         dt: required_dt(c.time.dt, "rotcorr")?,
         max_lag: c.time.max_lag,
         vector: c.vector.into(),
@@ -596,7 +596,7 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         batch::drive(&c.common, Some(label), |_, traj, _| Ok(calc_rotcorr(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
-    // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 r_cut 抓不稳邻居
+    // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 rcut 抓不稳邻居
     // atoms = 中心原子数；units = 参与相关的单元（sum 模式同中心数，bond 模式为键数）
     let mut summary = Summary::new(&["units", "max_lag", "min_origins", "valid_fraction"]);
     for (input, r) in &results {
@@ -743,7 +743,7 @@ mod tests {
             ("angle -a O -b P -c O --d-angle 0", "d-angle must be"),
             ("angle -a O -b P -c O --angle-max 200", "angle-max must be <= 180"),
             ("vacf --dt=-1", "dt must be"),
-            ("rotcorr --dt 1 --center P --neighbor O --r-cut 0", "r-cut must be"),
+            ("rotcorr --dt 1 --center P --neighbor O --rcut 0", "rcut must be"),
             ("bondlife --dt 1 --center P --neighbor O --r-bond 2 --r-break 1", "r-break (1) must be >= r-bond (2)"),
             ("vanhove --dt 1 --dr 0", "dr must be"),
             ("vanhove --dt 1 --shift 0", "shift must be >= 1"),

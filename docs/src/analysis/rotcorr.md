@@ -43,7 +43,7 @@ neighbour-element atom within $r_\text{cut}$ (minimum image in periodic cells):
 
 $$\mathbf{u}_c(t) = \sum_{n \in \text{neighbours}(c,\, r_\text{cut},\, t)} (\mathbf{r}_n - \mathbf{r}_c)_\text{min-image}, \qquad \hat{\mathbf{u}}_c = \mathbf{u}_c / |\mathbf{u}_c|$$
 
-The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a `--r-cut` beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
+The minimum image is exact only for distances up to half the smallest interplanar spacing of the cell; a `--rcut` beyond that bound in **any** frame (NPT boxes shrink) is rejected with the frame named, rather than silently missing neighbours in further images.
 
 - The neighbour set is **found afresh in every frame**, so an exchange of neighbours (a proton hop, a
   bond breaking) changes the vector.
@@ -145,7 +145,7 @@ spans it between the lags on either side, so the integrals after it stay finite.
 pub struct RotCorrParams {
     pub center: String,           // centre element, e.g. "O"; required (Default is empty)
     pub neighbor: String,         // neighbour element, e.g. "H"; required (Default is empty)
-    pub r_cut: f64,               // bond search cutoff [Å]; default: 1.2
+    pub rcut: f64,                // bond search cutoff [Å]; default: 1.2
     pub max_lag: Option<usize>,   // longest lag [frames], 1..=N-1; None = N/2
     pub dt: f64,                  // time between stored frames [fs]; required (Default is NaN)
     pub vector: RotVector,        // Sum (default) | Bond
@@ -157,7 +157,7 @@ pub struct RotCorrParams {
 |---|---|---|
 | `--center` | required | centre element |
 | `--neighbor` | required | neighbour element |
-| `--r-cut` | 1.2 | bond search cutoff [Å]; in `bond` mode applied to the first frame only |
+| `--rcut` | 1.2 | bond search cutoff [Å]; in `bond` mode applied to the first frame only |
 | `--vector` | `sum` | `sum` or `bond`, see [Orientation vector](#orientation-vector---vector-sum-or-bond) |
 | `--legendre` | 2 | order $\ell$: 1 or 2 |
 | `--dt` | **required** | time between stored frames [fs] = MD time step × dump interval.  When the trajectory carries step numbers (LAMMPS dump, CP2K, OUTCAR), duplicated or unevenly spaced frames are refused |
@@ -179,18 +179,18 @@ One csv for all inputs, stacked with a `file` column; see [Output format convent
 ## Usage
 
 ```bash
-ferro traj rotcorr -i water.dump --center O --neighbor H --r-cut 1.2 --dt 2.0 -s run1
+ferro traj rotcorr -i water.dump --center O --neighbor H --rcut 1.2 --dt 2.0 -s run1
 
-# PO4 tetrahedra in a glass: each P–O bond (first g(r) minimum as r-cut), both orders
-ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond --legendre 1 --dt 1000 -s P1
-ferro traj rotcorr -i glass.dump --center P --neighbor O --r-cut 1.8 --vector bond --legendre 2 --dt 1000 -s P2
+# PO4 tetrahedra in a glass: each P–O bond (first g(r) minimum as rcut), both orders
+ferro traj rotcorr -i glass.dump --center P --neighbor O --rcut 1.8 --vector bond --legendre 1 --dt 1000 -s P1
+ferro traj rotcorr -i glass.dump --center P --neighbor O --rcut 1.8 --vector bond --legendre 2 --dt 1000 -s P2
 ```
 
 ```rust
 use ferro_analysis::{Legendre, RotCorrParams, RotVector, calc_rotcorr};
 
 let params = RotCorrParams {
-    center: "P".into(), neighbor: "O".into(), r_cut: 1.8, max_lag: Some(500), dt: 2.0,
+    center: "P".into(), neighbor: "O".into(), rcut: 1.8, max_lag: Some(500), dt: 2.0,
     vector: RotVector::Bond, legendre: Legendre::P2,
 };
 let result = calc_rotcorr(&traj, &params)?;
@@ -221,9 +221,9 @@ for m in range(N // 2 + 1):
 
 | Symptom | First thing to check |
 |---|---|
-| `no X atom has an orientation in any frame` | `--r-cut` shorter than the bond, the element names, or (with `sum`) bonds that cancel — use `--vector bond` |
-| `no X-Y bond within r_cut in the first frame` | `--r-cut` or element names; `bond` mode searches frame 0 only |
-| `valid_fraction` well below 1 | `--r-cut` at the edge of the bond-length distribution; raise it past the first g(r) peak |
+| `no X atom has an orientation in any frame` | `--rcut` shorter than the bond, the element names, or (with `sum`) bonds that cancel — use `--vector bond` |
+| `no X-Y bond within rcut in the first frame` | `--rcut` or element names; `bond` mode searches frame 0 only |
+| `valid_fraction` well below 1 | `--rcut` at the edge of the bond-length distribution; raise it past the first g(r) peak |
 | $C_2$ decays implausibly fast for a symmetric unit | with `sum`, the bonds nearly cancel and it measures distortion — use `--vector bond` |
 | a second run replaced the first | same file name for any `--vector` / `--legendre`; add `-s` |
 | empty `c2` at long lags | no molecule valid at both ends that far apart |

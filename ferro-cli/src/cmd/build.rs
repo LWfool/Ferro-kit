@@ -329,7 +329,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         let [nx, ny, nz] = dims;
         let n = first.n_atoms();
         let first_sc = make_supercell(first, nx, ny, nz)?;
-        // 面间距才是最小镜像截断的上界（r_cut ≤ d/2），斜胞上它比边长短
+        // 面间距才是最小镜像截断的上界（rcut ≤ d/2），斜胞上它比边长短
         let d = first_sc.cell.as_ref().expect("make_supercell keeps the cell").interplanar_spacings()?;
         let note = format!(
             "{nx}x{ny}x{nz} ({how}): {n} -> {} atoms, spacings {:.3} {:.3} {:.3} Å{}",

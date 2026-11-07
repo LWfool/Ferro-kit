@@ -230,11 +230,11 @@ mod tests {
         case!(SqParams, q_min: -1.0, q_min: 0.0, q_max: 0.0, q_max: inf, dq: 0.0, dq: nan);
         case_dt!(MsdParams, dt: 0.0, dt: nan, max_lag: Some(0),
               fit_range: Some((0.8, 0.2)), fit_range: Some((0.0, 1.5)), fit_range: Some((nan, 0.5)));
-        case!(AngleParams, r_cut_ab: 0.0, r_cut_bc: nan, angle_min: -1.0, angle_max: 0.0,
+        case!(AngleParams, rcut_ab: 0.0, rcut_bc: nan, angle_min: -1.0, angle_max: 0.0,
               angle_max: 181.0, d_angle: 0.0, d_angle: f64::INFINITY);
         case_dt!(VacfParams, dt: -1.0, max_lag: Some(0));
         case_dt!(RotCorrParams { center: "O".into(), neighbor: "H".into() },
-              center: String::new(), neighbor: String::new(), r_cut: 0.0, dt: nan, max_lag: Some(0));
+              center: String::new(), neighbor: String::new(), rcut: 0.0, dt: nan, max_lag: Some(0));
         case_dt!(BondLifeParams { center: "Si".into(), neighbor: "O".into(), r_bond: 2.0 },
               center: String::new(), neighbor: String::new(), r_bond: 0.0, r_bond: nan, r_break: Some(1.0),
               dt: 0.0, max_lag: Some(0));
@@ -311,12 +311,12 @@ mod tests {
         };
         let run = |r: f64| -> Vec<(&str, ferro_core::Result<()>)> {
             vec![
-                ("angle", calc_angle(&traj, &AngleParams { r_cut_bc: r, ..Default::default() }).map(|_| ())),
+                ("angle", calc_angle(&traj, &AngleParams { rcut_bc: r, ..Default::default() }).map(|_| ())),
                 ("bondlife", calc_bondlife(&traj, &BondLifeParams {
                     center: "Si".into(), neighbor: "O".into(), r_bond: 1.0, r_break: Some(r), dt: 1.0,
                     ..Default::default() }).map(|_| ())),
                 ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
-                    center: "O".into(), neighbor: "H".into(), r_cut: r, dt: 1.0, ..Default::default() }).map(|_| ())),
+                    center: "O".into(), neighbor: "H".into(), rcut: r, dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("network", net(r)),
                 ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
                     former: "Si".into(), ligand: "O".into(), former_ligand_cutoff: r, ..Default::default()
@@ -362,10 +362,10 @@ mod tests {
             c.insert(("P".into(), "O".into()), 1.2);
             let res: Vec<(&str, ferro_core::Result<()>)> = vec![
                 ("gr", calc_gr(&traj, &GrParams::default()).map(|_| ())),
-                ("angle", calc_angle(&traj, &AngleParams { r_cut_ab: 1.2, r_cut_bc: 1.2, ..Default::default() }).map(|_| ())),
+                ("angle", calc_angle(&traj, &AngleParams { rcut_ab: 1.2, rcut_bc: 1.2, ..Default::default() }).map(|_| ())),
                 ("msd", calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
-                    center: "P".into(), neighbor: "O".into(), r_cut: 1.2, dt: 1.0, ..Default::default() }).map(|_| ())),
+                    center: "P".into(), neighbor: "O".into(), rcut: 1.2, dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("bondlife", calc_bondlife(&traj, &BondLifeParams {
                     center: "O".into(), neighbor: "O".into(), r_bond: 1.2, dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("vanhove", calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).map(|_| ())),
@@ -406,7 +406,7 @@ mod tests {
             ("msd", calc_msd(&traj, &MsdParams { dt: 1.0, ..Default::default() }).map(|_| ())),
             ("vacf", calc_vacf(&traj, &VacfParams { dt: 1.0, ..Default::default() }).map(|_| ())),
             ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
-                center: "P".into(), neighbor: "O".into(), r_cut: 2.0, dt: 1.0, ..Default::default() }).map(|_| ())),
+                center: "P".into(), neighbor: "O".into(), rcut: 2.0, dt: 1.0, ..Default::default() }).map(|_| ())),
             ("bondlife", calc_bondlife(&traj, &BondLifeParams {
                 center: "P".into(), neighbor: "O".into(), r_bond: 2.0, dt: 1.0, ..Default::default() }).map(|_| ())),
             ("vanhove", calc_vanhove(&traj, &VanHoveParams { dt: 1.0, ..Default::default() }).map(|_| ())),
@@ -430,7 +430,7 @@ mod tests {
         traj.frames[2].cell = None;
         traj.frames[2].pbc = [false; 3];
         let rot = calc_rotcorr(&traj, &RotCorrParams {
-            center: "P".into(), neighbor: "O".into(), r_cut: 2.0, dt: 1.0, ..Default::default()
+            center: "P".into(), neighbor: "O".into(), rcut: 2.0, dt: 1.0, ..Default::default()
         });
         let bond = calc_bondlife(&traj, &BondLifeParams {
             center: "P".into(), neighbor: "O".into(), r_bond: 2.0, dt: 1.0, ..Default::default()

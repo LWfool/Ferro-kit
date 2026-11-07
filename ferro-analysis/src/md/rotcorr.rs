@@ -3,11 +3,11 @@
 //!   C₂(m) = ⟨P₂(û(t)·û(t+m))⟩,  P₂(x) = (3x² − 1)/2
 //!
 //! Two orientation vectors ([`RotVector`]):
-//! - `Sum`: u_c(t) = Σ_{n ∈ neighbors(c, r_cut, t)} minimum_image(r_n − r_c) — the bonds
-//!   from each center to every neighbor-element atom within `r_cut`, found afresh in
+//! - `Sum`: u_c(t) = Σ_{n ∈ neighbors(c, rcut, t)} minimum_image(r_n − r_c) — the bonds
+//!   from each center to every neighbor-element atom within `rcut`, found afresh in
 //!   every frame. A center with no neighbor in a frame has no orientation there (an
 //!   *invalid* frame).
-//! - `Bond`: every center–neighbor pair within `r_cut` **in the first frame** is one
+//! - `Bond`: every center–neighbor pair within `rcut` **in the first frame** is one
 //!   unit, followed by atom identity for the whole run whatever its length later —
 //!   `gmx rotacf -d`. Every frame is valid.
 //!
@@ -40,7 +40,7 @@ use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
 /// Which vector stands for a unit's orientation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RotVector {
-    /// Sum of the center's bonds within `r_cut`, neighbors found per frame
+    /// Sum of the center's bonds within `rcut`, neighbors found per frame
     #[default]
     Sum,
     /// One center–neighbor bond per unit, pairs fixed in the first frame (`gmx rotacf -d`)
@@ -65,7 +65,7 @@ pub struct RotCorrParams {
     /// Element symbol of the neighbor atoms (e.g. `"H"` for water)
     pub neighbor: String,
     /// Cutoff radius for neighbor search \[Å\] (default: 1.2)
-    pub r_cut: f64,
+    pub rcut: f64,
     /// Longest lag in frames, `1 ..= n_frames − 1` (`None` = `n_frames / 2`)
     pub max_lag: Option<usize>,
     /// Time step per frame \[fs\]. No default: `Default` leaves it NaN and the entry rejects that
@@ -82,7 +82,7 @@ impl RotCorrParams {
     pub fn validate(&self) -> ferro_core::Result<()> {
         check::named("center", &self.center)?;
         check::named("neighbor", &self.neighbor)?;
-        check::positive("r-cut", self.r_cut)?;
+        check::positive("rcut", self.rcut)?;
         check::frame_interval(self.dt)?;
         check::at_least_one_if_given("max-lag", self.max_lag)
     }
@@ -94,7 +94,7 @@ impl Default for RotCorrParams {
             // Required, as on the CLI: empty is "not set", which validate refuses
             center: String::new(),
             neighbor: String::new(),
-            r_cut: 1.2,
+            rcut: 1.2,
             max_lag: None,
             dt: f64::NAN,
             vector: RotVector::Sum,
@@ -142,21 +142,21 @@ const ZERO_NORM2: f64 = 1e-30;
 ///
 /// Returns `Err` if the trajectory has fewer than 2 frames, `max_lag` is outside
 /// `1 ..= n_frames − 1`, no atom is of the center element, or no center has a
-/// neighbor within `r_cut` in any frame.
+/// neighbor within `rcut` in any frame.
 pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Result<RotCorrResult> {
     params.validate()?;
     check_frame_spacing(traj)?;
     let n_frames = traj.n_frames();
     check::same_atoms(traj)?;
     let max_lag = resolve_max_lag("max-lag", n_frames, params.max_lag)?;
-    // 键矢量取最小镜像：r_cut 超过上界时更远镜像里的近邻被漏掉
-    let cells = check::periodic_cells(traj, Some(("r-cut", params.r_cut)))?;
+    // 键矢量取最小镜像：rcut 超过上界时更远镜像里的近邻被漏掉
+    let cells = check::periodic_cells(traj, Some(("rcut", params.rcut)))?;
 
     // 确定参与计算的 center 原子下标（按第一帧筛选）
     let ref_frame = &traj.frames[0];
     let center_indices = select_atoms(ref_frame, Some(std::slice::from_ref(&params.center)))?;
 
-    let r_cut2 = params.r_cut * params.r_cut;
+    let rcut2 = params.rcut * params.rcut;
 
     // The bond vector in frame k, minimum image when periodic (periodic_cells rejects a
     // mix, so cells[k] is Some for every frame or for none)
@@ -179,8 +179,8 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         RotVector::Sum => traj.frames.par_iter().enumerate().map(|(k, frame)| {
             // Candidates come from a neighbour list in a periodic frame, sorted by index
             // like the full scan, so the bond vectors are summed in the same order
-            let nl = cells[k].as_ref().map(|pc| NeighborList::build(frame.positions(), pc, params.r_cut)
-                .expect("r_cut checked against every frame's bound at the entry"));
+            let nl = cells[k].as_ref().map(|pc| NeighborList::build(frame.positions(), pc, params.rcut)
+                .expect("rcut checked against every frame's bound at the entry"));
             center_indices.iter().map(|&ci| {
                 let mut u = [0.0_f64; 3];
                 let mut len_sum = 0.0;
@@ -190,7 +190,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 };
                 for ni in around.into_iter().filter(|&ni| is_neighbor(ni, ci)) {
                     let d = bond(k, ci, ni);
-                    if d.norm_squared() < r_cut2 {
+                    if d.norm_squared() < rcut2 {
                         u[0] += d.x;
                         u[1] += d.y;
                         u[2] += d.z;
@@ -207,8 +207,8 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
             // 第一帧定键，之后按原子身份一直跟踪（gmx rotacf -d）：不再看距离
             // Candidates from a neighbour list when periodic, as in Sum mode; it lists them by
             // index like the full scan, so the pairs keep their order (review 2026-10-30 A2-L12)
-            let nl = cells[0].as_ref().map(|pc| NeighborList::build(ref_frame.positions(), pc, params.r_cut)
-                .expect("r_cut checked against every frame's bound at the entry"));
+            let nl = cells[0].as_ref().map(|pc| NeighborList::build(ref_frame.positions(), pc, params.rcut)
+                .expect("rcut checked against every frame's bound at the entry"));
             let pairs: Vec<(usize, usize)> = center_indices.iter()
                 .flat_map(|&ci| {
                     let around: Vec<usize> = match &nl {
@@ -217,12 +217,12 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                     };
                     around.into_iter().filter(move |&ni| is_neighbor(ni, ci)).map(move |ni| (ci, ni))
                 })
-                .filter(|&(ci, ni)| bond(0, ci, ni).norm_squared() < r_cut2)
+                .filter(|&(ci, ni)| bond(0, ci, ni).norm_squared() < rcut2)
                 .collect();
             if pairs.is_empty() {
                 return Err(ChemError(format!(
-                    "no {}-{} bond within r-cut = {} Ang in the first frame",
-                    params.center, params.neighbor, params.r_cut)));
+                    "no {}-{} bond within rcut = {} Ang in the first frame",
+                    params.center, params.neighbor, params.rcut)));
             }
             (0..n_frames).into_par_iter().map(|k| {
                 pairs.iter().map(|&(ci, ni)| {
@@ -241,9 +241,9 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     if n_valid == 0 {
         return Err(ChemError(format!(
             "no {} atom has an orientation in any frame: either no {} neighbor within \
-             r-cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
+             rcut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
              use --vector bond)",
-            params.center, params.neighbor, params.r_cut)));
+            params.center, params.neighbor, params.rcut)));
     }
 
     // 逐分子：单位向量的 6 个分量 q_ij（无效帧为 0）与有效性指示 χ，各做全原点自相关
@@ -337,10 +337,10 @@ impl RotCorrResult {
         vec![
             format!("center   = {}", p.center),
             format!("neighbor = {}", p.neighbor),
-            format!("r_cut    = {} Ang", p.r_cut),
+            format!("rcut     = {} Ang", p.rcut),
             match p.vector {
-                RotVector::Sum => "vector   = sum: sum of center->neighbor bonds within r_cut, found per frame",
-                RotVector::Bond => "vector   = bond: each center-neighbor pair within r_cut in frame 0, followed by atom identity (gmx rotacf -d)",
+                RotVector::Sum => "vector   = sum: sum of center->neighbor bonds within rcut, found per frame",
+                RotVector::Bond => "vector   = bond: each center-neighbor pair within rcut in frame 0, followed by atom identity (gmx rotacf -d)",
             }.to_string(),
             match p.legendre {
                 Legendre::P1 => "order    = P1: c = <u(t).u(t+m)>",
@@ -442,7 +442,7 @@ mod tests {
 
     /// 暴力参考：逐分子取单位向量（无邻居 → None），对每个 lag 在两端都有效的全部
     /// (分子, 原点) 配对上直接平均 P₂
-    fn brute_c2(traj: &Trajectory, r_cut: f64, max_lag: usize) -> Vec<f64> {
+    fn brute_c2(traj: &Trajectory, rcut: f64, max_lag: usize) -> Vec<f64> {
         let n = traj.n_frames();
         let unit = |t: usize, k: usize| -> Option<Vector3<f64>> {
             let f = &traj.frames[t];
@@ -450,7 +450,7 @@ mod tests {
             let mut u = Vector3::zeros();
             for a in f.atoms().filter(|a| a.element == "H") {
                 let d = f.cell.as_ref().unwrap().minimum_image(a.position - o).unwrap();
-                if d.norm() < r_cut { u += d; }
+                if d.norm() < rcut { u += d; }
             }
             (u.norm_squared() >= 1e-30).then(|| u.normalize())
         };
@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn test_perpendicular_gives_minus_half() {
         let traj = make_perpendicular_orientations();
-        let res = calc_rotcorr(&traj, &RotCorrParams { r_cut: 1.5, max_lag: Some(1), dt: 1.0, ..water() }).unwrap();
+        let res = calc_rotcorr(&traj, &RotCorrParams { rcut: 1.5, max_lag: Some(1), dt: 1.0, ..water() }).unwrap();
         assert!((res.rotcorr[0] - 1.0).abs() < 1e-10, "C(0)={}", res.rotcorr[0]);
         assert!((res.rotcorr[1] + 0.5).abs() < 1e-10, "C(1) = {}", res.rotcorr[1]);
     }
@@ -546,7 +546,7 @@ mod tests {
         let traj = tumbling(4, |_, _| true);
         let err = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..water() }).unwrap_err().to_string();
         // Named as the CLI spells it (review 2026-11-06 A4-13)
-        assert!(err.contains("within r-cut = "), "should say no neighbour is within the cutoff: {err}");
+        assert!(err.contains("within rcut = "), "should say no neighbour is within the cutoff: {err}");
     }
 
     #[test]
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn test_sum_cancels_on_tetrahedron_bond_does_not() {
         let traj = rotating_tetrahedron(12, 0.3);
-        let sum = RotCorrParams { center: "P".into(), neighbor: "O".into(), r_cut: 1.8, dt: 1.0, ..water() };
+        let sum = RotCorrParams { center: "P".into(), neighbor: "O".into(), rcut: 1.8, dt: 1.0, ..water() };
         let err = calc_rotcorr(&traj, &sum).unwrap_err().to_string();
         assert!(err.contains("cancel") && err.contains("--vector bond"), "应提示键向量抵消：{err}");
 
@@ -634,7 +634,7 @@ mod tests {
     fn test_p1_antiparallel_is_minus_one() {
         let traj = make_perpendicular_orientations();
         let r = calc_rotcorr(&traj, &RotCorrParams {
-            r_cut: 1.5, legendre: Legendre::P1, max_lag: Some(1), dt: 1.0, ..water()
+            rcut: 1.5, legendre: Legendre::P1, max_lag: Some(1), dt: 1.0, ..water()
         }).unwrap();
         assert!(r.rotcorr[1].abs() < 1e-10, "垂直时 P1 = 0，实为 {}", r.rotcorr[1]);
     }
@@ -670,7 +670,7 @@ mod tests {
         assert_eq!(t.n_rows(), res.time.len());
         assert!(t.validate().is_ok());
         let meta = res.meta_lines().join("\n");
-        assert!(meta.contains("r_cut"));
+        assert!(meta.contains("rcut"));
         assert!(!meta.contains("molecules"), "分子数是逐文件的量，不进共享区");
     }
 }

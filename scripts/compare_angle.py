@@ -51,8 +51,8 @@ import numpy as np
 import ferrocmp as fc
 
 # ── 统一计算参数 ──────────────────────────────────────────────────────────────
-R_CUT_AB = 2.3
-R_CUT_BC = 2.3
+RCUT_AB = 2.3
+RCUT_BC = 2.3
 D_ANGLE = 0.1   # dump2analysis 固定 0.1°，ferro 显式对齐
 
 # 是否让 ferro 采用 dump2analysis 那套错开半格的 bin（见模块 docstring 第 2 条）。
@@ -76,7 +76,7 @@ def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
         # 三元组已经由 label 段进了文件名，故 -s 只留一个批次标记，不再重复 tag
         fe_argv = ["traj", "angle", "-a", a, "-b", b, "-c", c,
                    "-i", traj, "-s", SUFFIX,
-                   "--r-cut-ab", R_CUT_AB, "--r-cut-bc", R_CUT_BC,
+                   "--rcut-ab", RCUT_AB, "--rcut-bc", RCUT_BC,
                    "--d-angle", D_ANGLE]
         if align_binning:
             fe_argv += ["--angle-min", ALIGN_BINNING_MIN,
@@ -88,7 +88,7 @@ def compute(traj, outdir, ferro_bin, d2a_bin, align_binning=False):
         # dump2analysis：-x/-y/-z 才是【元素】，-a/-b/-c 是原子 id
         d2a_out = outdir / f"d2a_{tag}.angle"
         fc.run([d2a_bin, "-m", "angle", "-x", a, "-y", b, "-z", c,
-                "--rcut_ab", str(R_CUT_AB), "--rcut_bc", str(R_CUT_BC),
+                "--rcut_ab", str(RCUT_AB), "--rcut_bc", str(RCUT_BC),
                 "-i", str(traj), "-o", str(d2a_out)], d2a_out)
 
         # 长表：按 end_a / center / end_c 选出这个三元组，取整数 count 列
@@ -153,7 +153,7 @@ def plot(results, traj, png):
 
     fig.suptitle(
         f"Bond angle distribution:  {ver}  vs  dump2analysis\n"
-        f"{Path(traj).name}   |   r_cut_ab={R_CUT_AB}, r_cut_bc={R_CUT_BC}, "
+        f"{Path(traj).name}   |   rcut_ab={RCUT_AB}, rcut_bc={RCUT_BC}, "
         f"d_angle={D_ANGLE}   |   raw counts, NOT normalised",
         fontsize=12)
     fig.text(0.5, 0.005,
@@ -185,7 +185,7 @@ def main():
 
     print(f"轨迹   : {traj}")
     print(f"输出   : {outdir}")
-    print(f"参数   : r_cut_ab={R_CUT_AB}  r_cut_bc={R_CUT_BC}  d_angle={D_ANGLE}")
+    print(f"参数   : rcut_ab={RCUT_AB}  rcut_bc={RCUT_BC}  d_angle={D_ANGLE}")
     print(f"分箱   : {'对齐 dump2analysis（错开半格）' if args.align_binning else 'ferro 原生（bin 原点 0°）'}\n")
 
     results = compute(traj, outdir, args.ferro, args.dump2analysis,
