@@ -52,6 +52,8 @@ impl BondLifeParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
+        check::named("center", &self.center)?;
+        check::named("neighbor", &self.neighbor)?;
         check::positive("r-bond", self.r_bond)?;
         if let Some(r_break) = self.r_break {
             // 写成「合法则放行」，NaN 落到报错分支（同 check.rs）
@@ -69,9 +71,10 @@ impl BondLifeParams {
 impl Default for BondLifeParams {
     fn default() -> Self {
         BondLifeParams {
-            center: "Si".into(),
-            neighbor: "O".into(),
-            r_bond: 2.0,
+            // Required, as on the CLI: empty / NaN is "not set", which validate refuses
+            center: String::new(),
+            neighbor: String::new(),
+            r_bond: f64::NAN,
             r_break: None,
             intermittency: 0,
             max_lag: None,
@@ -369,6 +372,16 @@ mod tests {
     use ferro_core::{Atom, Cell, Frame};
     use nalgebra::Vector3;
 
+    #[test]
+    fn default_leaves_the_pair_and_r_bond_to_the_caller() {
+        // Required on the CLI, so the Default names no pair and no cutoff (review 2026-11-06 D3)
+        let e = BondLifeParams { dt: 1.0, ..Default::default() }.validate().unwrap_err().to_string();
+        assert!(e.contains("center is required"), "{e}");
+        let p = BondLifeParams { dt: 1.0, center: "Si".into(), neighbor: "O".into(), ..Default::default() };
+        let e = p.validate().unwrap_err().to_string();
+        assert!(e.contains("r-bond") && e.contains("NaN"), "{e}");
+    }
+
     /// n_o 组 Si–O，第 k 组的键长在第 t 帧为 `r(t, k)`（沿 x）。各组沿 y 相隔 6 Å，
     /// 跨组距离恒 > 6 Å，不会成为候选
     fn traj_from(n: usize, n_o: usize, r: impl Fn(usize, usize) -> f64) -> Trajectory {
@@ -387,7 +400,7 @@ mod tests {
     }
 
     fn params() -> BondLifeParams {
-        BondLifeParams { r_bond: 2.0, dt: 1.0, ..Default::default() }
+        BondLifeParams { center: "Si".into(), neighbor: "O".into(), r_bond: 2.0, dt: 1.0, ..Default::default() }
     }
 
     /// 暴力参考：逐原点逐 lag 直接数

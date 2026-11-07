@@ -60,7 +60,7 @@ impl Default for ChgSdfParams {
         Self {
             former: "P".into(),
             ligand: "O".into(),
-            target_qn: 2,
+            target_qn: 3,
             former_ligand_cutoff: 2.4,
             modifier: None,
             modifier_cutoff: 2.8,

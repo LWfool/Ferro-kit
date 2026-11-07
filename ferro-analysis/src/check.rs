@@ -39,6 +39,12 @@ pub(crate) fn positive(name: &str, v: f64) -> Check {
     fail(format!("{name} must be a finite number > 0, got {v}"))
 }
 
+/// A required name (element or label): the `Default`'s empty string is "not set"
+pub(crate) fn named(name: &str, v: &str) -> Check {
+    if !v.is_empty() { return Ok(()); }
+    fail(format!("{name} is required"))
+}
+
 /// 有限且 >= 0（`--q-max inf` 之类在下游得到 0 个或无穷多个 bin）
 pub(crate) fn non_negative(name: &str, v: f64) -> Check {
     if v >= 0.0 && v.is_finite() { return Ok(()); }
@@ -194,8 +200,19 @@ mod tests {
                 )+
             }};
         }
-        // The time correlations have no valid default: `dt` must be given (review 10-11 C)
+        // The time correlations have no valid default: `dt` must be given (review 10-11 C), and
+        // so must the fields in braces, which the CLI requires too (review 2026-11-06 D3)
         macro_rules! case_dt {
+            ($ty:ident { $( $set:ident : $val:expr ),* }, $( $field:ident : $bad:expr ),+ $(,)?) => {{
+                assert!($ty::default().validate().is_err(), "{}: the Default is not valid", stringify!($ty));
+                let base = $ty { dt: 1.0, $( $set: $val, )* ..$ty::default() };
+                assert!(base.validate().is_ok(), "{} with dt and the required fields is valid", stringify!($ty));
+                $(
+                    let p = $ty { $field: $bad, ..base.clone() };
+                    assert!(p.validate().is_err(), "{}.{} = {:?} should be refused",
+                            stringify!($ty), stringify!($field), $bad);
+                )+
+            }};
             ($ty:ident, $( $field:ident : $bad:expr ),+ $(,)?) => {{
                 let err = $ty::default().validate().unwrap_err().to_string();
                 assert!(err.contains("got NaN (not set?)"), "{}: {err}", stringify!($ty));
@@ -216,8 +233,11 @@ mod tests {
         case!(AngleParams, r_cut_ab: 0.0, r_cut_bc: nan, angle_min: -1.0, angle_max: 0.0,
               angle_max: 181.0, d_angle: 0.0, d_angle: f64::INFINITY);
         case_dt!(VacfParams, dt: -1.0, max_lag: Some(0));
-        case_dt!(RotCorrParams, r_cut: 0.0, dt: nan, max_lag: Some(0));
-        case_dt!(BondLifeParams, r_bond: 0.0, r_bond: nan, r_break: Some(1.0), dt: 0.0, max_lag: Some(0));
+        case_dt!(RotCorrParams { center: "O".into(), neighbor: "H".into() },
+              center: String::new(), neighbor: String::new(), r_cut: 0.0, dt: nan, max_lag: Some(0));
+        case_dt!(BondLifeParams { center: "Si".into(), neighbor: "O".into(), r_bond: 2.0 },
+              center: String::new(), neighbor: String::new(), r_bond: 0.0, r_bond: nan, r_break: Some(1.0),
+              dt: 0.0, max_lag: Some(0));
         case_dt!(VanHoveParams, dt: 0.0, tau: Some(0), shift: 0, r_min: -1.0, dr: 0.0, r_max: 0.0,
               r_max: inf);
         case!(CubeDensityParams, nx: 0, ny: 0, nz: 0);
@@ -293,8 +313,10 @@ mod tests {
             vec![
                 ("angle", calc_angle(&traj, &AngleParams { r_cut_bc: r, ..Default::default() }).map(|_| ())),
                 ("bondlife", calc_bondlife(&traj, &BondLifeParams {
-                    r_bond: 1.0, r_break: Some(r), dt: 1.0, ..Default::default() }).map(|_| ())),
-                ("rotcorr", calc_rotcorr(&traj, &RotCorrParams { r_cut: r, dt: 1.0, ..Default::default() }).map(|_| ())),
+                    center: "Si".into(), neighbor: "O".into(), r_bond: 1.0, r_break: Some(r), dt: 1.0,
+                    ..Default::default() }).map(|_| ())),
+                ("rotcorr", calc_rotcorr(&traj, &RotCorrParams {
+                    center: "O".into(), neighbor: "H".into(), r_cut: r, dt: 1.0, ..Default::default() }).map(|_| ())),
                 ("network", net(r)),
                 ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
                     former: "Si".into(), ligand: "O".into(), former_ligand_cutoff: r, ..Default::default()
@@ -351,7 +373,8 @@ mod tests {
                 ("map sdf", calc_cluster_sdf(&traj, &ClusterSdfParams {
                     former: "P".into(), ligand: "O".into(), target_qn: 0, ..Default::default() }).map(|_| ())),
                 ("network", crate::calc_network(&traj, &TypeParams::new(c, CutoffTable::new())).map(|_| ())),
-                ("filter", filter_frames(&traj, &FilterParams { oo_min: 1.2, ..Default::default() }).map(|_| ())),
+                ("filter", filter_frames(&traj, &FilterParams {
+                    f_max: 0.0, s_max: 0.0, oo_min: 1.2, ..Default::default() }).map(|_| ())),
                 ("map density", calc_cube_density(&traj, &CubeDensityParams::default()).map(|_| ())),
                 ("cube jump", calc_cube_jump(&traj, &CubeJumpParams { tau: 1, ..Default::default() }).map(|_| ())),
             ];

@@ -29,6 +29,7 @@
 
 use std::collections::BTreeMap;
 
+use ferro_core::units::{convert_pressure, PressureUnit};
 use ferro_core::ChemError;
 use crate::network::TypeParams;
 use ferro_core::{select_range, spread_range, Table, Trajectory};
@@ -74,6 +75,14 @@ impl Criterion {
     }
 }
 
+/// `f_max` of the `Default` and of `-f` when not given, eV/Å. A constant, not a clap default
+/// (the CLI option is an `Option`, review D-4), so help_sync compares the help page's `[x]`
+/// with it (review 2026-10-30 A5-M9)
+pub const DEFAULT_F_MAX: f64 = 20.0;
+/// `s_max` of the `Default` and of `--s-max` when not given, in GPa as the CLI takes it;
+/// see [`DEFAULT_F_MAX`]
+pub const DEFAULT_S_MAX_GPA: f64 = 10.0;
+
 /// Thresholds and range, all in ferro's internal units.
 ///
 /// A threshold of `0.0` switches that criterion off, matching the convention of
@@ -105,8 +114,9 @@ pub struct FilterParams {
 impl Default for FilterParams {
     fn default() -> Self {
         Self {
-            f_max: 0.0,
-            s_max: 0.0,
+            // The CLI's defaults (review 2026-11-06 D3); 0.0 switches a criterion off
+            f_max: DEFAULT_F_MAX,
+            s_max: convert_pressure(DEFAULT_S_MAX_GPA, PressureUnit::GPa, PressureUnit::EVPerAng3),
             start: 0,
             end: None,
             stride: 1,
@@ -426,6 +436,11 @@ mod tests {
     use ferro_core::{Atom, Cell, Frame};
     use nalgebra::{Matrix3, Vector3};
 
+    /// Every criterion off, the library Default before it took the CLI's thresholds (D3)
+    fn off() -> FilterParams {
+        FilterParams { f_max: 0.0, s_max: 0.0, ..Default::default() }
+    }
+
     /// `forces[i]` and `stresses[i]` give frame i its peak values.
     fn traj_of(forces: &[f64], stresses: &[f64]) -> Trajectory {
         let cell = Cell::from_matrix(Matrix3::identity() * 5.0);
@@ -498,7 +513,7 @@ mod tests {
     #[test]
     fn meta_lines_give_no_unit_to_off() {
         let traj = oo_traj(&[1.0, 3.0]);
-        let r = filter_frames(&traj, &FilterParams { f_max: 0.0, oo_min: 1.5, ..Default::default() }).unwrap();
+        let r = filter_frames(&traj, &FilterParams { f_max: 0.0, oo_min: 1.5, ..off() }).unwrap();
         let meta = r.meta_lines();
         assert!(meta.contains(&"f_max      = off".to_string()), "{meta:?}");
         assert!(meta.contains(&"oo_min     = 1.5 Ang".to_string()), "{meta:?}");
@@ -510,11 +525,11 @@ mod tests {
         // 含 NaN 的帧曾原样进训练集
         let nan = f64::NAN;
         let r = filter_frames(&traj_of(&[1.0, nan, 1.0], &[0.0, 0.0, 0.0]),
-                              &FilterParams { f_max: 5.0, ..Default::default() }).unwrap();
+                              &FilterParams { f_max: 5.0, ..off() }).unwrap();
         assert_eq!(r.keep, vec![0, 2], "NaN 力的帧应被力判据删掉");
         assert!(r.verdicts[1].max_force.unwrap().is_nan(), "报告里的峰值应保留 NaN，不是被吞掉后的 0");
         let r = filter_frames(&traj_of(&[1.0, 1.0, 1.0], &[0.0, nan, f64::INFINITY]),
-                              &FilterParams { s_max: 1.0, ..Default::default() }).unwrap();
+                              &FilterParams { s_max: 1.0, ..off() }).unwrap();
         assert_eq!(r.keep, vec![0], "NaN / inf 应力的帧应被应力判据删掉");
     }
 
@@ -523,7 +538,7 @@ mod tests {
     #[test]
     fn a_nan_coordinate_is_dropped_by_oo_min() {
         let r = filter_frames(&oo_traj(&[2.5, f64::NAN, 2.5]),
-                              &FilterParams { f_max: 0.0, oo_min: 1.5, ..Default::default() }).unwrap();
+                              &FilterParams { f_max: 0.0, oo_min: 1.5, ..off() }).unwrap();
         assert_eq!(r.keep, vec![0, 2]);
         assert!(r.verdicts[1].min_oo.unwrap().is_nan());
     }
@@ -531,7 +546,7 @@ mod tests {
     #[test]
     fn oo_min_drops_the_close_contact_frames() {
         let t = oo_traj(&[2.5, 1.8, 2.1]);
-        let p = FilterParams { oo_min: 2.0, ..Default::default() };
+        let p = FilterParams { oo_min: 2.0, ..off() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.keep, vec![0, 2]);
         assert!(r.verdicts[1].flagged_by(Criterion::OoMin));
@@ -560,7 +575,7 @@ mod tests {
             frames.push(f);
         }
         let t = Trajectory { frames, metadata: Default::default() };
-        let p = FilterParams { al6_rcut: Some(2.4), ..Default::default() };
+        let p = FilterParams { al6_rcut: Some(2.4), ..off() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.keep, vec![0]);
         assert_eq!(r.verdicts[0].n_al6, Some(1));
@@ -572,7 +587,7 @@ mod tests {
     fn a_cutoff_past_the_minimum_image_bound_is_an_error() {
         let t = oo_traj(&[2.5]);
         // 盒子 12 Å，最小镜像上界 6 Å
-        let p = FilterParams { oo_min: 7.0, ..Default::default() };
+        let p = FilterParams { oo_min: 7.0, ..off() };
         let err = filter_frames(&t, &p).unwrap_err().to_string();
         assert!(err.contains("minimum-image"), "{err}");
     }
@@ -584,7 +599,7 @@ mod tests {
         let mut t = oo_traj(&[2.5, 2.5, 2.5]);
         // 第 0 帧 12 Å（上界 6），第 2 帧缩到 8 Å（上界 4）
         t.frames[2].cell = Some(Cell::from_matrix(Matrix3::identity() * 8.0));
-        let p = FilterParams { oo_min: 5.0, ..Default::default() };
+        let p = FilterParams { oo_min: 5.0, ..off() };
         let err = filter_frames(&t, &p).unwrap_err().to_string();
         assert!(err.contains("frame 2"), "应点名最紧的那一帧：{err}");
     }
@@ -592,7 +607,7 @@ mod tests {
     #[test]
     fn disabled_criteria_stay_out_of_the_tables() {
         let t = oo_traj(&[2.5, 1.8]);
-        let p = FilterParams { oo_min: 2.0, ..Default::default() };
+        let p = FilterParams { oo_min: 2.0, ..off() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.enabled(), vec![Criterion::OoMin]);
         assert_eq!(r.cross_tab().len(), 1);
@@ -603,7 +618,7 @@ mod tests {
     fn force_and_stress_thresholds_drop_their_own_frames() {
         //           帧:   0    1     2    3
         let t = traj_of(&[1.0, 99.0, 1.0, 1.0], &[0.1, 0.1, 9.9, 0.1]);
-        let p = FilterParams { f_max: 20.0, s_max: 1.0, ..Default::default() };
+        let p = FilterParams { f_max: 20.0, s_max: 1.0, ..off() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.keep, vec![0, 3]);
         assert!(r.verdicts[1].flagged_by(Criterion::Force));
@@ -614,7 +629,7 @@ mod tests {
     #[test]
     fn a_zero_threshold_switches_the_criterion_off() {
         let t = traj_of(&[1.0, 99.0], &[0.1, 0.1]);
-        let r = filter_frames(&t, &FilterParams::default()).unwrap();
+        let r = filter_frames(&t, &off()).unwrap();
         assert_eq!(r.keep, vec![0, 1]);
         assert_eq!(r.verdicts[1].flags, 0);
     }
@@ -624,7 +639,7 @@ mod tests {
     fn cross_tab_separates_exclusive_from_overlapping_hits() {
         //  帧 0 干净; 帧 1 只超力; 帧 2 只超应力; 帧 3 两者都超
         let t = traj_of(&[1.0, 99.0, 1.0, 99.0], &[0.1, 0.1, 9.9, 9.9]);
-        let p = FilterParams { f_max: 20.0, s_max: 1.0, ..Default::default() };
+        let p = FilterParams { f_max: 20.0, s_max: 1.0, ..off() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.keep, vec![0]);
         let ct = r.cross_tab();
@@ -642,7 +657,7 @@ mod tests {
             f_max: 20.0,
             start: 1,
             end: Some(2),
-            ..Default::default()
+            ..off()
         };
         let r = filter_frames(&t, &p).unwrap();
         // 存活序列的第 1..=2 个是原始帧 2 和 3
@@ -652,7 +667,7 @@ mod tests {
     #[test]
     fn number_spreads_over_survivors_and_takes_both_ends() {
         let t = traj_of(&[1.0; 10], &[0.1; 10]);
-        let p = FilterParams { number: Some(3), ..Default::default() };
+        let p = FilterParams { number: Some(3), ..off() };
         let r = filter_frames(&t, &p).unwrap();
         assert_eq!(r.keep, vec![0, 5, 9]);
     }
@@ -660,7 +675,7 @@ mod tests {
     #[test]
     fn shuffle_permutes_the_kept_frames_after_everything_else() {
         let t = traj_of(&[1.0, 99.0, 1.0, 1.0, 1.0, 1.0], &[0.1; 6]);
-        let base = FilterParams { f_max: 20.0, ..Default::default() };
+        let base = FilterParams { f_max: 20.0, ..off() };
         let ordered = filter_frames(&t, &base).unwrap();
         assert_eq!(ordered.keep, vec![0, 2, 3, 4, 5]);
 
@@ -679,7 +694,7 @@ mod tests {
     #[test]
     fn stride_still_samples_in_time_before_the_shuffle() {
         let t = traj_of(&[1.0; 10], &[0.1; 10]);
-        let p = FilterParams { stride: 3, shuffle: Some(1), ..Default::default() };
+        let p = FilterParams { stride: 3, shuffle: Some(1), ..off() };
         let r = filter_frames(&t, &p).unwrap();
         let mut got = r.keep.clone();
         got.sort();
@@ -690,7 +705,7 @@ mod tests {
     #[test]
     fn stride_and_number_together_are_an_error() {
         let t = traj_of(&[1.0; 4], &[0.1; 4]);
-        let p = FilterParams { stride: 2, number: Some(2), ..Default::default() };
+        let p = FilterParams { stride: 2, number: Some(2), ..off() };
         assert!(filter_frames(&t, &p).is_err());
     }
 
@@ -698,7 +713,7 @@ mod tests {
     fn a_threshold_without_the_label_fails_before_judging() {
         let mut t = traj_of(&[1.0, 1.0], &[0.1, 0.1]);
         t.frames[1].set_forces(None).unwrap();
-        let p = FilterParams { f_max: 20.0, ..Default::default() };
+        let p = FilterParams { f_max: 20.0, ..off() };
         let err = filter_frames(&t, &p).unwrap_err().to_string();
         assert!(err.contains("forces"), "{err}");
     }
@@ -706,7 +721,7 @@ mod tests {
     #[test]
     fn funnel_records_every_enabled_step() {
         let t = traj_of(&[1.0, 99.0, 1.0], &[0.1, 0.1, 9.9]);
-        let p = FilterParams { f_max: 20.0, s_max: 1.0, ..Default::default() };
+        let p = FilterParams { f_max: 20.0, s_max: 1.0, ..off() };
         let r = filter_frames(&t, &p).unwrap();
         let steps: Vec<&str> = r.funnel.iter().map(|(s, _)| s.as_str()).collect();
         assert_eq!(steps, vec!["input", "force", "stress", "range"]);

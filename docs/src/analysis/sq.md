@@ -79,7 +79,7 @@ pub struct SqParams {
     pub q_min: f64,              // default: 0.1 Å⁻¹
     pub q_max: f64,              // default: 25.0 Å⁻¹
     pub dq: f64,                 // default: 0.02 Å⁻¹
-    pub weighting: SqWeighting,  // default: None
+    pub weighting: SqWeighting,  // default: Both
 }
 
 pub enum SqWeighting {

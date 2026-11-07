@@ -25,10 +25,10 @@ use std::collections::BTreeMap;
 /// `Both`    — compute both XRD and neutron weighted totals simultaneously
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum SqWeighting {
-    #[default]
     None,
     Xrd,
     Neutron,
+    #[default]
     Both,
 }
 
@@ -41,7 +41,7 @@ pub struct SqParams {
     pub q_max: f64,
     /// q step size \[Å⁻¹\] (default: 0.02)
     pub dq: f64,
-    /// Scattering factor weighting for weighted total S(q) (default: None)
+    /// Scattering factor weighting for weighted total S(q) (default: `Both`)
     pub weighting: SqWeighting,
 }
 
@@ -59,7 +59,7 @@ impl SqParams {
 
 impl Default for SqParams {
     fn default() -> Self {
-        SqParams { q_min: 0.1, q_max: 25.0, dq: 0.02, weighting: SqWeighting::None }
+        SqParams { q_min: 0.1, q_max: 25.0, dq: 0.02, weighting: SqWeighting::Both }
     }
 }
 

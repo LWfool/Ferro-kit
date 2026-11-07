@@ -388,6 +388,11 @@ mod tests {
     use super::*;
     use super::super::filter::FilterParams;
 
+    /// Every criterion off, the library Default before it took the CLI's thresholds (D3)
+    fn off() -> FilterParams {
+        FilterParams { f_max: 0.0, s_max: 0.0, ..Default::default() }
+    }
+
     fn run_of(temps: &[Option<f64>], steps: &[Option<i64>]) -> Trajectory {
         use ferro_core::{Atom, Cell, Frame};
         use nalgebra::Vector3;
@@ -417,7 +422,7 @@ mod tests {
         f.add_atom(Atom::new("Al", Vector3::new(0.0, 0.0, 0.0)));
         f.add_atom(Atom::new("O", Vector3::new(1.9, 0.0, 0.0)));
         let t = Trajectory::from_frame(f);
-        let p = FilterParams { al6_rcut: Some(2.4), ..Default::default() };
+        let p = FilterParams { al6_rcut: Some(2.4), ..off() };
         let r = super::super::filter::filter_frames(&t, &p).unwrap();
         let tables = filter_diagnostics(&t, &r).unwrap();
         let (_, scan) = tables.iter().find(|(n, _)| n == "rcut_scan").unwrap();

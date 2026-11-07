@@ -59,6 +59,10 @@ fn merge(
     Ok(PyTrajectory::new(Trajectory::from_frame(merged)))
 }
 
+// The seed is written out so `help(ferro.build_box)` shows it (a path shows as `seed=...`);
+// this fails to compile if it drifts from the CLI's (review 2026-11-06 D3)
+const _: () = assert!(ferro_analysis::ml::dataset::DEFAULT_SEED == 666);
+
 /// Pack `components`, `[(name or formula, count), ...]`, at random into a cubic box of
 /// `density` g/cm³; a one-frame trajectory. Defaults are those of `ferro build box`.
 #[pyfunction]

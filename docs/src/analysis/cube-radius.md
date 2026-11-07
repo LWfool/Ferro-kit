@@ -43,9 +43,9 @@ around the atom's home voxel are checked.  The row norm of $(\mathbf{M}^T)^{-1}$
 
 ```rust
 pub struct CubeRadiusParams {
-    pub nx: usize,                        // grid divisions along a axis; default: 100 (CLI: 50)
-    pub ny: usize,                        // grid divisions along b axis; default: 100 (CLI: 50)
-    pub nz: usize,                        // grid divisions along c axis; default: 100 (CLI: 50)
+    pub nx: usize,                        // grid divisions along a axis; default: 50
+    pub ny: usize,                        // grid divisions along b axis; default: 50
+    pub nz: usize,                        // grid divisions along c axis; default: 50
     pub radius: f64,                      // hard-sphere radius [Å]; default: 0.7
     pub elements: Option<Vec<String>>,    // None = all atoms
 }
@@ -56,8 +56,6 @@ pub struct CubeRadiusParams {
 | `--radius` | 0.7 | hard-sphere radius [Å] |
 | `--nx/ny/nz` | 50 | grid dimensions |
 | `--elements` | (all) | element filter |
-
-The command line defaults to a 50³ grid; the library to 100³.
 
 ## Output
 

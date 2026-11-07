@@ -143,8 +143,8 @@ spans it between the lags on either side, so the integrals after it stay finite.
 
 ```rust
 pub struct RotCorrParams {
-    pub center: String,           // centre element, e.g. "O"
-    pub neighbor: String,         // neighbour element, e.g. "H"
+    pub center: String,           // centre element, e.g. "O"; required (Default is empty)
+    pub neighbor: String,         // neighbour element, e.g. "H"; required (Default is empty)
     pub r_cut: f64,               // bond search cutoff [Å]; default: 1.2
     pub max_lag: Option<usize>,   // longest lag [frames], 1..=N-1; None = N/2
     pub dt: f64,                  // time between stored frames [fs]; required (Default is NaN)

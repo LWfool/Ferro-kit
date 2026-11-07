@@ -51,7 +51,7 @@ impl CubeRadiusParams {
 
 impl Default for CubeRadiusParams {
     fn default() -> Self {
-        Self { nx: 100, ny: 100, nz: 100, radius: 0.7, elements: None }
+        Self { nx: 50, ny: 50, nz: 50, radius: 0.7, elements: None }
     }
 }
 

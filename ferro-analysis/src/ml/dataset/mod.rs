@@ -12,6 +12,6 @@ mod merge;
 mod split;
 
 pub use diagnostics::{filter_diagnostics, frame_table, quantiles};
-pub use filter::{filter_frames, Criterion, FilterParams, FilterResult, FrameVerdict};
+pub use filter::{filter_frames, Criterion, FilterParams, FilterResult, FrameVerdict, DEFAULT_F_MAX, DEFAULT_S_MAX_GPA};
 pub use merge::{composition_key, group_name, shuffle_order, shuffle_within, stitch_segments, DEFAULT_SEED};
 pub use split::Split;

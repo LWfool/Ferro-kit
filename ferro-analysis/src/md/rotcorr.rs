@@ -80,6 +80,8 @@ impl RotCorrParams {
     /// Value ranges that do not depend on the trajectory; the CLI calls this
     /// before reading the first file, and the `calc_*` entry calls it again.
     pub fn validate(&self) -> ferro_core::Result<()> {
+        check::named("center", &self.center)?;
+        check::named("neighbor", &self.neighbor)?;
         check::positive("r-cut", self.r_cut)?;
         check::frame_interval(self.dt)?;
         check::at_least_one_if_given("max-lag", self.max_lag)
@@ -89,8 +91,9 @@ impl RotCorrParams {
 impl Default for RotCorrParams {
     fn default() -> Self {
         RotCorrParams {
-            center: "O".to_string(),
-            neighbor: "H".to_string(),
+            // Required, as on the CLI: empty is "not set", which validate refuses
+            center: String::new(),
+            neighbor: String::new(),
             r_cut: 1.2,
             max_lag: None,
             dt: f64::NAN,
@@ -363,6 +366,20 @@ mod tests {
     use ferro_core::{Atom, Cell, Frame, Trajectory};
     use nalgebra::Vector3;
 
+    #[test]
+    fn default_leaves_center_and_neighbor_to_the_caller() {
+        // Required on the CLI, so the Default names no pair (review 2026-11-06 D3)
+        let e = RotCorrParams { dt: 1.0, ..Default::default() }.validate().unwrap_err().to_string();
+        assert!(e.contains("center is required"), "{e}");
+        let p = RotCorrParams { dt: 1.0, center: "O".into(), ..Default::default() };
+        assert!(p.validate().unwrap_err().to_string().contains("neighbor is required"));
+    }
+
+    /// The Default with the O-H pair the tests below follow: the Default names none (D3)
+    fn water() -> RotCorrParams {
+        RotCorrParams { center: "O".into(), neighbor: "H".into(), ..Default::default() }
+    }
+
     /// 构建单水分子轨迹，所有帧取向相同（O 在原点，两个 H 固定）
     fn make_fixed_orientation(n: usize) -> Trajectory {
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap();
@@ -456,7 +473,7 @@ mod tests {
     fn test_fft_matches_brute_force_all_valid() {
         // 全部帧有效：即 gmx rotacf -P 2 的情形
         let traj = tumbling(30, |_, _| false);
-        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(29), dt: 1.0, ..Default::default() }).unwrap();
+        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(29), dt: 1.0, ..water() }).unwrap();
         for (m, want) in brute_c2(&traj, 1.2, 29).iter().enumerate() {
             assert!((r.rotcorr[m] - want).abs() < 1e-10, "lag {m}: {} vs {want}", r.rotcorr[m]);
         }
@@ -467,7 +484,7 @@ mod tests {
     fn test_fft_matches_brute_force_with_invalid_frames() {
         // 部分帧没有邻居：只在两端都有效的配对上平均，分母是有效配对数而不是原点数
         let traj = tumbling(30, |t, k| (t + 2 * k) % 5 == 0);
-        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(29), dt: 1.0, ..Default::default() }).unwrap();
+        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(29), dt: 1.0, ..water() }).unwrap();
         for (m, want) in brute_c2(&traj, 1.2, 29).iter().enumerate() {
             if want.is_nan() {
                 assert!(r.rotcorr[m].is_nan(), "lag {m}: 无有效配对应为 NaN");
@@ -482,7 +499,7 @@ mod tests {
     fn test_lag_without_valid_pair_is_nan() {
         // 分子只在第 0、1 帧有效：lag ≥ 2 没有两端都有效的配对 → NaN，而不是 0
         let traj = tumbling(6, |t, _| t >= 2);
-        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..Default::default() }).unwrap();
+        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..water() }).unwrap();
         assert!((r.rotcorr[0] - 1.0).abs() < 1e-10);
         assert!(r.rotcorr[2..].iter().all(|c| c.is_nan()), "{:?}", r.rotcorr);
     }
@@ -493,7 +510,7 @@ mod tests {
     fn test_integral_bridges_a_lag_without_valid_pair() {
         // Frames 2 and 3 have no neighbor: lag 2 has no pair valid at both ends
         let traj = tumbling(6, |t, _| t == 2 || t == 3);
-        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..Default::default() }).unwrap();
+        let r = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..water() }).unwrap();
         let (c, i) = (&r.rotcorr, &r.integral);
         assert!(c[2].is_nan() && i[2].is_nan(), "{c:?}");
         assert!((i[3] - (i[1] + 0.5 * 2.0 * (c[1] + c[3]))).abs() < 1e-12, "{i:?}");
@@ -503,14 +520,14 @@ mod tests {
     #[test]
     fn test_c0_always_one() {
         let traj = make_fixed_orientation(8);
-        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..Default::default() }).unwrap();
+        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..water() }).unwrap();
         assert!((res.rotcorr[0] - 1.0).abs() < 1e-10, "C(0) = {}", res.rotcorr[0]);
     }
 
     #[test]
     fn test_fixed_orientation_flat() {
         let traj = make_fixed_orientation(10);
-        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..Default::default() }).unwrap();
+        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..water() }).unwrap();
         for (i, &c) in res.rotcorr.iter().enumerate() {
             assert!((c - 1.0).abs() < 1e-10, "C({i}) = {c}");
         }
@@ -519,7 +536,7 @@ mod tests {
     #[test]
     fn test_perpendicular_gives_minus_half() {
         let traj = make_perpendicular_orientations();
-        let res = calc_rotcorr(&traj, &RotCorrParams { r_cut: 1.5, max_lag: Some(1), dt: 1.0, ..Default::default() }).unwrap();
+        let res = calc_rotcorr(&traj, &RotCorrParams { r_cut: 1.5, max_lag: Some(1), dt: 1.0, ..water() }).unwrap();
         assert!((res.rotcorr[0] - 1.0).abs() < 1e-10, "C(0)={}", res.rotcorr[0]);
         assert!((res.rotcorr[1] + 0.5).abs() < 1e-10, "C(1) = {}", res.rotcorr[1]);
     }
@@ -527,7 +544,7 @@ mod tests {
     #[test]
     fn test_no_neighbor_anywhere_is_an_error() {
         let traj = tumbling(4, |_, _| true);
-        let err = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..Default::default() }).unwrap_err().to_string();
+        let err = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..water() }).unwrap_err().to_string();
         // Named as the CLI spells it (review 2026-11-06 A4-13)
         assert!(err.contains("within r-cut = "), "should say no neighbour is within the cutoff: {err}");
     }
@@ -536,7 +553,7 @@ mod tests {
     fn test_integral_is_trapezoidal() {
         // C 恒为 1 → 梯形积分 = t；左矩形法会在 m=0 就给出 dt
         let traj = make_fixed_orientation(8);
-        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 2.0, ..Default::default() }).unwrap();
+        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 2.0, ..water() }).unwrap();
         for (m, &ig) in res.integral.iter().enumerate() {
             assert!((ig - 2.0 * m as f64).abs() < 1e-10, "integral[{m}] = {ig}");
         }
@@ -544,7 +561,7 @@ mod tests {
 
     #[test]
     fn test_default_max_lag_and_origins() {
-        let res = calc_rotcorr(&make_fixed_orientation(11), &RotCorrParams { dt: 1.0, ..Default::default() }).unwrap();
+        let res = calc_rotcorr(&make_fixed_orientation(11), &RotCorrParams { dt: 1.0, ..water() }).unwrap();
         assert_eq!(res.time.len(), 6);
         assert_eq!(res.min_origins, 6);
         assert_eq!(res.n_frames, 11);
@@ -573,7 +590,7 @@ mod tests {
     #[test]
     fn test_sum_cancels_on_tetrahedron_bond_does_not() {
         let traj = rotating_tetrahedron(12, 0.3);
-        let sum = RotCorrParams { center: "P".into(), neighbor: "O".into(), r_cut: 1.8, dt: 1.0, ..Default::default() };
+        let sum = RotCorrParams { center: "P".into(), neighbor: "O".into(), r_cut: 1.8, dt: 1.0, ..water() };
         let err = calc_rotcorr(&traj, &sum).unwrap_err().to_string();
         assert!(err.contains("cancel") && err.contains("--vector bond"), "应提示键向量抵消：{err}");
 
@@ -594,7 +611,7 @@ mod tests {
         // 3 个 O 各带一个 H：bond 与 sum 的单元相同；P1 = ⟨û(t)·û(t+m)⟩ 暴力平均
         let traj = tumbling(24, |_, _| false);
         let r = calc_rotcorr(&traj, &RotCorrParams {
-            vector: RotVector::Bond, legendre: Legendre::P1, max_lag: Some(23), dt: 1.0, ..Default::default()
+            vector: RotVector::Bond, legendre: Legendre::P1, max_lag: Some(23), dt: 1.0, ..water()
         }).unwrap();
         let unit = |t: usize, k: usize| {
             let f = &traj.frames[t];
@@ -617,7 +634,7 @@ mod tests {
     fn test_p1_antiparallel_is_minus_one() {
         let traj = make_perpendicular_orientations();
         let r = calc_rotcorr(&traj, &RotCorrParams {
-            r_cut: 1.5, legendre: Legendre::P1, max_lag: Some(1), dt: 1.0, ..Default::default()
+            r_cut: 1.5, legendre: Legendre::P1, max_lag: Some(1), dt: 1.0, ..water()
         }).unwrap();
         assert!(r.rotcorr[1].abs() < 1e-10, "垂直时 P1 = 0，实为 {}", r.rotcorr[1]);
     }
@@ -627,18 +644,18 @@ mod tests {
         // 第 0 帧键长 0.96 定键；之后 H 退到 4 Å：sum 模式判为无效，bond 模式照 GROMACS 继续跟踪
         let traj = tumbling(6, |t, _| t >= 2);
         let r = calc_rotcorr(&traj, &RotCorrParams {
-            vector: RotVector::Bond, max_lag: Some(5), dt: 1.0, ..Default::default()
+            vector: RotVector::Bond, max_lag: Some(5), dt: 1.0, ..water()
         }).unwrap();
         assert!((r.valid_fraction - 1.0).abs() < 1e-12);
         assert!(r.rotcorr.iter().all(|c| c.is_finite()), "bond 模式每个 lag 都有值：{:?}", r.rotcorr);
-        let sum = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..Default::default() }).unwrap();
+        let sum = calc_rotcorr(&traj, &RotCorrParams { max_lag: Some(5), dt: 1.0, ..water() }).unwrap();
         assert!(sum.valid_fraction < 1.0);
     }
 
     #[test]
     fn test_bond_needs_a_bond_in_the_first_frame() {
         let traj = tumbling(4, |t, _| t == 0);
-        let err = calc_rotcorr(&traj, &RotCorrParams { vector: RotVector::Bond, dt: 1.0, ..Default::default() })
+        let err = calc_rotcorr(&traj, &RotCorrParams { vector: RotVector::Bond, dt: 1.0, ..water() })
             .unwrap_err().to_string();
         assert!(err.contains("first frame"), "{err}");
     }
@@ -646,7 +663,7 @@ mod tests {
     #[test]
     fn test_to_tables_columns() {
         let traj = make_fixed_orientation(8);
-        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..Default::default() }).unwrap();
+        let res = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..water() }).unwrap();
         let (name, t) = res.to_tables().remove(0);
         assert_eq!(name, "rotcorr");
         assert_eq!(t.names(), vec!["time", "c2", "integral"]);

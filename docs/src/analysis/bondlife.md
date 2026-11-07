@@ -123,9 +123,9 @@ frame.  A burst of `formed` marks when bonding happens; `mean_bonds` in `[inputs
 
 ```rust
 pub struct BondLifeParams {
-    pub center: String,          // e.g. "Si"
-    pub neighbor: String,        // e.g. "O"; may equal center
-    pub r_bond: f64,             // a free pair bonds at r <= r_bond [Å]
+    pub center: String,          // e.g. "Si"; required (Default is empty)
+    pub neighbor: String,        // e.g. "O"; may equal center; required (Default is empty)
+    pub r_bond: f64,             // a free pair bonds at r <= r_bond [Å]; required (Default is NaN)
     pub r_break: Option<f64>,    // a bond survives while r <= r_break [Å]; None = r_bond
     pub intermittency: usize,    // fill breaks of <= k frames (S_C and events); 0 = off
     pub max_lag: Option<usize>,  // longest lag [frames], 1..=N-1; None = N/2

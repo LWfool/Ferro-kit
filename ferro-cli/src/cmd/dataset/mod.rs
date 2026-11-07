@@ -20,7 +20,6 @@ mod merge;
 
 pub use collect::CollectCmd;
 pub use filter::FilterCmd;
-pub use filter::{DEFAULT_F_MAX, DEFAULT_S_MAX_GPA};
 pub use merge::MergeCmd;
 use collect::run_collect;
 use filter::run_filter;
@@ -35,7 +34,8 @@ use clap::{Args, Subcommand};
 use crate::batch::expand_inputs;
 use ferro_analysis::ml::dataset::{
     composition_key, filter_diagnostics, filter_frames, group_name, quantiles, shuffle_order,
-    shuffle_within, stitch_segments, FilterParams, FilterResult, Split, DEFAULT_SEED,
+    shuffle_within, stitch_segments, FilterParams, FilterResult, Split, DEFAULT_F_MAX, DEFAULT_S_MAX_GPA,
+    DEFAULT_SEED,
 };
 use ferro_analysis::first_shell_cutoffs;
 use ferro_core::units::{convert_pressure, PressureUnit};

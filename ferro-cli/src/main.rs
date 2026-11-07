@@ -352,7 +352,7 @@ mod help_sync {
     /// below (review 2026-10-30 A5-M9).
     #[test]
     fn every_default_on_a_page_is_clap_s_default() {
-        use crate::cmd::dataset::{DEFAULT_F_MAX, DEFAULT_S_MAX_GPA};
+        use ferro_analysis::ml::dataset::{DEFAULT_F_MAX, DEFAULT_S_MAX_GPA};
         use ferro_analysis::ml::dataset::DEFAULT_SEED;
         let constants: &[(&[&str], &str, String)] = &[
             (&["dataset", "filter"], "f-max", DEFAULT_F_MAX.to_string()),
@@ -396,6 +396,87 @@ mod help_sync {
             }
         }
         assert_eq!(constants_seen, constants.len(), "an entry of the constants table matches no option");
+    }
+
+    /// Every library `XxxParams::default()` field the CLI has an option for equals clap's
+    /// default (review 2026-11-06 D3): the library used to say bondlife Si-O 2.0 where the CLI
+    /// requires them, sq `None` where the CLI says `both`. A required option's field holds a
+    /// "not set" value that `validate` refuses; that is checked next to each `validate`.
+    #[test]
+    fn every_library_default_is_clap_s_default() {
+        use ferro_analysis::*;
+        type Same = Box<dyn Fn(&str) -> bool>;
+        fn num(v: f64) -> Same { Box::new(move |s| s.parse::<f64>() == Ok(v)) }
+        fn text(v: impl ToString) -> Same {
+            let v = v.to_string().to_lowercase();
+            Box::new(move |s| s.to_lowercase() == v)
+        }
+        let (gr, sq, angle) = (GrParams::default(), SqParams::default(), AngleParams::default());
+        let (rot, bond, vh) = (RotCorrParams::default(), BondLifeParams::default(), VanHoveParams::default());
+        let (dens, rad) = (CubeDensityParams::default(), CubeRadiusParams::default());
+        let (sdf, chg, bader) = (ClusterSdfParams::default(), ChgSdfParams::default(), BaderParams::default());
+        let cases: Vec<(&[&str], &str, Same)> = vec![
+            (&["traj", "gr"], "r-min", num(gr.r_min)),
+            (&["traj", "gr"], "r-max", num(gr.r_max)),
+            (&["traj", "gr"], "dr", num(gr.dr)),
+            (&["traj", "sq"], "r-max", num(gr.r_max)),
+            (&["traj", "sq"], "dr", num(gr.dr)),
+            (&["traj", "sq"], "q-min", num(sq.q_min)),
+            (&["traj", "sq"], "q-max", num(sq.q_max)),
+            (&["traj", "sq"], "dq", num(sq.dq)),
+            (&["traj", "sq"], "weighting", text(format!("{:?}", sq.weighting))),
+            (&["traj", "angle"], "r-cut-ab", num(angle.r_cut_ab)),
+            (&["traj", "angle"], "r-cut-bc", num(angle.r_cut_bc)),
+            (&["traj", "angle"], "angle-min", num(angle.angle_min)),
+            (&["traj", "angle"], "angle-max", num(angle.angle_max)),
+            (&["traj", "angle"], "d-angle", num(angle.d_angle)),
+            (&["traj", "rotcorr"], "r-cut", num(rot.r_cut)),
+            (&["traj", "rotcorr"], "vector", text(format!("{:?}", rot.vector))),
+            (&["traj", "rotcorr"], "legendre", Box::new(move |s| format!("P{s}") == format!("{:?}", rot.legendre))),
+            (&["traj", "bondlife"], "intermittency", num(bond.intermittency as f64)),
+            (&["traj", "vanhove"], "shift", num(vh.shift as f64)),
+            (&["traj", "vanhove"], "r-max", num(vh.r_max)),
+            (&["traj", "vanhove"], "dr", num(vh.dr)),
+            (&["map", "density"], "nx", num(dens.nx as f64)),
+            (&["map", "density"], "ny", num(dens.ny as f64)),
+            (&["map", "density"], "nz", num(dens.nz as f64)),
+            (&["map", "radius"], "nx", num(rad.nx as f64)),
+            (&["map", "radius"], "ny", num(rad.ny as f64)),
+            (&["map", "radius"], "nz", num(rad.nz as f64)),
+            (&["map", "radius"], "radius", num(rad.radius)),
+            (&["map", "sdf"], "qn", num(sdf.target_qn as f64)),
+            (&["map", "sdf"], "former", text(&sdf.former)),
+            (&["map", "sdf"], "ligand", text(&sdf.ligand)),
+            (&["map", "sdf"], "cutoff-fl", num(sdf.former_ligand_cutoff)),
+            (&["map", "sdf"], "cutoff-ml", num(sdf.modifier_cutoff)),
+            (&["map", "sdf"], "rmsd-warn", num(sdf.rmsd_warn_threshold)),
+            (&["map", "sdf"], "grid-res", num(sdf.grid_res)),
+            (&["map", "sdf"], "sigma", num(sdf.sigma)),
+            (&["map", "sdf"], "padding", num(sdf.padding)),
+            (&["map", "chg-sdf"], "qn", num(chg.target_qn as f64)),
+            (&["map", "chg-sdf"], "former", text(&chg.former)),
+            (&["map", "chg-sdf"], "ligand", text(&chg.ligand)),
+            (&["map", "chg-sdf"], "cutoff-fl", num(chg.former_ligand_cutoff)),
+            (&["map", "chg-sdf"], "cutoff-ml", num(chg.modifier_cutoff)),
+            (&["map", "chg-sdf"], "rmsd-warn", num(chg.rmsd_warn_threshold)),
+            (&["map", "chg-sdf"], "chg-padding", num(chg.padding)),
+            (&["bader"], "method", text(format!("{:?}", bader.method))),
+            (&["bader"], "refine", num(bader.refine as f64)),
+            (&["bader"], "vacval", num(bader.vacval)),
+        ];
+        for (path, long, same) in cases {
+            let cmd = subcommand(path);
+            let arg = cmd.get_arguments().find(|a| a.get_long() == Some(long))
+                .unwrap_or_else(|| panic!("{}: no --{long}", path.join(" ")));
+            let clap = arg.get_default_values().first()
+                .unwrap_or_else(|| panic!("{}: --{long} has no clap default", path.join(" ")))
+                .to_string_lossy().into_owned();
+            assert!(same(&clap), "{}: --{long} defaults to {clap} on the CLI but not in the library", path.join(" "));
+        }
+        let filter = ml::dataset::FilterParams::default();
+        assert_eq!(filter.f_max, ml::dataset::DEFAULT_F_MAX);
+        assert_eq!(filter.s_max, ferro_core::units::convert_pressure(
+            ml::dataset::DEFAULT_S_MAX_GPA, ferro_core::units::PressureUnit::GPa, ferro_core::units::PressureUnit::EVPerAng3));
     }
 
     /// Review E2-5: every subcommand is listed on the overview page of its group
