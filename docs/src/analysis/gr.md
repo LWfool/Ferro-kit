@@ -70,7 +70,7 @@ $V_\text{cell}/V_\text{slab}$.
 ```rust
 pub struct GrParams {
     pub r_min: f64,       // default: 0.001 Å
-    pub r_max: f64,       // default: 10.005 Å  (use with_auto_rmax for safety)
+    pub r_max: f64,       // default: 10.005 Å; clamped to the minimum-image bound
     pub dr: f64,          // default: 0.002 Å
     pub group_by: GroupBy, // resolve partials over elements or site labels
 }
@@ -84,8 +84,7 @@ pub struct GrParams {
 | `-a`/`-b` (element) or `-x`/`-y` (label) | `group_by` | all pairs |
 
 `r_max` must satisfy $r_\text{max} < L_\text{min}/2$; it is clamped internally to half the
-smallest interplanar spacing seen across all frames.  Use `GrParams::with_auto_rmax(&traj)`
-to set it from the first frame.
+smallest interplanar spacing seen across all frames.
 
 Bin $i$ covers $[r_\text{min} + i\,\Delta r,\ r_\text{min} + (i{+}1)\Delta r)$ and is labelled
 at its centre, $r_i = r_\text{min} + (i + \tfrac{1}{2})\Delta r$.
@@ -139,7 +138,7 @@ use ferro_analysis::{GrParams, calc_gr};
 use ferro_io::{write_table, TableFormat};
 use std::path::Path;
 
-let params = GrParams::with_auto_rmax(&traj);
+let params = GrParams::default();
 let result = calc_gr(&traj, &params).unwrap();
 for (name, table) in result.to_tables(None).unwrap() {
     write_table(&table, Path::new(&format!("output_{name}.csv")), TableFormat::Csv).unwrap();

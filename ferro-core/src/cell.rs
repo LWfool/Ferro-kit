@@ -172,14 +172,6 @@ impl Cell {
         Ok([d(0), d(1), d(2)])
     }
 
-    /// Upper bound on a cutoff radius compatible with the minimum-image convention:
-    /// half the smallest interplanar spacing. Same formula as `PeriodicCell::mic_bound`
-    /// (slim scan A-11).
-    pub fn minimum_image_cutoff(&self) -> Result<f64> {
-        let d = self.interplanar_spacings()?;
-        Ok(d[0].min(d[1]).min(d[2]) * 0.5)
-    }
-
     // ── 坐标转换 ──────────────────────────────────────────────────────────────
 
     /// 分数坐标 → Cartesian 坐标（Å）。
@@ -276,7 +268,6 @@ mod tests {
         for di in d {
             assert!((di - 10.0).abs() < 1e-10, "d = {di}, expected 10");
         }
-        assert!((cell.minimum_image_cutoff().unwrap() - 5.0).abs() < 1e-10);
     }
 
     #[test]
@@ -293,7 +284,7 @@ mod tests {
         }
         // MIC 上界随之小于 min(L)/2
         let l_min_half = l.iter().cloned().fold(f64::INFINITY, f64::min) * 0.5;
-        assert!(cell.minimum_image_cutoff().unwrap() < l_min_half);
+        assert!(crate::PeriodicCell::new(&cell, [true; 3]).unwrap().mic_bound() < l_min_half);
     }
 
     #[test]
@@ -420,7 +411,6 @@ mod tests {
             let e = c.check("cell").unwrap_err().to_string();
             assert!(e.contains("cell is not finite"), "{e}");
             assert!(c.interplanar_spacings().is_err(), "{bad}");
-            assert!(c.minimum_image_cutoff().is_err(), "{bad}");
         }
         let mut flat = cubic.clone();
         flat.matrix[(2, 2)] = 0.0;

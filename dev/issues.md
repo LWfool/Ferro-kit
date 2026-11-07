@@ -75,7 +75,7 @@ bader.md 没有的一条：`ChargeGrid` 不对外暴露 ndarray —— 存储用
 
 | 位置 | 陷阱 | 正确做法 |
 |---|---|---|
-| `gr.rs` `calc_gr` | 默认 r_max=10.005 对小盒子超过 MIC 上界，近邻格每轴退化为 1 个 cell，最小镜像失效，g(r) 尾部被错误压向 0 | `calc_gr` 内把有效 r_max clamp 到 `Cell::minimum_image_cutoff()`（最小**面间距**的一半，非最短边长），并写回 `result.params.r_max`；`with_auto_rmax` 现由 ferro-python 使用，同样走该上界 |
+| `gr.rs` `calc_gr` | 默认 r_max=10.005 对小盒子超过 MIC 上界，近邻格每轴退化为 1 个 cell，最小镜像失效，g(r) 尾部被错误压向 0 | `calc_gr` 内把有效 r_max clamp 到 `PeriodicCell::mic_bound()`（最小**面间距**的一半，非最短边长），截断值记入 `r_max_used`，`params.r_max` 保留请求值；ferro-python 默认同 CLI 取 10.005 再截断（`with_auto_rmax` 与 `Cell::minimum_image_cutoff` 已删，审查 2026-11-06 D10） |
 | `box_builder.rs` `CellList::neighbors` | 27-bin 遍历缺去重，小盒子（n_bins ≤ 2）同一 bin 被多次映射 → 近邻重复计入、弛豫斥力成倍累加 | 加 `seen` bin 去重（分析层已改用 `neighbor.rs` 的 `NeighborList`） |
 | `bader_grid.rs` `bader_ongrid` | 曾有第一遍梯度上升结果被 `volnum=vec![0;..]` 立即清零重算（开发遗留），运行时翻倍 | 已删，只保留全路径追踪的单遍循环；改 on-grid 时勿再引入双重计算 |
 

@@ -213,6 +213,13 @@ def test_gr_defaults_are_those_of_the_cli():
     assert ferro.gr_all(t, r_max=3.001)["r"] == g["r"]
 
 
+def test_gr_r_max_defaults_to_the_cli_s():
+    # --r-max 10.005, clamped to the box's minimum-image bound; this box allows ~19.6, which the
+    # default used to take instead (review 2026-11-06 D10)
+    g = ferro.gr_pair(ferro.read(str(NVT)).subset([0]), "P", "O")
+    assert g["r"][-1] == pytest.approx(10.004) and len(g["r"]) == 5002
+
+
 def test_merge_refuses_a_trajectory(tmp_path):
     # Picking frame 0 silently is the caller's choice to make, as `ferro build merge` refuses it
     # (review 2026-10-30 A6-M-5)

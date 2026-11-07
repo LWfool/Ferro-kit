@@ -115,18 +115,6 @@ impl Default for GrParams {
     }
 }
 
-impl GrParams {
-    /// Determine `r_max` automatically as the minimum-image cutoff of the first frame.
-    pub fn with_auto_rmax(traj: &Trajectory) -> Self {
-        let r_max = traj
-            .first()
-            .and_then(|f| f.cell.as_ref())
-            .and_then(|cell| cell.minimum_image_cutoff().ok())
-            .unwrap_or(10.005);
-        GrParams { r_max, ..Default::default() }
-    }
-}
-
 // ─── 结果结构体 ──────────────────────────────────────────────────────────────
 
 /// Result of a g(r) / CN(r) calculation.
@@ -892,7 +880,7 @@ mod tests {
         // 三斜晶胞：面间距 < 边长，clamp 必须用面间距。
         // 用边长会得到 min(L)/2 = 5.0，用面间距则明显更小。
         let cell = Cell::from_lengths_angles(10.0, 10.0, 10.0, 60.0, 70.0, 80.0).unwrap();
-        let mic = cell.minimum_image_cutoff().unwrap();
+        let mic = ferro_core::PeriodicCell::new(&cell, [true; 3]).unwrap().mic_bound();
         let mut frame = Frame::with_cell(cell, [true; 3]);
         frame.add_atom(Atom::new("Fe", Vector3::new(0.0, 0.0, 0.0)));
         frame.add_atom(Atom::new("Fe", Vector3::new(2.5, 0.0, 0.0)));

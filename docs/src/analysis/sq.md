@@ -170,7 +170,7 @@ use ferro_analysis::{GrParams, SqParams, SqWeighting, calc_gr, calc_sq_from_gr};
 use ferro_io::{write_table, TableFormat};
 use std::path::Path;
 
-let gr = calc_gr(&traj, &GrParams::with_auto_rmax(&traj)).unwrap();
+let gr = calc_gr(&traj, &GrParams::default()).unwrap();
 let sq = calc_sq_from_gr(&gr, &SqParams {
     q_min: 0.5, q_max: 20.0, dq: 0.02,
     weighting: SqWeighting::Neutron,

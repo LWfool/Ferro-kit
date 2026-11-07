@@ -77,8 +77,8 @@ impl PeriodicCell {
     }
 
     /// Largest distance the minimum image measures correctly: half the smallest
-    /// interplanar spacing. Same formula as `Cell::minimum_image_cutoff`, whose one
-    /// production caller (`gr`) could move here (slim scan A-11).
+    /// interplanar spacing; the one place that bound is computed (review 2026-11-06 D10
+    /// removed `Cell::minimum_image_cutoff`, its copy).
     pub fn mic_bound(&self) -> f64 {
         let d = self.spacings();
         d[0].min(d[1]).min(d[2]) * 0.5
@@ -120,7 +120,6 @@ mod tests {
         let pc = PeriodicCell::new(&cell, [true; 3]).unwrap();
         let d = Vector3::new(6.1, -8.2, 4.4);
         assert_eq!(pc.minimum_image(d), cell.minimum_image(d).unwrap());
-        assert_eq!(pc.mic_bound(), cell.minimum_image_cutoff().unwrap());
         let f = Vector3::new(0.3, 0.5, 0.7);
         assert!((pc.to_fractional(pc.to_cartesian(f)) - f).norm() < 1e-12);
     }
