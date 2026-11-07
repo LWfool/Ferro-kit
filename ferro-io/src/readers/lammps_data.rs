@@ -73,11 +73,9 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
         let line = strip_comment(lines[i]);
         if line.is_empty() { i += 1; continue; }
 
-        if line.ends_with("atoms") && !line.contains("atom types") {
+        if line.ends_with("atoms") {
             let n = line.split_whitespace().next().expect("a non-empty line has a first word");
             n_atoms = Some(n.parse().with_context(|| format!("bad atom count in '{line}'"))?);
-        } else if line.ends_with("atom types") {
-            // type count stored but not needed
         } else if let Some(k) = ["xlo xhi", "ylo yhi", "zlo zhi"].iter().position(|t| line.contains(t)) {
             let v = floats(line, 2)?;
             bounds[k] = Some((v[0], v[1]));

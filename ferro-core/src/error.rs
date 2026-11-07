@@ -12,10 +12,6 @@ pub enum ChemError {
     /// Data or parameters that do not hold
     #[error("Validation error: {0}")]
     ValidationError(String),
-
-    /// An I/O error
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
 }
 
 /// Result type alias

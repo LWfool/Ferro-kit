@@ -120,7 +120,7 @@ fn parse_dump_lines(
             frame_lines.push(l);
         }
         let view: Vec<&str> = frame_lines.iter().map(|l| l.as_str()).collect();
-        match parse_frame(&view, &mut 0, next.is_none(), units, &mut site_map, &mut unknown_prefixes) {
+        match parse_frame(&view, next.is_none(), units, &mut site_map, &mut unknown_prefixes) {
             Ok(frame) => traj.add_frame(frame),
             Err(FrameError::Invalid(why)) => bail!("frame {} (line {}): {why}", traj.n_frames(), start + 1),
             Err(FrameError::Incomplete(why)) => {
@@ -149,12 +149,11 @@ enum FrameError {
     Invalid(String),
 }
 
-/// Parse the frame whose `ITEM: TIMESTEP` line is at `*i`, advancing `*i` past it.
+/// Parse the frame whose `ITEM: TIMESTEP` line is `lines[0]`.
 ///
 /// Whether an `Err` is fatal is the caller's call: see [`FrameError`].
 fn parse_frame(
     lines: &[&str],
-    i: &mut usize,
     last_in_file: bool,
     units: Option<LammpsUnits>,
     site_map: &mut BTreeMap<String, String>,
@@ -179,12 +178,12 @@ fn parse_frame(
     };
 
     // TIMESTEP 的值紧跟段头；时间相关分析靠它查重复帧与不等间隔
-    let step: i64 = lines.get(*i + 1)
+    let step: i64 = lines.get(1)
         .and_then(|l| l.trim().parse().ok())
-        .ok_or_else(|| fail_at(*i + 1, "ITEM: TIMESTEP has no step number".into()))?;
+        .ok_or_else(|| fail_at(1, "ITEM: TIMESTEP has no step number".into()))?;
 
     // NUMBER OF ATOMS
-    let na = seek(*i + 1, "NUMBER OF ATOMS")?;
+    let na = seek(1, "NUMBER OF ATOMS")?;
     let n: usize = lines.get(na + 1)
         .and_then(|l| l.trim().parse().ok())
         .ok_or_else(|| fail_at(na + 1, "NUMBER OF ATOMS has no count".into()))?;
@@ -411,7 +410,6 @@ fn parse_frame(
     if !all_vels.is_empty() { frame.set_velocities(Some(all_vels)).expect("one velocity per atom"); }
     if !all_forces.is_empty() { frame.set_forces(Some(all_forces)).expect("one force per atom"); }
 
-    *i = ah + 1 + n;
     Ok(frame)
 }
 
