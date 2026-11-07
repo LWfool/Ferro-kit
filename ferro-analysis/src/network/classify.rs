@@ -118,11 +118,6 @@ impl TypeParams {
         unique_keys_left(&self.modifier_cutoffs)
     }
 
-    /// Former–ligand cutoff, if defined.
-    pub fn cutoff(&self, former: &str, ligand: &str) -> Option<f64> {
-        self.cutoffs.get(&(former.to_string(), ligand.to_string())).copied()
-    }
-
     /// All `(former_elem, cutoff)` pairs for a given ligand element.
     pub fn formers_for_ligand(&self, ligand: &str) -> Vec<(String, f64)> {
         self.cutoffs.iter()

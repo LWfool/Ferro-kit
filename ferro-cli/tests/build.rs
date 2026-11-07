@@ -226,3 +226,13 @@ fn library_errors_carry_no_category_prefix() {
     assert_eq!(out.status.code(), Some(1), "{err}");
     assert!(err.contains("ferro: FerroError: 'H2(O' is neither a known compound nor a valid formula (unclosed '('"), "{err}");
 }
+
+#[test]
+fn dims_of_zero_are_refused_by_clap() {
+    // A usage error, exit 2, before any input is read (review 2026-11-06 D15)
+    let d = scratch("dims0");
+    let out = ferro(&["build", "supercell", "-i", "no_such_file", "--dims", "0", "2", "1", "-o", d.to_str().unwrap()]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(err.contains("--dims"), "{err}");
+}

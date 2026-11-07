@@ -4,12 +4,8 @@ use ferro_core::Trajectory;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
-use crate::lammps_box::{bounding_box, cell_to_lammps, lammps_cell};
+use crate::lammps_box::{frame_box, lammps_cell, reduce_tilts};
 
-/// 无胞帧的盒子取包围盒每侧外扩这么多（Å），坐标原样写（dump 与 data 都允许 lo ≠ 0）。
-/// 余量无物理意义，只保证 lo < hi（平面分子某维厚度为 0）、原子不落在 hi 边界上被
-/// `f` 边界判丢。与 `writers/lammps_dump.rs` 同值
-const CELLLESS_PAD: f64 = 1.0;
 
 /// Writes a LAMMPS data file, atom_style full, lengths in Å (the same numbers under real
 /// and metal units: a data file carries no velocities or forces here).
@@ -70,19 +66,10 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
     writeln!(w)?;
 
     // Box bounds
-    let (lo, (lx, ly, lz, xy, xz, yz)) = match &frame.cell {
-        Some(cell) => (cell.origin.into(), cell_to_lammps(cell)),
-        None => {
-            // Non-periodic: compute bounding box
-            let (minx, maxx, miny, maxy, minz, maxz) = bounding_box(frame);
-            let w = 2.0 * CELLLESS_PAD;
-            ([minx - CELLLESS_PAD, miny - CELLLESS_PAD, minz - CELLLESS_PAD],
-             (maxx - minx + w, maxy - miny + w, maxz - minz + w, 0.0, 0.0, 0.0))
-        }
-    };
+    let (lo, (lx, ly, lz, xy, xz, yz)) = frame_box(frame);
 
     // The box on a reduced basis; the positions below go through the unreduced cell
-    let (bxy, bxz, byz) = super::reduce_tilts(lx, ly, xy, xz, yz);
+    let (bxy, bxz, byz) = reduce_tilts(lx, ly, xy, xz, yz);
     let is_triclinic = bxy != 0.0 || bxz != 0.0 || byz != 0.0;
 
     writeln!(w, "{:.10} {:.10} xlo xhi", lo[0], lo[0] + lx)?;

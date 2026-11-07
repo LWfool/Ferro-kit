@@ -51,8 +51,8 @@ pub struct FilterCmd {
 
     /// Keep only frames holding a 6-coordinated Al. Bare --al6 takes the cutoff
     /// from the Al-O RDF; give a number to set it by hand
-    #[arg(long, num_args = 0..=1, default_missing_value = "auto", value_name = "RCUT")]
-    pub al6: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "auto", value_name = "RCUT", value_parser = parse_al6)]
+    pub al6: Option<Al6>,
 
     /// Shuffle the kept frames before writing, after every criterion has run
     #[arg(long)]
@@ -79,6 +79,22 @@ pub struct FilterCmd {
     pub ratio: Option<String>,
 }
 
+/// `--al6`: the Al-O cutoff taken from each system's own RDF, or one given by hand
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Al6 {
+    Auto,
+    Cutoff(f64),
+}
+
+/// `--al6`'s value, parsed once here (review 2026-11-06 D15: the string "auto" used to be
+/// interpreted in three places). A NaN or inf parses, for validate to name
+fn parse_al6(v: &str) -> std::result::Result<Al6, String> {
+    if v == "auto" {
+        return Ok(Al6::Auto);
+    }
+    v.parse::<f64>().map(Al6::Cutoff).map_err(|_| format!("expects a cutoff in Å or nothing, got `{v}`"))
+}
+
 impl FilterCmd {
     /// `-f` 的实际值，没给取默认
     fn f_max(&self) -> f64 { self.f_max.unwrap_or(DEFAULT_F_MAX) }
@@ -89,12 +105,9 @@ impl FilterCmd {
 pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     // Parameter errors surface before the first system is read; the value ranges are
     // FilterParams::validate's alone (review C-2)
-    let manual_rcut = match args.al6.as_deref() {
-        None | Some("auto") => None,
-        Some(v) => Some(
-            v.parse::<f64>()
-                .with_context(|| format!("--al6 expects a cutoff in Å or nothing, got `{v}`"))?,
-        ),
+    let manual_rcut = match args.al6 {
+        Some(Al6::Cutoff(r)) => Some(r),
+        None | Some(Al6::Auto) => None,
     };
     let split = filter_split(args)?;
     if args.seed.is_some() && !args.shuffle && split.is_off() {
@@ -238,10 +251,10 @@ fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
         format!("f_max     = {}", off(args.f_max(), "eV/Ang")),
         format!("s_max     = {}", off(args.s_max(), "GPa")),
         format!("oo_min    = {}", off(params.oo_min, "Ang")),
-        match args.al6.as_deref() {
+        match args.al6 {
             None => "al6       = off".to_string(),
-            Some("auto") => "al6       = on (cutoff from the Al-O RDF, per system)".to_string(),
-            Some(v) => format!("al6       = on (cutoff {v} Ang)"),
+            Some(Al6::Auto) => "al6       = on (cutoff from the Al-O RDF, per system)".to_string(),
+            Some(Al6::Cutoff(v)) => format!("al6       = on (cutoff {v} Ang)"),
         },
         format!("set_size  = {}", args.set_size),
     ];
@@ -291,7 +304,7 @@ fn filter_one(
         crate::report::note(sys.display(), "no forces; the default force criterion is off for it");
     }
     let mut derived = None;
-    if args.al6.as_deref() == Some("auto") {
+    if args.al6 == Some(Al6::Auto) {
         let shell = first_shell_cutoffs(&traj, &[("Al", "O")])?[0]
             .context("no Al-O pair in this system, so --al6 has no cutoff to derive")?;
         println!(
@@ -402,6 +415,23 @@ fn print_table(t: &ferro_core::Table) {
 mod tests {
     use super::*;
     use super::super::test_ids::*;
+
+    /// `--al6` is parsed by clap: bare means `auto`, anything else must be a number
+    /// (review 2026-11-06 D15: the string "auto" used to be interpreted in three places)
+    #[test]
+    fn al6_is_parsed_by_clap() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        let parse = |v: &[&str]| Wrap::try_parse_from(["filter", "-i", "d"].iter().chain(v)).map(|w| w.cmd.al6);
+        assert!(parse(&["--al6", "abc"]).is_err());
+        assert_eq!(parse(&["--al6"]).unwrap(), Some(Al6::Auto));
+        assert_eq!(parse(&["--al6", "2.5"]).unwrap(), Some(Al6::Cutoff(2.5)));
+        assert_eq!(parse(&[]).unwrap(), None);
+    }
 
     /// A report's parameter block is a file header: the angstrom in ASCII, `Ang`, as every
     /// other header writes it (review 2026-11-06 D4)

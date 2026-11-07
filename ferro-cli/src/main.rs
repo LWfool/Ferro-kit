@@ -398,6 +398,13 @@ mod help_sync {
         assert_eq!(constants_seen, constants.len(), "an entry of the constants table matches no option");
     }
 
+    /// `COMMON_OPTS` holds `OUT_OPTS` verbatim rather than a copy of its three lines
+    /// (review 2026-11-06 D15)
+    #[test]
+    fn common_opts_hold_out_opts() {
+        assert!(crate::help::COMMON_OPTS.contains(crate::help::OUT_OPTS));
+    }
+
     /// Every library `XxxParams::default()` field the CLI has an option for equals clap's
     /// default (review 2026-11-06 D3): the library used to say bondlife Si-O 2.0 where the CLI
     /// requires them, sq `None` where the CLI says `both`. A required option's field holds a

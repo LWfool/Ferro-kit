@@ -47,7 +47,7 @@ pub fn find_supercell_dims(
     // NaN would fall through to "no constraint", infinity to a usize::MAX multiple, and a
     // negative length to "no constraint" as well.
     if !(min_length.is_finite() && min_length >= 0.0) {
-        return Err(ChemError(format!("min_length must be finite and >= 0, got {min_length}")));
+        return Err(ChemError(format!("min_length must be a finite number >= 0, got {min_length}")));
     }
     if min_atoms > MAX_SUPERCELL_ATOMS {
         return Err(too_many(&format!("min_atoms {min_atoms}")));

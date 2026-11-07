@@ -94,6 +94,7 @@ pub struct SupercellCmd {
 
     /// Replicas along a, b, c
     #[arg(long, num_args = 3, value_names = ["NX", "NY", "NZ"],
+          value_parser = at_least_one,
           conflicts_with_all = ["min_atoms", "min_length"])]
     pub dims: Option<Vec<usize>>,
 
@@ -212,6 +213,15 @@ pub fn print_help(cmd: &BuildCmd) {
     }
 }
 
+/// A `--dims` replica count: clap refuses 0 as a usage error (review 2026-11-06 D15); its own
+/// range parser would print the bound as `1..18446744073709551615`
+fn at_least_one(v: &str) -> std::result::Result<usize, String> {
+    match v.parse::<usize>() {
+        Ok(n) if n >= 1 => Ok(n),
+        _ => Err(format!("expects a whole number >= 1, got `{v}`")),
+    }
+}
+
 /// Returns the number of inputs that failed, for the process exit code.
 pub fn run(cmd: &BuildCmd) -> Result<usize> {
     match cmd {
@@ -298,14 +308,9 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
     if c.dims.is_none() && c.min_atoms.is_none() && c.min_length.is_none() {
         bail!("give the replicas (--dims NX NY NZ) or a size to reach (--min-atoms N, --min-length LEN)");
     }
-    if let Some(d) = &c.dims {
-        if d.contains(&0) {
-            bail!("--dims takes three numbers of at least 1, got {d:?}");
-        }
-    }
     if let Some(l) = c.min_length {
         if !(l >= 0.0 && l.is_finite()) {
-            bail!("--min-length must be a finite length >= 0, got {l}");
+            bail!("--min-length must be a finite number >= 0, got {l}");
         }
     }
 
@@ -344,7 +349,7 @@ fn run_vacuum(c: &VacuumCmd) -> Result<usize> {
     let Some(t) = c.thickness else { bail!("give the vacuum thickness: --thickness LEN") };
     // add_vacuum 也查，但它在读完文件之后才查到
     if !(t > 0.0 && t.is_finite()) {
-        bail!("--thickness must be a finite length > 0, got {t}");
+        bail!("--thickness must be a finite number > 0, got {t}");
     }
     per_input("vacuum", &c.input, &c.read, &c.out, |frame| {
         Ok((Some(add_vacuum(frame, &c.axis, t)?), format!("{t} Å of vacuum along {}", c.axis)))
@@ -357,7 +362,7 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
     let [a, b] = c.input.as_slice() else { unreachable!("clap: num_args = 2") };
     let Some(gap) = c.gap else { bail!("give the gap between the two blocks: --gap LEN (0 allowed)") };
     if !(gap >= 0.0 && gap.is_finite()) {
-        bail!("--gap must be a finite length >= 0, got {gap}");
+        bail!("--gap must be a finite number >= 0, got {gap}");
     }
     batch::check_suffix(c.out.suffix.as_deref())?;
     check_read_args(a, &c.read)?;

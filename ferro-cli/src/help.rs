@@ -23,16 +23,23 @@ pub const READ_OPTS: &str = read_opts!();
 /// `-o / -s / --mkdir` of the commands that take `OutArgs` or the same three flags
 /// (`build`, `map chg-sdf`): one wording, which the build pages had let drift
 /// ("every" / "the product name", review 2026-10-30 A5-L2).
-pub const OUT_OPTS: &str = "  -o, --output DIR        Output directory                       [current dir]
+/// A macro, as `read_opts!`, so `COMMON_OPTS` can `concat!` it (review 2026-11-06 D15).
+macro_rules! out_opts {
+    () => {
+        "  -o, --output DIR        Output directory                       [current dir]
   -s, --suffix SUFFIX     Batch tag, the last segment of every product name
-      --mkdir             Create -o without asking (needed with no terminal)";
+      --mkdir             Create -o without asking (needed with no terminal)"
+    };
+}
+
+pub const OUT_OPTS: &str = out_opts!();
 
 /// The options of `CommonArgs`, shared by `traj`, `map` and `net`.
 pub const COMMON_OPTS: &str = concat!(
     "  -i, --input  FILE...    Input trajectory file(s); globs allowed (quote them)
-  -o, --output DIR        Output directory                       [current dir]
-      --mkdir             Create -o without asking (needed with no terminal)
-  -s, --suffix SUFFIX     Batch tag, the last segment of every product name
+",
+    out_opts!(),
+    "
       --last-n N          Use only the last N frames
       --ncore  N          Parallel threads                         [all cores]
 ",

@@ -13,8 +13,11 @@ pub(crate) fn lammps_cell(lx: f64, ly: f64, lz: f64, xy: f64, xz: f64, yz: f64) 
     Cell::from_matrix(Matrix3::new(lx, 0.0, 0.0, xy, ly, 0.0, xz, yz, lz))
 }
 
-/// A cell's LAMMPS box parameters `(lx, ly, lz, xy, xz, yz)`, from its lengths and angles.
-pub(crate) fn cell_to_lammps(cell: &Cell) -> (f64, f64, f64, f64, f64, f64) {
+/// LAMMPS box parameters `(lx, ly, lz, xy, xz, yz)`.
+pub(crate) type BoxParams = (f64, f64, f64, f64, f64, f64);
+
+/// A cell's LAMMPS box parameters, from its lengths and angles.
+pub(crate) fn cell_to_lammps(cell: &Cell) -> BoxParams {
     let [a, b, c] = cell.lengths();
     let [alpha, beta, gamma] = cell.angles();
     let (al, be, ga) = (alpha.to_radians(), beta.to_radians(), gamma.to_radians());
@@ -32,15 +35,45 @@ pub(crate) fn cell_to_lammps(cell: &Cell) -> (f64, f64, f64, f64, f64, f64) {
     (lx, ly, lz, xy, xz, yz)
 }
 
-/// The atoms' bounding box `(xlo, xhi, ylo, yhi, zlo, zhi)`, for a frame without a cell.
-pub(crate) fn bounding_box(frame: &Frame) -> (f64, f64, f64, f64, f64, f64) {
-    let mut mn = [f64::MAX; 3];
-    let mut mx = [f64::MIN; 3];
-    for a in frame.atoms() {
-        for k in 0..3 {
-            mn[k] = mn[k].min(a.position[k]);
-            mx[k] = mx[k].max(a.position[k]);
+/// How far the box of a frame without a cell reaches past the atoms on each side (Å); the
+/// coordinates are written as they are (dump and data both allow lo != 0). The margin has
+/// no physical meaning: it keeps lo < hi (a flat molecule is 0 thick along one axis) and
+/// keeps atoms off the hi face, where an `f` boundary would drop them.
+const CELLLESS_PAD: f64 = 1.0;
+
+/// The LAMMPS box the data and dump writers write for `frame`: its origin and
+/// `(lx, ly, lz, xy, xz, yz)`. A frame without a cell gets the atoms' bounding box,
+/// [`CELLLESS_PAD`] wider on each side (review 2026-11-06 D14: one copy, not one per writer).
+pub(crate) fn frame_box(frame: &Frame) -> ([f64; 3], BoxParams) {
+    match &frame.cell {
+        Some(cell) => (cell.origin.into(), cell_to_lammps(cell)),
+        None => {
+            let mut mn = [f64::MAX; 3];
+            let mut mx = [f64::MIN; 3];
+            for a in frame.atoms() {
+                for k in 0..3 {
+                    mn[k] = mn[k].min(a.position[k]);
+                    mx[k] = mx[k].max(a.position[k]);
+                }
+            }
+            let l = |k: usize| mx[k] - mn[k] + 2.0 * CELLLESS_PAD;
+            (mn.map(|m| m - CELLLESS_PAD), (l(0), l(1), l(2), 0.0, 0.0, 0.0))
         }
     }
-    (mn[0], mx[0], mn[1], mx[1], mn[2], mx[2])
+}
+
+/// The LAMMPS tilts `(xy, xz, yz)` of the same lattice on a reduced basis, each at most
+/// half the edge it leans along — LAMMPS `read_data` refuses a box skewed further
+/// (review R2-4). Each step adds a lattice vector to another: `c -= k·b` moves `yz` and
+/// `xz`, then `c -= k·a` and `b -= k·a` move `xz` and `xy`. Only the box is reduced; the
+/// atoms keep their Cartesian positions, which the same lattice still holds.
+pub(crate) fn reduce_tilts(lx: f64, ly: f64, xy: f64, xz: f64, yz: f64) -> (f64, f64, f64) {
+    // ly > 0: a cell passed `check` before either writer gets here, so b is not along a and
+    // ly = b |sin gamma| > 0; a frame without one has ly >= 2 CELLLESS_PAD (the `else 0`
+    // that stood here could not be reached, review 2026-11-06 A3-8)
+    let k = (yz / ly).round();
+    let (xz, yz) = (xz - k * xy, yz - k * ly);
+    let xz = xz - (xz / lx).round() * lx;
+    let xy = xy - (xy / lx).round() * lx;
+    (xy, xz, yz)
 }

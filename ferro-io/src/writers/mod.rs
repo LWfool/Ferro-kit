@@ -72,20 +72,6 @@ pub(crate) fn partial_column(
     )
 }
 
-/// The LAMMPS tilts `(xy, xz, yz)` of the same lattice on a reduced basis, each at most
-/// half the edge it leans along — LAMMPS `read_data` refuses a box skewed further
-/// (review R2-4). Each step adds a lattice vector to another: `c -= k·b` moves `yz` and
-/// `xz`, then `c -= k·a` and `b -= k·a` move `xz` and `xy`. Only the box is reduced; the
-/// atoms keep their Cartesian positions, which the same lattice still holds. Shared by
-/// the LAMMPS data and dump writers.
-pub(crate) fn reduce_tilts(lx: f64, ly: f64, xy: f64, xz: f64, yz: f64) -> (f64, f64, f64) {
-    let k = if ly > 0.0 { (yz / ly).round() } else { 0.0 };
-    let (xz, yz) = (xz - k * xy, yz - k * ly);
-    let xz = xz - (xz / lx).round() * lx;
-    let xy = xy - (xy / lx).round() * lx;
-    (xy, xz, yz)
-}
-
 /// Zero-padded width for frame indices, at least 4 so `ls` sorts the products in
 /// frame order.
 pub(crate) fn index_width(max_index: usize) -> usize {

@@ -5,12 +5,8 @@ use ferro_core::units::{convert_energy, convert_time, EnergyUnit, TimeUnit};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use anyhow::{bail, Context, Result};
-use crate::lammps_box::{bounding_box, cell_to_lammps, lammps_cell};
+use crate::lammps_box::{frame_box, lammps_cell, reduce_tilts};
 
-/// 无胞帧的盒子取包围盒每侧外扩这么多（Å），坐标原样写（dump 与 data 都允许 lo ≠ 0）。
-/// 余量无物理意义，只保证 lo < hi（平面分子某维厚度为 0）、原子不落在 hi 边界上被
-/// `f` 边界判丢。与 `writers/lammps_data.rs` 同值
-const CELLLESS_PAD: f64 = 1.0;
 
 /// The name an atom gets in a dump's single `element` column.
 ///
@@ -104,20 +100,12 @@ pub fn write_lammps_dump(
         writeln!(w, "{n}")?;
 
         // BOX BOUNDS
-        let (lo, (lx, ly, lz, xy, xz, yz)) = match &frame.cell {
-            Some(cell) => (cell.origin.into(), cell_to_lammps(cell)),
-            None => {
-                let (mnx, mxx, mny, mxy, mnz, mxz) = bounding_box(frame);
-                let w = 2.0 * CELLLESS_PAD;
-                ([mnx - CELLLESS_PAD, mny - CELLLESS_PAD, mnz - CELLLESS_PAD],
-                 (mxx - mnx + w, mxy - mny + w, mxz - mnz + w, 0.0, 0.0, 0.0))
-            }
-        };
+        let (lo, (lx, ly, lz, xy, xz, yz)) = frame_box(frame);
         // 边界标志按 pbc 写（reader 认它），slab 往返才不变成 TTT；无胞帧 pbc 恒为 ff
         let flags = frame.pbc.map(|p| if p { "pp" } else { "ff" }).join(" ");
 
         // The box on a reduced basis; the positions below go through the unreduced cell
-        let (bxy, bxz, byz) = super::reduce_tilts(lx, ly, xy, xz, yz);
+        let (bxy, bxz, byz) = reduce_tilts(lx, ly, xy, xz, yz);
         let is_triclinic = bxy != 0.0 || bxz != 0.0 || byz != 0.0;
         if is_triclinic {
             // 三斜时 dump 的六个数是 *_bound（倾斜后的外接盒），不是 xlo/xhi ——
