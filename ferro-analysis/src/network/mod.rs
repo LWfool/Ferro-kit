@@ -100,12 +100,13 @@ fn oxy_key(t: &AtomType) -> OxyKey {
 // 两者对非 Qn 形成子恰好相同（都是 `Al_4`），因为 Al 没有单元记号可用。
 
 /// Atom vocabulary: routed through [`AtomType::label`] so the tables and the exported
-/// trajectory cannot disagree about what `Al_4` means.
+/// trajectory cannot disagree about what `Al_4` means. `label` reads only `elem`, `qn` and
+/// `cn`; the other fields are placeholders, not measurements (review 2026-11-06 A5-2).
 fn former_label(elem: &str, qn: Option<u32>, cn: u32) -> String {
     AtomType::Former {
         elem: elem.to_string(),
         qn,
-        n_bo: qn.unwrap_or(0),
+        n_bo: 0,
         cn,
         bridges_to: BTreeMap::new(),
     }

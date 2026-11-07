@@ -117,8 +117,8 @@ impl PyTrajectory {
     /// 选帧，语义同 `ferro convert` 的 `--start/--end/--stride/--number`：0 起、两端闭区间，
     /// 默认全部帧；`number` 在区间内均匀取（两端都取），与 `stride` 互斥。返回原帧号。
     ///
-    /// 参数校验与 `ferro-cli/src/cmd/convert.rs` 的 `run` 各写一份（两处、报错措辞
-    /// 一边是 CLI 旗标一边是 Python 参数名，按 R6 不合）；取帧本身都走 ferro-core
+    /// The checks and the selection itself are ferro-core's (`Trajectory::check_selection`), the
+    /// same call `ferro convert` makes (review 2026-11-06 A7-2)
     #[pyo3(signature = (start = None, end = None, stride = None, number = None))]
     fn frame_indices(
         &self,
