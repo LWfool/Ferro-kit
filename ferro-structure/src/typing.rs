@@ -23,7 +23,7 @@ pub fn apply_type_labels(frame: &Frame, labels: &[String]) -> Result<Frame> {
         return Ok(out);
     }
     if labels.len() != frame.n_atoms() {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "{} type labels for {} atoms", labels.len(), frame.n_atoms()
         )));
     }

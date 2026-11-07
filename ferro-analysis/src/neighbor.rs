@@ -30,13 +30,13 @@ impl NeighborList {
     /// Also `Err` for a cutoff that is not a positive finite number.
     pub fn build(positions: &[Vector3<f64>], cell: &PeriodicCell, rcut: f64) -> Result<Self> {
         if !(rcut.is_finite() && rcut > 0.0) {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "neighbour cutoff must be a finite number > 0, got {rcut}"
             )));
         }
         let bound = cell.mic_bound();
         if rcut > bound {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "cutoff {rcut:.3} A exceeds the minimum-image bound {bound:.3} A of the cell"
             )));
         }

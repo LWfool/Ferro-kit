@@ -33,7 +33,7 @@ impl Split {
     /// every run prints the three parts by name, so a misread shows up on the
     /// first line of output rather than in a silently mislabelled dataset.
     pub fn parse(spec: &str, seed: u64) -> ferro_core::Result<Self> {
-        let invalid = |msg: String| ChemError::ValidationError(msg);
+        let invalid = |msg: String| ChemError(msg);
         let fields: Vec<&str> = spec.split(':').map(|f| f.trim()).collect();
         let bad = || {
             invalid(format!(
@@ -88,7 +88,7 @@ impl Split {
         };
         let (n_valid, n_test) = (take(self.valid), take(self.test));
         if n_valid + n_test >= n {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "{who}: {n} frame(s) cannot give {n_valid} validation + {n_test} test \
                  and still leave a training set"
             )));

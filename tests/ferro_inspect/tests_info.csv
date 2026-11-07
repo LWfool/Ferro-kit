@@ -1,0 +1,9 @@
+# atoms = 112  (O64 Al32 Zn16)
+# frames = 3
+# cell (frame 0) = a 11.4148  b 11.4155  c 11.4166 Ang   alpha 121.07  beta 119.61  gamma 89.43 deg
+# temperature = 852.0266 +/- 120.8109 K
+# density = 4.6564 +/- 0.0000 g/cm^3
+frame,step,temperature,energy,volume,density,source
+0.000000e0,1.000000e0,9.649091e2,-5.604439e4,1.046109e3,4.656388e0,cp2k_md_3frames.out
+1.000000e0,2.000000e0,8.665670e2,-5.604297e4,1.046109e3,4.656388e0,cp2k_md_3frames.out
+2.000000e0,3.000000e0,7.246035e2,-5.604091e4,1.046109e3,4.656388e0,cp2k_md_3frames.out

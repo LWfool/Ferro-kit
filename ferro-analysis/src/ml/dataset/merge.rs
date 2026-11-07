@@ -99,7 +99,7 @@ pub fn stitch_segments<T>(
         let (path, traj, _) = view(part);
         let here = symbols_of(traj);
         if here != reference {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "{} and {} hold different compositions ({} vs {}; {}); \
                  a system holds one composition, so put them in separate directories",
                 first_path.display(),

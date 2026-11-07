@@ -10,16 +10,13 @@ use ferro_core::{PeriodicCell, Trajectory};
 type Check = ferro_core::Result<()>;
 
 fn fail(msg: String) -> Check {
-    Err(ChemError::ValidationError(msg))
+    Err(ChemError(msg))
 }
 
 /// [`Trajectory::check_same_atoms`], saying why a time-correlation analysis needs it.
 pub(crate) fn same_atoms(traj: &Trajectory) -> Check {
-    traj.check_same_atoms().map_err(|e| match e {
-        ChemError::ValidationError(m) => ChemError::ValidationError(format!(
-            "{m}; this analysis follows atoms by index and needs the same atoms in every frame"
-        )),
-        e => e,
+    traj.check_same_atoms().map_err(|ChemError(m)| {
+        ChemError(format!("{m}; this analysis follows atoms by index and needs the same atoms in every frame"))
     })
 }
 
@@ -108,10 +105,7 @@ pub(crate) fn periodic_cells(
         ))?;
     }
     let cells = traj.frames.iter().enumerate().map(|(i, f)| {
-        f.cell.as_ref().map(|c| PeriodicCell::new(c, f.pbc).map_err(|e| match e {
-            ChemError::ValidationError(m) => ChemError::ValidationError(format!("frame {i}: {m}")),
-            e => e,
-        })).transpose()
+        f.cell.as_ref().map(|c| PeriodicCell::new(c, f.pbc).map_err(|ChemError(m)| ChemError(format!("frame {i}: {m}")))).transpose()
     }).collect::<ferro_core::Result<Vec<_>>>()?;
     if let Some((name, r)) = cutoff {
         within_mic_bound(cells.iter().enumerate().filter_map(|(i, c)| c.as_ref().map(|c| (i, c))), name, r)?;
@@ -145,7 +139,7 @@ pub(crate) fn all_periodic_cells(
     cutoff: Option<(&str, f64)>,
 ) -> ferro_core::Result<Vec<PeriodicCell>> {
     periodic_cells(traj, cutoff)?.into_iter().enumerate().map(|(i, c)| c.ok_or_else(|| {
-        ChemError::ValidationError(format!("all frames must have a periodic cell (frame {i} has none)"))
+        ChemError(format!("all frames must have a periodic cell (frame {i} has none)"))
     })).collect()
 }
 

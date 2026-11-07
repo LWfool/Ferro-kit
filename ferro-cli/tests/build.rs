@@ -215,3 +215,14 @@ fn reader_options_are_checked_before_any_input_is_read() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("--atom-style"));
     assert!(!o.exists(), "nothing may be written");
 }
+
+#[test]
+fn library_errors_carry_no_category_prefix() {
+    // FerroError alone names the category (review 2026-11-06 D8): no `Validation error:` /
+    // `Parse error:` stacked after it
+    let d = scratch("prefix");
+    let out = ferro(&["build", "box", "-c", "H2(O:3", "--density", "1", "-o", d.to_str().unwrap(), "--mkdir"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(err.contains("ferro: FerroError: 'H2(O' is neither a known compound nor a valid formula (unclosed '('"), "{err}");
+}

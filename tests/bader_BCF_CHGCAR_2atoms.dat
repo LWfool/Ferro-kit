@@ -1,0 +1,4 @@
+# BCF.dat — Bader volume analysis (ferro v0.4.0)
+#   Vol            X            Y            Z         Charge       Atom       Distance
+     1     2.500000     2.500000     2.500000      52.863708          1       0.000000
+     2     6.250000     6.250000     6.250000      53.126506          2       1.082532

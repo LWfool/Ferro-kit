@@ -57,7 +57,7 @@ impl BondLifeParams {
             // 写成「合法则放行」，NaN 落到报错分支（同 check.rs）
             let ok = r_break >= self.r_bond;
             if !ok {
-                return Err(ChemError::ValidationError(format!(
+                return Err(ChemError(format!(
                     "r-break ({r_break}) must be >= r-bond ({})", self.r_bond)));
             }
         }
@@ -219,7 +219,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     candidates.sort_unstable();
     candidates.dedup();
     if candidates.is_empty() {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "no {}-{} pair within r-bond = {r_bond} Ang in any frame", params.center, params.neighbor)));
     }
 

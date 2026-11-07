@@ -682,7 +682,7 @@ fn network(
     params: &TypeParams,
     keep_types: bool,
 ) -> ferro_core::Result<(NetworkResult, Vec<Vec<AtomType>>)> {
-    let invalid = |msg: &str| Err(ChemError::ValidationError(msg.into()));
+    let invalid = |msg: &str| Err(ChemError(msg.into()));
     if traj.frames.is_empty() { return invalid("trajectory is empty"); }
     if params.cutoffs.is_empty() { return invalid("no former-ligand cutoff given"); }
     params.validate()?;
@@ -696,7 +696,7 @@ fn network(
     }
     let first = composition(&traj.frames[0]);
     if let Some(k) = traj.frames.iter().position(|f| composition(f) != first) {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "frame {k} has another composition than frame 0; network statistics need a fixed one"
         )));
     }

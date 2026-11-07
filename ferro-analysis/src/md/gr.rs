@@ -57,7 +57,7 @@ pub(super) fn sorted_types(frame: &ferro_core::Frame, by: GroupBy) -> ferro_core
     let mut types: Vec<String> = set.into_iter().collect();
     types.sort_by(|a, b| canonical_cmp(a, b));
     if let Some(t) = types.iter().find(|t| t.contains('-')) {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "site label '{t}' holds a '-', which separates the pair / triplet names; rename the label"
         )));
     }
@@ -198,7 +198,7 @@ struct Acc {
 pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrResult> {
     params.validate()?;
     if traj.frames.is_empty() {
-        return Err(ChemError::ValidationError("trajectory is empty".into()));
+        return Err(ChemError("trajectory is empty".into()));
     }
 
     // The minimum-image bound is half the smallest interplanar spacing over all frames.
@@ -264,14 +264,14 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     let first_counts = count_types(first_frame);
     for (fi, frame) in traj.frames.iter().enumerate().skip(1) {
         if frame.n_atoms() != first_frame.n_atoms() {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "atom count changes across the trajectory (frame 0 has {}, frame {} has {}); \
                  g(r) normalisation assumes a fixed particle number",
                 first_frame.n_atoms(), fi, frame.n_atoms()
             )));
         }
         if count_types(frame) != first_counts {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "per-type atom counts change at frame {fi}; \
                  g(r) normalisation assumes a fixed particle number per type"
             )));
@@ -438,7 +438,7 @@ impl GrResult {
             Some((a, b)) => {
                 let key = format!("{a}-{b}");
                 if !self.gr.contains_key(&key) {
-                    return Err(ChemError::ValidationError(format!(
+                    return Err(ChemError(format!(
                         "pair '{key}' not present in the trajectory"
                     )));
                 }

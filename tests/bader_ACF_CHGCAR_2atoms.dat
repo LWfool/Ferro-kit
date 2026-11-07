@@ -1,0 +1,7 @@
+# ACF.dat — Bader charge analysis (ferro v0.4.0)
+#  Atom            X            Y            Z         Charge        MinDist         Volume
+     1     2.500000     2.500000     2.500000      52.863708       0.000000     458.984375
+     2     6.875000     6.875000     6.875000      53.126506       1.082532     541.015625
+
+# Vacuum charge: 0.000000 e,  Vacuum volume: 0.000000 A^3
+# Total: 105.990214 e

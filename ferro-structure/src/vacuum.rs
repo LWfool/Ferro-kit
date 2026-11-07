@@ -30,7 +30,7 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
         "y" => 1,
         "z" => 2,
         _ => {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "invalid axis '{}', expected \"x\", \"y\", or \"z\"",
                 axis
             )));
@@ -39,14 +39,14 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
 
     // 写成「合法则放行」，NaN 落到报错分支（审查 E-9：以前 NaN 厚度静默得到 NaN 晶胞）
     if !(thickness > 0.0 && thickness.is_finite()) {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "vacuum thickness must be a finite number > 0, got {}",
             thickness
         )));
     }
 
     let cell = frame.cell.as_ref().ok_or_else(|| {
-        ChemError::ValidationError("add_vacuum requires a periodic frame with a cell".into())
+        ChemError("add_vacuum requires a periodic frame with a cell".into())
     })?;
     // A singular cell (ASE's c = 0 for a 2D material) has spacing 0/0; filling c in
     // from the atoms' extent is a feature of its own

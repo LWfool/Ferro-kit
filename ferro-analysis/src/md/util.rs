@@ -75,7 +75,7 @@ pub(crate) fn select_atoms(frame: &Frame, elements: Option<&[String]>) -> Result
     if picked.is_empty() {
         // one wording for every analysis that selects atoms (review R3-7)
         let what = elements.map_or(String::new(), |els| format!(" of element {}", els.join(", ")));
-        return Err(ChemError::ValidationError(format!("no atom{what} in the first frame")));
+        return Err(ChemError(format!("no atom{what} in the first frame")));
     }
     Ok(picked)
 }
@@ -258,14 +258,14 @@ pub(crate) fn check_frame_spacing(traj: &Trajectory) -> Result<()> {
     for (k, w) in steps.windows(2).enumerate() {
         let gap = w[1] - w[0];
         if gap <= 0 {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "frames {k} and {} have steps {} and {}: duplicated or out-of-order frames \
                  (a restart written twice?); remove them before a time-correlation analysis",
                 k + 1, w[0], w[1]
             )));
         }
         if gap != first_gap {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "frames are not evenly spaced: step gap {first_gap} at the start, {gap} between \
                  frames {k} and {} (steps {} → {}); dt assumes one constant spacing",
                 k + 1, w[0], w[1]

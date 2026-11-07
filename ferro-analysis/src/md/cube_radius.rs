@@ -180,7 +180,7 @@ pub fn calc_cube_radius(
     // An empty trajectory is named as such: it used to be reported as "no frame has a
     // periodic cell" (review 2026-10-30 A2-M2)
     if traj.frames.is_empty() {
-        return Err(ChemError::ValidationError("trajectory is empty".into()));
+        return Err(ChemError("trajectory is empty".into()));
     }
     let pcs = check::all_periodic_cells(traj, Some(("radius", params.radius)))?;
     let ref_frame = &traj.frames[0];

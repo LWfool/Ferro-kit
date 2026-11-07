@@ -217,7 +217,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 .filter(|&(ci, ni)| bond(0, ci, ni).norm_squared() < r_cut2)
                 .collect();
             if pairs.is_empty() {
-                return Err(ChemError::ValidationError(format!(
+                return Err(ChemError(format!(
                     "no {}-{} bond within r-cut = {} Ang in the first frame",
                     params.center, params.neighbor, params.r_cut)));
             }
@@ -236,7 +236,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
         .map(|step| step.iter().filter(|u| u.iter().map(|c| c * c).sum::<f64>() >= ZERO_NORM2).count())
         .sum::<usize>();
     if n_valid == 0 {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "no {} atom has an orientation in any frame: either no {} neighbor within \
              r-cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
              use --vector bond)",

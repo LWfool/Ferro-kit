@@ -140,7 +140,7 @@ impl Trajectory {
         let Some(first) = self.frames.first() else { return Ok(()) };
         for (k, frame) in self.frames.iter().enumerate().skip(1) {
             if frame.n_atoms() != first.n_atoms() {
-                return Err(ChemError::ValidationError(format!(
+                return Err(ChemError(format!(
                     "frame {k} has {} atoms but frame 0 has {}",
                     frame.n_atoms(), first.n_atoms()
                 )));
@@ -153,7 +153,7 @@ impl Trajectory {
             if let Some(j) = (0..first.n_atoms())
                 .find(|&j| frame.element(j) != first.element(j))
             {
-                return Err(ChemError::ValidationError(format!(
+                return Err(ChemError(format!(
                     "atom {j} is {} in frame {k} but {} in frame 0",
                     frame.element(j), first.element(j)
                 )));
@@ -197,16 +197,16 @@ impl Trajectory {
         number: Option<usize>,
     ) -> Result<()> {
         if let Some(e) = end.filter(|&e| start > e) {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "start {start} is past end {e} (both are 0-based and inclusive)"
             )));
         }
         if stride.is_some() && number.is_some() {
-            return Err(ChemError::ValidationError("give stride or number, not both".into()));
+            return Err(ChemError("give stride or number, not both".into()));
         }
         for (name, n) in [("stride", stride), ("number", number)] {
             if n == Some(0) {
-                return Err(ChemError::ValidationError(format!("{name} must be at least 1")));
+                return Err(ChemError(format!("{name} must be at least 1")));
             }
         }
         Ok(())

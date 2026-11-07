@@ -38,10 +38,10 @@ fn read_count(bytes: &[u8], i: &mut usize, formula: &str) -> Result<usize> {
     }
     let text = &formula[start..*i];
     let count: usize = text.parse().map_err(|_| {
-        ChemError::ParseError(format!("invalid count '{}' in '{}'", text, formula))
+        ChemError(format!("invalid count '{}' in '{}'", text, formula))
     })?;
     if count == 0 {
-        return Err(ChemError::ParseError(format!(
+        return Err(ChemError(format!(
             "zero multiplicity at position {} in '{}'",
             start, formula
         )));
@@ -61,7 +61,7 @@ fn read_count(bytes: &[u8], i: &mut usize, formula: &str) -> Result<usize> {
 /// which is what the box builder wants anyway.
 fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
     if formula.is_empty() {
-        return Err(ChemError::ParseError("empty formula".into()));
+        return Err(ChemError("empty formula".into()));
     }
     let bytes = formula.as_bytes();
     let n = bytes.len();
@@ -80,21 +80,21 @@ fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
             i += 1;
         } else if b == b')' || b == b']' {
             let Some((opener, open_pos)) = open.pop() else {
-                return Err(ChemError::ParseError(format!(
+                return Err(ChemError(format!(
                     "unmatched '{}' at position {} in '{}'",
                     b as char, i, formula
                 )));
             };
             let expected = if opener == b'(' { b')' } else { b']' };
             if b != expected {
-                return Err(ChemError::ParseError(format!(
+                return Err(ChemError(format!(
                     "'{}' at position {} closed by '{}' at position {} in '{}'",
                     opener as char, open_pos, b as char, i, formula
                 )));
             }
             let group = stack.pop().expect("stack depth tracks open brackets");
             if group.is_empty() {
-                return Err(ChemError::ParseError(format!(
+                return Err(ChemError(format!(
                     "empty group at position {} in '{}'",
                     open_pos, formula
                 )));
@@ -116,7 +116,7 @@ fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
             *stack.last_mut().expect("bottom frame is never popped")
                 .entry(elem).or_insert(0) += count;
         } else {
-            return Err(ChemError::ParseError(format!(
+            return Err(ChemError(format!(
                 "unexpected character '{}' at position {} in '{}'",
                 b as char, i, formula
             )));
@@ -124,14 +124,14 @@ fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
     }
 
     if let Some((opener, pos)) = open.pop() {
-        return Err(ChemError::ParseError(format!(
+        return Err(ChemError(format!(
             "unclosed '{}' at position {} in '{}'",
             opener as char, pos, formula
         )));
     }
     let counts = stack.pop().expect("bottom frame is never popped");
     if counts.is_empty() {
-        return Err(ChemError::ParseError(format!("no elements in '{}'", formula)));
+        return Err(ChemError(format!("no elements in '{}'", formula)));
     }
     Ok(counts)
 }
@@ -147,7 +147,7 @@ fn resolve_component(spec: &str) -> Result<(HashMap<String, usize>, f64)> {
         return Ok((parse_formula(cd.formula)?, cd.molecular_mass));
     }
     let counts = parse_formula(spec).map_err(|e| {
-        ChemError::ValidationError(format!(
+        ChemError(format!(
             "'{}' is neither a known compound nor a valid formula ({})",
             spec, e
         ))
@@ -155,7 +155,7 @@ fn resolve_component(spec: &str) -> Result<(HashMap<String, usize>, f64)> {
     let mut mass = 0.0_f64;
     for (elem, count) in &counts {
         let ed = elements::by_symbol(elem).ok_or_else(|| {
-            ChemError::ValidationError(format!("unknown element '{}' in formula '{}'", elem, spec))
+            ChemError(format!("unknown element '{}' in formula '{}'", elem, spec))
         })?;
         mass += ed.atomic_mass * *count as f64;
     }
@@ -191,7 +191,7 @@ fn estimate_box_length(components: &[Component], density: f64) -> Result<f64> {
 fn box_length(total_mass: f64, density: f64) -> Result<f64> {
     // Written so that NaN fails too; an infinite density would give a zero box.
     if !(density > 0.0 && density.is_finite()) {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "density must be a finite number > 0, got {}",
             density
         )));
@@ -227,7 +227,7 @@ pub fn build_box(
 ) -> Result<Frame> {
     // Written so that NaN fails too: a NaN box length panics in the RNG's range.
     if !(min_dist > 0.0 && min_dist.is_finite()) {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "min_dist must be a finite number > 0, got {}",
             min_dist
         )));
@@ -250,7 +250,7 @@ pub fn build_box(
     }
 
     if element_counts.is_empty() {
-        return Err(ChemError::ValidationError(
+        return Err(ChemError(
             "no atoms to place".into(),
         ));
     }
@@ -282,7 +282,7 @@ pub fn build_box(
     // ── Step 4: soft-core relaxation ─────────────────────────────────────────
     let close = relax(&mut atoms, box_len, min_dist, relax_steps);
     if close > 0 {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "{close} atom pair(s) still closer than min_dist = {min_dist} Å after {relax_steps} \
              relaxation step(s); raise relax_steps, or lower the density or min_dist"
         )));

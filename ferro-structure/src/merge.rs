@@ -56,7 +56,7 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
         "y" => 1,
         "z" => 2,
         _ => {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "invalid axis '{}', expected \"x\", \"y\", or \"z\"",
                 axis
             )));
@@ -64,17 +64,17 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
     };
 
     if !(gap >= 0.0 && gap.is_finite()) {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "gap must be a finite number >= 0, got {}",
             gap
         )));
     }
 
     let cell_a = frame_a.cell.as_ref().ok_or_else(|| {
-        ChemError::ValidationError("merge_frames: frame_a has no cell".into())
+        ChemError("merge_frames: frame_a has no cell".into())
     })?;
     let cell_b = frame_b.cell.as_ref().ok_or_else(|| {
-        ChemError::ValidationError("merge_frames: frame_b has no cell".into())
+        ChemError("merge_frames: frame_b has no cell".into())
     })?;
 
     cell_a.check("merge_frames: frame_a's cell")?;
@@ -94,7 +94,7 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
     let (n_a, h_a) = normal(&ra);
     let (n_b, h_b) = normal(&rb);
     if n_a.dot(&n_b) < 1f64.to_radians().cos() {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "merge_frames: the two interfaces are not parallel ({:.2}° apart along axis {axis}); \
              a gap measured along the normal is undefined",
             n_a.dot(&n_b).clamp(-1.0, 1.0).acos().to_degrees()
@@ -150,7 +150,7 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
             atoms.push(a);
         }
         if stranded > 0 {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "merge_frames: {stranded} atom(s) of {name} lie outside its cell along a \
                  non-periodic axis, where they cannot be folded back"
             )));

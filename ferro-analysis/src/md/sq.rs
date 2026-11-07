@@ -137,7 +137,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
     // 审查 B-1：积分只覆盖 g(r) 的 bin，r_min > 0 时漏掉 [0, r_min] 段的 −ρ 项，
     // 整条 S(q) 平移。补解析项要假设该段无原子对，r_min 越过第一峰时静默错，故直接要求从 0 起
     if gr.params.r_min != 0.0 {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "S(q) needs g(r) computed from r = 0, got r_min = {} Ang", gr.params.r_min
         )));
     }

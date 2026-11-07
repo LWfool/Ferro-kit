@@ -44,7 +44,7 @@ impl MsdParams {
             // file). fit_diffusion used to repeat it word for word (review 2026-10-30 A2-L3)
             let ok = (0.0..=1.0).contains(&fmin) && (0.0..=1.0).contains(&fmax) && fmin < fmax;
             if !ok {
-                return Err(ChemError::ValidationError(format!(
+                return Err(ChemError(format!(
                     "fit-range must satisfy 0 <= fmin < fmax <= 1, got [{fmin}, {fmax}]")));
             }
         }
@@ -228,7 +228,7 @@ pub fn fit_diffusion(
     let i_lo = (fmin * last).round() as usize;
     let i_hi = ((fmax * last).round() as usize).min(n - 1);
     if i_hi <= i_lo {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "fit-range [{fmin}, {fmax}] selects fewer than 2 points (i_lo={i_lo}, i_hi={i_hi})"
         )));
     }
@@ -236,7 +236,7 @@ pub fn fit_diffusion(
     let xs = &time[i_lo..=i_hi];
     let ys = &msd[i_lo..=i_hi];
     let (slope, intercept) = ols(xs, ys).ok_or_else(|| {
-        ChemError::ValidationError("degenerate fit window (zero x-variance)".into())
+        ChemError("degenerate fit window (zero x-variance)".into())
     })?;
 
     // gmx msd 的误差：窗口两半各拟合一次，D 之差。两半共用中点，

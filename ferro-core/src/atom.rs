@@ -68,7 +68,7 @@ fn effective_mass(element: &str, mass: Option<f64>) -> Result<f64> {
         return Ok(m);
     }
     crate::data::elements::by_symbol(element).map(|e| e.atomic_mass).ok_or_else(|| {
-        ChemError::ValidationError(format!(
+        ChemError(format!(
             "no mass for element '{element}': not in the element table and no mass given; \
              correct the element name or give the mass"
         ))

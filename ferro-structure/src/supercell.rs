@@ -11,7 +11,7 @@ use ferro_core::frame::Frame;
 pub const MAX_SUPERCELL_ATOMS: usize = 100_000_000;
 
 fn too_many(what: &str) -> ChemError {
-    ChemError::ValidationError(format!("{what} would exceed {MAX_SUPERCELL_ATOMS} atoms"))
+    ChemError(format!("{what} would exceed {MAX_SUPERCELL_ATOMS} atoms"))
 }
 
 // ── 自动搜索 ──────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ pub fn find_supercell_dims(
     // NaN would fall through to "no constraint", infinity to a usize::MAX multiple, and a
     // negative length to "no constraint" as well.
     if !(min_length.is_finite() && min_length >= 0.0) {
-        return Err(ChemError::ValidationError(format!("min_length must be finite and >= 0, got {min_length}")));
+        return Err(ChemError(format!("min_length must be finite and >= 0, got {min_length}")));
     }
     if min_atoms > MAX_SUPERCELL_ATOMS {
         return Err(too_many(&format!("min_atoms {min_atoms}")));
@@ -61,7 +61,7 @@ pub fn find_supercell_dims(
     let per_cell = n_atoms.max(1);
     // Names the supercell that broke the cap, not the constraint that led to it: the input
     // alone can be over it, or the last slab of the min_atoms search can carry it over
-    let oversized = |d: [f64; 3]| ChemError::ValidationError(format!(
+    let oversized = |d: [f64; 3]| ChemError(format!(
         "a {:.0}x{:.0}x{:.0} supercell of {n_atoms} atoms would hold {:.0} atoms, over {MAX_SUPERCELL_ATOMS}",
         d[0], d[1], d[2], d[0] * d[1] * d[2] * per_cell as f64));
 
@@ -111,7 +111,7 @@ pub fn find_supercell_dims(
 pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<Frame> {
     // ── Input checks ─────────────────────────────────────────────────────────
     if nx == 0 || ny == 0 || nz == 0 {
-        return Err(ChemError::ValidationError(
+        return Err(ChemError(
             format!("supercell dimensions must be ≥ 1, got ({nx}, {ny}, {nz})"),
         ));
     }
@@ -121,7 +121,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
         return Err(too_many(&format!("a {nx}x{ny}x{nz} supercell")));
     }
     let cell = frame.cell.as_ref().ok_or_else(|| {
-        ChemError::ValidationError(
+        ChemError(
             "make_supercell requires a periodic frame with a cell".into(),
         )
     })?;
@@ -130,7 +130,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
     // a slab made into several slabs (review 2026-10-30 A4-L11)
     for ((axis, n), periodic) in ["a", "b", "c"].iter().zip([nx, ny, nz]).zip(frame.pbc) {
         if n > 1 && !periodic {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "cannot replicate {n} times along {axis}: the frame is not periodic along it \
                  (pbc = {:?}); give 1 for that axis (CLI: --dims)", frame.pbc)));
         }

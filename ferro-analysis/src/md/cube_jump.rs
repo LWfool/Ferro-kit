@@ -124,14 +124,14 @@ pub fn calc_cube_jump(
     params.validate()?;
     let n_frames = traj.frames.len();
     if n_frames < params.tau + 1 {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "{n_frames} frame(s), but tau = {} needs at least {}", params.tau, params.tau + 1
         )));
     }
     check::same_atoms(traj)?;
     let cells = check::periodic_cells(traj, None)?;
 
-    let no_cell = || ChemError::ValidationError("no frame has a periodic cell".into());
+    let no_cell = || ChemError("no frame has a periodic cell".into());
     let ref_frame = traj.frames.iter().find(|f| f.cell.is_some()).ok_or_else(no_cell)?;
     let ref_cell = ref_frame.cell.as_ref().unwrap();
 

@@ -95,7 +95,7 @@ impl AngleParams {
         check::holds_a_bin("angle range", self.angle_min, self.angle_max, "d-angle", self.d_angle)?;
         // 写成「合法则放行」，NaN 落到报错分支（同 check.rs）
         if self.angle_max <= 180.0 { return Ok(()); }
-        Err(ChemError::ValidationError(format!("angle-max must be <= 180, got {}", self.angle_max)))
+        Err(ChemError(format!("angle-max must be <= 180, got {}", self.angle_max)))
     }
 }
 
@@ -166,7 +166,7 @@ pub struct AngleResult {
 pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result<AngleResult> {
     params.validate()?;
     if traj.frames.is_empty() {
-        return Err(ChemError::ValidationError("trajectory is empty".into()));
+        return Err(ChemError("trajectory is empty".into()));
     }
 
     // validate guarantees angle_min < angle_max and d_angle > 0, so at least one bin.
@@ -306,7 +306,7 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
         });
 
     if total_hist.is_empty() {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "no triplet within the cutoffs (r-cut-ab {}, r-cut-bc {}) and the window [{}, {}] in any frame",
             params.r_cut_ab, params.r_cut_bc, params.angle_min, params.angle_max)));
     }

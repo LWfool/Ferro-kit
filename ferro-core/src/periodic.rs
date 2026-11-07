@@ -28,7 +28,7 @@ impl PeriodicCell {
     pub fn new(cell: &Cell, pbc: [bool; 3]) -> Result<Self> {
         if pbc != [true; 3] {
             let flag = |p: bool| if p { 'T' } else { 'F' };
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "only 3-D periodic cells are supported, got pbc = \"{} {} {}\"",
                 flag(pbc[0]), flag(pbc[1]), flag(pbc[2])
             )));
@@ -42,7 +42,7 @@ impl PeriodicCell {
     /// The frame's cell; `Err` when it has none or the cell is refused by [`Self::new`].
     pub fn of(frame: &Frame) -> Result<Self> {
         let cell = frame.cell.as_ref().ok_or_else(|| {
-            ChemError::ValidationError("frame has no periodic cell".into())
+            ChemError("frame has no periodic cell".into())
         })?;
         Self::new(cell, frame.pbc)
     }

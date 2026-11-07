@@ -101,7 +101,7 @@ impl Table {
         let n = self.n_rows();
         for (name, col) in &self.cols {
             if col.len() != n {
-                return Err(ChemError::ValidationError(format!(
+                return Err(ChemError(format!(
                     "column '{name}' has {} rows, expected {n} (from column '{}')",
                     col.len(),
                     self.cols[0].0
@@ -129,7 +129,7 @@ impl Table {
                 let text = matches!(col, Column::Text(_));
                 match names.iter().position(|n| n == name) {
                     Some(i) if is_text[i] != text => {
-                        return Err(ChemError::ValidationError(format!(
+                        return Err(ChemError(format!(
                             "column '{name}' is numeric in one input and text in another"
                         )));
                     }
@@ -145,7 +145,7 @@ impl Table {
         // The label column goes in front: a part's own column of that name would make
         // two columns with one header (review R6-6)
         if names.iter().any(|n| n == label) {
-            return Err(ChemError::ValidationError(format!(
+            return Err(ChemError(format!(
                 "a table already has a column '{label}', the name of the column that tells the inputs apart"
             )));
         }
@@ -251,7 +251,6 @@ mod tests {
         let mut t = sample();
         t.push_num("extra", vec![1.0]);
         let err = t.validate().unwrap_err();
-        assert!(matches!(err, ChemError::ValidationError(_)), "{err:?}");
         let err = err.to_string();
         assert!(err.contains("'extra'"), "error should name the bad column: {err}");
     }
@@ -336,7 +335,6 @@ mod tests {
         let mut b = Table::new();
         b.push_text("x", vec!["one".into()]);
         let err = Table::concat_union("file", vec![("a".into(), a), ("b".into(), b)]).unwrap_err();
-        assert!(matches!(err, ChemError::ValidationError(_)), "{err:?}");
         let err = err.to_string();
         assert!(err.contains("'x'"), "{err}");
     }
@@ -344,7 +342,7 @@ mod tests {
     #[test]
     fn test_concat_rejects_a_column_named_like_the_label() {
         let err = Table::concat_union("file", vec![part("a", &[("file", vec![1.0])])]).unwrap_err();
-        assert!(matches!(err, ChemError::ValidationError(_)) && err.to_string().contains("'file'"), "{err}");
+        assert!(err.to_string().contains("'file'"), "{err}");
     }
 
     #[test]

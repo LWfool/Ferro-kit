@@ -155,7 +155,7 @@ pub fn calc_cube_density(
     // An empty trajectory is named as such: it used to be reported as "no frame has a
     // periodic cell" (review 2026-10-30 A2-M2)
     if traj.frames.is_empty() {
-        return Err(ChemError::ValidationError("trajectory is empty".into()));
+        return Err(ChemError("trajectory is empty".into()));
     }
     let pcs = check::all_periodic_cells(traj, None)?;
     let ref_frame = &traj.frames[0];
@@ -169,7 +169,7 @@ pub fn calc_cube_density(
         CubeMode::Force => traj.frames.iter().position(|f| f.forces().is_none()).map(|k| (k, "forces", "force")),
     };
     if let Some((k, what, map)) = missing {
-        return Err(ChemError::ValidationError(format!(
+        return Err(ChemError(format!(
             "frame {k} has no {what}; a {map} map needs {what} in every frame"
         )));
     }

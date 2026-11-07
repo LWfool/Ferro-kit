@@ -224,7 +224,7 @@ impl Frame {
 
     fn check_len(&self, what: &str, v: Option<&Vec<Vector3<f64>>>) -> Result<()> {
         match v {
-            Some(v) if v.len() != self.n_atoms() => Err(ChemError::ValidationError(format!(
+            Some(v) if v.len() != self.n_atoms() => Err(ChemError(format!(
                 "{} {what} for {} atoms", v.len(), self.n_atoms()
             ))),
             _ => Ok(()),
@@ -279,7 +279,7 @@ impl Frame {
     /// virial and is an error. The inverse is [`Cell::stress_from_virial`].
     pub fn virial(&self) -> Result<Option<Matrix3<f64>>> {
         let Some(s) = &self.stress else { return Ok(None) };
-        let cell = self.cell.as_ref().ok_or_else(|| ChemError::ValidationError(
+        let cell = self.cell.as_ref().ok_or_else(|| ChemError(
             "a stress without a cell has no virial: the virial needs the volume".into(),
         ))?;
         Ok(Some(s * cell.nonzero_volume()?))

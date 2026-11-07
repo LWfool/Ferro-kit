@@ -39,13 +39,13 @@ impl Cell {
         // Written as "valid or reject" so NaN, which fails every comparison, is rejected
         let length_ok = |v: f64| v > 0.0 && v.is_finite();
         if !(length_ok(a) && length_ok(b) && length_ok(c)) {
-            return Err(ChemError::ValidationError(
+            return Err(ChemError(
                 "Lattice constants must be finite and positive".into(),
             ));
         }
         let angle_ok = |v: f64| v > 0.0 && v < 180.0;
         if !(angle_ok(alpha) && angle_ok(beta) && angle_ok(gamma)) {
-            return Err(ChemError::ValidationError(
+            return Err(ChemError(
                 "Lattice angles must lie strictly between 0 and 180 degrees".into(),
             ));
         }
@@ -63,7 +63,7 @@ impl Cell {
         let cy = (cos_a - cos_b * cos_g) / sin_g;
         let cz_sq = 1.0 - cx * cx - cy * cy;
         if cz_sq < 0.0 {
-            return Err(ChemError::ValidationError(
+            return Err(ChemError(
                 "Invalid lattice angles: cannot form a valid cell".into(),
             ));
         }
@@ -124,7 +124,7 @@ impl Cell {
     /// let a NaN cell through as infinite spacings).
     pub fn check(&self, what: &str) -> Result<f64> {
         if !self.matrix.iter().all(|v| v.is_finite()) {
-            return Err(ChemError::ValidationError(format!("{what} is not finite")));
+            return Err(ChemError(format!("{what} is not finite")));
         }
         let v = self.volume();
         let [a, b, c] = self.lengths();
@@ -132,7 +132,7 @@ impl Cell {
         if v > 1e-12 && v > 1e-6 * a * b * c {
             Ok(v)
         } else {
-            Err(ChemError::ValidationError(format!(
+            Err(ChemError(format!(
                 "{what} is singular (volume {v:e} Å³, {:e} of a·b·c)", v / (a * b * c))))
         }
     }
@@ -199,7 +199,7 @@ impl Cell {
         self.matrix
             .transpose()
             .try_inverse()
-            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))
+            .ok_or_else(|| ChemError("cell matrix is singular".into()))
     }
 
     // ── 周期性处理 ────────────────────────────────────────────────────────────

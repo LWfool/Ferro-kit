@@ -189,18 +189,18 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
     params.validate()?;
     let n = traj.n_frames();
     if params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces().is_none()) {
-        return Err(ChemError::ValidationError(
+        return Err(ChemError(
             "a force threshold was given but some frames carry no forces".into(),
         ));
     }
     if params.s_max > 0.0 && traj.frames.iter().any(|f| f.stress.is_none()) {
-        return Err(ChemError::ValidationError(
+        return Err(ChemError(
             "a stress threshold was given but some frames carry no stress".into(),
         ));
     }
     let geometric = params.oo_min > 0.0 || params.al6_rcut.is_some();
     if geometric && traj.frames.iter().any(|f| f.cell.is_none()) {
-        return Err(ChemError::ValidationError(
+        return Err(ChemError(
             "a geometric criterion was given but some frames carry no cell".into(),
         ));
     }
