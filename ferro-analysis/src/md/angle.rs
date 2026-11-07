@@ -22,7 +22,7 @@
 //! Algorithm reference: code1/angle.c (`EstimateAngle`).
 
 use crate::check;
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use crate::neighbor::NeighborList;
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap};

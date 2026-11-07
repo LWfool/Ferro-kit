@@ -9,7 +9,7 @@
 
 use crate::check;
 use super::gr::{sorted_keys, GrResult};
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::Table;
 use super::scattering_data::{form_factor_xrd, neutron_bcoh};
 use rayon::prelude::*;

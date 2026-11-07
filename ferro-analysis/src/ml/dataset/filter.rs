@@ -29,7 +29,7 @@
 
 use std::collections::BTreeMap;
 
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use crate::network::TypeParams;
 use ferro_core::{select_range, spread_range, Table, Trajectory};
 use rayon::prelude::*;
@@ -122,7 +122,7 @@ impl FilterParams {
     /// Range checks; [`filter_frames`] runs them first, the CLI before reading any system.
     /// A NaN or negative threshold used to read as "off", and a zero stride / number or
     /// a start past end selected nothing (review C-2).
-    pub fn validate(&self) -> Result<(), ChemError> {
+    pub fn validate(&self) -> ferro_core::Result<()> {
         check::non_negative("f-max", self.f_max)?;
         check::non_negative("s-max", self.s_max)?;
         check::non_negative("oo-min", self.oo_min)?;
@@ -185,7 +185,7 @@ pub struct FilterResult {
 /// Fails before judging anything when a threshold is set but the trajectory
 /// lacks that label — a missing force array is a broken dataset, not a frame
 /// that happens to pass.
-pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterResult, ChemError> {
+pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> ferro_core::Result<FilterResult> {
     params.validate()?;
     let n = traj.n_frames();
     if params.f_max > 0.0 && traj.frames.iter().any(|f| f.forces().is_none()) {

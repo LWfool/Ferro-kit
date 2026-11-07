@@ -5,7 +5,7 @@
 //! clusters from this graph.
 
 use crate::neighbor::NeighborList;
-use ferro_core::error::Result;
+use ferro_core::Result;
 use ferro_core::{Frame, PeriodicCell};
 
 

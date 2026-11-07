@@ -12,18 +12,18 @@
 //! data::elements  static element table (symbol, Z, mass)
 //! ```
 
-pub mod array_order;
-pub mod atom;
-pub mod cell;
-pub mod periodic;
-pub mod charge_grid;
-pub mod frame;
-pub mod trajectory;
-pub mod cube_data;
-pub mod table;
+mod array_order;
+mod atom;
+mod cell;
+mod periodic;
+mod charge_grid;
+mod frame;
+mod trajectory;
+mod cube_data;
+mod table;
 pub mod data;
 pub mod units;
-pub mod error;
+mod error;
 
 // top-level re-exports for downstream crates
 pub use array_order::{matrix3_from_row_major, matrix3_row_major};

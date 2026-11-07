@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use ferro_core::data::elements::canonical_cmp;
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::Trajectory;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;

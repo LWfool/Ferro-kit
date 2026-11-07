@@ -1,8 +1,8 @@
 //! Vacuum layer addition.
 
-use ferro_core::cell::Cell;
-use ferro_core::error::{ChemError, Result};
-use ferro_core::frame::Frame;
+use ferro_core::Cell;
+use ferro_core::{ChemError, Result};
+use ferro_core::Frame;
 
 /// Add a vacuum layer along the specified axis.
 ///
@@ -81,7 +81,7 @@ pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferro_core::atom::Atom;
+    use ferro_core::Atom;
     use nalgebra::Vector3;
 
     fn cubic_frame(a: f64) -> Frame {

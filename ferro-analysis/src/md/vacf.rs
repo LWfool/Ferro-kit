@@ -17,7 +17,7 @@
 use crate::check;
 use super::util::{check_frame_spacing, par_map_in_order, select_atoms};
 use ferro_core::{Table, Trajectory};
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 
 use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
 

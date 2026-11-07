@@ -22,7 +22,7 @@ use super::util::{check_frame_spacing, select_atoms};
 use rayon::prelude::*;
 use crate::neighbor::NeighborList;
 use ferro_core::{Table, Trajectory};
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 
 use super::correlate::{cumulative_trapezoid, resolve_max_lag, AutocorrPlan};
 

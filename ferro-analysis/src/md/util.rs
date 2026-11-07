@@ -1,7 +1,7 @@
 //! Helpers shared by several `md` analyses. `build_avg_frame` has a single caller
 //! (`cube_from_grid`) but is kept on its own for its tests.
 
-use ferro_core::error::{ChemError, Result};
+use ferro_core::{ChemError, Result};
 use ferro_core::{Cell, CubeData, Frame, PeriodicCell, Trajectory};
 use rayon::prelude::*;
 use nalgebra::{Matrix3, Vector3};

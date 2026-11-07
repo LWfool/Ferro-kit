@@ -3,7 +3,7 @@
 //! The labels come from the network classification in `ferro-analysis`; this crate
 //! only puts them on the atoms.
 
-use ferro_core::error::{ChemError, Result};
+use ferro_core::{ChemError, Result};
 use ferro_core::Frame;
 
 /// Return a copy of `frame` with the type labels written to `Site::label`.

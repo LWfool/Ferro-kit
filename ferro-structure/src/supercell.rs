@@ -2,9 +2,9 @@
 
 use nalgebra::Matrix3;
 
-use ferro_core::cell::Cell;
-use ferro_core::error::{ChemError, Result};
-use ferro_core::frame::Frame;
+use ferro_core::Cell;
+use ferro_core::{ChemError, Result};
+use ferro_core::Frame;
 
 /// Largest supercell built, in atoms: past it a typo in `min_length` or the multiples
 /// used to overflow `usize` or abort on the allocation instead of reporting.
@@ -178,7 +178,7 @@ pub fn make_supercell(frame: &Frame, nx: usize, ny: usize, nz: usize) -> Result<
 mod tests {
     use super::*;
     use nalgebra::Vector3;
-    use ferro_core::atom::Atom;
+    use ferro_core::Atom;
 
     /// 构造一个正交晶胞，含两个原子（分数坐标 0,0,0 和 0.5,0.5,0.5）
     fn bcc_frame(a: f64) -> Frame {

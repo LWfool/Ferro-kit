@@ -4,7 +4,7 @@
 //! `--dr nan` 也会被拦下；反过来写 `if v <= 0.0 { 报错 }` 会把 NaN 放过去。名字用 CLI 的参数拼法（`r-max`），
 //! 与 `correlate::resolve_max_lag` 的 `max-lag` 一致。
 
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::{PeriodicCell, Trajectory};
 
 type Check = ferro_core::Result<()>;

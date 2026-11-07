@@ -131,9 +131,10 @@ ferro-python 的构成、依赖、职责与架构，不写用法。
 
 **几条容易违反的**（完整清单在 `dev/issues.md`）：
 
-- 两个 crate 的公开项只从 crate 根导出（`ferro_analysis::GrParams`、`ferro_io::read`），子模块私有；新加的公开项
+- `ferro-analysis` / `ferro-io` / `ferro-core` 的公开项只从 crate 根导出（`ferro_analysis::GrParams`、`ferro_io::read`、`ferro_core::Frame`），子模块私有；新加的公开项
   记得在根上 `pub use`，否则 dead_code 会报它（审查 A-12）
-  唯一例外是 `ferro_analysis::ml`：按任务分命名空间，目前只有 `ml::dataset`（`ferro dataset` 背后的
+  core 的 `units` 与 `data::elements` 是常量 / 函数命名空间，保持 `pub mod`，根上不导出（用户定 D6，2026-11-07）。
+  `ferro_analysis` 的唯一例外是 `ferro_analysis::ml`：按任务分命名空间，目前只有 `ml::dataset`（`ferro dataset` 背后的
   filter / merge / split / diagnostics），每项仍只有 `ml::dataset::<项>` 一条路径；将来的其他 ML 功能
   在 `ml` 下并列加命名空间（用户定 2026-10-21）
 - 绝不从 `AtomType::label()` 的字符串反解析数字 —— 直接读字段。0.2.1 重构消灭的

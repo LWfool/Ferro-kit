@@ -1,6 +1,6 @@
 //! Frame-level train / valid / test split of one system.
 
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 
 use super::merge::shuffle_order;
 

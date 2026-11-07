@@ -5,12 +5,12 @@ use std::collections::{BTreeMap, HashMap};
 use nalgebra::Vector3;
 use rand::{RngExt, SeedableRng};
 
-use ferro_core::atom::Atom;
-use ferro_core::cell::Cell;
+use ferro_core::Atom;
+use ferro_core::Cell;
 use crate::compounds;
 use ferro_core::data::elements;
-use ferro_core::error::{ChemError, Result};
-use ferro_core::frame::Frame;
+use ferro_core::{ChemError, Result};
+use ferro_core::Frame;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
 
 /// A component in a mixed-compound system.

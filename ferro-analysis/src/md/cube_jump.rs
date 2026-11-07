@@ -14,7 +14,7 @@
 //! Parallelism: per-atom par_iter; each atom independently unwraps and accumulates, then results are reduced.
 
 use crate::check;
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::{CubeData, Trajectory};
 use nalgebra::{Matrix3, Vector3};
 use ndarray::Array3;

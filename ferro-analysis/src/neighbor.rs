@@ -6,7 +6,7 @@
 //! classification did; both are analysis (review A-1), and the periodic cell it
 //! builds on, [`PeriodicCell`], stays in core for io and structure to measure with.
 
-use ferro_core::error::{ChemError, Result};
+use ferro_core::{ChemError, Result};
 use ferro_core::PeriodicCell;
 use nalgebra::Vector3;
 

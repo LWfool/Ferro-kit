@@ -89,12 +89,12 @@ impl Autocorr {
 /// `tau` for vanhove, whose single lag follows the same rule.
 pub fn resolve_max_lag(name: &str, n_frames: usize, max_lag: Option<usize>) -> ferro_core::Result<usize> {
     if n_frames < 2 {
-        return Err(ferro_core::error::ChemError(
+        return Err(ferro_core::ChemError(
             "trajectory requires at least 2 frames".into()));
     }
     let m = max_lag.unwrap_or(n_frames / 2);
     if m == 0 || m >= n_frames {
-        return Err(ferro_core::error::ChemError(format!(
+        return Err(ferro_core::ChemError(format!(
             "{name} must be within 1..={} for {n_frames} frames, got {m}", n_frames - 1)));
     }
     Ok(m)

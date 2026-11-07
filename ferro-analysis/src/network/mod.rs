@@ -37,7 +37,7 @@ pub(crate) use classify::classify_with_cell;
 pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 
 use crate::check;
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::{Frame, PeriodicCell, Table, Trajectory};
 use std::collections::{BTreeMap, HashMap};
 

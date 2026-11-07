@@ -15,7 +15,7 @@
 //! - 对每个原子计算 bounding-box，只遍历可能在 radius 内的 voxel
 
 use crate::check;
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
 use nalgebra::Vector3;
 use ndarray::Array3;

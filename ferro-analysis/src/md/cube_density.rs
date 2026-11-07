@@ -16,7 +16,7 @@
 //! order (`par_map_in_order`), so the result does not depend on the thread count.
 
 use crate::check;
-use ferro_core::error::ChemError;
+use ferro_core::ChemError;
 use ferro_core::{CubeData, Frame, PeriodicCell, Trajectory};
 use nalgebra::Vector3;
 use ndarray::Array3;

@@ -2,10 +2,10 @@
 
 use nalgebra::{Matrix3, Vector3};
 
-use ferro_core::atom::Atom;
-use ferro_core::cell::Cell;
-use ferro_core::error::{ChemError, Result};
-use ferro_core::frame::Frame;
+use ferro_core::Atom;
+use ferro_core::Cell;
+use ferro_core::{ChemError, Result};
+use ferro_core::Frame;
 
 /// Merge two frames along the specified axis with a vacuum gap at the interface.
 ///
