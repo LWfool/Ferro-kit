@@ -16,14 +16,14 @@ pub fn qe_structure_cards(frame: &Frame, pseudos: &[(String, String)]) -> Result
         // The atoms' own mass (explicit, else the table; neither is an error, never 1 amu,
         // review A-3). QE has one species per element, so one element with two masses
         // cannot be written
-        let mut masses = frame.atoms().filter(|a| a.element == elem).map(|a| a.effective_mass());
-        let mass = masses.next().expect("an element of the frame has an atom")?;
-        // Same rule as writers/lammps_data.rs (1e-6 tolerance, shortest exact form); two places,
-        // not merged (R6) (review 2026-10-30 A1-M6)
-        for m in masses {
-            if (m? - mass).abs() > 1e-6 {
-                anyhow::bail!("{elem} atoms carry different masses; QE writes one species (one mass) per element");
-            }
+        let masses = frame.atoms().filter(|a| a.element == elem)
+            .map(|a| a.effective_mass()).collect::<ferro_core::Result<Vec<f64>>>()?;
+        let mass = masses[0]; // unique_elements lists the frame's own elements
+        // Same rule as writers/lammps_data.rs (1e-6 tolerance, shortest exact form), written the
+        // same way; two places, not merged (R6) (review 2026-10-30 A1-M6, 2026-11-06 A3-17)
+        if let Some(other) = masses.iter().copied().find(|m| (m - mass).abs() > 1e-6) {
+            anyhow::bail!("atoms of element {elem} carry different masses ({mass} and {other}); \
+                           QE writes one species (one mass) per element");
         }
         let pseudo = pseudos.iter().find(|(e, _)| *e == elem)
             .map(|(_, p)| p)
@@ -108,7 +108,8 @@ mod tests {
         assert!(format!("{e:#}").contains("no mass for element 'Fe1'"), "{e:#}");
         // One species per element: two masses for one element cannot be written
         let e = species(&with_masses([Some(55.845), Some(57.9353)], "Fe"), "Fe").unwrap_err();
-        assert!(format!("{e:#}").contains("different masses"), "{e:#}");
+        // Worded as writers/lammps_data.rs words it, naming both masses (review 2026-11-06 A3-17)
+        assert!(format!("{e:#}").contains("atoms of element Fe carry different masses (55.845 and 57.9353)"), "{e:#}");
     }
 
     #[test]

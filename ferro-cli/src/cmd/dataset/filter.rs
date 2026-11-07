@@ -162,7 +162,6 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
         println!("(read-only: no -o given, nothing will be written)\n");
     }
 
-    let mut failures = 0usize;
     let mut auto_rcuts: Vec<f64> = Vec::new();
     // 报告按表名分组堆叠（batch::stack_as），行标签用**相对路径**而不是目录名 ——
     // 嵌套结构下 a/md 与 b/md 的叶子名相同，堆起来就分不出是谁
@@ -178,28 +177,27 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
     }
     let mut summary = crate::batch::Summary::new(&columns);
 
-    for (sys, rel) in &jobs {
-        let label = rel.display().to_string();
-        match filter_one(sys, rel, args, &params) {
-            Ok(one) => {
-                auto_rcuts.extend(one.rcut);
-                let mut values = vec![one.n_kept as f64];
-                if params.oo_min > 0.0 {
-                    values.extend(one.min_oo.unwrap_or([f64::NAN; 6]));
-                }
-                if args.al6.is_some() {
-                    values.push(one.rcut.or(params.al6_rcut).unwrap_or(f64::NAN));
-                }
-                summary.ok(label.clone(), one.n_input, one.n_atoms, &values);
-                results.push((crate::batch::Input { path: sys.clone(), label }, one.tables));
-            }
-            Err(e) => {
-                crate::report::error(sys.display(), format!("{e:#}; skipped"));
-                summary.failed_one(label.clone(), format!("{e:#}"));
-                failures += 1;
-            }
+    let inputs = jobs.iter()
+        .map(|(sys, rel)| crate::batch::Input { path: sys.clone(), label: rel.display().to_string() })
+        .collect();
+    let (done, failed) = crate::batch::map_labelled(inputs, |input| {
+        let (sys, rel) = jobs.iter().find(|(sys, _)| *sys == input.path).expect("an input is one of the jobs");
+        filter_one(sys, rel, args, &params)
+    });
+    for (input, one) in done {
+        auto_rcuts.extend(one.rcut);
+        let mut values = vec![one.n_kept as f64];
+        if params.oo_min > 0.0 {
+            values.extend(one.min_oo.unwrap_or([f64::NAN; 6]));
         }
+        if args.al6.is_some() {
+            values.push(one.rcut.or(params.al6_rcut).unwrap_or(f64::NAN));
+        }
+        summary.ok(input.label.clone(), one.n_input, one.n_atoms, &values);
+        results.push((input, one.tables));
     }
+    summary.failed(&failed);
+    let failures = failed.len();
     // 自动截断参与了删帧决定，不能是个看不见的数；多 system 时报均值与范围
     if auto_rcuts.len() > 1 {
         let mean = auto_rcuts.iter().sum::<f64>() / auto_rcuts.len() as f64;

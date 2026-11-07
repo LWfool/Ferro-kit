@@ -127,50 +127,35 @@ pub fn write_deepmd_npy_bounds(
     }
 
     // 逐项先在整条轨迹上摊平，再按 set 边界切片写出
-    let mut arrays: Vec<(String, Vec<f64>, usize)> = Vec::new();
+    let mut arrays: Vec<(&str, Vec<f64>, usize)> = Vec::new();
 
-    let mut coord = Vec::with_capacity(nf * natoms * 3);
-    for f in frames {
-        for a in f.atoms() {
-            coord.extend_from_slice(&[a.position.x, a.position.y, a.position.z]);
-        }
-    }
-    arrays.push(("coord".into(), coord, natoms * 3));
+    let coord = frames.iter().flat_map(|f| f.positions().iter().flat_map(|p| [p.x, p.y, p.z])).collect();
+    arrays.push(("coord", coord, natoms * 3));
 
     if has_cell {
         let mut boxes = Vec::with_capacity(nf * 9);
         for f in frames {
             boxes.extend_from_slice(&matrix3_row_major(&f.cell.as_ref().unwrap().matrix));
         }
-        arrays.push(("box".into(), boxes, 9));
+        arrays.push(("box", boxes, 9));
     }
 
     // 逐项要么全帧都有要么全帧都无：半有半无地补零会把「没算」写成「算出来是 0」
     if let Some(energies) = all_or_none(frames.iter().map(|f| f.energy), "energy")? {
-        arrays.push(("energy".into(), energies, 1));
+        arrays.push(("energy", energies, 1));
     }
     if let Some(force_frames) = all_or_none(frames.iter().map(|f| f.forces()), "forces")? {
-        let mut force = Vec::with_capacity(nf * natoms * 3);
         // check_same_atoms above, and set_forces keeps one force per atom
-        for fs_ in force_frames {
-            for v in fs_ {
-                force.extend_from_slice(&[v.x, v.y, v.z]);
-            }
-        }
-        arrays.push(("force".into(), force, natoms * 3));
+        let force = force_frames.iter().flat_map(|fs_| fs_.iter().flat_map(|v| [v.x, v.y, v.z])).collect();
+        arrays.push(("force", force, natoms * 3));
     }
-    if all_or_none(frames.iter().map(|f| f.stress), "stress")?.is_some() {
-        if !has_cell {
-            bail!("stress is present but the frames have no cell; the virial needs a volume");
-        }
-        let mut virial = Vec::with_capacity(nf * 9);
-        for (i, f) in frames.iter().enumerate() {
-            let v = f.virial()
-                .with_context(|| format!("frame {i}"))?
-                .expect("all_or_none: every frame has a stress");
-            virial.extend(matrix3_row_major(&v));
-        }
-        arrays.push(("virial".into(), virial, 9));
+    // Frame::virial refuses a stress without a cell, or with a zero-volume one (review
+    // 2026-11-06 A3-9: this writer used to refuse the first on its own)
+    let virials = frames.iter().enumerate()
+        .map(|(i, f)| f.virial().with_context(|| format!("frame {i}")))
+        .collect::<Result<Vec<_>>>()?;
+    if let Some(virials) = all_or_none(virials.into_iter(), "stress")? {
+        arrays.push(("virial", virials.iter().flat_map(matrix3_row_major).collect(), 9));
     }
 
     // Every refusal above comes before the directory is touched: clearing the old set.* first used
@@ -178,19 +163,23 @@ pub fn write_deepmd_npy_bounds(
     fs::create_dir_all(dir).with_context(|| format!("cannot create {}", dir.display()))?;
     // A rewrite clears the old set.* first, or fewer frames would leave the previous tail behind
     // An entry that cannot be read is an error, not skipped (review 2026-11-06 A2-33)
-    for entry in fs::read_dir(dir)? {
-        let p = entry?.path();
+    let cannot_read = || format!("cannot read {}", dir.display());
+    for entry in fs::read_dir(dir).with_context(cannot_read)? {
+        let p = entry.with_context(cannot_read)?.path();
         if p.is_dir()
             && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("set."))
         {
-            fs::remove_dir_all(&p)?;
+            fs::remove_dir_all(&p).with_context(|| format!("cannot remove {}", p.display()))?;
         }
     }
 
-    let type_raw: String = type_index.iter().map(|t| format!("{t}\n")).collect();
-    fs::write(dir.join("type.raw"), type_raw)?;
-    let map_raw: String = species.iter().map(|s| format!("{s}\n")).collect();
-    fs::write(dir.join("type_map.raw"), map_raw)?;
+    // Every write names its file (review 2026-11-06 A3-11)
+    let write = |name: &str, text: String| {
+        let p = dir.join(name);
+        fs::write(&p, text).with_context(|| format!("cannot write {}", p.display()))
+    };
+    write("type.raw", type_index.iter().map(|t| format!("{t}\n")).collect())?;
+    write("type_map.raw", species.iter().map(|s| format!("{s}\n")).collect())?;
 
     let nopbc = dir.join("nopbc");
     if nopbc_frames == 0 {
@@ -202,7 +191,7 @@ pub fn write_deepmd_npy_bounds(
             _ => {}
         }
     } else {
-        fs::write(&nopbc, "")?;
+        write("nopbc", String::new())?;
     }
 
     for (i, &(lo, hi)) in bounds.iter().enumerate() {
@@ -335,6 +324,19 @@ mod tests {
         t.frames[1].sites_mut()[0].element = "N".to_string();
         let err = write_deepmd_npy(&t, &out_dir("ferro_dp_comp")).unwrap_err().to_string();
         assert!(err.contains("atom 0 is N in frame 1") && err.contains("one composition"), "{err}");
+    }
+
+    /// A stress without a cell has no virial; the refusal is `Frame::virial`'s, naming the
+    /// frame (review 2026-11-06 A3-9: this writer used to word its own).
+    #[test]
+    fn rejects_a_stress_without_a_cell() {
+        let mut t = demo_traj();
+        for f in &mut t.frames {
+            f.cell = None;
+            f.pbc = [false; 3];
+        }
+        let err = format!("{:#}", write_deepmd_npy(&t, &out_dir("ferro_dp_nocell")).unwrap_err());
+        assert!(err.contains("frame 0") && err.contains("needs the volume"), "{err}");
     }
 
     /// The virial is stress times volume; a flat cell has none (review B13: this

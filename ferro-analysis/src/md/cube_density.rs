@@ -161,14 +161,16 @@ pub fn calc_cube_density(
     let ref_frame = &traj.frames[0];
     let ref_cell = ref_frame.cell.as_ref().expect("every frame has a cell");
     let n_atoms = select_atoms(ref_frame, params.elements.as_deref())?.len();
+    // The map is named as `ferro map <mode>` names it, not by the enum variant (review
+    // 2026-11-06 A4-14)
     let missing = match params.mode {
         CubeMode::Density => None,
-        CubeMode::Velocity => traj.frames.iter().position(|f| f.velocities().is_none()).map(|k| (k, "velocities")),
-        CubeMode::Force => traj.frames.iter().position(|f| f.forces().is_none()).map(|k| (k, "forces")),
+        CubeMode::Velocity => traj.frames.iter().position(|f| f.velocities().is_none()).map(|k| (k, "velocities", "velocity")),
+        CubeMode::Force => traj.frames.iter().position(|f| f.forces().is_none()).map(|k| (k, "forces", "force")),
     };
-    if let Some((k, what)) = missing {
+    if let Some((k, what, map)) = missing {
         return Err(ChemError::ValidationError(format!(
-            "frame {k} has no {what}; mode {:?} needs {what} in every frame", params.mode
+            "frame {k} has no {what}; a {map} map needs {what} in every frame"
         )));
     }
 
@@ -352,7 +354,7 @@ mod tests {
             ..Default::default()
         };
         let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
-        assert!(err.contains("frame 0 has no velocities; mode Velocity needs velocities in every frame"), "{err}");
+        assert!(err.contains("frame 0 has no velocities; a velocity map needs velocities in every frame"), "{err}");
     }
 
     /// One frame without forces is an error naming it, as in vacf; it used to be skipped
@@ -366,7 +368,7 @@ mod tests {
         traj.frames[1].set_forces(None).unwrap();
         let params = CubeDensityParams { nx: 2, ny: 2, nz: 2, mode: CubeMode::Force, ..Default::default() };
         let err = calc_cube_density(&traj, &params).err().unwrap().to_string();
-        assert!(err.contains("frame 1 has no forces; mode Force needs forces in every frame"), "{err}");
+        assert!(err.contains("frame 1 has no forces; a force map needs forces in every frame"), "{err}");
     }
 
     #[test]

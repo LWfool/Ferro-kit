@@ -51,14 +51,9 @@ pub fn write_extxyz_with(
             (None, _) => None,
             (Some(s), StressKey::Stress) => Some(("stress", -s)),
             (Some(_), StressKey::Virial) => {
-                if frame.cell.is_none() {
-                    bail!(
-                        "frame {fi} has a stress but no cell; virial= is eV and needs \
-                         the volume. Write stress= instead"
-                    );
-                }
+                // Frame::virial refuses a stress without a cell (review 2026-11-06 A3-9)
                 let v = frame.virial()
-                    .with_context(|| format!("frame {fi}: cannot write virial="))?
+                    .with_context(|| format!("frame {fi}: cannot write virial= (eV); write stress= instead"))?
                     .expect("the frame has a stress");
                 Some(("virial", v))
             }
@@ -342,7 +337,9 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let e = write_extxyz_with(&traj, &path, StressKey::Virial, false)
             .unwrap_err();
-        assert!(format!("{e:#}").contains("no cell"), "{e:#}");
+        // Frame::virial's refusal, with the hint (review 2026-11-06 A3-9)
+        let e = format!("{e:#}");
+        assert!(e.contains("frame 0") && e.contains("without a cell") && e.contains("stress= instead"), "{e}");
         // The refusal used to come after File::create and leave a half-written file
         assert!(!path.exists(), "a refused write must not leave a file");
     }

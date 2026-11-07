@@ -30,11 +30,11 @@ fn parse_xyz_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Traje
             }
         };
 
+        let k = traj.n_frames();
         let n_atoms: usize = count_line
             .parse()
-            .context(format!("expected atom count, got: {count_line:?}"))?;
+            .with_context(|| format!("frame {k}, line {count_no}: expected atom count, got {count_line:?}"))?;
 
-        let k = traj.n_frames();
         let Some((_, comment)) = lines.next() else {
             drop_truncated(&mut warnings, k, count_no, "no comment line")?;
             break;
@@ -153,6 +153,10 @@ C  1.4  0.0  0.1
             assert_eq!(warnings.len(), 1, "{name}");
             assert!(warnings[0].line == Some(5) && warnings[0].message.contains("frame 1"), "{name}: {:?}", warnings[0]);
         }
+        // A bad atom count names its frame and line, as extxyz does (review 2026-11-06 A2-16)
+        let path = write_tmp("bad_count.xyz", "2\nf0\nC 0 0 0\nC 1 0 0\ntwo\nf1\n");
+        let err = format!("{:#}", read_xyz(&path).unwrap_err());
+        assert!(err.contains("frame 1, line 5"), "{err}");
         // An incomplete middle frame is still an error
         let path = write_tmp("trunc_middle.xyz", "2\nf0\nC 0 0 0\n2\nf1\nC 0 0 0\nC 1 0 0\n");
         assert!(read_xyz(&path).is_err());

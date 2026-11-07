@@ -383,6 +383,10 @@ pub fn write_numbered(
     opts: &WriteOptions,
     numbers: &[usize],
 ) -> Result<Vec<PathBuf>> {
+    // Checked once here for every format (review 2026-11-06 A3-13)
+    if traj.n_frames() == 0 {
+        bail!("cannot write an empty trajectory");
+    }
     if format.multi_frame() || traj.n_frames() <= 1 {
         write_one(traj, path, format, opts)?;
         return Ok(vec![path.to_path_buf()]);
@@ -566,6 +570,22 @@ mod tests {
     /// `.vasp` / `.pos` go through the same reader and writer as a POSCAR name,
     /// and an upper-case extension is the same format.
     /// Writing a product by its extension gives back the format the extension was taken from.
+    /// An empty trajectory is refused for every format, before any file is made: the
+    /// writers used to differ (an error, an empty file, a file holding only END; review
+    /// 2026-11-06 A3-13).
+    #[test]
+    fn an_empty_trajectory_is_refused_for_every_format() {
+        let dir = tmp_dir("empty");
+        for f in Format::ALL {
+            let Some(ext) = f.extension() else { continue };
+            let path = dir.join(format!("t.{ext}"));
+            let opts = WriteOptions { units: Some(LammpsUnits::Real), ..Default::default() };
+            let err = write(&Trajectory::new(), &path, &opts).unwrap_err().to_string();
+            assert!(err.contains("empty trajectory"), "{ext}: {err}");
+            assert!(!path.exists(), "{ext}");
+        }
+    }
+
     #[test]
     fn every_writable_format_has_an_extension_naming_it() {
         for f in Format::ALL {

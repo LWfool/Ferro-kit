@@ -268,11 +268,12 @@ pub fn run(topic: &[String]) -> Result<()> {
     match find_page(&asked) {
         Some(page) => page_out(&body(page)),
         None => {
-            // A mistyped topic gets the list, not just "no": it is right at hand
-            crate::report::error(crate::report::PROGRAM, format!("no manual page for `{asked}`"));
-            eprintln!();
+            // A mistyped topic gets the list, not just "no": it is right at hand. The error
+            // goes out through main like every other command's, after the list (review
+            // 2026-11-06 A6-25: this was the one command that exited on its own)
             eprint!("{}", topic_list());
-            std::process::exit(1);
+            eprintln!();
+            anyhow::bail!("no manual page for `{asked}`");
         }
     }
     Ok(())
@@ -375,6 +376,13 @@ fn page_out(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An unknown topic is an `Err` for main to report, not an exit from inside `run`.
+    #[test]
+    fn an_unknown_topic_is_an_error() {
+        let err = run(&["no-such-topic".to_string()]).unwrap_err().to_string();
+        assert!(err.contains("no manual page for `no-such-topic`"), "{err}");
+    }
 
     /// Review 2026-10-30 A5-L3: the `ferro doc <topic>` a help page sends the reader to
     /// must exist; CLAUDE.md says a page missing from PAGES leaves it pointing nowhere,

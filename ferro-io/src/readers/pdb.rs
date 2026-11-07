@@ -25,6 +25,7 @@ fn parse_pdb_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Traje
     let mut placeholder_noted = false;
     let mut current = Frame::new();
     let mut open_model: Option<usize> = None; // line of an open MODEL, until its ENDMDL
+    let mut frame_start = 0; // line the current frame starts on: its MODEL, or its first atom
     let mut cell: Option<Cell> = None;
     let close = |frame: &mut Frame, cell: &Option<Cell>| {
         if let Some(c) = cell {
@@ -70,12 +71,15 @@ fn parse_pdb_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Traje
                 }
             }
             "ATOM" | "HETATM" => {
+                if current.n_atoms() == 0 {
+                    frame_start = open_model.unwrap_or(ln + 1);
+                }
                 let last = lines.peek().is_none();
                 match parse_atom_record(&line, last).with_context(|| format!("line {}: {line:?}", ln + 1))? {
                     Some(atom) => current.add_atom(atom),
                     None => {
                         let why = "the last ATOM line is cut short";
-                        super::util::drop_truncated(&mut warnings, traj.n_frames(), ln + 1, why)?;
+                        super::util::drop_truncated(&mut warnings, traj.n_frames(), frame_start, why)?;
                         return Ok((traj, warnings));
                     }
                 }
@@ -263,7 +267,9 @@ ENDMDL
     /// dropped, and when that was the only frame it is an error (scan B-2).
     #[test]
     fn test_cut_last_atom_line() {
-        let cut = format!("{WATER_PDB}ATOM      1  O   UNK A   1       0.000   0.0");
+        // The warning names the line the dropped frame starts on, as the xyz, extxyz and dump
+        // readers do (review 2026-11-06 A2-16): line 6, not the cut line 7
+        let cut = format!("{WATER_PDB}{}\nATOM      2  H   UNK A   1       0.000   0.7", WATER_PDB.lines().nth(1).unwrap());
         let (traj, w) = read_pdb(&write_tmp("test_cut.pdb", &cut)).unwrap();
         assert_eq!(traj.n_frames(), 1);
         assert!(w.len() == 1 && w[0].line == Some(6) && w[0].message.contains("frame 1"), "{w:?}");

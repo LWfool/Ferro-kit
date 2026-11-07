@@ -218,7 +218,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
                 .collect();
             if pairs.is_empty() {
                 return Err(ChemError::ValidationError(format!(
-                    "no {}-{} bond within r_cut = {} Ang in the first frame",
+                    "no {}-{} bond within r-cut = {} Ang in the first frame",
                     params.center, params.neighbor, params.r_cut)));
             }
             (0..n_frames).into_par_iter().map(|k| {
@@ -238,7 +238,7 @@ pub fn calc_rotcorr(traj: &Trajectory, params: &RotCorrParams) -> ferro_core::Re
     if n_valid == 0 {
         return Err(ChemError::ValidationError(format!(
             "no {} atom has an orientation in any frame: either no {} neighbor within \
-             r_cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
+             r-cut = {} Ang, or its bonds cancel (a symmetric unit such as a tetrahedron; \
              use --vector bond)",
             params.center, params.neighbor, params.r_cut)));
     }
@@ -528,7 +528,8 @@ mod tests {
     fn test_no_neighbor_anywhere_is_an_error() {
         let traj = tumbling(4, |_, _| true);
         let err = calc_rotcorr(&traj, &RotCorrParams { dt: 1.0, ..Default::default() }).unwrap_err().to_string();
-        assert!(err.contains("r_cut"), "应说明是截断内找不到邻居：{err}");
+        // Named as the CLI spells it (review 2026-11-06 A4-13)
+        assert!(err.contains("within r-cut = "), "should say no neighbour is within the cutoff: {err}");
     }
 
     #[test]

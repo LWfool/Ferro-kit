@@ -188,14 +188,23 @@ pub fn map_inputs<T>(
     inputs: &[PathBuf],
     f: impl Fn(&Input) -> Result<T>,
 ) -> (Vec<(Input, T)>, Vec<Failure>) {
-    let mut ok = Vec::new();
-    let mut failed = Vec::new();
-
     // 标签在读第一个文件之前一次定好，撞名的改名提示也在这里打
     let labels = unique_labels(inputs);
-    for (i, (path, label)) in inputs.iter().zip(labels).enumerate() {
-        println!("[{}/{}] {}", i + 1, inputs.len(), path.display());
-        let input = Input { path: path.clone(), label };
+    map_labelled(inputs.iter().cloned().zip(labels).map(|(path, label)| Input { path, label }).collect(), f)
+}
+
+/// [`map_inputs`] with the labels given by the caller: `dataset filter` labels a DeePMD
+/// system by its path relative to `-i`, not by its name (review 2026-11-06 A6-7: it had a
+/// loop of its own, without the `[k/N]` line).
+pub fn map_labelled<T>(
+    inputs: Vec<Input>,
+    f: impl Fn(&Input) -> Result<T>,
+) -> (Vec<(Input, T)>, Vec<Failure>) {
+    let mut ok = Vec::new();
+    let mut failed = Vec::new();
+    let n = inputs.len();
+    for (i, input) in inputs.into_iter().enumerate() {
+        println!("[{}/{}] {}", i + 1, n, input.path.display());
         match f(&input) {
             Ok(v) => ok.push((input, v)),
             Err(e) => {
@@ -532,19 +541,6 @@ impl Summary {
             slot.1.push("-".to_string());
         }
         slot.1.push(value);
-    }
-
-    /// One failed row whose label is given directly rather than derived from a path.
-    ///
-    /// `failed` labels rows with the file stem, which is right when the inputs are
-    /// files. A DeePMD system is a directory, and its label is the path relative to
-    /// `-i` — nested systems `a/md` and `b/md` share a stem and would collide.
-    pub fn failed_one(&mut self, file: String, reason: String) {
-        self.file.push(file);
-        self.status.push(reason);
-        for slot in self.extra.iter_mut() {
-            slot.1.push("-".to_string());
-        }
     }
 
     /// Adds the failed inputs, each at its place in the input order.

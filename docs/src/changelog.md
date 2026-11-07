@@ -63,6 +63,14 @@ command line alike; regenerate it rather than migrating it.
   product names, and `-i .` / `-i ./` by the directory it stands for, as `convert` already did.
 - `ferro-py`: an existing `-i` name with `[ ]` is that file, not a pattern, and a file given twice is read
   once with a note, as in `ferro`.
+- `dataset filter` prints `[k/N] <system>` before each system, as the other batch commands do.
+- Writing an empty trajectory is an error for every format; some formats used to write an empty file.
+- Error messages: XYZ names `frame k, line n` for a bad atom count; a PDB frame dropped as cut off is named
+  by the line it starts on, as in XYZ and LAMMPS dump; `traj bondlife` / `rotcorr` spell the parameter
+  `r-bond` / `r-cut` as on the command line; `map velocity` / `force` name the map, not `mode Velocity`;
+  a QE input whose atoms of one element carry two masses names both; the DeePMD writer names the file a
+  write failed on.
+- `ferro doc <unknown>`: the topic list comes first and the error line last, as for every other command.
 
 ### Code review fixes: smaller consistency changes
 

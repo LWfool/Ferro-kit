@@ -220,7 +220,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     candidates.dedup();
     if candidates.is_empty() {
         return Err(ChemError::ValidationError(format!(
-            "no {}-{} pair within r_bond = {r_bond} Ang in any frame", params.center, params.neighbor)));
+            "no {}-{} pair within r-bond = {r_bond} Ang in any frame", params.center, params.neighbor)));
     }
 
     // 第二遍：每个候选的存在序列 h（滞后规则）与补缺口后的 h_fill
@@ -540,7 +540,9 @@ mod tests {
     #[test]
     fn test_bad_thresholds_and_no_pair() {
         let traj = traj_from(4, 1, |_, _| 3.0);
-        assert!(calc_bondlife(&traj, &params()).unwrap_err().to_string().contains("no Si-O pair"));
+        // The parameter is named as the CLI spells it (review 2026-11-06 A4-13)
+        let err = calc_bondlife(&traj, &params()).unwrap_err().to_string();
+        assert!(err.contains("no Si-O pair within r-bond = "), "{err}");
         assert!(calc_bondlife(&traj, &BondLifeParams { r_break: Some(1.0), ..params() }).is_err());
     }
 

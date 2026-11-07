@@ -23,7 +23,8 @@ pub(crate) fn floats(line: &str, min: usize) -> Result<Vec<f64>> {
 /// A file ending inside its last frame is an MD run cut off: that frame is dropped with a
 /// warning and the frames before it stand. When it was the only frame nothing is left, and
 /// reading on would hand back an empty trajectory with no error, so that is an error.
-/// Shared by the xyz, extxyz, PDB and LAMMPS dump readers.
+/// Shared by the xyz, extxyz, PDB and LAMMPS dump readers; `line` is the line the dropped
+/// frame starts on (review 2026-11-06 A2-16).
 pub(crate) fn drop_truncated(warnings: &mut Vec<crate::Notice>, k: usize, line: usize, why: &str) -> Result<()> {
     ensure!(k > 0, "the only frame (line {line}) is incomplete: {why}");
     warnings.push(crate::Notice::warning(Some(line), format!("last frame (frame {k}) is incomplete and was dropped: {why}")));
