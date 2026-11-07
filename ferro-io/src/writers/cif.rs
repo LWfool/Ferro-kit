@@ -61,6 +61,7 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let explicit: HashSet<&str> = frame.atoms().filter_map(|a| a.label).collect();
     let mut used: HashSet<String> = HashSet::new();
     let mut counters: HashMap<&str, usize> = HashMap::new();
+    let to_frac = cell.to_fractional_matrix()?;
     for atom in frame.atoms() {
         let label = if let Some(l) = atom.label {
             (1..).map(|k| if k == 1 { l.to_string() } else { format!("{l}_{k}") })
@@ -75,7 +76,7 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
             }
         };
         used.insert(label.clone());
-        let frac = cell.cartesian_to_fractional(atom.position)?;
+        let frac = to_frac * atom.position;
         writeln!(
             w,
             "{:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",

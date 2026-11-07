@@ -220,6 +220,10 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
         // The same one-cutoff classifier as diagnostics.rs (cutoff_scan, filter_diagnostics); not merged (R6)
         TypeParams::new(cut, Default::default())
     });
+    // Validated once here rather than per frame (review 2026-11-06 A5-5)
+    if let Some(tp) = &type_params {
+        tp.validate()?;
+    }
 
     // 逐帧算出各判据的量与判定，全部帧都算 —— 交叉表要的是「每个判据单独
     // 判坏多少」，只在存活帧上算就永远看不出判据之间的重叠
@@ -263,7 +267,7 @@ pub fn filter_frames(traj: &Trajectory, params: &FilterParams) -> Result<FilterR
                     min_oo = d;
                 }
                 if let Some(tp) = &type_params {
-                    let n = count_with_coordination(f, tp, "Al", 6)
+                    let n = count_with_coordination(f, cell, tp, "Al", 6)
                         .expect("checked at the entry by check::all_periodic_cells");
                     // 「保留含 Al6 的帧」与「删除不含 Al6 的帧」是同一件事，
                     // 表达成后者，判据语义就和其余三条一致，交叉表也不必分裂

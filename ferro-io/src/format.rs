@@ -575,6 +575,27 @@ mod tests {
         }
     }
 
+    /// `detected_by` (the format matrix) and `from_name` are two hand-written tables of the
+    /// same names; they drifted once (CONTCAR, review 2026-11-06 A3-4). Every name the matrix
+    /// shows must be recognised by `from_name` as that format. `.xyz*` is the exception the
+    /// star marks: the name only says XYZ, the content decides on extended XYZ. Names that
+    /// `from_name` knows but the matrix does not list are not caught here.
+    #[test]
+    fn every_name_in_the_format_matrix_is_recognised_by_from_name() {
+        for f in Format::ALL {
+            for tok in f.detected_by().split_whitespace() {
+                let (name, want) = match tok {
+                    _ if tok.starts_with("banner") || tok.starts_with('(') => continue,
+                    _ if f == Format::Deepmd => continue,
+                    ".xyz*" => ("a.xyz".to_string(), Format::Xyz),
+                    _ if tok.starts_with('.') => (format!("a{tok}"), f),
+                    _ => (tok.replace('*', "_1"), f),
+                };
+                assert_eq!(Format::from_name(Path::new(&name)), Some(want), "{} lists {tok}", f.name());
+            }
+        }
+    }
+
     #[test]
     fn vasp_extensions_and_case_round_trip() {
         let traj = one_atom_traj();

@@ -108,6 +108,8 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
 
     // Build LAMMPS cell for coordinate transformation
     let lammps_cell = lammps_cell(lx, ly, lz, xy, xz, yz);
+    // Inverted once, not per atom (review 2026-11-06 A3-2)
+    let to_frac = frame.cell.as_ref().map(|c| c.to_fractional_matrix()).transpose()?;
 
     for (i, atom) in frame.atoms().enumerate() {
         let tp = elem_to_type[atom.element];
@@ -115,13 +117,13 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
         let q = if use_charge { atom.charge.expect("partial_column checked") } else { 0.0 };
 
         // Transform position to LAMMPS coordinate frame
-        let pos = match &frame.cell {
+        let pos = match (&frame.cell, &to_frac) {
             // 旋转绕盒子原点做：非规范取向的胞带非零原点时，原点那段平移不能跟着转
-            Some(orig_cell) => {
-                let frac = orig_cell.cartesian_to_fractional(atom.position - orig_cell.origin)?;
+            (Some(orig_cell), Some(inv)) => {
+                let frac = inv * (atom.position - orig_cell.origin);
                 lammps_cell.fractional_to_cartesian(frac) + orig_cell.origin
             }
-            None => atom.position,
+            _ => atom.position,
         };
 
         // id mol-id type charge x y z

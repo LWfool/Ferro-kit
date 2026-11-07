@@ -1,8 +1,8 @@
 //! Glass network trajectory statistics: bridging-ligand speciation (Qn for P),
 //! ligand type distribution, coordination numbers.
 //!
-//! Atom-level classification is delegated to `classify_with_cell` (`classify.rs`; the
-//! public per-frame form is [`classify_frame`]), with one `PeriodicCell` per frame.
+//! Atom-level classification is delegated to `classify_with_cell` (`classify.rs`), with
+//! one `PeriodicCell` per frame.
 //! This module accumulates per-frame [`AtomType`]s into time-averaged distributions.
 //!
 //! # What "fraction ± sd" means
@@ -31,8 +31,9 @@ mod graph;
 mod qn_elements;
 
 pub use classify::{
-    AtomType, CutoffTable, FrameTypes, TypeParams, classify_frame,
+    AtomType, CutoffTable, FrameTypes, TypeParams,
 };
+pub(crate) use classify::classify_with_cell;
 pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 
 use crate::check;
@@ -1079,7 +1080,8 @@ mod tests {
         let (res, types) = calc_network_typed(&traj, &p).unwrap();
         assert_eq!(types.len(), 5);
         for (k, (f, t)) in traj.frames.iter().zip(&types).enumerate() {
-            assert_eq!(t, &classify_frame(f, &p).unwrap(), "frame {k}");
+            let own = classify_with_cell(f, &PeriodicCell::of(f).unwrap(), &p).unwrap().types;
+            assert_eq!(t, &own, "frame {k}");
         }
         assert_eq!(oxy_counts(&res), oxy_counts(&calc_network(&traj, &p).unwrap()));
     }

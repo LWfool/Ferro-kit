@@ -1,5 +1,5 @@
 use std::path::Path;
-use ferro_core::Trajectory;
+use ferro_core::{matrix3_row_major, Trajectory};
 use ferro_core::units::ASE_FS;
 use nalgebra::Matrix3;
 use std::fs::File;
@@ -90,6 +90,8 @@ pub fn write_extxyz_with(
     let file = File::create(path).with_context(|| format!("cannot create {path_}"))?;
     let mut w = BufWriter::new(file);
 
+    // Nine numbers in row-major order, the one place the layout is decided (array_order.rs)
+    let nine = |m: &Matrix3<f64>| matrix3_row_major(m).map(fmt).join(" ");
     for (frame, &(has_mass, has_charge, has_magmom, stress)) in trajectory.frames.iter().zip(&columns) {
         // Line 1: atom count
         writeln!(w, "{}", frame.n_atoms())?;
@@ -99,13 +101,7 @@ pub fn write_extxyz_with(
 
         // Lattice (row-major: 9 values = rows a, b, c)
         if let Some(cell) = &frame.cell {
-            let m = &cell.matrix;
-            parts.push(format!(
-                "Lattice=\"{} {} {} {} {} {} {} {} {}\"",
-                fmt(m[(0,0)]), fmt(m[(0,1)]), fmt(m[(0,2)]),
-                fmt(m[(1,0)]), fmt(m[(1,1)]), fmt(m[(1,2)]),
-                fmt(m[(2,0)]), fmt(m[(2,1)]), fmt(m[(2,2)]),
-            ));
+            parts.push(format!("Lattice=\"{}\"", nine(&cell.matrix)));
             let pbc = frame.pbc;
             parts.push(format!("pbc=\"{} {} {}\"",
                 bool_str(pbc[0]), bool_str(pbc[1]), bool_str(pbc[2])));
@@ -131,12 +127,7 @@ pub fn write_extxyz_with(
         // `Temperature=` 就取决于数据走的哪条路 —— 产物形态随来源而变,正是
         // issues.md 反复记的那类静默差异。等 convert 能直读 AIMD 输出时再一起开
         if let Some((key, t)) = stress {
-            parts.push(format!(
-                "{key}=\"{} {} {} {} {} {} {} {} {}\"",
-                fmt(t[(0,0)]), fmt(t[(0,1)]), fmt(t[(0,2)]),
-                fmt(t[(1,0)]), fmt(t[(1,1)]), fmt(t[(1,2)]),
-                fmt(t[(2,0)]), fmt(t[(2,1)]), fmt(t[(2,2)]),
-            ));
+            parts.push(format!("{key}=\"{}\"", nine(&t)));
         }
 
         writeln!(w, "{}", parts.join(" "))?;

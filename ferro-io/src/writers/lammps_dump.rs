@@ -155,11 +155,11 @@ pub fn write_lammps_dump(
         // 原胞 → LAMMPS 规范胞（下三角）的线性变换，即 ASE `Prism.rot_mat` 那个旋转。
         // 坐标、速度、力**必须用同一个变换**：只转坐标的话，非下三角胞下 v、f 还在
         // 原坐标系里，与坐标对不上（ASE 的 lammpsdata / lammpsrun 三者同转）
-        let to_lammps = |v: nalgebra::Vector3<f64>| -> Result<nalgebra::Vector3<f64>> {
-            Ok(match &frame.cell {
-                Some(orig) => lammps_cell.fractional_to_cartesian(orig.cartesian_to_fractional(v)?),
-                None => v,
-            })
+        // Inverted once per frame, not per vector (review 2026-11-06 A3-2)
+        let to_frac = frame.cell.as_ref().map(|c| c.to_fractional_matrix()).transpose()?;
+        let to_lammps = |v: nalgebra::Vector3<f64>| match &to_frac {
+            Some(inv) => lammps_cell.fractional_to_cartesian(inv * v),
+            None => v,
         };
 
         // The rotation is about the box origin: for a cell in a non-canonical orientation with a
@@ -168,15 +168,15 @@ pub fn write_lammps_dump(
         for (i, atom) in frame.atoms().enumerate() {
             let name = dump_name(atom);
             let tp = type_of[name];
-            let pos = to_lammps(atom.position - o)? + o;
+            let pos = to_lammps(atom.position - o) + o;
 
             write!(w, "{} {tp} {} {:.10} {:.10} {:.10}", i + 1, name, pos.x, pos.y, pos.z)?;
             if let Some(vv) = vels {
-                let v = to_lammps(vv[i])?;
+                let v = to_lammps(vv[i]);
                 write!(w, " {:.10} {:.10} {:.10}", v.x * vscale, v.y * vscale, v.z * vscale)?;
             }
             if let Some(ff) = forces {
-                let f = to_lammps(ff[i])?;
+                let f = to_lammps(ff[i]);
                 write!(w, " {:.10} {:.10} {:.10}", f.x * fscale, f.y * fscale, f.z * fscale)?;
             }
             if has_charge {

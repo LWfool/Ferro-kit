@@ -47,8 +47,9 @@ pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
     let order: Vec<usize> = groups.concat();
 
     writeln!(w, "Direct")?;
+    let to_frac = cell.to_fractional_matrix()?;
     for &i in &order {
-        let f = cell.cartesian_to_fractional(frame.positions()[i])?;
+        let f = to_frac * frame.positions()[i];
         writeln!(w, "  {:>18.16}  {:>18.16}  {:>18.16}", f.x, f.y, f.z)?;
     }
 

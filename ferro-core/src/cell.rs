@@ -189,10 +189,16 @@ impl Cell {
 
     /// Cartesian 坐标（Å）→ 分数坐标。晶胞矩阵奇异时返回 `Err`。
     pub fn cartesian_to_fractional(&self, cart: Vector3<f64>) -> Result<Vector3<f64>> {
+        Ok(self.to_fractional_matrix()? * cart)
+    }
+
+    /// `(Mᵀ)⁻¹`, the matrix [`Self::cartesian_to_fractional`] multiplies by: a loop over
+    /// the atoms inverts once and multiplies, rather than inverting per atom (review
+    /// 2026-11-06 A3-2). `Err` when the cell matrix is singular.
+    pub fn to_fractional_matrix(&self) -> Result<Matrix3<f64>> {
         self.matrix
             .transpose()
             .try_inverse()
-            .map(|inv| inv * cart)
             .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))
     }
 

@@ -5,7 +5,7 @@
 //!
 //! # What classification produces
 //!
-//! [`classify_frame`] returns one [`AtomType`] per atom — a *structured* value that
+//! [`classify_with_cell`] returns one [`AtomType`] per atom — a *structured* value that
 //! keeps the numbers it computed (bridging count, coordination number, the partner
 //! elements of a ligand).  Rendering a type as text happens in exactly one place,
 //! [`AtomType::label`]; nothing downstream parses a label back into a number.
@@ -82,8 +82,8 @@ impl TypeParams {
         self
     }
 
-    /// Every cutoff finite and >= 0; 0 means the pair never bonds. [`classify_frame`]
-    /// and `network` run it first, `ferro net` before reading any input (review C-2: a NaN cutoff used to
+    /// Every cutoff finite and >= 0; 0 means the pair never bonds. `network` and the
+    /// dataset Al6 criterion run it once before classifying, `ferro net` before reading any input (review C-2: a NaN cutoff used to
     /// bond nothing, a negative one bonded at its absolute value).
     pub fn validate(&self) -> Result<()> {
         for ((a, b), &c) in self.cutoffs.iter().chain(&self.modifier_cutoffs) {
@@ -262,14 +262,9 @@ pub struct FrameTypes {
 ///
 /// `Err` when the frame has no 3-D periodic cell, the cell is singular (e.g. a slab
 /// written with `c = 0`), or a cutoff exceeds its minimum-image bound.
-pub fn classify_frame(frame: &Frame, params: &TypeParams) -> Result<Vec<AtomType>> {
-    params.validate()?;
-    Ok(classify_with_cell(frame, &PeriodicCell::of(frame)?, params)?.types)
-}
-
 /// The types plus the ligand→former adjacency, for pairwise statistics, for a caller that
-/// has validated `params` and built the frame's cell already: `network` checks both once
-/// for the whole trajectory. It went through a `classify_frame_detailed` that checked them
+/// has validated `params` and built the frame's cell already: `network` and the dataset
+/// Al6 criterion check both once for the whole trajectory. It went through a `classify_frame_detailed` that checked them
 /// again for every frame and rebuilt the cell (review 2026-10-30 A2-M4).
 pub(crate) fn classify_with_cell(frame: &Frame, cell: &PeriodicCell, params: &TypeParams) -> Result<FrameTypes> {
     // One neighbour list at the longest cutoff serves every pair; each pair is then
@@ -574,6 +569,11 @@ mod tests {
         f
     }
 
+    /// Classifies one frame the way the callers do: its own cell, params already valid.
+    fn classify(frame: &Frame, params: &TypeParams) -> Vec<AtomType> {
+        classify_with_cell(frame, &PeriodicCell::of(frame).unwrap(), params).unwrap().types
+    }
+
     fn params_po_alo() -> TypeParams {
         let mut c = CutoffTable::new();
         c.insert(("P".into(), "O".into()), 2.0);
@@ -585,7 +585,6 @@ mod tests {
     /// its absolute value when another pair sized the neighbour list — both `Ok`
     #[test]
     fn test_out_of_range_cutoffs_are_refused() {
-        let frame = frame_of(&[("P", 0.0, 0.0, 0.0), ("O", 1.5, 0.0, 0.0), ("Zn", 5.0, 0.0, 0.0)]);
         for (table, v) in [("former", f64::NAN), ("former", -1.6), ("former", f64::INFINITY), ("modifier", -2.0)] {
             let mut p = params_po_alo();
             match table {
@@ -593,22 +592,13 @@ mod tests {
                 _ => p.modifier_cutoffs.insert(("Zn".into(), "O".into()), v),
             };
             let pair = if table == "former" { "P-O" } else { "Zn-O" };
-            let err = classify_frame(&frame, &p).err().map(|e| e.to_string()).unwrap_or_default();
+            let err = p.validate().err().map(|e| e.to_string()).unwrap_or_default();
             assert!(err.contains(&format!("{pair} cutoff")), "{table} {v}: got {err:?}");
         }
         // 0 is "this pair never bonds", as an absent pair is given by `ferro net --X-O=auto`
         let mut p = params_po_alo();
         p.cutoffs.insert(("P".into(), "O".into()), 0.0);
-        assert!(classify_frame(&frame, &p).is_ok());
-    }
-
-    /// 审查 D-M17：奇异胞（c=0 的 slab）曾在最小镜像处 panic，公开函数应报错
-    #[test]
-    fn test_singular_cell_is_an_error_not_a_panic() {
-        let mut frame = frame_of(&[("P", 0.0, 0.0, 0.0), ("O", 1.5, 0.0, 0.0)]);
-        frame.cell = Some(Cell::from_matrix(nalgebra::Matrix3::from_diagonal(&nalgebra::Vector3::new(10.0, 10.0, 0.0))));
-        let err = classify_frame(&frame, &params_po_alo()).unwrap_err().to_string();
-        assert!(err.contains("singular"), "实际 {err}");
+        assert!(p.validate().is_ok());
     }
 
     #[test]
@@ -624,7 +614,7 @@ mod tests {
             ("P",  3.0, 0.0, 0.0),
             ("O",  0.0, 1.5, 0.0),   // 只连 Al 的非桥氧
         ]);
-        let types = classify_frame(&frame, &params_po_alo()).unwrap();
+        let types = classify(&frame, &params_po_alo());
 
         let AtomType::Former { qn, n_bo, cn, .. } = &types[0] else {
             panic!("Al 应被分类为形成子, got {:?}", types[0])
@@ -676,7 +666,7 @@ mod tests {
             ("O",  0.0, 1.5, 0.0),
         ]);
         let params = params_po_alo().with_qn_elements(["Al".to_string()]);
-        let types = classify_frame(&frame, &params).unwrap();
+        let types = classify(&frame, &params);
 
         // Al 现在报 Qn = 同元素连接数。这个构型里没有 Al-O-Al,故为 0 ——
         // 与它的配位数 2 不同,正好证明约定确实切换了

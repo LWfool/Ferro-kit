@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use crate::network::TypeParams;
 use ferro_core::data::elements::by_symbol;
 use ferro_core::units::AMU_ANG3_TO_G_CM3;
-use ferro_core::{Table, Trajectory};
+use ferro_core::{PeriodicCell, Table, Trajectory};
 
 use super::filter::FilterResult;
 
@@ -42,8 +42,11 @@ fn sample_frames(n: usize, max_frames: usize) -> Vec<usize> {
 /// Sampling at most `max_frames` frames: the shape of this curve is what
 /// matters, and it does not need every frame to be visible. A selection sitting
 /// on a steep part of the curve is chosen by its cutoff, not by the physics.
+///
+/// `cells` holds every frame's cell, built once by the caller (review 2026-11-06 A5-6).
 pub fn cutoff_scan(
     traj: &Trajectory,
+    cells: &[PeriodicCell],
     elem: &str,
     ligand: &str,
     target_cn: u32,
@@ -53,7 +56,7 @@ pub fn cutoff_scan(
     // The scan reaches past the selection's own cutoff, which is all the entry of
     // the filter checked (review D-A5)
     let widest = rcuts.iter().copied().fold(0.0, f64::max);
-    check::periodic_cells(traj, Some((&format!("{elem}-{ligand} cutoff scan"), widest)))?;
+    check::within_mic_bound(cells.iter().enumerate(), &format!("{elem}-{ligand} cutoff scan"), widest)?;
     let n = traj.n_frames();
     let sampled = sample_frames(n, max_frames);
 
@@ -66,12 +69,11 @@ pub fn cutoff_scan(
             let mut cut = BTreeMap::new();
             cut.insert((elem.to_string(), ligand.to_string()), rcut);
             let params = TypeParams::new(cut, Default::default());
+            params.validate()?;
             let mut hit = 0usize;
             let mut total = 0usize;
-            // Every frame has a cell: periodic_cells above refuses a frame without one
-            // (review 2026-10-30 A3-L9)
             for &i in &sampled {
-                let n_target = count_with_coordination(&traj.frames[i], &params, elem, target_cn)?;
+                let n_target = count_with_coordination(&traj.frames[i], &cells[i], &params, elem, target_cn)?;
                 if n_target > 0 {
                     hit += 1;
                 }
@@ -88,18 +90,18 @@ pub fn cutoff_scan(
         .collect()
 }
 
-/// Pooled coordination-number histogram for one element over the trajectory.
+/// Pooled coordination-number histogram for one element over the trajectory; `cells`
+/// holds every frame's cell, as in [`cutoff_scan`].
 pub fn pooled_coordination(
     traj: &Trajectory,
+    cells: &[PeriodicCell],
     params: &TypeParams,
     elem: &str,
 ) -> ferro_core::Result<Vec<(u32, usize)>> {
-    // Refused up front rather than skipped: a skipped frame still counted in a caller's
-    // denominator (review 2026-10-30 A3-L9)
-    check::all_periodic_cells(traj, None)?;
+    params.validate()?;
     let mut hist: BTreeMap<u32, usize> = BTreeMap::new();
-    for f in &traj.frames {
-        for (cn, n) in coordination_histogram(f, params, elem)? {
+    for (f, cell) in traj.frames.iter().zip(cells) {
+        for (cn, n) in coordination_histogram(f, cell, params, elem)? {
             *hist.entry(cn).or_default() += n;
         }
     }
@@ -232,7 +234,11 @@ pub fn filter_diagnostics(
     let mut cut = BTreeMap::new();
     cut.insert(("Al".to_string(), "O".to_string()), rcut);
     let tp = TypeParams::new(cut, Default::default());
-    let hist = pooled_coordination(traj, &tp, "Al")?;
+    // Every frame's cell, built once for the histogram, the bound and the scan (review
+    // 2026-11-06 A5-6). Refused up front rather than skipped: a skipped frame still counted
+    // in a denominator (review 2026-10-30 A3-L9)
+    let cells = check::all_periodic_cells(traj, None)?;
+    let hist = pooled_coordination(traj, &cells, &tp, "Al")?;
     if !hist.is_empty() {
         // The cutoff differs from system to system (--al6 without a value), so it
         // is recorded in the al6_rcut column of [inputs]
@@ -242,11 +248,10 @@ pub fn filter_diagnostics(
     // A sweep around the current cutoff: how steep it is is what this table is for. It
     // stops at the minimum-image bound: past it cutoff_scan refuses, and a cutoff the
     // filter accepted would fail the whole run after the report was printed
-    let bound = check::periodic_cells(traj, None)?.iter().flatten()
-        .map(|c| c.mic_bound()).fold(f64::INFINITY, f64::min);
+    let bound = cells.iter().map(|c| c.mic_bound()).fold(f64::INFINITY, f64::min);
     let rcuts: Vec<f64> = (-3..=3).map(|k| rcut + k as f64 * 0.1)
         .filter(|v| *v > 0.0 && *v <= bound).collect();
-    let scan = cutoff_scan(traj, "Al", "O", 6, &rcuts, 200)?;
+    let scan = cutoff_scan(traj, &cells, "Al", "O", 6, &rcuts, 200)?;
     out.push(("rcut_scan".to_string(), scan_table(&scan)));
     Ok(out)
 }

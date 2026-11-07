@@ -114,18 +114,29 @@ pub(crate) fn periodic_cells(
         })).transpose()
     }).collect::<ferro_core::Result<Vec<_>>>()?;
     if let Some((name, r)) = cutoff {
-        let tightest = cells.iter().enumerate()
-            .filter_map(|(i, c)| c.as_ref().map(|c| (i, c.mic_bound())))
-            .reduce(|a, b| if b.1 < a.1 { b } else { a });
-        if let Some((i, bound)) = tightest {
-            if r > bound {
-                fail(format!(
-                    "{name} {r:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
-                ))?;
-            }
-        }
+        within_mic_bound(cells.iter().enumerate().filter_map(|(i, c)| c.as_ref().map(|c| (i, c))), name, r)?;
     }
     Ok(cells)
+}
+
+/// The `cutoff` check of [`periodic_cells`], for a caller that holds the cells already:
+/// `r` must not exceed the tightest frame's minimum-image bound. `cells` yields
+/// `(frame index, cell)`.
+pub(crate) fn within_mic_bound<'a>(
+    cells: impl Iterator<Item = (usize, &'a PeriodicCell)>,
+    name: &str,
+    r: f64,
+) -> Check {
+    let tightest = cells.map(|(i, c)| (i, c.mic_bound()))
+        .reduce(|a, b| if b.1 < a.1 { b } else { a });
+    if let Some((i, bound)) = tightest {
+        if r > bound {
+            fail(format!(
+                "{name} {r:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
+            ))?;
+        }
+    }
+    Ok(())
 }
 
 /// [`periodic_cells`] for an analysis that needs a cell in every frame.
@@ -295,7 +306,8 @@ mod tests {
                     former: "Si".into(), ligand: "O".into(), former_ligand_cutoff: r, ..Default::default()
                 }).map(|_| ())),
                 // Review D-A5: the scan reaches past the selection's own cutoff
-                ("cutoff scan", crate::ml::dataset::diagnostics::cutoff_scan(&traj, "Si", "O", 4, &[r - 0.6, r], 10)
+                ("cutoff scan", crate::ml::dataset::diagnostics::cutoff_scan(
+                    &traj, &all_periodic_cells(&traj, None).unwrap(), "Si", "O", 4, &[r - 0.6, r], 10)
                     .map(|_| ())),
             ]
         };
