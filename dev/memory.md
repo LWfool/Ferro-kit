@@ -82,3 +82,22 @@ heredoc 本轮用了十几次都没事 —— **动手前看一眼替换串里�
 
 **How to apply:** 单测 CLI 用 `cargo test -p ferro`；拿不准就跑全量 `cargo test`。过滤输出时把
 `error` 也放进 grep 的模式，别只盯 `FAILED` / `panicked`。
+
+## 提交信息里的哈希一律从 `git log` 取
+
+写 R5 基线、「见某提交」时，哈希用 `git log -1 --format=%h <ref>` 取出来再填，不凭记忆写。
+amend 会换哈希：amend 过的提交，后面再引用要重新取。
+
+**Why:** 2026-11-07 审查批 8–14 里三次写出不存在的哈希（`ec04c8b`、`0d1b5f0-era`），一次引用了
+amend 前的旧哈希（`0aab0c0`，留在批 11 的提交信息里未改）。
+
+**How to apply:** 提交信息里出现 7 位哈希的地方，先跑一次 `git log --oneline -N` 对照。
+
+## macOS 的 `iconv` / `grep` 判 UTF-8 不可信
+
+`iconv -f UTF-8 -t UTF-8` 会把本仓里合法的 UTF-8 文件（如 `decisions.md`、`gr.rs`）判成坏的；`grep`
+在默认 locale 下报 `illegal byte sequence` 也不说明文件坏了。要验编码用 Python：
+`open(f, 'rb').read().decode('utf-8')`，新增行里查 `\ufffd`。
+
+**Why:** 2026-11-07 用 iconv 扫出 7 个「坏文件」，Python 解码全部通过，rustc 也照常编译。
+

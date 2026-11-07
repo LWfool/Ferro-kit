@@ -12,6 +12,25 @@ command line alike; regenerate it rather than migrating it.
 
 ## Unreleased
 
+### Renamed: `--r-cut` is `--rcut`
+
+- **Edit your command lines:** `ferro traj rotcorr --r-cut` is `--rcut`, and `ferro traj angle
+  --r-cut-ab` / `--r-cut-bc` are `--rcut-ab` / `--rcut-bc`; the old names are an error (clap
+  suggests the new one). File headers read `# rcut`, `# rcut_ab`, `# rcut_bc`.
+
+### Output that changed
+
+- `ferro info` and the `ferro net` tables list elements by atomic number, as every other command
+  does: `O, Al, P` where they said `Al, O, P`.
+- xyz and CIF files carry 10 decimals (coordinates; for CIF also the cell lengths and angles),
+  as the other formats do, so a conversion no longer rounds to 1e-6 Å.
+- `ferro dataset filter` report headers write `Ang` (`f_max = 20 eV/Ang`), as every other file
+  header; terminal messages and errors write `Å`. Library errors lose their `Validation error:` /
+  `Parse error:` prefix: `ferro: FerroError: <message>`.
+- `--al6 abc` and `--dims 0 ...` are usage errors from the command line parser (exit code 2).
+- Python `ferro.gr_pair` / `ferro.gr_all` default to `r_max=10.005`, clamped to the box, as
+  `ferro traj gr`: on a box past 20 Å they used to run to the minimum-image bound instead.
+
 ### `ferro build`: one structure per input
 
 - **Edit your scripts:** `ferro build supercell` / `vacuum`, and Python's `ferro.supercell` /
