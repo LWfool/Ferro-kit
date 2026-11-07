@@ -235,13 +235,13 @@ fn report_params(args: &FilterCmd, params: &FilterParams) -> Vec<String> {
     // ferro-analysis ml/dataset/filter.rs `meta_lines`; not shared (R6, review 2026-10-30 CR-9)
     let off = |v: f64, unit: &str| if v > 0.0 { format!("{v} {unit}") } else { "off".to_string() };
     let mut v = vec![
-        format!("f_max     = {}", off(args.f_max(), "eV/Å")),
+        format!("f_max     = {}", off(args.f_max(), "eV/Ang")),
         format!("s_max     = {}", off(args.s_max(), "GPa")),
-        format!("oo_min    = {}", off(params.oo_min, "Å")),
+        format!("oo_min    = {}", off(params.oo_min, "Ang")),
         match args.al6.as_deref() {
             None => "al6       = off".to_string(),
             Some("auto") => "al6       = on (cutoff from the Al-O RDF, per system)".to_string(),
-            Some(v) => format!("al6       = on (cutoff {v} Å)"),
+            Some(v) => format!("al6       = on (cutoff {v} Ang)"),
         },
         format!("set_size  = {}", args.set_size),
     ];
@@ -402,6 +402,25 @@ fn print_table(t: &ferro_core::Table) {
 mod tests {
     use super::*;
     use super::super::test_ids::*;
+
+    /// A report's parameter block is a file header: the angstrom in ASCII, `Ang`, as every
+    /// other header writes it (review 2026-11-06 D4)
+    #[test]
+    fn report_params_spell_the_angstrom_in_ascii() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        let w = Wrap::try_parse_from(["filter", "-i", "d", "--oo-min", "--al6", "2.5"]).unwrap();
+        let params = FilterParams { oo_min: 2.0, ..Default::default() };
+        let lines = report_params(&w.cmd, &params);
+        assert!(lines.iter().all(|l| !l.contains('\u{c5}')), "{lines:?}");
+        assert!(lines.contains(&"f_max     = 20 eV/Ang".to_string()), "{lines:?}");
+        assert!(lines.contains(&"oo_min    = 2 Ang".to_string()), "{lines:?}");
+        assert!(lines.contains(&"al6       = on (cutoff 2.5 Ang)".to_string()), "{lines:?}");
+    }
 
     /// 审查 C-D4 连带：`-f nan` / `--oo-min nan` 曾静默关掉判据，`--al6 nan` 要删光帧才失败
     #[test]

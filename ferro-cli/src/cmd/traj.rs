@@ -458,7 +458,7 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
     for (input, r) in &results {
         if let Some(f) = &r.fit {
             println!(
-                "{}: D = {:.6e} ± {:.1e} Ang^2/fs = {:.6e} cm^2/s = {:.6e} m^2/s  (R^2={:.4})",
+                "{}: D = {:.6e} ± {:.1e} Å²/fs = {:.6e} cm²/s = {:.6e} m²/s  (R²={:.4})",
                 input.label.clone(),
                 f.d_ang2_per_fs,
                 f.d_err,

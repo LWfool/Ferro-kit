@@ -37,7 +37,7 @@ impl NeighborList {
         let bound = cell.mic_bound();
         if rcut > bound {
             return Err(ChemError(format!(
-                "cutoff {rcut:.3} A exceeds the minimum-image bound {bound:.3} A of the cell"
+                "cutoff {rcut:.3} Å exceeds the minimum-image bound {bound:.3} Å of the cell"
             )));
         }
         // 每轴 bin 数 = floor(d_i / rcut)：(Mᵀ)⁻¹ 第 i 行的模 = 1/d_i，对三斜胞也成立

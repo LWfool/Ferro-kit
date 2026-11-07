@@ -223,7 +223,7 @@ pub fn calc_bondlife(traj: &Trajectory, params: &BondLifeParams) -> ferro_core::
     candidates.dedup();
     if candidates.is_empty() {
         return Err(ChemError(format!(
-            "no {}-{} pair within r-bond = {r_bond} Ang in any frame", params.center, params.neighbor)));
+            "no {}-{} pair within r-bond = {r_bond} Å in any frame", params.center, params.neighbor)));
     }
 
     // 第二遍：每个候选的存在序列 h（滞后规则）与补缺口后的 h_fill

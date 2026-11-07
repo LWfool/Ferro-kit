@@ -138,7 +138,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
     // 整条 S(q) 平移。补解析项要假设该段无原子对，r_min 越过第一峰时静默错，故直接要求从 0 起
     if gr.params.r_min != 0.0 {
         return Err(ChemError(format!(
-            "S(q) needs g(r) computed from r = 0, got r_min = {} Ang", gr.params.r_min
+            "S(q) needs g(r) computed from r = 0, got r_min = {} Å", gr.params.r_min
         )));
     }
     // Sample points q_min, q_min + dq, ... up to q_max inclusive. The quotient of a whole

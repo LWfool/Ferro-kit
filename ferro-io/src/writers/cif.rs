@@ -37,12 +37,12 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
     let [a, b, c] = cell.lengths();
     let [alpha, beta, gamma] = cell.angles();
 
-    writeln!(w, "_cell_length_a         {a:.6}")?;
-    writeln!(w, "_cell_length_b         {b:.6}")?;
-    writeln!(w, "_cell_length_c         {c:.6}")?;
-    writeln!(w, "_cell_angle_alpha       {alpha:.4}")?;
-    writeln!(w, "_cell_angle_beta        {beta:.4}")?;
-    writeln!(w, "_cell_angle_gamma       {gamma:.4}")?;
+    writeln!(w, "_cell_length_a         {a:.10}")?;
+    writeln!(w, "_cell_length_b         {b:.10}")?;
+    writeln!(w, "_cell_length_c         {c:.10}")?;
+    writeln!(w, "_cell_angle_alpha       {alpha:.10}")?;
+    writeln!(w, "_cell_angle_beta        {beta:.10}")?;
+    writeln!(w, "_cell_angle_gamma       {gamma:.10}")?;
     writeln!(w)?;
     writeln!(w, "_space_group_name_H-M   'P 1'")?;
     writeln!(w, "_space_group_IT_number  1")?;
@@ -79,7 +79,7 @@ pub fn write_cif(trajectory: &Trajectory, path: &Path) -> Result<()> {
         let frac = to_frac * atom.position;
         writeln!(
             w,
-            "{:<8} {:<4} {:>10.6} {:>10.6} {:>10.6}",
+            "{:<8} {:<4} {:>14.10} {:>14.10} {:>14.10}",
             quote(&label), atom.element, frac.x, frac.y, frac.z
         )?;
     }
@@ -136,6 +136,23 @@ mod tests {
         let back = read_cif(&path).unwrap();
         let labels: Vec<_> = back.frames[0].atoms().map(|a| a.label.map(str::to_string)).collect();
         assert_eq!(labels, [Some("Fe2"), Some("Fe1"), Some("O a"), Some("O a_2")].map(|l| l.map(Into::into)));
+    }
+
+    /// Cell and fractional coordinates go out with 10 decimals, as in the other writers:
+    /// `.6` / `.4` lost up to 1e-4 Å per conversion of a triclinic cell (review 2026-11-06 D9)
+    #[test]
+    fn test_cell_and_coordinates_keep_ten_decimals() {
+        let cell = ferro_core::Cell::from_lengths_angles(7.123456789, 8.2, 9.3, 81.23456789, 92.5, 103.75).unwrap();
+        let mut frame = Frame::with_cell(cell.clone(), [true; 3]);
+        let at = cell.fractional_to_cartesian(Vector3::new(0.123456789012, 0.5, 0.987654321098));
+        frame.add_atom(Atom::new("Fe", at));
+        let path = crate::testutil::tmp_path("ferro_cif_precision.cif");
+        write_cif(&Trajectory::from_frame(frame), &path).unwrap();
+        let back = read_cif(&path).unwrap();
+        let d = (back.frames[0].positions()[0] - at).norm();
+        assert!(d < 1e-8, "position moved {d} A");
+        let m = back.frames[0].cell.as_ref().unwrap().matrix - cell.matrix;
+        assert!(m.norm() < 1e-8, "cell moved {}", m.norm());
     }
 
     #[test]

@@ -131,3 +131,13 @@ fn chg_sdf_cubes_are_expanded_like_inputs() {
     assert!(text(&out.stderr).contains("no file matches"), "{}", text(&out.stderr));
     assert!(!o.exists());
 }
+
+#[test]
+fn info_lists_elements_by_atomic_number() {
+    // (Z, symbol) order, as md and the writers use (review 2026-11-06 D5): O before Al
+    let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/43Z43P15A_NPT_5.lammpstrj");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_ferro"))
+        .args(["info", "-i", fixture]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("(O: 1314, Al: 132, P: 372, Zn: 186)"), "{text}");
+}

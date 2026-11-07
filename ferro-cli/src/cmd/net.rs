@@ -224,7 +224,7 @@ fn fmt_means<T>(
     present: &std::collections::HashMap<String, T>,
 ) -> String {
     let mut elems: Vec<&String> = present.keys().collect();
-    elems.sort();
+    elems.sort_by(|a, b| ferro_core::data::elements::canonical_cmp(a, b));
     elems.iter()
         .filter_map(|e| means.get(*e).map(|v| format!("{e}={v:.2}")))
         .collect::<Vec<_>>()

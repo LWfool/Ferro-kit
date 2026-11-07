@@ -21,7 +21,7 @@ pub fn write_xyz(trajectory: &Trajectory, path: &Path) -> Result<()> {
         for atom in frame.atoms() {
             writeln!(
                 writer,
-                "{:<2}  {:>12.6}  {:>12.6}  {:>12.6}",
+                "{:<2}  {:>16.10}  {:>16.10}  {:>16.10}",
                 atom.element, atom.position.x, atom.position.y, atom.position.z
             )?;
         }
@@ -59,5 +59,17 @@ mod tests {
         assert_eq!(loaded.n_frames(), 1);
         assert_eq!(loaded.first().unwrap().n_atoms(), 3);
         assert_eq!(loaded.metadata.title.as_deref(), Some("Water molecule"));
+    }
+
+    /// Coordinates go out with 10 decimals, as in the other writers: `.6` lost 1e-6 Å per
+    /// conversion (review 2026-11-06 D9)
+    #[test]
+    fn test_coordinates_keep_ten_decimals() {
+        let mut frame = Frame::new();
+        frame.add_atom(Atom::new("O", Vector3::new(1.234567890123, -98.7654321098, 0.0)));
+        let path = crate::testutil::tmp_path("ferro_xyz_precision.xyz");
+        write_xyz(&Trajectory::from_frame(frame), &path).unwrap();
+        let back = read_xyz(&path).unwrap().0.frames[0].positions()[0];
+        assert!((back - Vector3::new(1.234567890123, -98.7654321098, 0.0)).norm() < 1e-9, "{back}");
     }
 }

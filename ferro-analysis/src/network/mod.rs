@@ -37,6 +37,7 @@ pub(crate) use classify::classify_with_cell;
 pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 
 use crate::check;
+use ferro_core::data::elements::canonical_cmp;
 use ferro_core::ChemError;
 use ferro_core::{Frame, PeriodicCell, Table, Trajectory};
 use std::collections::{BTreeMap, HashMap};
@@ -337,10 +338,11 @@ impl NetworkResult {
     /// The `qn` and `qn_partner` tables are **omitted entirely** when no former is a
     /// Qn element: a header-only file reads as "measured, and it was zero".
     pub fn to_tables(&self) -> Vec<(String, Table)> {
+        // (Z, symbol) order, as md and the writers (review 2026-11-06 D5)
         let mut formers: Vec<&String> = self.qn_dist.keys().collect();
-        formers.sort();
+        formers.sort_by(|a, b| canonical_cmp(a, b));
         let mut elems: Vec<&String> = self.cn_dist.keys().collect();
-        elems.sort();
+        elems.sort_by(|a, b| canonical_cmp(a, b));
 
         let mut out = Vec::with_capacity(6);
         out.extend(self.qn_table(&formers));
@@ -401,12 +403,12 @@ impl NetworkResult {
             let mut s: Vec<String> = self.qn_partner_dist.values()
                 .flat_map(|rows| rows.iter().flat_map(|((_, to), _)| to.keys().cloned()))
                 .collect();
-            s.sort();
+            s.sort_by(|a, b| canonical_cmp(a, b));
             s.dedup();
             s
         };
         let mut pf: Vec<&String> = self.qn_partner_dist.keys().collect();
-        pf.sort();
+        pf.sort_by(|a, b| canonical_cmp(a, b));
         let (mut l_col, mut f_col, mut v_col) = (Vec::new(), Vec::new(), Vec::new());
         let mut m_cols: Vec<Vec<f64>> = vec![Vec::new(); partner_elems.len()];
         let mut bins = Vec::new();
@@ -536,7 +538,7 @@ impl NetworkResult {
             }
         }
         let mut ligs: Vec<&String> = self.ligand_dist.keys().collect();
-        ligs.sort();
+        ligs.sort_by(|a, b| canonical_cmp(a, b));
         for elem in ligs {
             for (label, b) in &self.ligand_dist[elem] {
                 l_col.push(label.clone());
@@ -1390,6 +1392,27 @@ mod tests {
 
     /// Al 由配位数刻画，不由 Qn。它必须从 qn / qn_partner 两张表里**整体消失**，
     /// 同时保留在 coordination / ligand_type / linkage —— 否则 Al-O-Al 无从统计。
+    /// Elements run in (Z, symbol) order, as in md and the writers (review 2026-11-06 D5):
+    /// Mg (Z 12) before Al (Z 13), where the alphabet put Al first
+    #[test]
+    fn test_tables_list_elements_by_atomic_number() {
+        let frame = cube(vec![
+            atom("Al", 0.0, 0.0, 0.0),
+            atom("O",  1.8, 0.0, 0.0),
+            atom("Mg", 3.6, 0.0, 0.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Mg".to_string(), "O".to_string()), 2.3);
+        let res = calc_network(&traj_of(vec![frame]), &TypeParams::new(cutoffs, BTreeMap::new())).unwrap();
+        let tables = res.to_tables();
+        let t = &tables.iter().find(|(n, _)| n == "coordination").unwrap().1;
+        let c = t.column("element").unwrap();
+        let mut elems: Vec<String> = (0..c.len()).map(|i| c.cell(i)).collect();
+        elems.dedup();
+        assert_eq!(elems, ["Mg", "Al"], "{elems:?}");
+    }
+
     #[test]
     fn test_non_qn_former_leaves_the_qn_tables_but_stays_elsewhere() {
         let frame = cube(vec![

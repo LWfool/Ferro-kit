@@ -132,7 +132,7 @@ pub(crate) fn within_mic_bound<'a>(
     if let Some((i, bound)) = tightest {
         if r > bound {
             fail(format!(
-                "{name} {r:.3} A exceeds the minimum-image bound {bound:.3} A of the cell (frame {i})"
+                "{name} {r:.3} Å exceeds the minimum-image bound {bound:.3} Å of the cell (frame {i})"
             ))?;
         }
     }

@@ -70,6 +70,9 @@ fn print_frame_info(frame: &Frame, idx: usize, source: &Path) -> bool {
     for a in frame.atoms() {
         *counts.entry(a.element).or_insert(0) += 1;
     }
+    // (Z, symbol) order, as md and the writers (review 2026-11-06 D5)
+    let mut counts: Vec<_> = counts.into_iter().collect();
+    counts.sort_by(|(a, _), (b, _)| ferro_core::data::elements::canonical_cmp(a, b));
     let composition: Vec<String> = counts.iter().map(|(e, n)| format!("{e}: {n}")).collect();
 
     println!("\nFrame {idx}:");
