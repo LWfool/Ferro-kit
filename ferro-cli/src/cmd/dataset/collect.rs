@@ -229,13 +229,9 @@ fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
         std::fs::canonicalize(&dir).unwrap_or(dir)
     };
 
-    let mut order: Vec<PathBuf> = Vec::new();
     let mut by_dir: BTreeMap<PathBuf, (PathBuf, Vec<PathBuf>)> = BTreeMap::new();
     for p in inputs {
         let k = key_of(p);
-        if !by_dir.contains_key(&k) {
-            order.push(k.clone());
-        }
         // 显示路径取用户写下的那一个（规范化后是绝对路径，刷屏且认不出）
         let as_written = dir_of(p);
         by_dir
@@ -244,7 +240,8 @@ fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
             .1
             .push(p.clone());
     }
-    order.sort();
+    // In key order, as the BTreeMap holds them (a separate sorted list of keys was the same)
+    let order: Vec<PathBuf> = by_dir.keys().cloned().collect();
 
     let mut ancestor = common_ancestor(&order);
     // A group sitting at the ancestor itself would get an empty name and land in
@@ -255,11 +252,11 @@ fn group_by_directory(inputs: &[PathBuf]) -> Vec<Group> {
             ancestor = up.to_path_buf();
         }
     }
-    order
+    by_dir
         .into_iter()
-        .map(|key| {
-            let rel = key.strip_prefix(&ancestor).unwrap_or(Path::new("")).to_path_buf();
-            let (dir, files) = by_dir.remove(&key).unwrap_or_default();
+        .map(|(key, (dir, files))| {
+            // The ancestor (or its parent) is a prefix of every key
+            let rel = key.strip_prefix(&ancestor).expect("the common ancestor of every key").to_path_buf();
             Group { dir, rel, files }
         })
         .collect()

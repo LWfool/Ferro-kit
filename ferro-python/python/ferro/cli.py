@@ -545,11 +545,9 @@ def run_conv(argv):
     # One build per file, so only that file's trajectory is held (see read_structures)
     built, manifest, n_structures = [], None, 0
     for _, structures in read_structures(files, args, type_map):
-        try:
-            jobs, part = conv.build(generator, args.software, parameter, values, structures, options,
-                                    args.template)
-        except (ValueError, ferro.FerroError) as e:
-            raise UsageError(str(e)) from None
+        # ValueError / FerroError reach main, which prints them as it prints a UsageError
+        jobs, part = conv.build(generator, args.software, parameter, values, structures, options,
+                                args.template)
         built += jobs
         if manifest is None:
             manifest = part

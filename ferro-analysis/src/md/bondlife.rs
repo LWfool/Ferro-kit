@@ -148,7 +148,7 @@ fn existence(d: &[f64], r_bond: f64, r_break: f64) -> Vec<bool> {
 /// lag where the function first drops below 1/e (linear interpolation; NaN if it
 /// never does within the lag axis).
 pub fn lifetimes(c: &[f64], dt: f64) -> (f64, f64) {
-    let integral = *cumulative_trapezoid(c, dt).last().unwrap_or(&f64::NAN);
+    let integral = *cumulative_trapezoid(c, dt).last().expect("C(t) holds lag 0 at least");
     let target = (-1.0f64).exp();
     let cross = c.windows(2).enumerate().find(|(_, w)| w[0] >= target && w[1] < target)
         .map(|(m, w)| (m as f64 + (w[0] - target) / (w[0] - w[1])) * dt)

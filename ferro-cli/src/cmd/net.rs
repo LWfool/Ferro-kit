@@ -390,7 +390,7 @@ fn resolve_auto(
     let pairs: Vec<(&str, &str)> = auto.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     let found = first_shell_cutoffs(traj, &pairs)?;
 
-    let present = traj.frames.first().map(|f| f.unique_elements()).unwrap_or_default();
+    let present = traj.frames[0].unique_elements(); // read_as refuses a file with no frame
     let mut params = template.clone();
     let mut shells = Vec::with_capacity(auto.len());
     for ((a, b), shell) in auto.iter().zip(found) {
@@ -434,8 +434,8 @@ fn parse_pairs(pair_args: &[String]) -> Result<BTreeMap<(String, String), Option
     let mut map = BTreeMap::new();
     for arg in pair_args {
         let inner = arg.trim_start_matches('-');
-        let (pair, cutoff_str) = inner.split_once('=')
-            .ok_or_else(|| anyhow!("Invalid pair argument (missing '='): {arg}"))?;
+        // split_pair_args only passes arguments holding '='
+        let (pair, cutoff_str) = inner.split_once('=').expect("a pair argument holds '='");
         let (former, ligand) = pair.split_once('-')
             .ok_or_else(|| anyhow!("Invalid pair argument (missing '-'): {arg}"))?;
         let cutoff = if cutoff_str == "auto" {

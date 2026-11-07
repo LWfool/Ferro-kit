@@ -952,3 +952,12 @@ spglib 530 条 Hall 符号全部一致；530 条 H-M 设置符号 518 条一致�
 | 格式表的 `--format-in` 列 | 按 `Format::ALL` 的变体逐行查 `LABELS` | CP2K md / sp 两个变体共一行（`ALL` 只放 `Cp2kMd`），按 `name()` 归组才能两名同列 |
 | 加格式 | 只补 `ALL` 与各 match | `LABELS` 是数组，**不受 match 穷尽检查**：新变体须手动加一个名字；测试只查名字不重复 |
 | `build` 的产物格式（`OutArgs::ext`） | 只看文件名，或在读前预检里直接 `Format::detect(p)?` | 有效格式 = `format_in` → `detect` → `from_name`。`detect` 要打开文件，预检时它的 IO 错误**回落到文件名**，不能 `?` 中止整批 —— 坏输入应在自己那一步读失败、被跳过（审查 2026-10-30 H6） |
+
+## 2026-11-06 审查批 1 / 批 3 的编码陷阱（2026-11-07）
+
+| 位置 | 陷阱 | 正确做法 |
+|---|---|---|
+| `readers/cp2k.rs` `find_end` | 以为 `find_end(..).context()?` 就能把未闭合的段报成错 | `find_end` 按深度闭合：未闭合的 `&KIND` 会被 `&END SUBSYS`「闭合」，返回 Some。还要核对闭合行的段名（裸 `&END` 或 `&END <段名>`） |
+| reader 的「截断」判据 | 用 `From<String>` 把一切未标注的错误归成 Incomplete | 只有「行不存在」或「是文件最后一行」才算截断（`lammps_dump.rs` 的 `fail_at`），完整的行写错恒报错。笼统的 From 会把写坏的表头变成「丢帧、退出码 0」 |
+| 删「不可达」兜底 | 照审查报告的结论直接删 | 逐条核：`ols` 的绝对阈值 `EPSILON` 在 dt 极小时可达；坐标为 `inf` 时 `best.is_finite()` 为假；conv 清单是可手改的 JSON。删这些等于改行为 |
+| `input_name` 与软链接 | 为取名把每条路径都 canonicalize | 软链接的名字会变成目标的名字。只有自身无名的路径（`.`、`./`、`a/..`）才解析 |

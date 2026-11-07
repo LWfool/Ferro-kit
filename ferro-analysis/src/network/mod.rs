@@ -180,10 +180,8 @@ impl Moments {
 
     /// Folds in the frames where this bin did not occur (each contributing `f = 0`),
     /// then reports the mean and sample standard deviation over **all** frames.
+    /// `n_frames >= 1`: calc_network refuses an empty trajectory.
     fn finish(&self, n_frames: usize) -> Bin {
-        if n_frames == 0 {
-            return Bin { count: self.count, fraction: f64::NAN, sd: f64::NAN };
-        }
         let (mut mean, mut m2) = (self.mean, self.m2);
         let missing = n_frames.saturating_sub(self.seen);
         if missing > 0 {
@@ -722,7 +720,7 @@ fn network(
     crate::md::util::par_map_in_order(&pairs, |&(frame, cell)| {
         let ft = classify::classify_with_cell(frame, cell, params)
             .expect("checked at the entry by validate and check::all_periodic_cells");
-        let fd = compute_frame(&ft, frame, params);
+        let fd = compute_frame(&ft, frame);
         (fd, keep_types.then_some(ft.types))
     }, |(fd, types)| {
         acc.push(&fd);
@@ -734,7 +732,7 @@ fn network(
 
 // ─── 单帧计算 ─────────────────────────────────────────────────────────────────
 
-fn compute_frame(ft: &FrameTypes, frame: &Frame, params: &TypeParams) -> FrameData {
+fn compute_frame(ft: &FrameTypes, frame: &Frame) -> FrameData {
     let types = &ft.types;
 
     let mut bridge: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
@@ -744,9 +742,7 @@ fn compute_frame(ft: &FrameTypes, frame: &Frame, params: &TypeParams) -> FrameDa
     let mut ligand: LigandHist = HashMap::new();
     let mut n_bo_hist: HashMap<String, (HashMap<u32, usize>, usize)> = HashMap::new();
 
-    let ligands = params.ligands();
-
-    for (idx, t) in types.iter().enumerate() {
+    for t in types {
         match t {
             // `qn` 是 Some 才有 Qn 分布可言；非 Qn 形成子（Al）只进配位数表。
             // 判据取自类型自身而不是重查 params，因为类型携带的正是它被分类时
@@ -782,10 +778,10 @@ fn compute_frame(ft: &FrameTypes, frame: &Frame, params: &TypeParams) -> FrameDa
                 *l.0.entry((t.class_rank(), t.label())).or_insert(0) += 1;
                 l.1 += 1;
             }
-            // 配体元素的原子若被别的角色覆盖（元素同时是配体与形成子）已在上面计入
-            AtomType::Other { elem } => {
-                debug_assert!(!ligands.contains(elem), "ligand atom {idx} left unclassified");
-            }
+            // A ligand element's atom taken by another role (an element both ligand and former)
+            // is counted above; classify never leaves a ligand atom as Other (review 2026-11-06
+            // A5-9: a per-frame ligand list fed only a debug_assert of that)
+            AtomType::Other { .. } => {}
         }
     }
 
@@ -867,7 +863,7 @@ fn push_hist<K: Ord + Clone>(
     hist: &HashMap<K, usize>,
     total: usize,
 ) {
-    if total == 0 { return; }
+    // total >= 1: compute_frame creates an entry by counting its first atom
     let slot = dst.entry(elem.to_string()).or_default();
     for (k, &c) in hist {
         slot.entry(k.clone()).or_default().push(c, c as f64 / total as f64);
@@ -889,10 +885,10 @@ impl Accumulator {
             push_hist(&mut self.ligand, elem, hist, *total);
         }
         // oxy 的分母是该配体元素的原子数,与 ligand 一致
+        // Every ligand atom counts into both oxy and ligand, so its element has a total >= 1
         for (key, &c) in &fd.oxy {
-            let Some((_, total)) = fd.ligand.get(&key.0) else { continue };
-            if *total == 0 { continue; }
-            self.oxy.entry(key.clone()).or_default().push(c, c as f64 / *total as f64);
+            let total = fd.ligand[&key.0].1;
+            self.oxy.entry(key.clone()).or_default().push(c, c as f64 / total as f64);
         }
         self.n_edge_sharing += fd.n_edge_sharing;
         for (elem, (hist, _)) in &fd.n_bo {
@@ -902,11 +898,10 @@ impl Accumulator {
                 e.1 += c;
             }
         }
-        if fd.n_links > 0 {
-            for (key, &c) in &fd.linkage {
-                self.linkage.entry(key.clone()).or_default()
-                    .push(c, c as f64 / fd.n_links as f64);
-            }
+        // No link leaves linkage empty: the division is never by 0
+        for (key, &c) in &fd.linkage {
+            self.linkage.entry(key.clone()).or_default()
+                .push(c, c as f64 / fd.n_links as f64);
         }
     }
 
@@ -914,11 +909,10 @@ impl Accumulator {
         let to_dist = |m: &BTreeMap<u32, Moments>| -> Vec<(u32, Bin)> {
             m.iter().map(|(&v, mo)| (v, mo.finish(n_frames))).collect()
         };
+        // Every key counted at least one former
         let mean_of = |sums: &HashMap<String, (f64, usize)>, k: &String| -> f64 {
-            match sums.get(k) {
-                Some(&(s, n)) if n > 0 => s / n as f64,
-                _ => f64::NAN,
-            }
+            let (s, n) = sums[k];
+            s / n as f64
         };
         // Pooled mean of a histogram: Σ value·count / Σ count over every frame. The
         // products and sums are integers held exactly in f64, so the order is immaterial

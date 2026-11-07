@@ -49,7 +49,7 @@ fn parse_cp2k(content: &str) -> Result<Trajectory> {
             let low = subsys[j].to_lowercase();
             // `&KIND` 行带 kind 名（`&KIND O`），比较第一个词
             if low.split_whitespace().next() == Some("&kind") {
-                let label = low.strip_prefix("&kind").unwrap_or("").trim().to_string();
+                let label = low.strip_prefix("&kind").expect("its first word is &kind").trim().to_string();
                 // An unclosed &KIND is closed by depth at `&END SUBSYS`: the end line must be a
                 // bare `&END` or `&END KIND` (review 2026-11-06 A2-7)
                 let end = find_end(subsys, j)

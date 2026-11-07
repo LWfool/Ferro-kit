@@ -364,7 +364,7 @@ class Cp2kGenerator(Generator):
 
     def _motion(self, root, force_eval, options, notes, template_text):
         glob = root.section("GLOBAL", create=True)
-        if options.task == "opt" and options.vary_cell:
+        if options.vary_cell:
             self._check_cell_cutoff(force_eval, template_text, options.task, "--vary-cell")
             glob.set("RUN_TYPE", "CELL_OPT")
             root.section("MOTION/CELL_OPT", create=True)

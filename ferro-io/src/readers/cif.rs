@@ -238,7 +238,7 @@ fn parse_atom_sites(block: &CifBlock, cell: &Cell) -> Result<AtomSites> {
     for (k, row) in rows.iter().enumerate() {
         // Every row is full: the loop parser bails on a short last row
         let get = |i: usize| row[i].as_str();
-        let name = idx_lbl.or(idx_sym).map(|i| get(i).to_string()).unwrap_or_default();
+        let name = get(idx_lbl.or(idx_sym).expect("a label or symbol column, ensured above")).to_string();
         // 坐标与占位度的坏值报错并点名位点 —— 以前坐标 `unwrap_or(0.0)`，`?` 或写坏的数
         // 把原子静默放到原点（与审查 L6 同一类）
         let num = |i: usize, tag: &str| -> Result<f64> {
@@ -566,7 +566,7 @@ fn parse_cif_float(s: &str) -> Option<f64> {
     match s.trim() {
         "?" | "." => None,
         s => {
-            let s = s.split('(').next().unwrap_or(s);
+            let s = s.split('(').next().expect("split yields a first piece");
             s.parse().ok()
         }
     }

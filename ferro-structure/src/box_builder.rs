@@ -197,12 +197,6 @@ fn box_length(total_mass: f64, density: f64) -> Result<f64> {
         )));
     }
 
-    if total_mass == 0.0 {
-        return Err(ChemError::ValidationError(
-            "no molecules specified".into(),
-        ));
-    }
-
     // A molar mass in g/mol is the molecule's mass in amu, and density = m / V ×
     // AMU_ANG3_TO_G_CM3, so V (Å³) = m / density × AMU_ANG3_TO_G_CM3 (review A-7: the
     // constant was spelled out here as 1e24 / N_A)
@@ -410,9 +404,6 @@ fn wrap_into(x: f64, l: f64) -> f64 {
 /// Soft-core relaxation: steepest descent removes overlaps. Returns the number of
 /// pairs still closer than `min_dist` at the end.
 fn relax(atoms: &mut [Atom], box_len: f64, min_dist: f64, max_steps: usize) -> usize {
-    if atoms.is_empty() {
-        return 0;
-    }
     let cutoff = min_dist * 1.5; // the cell list's cutoff, a little above min_dist
     let step_size = min_dist * 0.05;
     let n = atoms.len();

@@ -294,7 +294,7 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
         report.warnings.extend(w);
         traj
     };
-    let traj = match format {
+    let mut traj = match format {
         Format::Xyz => warned(read_xyz(path)?),
         Format::Extxyz => warned(read_extxyz(path)?),
         Format::Pdb => warned(read_pdb(path)?),
@@ -318,9 +318,8 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
             traj
         }
         Format::QeInput => read_qe_input(path)?,
-        Format::Cp2kInput => read_cp2k_inp(path)?,
         // A restart file is an input file, read by the same parser (review 2026-10-30 A1-L13)
-        Format::Cp2kRestart => read_cp2k_inp(path)?,
+        Format::Cp2kInput | Format::Cp2kRestart => read_cp2k_inp(path)?,
         Format::Deepmd => warned(read_deepmd_npy(path)?),
         Format::Aimd(fmt) => {
             let (traj, stats) = read_aimd_as(path, fmt)?;
@@ -329,7 +328,6 @@ pub fn read_as(path: &Path, format: Format, opts: &ReadOptions) -> Result<(Traje
             traj
         }
     };
-    let mut traj = traj;
     // A file that reads as no frame at all is an error for every format, checked once here
     // rather than in each reader (review 2026-10-30 A1-M1)
     if traj.n_frames() == 0 {
@@ -390,7 +388,8 @@ pub fn write_numbered(
         return Ok(vec![path.to_path_buf()]);
     }
     assert_eq!(numbers.len(), traj.n_frames(), "one number per frame");
-    let width = index_width(numbers.iter().copied().max().unwrap_or(0));
+    // More than one frame here, and one number per frame
+    let width = index_width(numbers.iter().copied().max().expect("several frames"));
     let mut written = Vec::with_capacity(numbers.len());
     for (&n, frame) in numbers.iter().zip(&traj.frames) {
         let one = Trajectory { frames: vec![frame.clone()], metadata: traj.metadata.clone() };

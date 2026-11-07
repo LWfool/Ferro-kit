@@ -77,7 +77,8 @@ pub fn cutoff_scan(
                 }
                 total += n_target;
             }
-            let m = sampled.len().max(1) as f64;
+            // No frame (a library call; every reader refuses one) gives 0/0 = NaN, not 0 %
+            let m = sampled.len() as f64;
             Ok(CutoffScan {
                 rcut,
                 frame_fraction: hit as f64 / m,
@@ -193,7 +194,8 @@ pub fn coordination_table(hist: &[(u32, usize)]) -> Table {
         .push_text(
             "pct",
             hist.iter()
-                .map(|(_, c)| format!("{:.2}", 100.0 * *c as f64 / total.max(1) as f64))
+                // Every row counts at least one atom, so total >= 1
+                .map(|(_, c)| format!("{:.2}", 100.0 * *c as f64 / total as f64))
                 .collect(),
         );
     t

@@ -43,12 +43,9 @@ pub(crate) fn canonical_triplet(a: &str, b: &str, c: &str) -> String {
 /// order (Z, then string, so pseudo-element labels sharing a Z order deterministically).
 fn sort_triplet_keys(map: &BTreeMap<String, Vec<u64>>) -> Vec<String> {
     let mut keys: Vec<String> = map.keys().cloned().collect();
-    keys.sort_by(|ka, kb| match (triplet_parts(ka), triplet_parts(kb)) {
-        (Some((a1, b1, c1)), Some((a2, b2, c2))) => canonical_cmp(b1, b2)
-            .then_with(|| canonical_cmp(a1, a2))
-            .then_with(|| canonical_cmp(c1, c2)),
-        // A key that is not A-B-C sorts last, by plain string
-        (x, y) => y.is_some().cmp(&x.is_some()).then_with(|| ka.cmp(kb)),
+    keys.sort_by(|ka, kb| {
+        let ((a1, b1, c1), (a2, b2, c2)) = (split_triplet(ka), split_triplet(kb));
+        canonical_cmp(b1, b2).then_with(|| canonical_cmp(a1, a2)).then_with(|| canonical_cmp(c1, c2))
     });
     keys
 }
@@ -351,16 +348,17 @@ impl AngleResult {
 
         for key in &keys {
             let (ea, centre, ec) = split_triplet(key);
-            let h = self.hist.get(key);
-            let total: f64 = h.map(|v| v.iter().sum::<u64>() as f64).unwrap_or(0.0);
-            for i in 0..n {
-                let c = h.map(|v| v[i]).unwrap_or(0);
-                angle_col.push(self.angle[i]);
+            // A key is entered by its first count, so the total is at least 1
+            let h = &self.hist[key];
+            let total = h.iter().sum::<u64>() as f64;
+            // One count per bin: h and the angle axis have the same length
+            for (&angle, &c) in self.angle.iter().zip(h) {
+                angle_col.push(angle);
                 a_col.push(ea.to_string());
                 b_col.push(centre.to_string());
                 c_col.push(ec.to_string());
                 cnt_col.push(c as f64);
-                p_col.push(if total > 0.0 { c as f64 / total } else { f64::NAN });
+                p_col.push(c as f64 / total);
             }
         }
 
@@ -399,16 +397,14 @@ impl AngleResult {
     }
 }
 
-/// Split an `"A-B-C"` triplet key into its three type names.
-fn split_triplet(key: &str) -> (&str, &str, &str) {
-    triplet_parts(key).unwrap_or((key, "", ""))
-}
-
-/// `"A-B-C"` as `(A, B, C)`, `None` when the key is not a triplet: split_once('-') gives
-/// (A, "B-C"), a second one gives (B, C). The one split, shared by [`split_triplet`] and
-/// [`sort_triplet_keys`], which each had a copy (review 2026-10-30 A2-L8)
-fn triplet_parts(k: &str) -> Option<(&str, &str, &str)> {
-    k.split_once('-').and_then(|(a, rest)| rest.split_once('-').map(|(b, c)| (a, b, c)))
+/// Split an `"A-B-C"` triplet key into its three type names: split_once('-') gives
+/// (A, "B-C"), a second one gives (B, C). Every key is made by [`canonical_triplet`], so a key
+/// that is not a triplet does not occur (review 2026-11-06 A4-6: the helper had two forms, one
+/// for the sort and one for the table, each with a fallback for that case).
+fn split_triplet(k: &str) -> (&str, &str, &str) {
+    let (a, rest) = k.split_once('-').expect("an A-B-C key");
+    let (b, c) = rest.split_once('-').expect("an A-B-C key");
+    (a, b, c)
 }
 
 #[cfg(test)]

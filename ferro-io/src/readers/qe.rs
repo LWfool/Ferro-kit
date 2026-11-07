@@ -310,7 +310,7 @@ fn namelist_items(line: &str) -> Vec<String> {
 /// `CELL_PARAMETERS{angstrom}` (review 2026-10-30 A1-L6).
 fn first_word(l: &str) -> String {
     let up = l.trim_start().to_uppercase();
-    up.split(|c: char| c.is_whitespace() || c == '{' || c == '(').next().unwrap_or("").to_string()
+    up.split(|c: char| c.is_whitespace() || c == '{' || c == '(').next().expect("split yields a first piece").to_string()
 }
 
 fn find_card(lines: &[&str], card: &str) -> Option<usize> {

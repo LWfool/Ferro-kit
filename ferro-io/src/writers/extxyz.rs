@@ -142,24 +142,23 @@ pub fn write_extxyz_with(
         writeln!(w, "{}", parts.join(" "))?;
 
         // Atom lines
-        let dummy_forces = vec![];
-        let dummy_vels = vec![];
-        let forces = frame.forces().unwrap_or(&dummy_forces);
-        let vels = frame.velocities().unwrap_or(&dummy_vels);
+        // set_forces / set_velocities keep one vector per atom, so `[i]` is in range
+        let forces = frame.forces();
+        let vels = frame.velocities();
 
         for (i, atom) in frame.atoms().enumerate() {
             write!(w, "{} {} {} {}",
                 atom.element,
                 fmt(atom.position.x), fmt(atom.position.y), fmt(atom.position.z))?;
 
-            if let Some(f) = forces.get(i) {
+            if let Some(f) = forces.map(|f| f[i]) {
                 write!(w, " {} {} {}", fmt(f.x), fmt(f.y), fmt(f.z))?;
             }
             // Velocities imply has_mass; every mass was checked before the file was created
             if has_mass {
                 let m = atom.effective_mass()?;
                 write!(w, " {}", fmt(m))?;
-                if let Some(v) = vels.get(i) {
+                if let Some(v) = vels.map(|v| v[i]) {
                     // Å/fs -> amu·Å/(ASE time unit)
                     let p = v * (m / ASE_FS);
                     write!(w, " {} {} {}", fmt(p.x), fmt(p.y), fmt(p.z))?;

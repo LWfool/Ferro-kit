@@ -304,7 +304,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
     }
 
     per_input("supercell", &c.input, &c.read, &c.out, |traj| {
-        let Some(first) = traj.first() else { bail!("no frames") };
+        let first = traj.first().expect("ferro_io::read_as refuses a file with no frame");
         // 自动模式按第 0 帧定倍数，整条轨迹用同一组：每帧原子数不同的轨迹写不出去
         let (dims, how) = match &c.dims {
             Some(d) => ([d[0], d[1], d[2]], "given"),
@@ -323,7 +323,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         // to replicate every frame and then throw them away (review 2026-10-30 CR-6)
         let first_sc = make_supercell(first, nx, ny, nz)?;
         // 面间距才是最小镜像截断的上界（r_cut ≤ d/2），斜胞上它比边长短
-        let d = first_sc.cell.as_ref().map(|cl| cl.interplanar_spacings()).transpose()?.unwrap_or([0.0; 3]);
+        let d = first_sc.cell.as_ref().expect("make_supercell keeps the cell").interplanar_spacings()?;
         let note = format!(
             "{nx}x{ny}x{nz} ({how}): {n} -> {} atoms, spacings {:.3} {:.3} {:.3} Å{}",
             n * nx * ny * nz, d[0], d[1], d[2],
@@ -400,7 +400,7 @@ fn run_box(c: &BoxCmd) -> Result<()> {
     // 先建盒再建目录：密度、最小间距、化学式的错误都由 build_box 报，不该先留下一个空目录
     let frame = build_box(&c.component, rho, c.min_dist, c.relax_steps, c.seed)?;
     c.out.out().prepare()?;
-    let side = frame.cell.as_ref().map_or(0.0, |cl| cl.matrix[(0, 0)]);
+    let side = frame.cell.as_ref().expect("build_box makes a cubic cell").matrix[(0, 0)];
     let n = frame.n_atoms();
     let line = write_product(&c.out, &["box"], &ext, &Trajectory::from_frame(frame), None)?;
     println!("Box {side:.3} Å, {n} atoms, {rho} g/cm³ -> {line}");

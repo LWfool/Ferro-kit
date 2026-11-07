@@ -412,7 +412,7 @@ fn read_stress(
     match (from_stress, from_virial) {
         (Some(s), Some(v)) => {
             if !close(&s, &v) {
-                let vol = cell.map(|c| c.volume()).unwrap_or(1.0);
+                let vol = cell.expect("virial= was read, which needs the Lattice").volume();
                 // 行优先渲染 —— nalgebra 的 as_slice() 是列优先,连报错都会打出转置
                 bail!(
                     "stress= and virial= disagree: virial/V gives {:?} but -stress gives {:?} \

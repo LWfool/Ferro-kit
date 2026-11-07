@@ -35,9 +35,7 @@ impl PeriodicCell {
         }
         cell.check("cell matrix")?;
         let mt = cell.matrix.transpose();
-        let inv = mt
-            .try_inverse()
-            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
+        let inv = mt.try_inverse().expect("check() refused a singular cell");
         Ok(Self { mt, inv })
     }
 

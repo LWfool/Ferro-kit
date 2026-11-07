@@ -83,7 +83,6 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
     let mut stats = AimdStats::new(AimdFormat::VaspOutcar);
 
     let mut symbols: Vec<String> = Vec::new();
-    let mut symbols_seen: Vec<Vec<String>> = Vec::new();
     let mut counts: Option<Vec<usize>> = None;
     let mut elements: Vec<String> = Vec::new();
 
@@ -136,7 +135,7 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
                 if scf == 1 {
                     // 第一帧开始前把头部定下来
                     if elements.is_empty() {
-                        elements = resolve_elements(&symbols, &counts, &mut symbols_seen)?;
+                        elements = resolve_elements(&symbols, &counts)?;
                     }
                     finish(&mut pending, &mut traj, &mut stats, &elements);
                     // 离子步倒退 = 又一段运行接在后面。VASP 重启通常另写一个
@@ -247,7 +246,6 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
 fn resolve_elements(
     symbols: &[String],
     counts: &Option<Vec<usize>>,
-    seen: &mut Vec<Vec<String>>,
 ) -> Result<Vec<String>> {
     let counts = counts
         .as_ref()
@@ -264,29 +262,13 @@ fn resolve_elements(
         );
     }
     // 头部会重复打印几遍;每一遍必须逐字相同,否则说明这不是同一个体系
-    for chunk in symbols.chunks(counts.len()) {
-        if chunk.len() == counts.len() {
-            seen.push(chunk.to_vec());
-        }
+    // At least one full list: there are no fewer symbols than species (checked above)
+    let mut lists = symbols.chunks_exact(counts.len());
+    let names = lists.next().expect("at least one full species list");
+    if let Some(other) = lists.find(|l| l != &names) {
+        bail!("the species list changes within the file ({names:?} then {other:?})");
     }
-    if let Some(first) = seen.first() {
-        for other in seen.iter().skip(1) {
-            if other != first {
-                bail!(
-                    "the species list changes within the file ({first:?} \
-                     then {other:?})"
-                );
-            }
-        }
-    }
-    let names = &seen[0];
-    let mut out = Vec::new();
-    for (sym, n) in names.iter().zip(counts) {
-        for _ in 0..*n {
-            out.push(sym.clone());
-        }
-    }
-    Ok(out)
+    Ok(names.iter().zip(counts).flat_map(|(sym, &n)| std::iter::repeat_n(sym.clone(), n)).collect())
 }
 
 /// Turns a completed [`Pending`] into a frame, or counts why it cannot.

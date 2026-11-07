@@ -121,9 +121,6 @@ const DEFAULT_SET_SIZE: usize = 400;
 
 /// Appends a split suffix to the last component of a path.
 fn with_suffix(p: &Path, suffix: &str) -> PathBuf {
-    if suffix.is_empty() {
-        return p.to_path_buf();
-    }
     let name = p.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     p.with_file_name(format!("{name}{suffix}"))
 }
@@ -179,31 +176,21 @@ fn split_suffix_of(name: &str) -> Option<&'static str> {
     SPLIT_SUFFIXES.iter().copied().find(|s| name.ends_with(s))
 }
 
-/// Strips a trailing `.db` so a collected system can be renamed by filter / merge.
+/// Strips a trailing `suffix` from the last component of a path, which is otherwise kept.
 ///
-/// Applied before the split logic: `.db` is not one of the split suffixes, so
-/// leaving it on would stack a second suffix onto the name and break `merge`'s
-/// shared-suffix check, which reads only the trailing segment.
-fn without_collect_suffix(base: &Path) -> PathBuf {
+/// - [`COLLECT_SUFFIX`] (`.db`), so a collected system can be renamed by filter / merge.
+///   Applied before the split logic: `.db` is not one of the split suffixes, so leaving it
+///   on would stack a second suffix onto the name and break `merge`'s shared-suffix check,
+///   which reads only the trailing segment.
+/// - [`TRAIN_SUFFIX`] (`.train`), so the parts of a split can be named afresh. Only `.train`
+///   is stripped, and only the split path reaches this: `.valid` / `.test` inputs are refused
+///   before any file is read, because slicing a training set out of a held-out set is a
+///   mistake, not a workflow.
+fn without_suffix(base: &Path, suffix: &str) -> PathBuf {
     let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
         return base.to_path_buf();
     };
-    match name.strip_suffix(COLLECT_SUFFIX) {
-        Some(stem) => base.with_file_name(stem),
-        None => base.to_path_buf(),
-    }
-}
-
-/// Strips a trailing `.train` so the parts of a split can be named afresh.
-///
-/// Only `.train` is stripped, and only the split path reaches this: `.valid` / `.test`
-/// inputs are refused before any file is read, because slicing a training set out of a
-/// held-out set is a mistake, not a workflow.
-fn without_train_suffix(base: &Path) -> PathBuf {
-    let Some(name) = base.file_name().and_then(|n| n.to_str()) else {
-        return base.to_path_buf();
-    };
-    match name.strip_suffix(TRAIN_SUFFIX) {
+    match name.strip_suffix(suffix) {
         Some(stem) => base.with_file_name(stem),
         None => base.to_path_buf(),
     }
@@ -225,7 +212,7 @@ fn write_split(
 ) -> Result<()> {
     // collect 的 `.db` 先剥掉：它说的是「数据从哪来」，不是划分的哪一部分。
     // 留着就会叠成 run1.db.train，而 merge 的共享后缀检查只看末尾那一段
-    let base = &without_collect_suffix(base);
+    let base = &without_suffix(base, COLLECT_SUFFIX);
 
     if split.is_off() {
         let named = match base.file_name().and_then(|n| n.to_str()) {
@@ -237,7 +224,7 @@ fn write_split(
         return Ok(());
     }
 
-    let stem = without_train_suffix(base);
+    let stem = without_suffix(base, TRAIN_SUFFIX);
     let parts = split.parts(traj.n_frames(), &base.display().to_string())?;
     for (idx, (label, suffix)) in SPLIT_PARTS.iter().enumerate() {
         if parts[idx].is_empty() {
@@ -333,7 +320,7 @@ fn find_systems_under(root: &Path) -> Result<Vec<PathBuf>> {
 /// Refuses to split inputs that are already a held-out part.
 ///
 /// `.train` is fine and common — everything unsplit now carries it, and re-splitting a
-/// training set is a normal thing to want; `without_train_suffix` keeps the names from
+/// training set is a normal thing to want; `without_suffix` keeps the names from
 /// growing into `X.train.test`. `.valid` / `.test` are refused: carving a training set
 /// out of a held-out set silently destroys what it was held out for.
 fn refuse_held_out_inputs(systems: &[PathBuf]) -> Result<()> {
@@ -436,8 +423,8 @@ mod tests {
         refuse_held_out_inputs(&[PathBuf::from("a/x.train"), PathBuf::from("b/y")]).unwrap();
         let err = refuse_held_out_inputs(&[PathBuf::from("a/x.valid")]).unwrap_err().to_string();
         assert!(err.contains("held-out"), "{err}");
-        assert_eq!(without_train_suffix(Path::new("o/sysA.train")), PathBuf::from("o/sysA"));
-        assert_eq!(without_train_suffix(Path::new("o/sysA")), PathBuf::from("o/sysA"));
+        assert_eq!(without_suffix(Path::new("o/sysA.train"), TRAIN_SUFFIX), PathBuf::from("o/sysA"));
+        assert_eq!(without_suffix(Path::new("o/sysA"), TRAIN_SUFFIX), PathBuf::from("o/sysA"));
     }
 
     /// 不叠加:名字已经以划分后缀结尾时不再追加。

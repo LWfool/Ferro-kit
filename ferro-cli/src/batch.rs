@@ -561,7 +561,8 @@ impl Summary {
         let mut sorted: Vec<&Failure> = failures.iter().collect();
         sorted.sort_by_key(|f| f.index);
         for f in sorted {
-            let at = f.index.min(self.file.len());
+            // In index order, every earlier input is already a row: index <= len
+            let at = f.index;
             self.file.insert(at, f.label.clone());
             self.status.insert(at, f.reason.clone());
             for slot in self.extra.iter_mut() {

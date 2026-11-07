@@ -18,7 +18,8 @@ use ferro_core::{Frame, PeriodicCell};
 /// are far away by construction (they sit at the box widths).
 pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -> Option<f64> {
     let ia: Vec<usize> = idx_of(frame, a);
-    let ib: Vec<usize> = if a == b { ia.clone() } else { idx_of(frame, b) };
+    let ib_other;
+    let ib: &[usize] = if a == b { &ia } else { ib_other = idx_of(frame, b); &ib_other };
     if ia.is_empty() || ib.is_empty() || (a == b && ia.len() < 2) {
         return None;
     }
@@ -26,7 +27,7 @@ pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -
     for (n, &i) in ia.iter().enumerate() {
         let pi = frame.positions()[i];
         // 同元素时只走上三角，距离对称
-        let rest = if a == b { &ib[n + 1..] } else { &ib[..] };
+        let rest = if a == b { &ib[n + 1..] } else { ib };
         for &j in rest {
             let d = cell.minimum_image(frame.positions()[j] - pi);
             let r2 = d.norm_squared();

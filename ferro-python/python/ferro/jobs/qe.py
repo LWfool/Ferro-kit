@@ -203,7 +203,7 @@ class QeGenerator(Generator):
         qe.head = []   # 模板头注释是写给改模板的人看的，不带进生成的 pw.in
         # A fixed basis under a varying cell gives Pulay stress: the cutoff comes from a
         # convergence test, not from the UPF suggestion (user decision, as VASP's ENCUT)
-        if options.task == "opt" and options.vary_cell and qe.get("system", "ecutwfc") is None:
+        if options.vary_cell and qe.get("system", "ecutwfc") is None:
             raise JobError("--vary-cell needs ecutwfc in the template (Pulay stress): find it with "
                            "`ferro-py conv -s qe --scan ecutwfc=...` and write it there")
         notes = []
@@ -290,7 +290,7 @@ class QeGenerator(Generator):
         if options.fine_grid is not None:
             notes.append("--fine-grid ignored: pw.x has no separate fine grid (the dense grid follows ecutrho)")
 
-        if options.task == "opt" and options.vary_cell:
+        if options.vary_cell:
             qe.set("control", "calculation", "vc-relax")
             if "cell" not in qe.namelists:
                 qe.set("cell", "cell_dynamics", "bfgs")

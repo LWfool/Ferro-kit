@@ -35,14 +35,10 @@ pub fn run(args: &InfoCmd) -> Result<usize> {
     println!("File:   {}", input.display());
     println!("Frames: {n}");
 
-    let mut ok = true;
-    if let Some(frame) = traj.frames.first() {
-        ok &= print_frame_info(frame, 0, input);
-    }
+    // n >= 1: ferro_io::read_as refuses a file with no frame
+    let mut ok = print_frame_info(&traj.frames[0], 0, input);
     if n > 1 {
-        if let Some(frame) = traj.frames.last() {
-            ok &= print_frame_info(frame, n - 1, input);
-        }
+        ok &= print_frame_info(&traj.frames[n - 1], n - 1, input);
     }
 
     Ok(usize::from(!ok))

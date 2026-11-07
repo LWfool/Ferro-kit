@@ -132,8 +132,8 @@ pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> R
         let mut atoms = Vec::with_capacity(frame.n_atoms());
         let mut stranded = 0usize;
         // inverted once, not per atom: the same product as cartesian_to_fractional (review R6-7)
-        let inv = cell.matrix.transpose().try_inverse()
-            .ok_or_else(|| ChemError::ValidationError("cell matrix is singular".into()))?;
+        // Both cells passed check() above, so neither is singular
+        let inv = cell.matrix.transpose().try_inverse().expect("check() refused a singular cell");
         for atom in frame.atoms() {
             let f = inv * (atom.position - cell.origin);
             let mut a = atom.to_atom();

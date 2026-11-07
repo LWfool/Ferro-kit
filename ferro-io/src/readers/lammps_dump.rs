@@ -362,7 +362,7 @@ fn parse_frame(
             .and_then(|c| parts.get(c))
             .map(|s| s.to_string())
             // The header check guarantees a type column when element and typelabel are absent
-            .unwrap_or_else(|| format!("X{}", tp.unwrap_or_default()));
+            .unwrap_or_else(|| format!("X{}", tp.expect("a type column, checked with the header")));
         let (element, label) = match split_element_label(&raw) {
             LabelSplit::Plain(e) => (e.to_string(), None),
             LabelSplit::Split { element, label } => {
@@ -400,20 +400,16 @@ fn parse_frame(
     frame.step = Some(step);
     let mut all_vels = Vec::new();
     let mut all_forces = Vec::new();
-    let mut has_vel = false;
-    let mut has_force = false;
-
     for (_, atom, vel, force) in atoms_raw {
         frame.add_atom(atom);
-        if let Some(v) = vel { all_vels.push(v); has_vel = true; }
-        else { all_vels.push(Vector3::zeros()); }
-        if let Some(f) = force { all_forces.push(f); has_force = true; }
-        else { all_forces.push(Vector3::zeros()); }
+        all_vels.extend(vel);
+        all_forces.extend(force);
     }
 
-    // One vector per atom line read above, so the lengths always match
-    if has_vel { frame.set_velocities(Some(all_vels)).expect("one velocity per atom"); }
-    if has_force { frame.set_forces(Some(all_forces)).expect("one force per atom"); }
+    // The vx / fx columns belong to the frame: every atom line has a velocity or none does,
+    // so the lengths match (review 2026-11-06 A2-9: a zero filler for the others was unreachable)
+    if !all_vels.is_empty() { frame.set_velocities(Some(all_vels)).expect("one velocity per atom"); }
+    if !all_forces.is_empty() { frame.set_forces(Some(all_forces)).expect("one force per atom"); }
 
     *i = ah + 1 + n;
     Ok(frame)

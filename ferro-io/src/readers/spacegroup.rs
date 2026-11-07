@@ -89,7 +89,7 @@ pub(super) fn lookup(q: &Query, metric: &Matrix3<f64>) -> Result<Vec<(Matrix3<f6
         cands.retain(|s| s.number == n);
         if cands.is_empty() {
             bail!("space-group symbol '{}' contradicts space-group number {n}",
-                  q.hall.or(q.hm).unwrap_or_default());
+                  q.hall.or(q.hm).expect("candidates by number alone always match it"));
         }
     }
 

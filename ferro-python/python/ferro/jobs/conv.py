@@ -126,8 +126,7 @@ def label(value):
 
 def build(generator, software, parameter, values, structures, options, template=None):
     """结构 [(名, Trajectory, 帧号)] × 参数值 → [(子目录, InputSet)] 与清单。"""
-    if options.task != "sp":
-        raise JobError("convergence tests are single points")
+    # options.task is "sp": run_conv, the one caller, builds it so
     apply = SCANS[software][parameter][0]
     base = generator.template("sp", template)
     jobs, manifest = [], {"software": software, "parameter": parameter,

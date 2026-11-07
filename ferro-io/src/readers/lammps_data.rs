@@ -74,7 +74,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
         if line.is_empty() { i += 1; continue; }
 
         if line.ends_with("atoms") && !line.contains("atom types") {
-            let n = line.split_whitespace().next().unwrap_or("");
+            let n = line.split_whitespace().next().expect("a non-empty line has a first word");
             n_atoms = Some(n.parse().with_context(|| format!("bad atom count in '{line}'"))?);
         } else if line.ends_with("atom types") {
             // type count stored but not needed
@@ -243,7 +243,7 @@ fn parse_lammps_data(content: &str, style: AtomStyle) -> Result<(Trajectory, Vec
 }
 
 fn strip_comment(l: &str) -> &str {
-    l.split('#').next().unwrap_or("").trim()
+    l.split('#').next().expect("split yields a first piece").trim()
 }
 
 /// `line` 须已经过 `strip_comment`。名单取自 LAMMPS `read_data` 文档的全部段名

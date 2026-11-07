@@ -129,8 +129,8 @@ pub(super) fn parse_poscar_header(lines: &mut std::str::Lines<'_>) -> Result<(St
 
 /// 元素行的一项 → 元素符号：`Na_pv/6a2f546d` → `Na`，`Na` 原样
 fn potcar_symbol(s: &str) -> String {
-    let label = s.split('/').next().unwrap_or(s);
-    label.split('_').next().unwrap_or(label).to_string()
+    let label = s.split('/').next().expect("split yields a first piece");
+    label.split('_').next().expect("split yields a first piece").to_string()
 }
 
 #[cfg(test)]

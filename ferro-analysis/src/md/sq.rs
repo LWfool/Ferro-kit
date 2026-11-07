@@ -162,8 +162,8 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
             (i..gr.elements.len())
                 .map(move |j| (i, j))
         })
+        // calc_gr fills every symmetric pair of its elements, so each key is in gr.gr
         .map(|(i, j)| format!("{}-{}", gr.elements[i], gr.elements[j]))
-        .filter(|k| gr.gr.contains_key(k))
         .collect();
 
     // ── 计算各 partial S_ij(q) ────────────────────────────────────────────────
@@ -208,15 +208,14 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
         // 浓度 cᵢ = Nᵢ / N_total
         let elems: Vec<(&str, f64, usize)> = gr.elements.iter()
             .map(|e| {
-                let c = gr.element_counts.get(e).copied().unwrap_or(0) as f64
-                    / n_total as f64;
+                let c = gr.element_counts[e] as f64 / n_total as f64;
                 (e.as_str(), c, elem_z_local(gr.key_element.get(e).map_or("", String::as_str)))
             })
             .collect();
         warnings.extend(missing_scattering_data(&elems, &gr.key_element, want_neu));
 
         if want_neu {
-            let w = build_neutron_weights(&elems, &gr.gr);
+            let w = build_neutron_weights(&elems);
             let (parts, total) = apply_weights(&sq_map, n_q, |key, _qi| {
                 w[key]
             });
@@ -226,7 +225,7 @@ pub fn calc_sq_from_gr(gr: &GrResult, params: &SqParams) -> ferro_core::Result<S
         if want_xrd {
             // XRD 权重随 q 变化，逐 q 预先构造
             let w_per_q: Vec<BTreeMap<String, f64>> = q_vals.par_iter()
-                .map(|&q| build_xrd_weights_at_q(&elems, q, &gr.gr))
+                .map(|&q| build_xrd_weights_at_q(&elems, q))
                 .collect();
             let (parts, total) = apply_weights(&sq_map, n_q, |key, qi| {
                 w_per_q[qi][key]
@@ -325,33 +324,22 @@ fn missing_scattering_data(
 /// Build Faber-Ziman XRD weights w_ij at a single q value.
 ///
 /// w_ij = (2−δᵢⱼ)·cᵢcⱼfᵢ(q)fⱼ(q) / <f(q)>²
-/// Keys are the symmetric pair labels present in `gr_gr`.
-fn build_xrd_weights_at_q(
-    elems: &[(&str, f64, usize)],
-    q: f64,
-    gr_gr: &BTreeMap<String, Vec<f64>>,
-) -> BTreeMap<String, f64> {
+/// Keys are the symmetric pair labels `a-b`, `a` before `b` in `elems`' order.
+fn build_xrd_weights_at_q(elems: &[(&str, f64, usize)], q: f64) -> BTreeMap<String, f64> {
     let f: Vec<f64> = elems.iter().map(|(_, _, z)| form_factor_xrd(*z, q)).collect();
-    weights_from_factors(elems, &f, gr_gr)
+    weights_from_factors(elems, &f)
 }
 
 /// Build q-independent neutron weights w_ij.
-fn build_neutron_weights(
-    elems: &[(&str, f64, usize)],
-    gr_gr: &BTreeMap<String, Vec<f64>>,
-) -> BTreeMap<String, f64> {
+fn build_neutron_weights(elems: &[(&str, f64, usize)]) -> BTreeMap<String, f64> {
     let b: Vec<f64> = elems.iter().map(|(_, _, z)| neutron_bcoh(*z)).collect();
-    weights_from_factors(elems, &b, gr_gr)
+    weights_from_factors(elems, &b)
 }
 
 /// Shared weight builder given per-element factor values (`f(q)` or `b`): the
 /// Faber-Ziman denominator `<factor>² = (Σ cᵢ·factorᵢ)²` is formed here, so both
 /// radiations normalise the same way.
-fn weights_from_factors(
-    elems: &[(&str, f64, usize)],
-    factors: &[f64],
-    gr_gr: &BTreeMap<String, Vec<f64>>,
-) -> BTreeMap<String, f64> {
+fn weights_from_factors(elems: &[(&str, f64, usize)], factors: &[f64]) -> BTreeMap<String, f64> {
     let avg: f64 = elems.iter().zip(factors).map(|((_, c, _), fi)| c * fi).sum();
     // Every factor 0 (no element column, Z = 0) leaves the weights undefined: NaN, never 0,
     // which would pose as "measured 0" (review 2026-11-06 A4-1)
@@ -364,7 +352,6 @@ fn weights_from_factors(
         for (ib, (eb, cb, _)) in elems.iter().enumerate().skip(ia) {
             // `elems` 与 `GrResult.elements` 同序，故 ia ≤ ib 时 "ea-eb" 即 g(r) 的对称对 key
             let key = format!("{ea}-{eb}");
-            if !gr_gr.contains_key(&key) { continue; }
             let factor = if ia == ib { 1.0 } else { 2.0 };
             *w.entry(key).or_insert(0.0) +=
                 factor * ca * cb * factors[ia] * factors[ib] / denom;
@@ -398,10 +385,8 @@ impl SqResult {
         if let Some(v) = &self.total_xrd { t.push_num("total_xrd", v.clone()); }
         if let Some(v) = &self.total_neutron { t.push_num("total_neutron", v.clone()); }
 
-        let n = self.q.len();
-        let take = |m: &BTreeMap<String, Vec<f64>>, k: &str| -> Vec<f64> {
-            m.get(k).cloned().unwrap_or_else(|| vec![f64::NAN; n])
-        };
+        // The weighted maps hold the same keys as `sq` when their total exists (apply_weights)
+        let take = |m: &BTreeMap<String, Vec<f64>>, k: &str| -> Vec<f64> { m[k].clone() };
         for k in &keys {
             t.push_num(format!("{k}_sq"), take(&self.sq, k));
             if self.total_xrd.is_some() {
@@ -607,9 +592,7 @@ mod tests {
     #[test]
     fn test_weights_from_factors_forms_the_denominator() {
         let elems = [("A", 0.5, 0), ("B", 0.5, 0)];
-        let gr: BTreeMap<String, Vec<f64>> =
-            ["A-A", "A-B", "B-B"].iter().map(|k| (k.to_string(), vec![])).collect();
-        let w = weights_from_factors(&elems, &[1.0, 3.0], &gr);
+        let w = weights_from_factors(&elems, &[1.0, 3.0]);
         for (k, want) in [("A-A", 0.0625), ("A-B", 0.375), ("B-B", 0.5625)] {
             assert!((w[k] - want).abs() < 1e-15, "{k}: {}", w[k]);
         }
@@ -620,11 +603,9 @@ mod tests {
     #[test]
     fn test_zero_denominator_gives_nan_not_zero() {
         let elems = [("A", 0.5, 0), ("B", 0.5, 0)];
-        let gr: BTreeMap<String, Vec<f64>> =
-            ["A-A", "A-B", "B-B"].iter().map(|k| (k.to_string(), vec![])).collect();
-        let w = weights_from_factors(&elems, &[0.0, 0.0], &gr);
+        let w = weights_from_factors(&elems, &[0.0, 0.0]);
         assert!(w.len() == 3 && w.values().all(|v| v.is_nan()), "{w:?}");
-        let sq: BTreeMap<String, Vec<f64>> = gr.keys().map(|k| (k.clone(), vec![1.2, f64::NAN])).collect();
+        let sq: BTreeMap<String, Vec<f64>> = w.keys().map(|k| (k.clone(), vec![1.2, f64::NAN])).collect();
         let (parts, total) = apply_weights(&sq, 2, |key, _| w[key]);
         assert!(total.iter().all(|t| t.is_nan()), "{total:?}");
         assert!(parts.values().flatten().all(|v| v.is_nan()));
@@ -641,9 +622,8 @@ mod tests {
                 r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
             });
             let elems = build_elems(&gr_res);
-            let gr_gr = &gr_res.as_ref().unwrap().gr;
 
-            let neu = build_neutron_weights(&elems, gr_gr);
+            let neu = build_neutron_weights(&elems);
             let neu_sum: f64 = neu.values().sum();
             assert!(
                 (neu_sum - 1.0).abs() < 1e-10,
@@ -651,7 +631,7 @@ mod tests {
             );
 
             for q in [0.5_f64, 2.0, 5.0, 12.0, 25.0] {
-                let xrd = build_xrd_weights_at_q(&elems, q, gr_gr);
+                let xrd = build_xrd_weights_at_q(&elems, q);
                 let xrd_sum: f64 = xrd.values().sum();
                 assert!(
                     (xrd_sum - 1.0).abs() < 1e-10,
@@ -669,7 +649,7 @@ mod tests {
             r_min: 0.0, r_max: 5.9, dr: 0.01, ..Default::default()
         });
         let elems = build_elems(&gr_res);
-        let w = build_neutron_weights(&elems, &gr_res.as_ref().unwrap().gr);
+        let w = build_neutron_weights(&elems);
 
         let (_, c_o, z_o) = elems[0];
         let (_, c_si, z_si) = elems[1];

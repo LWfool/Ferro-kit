@@ -221,10 +221,8 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
         )?;
     }
 
+    // At least one bin: validate (and holds_a_bin above, after the clamp) as in vanhove
     let (n_bins, dr) = super::util::bins(params.r_min, r_max, params.dr);
-    if n_bins == 0 {
-        return Err(ChemError::ValidationError("r range produces zero bins".into()));
-    }
     // Everything downstream (histogram, normalisation, the S(q) integral) uses `dr`, the
     // width actually used, never `params.dr`, the request
 
@@ -252,9 +250,10 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
     }
 
     // ── 粒子数守恒校验 ───────────────────────────────────────────────────────
-    // 归一化把 N_A / N_B / N 当作常数提出求和号，这只有在粒子数逐帧不变时成立。
-    // 不校验的话，把两个不同体系拼成的轨迹喂进来会静默算出垃圾：下面主循环的
-    // `else { continue }` 会把首帧没见过的类型悄悄丢掉，结果看着正常却完全错误。
+    // The normalisation takes N_A / N_B / N out of the sum as constants, which holds only
+    // when the particle numbers are the same in every frame. Unchecked, a trajectory joined
+    // from two systems computes garbage silently. It is also what lets the main loop index
+    // every atom's type by the first frame's types.
     let count_types = |frame: &ferro_core::Frame| -> Vec<usize> {
         let mut c = vec![0usize; n_types];
         for atom in frame.atoms() {
@@ -311,15 +310,17 @@ pub fn calc_gr(traj: &Trajectory, params: &GrParams) -> ferro_core::Result<GrRes
             // One frame's plain counts (code1's cr / code2's cn_), weighted and merged once
             // per frame — far cheaper than adding to two histograms at every hit (hits >> bins)
             let mut cr = vec![vec![0.0f64; n_bins]; n_upairs];
+            // Each atom's type index, once per frame rather than a string lookup per pair (as
+            // angle, review R3-4). Every type is the first frame's: the composition check above
+            // saw the same atom count and per-type counts in every frame (review 2026-11-06 A4-2)
+            let ti: Vec<usize> = frame.atoms().map(|a| type_idx[group_key(a, by)]).collect();
             for i in 0..n_atoms {
-                let Some(&ti) = type_idx.get(group_key(frame.atom(i), by)) else { continue; };
                 for (j, r_val, _) in cl.neighbors_of(i) {
                     if j <= i { continue; }
                     if r_val < params.r_min { continue; }
                     let bin = ((r_val - params.r_min) / dr) as usize;
                     if bin >= n_bins { continue; }
-                    let Some(&tj) = type_idx.get(group_key(frame.atom(j), by)) else { continue; };
-                    cr[pair_lookup[ti][tj]][bin] += 1.0;
+                    cr[pair_lookup[ti[i]][ti[j]]][bin] += 1.0;
                 }
             }
             (cr, vol)
@@ -456,14 +457,14 @@ impl GrResult {
 
         for key in &keys {
             let (centre, neighbour) = split_pair(key);
-            let g = self.gr.get(key);
-            let c = self.cn.get(key);
+            // gr and cn are filled with the same keys (calc_gr)
+            let (g, c) = (&self.gr[key], &self.cn[key]);
             for i in 0..n {
                 r_col.push(self.r[i]);
                 centre_col.push(centre.to_string());
                 neighbour_col.push(neighbour.to_string());
-                gr_col.push(g.map(|v| v[i]).unwrap_or(f64::NAN));
-                cn_col.push(c.map(|v| v[i]).unwrap_or(f64::NAN));
+                gr_col.push(g[i]);
+                cn_col.push(c[i]);
             }
         }
 
@@ -501,7 +502,8 @@ impl GrResult {
     pub fn composition(&self) -> String {
         self.elements
             .iter()
-            .map(|e| format!("{e}:{}", self.element_counts.get(e).copied().unwrap_or(0)))
+            // element_counts is built from `elements` (calc_gr)
+            .map(|e| format!("{e}:{}", self.element_counts[e]))
             .collect::<Vec<_>>()
             .join(" ")
     }

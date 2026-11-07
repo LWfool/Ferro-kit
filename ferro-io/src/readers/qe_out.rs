@@ -275,9 +275,10 @@ fn parse_qe_out_lines<I: Iterator<Item = Result<String>>>(
         has_forces |= starts_with_tokens(&l, &["Forces", "acting", "on", "atoms"]);
         has_stress |= starts_with_tokens(&l, &["total", "stress"]);
     }
+    // `banner` is the first of the `n_banners` seen: Some exactly when n_banners > 0
     let banner = match (n_banners, banner) {
         (1, Some(b)) => b,
-        (0, _) | (_, None) => bail!("no `Program PWSCF` banner; this is not a pw.x output"),
+        (0, _) => bail!("no `Program PWSCF` banner; this is not a pw.x output"),
         (n, _) => bail!("{n} `Program PWSCF` banners: several pw.x runs in one file. Split it, one run per file"),
     };
     if bfgs {

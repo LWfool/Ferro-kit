@@ -234,7 +234,7 @@ class VaspGenerator(Generator):
         incar = Incar.from_str(template_text)
         # 变胞下基组固定会带来 Pulay 应力，截断能须由收敛测试定，不替用户猜一个倍数
         # （用户定：曾经的 1.3 × ENMAX 不够）
-        if options.task == "opt" and options.vary_cell and "ENCUT" not in incar:
+        if options.vary_cell and "ENCUT" not in incar:
             raise JobError("--vary-cell needs ENCUT in the template (Pulay stress): find it with "
                            "`ferro-py conv -s vasp --scan encut=...` and write it there")
         # PREC sets the coarse-grid factor of the fine grid; abbreviations (Acc, A) are not
@@ -308,7 +308,7 @@ class VaspGenerator(Generator):
         notes.append(f"PREC {prec}, KSPACING {spacing:g} -> mesh {' x '.join(map(str, mesh))}"
                      + (" (Gamma only: vasp_gam can run it)" if mesh == [1, 1, 1] else ""))
 
-        if options.task == "opt" and options.vary_cell:
+        if options.vary_cell:
             incar["ISIF"] = 3
         if options.task == "aimd":
             if options.temperature is not None:

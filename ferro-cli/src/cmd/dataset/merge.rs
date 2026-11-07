@@ -450,8 +450,8 @@ mod tests {
     /// `.db` is stripped, and it is not a split suffix.
     #[test]
     fn the_collect_suffix_is_stripped_and_is_not_a_split_suffix() {
-        assert_eq!(without_collect_suffix(Path::new("o/run1.db")), PathBuf::from("o/run1"));
-        assert_eq!(without_collect_suffix(Path::new("o/run1")), PathBuf::from("o/run1"));
+        assert_eq!(without_suffix(Path::new("o/run1.db"), COLLECT_SUFFIX), PathBuf::from("o/run1"));
+        assert_eq!(without_suffix(Path::new("o/run1"), COLLECT_SUFFIX), PathBuf::from("o/run1"));
         // 不进 SPLIT_SUFFIXES：否则「.valid 不许再划分」那条守卫会连 .db 一起拒掉
         assert_eq!(split_suffix_of("run1.db"), None);
         // 一批全 .db 判为「都没有划分后缀」→ .train，而不是混合后缀报错

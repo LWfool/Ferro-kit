@@ -147,7 +147,7 @@ def require(config, section, key):
     if value is None:
         # The file load() read, not the default location: a test or a library call that loads
         # an explicit path used to be sent to the wrong file (review 2026-10-30 A6-L13)
-        where = getattr(config, "path", None) or config_path()
+        where = config.path or config_path()
         raise ConfigError(
             f"[{section}] {key} is not set in {where} "
             f"(create the file with `ferro-py config init`)"

@@ -285,7 +285,7 @@ def load_labels(path, keys):
     return table
 
 
-def save(fig, name, outdir=None, ctx=None):
+def save(fig, name, outdir, ctx):
     """Write the pdf (the product) and the png (for a look), and ``<name>_data.csv`` when rows
     were registered. Returns the paths written.
 
@@ -298,7 +298,7 @@ def save(fig, name, outdir=None, ctx=None):
     fig.savefig(pdf)
     fig.savefig(png, dpi=PNG_DPI)
     written = [pdf, png]
-    if ctx is not None and ctx.rows:
+    if ctx.rows:
         data = out / f"{name}_data.csv"
         pd.DataFrame(ctx.rows).to_csv(data, index=False)
         written.append(data)

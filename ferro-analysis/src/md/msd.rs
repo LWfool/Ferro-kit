@@ -221,16 +221,13 @@ pub fn fit_diffusion(
     frac: (f64, f64),
 ) -> ferro_core::Result<MsdFit> {
     let (fmin, fmax) = frac;
-    let n = time.len(); // == msd.len(): calc_msd builds both from the same lags
-    if n < 2 {
-        return Err(ChemError::ValidationError(
-            "MSD curve has fewer than 2 points; cannot fit".into(),
-        ));
-    }
+    // == msd.len(), at least 1: calc_msd builds both from lags 0..=max_lag. One point gives
+    // i_lo == i_hi below, refused there
+    let n = time.len();
     let last = (n - 1) as f64;
     let i_lo = (fmin * last).round() as usize;
     let i_hi = ((fmax * last).round() as usize).min(n - 1);
-    if i_hi <= i_lo || (i_hi - i_lo + 1) < 2 {
+    if i_hi <= i_lo {
         return Err(ChemError::ValidationError(format!(
             "fit-range [{fmin}, {fmax}] selects fewer than 2 points (i_lo={i_lo}, i_hi={i_hi})"
         )));

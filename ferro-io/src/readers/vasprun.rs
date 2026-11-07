@@ -300,9 +300,9 @@ fn finish(st: &mut State, traj: &mut Trajectory, stats: &mut AimdStats) {
     // vasprun 没有温度字段(只有输入参数 TEBEG),按 T = 2*E_kin/(3N*k_B) 反算。
     // 除数是 3N 不是 3N-3:OUTCAR 的 EKIN=4.268142 eV / N=296 与它自己打印的
     // 111.55 K 对拍确认了这一点。这一列是导出量,报告的表头会注明
+    // n > 0: a file without species was refused before any calculation
     frame.temperature = st
         .kinetic
-        .filter(|_| n > 0)
         .map(|ek| 2.0 * ek / (3.0 * n as f64 * BOLTZMANN_EV_K));
     // <varray name="stress"> 是 kB 的完整 3x3,顺序无歧义;符号与 OUTCAR 同,不变。
     // 取 (σ+σᵀ)/2:VASP 6.5.1 写的这九个数不对称(相对 ~4e-5,OUTCAR 只打六个数故看不见),

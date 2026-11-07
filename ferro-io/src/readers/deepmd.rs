@@ -122,7 +122,7 @@ pub fn read_deepmd_npy(dir: &Path) -> Result<(Trajectory, Vec<Notice>)> {
 
         for name in extra_keys(set)? {
             // The source shown is the system directory, so name the set relative to it
-            let set_name = set.file_name().unwrap_or_default().to_string_lossy();
+            let set_name = set.file_name().expect("set_dirs lists set.* by name").to_string_lossy();
             warnings.push(Notice::warning(None, format!(
                 "{set_name}/{name}.npy is not carried by Frame and will be lost if this dataset is written back"
             )));
