@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 #[derive(Args, Debug)]
 pub struct InfoCmd {
     /// Input file (format auto-detected; omit to show what this reports)
-    #[arg(short, long)]
-    pub input: Option<PathBuf>,
+    #[arg(short, long, num_args = 1..)]
+    pub input: Vec<PathBuf>,
 
     #[command(flatten)]
     pub read: ReadArgs,
@@ -20,14 +20,15 @@ pub struct InfoCmd {
 /// True when `ferro info` was typed with no input: print the help page rather
 /// than clap's bare "required argument" error.
 pub fn wants_help(args: &InfoCmd) -> bool {
-    args.input.is_none()
+    args.input.is_empty()
 }
 
 /// Returns the number of failures: 1 when a density could not be computed, so the
 /// exit code says so while the rest is still printed (review A-3).
 pub fn run(args: &InfoCmd) -> Result<usize> {
     // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
-    let input = args.input.as_ref().expect("main sends a missing -i to the help page");
+    // main sends a missing -i to the help page
+    let input = &crate::batch::exact_inputs("info", &args.input, 1)?[0];
 
     let traj = read_trajectory(input, &args.read)?;
     let n = traj.frames.len();
@@ -175,9 +176,9 @@ mod tests {
 
     #[test]
     fn test_wants_help_only_without_input() {
-        let bare = InfoCmd { input: None, read: ReadArgs::default() };
+        let bare = InfoCmd { input: Vec::new(), read: ReadArgs::default() };
         assert!(wants_help(&bare));
-        let with_input = InfoCmd { input: Some(PathBuf::from("a.xyz")), read: ReadArgs::default() };
+        let with_input = InfoCmd { input: vec![PathBuf::from("a.xyz")], read: ReadArgs::default() };
         assert!(!wants_help(&with_input));
     }
 }

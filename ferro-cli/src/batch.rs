@@ -41,6 +41,25 @@ fn label_of(path: &Path) -> String {
 }
 
 /// The name an input gives its products and label: a file's stem, a directory's whole name
+/// The input files of a command that takes exactly `n` of them (1 or 2). A glob the shell
+/// expanded reaches the command as several files, which clap would refuse as an "unexpected
+/// argument" naming only the second; this names them all and says how to run one at a time
+/// (user, 2026-11-08). Checked before anything is read.
+pub fn exact_inputs<'a>(cmd: &str, inputs: &'a [PathBuf], n: usize) -> Result<&'a [PathBuf]> {
+    if inputs.len() == n {
+        return Ok(inputs);
+    }
+    let shown: Vec<String> = inputs.iter().take(4).map(|p| p.display().to_string()).collect();
+    let more = if inputs.len() > 4 { " ..." } else { "" };
+    let what = if n == 1 { "one input file" } else { "two input files" };
+    let hint = match (inputs.len() > n, n) {
+        (true, 1) => format!(" (a glob the shell expanded?); run it once per file: for f in ...; do ferro {cmd} -i \"$f\" ...; done"),
+        (true, _) => " (a glob the shell expanded?)".to_string(),
+        (false, _) => String::new(),
+    };
+    bail!("{cmd} takes {what}, got {}: {}{more}{hint}", inputs.len(), shown.join(" "))
+}
+
 /// (DP-GEN's `data.000` / `data.001` must not both become `data`). A path with no name of its
 /// own (`.`, `./`, `a/..`) is resolved first, so it names the directory it stands for; any
 /// other path is taken as given, so a symlink is named by the link. `None` for `/` (review

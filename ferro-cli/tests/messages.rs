@@ -141,3 +141,24 @@ fn info_lists_elements_by_atomic_number() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("(O: 1314, Al: 132, P: 372, Zn: 186)"), "{text}");
 }
+
+#[test]
+fn a_glob_that_gives_too_many_files_is_a_ferro_error() {
+    // `-i *.lammpstrj` reaches convert as several files once the shell expands it: a FerroError
+    // naming them, not clap's "unexpected argument" on the second (user, 2026-11-08)
+    for (args, want) in [
+        (&["convert", "-i", "a.dump", "b.dump", "c.dump", "-o", "o", "--format-out", "vasp"][..],
+         "convert takes one input file, got 3"),
+        (&["info", "-i", "a.dump", "b.dump"][..], "info takes one input file, got 2"),
+        (&["bader", "-i", "a/CHGCAR", "b/CHGCAR"][..], "bader takes one input file, got 2"),
+        (&["build", "merge", "-i", "a.vasp", "b.vasp", "c.vasp", "--axis", "z", "--gap", "1", "-o", "o"][..],
+         "build merge takes two input files, got 3"),
+    ] {
+        let out = ferro(args);
+        let err = text(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{args:?}: {err}");
+        assert!(err.contains(&format!("FerroError: {want}")), "{args:?}: {err}");
+        let second = args[args.iter().position(|a| *a == "-i").unwrap() + 2];
+        assert!(err.contains(second), "{args:?} should name the files: {err}");
+    }
+}

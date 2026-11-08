@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 #[derive(Args, Debug)]
 pub struct ConvertCmd {
     /// Input file (format auto-detected; omit to list the supported formats)
-    #[arg(short, long)]
-    pub input: Option<PathBuf>,
+    #[arg(short, long, num_args = 1..)]
+    pub input: Vec<PathBuf>,
 
     /// Output directory, created if missing; products are named after the input
     #[arg(short, long)]
@@ -50,12 +50,13 @@ pub struct ConvertCmd {
 /// True when `ferro convert` was typed with no input: print the format matrix
 /// rather than clap's bare "required argument" error.
 pub fn wants_help(args: &ConvertCmd) -> bool {
-    args.input.is_none()
+    args.input.is_empty()
 }
 
 pub fn run(args: &ConvertCmd) -> Result<()> {
     // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
-    let input = args.input.as_ref().expect("main sends a missing -i to the help page");
+    // main sends a missing -i to the help page
+    let input = &crate::batch::exact_inputs("convert", &args.input, 1)?[0];
     let Some(dir) = &args.output else {
         bail!("convert needs an output directory: -o <DIR>  (run `ferro convert` for the format list)");
     };
@@ -199,7 +200,7 @@ mod tests {
 
     fn cmd(input: Option<&str>, output: Option<&str>) -> ConvertCmd {
         ConvertCmd {
-            input: input.map(PathBuf::from),
+            input: input.map(PathBuf::from).into_iter().collect(),
             output: output.map(PathBuf::from),
             start: None,
             end: None,

@@ -28,6 +28,9 @@ command line alike; regenerate it rather than migrating it.
   header; terminal messages and errors write `Å`. Library errors lose their `Validation error:` /
   `Parse error:` prefix: `ferro: FerroError: <message>`.
 - `--al6 abc` and `--dims 0 ...` are usage errors from the command line parser (exit code 2).
+- `ferro convert`, `info` and `bader` take one input file, and `build merge` two: given more (as
+  `-i *.lammpstrj` becomes once the shell expands it) they report a `FerroError` naming every file
+  and showing how to loop over them, where they used to stop at clap's "unexpected argument".
 - Python `ferro.gr_pair` / `ferro.gr_all` default to `r_max=10.005`, clamped to the box, as
   `ferro traj gr`: on a box past 20 Å they used to run to the minimum-image bound instead.
 

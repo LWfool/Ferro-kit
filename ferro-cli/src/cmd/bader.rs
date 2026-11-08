@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 pub struct BaderCmd {
     /// Input file: CHGCAR (VASP) or .cube (Gaussian / QE pp.x)
     /// (omit to show the methods and output files)
-    #[arg(short, long)]
-    pub input: Option<PathBuf>,
+    #[arg(short, long, num_args = 1..)]
+    pub input: Vec<PathBuf>,
 
     /// Bader method
     #[arg(short, long, value_enum, ignore_case = true, default_value = "neargrid")]
@@ -50,7 +50,7 @@ pub enum MethodArg {
 /// True when `ferro bader` was typed with no input: print the help page rather
 /// than clap's bare "required argument" error.
 pub fn wants_help(args: &BaderCmd) -> bool {
-    args.input.is_none()
+    args.input.is_empty()
 }
 
 /// Where the three reports go: `<-o dir>/bader_ACF_<input stem>[_<suffix>].dat`.
@@ -71,7 +71,8 @@ fn report_paths(args: &BaderCmd, input: &Path) -> [PathBuf; 3] {
 
 pub fn run(args: &BaderCmd) -> Result<()> {
     // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
-    let input = args.input.as_ref().expect("main sends a missing -i to the help page");
+    // main sends a missing -i to the help page
+    let input = &crate::batch::exact_inputs("bader", &args.input, 1)?[0];
     // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等
     crate::batch::check_suffix(args.suffix.as_deref())?;
     let method = match args.method {
@@ -124,7 +125,7 @@ mod tests {
 
     fn cmd(input: Option<&str>) -> BaderCmd {
         BaderCmd {
-            input: input.map(PathBuf::from),
+            input: input.map(PathBuf::from).into_iter().collect(),
             method: MethodArg::Neargrid,
             refine: -1,
             vacval: 1e-3,
