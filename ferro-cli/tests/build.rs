@@ -195,9 +195,9 @@ fn a_read_only_input_format_needs_format_out() {
     assert!(!d.exists(), "-o was created for a run that could not write");
 }
 
-/// The reader options are checked for every input before the first is read, as traj / map /
-/// net do: a LAMMPS data file without --atom-style used to be found only when its turn came,
-/// after the dump before it had been written (review 2026-10-30 A5-M2).
+/// The reader options are checked before any input is read and before -o is made: a LAMMPS
+/// data file without --atom-style used to be found only when its turn came, after the input
+/// before it had been written (review 2026-10-30 A5-M2).
 #[test]
 fn reader_options_are_checked_before_any_input_is_read() {
     let d = scratch("read_args_first");
@@ -205,7 +205,7 @@ fn reader_options_are_checked_before_any_input_is_read() {
     std::fs::write(&data, "x\n\n1 atoms\n1 atom types\n0 4 xlo xhi\n0 4 ylo yhi\n0 4 zlo zhi\n\n\
                            Masses\n\n1 22.99\n\nAtoms # atomic\n\n1 1 0 0 0\n").unwrap();
     let o = d.join("out");
-    let out = ferro(&["build", "supercell", "-i", TRICLINIC, data.to_str().unwrap(),
+    let out = ferro(&["build", "supercell", "-i", data.to_str().unwrap(),
                       "--dims", "2", "1", "1", "-o", o.to_str().unwrap(), "--mkdir"]);
     assert_ne!(out.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&out.stderr).contains("--atom-style"));
@@ -214,6 +214,23 @@ fn reader_options_are_checked_before_any_input_is_read() {
                       "-o", o.to_str().unwrap(), "--mkdir"]);
     assert!(String::from_utf8_lossy(&out.stderr).contains("--atom-style"));
     assert!(!o.exists(), "nothing may be written");
+}
+
+/// supercell and vacuum take one input file (user, 2026-11-08): several, as a shell glob
+/// gives, are refused before anything is read or -o is made.
+#[test]
+fn supercell_and_vacuum_refuse_two_files() {
+    let o = scratch("two_files").join("out");
+    for args in [&["supercell", "--dims", "2", "1", "1"][..], &["vacuum", "--thickness", "5"][..]] {
+        let mut argv = vec!["build"];
+        argv.extend_from_slice(args);
+        argv.extend_from_slice(&["-i", TRICLINIC, TRICLINIC, "-o", o.to_str().unwrap(), "--mkdir"]);
+        let out = ferro(&argv);
+        assert_eq!(out.status.code(), Some(1), "{}", args[0]);
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains(&format!("build {} takes one input file, got 2", args[0])), "{err}");
+        assert!(!o.exists(), "nothing may be written");
+    }
 }
 
 #[test]

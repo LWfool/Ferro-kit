@@ -920,11 +920,11 @@ pub fn print_build_supercell() {
 
   Give the replicas, or the size to reach: the smallest supercell whose
   interplanar spacings reach --min-length, grown along its thinnest axis
-  until it holds --min-atoms. Each input is one structure: a trajectory is
+  until it holds --min-atoms. One input, one structure: a trajectory is
   refused (take one frame with convert --start K --end K).
 
 Parameters:
-  -i, --input  FILE...    Input structure(s); globs allowed (quote them)
+  -i, --input  FILE       Input structure, one frame
       --dims NX NY NZ     Replicas along a, b, c
       --min-atoms N       At least N atoms
       --min-length LEN    Every interplanar spacing at least LEN [Å]; this is
@@ -944,7 +944,6 @@ Output:
 Examples:
   ferro build supercell -i quartz.cif --dims 2 2 3
   ferro build supercell -i POSCAR --min-atoms 200 --min-length 12
-  ferro build supercell -i 'cifs/*.cif' --min-length 10 -o big --mkdir
   ferro build supercell -i OUTCAR --dims 2 2 2 --format-out vasp
 
 Full documentation:  ferro doc build supercell"#
@@ -958,10 +957,10 @@ pub fn print_build_vacuum() {
   Lengthens one lattice vector so that the gap between periodic images grows
   by --thickness, measured perpendicular to the other two vectors. Atoms are
   not moved or centred: a slab crossing the cell boundary is split by the gap.
-  Each input is one structure: a trajectory is refused.
+  One input, one structure: a trajectory is refused.
 
 Parameters:
-  -i, --input  FILE...    Input structure(s); globs allowed (quote them)
+  -i, --input  FILE       Input structure, one frame
       --axis X            Lattice vector to lengthen: x = a, y = b, z = c  [z]
       --thickness LEN     Vacuum thickness [Å]
 {OUT_OPTS}
@@ -975,7 +974,7 @@ Output:
 
 Examples:
   ferro build vacuum -i slab.vasp --thickness 15
-  ferro build vacuum -i 'slabs/*.cif' --axis y --thickness 20 -o vac --mkdir
+  ferro build vacuum -i slab.cif --axis y --thickness 20 -o vac --mkdir
 
 Full documentation:  ferro doc build vacuum"#
     );

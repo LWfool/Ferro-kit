@@ -1,7 +1,7 @@
 //! `ferro build` — make a new structure from existing ones (or from nothing, `box`).
 //!
-//! One product per input, `<-o dir>/<op>_<input>[_<suffix>].<ext>`, in the input's
-//! format unless `--format-out` says otherwise. The structure work is `ferro-structure`'s;
+//! One input, one frame, one product: `<-o dir>/<op>_<input>[_<suffix>].<ext>` (merge takes
+//! two inputs and names both), in the input's format unless `--format-out` says otherwise. The structure work is `ferro-structure`'s;
 //! this module only reads, names and writes.
 
 use std::path::{Path, PathBuf};
@@ -88,7 +88,8 @@ impl OutArgs {
 
 #[derive(Args, Debug)]
 pub struct SupercellCmd {
-    /// Input structure file(s); glob patterns allowed — quote them
+    /// Input structure file, one frame
+    // Any count reaches exact_inputs, which names the files when a shell glob gave several
     #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
@@ -119,7 +120,8 @@ pub struct SupercellCmd {
 
 #[derive(Args, Debug)]
 pub struct VacuumCmd {
-    /// Input structure file(s); glob patterns allowed — quote them
+    /// Input structure file, one frame
+    // Any count reaches exact_inputs, which names the files when a shell glob gave several
     #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
@@ -222,13 +224,12 @@ fn at_least_one(v: &str) -> std::result::Result<usize, String> {
     }
 }
 
-/// Returns the number of inputs that failed, for the process exit code.
-pub fn run(cmd: &BuildCmd) -> Result<usize> {
+pub fn run(cmd: &BuildCmd) -> Result<()> {
     match cmd {
         BuildCmd::Supercell(c) => run_supercell(c),
         BuildCmd::Vacuum(c) => run_vacuum(c),
-        BuildCmd::Merge(c) => run_merge(c).map(|_| 0),
-        BuildCmd::Box(c) => run_box(c).map(|_| 0),
+        BuildCmd::Merge(c) => run_merge(c),
+        BuildCmd::Box(c) => run_box(c),
     }
 }
 
@@ -258,53 +259,36 @@ fn read_structure(path: &Path, read: &ReadArgs, op: &str) -> Result<Trajectory> 
     Ok(traj)
 }
 
-/// Reads each input as one structure, hands it to `make`, and writes what comes back as
-/// `<op>_<input>[_<suffix>].<ext>`, atoms in (Z, symbol) order as `convert` writes
-/// them. `make` returns `None` to write nothing (`--dry-run`) and a note for the
-/// input's line.
-///
-/// Its first half (check the suffix, expand the inputs, prepare `-o`, map the inputs,
-/// stop when none succeeded) is `batch::drive`'s, error text included; not shared because
-/// `drive` returns tables to stack and this writes structures, one per input (R6,
-/// review 2026-10-30 A5-L8). A change there is a change here.
-fn per_input(
+/// Reads the one input of `op` as one structure, hands it to `make`, and writes what comes
+/// back as `<op>_<input>[_<suffix>].<ext>`, atoms in (Z, symbol) order as `convert` writes
+/// them. `make` returns `None` to write nothing (`--dry-run`) and a note to print.
+fn one_input(
     op: &str,
     inputs: &[PathBuf],
     read: &ReadArgs,
     out_args: &OutArgs,
     make: impl Fn(&Frame) -> Result<(Option<Frame>, String)>,
-) -> Result<usize> {
-    // 参数级错误（-s、目标格式）在建目录、读第一个文件之前查完
+) -> Result<()> {
+    let input = &batch::exact_inputs(&format!("build {op}"), inputs, 1)?[0];
+    // 参数级错误（-s、读入参数、目标格式）在建目录、读文件之前查完
     batch::check_suffix(out_args.suffix.as_deref())?;
-    let inputs = batch::expand_trajectories(inputs)?;
-    // Each input's product extension, found once (it may look inside the file)
-    let mut exts = std::collections::HashMap::new();
-    for p in &inputs {
-        // the reader options too, as traj / map / net check them: a data file without
-        // --atom-style used to be found only when its turn came (review 2026-10-30 A5-M2)
-        check_read_args(p, read)?;
-        exts.insert(p.clone(), out_args.ext(p, read)?);
-    }
+    check_read_args(input, read)?;
+    let ext = out_args.ext(input, read)?;
+    let label = &batch::unique_labels(inputs)[0];
     out_args.out().prepare()?;
 
-    let (ok, failed) = batch::map_inputs(&inputs, |inp| {
-        let traj = read_structure(&inp.path, read, op)?;
-        let (made, note) = make(&traj.frames[0])?;
-        let Some(made) = made else {
-            println!("  {note}");
-            return Ok(());
-        };
-        let ext = &exts[&inp.path];
-        println!("  {note} -> {}", write_product(out_args, &[op, &inp.label], ext, &Trajectory { frames: vec![made], metadata: traj.metadata }, read.units)?);
-        Ok(())
-    });
-    if ok.is_empty() {
-        bail!("every input failed; nothing to write");
-    }
-    Ok(failed.len())
+    let traj = read_structure(input, read, op)?;
+    let (made, note) = make(&traj.frames[0])?;
+    let Some(made) = made else {
+        println!("{note}");
+        return Ok(());
+    };
+    let made = Trajectory { frames: vec![made], metadata: traj.metadata };
+    println!("{note} -> {}", write_product(out_args, &[op, label], &ext, &made, read.units)?);
+    Ok(())
 }
 
-fn run_supercell(c: &SupercellCmd) -> Result<usize> {
+fn run_supercell(c: &SupercellCmd) -> Result<()> {
     if c.dims.is_none() && c.min_atoms.is_none() && c.min_length.is_none() {
         bail!("give the replicas (--dims NX NY NZ) or a size to reach (--min-atoms N, --min-length LEN)");
     }
@@ -314,14 +298,14 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
         }
     }
 
-    // find_supercell_dims refuses it too, but only after each input is read
+    // find_supercell_dims refuses it too, but only after the input is read
     if let Some(n) = c.min_atoms {
         if n > MAX_SUPERCELL_ATOMS {
             bail!("--min-atoms must be at most {MAX_SUPERCELL_ATOMS}, got {n}");
         }
     }
 
-    per_input("supercell", &c.input, &c.read, &c.out, |first| {
+    one_input("supercell", &c.input, &c.read, &c.out, |first| {
         let (dims, how) = match &c.dims {
             Some(d) => ([d[0], d[1], d[2]], "given"),
             None => {
@@ -345,13 +329,13 @@ fn run_supercell(c: &SupercellCmd) -> Result<usize> {
     })
 }
 
-fn run_vacuum(c: &VacuumCmd) -> Result<usize> {
+fn run_vacuum(c: &VacuumCmd) -> Result<()> {
     let Some(t) = c.thickness else { bail!("give the vacuum thickness: --thickness LEN") };
     // add_vacuum 也查，但它在读完文件之后才查到
     if !(t > 0.0 && t.is_finite()) {
         bail!("--thickness must be a finite number > 0, got {t}");
     }
-    per_input("vacuum", &c.input, &c.read, &c.out, |frame| {
+    one_input("vacuum", &c.input, &c.read, &c.out, |frame| {
         Ok((Some(add_vacuum(frame, &c.axis, t)?), format!("{t} Å of vacuum along {}", c.axis)))
     })
 }

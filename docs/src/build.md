@@ -4,7 +4,7 @@
 
 ```bash
 ferro build supercell -i quartz.cif --dims 2 2 3
-ferro build supercell -i 'cifs/*.cif' --min-atoms 200 --min-length 12 -o big --mkdir
+ferro build supercell -i POSCAR --min-atoms 200 --min-length 12 -o big --mkdir
 ferro build vacuum -i slab.vasp --thickness 15
 ferro build merge -i substrate.vasp water.vasp --gap 2.5
 ferro build box -c ZnO:43 -c P2O5:43 -c Al2O3:15 --density 3.2
@@ -34,16 +34,17 @@ Products are named like every other ferro product, `<op>_<input>[_<suffix>].<ext
   `cif`, `vasp`, `data`). A `POSCAR` / `CONTCAR` input gives `.vasp`. An
   input ferro only reads (OUTCAR, a program output, a QE input) needs `--format-out`,
   and the run stops before anything is read if it is missing.
-- **Each input is one structure.** These operations make a starting structure, and
-  building one from every frame of a trajectory has no use, so an input of several frames
-  is refused rather than worked frame by frame or reduced to its first frame. Take the
-  frame you want with `ferro convert -i md.dump -o DIR --format-out extxyz --start K --end K`.
+- **One input, one structure.** `supercell` and `vacuum` take one input file, `merge` two.
+  These operations make a starting structure, and building one from every frame of a
+  trajectory, or from a directory of files at once, has no use: an input of several frames is
+  refused rather than worked frame by frame or reduced to its first frame, and several files
+  (a glob the shell expanded) are refused before anything is read. Take the frame you want with
+  `ferro convert -i md.dump -o DIR --format-out extxyz --start K --end K`; for several files,
+  loop in the shell: `for f in cifs/*.cif; do ferro build supercell -i "$f" --dims 2 2 2; done`.
 - **Atoms are written in (Z, symbol) order**, one block per element, as `convert` writes them.
 - **Energy, forces, stress, velocities, temperature and step are dropped.** They
   belong to a calculation, and the new structure has not been calculated.
   Labels, masses, magnetic moments and charges are kept.
-- `supercell` and `vacuum` take several inputs (`-i` takes globs; quote them). An input
-  that fails is skipped and the exit code is 1, as in every batch command.
 
 ## `ferro build supercell`
 
@@ -81,12 +82,11 @@ product finds it.
 A supercell is capped at $10^8$ atoms; `--min-atoms` above that fails before any
 input is read.
 
-The line printed for each input shows the replicas, how they were chosen (`given`
+The line printed shows the replicas, how they were chosen (`given`
 or `auto`), the atom counts and the supercell's three spacings:
 
 ```
-[1/1] POSCAR
-  4x3x3 (auto): 3 -> 108 atoms, spacings 38.509 35.909 42.000 Å -> supercell_POSCAR.vasp
+4x3x3 (auto): 3 -> 108 atoms, spacings 38.509 35.909 42.000 Å -> supercell_POSCAR.vasp
 ```
 
 ## `ferro build vacuum`

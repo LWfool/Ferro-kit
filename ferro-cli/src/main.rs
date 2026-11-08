@@ -161,10 +161,10 @@ fn run() -> Result<()> {
             if cmd::build::wants_help(c) {
                 page_or_fail(2)?;
                 cmd::build::print_help(c);
-                0
             } else {
                 cmd::build::run(c)?
             }
+            0
         }
         Command::Dataset { cmd: None } => {
             help::print_dataset_overview();

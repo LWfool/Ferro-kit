@@ -268,7 +268,6 @@ pub fn drive<T>(
     common.init_threads();
     println!("Inputs: {} file(s)", inputs.len());
 
-    // The same front half is written out in cmd/build.rs `per_input` (review 2026-10-30 A5-L8)
     let (results, failures) = map_inputs(&inputs, |inp| calc(inp, &common.load(&inp.path)?, &out));
     if results.is_empty() {
         return Err(anyhow!("every input failed; nothing to write"));

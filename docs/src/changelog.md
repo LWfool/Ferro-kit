@@ -34,13 +34,17 @@ command line alike; regenerate it rather than migrating it.
 - Python `ferro.gr_pair` / `ferro.gr_all` default to `r_max=10.005`, clamped to the box, as
   `ferro traj gr`: on a box past 20 Å they used to run to the minimum-image bound instead.
 
-### `ferro build`: one structure per input
+### `ferro build`: one input, one structure
 
 - **Edit your scripts:** `ferro build supercell` / `vacuum`, and Python's `ferro.supercell` /
-  `ferro.add_vacuum_layer`, take one structure. An input of several frames is an error (skipped, exit
-  code 1, in a `ferro build` batch), as it already was for `merge`; take the frame you want first with
-  `ferro convert --start K --end K`, or `.subset([i])` in Python. They used to work every frame of a
-  trajectory. Several input files, one frame each, are still fine.
+  `ferro.add_vacuum_layer`, take one structure. An input of several frames is an error, as it already
+  was for `merge`; take the frame you want first with `ferro convert --start K --end K`, or
+  `.subset([i])` in Python. They used to work every frame of a trajectory.
+- **Edit your scripts:** `ferro build supercell` / `vacuum` take one input file, as `convert` does
+  (`merge` takes two). `-i 'cifs/*.cif'` and several files are an error before anything is read;
+  loop in the shell instead: `for f in cifs/*.cif; do ferro build supercell -i "$f" ...; done`.
+  They used to run as a batch, skipping a failed input with exit code 1; a failure is now the
+  run's error. The printed line loses its `[1/1] <input>` header.
 
 ### `ferro map`: the selection is part of the product name
 

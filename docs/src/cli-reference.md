@@ -10,7 +10,7 @@ ferro net                                                      → six stacked c
                                                                  + optional labelled trajectory
 ferro bader                                                    → ACF / BCF / AVF tables (after Henkelman's)
 ferro convert | info                                           → structure files / a summary
-ferro build supercell | vacuum | merge | box                   → one structure file per input
+ferro build supercell | vacuum | merge | box                   → one structure file
 ferro dataset collect | filter | merge                         → DeePMD system directories
 ferro doc   <topic>                                            → the manual (compiled into the binary)
 ```

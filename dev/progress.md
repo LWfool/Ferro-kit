@@ -369,8 +369,8 @@ dump2analysis / dump2sq 在手，无法再跑一遍对拍 —— 下次跑之前
     `filter` / `merge` 产物默认带 `.train`（2026-09-20 起）
 - **`cmd/build.rs`**（2026-10-23）：`build supercell | vacuum | merge | box`，只读、命名、写，结构操作全在
   `ferro-structure`。四者共用 `OutArgs`（`-o` 目录 / `-s` / `--mkdir` / `--format-out`，格式默认取输入的）与
-  `write_product`；supercell / vacuum 走 `per_input`（`batch::map_inputs`，逐输入失败跳过 + 退出码 1），
-  merge / box 只出一个产物、失败即报错。手册 `docs/src/build.md`，判据见 `decisions.md`「`ferro build`」
+  `write_product`；supercell / vacuum 走 `one_input`（`exact_inputs(.., 1)`，只收一个文件，2026-11-08 起不再是批处理），
+  merge 收两个；四者都只出一个产物、失败即报错。手册 `docs/src/build.md`，判据见 `decisions.md`「`ferro build`」
 - **`cmd/dataset/inspect.rs`**（2026-09-21）：`dataset collect --type inspect` 的三个诊断产物，
   布局与 `_info.csv` 的列见手册 `dataset/collect.md`
 - **`doc.rs`**（2026-08-26）：`ferro doc` —— `docs/src/` 除 `python/` 外的全部页经 `include_str!`

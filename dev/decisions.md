@@ -932,7 +932,11 @@ Python `write(t, "POSCAR_x.cif")` 同病。
 - **`-o` 是目录、`-s` 是后缀**（用户定）：与其余批处理命令统一，产物名走 `batch::product_name`
   （`<op>_<输入>[_<-s>].<ext>`）。参考脚本原地覆盖并留 `.bak`，违反「`-o` 恒为路径」，不做。
   `merge` 产物带两个输入名（`merge_<A>_<B>`），`box` 无输入，默认 `box.vasp`（均用户定）
-- **supercell / vacuum 收多输入**（用户定）：`-o` 成目录后产物名本就带输入名，N=1 是 N 的特例
+- ~~**supercell / vacuum 收多输入**（用户定）：`-o` 成目录后产物名本就带输入名，N=1 是 N 的特例~~
+  → **supercell / vacuum 只收一个输入文件，merge 两个**（用户定 2026-11-08，取代原条）：结构构建做的是一个初始结构，
+  多文件批量建与多帧批量建同样没有必要。走 `exact_inputs(.., 1)`，与 convert / info / bader 一样在读文件、建 `-o`
+  之前拒绝多个文件，并提示用 shell 循环；`per_input` 批驱动（`map_inputs`、逐输入跳过 + 退出码 1）随之删去。
+  产物名仍带输入名（逐输入产物的命名规则），内部 glob 展开不再做（同 convert）
 - **格式默认取输入的**（同参考脚本）；输入是只读格式（OUTCAR、QE 输入）时要求 `--format`，
   在读第一个文件前报错
 - **`--min-length` 按面间距**，参考脚本按矢量长度：面间距才是最小镜像截断的上界，斜胞上
@@ -942,7 +946,7 @@ Python `write(t, "POSCAR_x.cif")` 同病。
   结构操作用来建初始结构，从一条轨迹逐帧批量建没有意义。supercell / vacuum 与 merge 一样，多帧输入报错、
   指向 `convert --start K --end K`（Python 指向 `.subset([i])`），不逐帧做也不默认取第 0 帧。`ferro-structure`
   只有单帧函数，不加轨迹级的包装（审查 2026-11-06 D2 / A7-1 因此结案：两边的逐帧循环一并删去）。
-  「收多输入」照旧 —— 多个文件、每个一帧。随之删去：`check_supercell_total`（只防多帧总原子数超上限，
+  ~~「收多输入」照旧 —— 多个文件、每个一帧。~~（2026-11-08 起也只收一个文件，见上条）随之删去：`check_supercell_total`（只防多帧总原子数超上限，
   单帧由 `make_supercell` 自己查）、两处 supercell 后的 `share_sites()`、CLI 的「先建第 0 帧再建全部」两遍
 - **merge 拒绝多帧输入**：CLI 不替用户挑帧，报错指向 `convert --start/--end`。Python 的 `merge` 原先静默取首帧，
   2026-10-31 用户定同 CLI 报错，提示 `.subset([i])`（10-30 审查 A6-M-5）
