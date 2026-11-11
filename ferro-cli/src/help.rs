@@ -182,7 +182,7 @@ Structure I/O
   convert        Format conversion — run it bare for the read/write matrix
   info           Atoms, cell, volume, density (g/cm³) of a structure or trajectory
 
-Structure building       one structure file per input, in the input's format
+Structure building       one structure file per command, in the input's format
   build supercell   Replicate a cell, given or sized by atoms / spacing
   build vacuum      Add a vacuum layer along one lattice vector
   build merge       Stack two structures with a gap between them
@@ -200,8 +200,9 @@ Manual
 Conventions:
   -i takes several files and expands globs itself — quote them. Each input is
   analysed on its own and the results stack into ONE csv carrying a `file`
-  column; a failed input is skipped and the exit code is 1. convert, info and
-  bader read one file, build merge two, named literally.
+  column; a failed input is skipped and the exit code is 1. convert, info,
+  bader, build supercell and build vacuum read one file, build merge two,
+  named literally.
   -o is always a DIRECTORY; a missing one is asked about, or made by --mkdir
   (convert makes it). Analysis products are named
     <-o dir>/<command>[_<table>][_<selection>][_<input>][_<suffix>].<ext>
@@ -901,7 +902,7 @@ pub fn print_build_overview() {
     println!(
         r#"ferro build — Make structures
 
-  One product per input, <-o dir>/<op>_<input>[_<suffix>].<ext>, in the
+  One product per command, <-o dir>/<op>_<input>[_<suffix>].<ext>, in the
   input's format unless --format-out names another:
 
   supercell  replicate a cell nx x ny x nz times

@@ -67,7 +67,7 @@ ferro traj  gr | sq | msd | angle | vacf | rotcorr | vanhove | bondlife → stac
 ferro map   density | velocity | force | radius | sdf | chg-sdf → one .cube per input
 ferro net                                                       → six stacked CSVs
 ferro dataset collect | filter | merge                         → DeePMD system directories
-ferro build supercell | vacuum | merge | box                   → one structure file per input
+ferro build supercell | vacuum | merge | box                   → one structure file per command
 ferro bader | convert | info
 ferro doc   <topic>                                            → the manual, compiled into the binary
 ```
