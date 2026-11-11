@@ -390,8 +390,9 @@ d.groupby("ligand")["count"].sum()
 
 > **Cross-checks.** The `n_formers=2` count of `Al-O-Al` in `linkage` should equal the `O_b, Al, Al` row of
 > the `ligand_type` table; the difference comes from three-coordinate oxygens.
-> $\sum(m_\mathrm{Al} \times \text{count})$ (from `qn_partner`) should equal the true-bridge count of
-> `Al-O-P` in `linkage`.  When neither holds, check first whether a cutoff was left out.
+> $\sum(m_\mathrm{Al} \times \text{count})$ (from `qn_partner`) should equal the `Al-O-P` count in
+> `linkage` summed over **every** `n_formers`: $m_\mathrm{Al}$ counts each P–Al pair joined through a
+> three-coordinate oxygen too.  When neither holds, check first whether a cutoff was left out.
 
 ---
 
