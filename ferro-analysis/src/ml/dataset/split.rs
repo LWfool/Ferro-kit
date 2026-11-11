@@ -63,6 +63,10 @@ impl Split {
         if valid <= 0.0 && test <= 0.0 {
             return Err(invalid(format!("--ratio {spec:?} holds out nothing; omit --ratio instead")));
         }
+        // `parts` would refuse it on every system, after each was read (review 2026-11-10 M7)
+        if train <= 0.0 {
+            return Err(invalid(format!("--ratio {spec:?} leaves no training share")));
+        }
         Ok(Split { valid: valid / total, test: test / total, seed })
     }
 
@@ -187,5 +191,15 @@ mod tests {
         assert!(Split::parse("8:1:1", DEFAULT_SEED).is_ok());
         assert!(Split::parse(" 8 : 1 : 1 ", DEFAULT_SEED).is_ok());
         assert!(Split::parse("0.8:0.1:0.1", DEFAULT_SEED).is_ok());
+    }
+
+    /// A zero training share fails on every system, so it fails at parse time, before
+    /// any input is read; it used to fail only after reading (review 2026-11-10 M7)
+    #[test]
+    fn a_ratio_with_no_training_share_is_rejected_at_parse_time() {
+        for bad in ["0:1:1", "0:1"] {
+            let msg = Split::parse(bad, DEFAULT_SEED).unwrap_err().to_string();
+            assert!(msg.contains("--ratio") && msg.contains("training"), "{bad:?}: {msg}");
+        }
     }
 }
