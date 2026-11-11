@@ -160,13 +160,26 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
 
         // ── 跨行块的续读 ─────────────────────────────────────────────────
         if want_cell > 0 {
-            let v = floats(&line);
-            if v.len() >= 3 {
-                cell_rows.push([v[0], v[1], v[2]]);
-                want_cell -= 1;
-                if want_cell == 0 && cell_rows.len() == 3 {
-                    p.cell = Some(Matrix3::from_row_slice(cell_rows.as_flattened()));
+            // A row is 3F13.9: a component <= -10 fills its field and runs into the number
+            // before it (`15.448966064-12.000000000`). Split a minus between two digits, as
+            // ASE does; a row whose first three fields still do not read leaves the cell
+            // unset, so the step is incomplete (review 2026-11-10 H1)
+            let mut split = String::with_capacity(line.len() + 4);
+            let mut prev = ' ';
+            for c in line.chars() {
+                if c == '-' && prev.is_ascii_digit() {
+                    split.push(' ');
                 }
+                split.push(c);
+                prev = c;
+            }
+            let row: Vec<f64> = split.split_whitespace().take(3).map_while(|t| t.parse().ok()).collect();
+            if let [x, y, z] = row[..] {
+                cell_rows.push([x, y, z]);
+            }
+            want_cell -= 1;
+            if want_cell == 0 && cell_rows.len() == 3 {
+                p.cell = Some(Matrix3::from_row_slice(cell_rows.as_flattened()));
             }
             continue;
         }
@@ -490,6 +503,31 @@ mod tests {
         assert!((b[(0, 0)] - 11.0).abs() < 1e-12, "frame 1 reused frame 0's cell");
         assert!((b[(1, 1)] - 12.0).abs() < 1e-12);
         assert!((b[(2, 2)] - 13.0).abs() < 1e-12);
+    }
+
+    /// VASP writes a lattice row as 3F13.9: a component <= -10 fills its field and runs into
+    /// the number before it. It used to be skipped, and the reciprocal vectors filled the row
+    /// (review 2026-11-10 H1)
+    #[test]
+    fn a_lattice_component_glued_to_its_neighbour_is_split() {
+        let row = "     0.000000000 12.000000000  0.000000000";
+        assert_eq!(VARIABLE_CELL.matches(row).count(), 1);
+        let body = VARIABLE_CELL.replacen(row, "     5.000000000-12.000000000  0.000000000", 1);
+        let (traj, _) = read_vasp_outcar(&tmp("glued.outcar", &body)).unwrap();
+        let b = traj.frames[1].cell.as_ref().unwrap().matrix;
+        assert_eq!([b[(1, 0)], b[(1, 1)], b[(1, 2)]], [5.0, -12.0, 0.0]);
+        assert_eq!(b[(0, 0)], 11.0);
+    }
+
+    /// A lattice row whose first three fields do not all read is an incomplete step, not a
+    /// row filled from the reciprocal vectors or from the next row
+    #[test]
+    fn an_unreadable_lattice_row_is_counted_incomplete() {
+        let row = "    11.000000000  0.000000000  0.000000000";
+        assert_eq!(VARIABLE_CELL.matches(row).count(), 1);
+        let body = VARIABLE_CELL.replacen(row, "    11.000000000*************  0.000000000", 1);
+        let (traj, stats) = read_vasp_outcar(&tmp("badcell.outcar", &body)).unwrap();
+        assert_eq!((traj.n_frames(), stats.n_incomplete), (1, 1));
     }
 
     #[test]

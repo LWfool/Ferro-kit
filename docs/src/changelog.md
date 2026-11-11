@@ -67,6 +67,13 @@ command line alike; regenerate it rather than migrating it.
 - A QE input named `.qein` is recognised, as `.in` and `.qe` are.
 - `ferro-py job` and `ferro-py conv` take `--format-in FMT` too, with the same names.
 
+### Code review fixes (2026-11-10)
+
+- OUTCAR: a lattice component of -10 Å or less, which VASP writes run into the number before it
+  (`15.448966064-12.000000000`), is read; the row used to be filled from the reciprocal vectors, with
+  exit code 0. Regenerate anything read from such an OUTCAR (hexagonal cells with a > 11.5 Å are the
+  common case). A lattice row that still does not read makes the step incomplete.
+
 ### Code review fixes (2026-11-06): broken files, empty fields, names
 
 - `build box`: a formula is matched case-sensitively (names still are not): `C2H6Os` is osmium and no longer
