@@ -365,12 +365,12 @@ impl NetworkResult {
             for (n, b) in &self.qn_dist[*former] {
                 l_col.push(species_label(former, Some(*n), 0));
                 f_col.push((*former).clone());
-                v_col.push(*n as f64);
+                v_col.push(n.to_string());
                 bins.push(*b);
             }
         }
         let mut t = Table::new();
-        t.push_text("label", l_col).push_text("former", f_col).push_num("qn", v_col);
+        t.push_text("label", l_col).push_text("former", f_col).push_text("qn", v_col);
         push_bins(&mut t, &bins);
         for line in [
             "table   : Qn speciation — one row per (former, Qn).",
@@ -410,23 +410,23 @@ impl NetworkResult {
         let mut pf: Vec<&String> = self.qn_partner_dist.keys().collect();
         pf.sort_by(|a, b| canonical_cmp(a, b));
         let (mut l_col, mut f_col, mut v_col) = (Vec::new(), Vec::new(), Vec::new());
-        let mut m_cols: Vec<Vec<f64>> = vec![Vec::new(); partner_elems.len()];
+        let mut m_cols: Vec<Vec<String>> = vec![Vec::new(); partner_elems.len()];
         let mut bins = Vec::new();
         for former in &pf {
             for ((n, to), b) in &self.qn_partner_dist[*former] {
                 l_col.push(species_label(former, Some(*n), 0));
                 f_col.push((*former).clone());
-                v_col.push(*n as f64);
+                v_col.push(n.to_string());
                 for (i, p) in partner_elems.iter().enumerate() {
-                    m_cols[i].push(to.get(p).copied().unwrap_or(0) as f64);
+                    m_cols[i].push(to.get(p).copied().unwrap_or(0).to_string());
                 }
                 bins.push(*b);
             }
         }
         let mut t = Table::new();
-        t.push_text("label", l_col).push_text("former", f_col).push_num("qn", v_col);
+        t.push_text("label", l_col).push_text("former", f_col).push_text("qn", v_col);
         for (p, col) in partner_elems.iter().zip(m_cols) {
-            t.push_num(format!("m_{p}"), col);
+            t.push_text(format!("m_{p}"), col);
         }
         push_bins(&mut t, &bins);
         for line in [
@@ -493,12 +493,12 @@ impl NetworkResult {
         for elem in elems {
             for (v, b) in &self.cn_dist[*elem] {
                 e_col.push((*elem).clone());
-                v_col.push(*v as f64);
+                v_col.push(v.to_string());
                 bins.push(*b);
             }
         }
         let mut t = Table::new();
-        t.push_text("element", e_col).push_num("cn", v_col);
+        t.push_text("element", e_col).push_text("cn", v_col);
         push_bins(&mut t, &bins);
         for line in [
             "table   : coordination number distribution, one row per (element, cn).",
@@ -574,7 +574,7 @@ impl NetworkResult {
     fn linkage_table(&self) -> (String, Table) {
         // linkage：一行一种「配体 × 两端位点状态」的组合
         let mut txt: [Vec<String>; 4] = Default::default();
-        let mut nums: [Vec<f64>; 5] = Default::default();
+        let mut nums: [Vec<String>; 5] = Default::default();
         let mut bins = Vec::new();
         for ((a, b_site, ligand, n_formers), bin) in &self.linkage {
             // 展示列走 AtomType::label,与导出轨迹用同一套词汇
@@ -583,11 +583,11 @@ impl NetworkResult {
             txt[1].push(ligand.clone());
             txt[2].push(a.0.clone());
             txt[3].push(b_site.0.clone());
-            nums[0].push(a.1 as f64);
-            nums[1].push(a.2 as f64);
-            nums[2].push(b_site.1 as f64);
-            nums[3].push(b_site.2 as f64);
-            nums[4].push(*n_formers as f64);
+            nums[0].push(a.1.to_string());
+            nums[1].push(a.2.to_string());
+            nums[2].push(b_site.1.to_string());
+            nums[3].push(b_site.2.to_string());
+            nums[4].push(n_formers.to_string());
             bins.push(*bin);
         }
         let [c_link, c_lig, c_a, c_b] = txt;
@@ -596,12 +596,12 @@ impl NetworkResult {
         t.push_text("linkage", c_link)
             .push_text("ligand", c_lig)
             .push_text("elem_a", c_a)
-            .push_num("qn_a", n_a)
-            .push_num("cn_a", cn_a)
+            .push_text("qn_a", n_a)
+            .push_text("cn_a", cn_a)
             .push_text("elem_b", c_b)
-            .push_num("qn_b", n_b)
-            .push_num("cn_b", cn_b)
-            .push_num("n_formers", nf);
+            .push_text("qn_b", n_b)
+            .push_text("cn_b", cn_b)
+            .push_text("n_formers", nf);
         push_bins(&mut t, &bins);
         for line in [
             "table   : bridge connectivity — one row per (ligand, state of each end).",
@@ -627,7 +627,7 @@ impl NetworkResult {
 }
 
 fn push_bins(t: &mut Table, bins: &[Bin]) {
-    t.push_num("count", bins.iter().map(|b| b.count as f64).collect())
+    t.push_text("count", bins.iter().map(|b| b.count.to_string()).collect())
         .push_num("fraction", bins.iter().map(|b| b.fraction).collect())
         .push_num("sd", bins.iter().map(|b| b.sd).collect());
 }
@@ -1456,6 +1456,39 @@ mod tests {
         // ligand_type 的 label 合并成一行可读的连接式
         assert_eq!(col("ligand_type", "label"), vec!["Al-O_b-P".to_string()]);
         assert_eq!(col("ligand_type", "type"), vec!["O_b".to_string()]);
+    }
+
+    /// Counts and site numbers are integers and read as such (`465`, not `4.650000e2`),
+    /// as the dataset tables already write them (dev/issues.md; review 2026-11-10 M6)
+    #[test]
+    fn integer_columns_render_as_integers() {
+        let frame = cube(vec![
+            atom("P",  0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0),
+            atom("Al", 3.2, 0.0, 0.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Al".to_string(), "O".to_string()), 2.3);
+        let res = calc_network(&traj_of(vec![frame]), &TypeParams::new(cutoffs, BTreeMap::new())).unwrap();
+        let tables = res.to_tables();
+        let cell = |name: &str, c: &str| {
+            let t = &tables.iter().find(|(n, _)| n == name).unwrap().1;
+            t.column(c).unwrap_or_else(|| panic!("{name}.{c}")).cell(0)
+        };
+        for (table, cols) in [
+            ("qn", &["qn", "count"][..]),
+            ("qn_partner", &["qn", "m_Al", "count"]),
+            ("coordination", &["cn", "count"]),
+            ("composition", &["count"]),
+            ("ligand_type", &["count"]),
+            ("linkage", &["qn_a", "cn_a", "qn_b", "cn_b", "n_formers", "count"]),
+        ] {
+            for c in cols {
+                let v = cell(table, c);
+                assert!(v.parse::<u64>().is_ok(), "{table}.{c} = {v:?}");
+            }
+        }
     }
 
     /// 没有任何 Qn 形成子时，两张 Qn 表**整个不出**。只有表头的文件读起来
