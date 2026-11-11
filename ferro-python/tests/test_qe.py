@@ -56,6 +56,9 @@ def test_builtin_templates_generate(cfg, nvt, task, tmp_path):
     assert (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho")) == ("50.0", "400.0"), "取 UPF 建议的最大值"
     assert qe.get("control", "pseudo_dir") == f"'{tmp_path / 'upf'}/'"
     assert "zn_pbe_v1.uspp.F.UPF" in qe.card("ATOMIC_SPECIES"), "按头部的元素归类，不按文件名"
+    # pw.x adds the three-body D3 term by default; VASP IVDW = 12 and CP2K DFTD3(BJ) do not
+    # (review 2026-11-10 M11)
+    assert qe.get("system", "dftd3_threebody") == ".false."
     assert qe.card("K_POINTS").split() == ["K_POINTS", "automatic", "1", "1", "1", "0", "0", "0"]
     path = tmp_path / "pw.in"
     path.write_text(s.files["pw.in"])

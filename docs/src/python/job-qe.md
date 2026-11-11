@@ -114,7 +114,9 @@ Ignored, with a note: pw.x has no separate fine grid — the dense grid follows
 
 ## The built-in templates
 
-All three: `ibrav = 0`, D3(BJ) (`vdw_corr = 'dft-d3'`, `dftd3_version = 4`),
+All three: `ibrav = 0`, D3(BJ) two-body only (`vdw_corr = 'dft-d3'`, `dftd3_version = 4`,
+`dftd3_threebody = .false.`: pw.x adds the three-body term by default, VASP `IVDW = 12` and
+CP2K `DFTD3(BJ)` do not),
 `tstress` and `tprnfor` on, `outdir = './tmp/'`, `disk_io = 'low'`,
 `diagonalization = 'david'`, `electron_maxstep = 200`, no cutoffs (taken from the
 UPF files, see above).

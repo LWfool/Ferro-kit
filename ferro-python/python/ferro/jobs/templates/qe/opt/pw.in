@@ -11,6 +11,9 @@
 ! from the UPF files.
 ! Comments inside the namelists are not carried into the generated pw.in.
 !
+! D3(BJ) is two-body only (dftd3_threebody = .false.), as VASP IVDW = 12 and CP2K
+! DFTD3(BJ) compute it: pw.x adds the three-body (ATM) term by default, so the three
+! programs would give different energies, forces and stresses for one structure.
 ! Not set here on purpose: parallelisation -- pw.x takes it from the command line
 ! (mpirun -np N pw.x -nk POOLS -nd DIAG); add your machine's.
 &CONTROL
@@ -30,6 +33,7 @@
   ibrav = 0
   vdw_corr = 'dft-d3'
   dftd3_version = 4
+  dftd3_threebody = .false.
 /
 &ELECTRONS
   electron_maxstep = 200

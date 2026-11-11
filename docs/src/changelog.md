@@ -83,6 +83,9 @@ command line alike; regenerate it rather than migrating it.
   with the filtered frames.
 - `dataset merge`: a merged set named like one of its inputs (merging again into the root of an
   earlier merge) is an error for that group, `--overwrite` or not; it used to replace that input.
+- Python: the built-in QE templates set `dftd3_threebody = .false.`. pw.x adds the three-body D3
+  term by default, which the VASP and CP2K templates do not compute, so one structure got different
+  energies, forces and stresses from the three programs. Regenerate QE inputs made from them.
 - `build supercell --min-length` a whole number of cell lengths takes that many cells; a rounding
   error in the ratio used to add one (`a = 5.65`, `--min-length 16.95` gave 4 instead of 3).
 - `build supercell --dry-run` needs neither the `-o` directory (nor `--mkdir`) nor `--format-out`;
