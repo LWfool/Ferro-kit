@@ -83,6 +83,8 @@ command line alike; regenerate it rather than migrating it.
   with the filtered frames.
 - `dataset merge`: a merged set named like one of its inputs (merging again into the root of an
   earlier merge) is an error for that group, `--overwrite` or not; it used to replace that input.
+- `build supercell --dry-run` needs neither the `-o` directory (nor `--mkdir`) nor `--format-out`;
+  it writes nothing, but used to create the directory and ask for an output format.
 
 ### Code review fixes (2026-11-06): broken files, empty fields, names
 

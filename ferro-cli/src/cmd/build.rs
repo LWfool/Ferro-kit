@@ -261,25 +261,29 @@ fn read_structure(path: &Path, read: &ReadArgs, op: &str) -> Result<Trajectory> 
 
 /// Reads the one input of `op` as one structure, hands it to `make`, and writes what comes
 /// back as `<op>_<input>[_<suffix>].<ext>`, atoms in (Z, symbol) order as `convert` writes
-/// them. `make` returns `None` to write nothing (`--dry-run`) and a note to print.
+/// them. `make` returns the structure and a note to print; `dry_run` prints the note only,
+/// so it needs neither an output format nor the `-o` directory (review 2026-11-10 M8).
 fn one_input(
     op: &str,
     inputs: &[PathBuf],
     read: &ReadArgs,
     out_args: &OutArgs,
-    make: impl Fn(&Frame) -> Result<(Option<Frame>, String)>,
+    dry_run: bool,
+    make: impl Fn(&Frame) -> Result<(Frame, String)>,
 ) -> Result<()> {
     let input = &batch::exact_inputs(&format!("build {op}"), inputs, 1)?[0];
     // 参数级错误（-s、读入参数、目标格式）在建目录、读文件之前查完
     batch::check_suffix(out_args.suffix.as_deref())?;
     check_read_args(input, read)?;
-    let ext = out_args.ext(input, read)?;
+    let ext = (!dry_run).then(|| out_args.ext(input, read)).transpose()?;
     let label = &batch::unique_labels(inputs)[0];
-    out_args.out().prepare()?;
+    if ext.is_some() {
+        out_args.out().prepare()?;
+    }
 
     let traj = read_structure(input, read, op)?;
     let (made, note) = make(&traj.frames[0])?;
-    let Some(made) = made else {
+    let Some(ext) = ext else {
         println!("{note}");
         return Ok(());
     };
@@ -305,7 +309,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<()> {
         }
     }
 
-    one_input("supercell", &c.input, &c.read, &c.out, |first| {
+    one_input("supercell", &c.input, &c.read, &c.out, c.dry_run, |first| {
         let (dims, how) = match &c.dims {
             Some(d) => ([d[0], d[1], d[2]], "given"),
             None => {
@@ -325,7 +329,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<()> {
             n * nx * ny * nz, d[0], d[1], d[2],
             if dims == [1, 1, 1] { ", already large enough" } else { "" }
         );
-        Ok(((!c.dry_run).then_some(first_sc), note))
+        Ok((first_sc, note))
     })
 }
 
@@ -335,8 +339,8 @@ fn run_vacuum(c: &VacuumCmd) -> Result<()> {
     if !(t > 0.0 && t.is_finite()) {
         bail!("--thickness must be a finite number > 0, got {t}");
     }
-    one_input("vacuum", &c.input, &c.read, &c.out, |frame| {
-        Ok((Some(add_vacuum(frame, &c.axis, t)?), format!("{t} Å of vacuum along {}", c.axis)))
+    one_input("vacuum", &c.input, &c.read, &c.out, false, |frame| {
+        Ok((add_vacuum(frame, &c.axis, t)?, format!("{t} Å of vacuum along {}", c.axis)))
     })
 }
 

@@ -132,6 +132,20 @@ fn supercell_dry_run_writes_nothing() {
     assert_eq!(std::fs::read_dir(&o).unwrap().count(), 0);
 }
 
+/// `--dry-run` writes nothing, so it needs neither the `-o` directory (nor `--mkdir` to make
+/// it) nor an output format; it used to ask for both (review 2026-11-10 M8)
+#[test]
+fn supercell_dry_run_needs_no_output_directory_or_format() {
+    let d = scratch("sc_dry_noout");
+    let o = d.join("missing");
+    let input = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/vasp651_sp/frame_0011/OUTCAR");
+    let out = ferro(&["build", "supercell", "-i", input,
+                      "--dims", "2", "1", "1", "--dry-run", "-o", o.to_str().unwrap()]);
+    ok(&out);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("2x1x1 (given)"));
+    assert!(!o.exists(), "a dry run created -o");
+}
+
 /// A parameter error, so it fails before the (missing) input is read.
 #[test]
 fn supercell_min_atoms_over_the_cap_fails_before_reading() {
