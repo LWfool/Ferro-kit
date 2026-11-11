@@ -120,6 +120,11 @@ derivatives of the free energy, so pairing them with the extrapolated energy
 would give a model two halves of different functionals. dpdata makes the same
 choice, which keeps datasets converted by either tool comparable.
 
+An extxyz file is read for its `energy=` key only, as dpdata reads it; `free_energy=` is
+ignored. ASE's VASP calculator writes `energy(sigma->0)` as `energy=` and `TOTEN` as
+`free_energy=`, so an extxyz file written that way gives the extrapolated energy, not the
+`TOTEN` the same run's OUTCAR gives.
+
 ## Parameters
 
 | Flag | Description |
