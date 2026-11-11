@@ -122,7 +122,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
 
     for (_, members) in groups {
         let n_members = members.len();
-        if let Err(e) = merge_group(members, out_root, args) {
+        if let Err(e) = merge_group(members, &systems, out_root, args) {
             crate::report::error(crate::report::PROGRAM, format!("{e:#}; group skipped"));
             // counted in inputs, as main's summary says and collect counts (review 2026-10-30 A5-M10)
             failures += n_members;
@@ -134,6 +134,7 @@ pub(super) fn run_merge(args: &MergeCmd) -> Result<usize> {
 
 fn merge_group(
     members: Vec<(PathBuf, ferro_core::Trajectory)>,
+    inputs: &[PathBuf],
     out_root: &Path,
     args: &MergeCmd,
 ) -> Result<()> {
@@ -171,6 +172,14 @@ fn merge_group(
         String::new()
     };
     let dest = out_root.join(format!("{name}{suffix}"));
+    // Merging into the root of an earlier merge names the new set like that one, an input.
+    // The name needs the composition, so this is checked per group, before writing
+    let targets = match args.mode {
+        MergeMode::BySource => vec![dest.clone()],
+        MergeMode::Shuffle if args.out_type.stress_key().is_none() => split_targets(&dest, &split),
+        MergeMode::Shuffle => Vec::new(),
+    };
+    refuse_writing_over_inputs(&targets, inputs)?;
 
     let n_systems = sorted.len();
     let mut all = ferro_core::Trajectory { metadata: sorted[0].1.metadata.clone(), ..Default::default() };
@@ -314,6 +323,41 @@ mod tests {
             let err = run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap_err().to_string();
             assert!(!err.contains("--dir-suffix"), "{good} is a valid suffix: {err}");
         }
+    }
+
+    /// Review 2026-11-10 H2: merging into the root of an earlier merge named the new set
+    /// like that earlier one, an input, and --overwrite let it replace the input
+    #[test]
+    fn a_merged_set_landing_on_an_input_is_refused() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: MergeCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_merge_self_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        ferro_io::write_deepmd_npy(&id_system(&[0, 1], &[0, 1, 2]), &root.join("in/x")).unwrap();
+        let out = root.join("out");
+        let run = |inputs: &[&Path], extra: &[&str]| {
+            let mut argv = vec!["merge".to_string(), "-i".into()];
+            argv.extend(inputs.iter().map(|p| p.to_str().unwrap().to_string()));
+            argv.extend(["-o".into(), out.to_str().unwrap().into(), "--mkdir".into()]);
+            argv.extend(extra.iter().map(|s| s.to_string()));
+            run_merge(&Wrap::try_parse_from(argv).unwrap().cmd).unwrap()
+        };
+        assert_eq!(run(&[&root.join("in/x")], &[]), 0);
+        let first = std::fs::read_dir(&out).unwrap().next().unwrap().unwrap().path();
+        ferro_io::write_deepmd_npy(&id_system(&[10, 11], &[0, 1, 2]), &root.join("in/y")).unwrap();
+        for mode in ["shuffle", "by-source"] {
+            let failures = run(&[&first, &root.join("in/y")],
+                               &["--overwrite", "--mode", mode, "--dir-suffix", ".train"]);
+            assert_eq!(failures, 2, "{mode}: the group must be refused");
+            let mut got = check_ids(&first);
+            got.sort();
+            assert_eq!(got, vec![0, 1], "{mode}: the input was rewritten");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Review E2-2: `-s` is the batch tag everywhere else, so `filter -s 5` no longer

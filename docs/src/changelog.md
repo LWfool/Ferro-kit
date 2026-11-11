@@ -76,6 +76,8 @@ command line alike; regenerate it rather than migrating it.
 - `dataset filter`: a product that would land on one of its inputs is an error before anything is
   read, `--overwrite` or not. `-i d/x.train -o d --overwrite` used to replace the input `d/x.train`
   with the filtered frames.
+- `dataset merge`: a merged set named like one of its inputs (merging again into the root of an
+  earlier merge) is an error for that group, `--overwrite` or not; it used to replace that input.
 
 ### Code review fixes (2026-11-06): broken files, empty fields, names
 
