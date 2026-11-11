@@ -73,6 +73,8 @@ command line alike; regenerate it rather than migrating it.
   (`15.448966064-12.000000000`), is read; the row used to be filled from the reciprocal vectors, with
   exit code 0. Regenerate anything read from such an OUTCAR (hexagonal cells with a > 11.5 Å are the
   common case). A lattice row that still does not read makes the step incomplete.
+- OUTCAR: from ionic step 1 000 000 VASP writes the step number as `******`; each such step is a
+  frame numbered after the one before. Every step from there on used to be read into a single frame.
 - `dataset filter`: a product that would land on one of its inputs is an error before anything is
   read, `--overwrite` or not. `-i d/x.train -o d --overwrite` used to replace the input `d/x.train`
   with the filtered frames.

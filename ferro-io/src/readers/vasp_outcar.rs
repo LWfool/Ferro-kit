@@ -52,11 +52,14 @@ fn floats(line: &str) -> Vec<f64> {
     line.split_whitespace().filter_map(|t| t.parse::<f64>().ok()).collect()
 }
 
-/// `Iteration  <ionic>( <scf>)` → the two integers.
-fn iteration_numbers(line: &str) -> Option<(i64, i64)> {
+/// `Iteration  <ionic>( <scf>)` → the two numbers. The ionic one is `None` when VASP
+/// overflowed its I6 field (`******` from step 10^6; review 2026-11-10 M1). `None` overall
+/// when the SCF count does not read: an overflowed one (> 9999) is not a step's first.
+fn iteration_numbers(line: &str) -> Option<(Option<i64>, i64)> {
     let rest = line.split("Iteration").nth(1)?;
-    let mut nums = rest.split(|c: char| !c.is_ascii_digit()).filter(|t| !t.is_empty());
-    Some((nums.next()?.parse().ok()?, nums.next()?.parse().ok()?))
+    let (ionic, rest) = rest.split_once('(')?;
+    let scf = rest.split_once(')')?.0.trim().parse().ok()?;
+    Some((ionic.trim().parse().ok(), scf))
 }
 
 /// Everything a frame needs, filled as its lines go by.
@@ -133,6 +136,8 @@ fn parse_outcar_lines(lines: impl Iterator<Item = Result<String>>) -> Result<(Tr
         if line.contains("Iteration") {
             if let Some((ionic, scf)) = iteration_numbers(&line) {
                 if scf == 1 {
+                    // An overflowed step number is the one after the last
+                    let ionic = ionic.unwrap_or_else(|| stats.steps.map_or(1, |(_, last)| last + 1));
                     // 第一帧开始前把头部定下来
                     if elements.is_empty() {
                         elements = resolve_elements(&symbols, &counts)?;
@@ -517,6 +522,19 @@ mod tests {
         let b = traj.frames[1].cell.as_ref().unwrap().matrix;
         assert_eq!([b[(1, 0)], b[(1, 1)], b[(1, 2)]], [5.0, -12.0, 0.0]);
         assert_eq!(b[(0, 0)], 11.0);
+    }
+
+    /// The ionic step is I6: from step 10^6 VASP writes `******`. The anchor used to need the
+    /// number, so every later step was read into one frame (review 2026-11-10 M1)
+    #[test]
+    fn an_overflowed_ionic_step_number_still_starts_a_frame() {
+        let anchor = "Iteration      2(   1)";
+        assert_eq!(VARIABLE_CELL.matches(anchor).count(), 1);
+        let body = VARIABLE_CELL.replacen(anchor, "Iteration ******(   1)", 1);
+        let (traj, stats) = read_vasp_outcar(&tmp("overflow_step.outcar", &body)).unwrap();
+        assert_eq!(traj.n_frames(), 2);
+        assert_eq!((stats.steps, stats.n_restarts), (Some((1, 2)), 0));
+        assert_eq!(traj.frames[1].cell.as_ref().unwrap().matrix[(0, 0)], 11.0);
     }
 
     /// A lattice row whose first three fields do not all read is an incomplete step, not a
