@@ -165,6 +165,11 @@ pub(super) fn run_filter(args: &FilterCmd) -> Result<usize> {
 
     if let Some(out) = &args.output {
         crate::outpath::ensure_dir(out, args.mkdir)?;
+        // Every destination is known from paths alone, so this fails before the first read
+        if args.out_type.stress_key().is_none() {
+            let targets: Vec<PathBuf> = jobs.iter().flat_map(|(_, rel)| split_targets(&out.join(rel), &split)).collect();
+            refuse_writing_over_inputs(&targets, &jobs.iter().map(|(sys, _)| sys.clone()).collect::<Vec<_>>())?;
+        }
     } else {
         println!("(read-only: no -o given, nothing will be written)\n");
     }
@@ -679,6 +684,32 @@ mod tests {
         assert_eq!(check_ids(&out).len(), 3, "the product must land inside -o");
         assert!(!root.join("deep/md.train").exists() && !root.join("deep/type.raw").exists(),
                 "the product escaped -o");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review 2026-11-10 H2: a `.train` input keeps its name, so `-i d/x.train -o d` wrote
+    /// the product back onto the input, and --overwrite let it replace the input
+    #[test]
+    fn a_product_landing_on_its_input_is_refused() {
+        #[derive(clap::Parser)]
+        struct Wrap {
+            #[command(flatten)]
+            cmd: FilterCmd,
+        }
+        use clap::Parser;
+        let root = std::env::temp_dir().join(format!("ferro_filter_self_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let sys = root.join("x.train");
+        ferro_io::write_deepmd_npy(&id_system(&[0, 1, 2, 3], &[0, 1, 2]), &sys).unwrap();
+        for extra in ["", "--ratio 0.5:0.5:0"] {
+            let mut argv = vec!["filter".to_string(), "-i".into(), sys.to_str().unwrap().into(),
+                                "-o".into(), root.to_str().unwrap().into(), "--overwrite".into(),
+                                "--stride".into(), "2".into()];
+            argv.extend(extra.split_whitespace().map(String::from));
+            let err = format!("{:#}", run_filter(&Wrap::try_parse_from(argv).unwrap().cmd).expect_err(extra));
+            assert!(err.contains("is an input"), "{extra}: {err}");
+        }
+        assert_eq!(check_ids(&sys), vec![0, 1, 2, 3], "the input was rewritten");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

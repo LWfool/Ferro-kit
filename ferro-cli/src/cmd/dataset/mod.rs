@@ -210,29 +210,51 @@ fn write_split(
     set_size: usize,
     overwrite: bool,
 ) -> Result<()> {
-    // collect 的 `.db` 先剥掉：它说的是「数据从哪来」，不是划分的哪一部分。
-    // 留着就会叠成 run1.db.train，而 merge 的共享后缀检查只看末尾那一段
-    let base = &without_suffix(base, COLLECT_SUFFIX);
-
+    let targets = split_targets(base, split);
     if split.is_off() {
-        let named = match base.file_name().and_then(|n| n.to_str()) {
-            Some(name) if split_suffix_of(name).is_some() => base.to_path_buf(),
-            _ => with_suffix(base, TRAIN_SUFFIX),
-        };
-        let dest = write_as(traj, &named, ty, set_size, overwrite)?;
+        let dest = write_as(traj, &targets[0], ty, set_size, overwrite)?;
         println!("  -> {}", dest.display());
         return Ok(());
     }
 
-    let stem = without_suffix(base, TRAIN_SUFFIX);
+    let base = without_suffix(base, COLLECT_SUFFIX);
     let parts = split.parts(traj.n_frames(), &base.display().to_string())?;
-    for (idx, (label, suffix)) in SPLIT_PARTS.iter().enumerate() {
+    for (idx, (label, _)) in SPLIT_PARTS.iter().enumerate() {
         if parts[idx].is_empty() {
             continue;
         }
         let sub = traj.subset(&parts[idx]);
-        let dest = write_as(&sub, &with_suffix(&stem, suffix), ty, set_size, overwrite)?;
+        let dest = write_as(&sub, &targets[idx], ty, set_size, overwrite)?;
         println!("  {:<5} {:5} frames -> {}", label, parts[idx].len(), dest.display());
+    }
+    Ok(())
+}
+
+/// The paths `write_split` writes for `base` (a DeePMD system directory each; extxyz adds
+/// `.xyz`): one unsplit, else the train / valid / test parts in `SPLIT_PARTS` order, empty
+/// parts included. Callers that guard the destination ask here, so they cannot drift from
+/// what is written.
+fn split_targets(base: &Path, split: &Split) -> Vec<PathBuf> {
+    // collect 的 `.db` 先剥掉：它说的是「数据从哪来」，不是划分的哪一部分。
+    // 留着就会叠成 run1.db.train，而 merge 的共享后缀检查只看末尾那一段
+    let base = without_suffix(base, COLLECT_SUFFIX);
+    if split.is_off() {
+        return vec![match base.file_name().and_then(|n| n.to_str()) {
+            Some(name) if split_suffix_of(name).is_some() => base.clone(),
+            _ => with_suffix(&base, TRAIN_SUFFIX),
+        }];
+    }
+    let stem = without_suffix(&base, TRAIN_SUFFIX);
+    SPLIT_PARTS.iter().map(|(_, suffix)| with_suffix(&stem, suffix)).collect()
+}
+
+/// Refuses a DeePMD product that would land on one of the input systems: a `.train` input
+/// keeps its name, so `-i d/x.train -o d` writes `d/x.train`, and `--overwrite` used to let
+/// it replace the input. Refused whatever `--overwrite` says (review 2026-11-10 H2).
+fn refuse_writing_over_inputs(targets: &[PathBuf], inputs: &[PathBuf]) -> Result<()> {
+    let inputs: Vec<PathBuf> = inputs.iter().filter_map(|p| p.canonicalize().ok()).collect();
+    if let Some(t) = targets.iter().find(|t| t.canonicalize().is_ok_and(|c| inputs.contains(&c))) {
+        bail!("{} is an input; a product never replaces its input, give another -o", t.display());
     }
     Ok(())
 }

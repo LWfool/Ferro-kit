@@ -73,6 +73,9 @@ command line alike; regenerate it rather than migrating it.
   (`15.448966064-12.000000000`), is read; the row used to be filled from the reciprocal vectors, with
   exit code 0. Regenerate anything read from such an OUTCAR (hexagonal cells with a > 11.5 Å are the
   common case). A lattice row that still does not read makes the step incomplete.
+- `dataset filter`: a product that would land on one of its inputs is an error before anything is
+  read, `--overwrite` or not. `-i d/x.train -o d --overwrite` used to replace the input `d/x.train`
+  with the filtered frames.
 
 ### Code review fixes (2026-11-06): broken files, empty fields, names
 
