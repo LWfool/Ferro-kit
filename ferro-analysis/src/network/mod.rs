@@ -330,7 +330,7 @@ impl NetworkResult {
     /// a different granularity again.
     ///
     /// **`qn` and `coordination` are different quantities.**  `qn` counts only the
-    /// bridging ligands and exists only for [`TypeParams::qn_formers`];
+    /// homopolar connections (P–O–P for a P) and exists only for [`TypeParams::qn_formers`];
     /// `coordination` counts every ligand inside the cutoff and exists for every
     /// former and modifier.  A former with no non-bridging ligand makes them equal,
     /// which is a fact about that system, not a definition.
@@ -506,8 +506,7 @@ impl NetworkResult {
             "          this table is the whole of what describes it",
             "cn      : ligands within the cutoff, counting bridging and non-bridging",
             "          alike.  NOT the same quantity as network_qn.csv's qn, which",
-            "          counts bridging ligands only; the two coincide only for a",
-            "          former that happens to carry no non-bridging ligand",
+            "          counts homopolar connections only (P-O-P for a P)",
             "fraction: denominator is that element's atom count, so it sums to 1",
             "          within each element",
         ] { t.meta_line(line); }

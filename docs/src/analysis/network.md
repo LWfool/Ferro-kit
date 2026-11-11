@@ -75,11 +75,13 @@ $$n_i^\text{bridge} = \bigl|\{k \in \text{neighbors}(i) : n_k \ge 2\}\bigr|,
 **The number of bridges counts bridging ligands only; the coordination number counts every ligand inside
 the cutoff**, non-bridging ones included.  A three-coordinate ligand does count towards the number of
 bridges (it does connect that former into the network), at the price of $\sum(\text{bridges}) \neq 2 \times |\text{O\_b}|$ — one `O_t` is counted once by each of its three sides.
+Its per-element mean is the `mean_n_bo` column of `[inputs]`, next to `mean_cn`.  Neither is $Q^n$:
+$n$ in the `qn` table counts homonuclear connections only (see below).
 
 > **Their being equal is a property of the system, not a definition.** A network former with no
 > non-bridging ligand makes $n^\text{bridge} = \mathrm{CN}$ hold everywhere.  That is exactly the case for
-> Al in the reference trajectory (the `ligand_type` table has no `O_n, Al` row at all), so the two
-> distribution tables agree bin by bin.  Switch to a system where Al carries non-bridging oxygens and the two part ways at once.  Whenever you read "the coordination number of Al", take it from `coordination`.
+> Al in the reference trajectory (the `ligand_type` table has no `O_n, Al` row at all), so its
+> `mean_n_bo` and `mean_cn` are equal (`Al=4.12` both).  Switch to a system where Al carries non-bridging oxygens and the two part ways at once.  Whenever you read "the coordination number of Al", take it from `coordination`.
 
 ### $Q^n$ is only for $Q^n$ network formers
 
@@ -150,12 +152,13 @@ P with $m_\mathrm{Al}=2$, or from two P with $m_\mathrm{Al}=1$.  `linkage` count
 
 Every ligand bonded to ≥2 network formers records one entry:
 
-$$(\underbrace{\text{element},\; n_\text{bridge},\; \text{CN}}_{\text{A end}}),\;
-  (\underbrace{\text{element},\; n_\text{bridge},\; \text{CN}}_{\text{B end}}),\;
+$$(\underbrace{\text{element},\; n_\text{homo},\; \text{CN}}_{\text{A end}}),\;
+  (\underbrace{\text{element},\; n_\text{homo},\; \text{CN}}_{\text{B end}}),\;
   \text{ligand element},\; n_\text{formers}$$
 
 **Both** ends carry all three fields.  This differs from common implementations, which store a single
-number per element ($Q^n$ for P, CN for Al) and therefore cannot answer "how many bridges does a four-coordinate Al have".
+number per element ($Q^n$ for P, CN for Al) and therefore cannot answer "how many Al–O–Al connections does a four-coordinate Al have".
+$n_\text{homo}$ is the `qn_a` / `qn_b` column: homonuclear connections, as in the `qn` table.
 
 - **The `linkage` display column**: a human-readable form such as `Al_4-O-P_2`, where the number follows
   each one's own convention ($Q^n$ for $Q^n$ network formers, coordination number for the rest), in the same

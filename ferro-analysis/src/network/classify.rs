@@ -18,7 +18,7 @@
 //!
 //! | Atom role | Label |
 //! |-----------|-------|
-//! | Qn former | `P_0`, `P_3`, `Si_4`, … (digit = Qn, i.e. bridging ligands) |
+//! | Qn former | `P_0`, `P_3`, `Si_4`, … (digit = Qn, the homopolar connection count: P–O–P for a P) |
 //! | Other former | `Al_4`, `Al_5`, … (digit = **coordination number**) |
 //! | Free ligand (0 NF) | `O_f` |
 //! | Non-bridging ligand (1 NF) | `O_n` |
