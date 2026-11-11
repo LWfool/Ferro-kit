@@ -22,12 +22,6 @@ $$g_{\alpha\beta}(r_i) = \frac{C_{\alpha\beta}(r_i)}{4\pi r_i^2 \Delta r \cdot \
 
 The bin centre is $r_i = r_\text{min} + (i + 0.5) \Delta r$.
 
-### Total g(r)
-
-All atoms are treated as a single species:
-
-$$g_\text{total}(r_i) = \frac{2 \, C_\text{total}(r_i)}{4\pi r_i^2 \Delta r \cdot \frac{N-1}{V} \cdot N \cdot N_\text{frames}}$$
-
 ### Coordination Number CN(r)
 
 The cumulative coordination number gives the average number of neighbours within distance $r$.
