@@ -17,7 +17,8 @@ pub(crate) const WHOLE_STEPS_TOL: f64 = 1e-9;
 /// count is `ceil((hi - lo) / step)` and the width actually used is `(hi - lo) / count`,
 /// so the last bin ends exactly at `hi` and no bin is wider than requested. A ratio
 /// within 1e-9 (relative) of a whole number counts as that number, or `10.004 / 0.002`
-/// would round up to one bin too many.
+/// would round up to one bin too many. ferro-structure's `find_supercell_dims` applies the
+/// same 1e-9 rule to `--min-length`, written there (no dependency between the two crates).
 ///
 /// The three analyses used to differ: gr dropped a partial last bin (floor), vanhove and
 /// angle kept it but normalised it as a full one, so with `--r-max 1.0 --dr 0.07` the

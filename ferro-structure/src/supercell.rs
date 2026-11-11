@@ -67,7 +67,13 @@ pub fn find_supercell_dims(
 
     // Step 1: the smallest multiple per axis that meets min_length, bounded in f64
     // before the cast to usize can saturate
-    let ceil_dim = |l: f64| (min_length / l).ceil().max(1.0);
+    // A ratio within 1e-9 (relative) of a whole number is that number, or 5.65 * 3 / 5.65
+    // = 3.0000000000000004 takes 4 cells (review 2026-11-10 M10). The same rule as
+    // ferro-analysis md/util.rs `bins`, written here because this crate cannot depend on it
+    let ceil_dim = |l: f64| {
+        let r = min_length / l;
+        (r - r * 1e-9).ceil().max(1.0)
+    };
     let nf = [ceil_dim(lengths[0]), ceil_dim(lengths[1]), ceil_dim(lengths[2])];
     if nf[0] * nf[1] * nf[2] * per_cell as f64 > MAX_SUPERCELL_ATOMS as f64 {
         return Err(oversized(nf));
@@ -197,6 +203,15 @@ mod tests {
         assert_eq!(make_supercell(&slab, 2, 2, 1).unwrap().n_atoms(), 8);
         let err = make_supercell(&slab, 1, 1, 2).unwrap_err().to_string();
         assert!(err.contains("along c") && err.contains("not periodic"), "{err}");
+    }
+
+    /// `--min-length` a whole number of cells: 5.65 * 3 / 5.65 is 3.0000000000000004, which
+    /// rounded up to 4 (review 2026-11-10 M10). A ratio within 1e-9 of a whole number is it
+    #[test]
+    fn a_min_length_of_whole_cells_takes_that_many() {
+        let cell = bcc_frame(5.65).cell.unwrap();
+        assert_eq!(find_supercell_dims(&cell, 2, 5.65 * 3.0, 0).unwrap(), [3, 3, 3]);
+        assert_eq!(find_supercell_dims(&cell, 2, 5.65 * 3.0 + 1e-6, 0).unwrap(), [4, 4, 4]);
     }
 
     #[test]
