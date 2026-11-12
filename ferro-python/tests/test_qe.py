@@ -53,18 +53,18 @@ def test_builtin_templates_generate(cfg, nvt, task, tmp_path):
     qe = QeInput.from_str(s.files["pw.in"])
     one = ferro.sort_atoms(nvt.subset([0]))
     assert qe.get("system", "nat") == str(one.n_atoms()) and qe.get("system", "ntyp") == "3"
-    assert (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho")) == ("50.0", "400.0"), "取 UPF 建议的最大值"
+    assert (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho")) == ("50.0", "400.0"), "the largest cutoff the UPF files suggest"
     assert qe.get("control", "pseudo_dir") == f"'{tmp_path / 'upf'}/'"
-    assert "zn_pbe_v1.uspp.F.UPF" in qe.card("ATOMIC_SPECIES"), "按头部的元素归类，不按文件名"
+    assert "zn_pbe_v1.uspp.F.UPF" in qe.card("ATOMIC_SPECIES"), "sorted by the element in the header, not by file name"
     # pw.x adds the three-body D3 term by default; VASP IVDW = 12 and CP2K DFTD3(BJ) do not
     # (review 2026-11-10 M11)
     assert qe.get("system", "dftd3_threebody") == ".false."
     assert qe.card("K_POINTS").split() == ["K_POINTS", "automatic", "1", "1", "1", "0", "0", "0"]
     path = tmp_path / "pw.in"
     path.write_text(s.files["pw.in"])
-    assert ferro.read(str(path)).symbols(0) == one.symbols(0), "生成的 pw.in 能被 ferro 读回"
-    assert any("parallel settings" in n for n in s.notes), "并行参数模板不写，生成时提示用户自己加"
-    assert "parallelisation" in QeGenerator.builtin_template(task), "模板头注释也写明"
+    assert ferro.read(str(path)).symbols(0) == one.symbols(0), "ferro reads the generated pw.in back"
+    assert any("parallel settings" in n for n in s.notes), "templates leave parallel settings out; generating notes that the user adds them"
+    assert "parallelisation" in QeGenerator.builtin_template(task), "the template header comment says so too"
 
 
 def test_charge_spin_and_md(cfg, nvt):

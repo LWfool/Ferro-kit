@@ -572,12 +572,12 @@ impl NetworkResult {
 
     /// `linkage` — one row per (ligand × the state of both ends) combination.
     fn linkage_table(&self) -> (String, Table) {
-        // linkage：一行一种「配体 × 两端位点状态」的组合
+        // linkage: one row per combination of ligand x the site state of each end
         let mut txt: [Vec<String>; 4] = Default::default();
         let mut nums: [Vec<String>; 5] = Default::default();
         let mut bins = Vec::new();
         for ((a, b_site, ligand, n_formers), bin) in &self.linkage {
-            // 展示列走 AtomType::label,与导出轨迹用同一套词汇
+            // the display column goes through AtomType::label, the vocabulary of the exported trajectory
             txt[0].push(format!("{}-{ligand}-{}",
                                 site_label(&self.params, a), site_label(&self.params, b_site)));
             txt[1].push(ligand.clone());

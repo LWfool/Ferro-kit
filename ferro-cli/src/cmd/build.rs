@@ -272,7 +272,7 @@ fn one_input(
     make: impl Fn(&Frame) -> Result<(Frame, String)>,
 ) -> Result<()> {
     let input = &batch::exact_inputs(&format!("build {op}"), inputs, 1)?[0];
-    // 参数级错误（-s、读入参数、目标格式）在建目录、读文件之前查完
+    // Parameter errors (-s, read arguments, output format) are checked before any directory is made or file read
     batch::check_suffix(out_args.suffix.as_deref())?;
     check_read_args(input, read)?;
     let ext = (!dry_run).then(|| out_args.ext(input, read)).transpose()?;
