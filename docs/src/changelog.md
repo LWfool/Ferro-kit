@@ -93,6 +93,8 @@ command line alike; regenerate it rather than migrating it.
   error in the ratio used to add one (`a = 5.65`, `--min-length 16.95` gave 4 instead of 3).
 - `build supercell --dry-run` needs neither the `-o` directory (nor `--mkdir`) nor `--format-out`;
   it writes nothing, but used to create the directory and ask for an output format.
+- `dataset filter` / `merge` `--ratio` with no training share (`0:1:1`) fails before any input is
+  read; it used to fail on each system after reading it.
 
 ### Code review fixes (2026-11-06): broken files, empty fields, names
 
