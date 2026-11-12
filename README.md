@@ -137,7 +137,7 @@ derivation is in `dev/issues.md`.
 ### A note on Qⁿ
 
 Since 0.3.0 the network analysis follows the literature's $Q^n_m$ convention: **n counts
-homopolar connections only** (P–O–P), heteropolar ones appear as `m_<X>` columns, and the
+homonuclear connections only** (P–O–P), heteronuclear ones appear as `m_<X>` columns, and the
 total number of bridging connections is `n + Σm`. The number of bridging *oxygens* is a
 third quantity again — a tricluster is one oxygen but two connections. Results from
 0.2.x are not comparable; see `dev/overview.md`.

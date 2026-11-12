@@ -50,7 +50,7 @@ use std::collections::{BTreeMap, HashMap};
 /// with `m_Al = 2` or from two P atoms with `m_Al = 1` each.
 pub type BridgeKey = (u32, BTreeMap<String, u32>);
 
-/// One end of a bridge: `(element, homopolar connection count, coordination number)`.
+/// One end of a bridge: `(element, homonuclear connection count, coordination number)`.
 ///
 /// Both numbers are kept for both ends.  The reference Python stores one number per
 /// element — Qn for P, CN for Al — which answers "what Qn of P does a 4-coordinate Al
@@ -239,7 +239,7 @@ pub struct NetworkResult {
     pub mean_cn: HashMap<String, f64>,
     /// Former element → mean number of **bridging oxygens** per atom.
     ///
-    /// A third quantity next to `mean_qn` (homopolar connections) and `mean_cn`
+    /// A third quantity next to `mean_qn` (homonuclear connections) and `mean_cn`
     /// (all ligands): it counts bridging ligands, so a tricluster adds one here but
     /// two to `qn + Σm`.  Reported alongside `mean_qn` because the two coincide in
     /// a corner-sharing, tricluster-free network and diverge exactly where the
@@ -330,7 +330,7 @@ impl NetworkResult {
     /// a different granularity again.
     ///
     /// **`qn` and `coordination` are different quantities.**  `qn` counts only the
-    /// homopolar connections (P–O–P for a P) and exists only for [`TypeParams::qn_formers`];
+    /// homonuclear connections (P–O–P for a P) and exists only for [`TypeParams::qn_formers`];
     /// `coordination` counts every ligand inside the cutoff and exists for every
     /// former and modifier.  A former with no non-bridging ligand makes them equal,
     /// which is a fact about that system, not a definition.
@@ -374,8 +374,8 @@ impl NetworkResult {
         push_bins(&mut t, &bins);
         for line in [
             "table   : Qn speciation — one row per (former, Qn).",
-            "          n = HOMOPOLAR connections only (P-O-P for a P), following",
-            "          the literature's Q^n_m / P^n_(mAl,xB): the heteropolar ones",
+            "          n = HOMONUCLEAR connections only (P-O-P for a P), following",
+            "          the literature's Q^n_m / P^n_(mAl,xB): the heteronuclear ones",
             "          are the m values in network_qn_partner.csv, and the TOTAL",
             "          bridge count is n + Sum(m), not n.  A P-Q1 row therefore",
             "          still contains phosphorus with any number of P-O-Al bridges",
@@ -383,7 +383,7 @@ impl NetworkResult {
             "          vocabulary; the exported trajectory labels the same site as",
             "          P_2 (atom vocabulary), which is what -x/-y select on",
             "former  : network former element",
-            "qn      : homopolar connections on the site (the literature's n)",
+            "qn      : homonuclear connections on the site (the literature's n)",
             "count   : occurrences summed over all frames",
             "fraction: mean over frames of that frame's fraction of this former",
             "sd      : sample std (ddof=1) of the per-frame fraction; a spread",
@@ -434,11 +434,11 @@ impl NetworkResult {
             "          network_qn.csv is this table's marginal over the m_ columns.",
             "label   : structural unit, <element>-Q<n>; repeats across the rows",
             "          that share a Qn.  The partner split is kept in columns",
-            "          rather than folded into the label: with two heteropolar",
+            "          rather than folded into the label: with two heteronuclear",
             "          partners the label would grow to P-Q1(2Al,1B), and these",
             "          columns are what you filter on anyway",
-            "qn      : homopolar connections on the site (the literature's n)",
-            "m_<X>   : HETEROPOLAR connections to element X (the literature's m).",
+            "qn      : homonuclear connections on the site (the literature's n)",
+            "m_<X>   : HETERONUCLEAR connections to element X (the literature's m).",
             "          The former's own element has no column: it would repeat qn",
             "          exactly.  Total bridging connections = qn + Sum(m_).",
             "          A ligand shared by 3 formers connects this site to TWO",
@@ -506,7 +506,7 @@ impl NetworkResult {
             "          this table is the whole of what describes it",
             "cn      : ligands within the cutoff, counting bridging and non-bridging",
             "          alike.  NOT the same quantity as network_qn.csv's qn, which",
-            "          counts homopolar connections only (P-O-P for a P)",
+            "          counts homonuclear connections only (P-O-P for a P)",
             "fraction: denominator is that element's atom count, so it sums to 1",
             "          within each element",
         ] { t.meta_line(line); }
@@ -611,7 +611,7 @@ impl NetworkResult {
             "          (Q2 vs Al[4]).  Filter on the numeric columns, not this text",
             "ligand  : element of the bridging atom.  Al-O-P and Al-F-P are different",
             "          bridges and never share a row",
-            "qn_*    : HOMOPOLAR connections on that end (P-O-P for a P), the n of",
+            "qn_*    : HOMONUCLEAR connections on that end (P-O-P for a P), the n of",
             "          the literature's Q^n_m.  Defined for every former, including",
             "          those not reported with a Qn speciation (Al-O-Al for an Al)",
             "cn_*    : coordination number of that end",
@@ -620,7 +620,7 @@ impl NetworkResult {
             "note    : each pair is stored ONCE, canonically ordered, because a bridge",
             "          has no direction — so a row sum is not a site's total",
             "          involvement.  Both ends carry both numbers, so \"what is the",
-            "          homopolar count of that 4-coordinate Al\" is answerable",
+            "          homonuclear count of that 4-coordinate Al\" is answerable",
         ] { t.meta_line(line); }
         ("linkage".to_string(), t)
     }

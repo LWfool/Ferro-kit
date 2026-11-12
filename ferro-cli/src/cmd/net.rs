@@ -170,7 +170,7 @@ fn print_label_scheme(params: &TypeParams) {
         .filter(|e| !params.is_qn_former(e)).collect();
 
     println!("Labels:");
-    println!("  {:<10} <elem>_<Qn>   digit = HOMOPOLAR connections (P-O-P), the n",
+    println!("  {:<10} <elem>_<Qn>   digit = HOMONUCLEAR connections (P-O-P), the n",
              join(qn.clone()));
     if !qn.is_empty() {
         println!("  {:<10}               of Q^n_m; P-O-Al etc. are the m_ columns", "");

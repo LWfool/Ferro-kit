@@ -18,7 +18,7 @@
 //!
 //! | Atom role | Label |
 //! |-----------|-------|
-//! | Qn former | `P_0`, `P_3`, `Si_4`, … (digit = Qn, the homopolar connection count: P–O–P for a P) |
+//! | Qn former | `P_0`, `P_3`, `Si_4`, … (digit = Qn, the homonuclear connection count: P–O–P for a P) |
 //! | Other former | `Al_4`, `Al_5`, … (digit = **coordination number**) |
 //! | Free ligand (0 NF) | `O_f` |
 //! | Non-bridging ligand (1 NF) | `O_n` |
@@ -144,9 +144,9 @@ pub enum AtomType {
     /// | `cn` | **all** ligands within cutoff, bridging or not |
     /// | `bridges_to` | connections to each partner element (a tricluster counts twice) |
     ///
-    /// `qn` is the **homopolar** connection count — P–O–P for a P, i.e.
+    /// `qn` is the **homonuclear** connection count — P–O–P for a P, i.e.
     /// `bridges_to[elem]`.  This is the literature's `n` in `Q^n_m` / `P^n_(mAl,xB)`;
-    /// the heteropolar connections are the `m` values and live in `bridges_to` under
+    /// the heteronuclear connections are the `m` values and live in `bridges_to` under
     /// their own elements.  The total bridging-oxygen count is `n_bo`, which is a
     /// *third* number: it equals `n + Σm` only when no tricluster is present.
     ///

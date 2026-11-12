@@ -25,6 +25,9 @@ command line alike; regenerate it rather than migrating it.
 - `ferro net` tables write counts and site numbers (`count`, `qn`, `m_*`, `cn`, `qn_a`, `cn_a`,
   `qn_b`, `cn_b`, `n_formers`) as integers, `465` where they wrote `4.650000e2`, as the manual and
   the `dataset` tables do.
+- `ferro net` table headers and the label help describe `qn` as homonuclear connections (P–O–P
+  for a P) and `m_*` as heteronuclear ones, the manual's terms; the `coordination` header said `qn`
+  counted bridging ligands, which is `mean_n_bo`.
 - xyz and CIF files carry 10 decimals (coordinates; for CIF also the cell lengths and angles),
   as the other formats do, so a conversion no longer rounds to 1e-6 Å.
 - `ferro dataset filter` report headers write `Ang` (`f_max = 20 eV/Ang`), as every other file
