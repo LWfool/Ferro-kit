@@ -41,13 +41,13 @@ use ferro_core::Frame;
 /// of 0; `energy`, `forces`, `stress`, `velocities`, `temperature` and `step` are `None`.
 ///
 /// # Errors
-/// - `ValidationError` if either frame has no cell, or one refused by `Cell::check`
+/// - If either frame has no cell, or one refused by `Cell::check`
 ///   (singular or not finite).
-/// - `ValidationError` if `axis` is not "x"/"y"/"z".
-/// - `ValidationError` if `gap` is negative or not finite.
-/// - `ValidationError` if the two interfaces are not parallel (normals more than
+/// - If `axis` is not "x"/"y"/"z".
+/// - If `gap` is negative or not finite.
+/// - If the two interfaces are not parallel (normals more than
 ///   1° apart): a gap along the normal has no meaning then.
-/// - `ValidationError` if an atom lies outside its cell along a non-periodic axis.
+/// - If an atom lies outside its cell along a non-periodic axis.
 pub fn merge_frames(frame_a: &Frame, frame_b: &Frame, axis: &str, gap: f64) -> Result<Frame> {
     // Same parsing as `add_vacuum`; not shared, since a one-match helper across files
     // costs more than it saves (R6, review 2026-11-06 A1-13)

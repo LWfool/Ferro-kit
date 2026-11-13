@@ -54,7 +54,6 @@ pub fn wants_help(args: &ConvertCmd) -> bool {
 }
 
 pub fn run(args: &ConvertCmd) -> Result<()> {
-    // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
     // main sends a missing -i to the help page
     let input = &crate::batch::exact_inputs("convert", &args.input, 1)?[0];
     let Some(dir) = &args.output else {

@@ -183,10 +183,10 @@ def main():
     outdir = Path(args.outdir).resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
-    print(f"轨迹   : {traj}")
-    print(f"输出   : {outdir}")
-    print(f"参数   : rcut_ab={RCUT_AB}  rcut_bc={RCUT_BC}  d_angle={D_ANGLE}")
-    print(f"分箱   : {'对齐 dump2analysis（错开半格）' if args.align_binning else 'ferro 原生（bin 原点 0°）'}\n")
+    print(f"trajectory : {traj}")
+    print(f"output     : {outdir}")
+    print(f"parameters : rcut_ab={RCUT_AB}  rcut_bc={RCUT_BC}  d_angle={D_ANGLE}")
+    print(f"binning    : {'aligned with dump2analysis (shifted half a bin)' if args.align_binning else 'ferro native (bins start at 0 deg)'}\n")
 
     results = compute(traj, outdir, args.ferro, args.dump2analysis,
                       align_binning=args.align_binning)

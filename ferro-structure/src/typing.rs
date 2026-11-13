@@ -16,7 +16,7 @@ use ferro_core::Frame;
 /// their element column at **write** time; see `ferro_io::dump_name`.
 ///
 /// `labels` is either empty (the frame is returned unchanged) or one per atom;
-/// any other length is a `ValidationError` rather than a silent partial labelling.
+/// any other length is an error rather than a silent partial labelling.
 pub fn apply_type_labels(frame: &Frame, labels: &[String]) -> Result<Frame> {
     let mut out = frame.clone();
     if labels.is_empty() {

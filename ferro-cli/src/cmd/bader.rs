@@ -70,7 +70,6 @@ fn report_paths(args: &BaderCmd, input: &Path) -> [PathBuf; 3] {
 }
 
 pub fn run(args: &BaderCmd) -> Result<()> {
-    // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
     // main sends a missing -i to the help page
     let input = &crate::batch::exact_inputs("bader", &args.input, 1)?[0];
     // 参数校验在读文件之前：CHGCAR 动辄几百 MB，读完再报「方法名打错了」是白等

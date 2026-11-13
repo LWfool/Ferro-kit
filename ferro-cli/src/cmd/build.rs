@@ -67,8 +67,8 @@ impl OutArgs {
         if let Some(f) = &self.format_out {
             return Ok(format_out(f)?.0);
         }
-        // detect looks inside: on an input that cannot be opened (the check before reading) fall
-        // back on its name, so that input fails at its own read and the batch skips only it
+        // detect looks inside: on an input that cannot be opened fall back on its name, so the
+        // failure is reported by the read with its own message, not here
         let format = read.format_in
             .or_else(|| Format::detect(input).ok())
             .or_else(|| Format::from_name(input));
@@ -322,7 +322,7 @@ fn run_supercell(c: &SupercellCmd) -> Result<()> {
         let [nx, ny, nz] = dims;
         let n = first.n_atoms();
         let first_sc = make_supercell(first, nx, ny, nz)?;
-        // 面间距才是最小镜像截断的上界（rcut ≤ d/2），斜胞上它比边长短
+        // The interplanar spacing bounds a minimum-image cutoff (rcut <= d/2); on an oblique cell it is shorter than the edge
         let d = first_sc.cell.as_ref().expect("make_supercell keeps the cell").interplanar_spacings()?;
         let note = format!(
             "{nx}x{ny}x{nz} ({how}): {n} -> {} atoms, spacings {:.3} {:.3} {:.3} Å{}",

@@ -17,10 +17,10 @@ use ferro_core::Frame;
 /// and `step` are set to `None`.
 ///
 /// # Errors
-/// - `ValidationError` if the frame has no cell.
-/// - `ValidationError` if `axis` is not "x"/"y"/"z".
-/// - `ValidationError` if `thickness` is not a finite number > 0.
-/// - `ValidationError` if the cell is singular (e.g. c = 0, the ASE convention for 2D materials)
+/// - If the frame has no cell.
+/// - If `axis` is not "x"/"y"/"z".
+/// - If `thickness` is not a finite number > 0.
+/// - If the cell is singular (e.g. c = 0, the ASE convention for 2D materials)
 ///   or not finite (`Cell::check`).
 pub fn add_vacuum(frame: &Frame, axis: &str, thickness: f64) -> Result<Frame> {
     // Same parsing as `merge_frames`; not shared, since a one-match helper across files

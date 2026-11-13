@@ -26,7 +26,6 @@ pub fn wants_help(args: &InfoCmd) -> bool {
 /// Returns the number of failures: 1 when a density could not be computed, so the
 /// exit code says so while the rest is still printed (review A-3).
 pub fn run(args: &InfoCmd) -> Result<usize> {
-    // Unreachable bail removed (review 2026-10-30 A5-L7): main sends a missing -i to the help page
     // main sends a missing -i to the help page
     let input = &crate::batch::exact_inputs("info", &args.input, 1)?[0];
 

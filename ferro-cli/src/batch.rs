@@ -40,7 +40,6 @@ fn label_of(path: &Path) -> String {
     input_name(path).unwrap_or_else(|| path.to_string_lossy().into_owned())
 }
 
-/// The name an input gives its products and label: a file's stem, a directory's whole name
 /// The input files of a command that takes exactly `n` of them (1 or 2). A glob the shell
 /// expanded reaches the command as several files, which clap would refuse as an "unexpected
 /// argument" naming only the second; this names them all and says how to run one at a time
@@ -60,6 +59,7 @@ pub fn exact_inputs<'a>(cmd: &str, inputs: &'a [PathBuf], n: usize) -> Result<&'
     bail!("{cmd} takes {what}, got {}: {}{more}{hint}", inputs.len(), shown.join(" "))
 }
 
+/// The name an input gives its products and label: a file's stem, a directory's whole name
 /// (DP-GEN's `data.000` / `data.001` must not both become `data`). A path with no name of its
 /// own (`.`, `./`, `a/..`) is resolved first, so it names the directory it stands for; any
 /// other path is taken as given, so a symlink is named by the link. `None` for `/` (review

@@ -257,8 +257,8 @@ pub fn calc_angle(traj: &Trajectory, params: &AngleParams) -> ferro_core::Result
                             (m, m)
                         } else {
                             match &params.ends {
-                                // 调用方点名了三元组：--rcut-ab 归它写在前面的那一端。
-                                // 仅当用户的 A 落在 hi 端时才需要互换。
+                                // The caller named the triplet: --rcut-ab belongs to the end written first.
+                                // A swap is needed only when the user's A lands on the hi end.
                                 Some((ea, ec))
                                     if hi_elem == ea.as_str() && lo_elem == ec.as_str() =>
                                 {
@@ -688,13 +688,13 @@ mod tests {
         assert!(err.contains("'O-b'"), "{err}");
     }
 
-    // ── Q6: cutoff 按调用方给的端原子顺序分配 ────────────────────────────────
+    // -- Q6: cutoffs follow the end order the caller gave ---------------------------
 
-    /// Zn-O-P：中心 O，Zn 在 2.4 Å、P 在 2.0 Å。
+    /// Zn-O-P: centre O, Zn at 2.4 A, P at 2.0 A.
     ///
-    /// Z(P)=15 < Z(Zn)=30，所以规范顺序里 P 是 lo 端、Zn 是 hi 端 —— 与用户写的
-    /// `-a Zn -c P` 正好相反。取 rcut_ab=2.5 / rcut_bc=2.2 时两种分配给出
-    /// 完全不同的结果，足以把这个行为钉死。
+    /// Z(P)=15 < Z(Zn)=30, so in canonical order P is the lo end and Zn the hi end -- the
+    /// reverse of the user's `-a Zn -c P`. With rcut_ab=2.5 / rcut_bc=2.2 the two assignments
+    /// give entirely different results, enough to pin this behaviour down.
     fn make_zn_o_p() -> Trajectory {
         let cell = Cell::from_lengths_angles(20.0, 20.0, 20.0, 90.0, 90.0, 90.0).unwrap();
         let mut frame = Frame::with_cell(cell, [true; 3]);
@@ -730,8 +730,8 @@ mod tests {
 
     #[test]
     fn test_symmetric_ends_ignore_order() {
-        // 两端同类型时 ends 不生效，始终取 min(rcut_ab, rcut_bc)：
-        // 谁被排成 lo 端取决于邻居枚举顺序，否则结果不可复现
+        // With both ends of one type, ends has no effect and min(rcut_ab, rcut_bc) is always
+        // used: which one becomes the lo end depends on neighbour order, so it would not reproduce
         let traj = make_90deg_angle();
         let p = AngleParams {
             rcut_ab: 2.0, rcut_bc: 1.5, d_angle: 1.0,

@@ -483,8 +483,8 @@ fn run_msd(c: &MsdCmd) -> Result<usize> {
 fn run_angle(c: &AngleCmd) -> Result<usize> {
     let (group_by, triplet) = c.select.resolve_triplet()?;
 
-    // 点名三元组时把端原子顺序原样传下去：--rcut-ab 归 -a/-x 写的那一端，
-    // --rcut-bc 归 -c/-z 的那一端，不再按原子序数派发（见 AngleParams::ends）
+    // A named triplet passes its end order down as written: --rcut-ab belongs to the -a/-x end,
+    // --rcut-bc to the -c/-z end, no longer dispatched by atomic number (see AngleParams::ends)
     let ends = triplet.as_ref().map(|[a, _, c2]| (a.clone(), c2.clone()));
     let params = AngleParams {
         rcut_ab: c.rcut_ab,
@@ -596,8 +596,8 @@ fn run_rotcorr(c: &RotcorrCmd) -> Result<usize> {
         batch::drive(&c.common, Some(label), |_, traj, _| Ok(calc_rotcorr(traj, &params)?))?;
 
     let tables = batch::stack(&results, |r: &RotCorrResult| Ok(r.to_tables()))?;
-    // valid_fraction：有取向向量的 (分子, 帧) 占比 —— 偏低说明 rcut 抓不稳邻居
-    // atoms = 中心原子数；units = 参与相关的单元（sum 模式同中心数，bond 模式为键数）
+    // valid_fraction: share of (molecule, frame) with an orientation vector -- low means rcut does not hold the neighbours
+    // atoms = number of centres; units = units correlated (as many as centres in sum mode, bonds in bond mode)
     let mut summary = Summary::new(&["units", "max_lag", "min_origins", "valid_fraction"]);
     for (input, r) in &results {
         summary.ok(input.label.clone(), r.n_frames, r.n_centers, &[

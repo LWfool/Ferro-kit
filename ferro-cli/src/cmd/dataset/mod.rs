@@ -235,8 +235,8 @@ fn write_split(
 /// parts included. Callers that guard the destination ask here, so they cannot drift from
 /// what is written.
 fn split_targets(base: &Path, split: &Split) -> Vec<PathBuf> {
-    // collect 的 `.db` 先剥掉：它说的是「数据从哪来」，不是划分的哪一部分。
-    // 留着就会叠成 run1.db.train，而 merge 的共享后缀检查只看末尾那一段
+    // Strip collect's `.db` first: it says where the data came from, not which part of a split.
+    // Kept, it would stack into run1.db.train, and merge's shared-suffix check reads only the last part
     let base = without_suffix(base, COLLECT_SUFFIX);
     if split.is_off() {
         return vec![match base.file_name().and_then(|n| n.to_str()) {

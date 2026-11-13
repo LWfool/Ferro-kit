@@ -35,9 +35,9 @@ fn too_many(what: &str) -> ChemError {
 ///    Incrementing the thinnest axis keeps the box as isotropic as possible.
 ///
 /// # Errors
-/// - `ValidationError` if the cell is singular or not finite (`Cell::check`).
-/// - `ValidationError` if `min_length` is negative, NaN or infinite.
-/// - `ValidationError` if the result would hold more than 1e8 atoms.
+/// - If the cell is singular or not finite (`Cell::check`).
+/// - If `min_length` is negative, NaN or infinite.
+/// - If the result would hold more than 1e8 atoms.
 pub fn find_supercell_dims(
     cell: &Cell,
     n_atoms: usize,
@@ -102,10 +102,10 @@ pub fn find_supercell_dims(
 /// three lattice vectors.
 ///
 /// # Errors
-/// - `ValidationError` if the frame has no cell (`cell` is `None`), or one refused by
+/// - If the frame has no cell (`cell` is `None`), or one refused by
 ///   `Cell::check` (singular or not finite).
-/// - `ValidationError` if any of `nx`, `ny`, `nz` is zero.
-/// - `ValidationError` if the supercell would hold more than 1e8 atoms.
+/// - If any of `nx`, `ny`, `nz` is zero.
+/// - If the supercell would hold more than 1e8 atoms.
 ///
 /// # Notes
 /// - Per-atom scalar fields (`label`, `mass`, `magmom`, `charge`) are
