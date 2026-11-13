@@ -162,7 +162,7 @@ def test_partial_charge_column_needs_drop_partial(tmp_path):
     assert "Properties=" in header and "charge" not in header, "drop_partial leaves the column out"
     ferro.write(merged, str(tmp_path / "m.data"), format="data", drop_partial=True)
     atoms = (tmp_path / "m.data").read_text().split("Atoms # full\n\n")[1].splitlines()[:4]
-    assert [line.split()[3] for line in atoms] == ["0.000000"] * 4, \
+    assert [line.split()[3] for line in atoms] == ["0.0000000000"] * 4, \
         "LAMMPS data must have a charge column: every charge written as 0"
 
 
