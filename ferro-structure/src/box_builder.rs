@@ -59,6 +59,12 @@ fn read_count(bytes: &[u8], i: &mut usize, formula: &str) -> Result<usize> {
 /// Hydrate dot notation (`CuSO4·5H2O`) is *not* accepted — write it out as `CuSO9H10`
 /// only if that is genuinely what you mean, or list the water as a separate component,
 /// which is what the box builder wants anyway.
+/// An atom count past `usize`: in a release build the product used to wrap silently into a
+/// wrong, small count (review 2026-11-10 B1-5).
+fn overflow(what: &str) -> ChemError {
+    ChemError(format!("the atom count of '{what}' overflows"))
+}
+
 fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
     if formula.is_empty() {
         return Err(ChemError("empty formula".into()));
@@ -103,7 +109,8 @@ fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
             let mult = read_count(bytes, &mut i, formula)?;
             let outer = stack.last_mut().expect("bottom frame is never popped");
             for (elem, c) in group {
-                *outer.entry(elem).or_insert(0) += c * mult;
+                let e = outer.entry(elem).or_insert(0);
+                *e = c.checked_mul(mult).and_then(|v| v.checked_add(*e)).ok_or_else(|| overflow(formula))?;
             }
         } else if b.is_ascii_uppercase() {
             let start = i;
@@ -113,8 +120,8 @@ fn parse_formula(formula: &str) -> Result<HashMap<String, usize>> {
             }
             let elem = formula[start..i].to_string();
             let count = read_count(bytes, &mut i, formula)?;
-            *stack.last_mut().expect("bottom frame is never popped")
-                .entry(elem).or_insert(0) += count;
+            let e = stack.last_mut().expect("bottom frame is never popped").entry(elem).or_insert(0);
+            *e = e.checked_add(count).ok_or_else(|| overflow(formula))?;
         } else {
             return Err(ChemError(format!(
                 "unexpected character '{}' at position {} in '{}'",
@@ -245,7 +252,9 @@ pub fn build_box(
         let (formula_counts, molar_mass) = resolve_component(&comp.compound)?;
         total_mass += comp.n_molecules as f64 * molar_mass;
         for (elem, count) in formula_counts {
-            *element_counts.entry(elem).or_insert(0) += count * comp.n_molecules;
+            let e = element_counts.entry(elem).or_insert(0);
+            *e = count.checked_mul(comp.n_molecules).and_then(|v| v.checked_add(*e))
+                .ok_or_else(|| overflow(&comp.compound))?;
         }
     }
 
@@ -483,6 +492,13 @@ mod tests {
                 expect.iter().map(|&(e, n)| (e.to_string(), n)).collect();
             assert_eq!(parse_formula(formula).unwrap(), expect, "{formula}");
         }
+    }
+
+    #[test]
+    fn an_atom_count_past_usize_is_an_error() {
+        assert!(parse_formula("(H9999999999)9999999999").unwrap_err().to_string().contains("overflows"));
+        let c = Component { compound: "H2O".into(), n_molecules: usize::MAX / 2 + 1 };
+        assert!(build_box(&[c], 1.0, 1.5, 0, 7).unwrap_err().to_string().contains("overflows"));
     }
 
     #[test]

@@ -291,7 +291,8 @@ pub(crate) fn classify_with_cell(frame: &Frame, cell: &PeriodicCell, params: &Ty
     let mut ligand_formers: HashMap<usize, Vec<usize>> = HashMap::with_capacity(nf_map.len());
     for (&idx, nf) in &nf_map {
         let mut partners: Vec<String> = nf.iter().map(|(e, _)| e.clone()).collect();
-        partners.sort_unstable();
+        // Z order, as every element list of net (review 2026-11-06 D5)
+        partners.sort_by(|a, b| ferro_core::data::elements::canonical_cmp(a, b));
         types[idx] = AtomType::Ligand { elem: frame.element(idx).to_string(), partners };
 
         let mut idxs: Vec<usize> = nf.iter().map(|(_, i)| *i).collect();

@@ -189,6 +189,32 @@ fn box_is_reproducible_and_merge_stacks_two() {
     assert_eq!(merged.frames[0].n_atoms(), 2 * 100);
 }
 
+/// One --type-map reaches both inputs of merge: it goes to the dump, so a dump without
+/// element names merges with another format; the POSCAR used to refuse it (review 2026-11-10
+/// B6-6). Given to two inputs neither of which is a dump, it is still refused.
+#[test]
+fn merge_gives_type_map_to_the_dump_only() {
+    let d = scratch("merge_tmap");
+    let dump = d.join("a.lammpstrj");
+    std::fs::write(&dump, "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n\
+        0 10\n0 10\n0 10\nITEM: ATOMS id type x y z\n1 1 1 1 1\n2 2 2 2 2\n").unwrap();
+    let poscar = d.join("b.vasp");
+    let mut f = ferro_core::Frame::with_cell(
+        ferro_core::Cell::from_lengths_angles(10.0, 10.0, 10.0, 90.0, 90.0, 90.0).unwrap(), [true; 3]);
+    f.add_atom(ferro_core::Atom::new("O", nalgebra::Vector3::new(5.0, 5.0, 5.0)));
+    ferro_io::write(&Trajectory::from_frame(f), &poscar, &ferro_io::WriteOptions::default()).unwrap();
+    let o = d.to_str().unwrap();
+    let (a, b) = (dump.to_str().unwrap(), poscar.to_str().unwrap());
+    ok(&ferro(&["build", "merge", "-i", a, b, "--gap", "1", "--type-map", "1=Zn,2=P", "--format-out", "vasp", "-o", o]));
+    let merged = read(&d.join("merge_a_b.vasp"));
+    let mut elems: Vec<String> = merged.frames[0].atoms().map(|x| x.element.to_string()).collect();
+    elems.sort();
+    assert_eq!(elems, ["O", "P", "Zn"]);
+    let out = ferro(&["build", "merge", "-i", b, b, "--gap", "1", "--type-map", "1=Zn", "-o", o]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--type-map applies to LAMMPS dump input only"));
+}
+
 /// merge does not pick a frame of a trajectory on the user's behalf.
 #[test]
 fn merge_refuses_a_trajectory() {

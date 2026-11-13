@@ -355,14 +355,26 @@ fn run_merge(c: &MergeCmd) -> Result<()> {
         bail!("--gap must be a finite number >= 0, got {gap}");
     }
     batch::check_suffix(c.out.suffix.as_deref())?;
-    check_read_args(a, &c.read)?;
-    check_read_args(b, &c.read)?;
+    // One --type-map reaches both inputs: it goes to the dump among them, so a dump without
+    // element names merges with another format (review 2026-11-10 B6-6). Neither a dump,
+    // check_read_args refuses it as for any other command
+    let is_dump = |p: &Path| c.read.format_in.or_else(|| Format::from_name(p)) == Some(Format::LammpsDump);
+    let read_for = |p: &Path| {
+        let mut r = c.read.clone();
+        if is_dump(a) || is_dump(b) {
+            r.type_map = r.type_map.filter(|_| is_dump(p));
+        }
+        r
+    };
+    let (read_a, read_b) = (read_for(a), read_for(b));
+    check_read_args(a, &read_a)?;
+    check_read_args(b, &read_b)?;
     let ext = c.out.ext(a, &c.read)?;
     let labels = batch::unique_labels(&c.input);
     c.out.out().prepare()?;
 
-    let one = |p: &Path| -> Result<Frame> { Ok(read_structure(p, &c.read, "merge")?.frames.remove(0)) };
-    let (fa, fb) = (one(a)?, one(b)?);
+    let one = |p: &Path, r: &ReadArgs| -> Result<Frame> { Ok(read_structure(p, r, "merge")?.frames.remove(0)) };
+    let (fa, fb) = (one(a, &read_a)?, one(b, &read_b)?);
     let merged = merge_frames(&fa, &fb, &c.axis, gap)?;
     let note = format!("{} + {} atoms along {}, gap {gap} Å", fa.n_atoms(), fb.n_atoms(), c.axis);
     let line = write_product(&c.out, &["merge", &labels[0], &labels[1]], &ext, &Trajectory::from_frame(merged), c.read.units)?;

@@ -37,7 +37,7 @@ pub(crate) use classify::classify_with_cell;
 pub use graph::{build_network_graph, LigandKind, NetworkGraph};
 
 use crate::check;
-use ferro_core::data::elements::canonical_cmp;
+use ferro_core::data::elements::{canonical_cmp, symbol_to_z};
 use ferro_core::ChemError;
 use ferro_core::{Frame, PeriodicCell, Table, Trajectory};
 use std::collections::{BTreeMap, HashMap};
@@ -82,6 +82,16 @@ type LigandKey = (u8, String);
 /// count).  The count is the denominator, and it is **per element** — see
 /// [`NetworkResult::ligand_dist`].
 type LigandHist = HashMap<String, (HashMap<LigandKey, usize>, usize)>;
+
+/// An element's sort key in Z order ([`canonical_cmp`] as a key).
+fn z_key(e: &str) -> (u8, String) {
+    (symbol_to_z(e), e.to_string())
+}
+
+/// A site state's sort key: element in Z order, then homopolar count and coordination.
+fn site_key(s: &SiteState) -> ((u8, String), u32, u32) {
+    (z_key(&s.0), s.1, s.2)
+}
 
 fn oxy_key(t: &AtomType) -> OxyKey {
     let partners = match t {
@@ -818,7 +828,7 @@ fn compute_frame(ft: &FrameTypes, frame: &Frame) -> FrameData {
             for j in (i + 1)..n_formers {
                 let (Some(a), Some(b)) = (site(formers[i]), site(formers[j])) else { continue };
                 // 规范半边：桥联无方向，A-O-B 与 B-O-A 是同一条观测
-                let (a, b) = if a <= b { (a, b) } else { (b, a) };
+                let (a, b) = if site_key(&a) <= site_key(&b) { (a, b) } else { (b, a) };
                 *linkage.entry((a, b, ligand_elem.clone(), n_formers)).or_insert(0) += 1;
                 n_links += 1;
                 // formers 已升序，故 (i,j) 天然是规范序
@@ -956,15 +966,21 @@ impl Accumulator {
             })
             .collect();
 
-        let oxy_dist: Vec<(String, Vec<String>, Bin)> = self.oxy.iter()
+        // The maps order by string; the rows go in Z order, as every element list of net (D5)
+        let mut oxy: Vec<_> = self.oxy.iter().collect();
+        oxy.sort_by_cached_key(|((e, rank, lbl, partners), _)| {
+            (z_key(e), *rank, lbl.clone(), partners.iter().map(|p| z_key(p)).collect::<Vec<_>>())
+        });
+        let oxy_dist: Vec<(String, Vec<String>, Bin)> = oxy.into_iter()
             .map(|((_, _, lbl, partners), mo)| {
                 (lbl.clone(), partners.clone(), mo.finish(n_frames))
             })
             .collect();
 
-        let linkage: Vec<(LinkKey, Bin)> = self.linkage.iter()
+        let mut linkage: Vec<(LinkKey, Bin)> = self.linkage.iter()
             .map(|(k, mo)| (k.clone(), mo.finish(n_frames)))
             .collect();
+        linkage.sort_by_cached_key(|((a, b, lig, n), _)| (site_key(a), site_key(b), z_key(lig), *n));
 
         NetworkResult {
             qn_dist, qn_partner_dist, mean_qn, cn_dist, mean_cn, mean_n_bo,
@@ -1163,6 +1179,34 @@ mod tests {
         assert_eq!(rows.len(), 2, "P-O-Al 与 P-O-P 必须是两行: {rows:?}");
         assert_eq!(rows[0].0, &vec!["Al".to_string(), "P".to_string()]);
         assert_eq!(rows[1].0, &vec!["P".to_string(), "P".to_string()]);
+    }
+
+    /// Elements of a pair and the rows of both tables are in Z order, as everywhere in net
+    /// (review 2026-11-06 D5). Si (14) before P (15) is the reverse of alphabetical, which is
+    /// what the bridge partners and the linkage ends used to follow (review 2026-11-10 B5-7)
+    #[test]
+    fn bridge_partners_and_linkage_ends_are_in_z_order() {
+        let frame = cube(vec![
+            atom("P",  0.0, 0.0, 0.0),
+            atom("O",  1.6, 0.0, 0.0), // P-O-Si
+            atom("Si", 3.2, 0.0, 0.0),
+            atom("O",  4.8, 0.0, 0.0), // Si-O-Si
+            atom("Si", 6.4, 0.0, 0.0),
+            atom("P",  0.0, 5.0, 0.0),
+            atom("O",  1.6, 5.0, 0.0), // P-O-P
+            atom("P",  3.2, 5.0, 0.0),
+        ]);
+        let mut cutoffs = BTreeMap::new();
+        cutoffs.insert(("P".to_string(), "O".to_string()), 2.3);
+        cutoffs.insert(("Si".to_string(), "O".to_string()), 2.3);
+        let res = calc_network(&traj_of(vec![frame]), &TypeParams::new(cutoffs, BTreeMap::new())).unwrap();
+        let s = |v: &[&str]| v.iter().map(|e| e.to_string()).collect::<Vec<_>>();
+        let partners: Vec<&Vec<String>> = res.oxy_dist.iter().filter(|(l, _, _)| l == "O_b").map(|(_, p, _)| p).collect();
+        assert_eq!(partners, [&s(&["Si", "Si"]), &s(&["Si", "P"]), &s(&["P", "P"])]);
+        let ends: Vec<(&str, &str)> = res.linkage.iter().map(|((a, b, _, _), _)| (a.0.as_str(), b.0.as_str())).collect();
+        assert_eq!(ends.first(), Some(&("Si", "Si")), "{ends:?}");
+        assert!(ends.contains(&("Si", "P")) && !ends.contains(&("P", "Si")), "{ends:?}");
+        assert_eq!(ends.last(), Some(&("P", "P")), "{ends:?}");
     }
 
     /// 修饰子只进 CN 表，且**不影响配体分类** —— 挨着修饰子的非桥氧仍是 `O_n`。

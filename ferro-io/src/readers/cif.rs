@@ -42,7 +42,6 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
             continue;
         }
 
-        let line = strip_comment(line);
         let trimmed = line.trim();
         if !trimmed.is_empty() {
             tokenize_line(trimmed, &mut tokens).with_context(|| format!("line {}", i + 1))?;
@@ -53,28 +52,21 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
     Ok(tokens)
 }
 
-fn strip_comment(line: &str) -> &str {
-    let mut in_sq = false;
-    let mut in_dq = false;
-    for (idx, ch) in line.char_indices() {
-        match ch {
-            '\'' if !in_dq => in_sq = !in_sq,
-            '"' if !in_sq => in_dq = !in_dq,
-            '#' if !in_sq && !in_dq => return &line[..idx],
-            _ => {}
-        }
-    }
-    line
-}
-
 fn tokenize_line(mut s: &str, out: &mut Vec<Token>) -> Result<()> {
     loop {
         s = s.trim_start();
         if s.is_empty() { break; }
 
+        // CIF 1.1 (paragraph 17): `#` starts a comment and a quote opens a string only at
+        // the start of a token; the string closes at a quote followed by whitespace, so
+        // `'O'Brien'` is one value and the prime of an unquoted `C1'` opens nothing
+        if s.starts_with('#') { break; }
         if let Some(quote) = s.chars().next().filter(|&c| c == '\'' || c == '"') {
             s = &s[1..];
-            let end = s.find(quote).with_context(|| format!("unclosed {quote} quote"))?;
+            let end = s.match_indices(quote)
+                .map(|(i, _)| i)
+                .find(|&i| s[i + 1..].chars().next().is_none_or(char::is_whitespace))
+                .with_context(|| format!("unclosed {quote} quote"))?;
             out.push(Token::Value(s[..end].to_string()));
             s = &s[end + 1..];
         } else {
@@ -577,6 +569,22 @@ fn parse_cif_float(s: &str) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CIF 1.1 quoting (paragraph 17): a quote opens a string only at the start of a token
+    /// and closes it only when followed by whitespace, and `#` starts a comment only at the
+    /// start of a token. A primed label (`C1'`, nucleotides) used to open a quote that hid the
+    /// comment after it, whose words then shifted the loop's columns (review 2026-11-10 B2-4)
+    #[test]
+    fn quotes_and_comments_follow_cif_1_1() {
+        let values = |line: &str| -> Vec<String> {
+            tokenize(line).unwrap().into_iter()
+                .map(|t| match t { Token::Value(v) => v, other => panic!("{other:?}") }).collect()
+        };
+        assert_eq!(values("C1' C 0.1 0.2 0.3 # sugar carbon"), ["C1'", "C", "0.1", "0.2", "0.3"]);
+        assert_eq!(values("'O'Brien's salt' x"), ["O'Brien's salt", "x"]);
+        assert_eq!(values("a#b 'it''s' \"say \"hi\"\""), ["a#b", "it''s", "say \"hi\""]);
+        assert_eq!(values("1 # 'unclosed in a comment"), ["1"]);
+    }
 
     // P1 结构：简单立方，两个原子，分数坐标
     const P1_CIF: &str = "\

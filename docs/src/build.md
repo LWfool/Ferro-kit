@@ -135,6 +135,8 @@ the in-plane sizes differ a lot.
   bring both blocks to one in-plane cell first.
 - The result is periodic as A is; B's `pbc` is not consulted.
 - The output format is A's unless `--format-out` says otherwise.
+- The reading flags apply to both inputs, except `--type-map`: it goes to the LAMMPS
+  dump among them, so a dump without element names can be merged with a POSCAR.
 
 ## `ferro build box`
 
