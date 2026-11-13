@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 #[derive(Args, Debug)]
 pub struct InfoCmd {
     /// Input file (format auto-detected; omit to show what this reports)
-    #[arg(short, long, num_args = 1..)]
+    #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
     #[command(flatten)]

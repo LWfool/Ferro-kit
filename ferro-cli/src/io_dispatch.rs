@@ -72,11 +72,11 @@ pub fn supported_formats() -> String {
             _ if f.multi_frame() => "all",
             _ => "one per file",
         };
-        rows.push_str(&format!("  {:<14}{:<28}{:<18}{write}\n", f.name(), f.detected_by(), labels.join("  ")));
+        rows.push_str(&format!("  {:<13}{:<36}{:<16}{write}\n", f.name(), f.detected_by(), labels.join(" ")));
     }
     format!(
-        "  Format        Detected by                 --format-in       Write
-  ------------------------------------------------------------------------
+        "  Format       Detected by                         --format-in     Write
+  -----------------------------------------------------------------------------
 {rows}
   Without --format-in the format comes from the file NAME: an extension in
   any case, or a POSCAR/CONTCAR prefix. Then from the content:

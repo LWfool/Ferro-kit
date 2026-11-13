@@ -16,6 +16,7 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
         // fractional coordinates, or a cell in another orientation reads back shifted
         let mut to_std = Matrix3::identity();
         if let Some(cell) = &frame.cell {
+            cell.check(&format!("frame {k}: the cell"))?;
             let m = &cell.matrix;
             // Already standard (a LAMMPS cell always is): leave it, since the 1e-16 noise of M⁻¹·S
             // pushes a coordinate sitting at x.xxx5 across the 3-decimal rounding point
@@ -26,8 +27,7 @@ pub fn write_pdb(trajectory: &Trajectory, path: &Path) -> Result<()> {
                 let [al, be, ga] = cell.angles();
                 let std_cell = Cell::from_lengths_angles(a, b, c, al, be, ga)
                     .with_context(|| format!("frame {k}: cell cannot be written as CRYST1"))?;
-                let inv = m.try_inverse()
-                    .with_context(|| format!("frame {k}: cell is singular"))?;
+                let inv = m.try_inverse().expect("check() refused a singular cell");
                 // Row vectors: p_std = p · M⁻¹ · S, i.e. (M⁻¹ S)ᵀ p for column vectors
                 to_std = (inv * std_cell.matrix).transpose();
             }

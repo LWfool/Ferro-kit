@@ -272,7 +272,8 @@ fn export_labelled(
     // As convert: the --units the input was read with; without one, frames with velocities or
     // forces are refused by the writer. Both formats are multi-frame: one file, numbers unused
     let numbers: Vec<usize> = (0..out_traj.n_frames()).collect();
-    write_numbered(&out_traj, &path, fmt.format(), &WriteOptions { units, drop_partial: false }, &numbers)?;
+    let report = write_numbered(&out_traj, &path, fmt.format(), &WriteOptions { units, drop_partial: false }, &numbers)?;
+    crate::report::notices(&path, &report.warnings);
     if skipped > 0 {
         crate::report::note(path.display(), format!(
             "{skipped} label(s) not of the form <element>_<suffix>; wrote the element instead"

@@ -149,8 +149,8 @@ fn write(
     let fmt = Format::for_extension(format).map_err(pyerr)?;
     let opts = ferro_io::WriteOptions { units: parse_units(units)?, drop_partial };
     let numbers: Vec<usize> = (0..traj.inner.n_frames()).collect();
-    py.detach(|| ferro_io::write_numbered(&traj.inner, Path::new(path), fmt, &opts, &numbers)).map_err(pyerr)?;
-    Ok(())
+    let report = py.detach(|| ferro_io::write_numbered(&traj.inner, Path::new(path), fmt, &opts, &numbers)).map_err(pyerr)?;
+    emit_warnings(py, path, &report.warnings)
 }
 
 /// Reads a calculation output (VASP OUTCAR / vasprun.xml, CP2K single-point and MD

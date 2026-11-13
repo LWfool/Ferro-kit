@@ -14,6 +14,9 @@ pub fn write_poscar(trajectory: &Trajectory, path: &Path) -> Result<()> {
 /// 与 `write_poscar` 同一份格式
 pub fn poscar_string(frame: &Frame, comment: &str) -> Result<String> {
     let cell = frame.cell.as_ref().context("frame has no cell (POSCAR requires periodic frame)")?;
+    // A singular cell fails the fractional conversion only after the header is built; refused as
+    // the other writers refuse it (review 2026-11-10 B3-4)
+    cell.check("the cell")?;
 
 
     let mut w = String::new();

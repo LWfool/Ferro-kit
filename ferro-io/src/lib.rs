@@ -7,7 +7,7 @@ mod writers;
 
 pub use format::{
     is_deepmd_system, read, read_as, read_charge_grid, write, write_numbered, Format, ReadOptions, ReadReport,
-    WriteOptions,
+    WriteOptions, WriteReport,
 };
 
 pub use notice::{Level, Notice};

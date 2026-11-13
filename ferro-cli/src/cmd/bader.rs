@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 pub struct BaderCmd {
     /// Input file: CHGCAR (VASP) or .cube (Gaussian / QE pp.x)
     /// (omit to show the methods and output files)
-    #[arg(short, long, num_args = 1..)]
+    #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
     /// Bader method

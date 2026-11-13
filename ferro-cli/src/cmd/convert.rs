@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 #[derive(Args, Debug)]
 pub struct ConvertCmd {
     /// Input file (format auto-detected; omit to list the supported formats)
-    #[arg(short, long, num_args = 1..)]
+    #[arg(short, long, num_args = 1.., value_name = "FILE")]
     pub input: Vec<PathBuf>,
 
     /// Output directory, created if missing; products are named after the input
@@ -156,7 +156,9 @@ pub fn run(args: &ConvertCmd) -> Result<()> {
     // 20 frames to POSCAR can only be 20 files, so there is no switch to remember.
     // The per-frame files are numbered by the frame they came from in the input
     let opts = ferro_io::WriteOptions { units: args.read.units, drop_partial: args.drop_partial };
-    let written = ferro_io::write_numbered(&picked, output, format, &opts, &indices)?;
+    let report = ferro_io::write_numbered(&picked, output, format, &opts, &indices)?;
+    crate::report::notices(output, &report.warnings);
+    let written = report.files;
     let replaced: Vec<&PathBuf> = written.iter().filter(|p| before.contains(*p)).collect();
     if let Some(first) = replaced.first() {
         crate::report::note(

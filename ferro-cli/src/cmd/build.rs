@@ -239,7 +239,8 @@ fn write_product(out_args: &OutArgs, segments: &[&str], ext: &str, made: &Trajec
     let path = out.join(&batch::product_name(segments, out.suffix.as_deref(), ext));
     let opts = WriteOptions { units, drop_partial: false };
     // One frame always lands in `path` itself: `write` numbers files only for several frames
-    ferro_io::write(&made.canonically_sorted(), &path, &opts)?;
+    let report = ferro_io::write(&made.canonically_sorted(), &path, &opts)?;
+    crate::report::notices(&path, &report.warnings);
     Ok(path.display().to_string())
 }
 

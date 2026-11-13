@@ -142,7 +142,8 @@ impl Format {
             Format::Cif => "cif",
             Format::Poscar => "vasp",
             Format::LammpsData => "data",
-            _ => return None,
+            Format::QeInput | Format::Cp2kInput | Format::Cp2kRestart | Format::Aimd(_)
+            | Format::Deepmd => return None,
         })
     }
 
@@ -363,10 +364,19 @@ pub struct WriteOptions {
     pub drop_partial: bool,
 }
 
+/// What a write made, and what it noticed.
+#[derive(Debug, Clone, Default)]
+pub struct WriteReport {
+    /// The files written, in frame order
+    pub files: Vec<PathBuf>,
+    /// Messages for the caller to show; the writers never print
+    pub warnings: Vec<Notice>,
+}
+
 /// Writes `traj` to `path` in the format its name declares, returning the files
 /// written. A format that holds one structure gets one file per frame,
 /// `conf.cif` -> `conf_0000.cif`, `conf_0001.cif`, ...
-pub fn write(traj: &Trajectory, path: &Path, opts: &WriteOptions) -> Result<Vec<PathBuf>> {
+pub fn write(traj: &Trajectory, path: &Path, opts: &WriteOptions) -> Result<WriteReport> {
     let numbers: Vec<usize> = (0..traj.n_frames()).collect();
     write_numbered(traj, path, Format::for_output(path)?, opts, &numbers)
 }
@@ -382,14 +392,28 @@ pub fn write_numbered(
     format: Format,
     opts: &WriteOptions,
     numbers: &[usize],
-) -> Result<Vec<PathBuf>> {
+) -> Result<WriteReport> {
     // Checked once here for every format (review 2026-11-06 A3-13)
     if traj.n_frames() == 0 {
         bail!("cannot write an empty trajectory");
     }
+    // A LAMMPS box is right-handed by construction (a along x, b in the xy plane, lz > 0):
+    // a left-handed cell goes in as its mirror image, the same lengths and angles, with the
+    // atoms through fractional coordinates. Harmless for a bulk, not for a chiral structure;
+    // ASE does the same silently (review 2026-11-10 B3-2, user: warn)
+    let mut warnings = Vec::new();
+    if matches!(format, Format::LammpsDump | Format::LammpsData) {
+        let left = traj.frames.iter()
+            .filter(|f| f.cell.as_ref().is_some_and(|c| c.matrix.determinant() < 0.0)).count();
+        if left > 0 {
+            warnings.push(Notice::warning(None, format!(
+                "{left} of {} frames have a left-handed cell; a LAMMPS box is right-handed, \
+                 so they are written as their mirror image", traj.n_frames())));
+        }
+    }
     if format.multi_frame() || traj.n_frames() <= 1 {
         write_one(traj, path, format, opts)?;
-        return Ok(vec![path.to_path_buf()]);
+        return Ok(WriteReport { files: vec![path.to_path_buf()], warnings });
     }
     assert_eq!(numbers.len(), traj.n_frames(), "one number per frame");
     // More than one frame here, and one number per frame
@@ -408,7 +432,7 @@ pub fn write_numbered(
         }
         written.push(file);
     }
-    Ok(written)
+    Ok(WriteReport { files: written, warnings })
 }
 
 fn write_one(traj: &Trajectory, path: &Path, format: Format, opts: &WriteOptions) -> Result<()> {
@@ -420,7 +444,8 @@ fn write_one(traj: &Trajectory, path: &Path, format: Format, opts: &WriteOptions
         Format::Cif => write_cif(traj, path),
         Format::Poscar => write_poscar(traj, path),
         Format::LammpsData => write_lammps_data(traj, path, opts.drop_partial),
-        other => bail!("unsupported output format: {}", other.name()),
+        other @ (Format::QeInput | Format::Cp2kInput | Format::Cp2kRestart | Format::Aimd(_)
+            | Format::Deepmd) => bail!("unsupported output format: {}", other.name()),
     }
 }
 
@@ -542,13 +567,40 @@ mod tests {
         traj.frames.push(traj.frames[0].clone());
         traj.frames.push(traj.frames[0].clone());
         let dir = tmp_dir("split");
-        let made = write(&traj, &dir.join("conf.cif"), &WriteOptions::default()).unwrap();
+        let made = write(&traj, &dir.join("conf.cif"), &WriteOptions::default()).unwrap().files;
         assert_eq!(made, ["conf_0000.cif", "conf_0001.cif", "conf_0002.cif"].map(|n| dir.join(n)));
-        let made = write_numbered(&traj, &dir.join("POSCAR"), Format::Poscar, &WriteOptions::default(), &[0, 50, 12345]).unwrap();
+        let made = write_numbered(&traj, &dir.join("POSCAR"), Format::Poscar, &WriteOptions::default(), &[0, 50, 12345]).unwrap().files;
         assert_eq!(made, ["POSCAR_00000", "POSCAR_00050", "POSCAR_12345"].map(|n| dir.join(n)));
         assert!(made.iter().all(|p| p.is_file()));
-        let one = write(&traj, &dir.join("all.extxyz"), &WriteOptions::default()).unwrap();
+        let one = write(&traj, &dir.join("all.extxyz"), &WriteOptions::default()).unwrap().files;
         assert_eq!(read_plain(&one[0]).unwrap().n_frames(), 3);
+    }
+
+    /// A left-handed cell reaches LAMMPS as its mirror image: the box is right-handed by
+    /// construction. The write says so; a right-handed cell and other formats say nothing.
+    #[test]
+    fn a_left_handed_cell_written_to_lammps_is_mirrored_with_a_warning() {
+        let mut traj = one_atom_traj();
+        let f = &mut traj.frames[0];
+        f.add_atom(Atom::new("O", Vector3::new(1.0, 2.0, 3.0)));
+        let right = write(&traj, &tmp_dir("hand_r").join("r.data"), &WriteOptions::default()).unwrap();
+        assert!(right.warnings.is_empty(), "{:?}", right.warnings);
+        // c -> -c: same lengths and angles, opposite handedness
+        let f = &mut traj.frames[0];
+        let mut m = f.cell.as_ref().unwrap().matrix;
+        m.set_row(2, &(-m.row(2)));
+        f.cell = Some(Cell::from_matrix(m));
+        let dir = tmp_dir("hand_l");
+        for name in ["l.data", "l.dump"] {
+            let made = write(&traj, &dir.join(name), &WriteOptions::default()).unwrap();
+            assert_eq!(made.warnings.len(), 1, "{name}");
+            assert!(made.warnings[0].message.contains("1 of 1 frames have a left-handed cell"), "{name}");
+        }
+        let back = read_plain(&dir.join("l.dump")).unwrap();
+        let p = back.frames[0].positions()[1];
+        assert!((p - Vector3::new(1.0, 2.0, -3.0)).norm() < 1e-9, "same fractional coordinates, z flipped: {p}");
+        let cif = write(&traj, &dir.join("l.cif"), &WriteOptions::default()).unwrap();
+        assert!(cif.warnings.is_empty());
     }
 
     /// A frame refused partway through a split leaves no files behind: the frames

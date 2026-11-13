@@ -180,7 +180,7 @@ Topology & charges
 
 Structure I/O
   convert        Format conversion — run it bare for the read/write matrix
-  info           Atoms, cell, volume, density (g/cm³) of a structure or trajectory
+  info           Atoms, cell, volume, density (g/cm³) of a structure/trajectory
 
 Structure building       one structure file per command, in the input's format
   build supercell   Replicate a cell, given or sized by atoms / spacing
@@ -264,7 +264,7 @@ Commands:
   force     Time-averaged force magnitude |f| per voxel  (needs frame forces)
   radius    Hard-sphere spatial occupancy map
   sdf       Cluster spatial distribution function (Qn-type, Kabsch alignment)
-  chg-sdf   Charge-density cluster SDF from QE pp.x cube files (--cubes, not -i)
+  chg-sdf   Charge-density cluster SDF from QE pp.x cubes (--cubes, not -i)
 
 Common options:
 {COMMON_OPTS}
