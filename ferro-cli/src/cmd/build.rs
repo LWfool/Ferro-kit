@@ -347,7 +347,8 @@ fn run_vacuum(c: &VacuumCmd) -> Result<()> {
 /// Not a batch: two inputs make one product, so a failure fails the run.
 fn run_merge(c: &MergeCmd) -> Result<()> {
     // None goes to the help page (review 2026-10-30 A5-L7); any count but two is refused here
-    let [a, b] = batch::exact_inputs("build merge", &c.input, 2)? else { unreachable!("exact_inputs: two") };
+    let inputs = batch::exact_inputs("build merge", &c.input, 2)?;
+    let (a, b) = (&inputs[0], &inputs[1]);
     let Some(gap) = c.gap else { bail!("give the gap between the two blocks: --gap LEN (0 allowed)") };
     if !(gap >= 0.0 && gap.is_finite()) {
         bail!("--gap must be a finite number >= 0, got {gap}");

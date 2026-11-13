@@ -185,7 +185,8 @@ impl Moments {
     /// `n_frames >= 1`: calc_network refuses an empty trajectory.
     fn finish(&self, n_frames: usize) -> Bin {
         let (mut mean, mut m2) = (self.mean, self.m2);
-        let missing = n_frames.saturating_sub(self.seen);
+        // seen counts frames out of n_frames, so this never underflows
+        let missing = n_frames - self.seen;
         if missing > 0 {
             // 缺席组：均值 0、m2 0，套用同一条合并公式
             let (na, nb) = (self.seen as f64, missing as f64);
@@ -197,7 +198,8 @@ impl Moments {
         let sd = if n_frames < 2 {
             f64::NAN
         } else {
-            (m2 / (n_frames as f64 - 1.0)).max(0.0).sqrt()
+            // m2 >= 0 exactly: each Welford / merge term is a product of two same-sign numbers
+            (m2 / (n_frames as f64 - 1.0)).sqrt()
         };
         Bin { count: self.count, fraction: mean, sd }
     }
@@ -917,11 +919,12 @@ impl Accumulator {
             s / n as f64
         };
         // Pooled mean of a histogram: Σ value·count / Σ count over every frame. The
-        // products and sums are integers held exactly in f64, so the order is immaterial
+        // products and sums are integers held exactly in f64, so the order is immaterial.
+        // Every key was made by counting at least one atom, so n > 0
         let pooled = |m: &BTreeMap<u32, Moments>| -> f64 {
             let (s, n) = m.iter()
                 .fold((0.0, 0usize), |(s, n), (&v, mo)| (s + v as f64 * mo.count as f64, n + mo.count));
-            if n > 0 { s / n as f64 } else { f64::NAN }
+            s / n as f64
         };
 
         // 只保留轨迹里真正出现过的元素。参数里点名但不存在的元素若留下,

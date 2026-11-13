@@ -24,9 +24,12 @@ pub(crate) fn cell_to_lammps(cell: &Cell) -> BoxParams {
     let lx = a;
     let xy = b * ga.cos();
     let xz = c * be.cos();
-    let ly = (b * b - xy * xy).max(0.0).sqrt();
-    let yz = if ly > 1e-10 { (b * c * al.cos() - xy * xz) / ly } else { 0.0 };
-    let lz = (c * c - xz * xz - yz * yz).max(0.0).sqrt();
+    // Both writers pass the cell through Cell::check first (volume > 1e-6 a·b·c), so
+    // ly >= 1e-6 b and lz >= 1e-6 c: no square root below is of a negative number and
+    // ly is no divisor near 0 (review 2026-11-10 B3-3)
+    let ly = (b * b - xy * xy).sqrt();
+    let yz = (b * c * al.cos() - xy * xz) / ly;
+    let lz = (c * c - xz * xz - yz * yz).sqrt();
     // The cos of 90 degrees leaves ~1e-16 L, which would make an orthogonal box triclinic:
     // tilts below 1e-10 of the longest edge are set to 0
     let tol = 1e-10 * lx.max(ly).max(lz);

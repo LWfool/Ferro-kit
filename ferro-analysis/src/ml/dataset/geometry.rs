@@ -39,7 +39,8 @@ pub fn min_pair_distance(frame: &Frame, cell: &PeriodicCell, a: &str, b: &str) -
             }
         }
     }
-    (best.is_finite()).then(|| best.sqrt())
+    // The early return above leaves at least one pair, so best is a measured distance
+    Some(best.sqrt())
 }
 
 fn idx_of(frame: &Frame, elem: &str) -> Vec<usize> {
