@@ -26,27 +26,27 @@ pub static COMPOUNDS: &[CompoundData] = &[
     // 腈类
     CompoundData { name: "acetonitrile", formula: "CH3CN",     molecular_mass: 41.053 },
     // 亚砜类
-    CompoundData { name: "dmso",         formula: "C2H6OS",    molecular_mass: 78.133 },
-    CompoundData { name: "dmf",          formula: "C3H7NO",    molecular_mass: 73.094 },
+    CompoundData { name: "dmso",         formula: "C2H6OS",    molecular_mass: 78.129 },
+    CompoundData { name: "dmf",          formula: "C3H7NO",    molecular_mass: 73.095 },
     // 醚类
     CompoundData { name: "thf",          formula: "C4H8O",     molecular_mass: 72.107 },
     CompoundData { name: "diethylether", formula: "C4H10O",    molecular_mass: 74.123 },
     CompoundData { name: "dme",          formula: "C4H10O2",   molecular_mass: 90.122 },
     // 卤代烃
-    CompoundData { name: "chloroform",   formula: "CHCl3",     molecular_mass: 119.38 },
-    CompoundData { name: "dcm",          formula: "CH2Cl2",    molecular_mass: 84.933 },
-    CompoundData { name: "ccl4",         formula: "CCl4",      molecular_mass: 153.82 },
+    CompoundData { name: "chloroform",   formula: "CHCl3",     molecular_mass: 119.369 },
+    CompoundData { name: "dcm",          formula: "CH2Cl2",    molecular_mass: 84.927 },
+    CompoundData { name: "ccl4",         formula: "CCl4",      molecular_mass: 153.811 },
     // 芳烃
     CompoundData { name: "benzene",      formula: "C6H6",      molecular_mass: 78.114 },
     CompoundData { name: "toluene",      formula: "C7H8",      molecular_mass: 92.141 },
-    CompoundData { name: "xylene",       formula: "C8H10",     molecular_mass: 106.17 },
+    CompoundData { name: "xylene",       formula: "C8H10",     molecular_mass: 106.168 },
     // 烷烃
     CompoundData { name: "hexane",       formula: "C6H14",     molecular_mass: 86.178 },
     CompoundData { name: "cyclohexane",  formula: "C6H12",     molecular_mass: 84.162 },
-    CompoundData { name: "octane",       formula: "C8H18",     molecular_mass: 114.23 },
+    CompoundData { name: "octane",       formula: "C8H18",     molecular_mass: 114.232 },
     // 酸类
     CompoundData { name: "aceticacid",   formula: "C2H4O2",    molecular_mass: 60.052 },
-    CompoundData { name: "formicacid",   formula: "CH2O2",     molecular_mass: 46.026 },
+    CompoundData { name: "formicacid",   formula: "CH2O2",     molecular_mass: 46.025 },
     // 常见离子液体前体 / 其他
     CompoundData { name: "ethyleneglycol", formula: "C2H6O2",  molecular_mass: 62.068 },
 ];
@@ -80,5 +80,24 @@ mod tests {
         assert!(find("C2H6Os").is_none());
         assert!(find("h2o").is_none());
         assert_eq!(find("DMSO").unwrap().formula, "C2H6OS");
+    }
+
+    #[test]
+    fn every_mass_is_the_sum_of_the_element_table() {
+        // The table rounds to 3 decimals; a stale atomic weight shows up as a larger gap
+        // (review 2026-11-10 B1-2: S and Cl were pre-CIAAW-2024 values)
+        for c in COMPOUNDS {
+            let mut rest = c.formula;
+            let mut sum = 0.0;
+            while !rest.is_empty() {
+                let sym_len = 1 + rest[1..].find(|ch: char| !ch.is_ascii_lowercase()).unwrap_or(rest.len() - 1);
+                let (sym, tail) = rest.split_at(sym_len);
+                let n_len = tail.find(|ch: char| !ch.is_ascii_digit()).unwrap_or(tail.len());
+                let n: f64 = if n_len == 0 { 1.0 } else { tail[..n_len].parse().unwrap() };
+                sum += ferro_core::data::elements::by_symbol(sym).unwrap().atomic_mass * n;
+                rest = &tail[n_len..];
+            }
+            assert!((c.molecular_mass - sum).abs() <= 5e-4, "{}: {} vs {sum}", c.name, c.molecular_mass);
+        }
     }
 }

@@ -169,7 +169,7 @@ pub fn write_lammps_dump(
             }
             if has_charge {
                 // partial_column has made sure every atom has one
-                write!(w, " {:.6}", atom.charge.expect("partial_column checked"))?;
+                write!(w, " {:.10}", atom.charge.expect("partial_column checked"))?;
             }
             writeln!(w)?;
         }

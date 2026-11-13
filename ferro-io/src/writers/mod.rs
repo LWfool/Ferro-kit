@@ -203,7 +203,7 @@ mod tests {
                 "x.extxyz" => assert!(!text.contains("charges"), "{text}"),
                 "x.lammpstrj" => assert!(!text.contains(" q"), "{text}"),
                 _ => assert!(text.lines().filter(|l| l.split_whitespace().count() == 7)
-                                 .all(|l| l.split_whitespace().nth(3) == Some("0.000000")), "{text}"),
+                                 .all(|l| l.split_whitespace().nth(3) == Some("0.0000000000")), "{text}"),
             }
         }
     }

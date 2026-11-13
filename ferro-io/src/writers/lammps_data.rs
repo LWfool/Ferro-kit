@@ -114,7 +114,7 @@ pub fn write_lammps_data(trajectory: &Trajectory, path: &Path, drop_partial: boo
         };
 
         // id mol-id type charge x y z
-        writeln!(w, "{} 1 {tp} {q:.6} {:.10} {:.10} {:.10}",
+        writeln!(w, "{} 1 {tp} {q:.10} {:.10} {:.10} {:.10}",
             i + 1, pos.x, pos.y, pos.z)?;
     }
 
