@@ -258,8 +258,10 @@ pub fn fit_diffusion(
         .zip(ys)
         .map(|(x, y)| (y - (slope * x + intercept)).powi(2))
         .sum();
-    let r2 = if ss_tot.abs() < f64::EPSILON {
-        1.0
+    // A flat MSD leaves no variance to explain: R^2 is undefined (NaN), not 1. The test is
+    // relative to the data's own scale, so an MSD in small numbers is still fitted
+    let r2 = if ss_tot <= f64::EPSILON * ys.iter().map(|y| y * y).sum::<f64>() {
+        f64::NAN
     } else {
         1.0 - ss_res / ss_tot
     };
@@ -652,6 +654,22 @@ mod tests {
         assert!((fit.slope - 6.0 * d_true).abs() < 1e-12);
         assert!((fit.intercept - c).abs() < 1e-9);
         assert!((fit.r2 - 1.0).abs() < 1e-12, "R² = {}", fit.r2);
+    }
+
+    #[test]
+    fn r2_is_scale_free_and_nan_on_a_flat_msd() {
+        // R^2 does not depend on the unit of the MSD: a noisy line of order 1e-9 A^2 gets the
+        // same R^2 as the same line in units of 1e-9 A^2 (an absolute threshold used to call it 1)
+        let time: Vec<f64> = (0..20).map(|i| i as f64).collect();
+        let big: Vec<f64> = (0..20).map(|i| i as f64 + if i % 2 == 0 { 5.0 } else { -5.0 }).collect();
+        let tiny: Vec<f64> = big.iter().map(|y| y * 1e-9).collect();
+        let r2_big = fit_diffusion(&time, &big, (0.0, 1.0)).unwrap().r2;
+        let r2_tiny = fit_diffusion(&time, &tiny, (0.0, 1.0)).unwrap().r2;
+        assert!(r2_big < 0.9, "noisy line: R^2 = {r2_big}");
+        assert!((r2_tiny - r2_big).abs() < 1e-9, "R^2 {r2_tiny} vs {r2_big}");
+        // A flat MSD has no variance to explain: R^2 is undefined, not a perfect fit
+        let flat = vec![0.3; 20];
+        assert!(fit_diffusion(&time, &flat, (0.0, 1.0)).unwrap().r2.is_nan());
     }
 
     #[test]

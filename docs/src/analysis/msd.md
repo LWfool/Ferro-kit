@@ -224,7 +224,7 @@ per input is a column of the `[inputs]` list:
 | `intercept` | Å² |
 | `d_ang2_per_fs` | $D = \text{slope}/6$ |
 | `d_err` | see [Uncertainty](#uncertainty) |
-| `r2` | $R^2$ of the fit |
+| `r2` | $R^2$ of the fit; empty (NaN) when the MSD is flat over the window |
 
 $D$ is also printed to stdout in Å²/fs, cm²/s and m²/s.
 
