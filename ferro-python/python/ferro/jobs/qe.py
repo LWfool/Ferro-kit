@@ -128,7 +128,8 @@ def _fortran_float(text):
 
 
 def upf_header(path):
-    """UPF 头部 → (元素, 价电子数, wfc 建议截断, rho 建议截断)，截断单位 Ry，未给为 0。
+    """UPF header -> (element, z_valence, suggested wfc cutoff, suggested rho cutoff, kind):
+    cutoffs in Ry, 0 when not given; kind ``NC`` / ``US`` / ``PAW``, ``""`` when not given.
 
     UPF v2 是 ``<PP_HEADER element="O" z_valence="6.0" wfc_cutoff=… rho_cutoff=…/>``；
     v1 是 ``<PP_HEADER>`` 块里按行的「值  说明」。只读文件开头，UPF 可达数 MB。
@@ -139,9 +140,9 @@ def upf_header(path):
     if m and "=" in m.group(1):
         attrs = {k: v.strip() for k, v in re.findall(r'(\w+)\s*=\s*"([^"]*)"', m.group(1))}
         numbers = [_fortran_float(attrs.get(k, "")) for k in ("z_valence", "wfc_cutoff", "rho_cutoff")]
-        return attrs.get("element", ""), *numbers
+        return attrs.get("element", ""), *numbers, _upf_kind(attrs.get("pseudo_type", ""))
     block = head.split("<PP_HEADER>", 1)[1].split("</PP_HEADER>", 1)[0] if "<PP_HEADER>" in head else ""
-    element, z, wfc, rho = "", 0.0, 0.0, 0.0
+    element, z, wfc, rho, kind = "", 0.0, 0.0, 0.0, ""
     for line in block.splitlines():
         words = line.split()
         text = line.lower()
@@ -151,7 +152,15 @@ def upf_header(path):
             z = _fortran_float(words[0])
         elif "suggested cutoff" in text and len(words) >= 2:
             wfc, rho = (_fortran_float(w) for w in words[:2])
-    return element, z, wfc, rho
+        elif text.rstrip().endswith("pseudopotential") and words:
+            kind = _upf_kind(words[0])
+    return element, z, wfc, rho, kind
+
+
+def _upf_kind(pseudo_type):
+    """UPF ``pseudo_type`` -> ``NC`` / ``US`` / ``PAW``, or ``""`` when not given or not known."""
+    t = pseudo_type.strip().upper()
+    return {"NC": "NC", "SL": "NC", "US": "US", "USPP": "US", "PAW": "PAW"}.get(t, "")
 
 
 class QeGenerator(Generator):
@@ -160,13 +169,13 @@ class QeGenerator(Generator):
     npt_note = " (vc-md has no thermostat)"
 
     def pseudos(self, elements):
-        """元素 → (文件名, 价电子数, wfc, rho)。索引 pseudo_dir 里全部 UPF，按头部的元素归类。"""
+        """Element -> (file name, z_valence, wfc, rho, kind), indexing every UPF in pseudo_dir by the element its header names."""
         root = _config.require(self.config, "qe", "pseudo_dir")
         if not root.is_dir():
             raise JobError(f"[qe] pseudo_dir {root} is not a directory")
         index, unknown = {}, []
         for path in sorted(p for p in root.iterdir() if p.suffix.lower() == ".upf"):
-            element, z, wfc, rho = upf_header(path)
+            element, z, wfc, rho, kind = upf_header(path)
             if not element:
                 name = re.match(r"[A-Za-z][a-z]?", path.name)
                 if name is None:
@@ -175,7 +184,7 @@ class QeGenerator(Generator):
                     unknown.append(path.name)
                     continue
                 element = name.group(0).capitalize()
-            index.setdefault(element, []).append((path.name, z, wfc, rho))
+            index.setdefault(element, []).append((path.name, z, wfc, rho, kind))
         chosen = {}
         for e in elements:
             wanted = self.config["qe"]["pseudos"].get(e)
@@ -237,6 +246,14 @@ class QeGenerator(Generator):
                 raise JobError(f"ecutrho must exceed ecutwfc (pw.x stops): {rho:g} <= {wfc:g} Ry")
             if rho < 4 * wfc:
                 notes.append(f"ecutrho {rho:g} Ry is below 4 x ecutwfc = {4 * wfc:g} Ry (pw.x only warns)")
+        elif options.fixed_dual:
+            # A cutoff scan moves both cutoffs together at a fixed dual, as SSSP does: 4 for
+            # norm-conserving, 8 once any US / PAW (or unlabelled) potential is in. The single-point
+            # rule below floors ecutrho at the UPF suggestion, which held the low steps of a scan
+            # fixed and moved only the high ones (review 2026-11-10 B7-2)
+            dual = 4 if all(p[4] == "NC" for p in chosen.values()) else 8
+            qe.set("system", "ecutrho", dual * wfc)
+            notes.append(f"ecutrho = {dual * wfc:g} Ry ({dual} x ecutwfc, fixed for the scan)")
         else:
             suggested = max(p[3] for p in chosen.values())
             if suggested > 0 and suggested >= 4 * wfc:

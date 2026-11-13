@@ -43,8 +43,8 @@ def cfg(tmp_path):
 
 
 def test_upf_headers(cfg, tmp_path):
-    assert upf_header(tmp_path / "upf" / "O.pbe-n-kjpaw_psl.0.1.UPF") == ("O", 6.0, 50.0, 400.0)
-    assert upf_header(tmp_path / "upf" / "zn_pbe_v1.uspp.F.UPF") == ("Zn", 12.0, 0.0, 0.0), "UPF v1"
+    assert upf_header(tmp_path / "upf" / "O.pbe-n-kjpaw_psl.0.1.UPF") == ("O", 6.0, 50.0, 400.0, "PAW")
+    assert upf_header(tmp_path / "upf" / "zn_pbe_v1.uspp.F.UPF") == ("Zn", 12.0, 0.0, 0.0, "US"), "UPF v1"
 
 
 @pytest.mark.parametrize("task", ["sp", "opt", "aimd"])

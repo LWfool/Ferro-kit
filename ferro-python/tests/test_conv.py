@@ -74,12 +74,16 @@ def test_vasp_encut_scan_layout(vasp_cfg, tmp_path):
     assert (job / "POTCAR").read_text() == (out / "POTCAR").read_text()
 
 
-def test_qe_ecutwfc_scan_keeps_ecutrho_at_least_four_times(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("kind, dual", [("NC", 4), ("PAW", 8), (None, 8)])
+def test_qe_ecutwfc_scan_moves_ecutrho_at_a_fixed_dual(tmp_path, monkeypatch, capsys, kind, dual):
+    # The UPF suggestion (rho 400) no longer floors the low steps: every step is dual x ecutwfc,
+    # 4 for norm-conserving, 8 with US / PAW or an unlabelled potential (review 2026-11-10 B7-2)
     pp = tmp_path / "upf"
     pp.mkdir()
+    kind_attr = f' pseudo_type="{kind}"' if kind else ""
     for name, z in [("O", 6), ("P", 5), ("Zn", 12)]:
         (pp / f"{name}.UPF").write_text(f'<UPF version="2.0.1">\n<PP_HEADER element="{name}" z_valence="{z}"'
-                                        f' wfc_cutoff="50" rho_cutoff="400"/>\n</UPF>\n')
+                                        f'{kind_attr} wfc_cutoff="50" rho_cutoff="400"/>\n</UPF>\n')
     (tmp_path / "c.toml").write_text(f'[qe]\npseudo_dir = "{pp}"\n')
     monkeypatch.setenv("FERRO_CONFIG", str(tmp_path / "c.toml"))
     out = tmp_path / "ecut"
@@ -88,10 +92,10 @@ def test_qe_ecutwfc_scan_keeps_ecutrho_at_least_four_times(tmp_path, monkeypatch
     cut = {}
     for value in ("80", "120"):
         qe = QeInput.from_str((out / f"ecutwfc_{value}" / "70Z30P00A_NVT_5_0000" / "pw.in").read_text())
-        cut[value] = (qe.get("system", "ecutwfc"), qe.get("system", "ecutrho"))
-        assert qe.get("control", "calculation") == "'scf'", "收敛测试用 sp 模板"
-    assert cut == {"80": ("80.0", "400.0"), "120": ("120.0", "480.0")}, "UPF 建议的 ecutrho 低于 4 × ecutwfc 的档提上去"
-    assert "FerroNote: ecutrho = 480 Ry (4 x ecutwfc" in capsys.readouterr().err
+        cut[value] = (float(qe.get("system", "ecutwfc")), float(qe.get("system", "ecutrho")))
+        assert qe.get("control", "calculation") == "'scf'", "the scan uses the sp template"
+    assert cut == {"80": (80, 80 * dual), "120": (120, 120 * dual)}
+    assert f"FerroNote: ecutrho = {80 * dual} Ry ({dual} x ecutwfc, fixed for the scan)" in capsys.readouterr().err
     assert json.loads((out / conv.MANIFEST).read_text())["unit"] == "Ry"
 
 

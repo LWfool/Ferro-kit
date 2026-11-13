@@ -49,12 +49,12 @@ def _cp2k_set(path, key, switch=False):
     return apply
 
 
-def _qe_set(key):
-    def apply(text, value, options):
-        qe = QeInput.from_str(text)
-        qe.set("system", key, value)
-        return qe.to_str(), options
-    return apply
+def _qe_ecutwfc(text, value, options):
+    # ecutrho follows at a fixed dual unless the template writes it (QeGenerator.build)
+    options.fixed_dual = True
+    qe = QeInput.from_str(text)
+    qe.set("system", "ecutwfc", value)
+    return qe.to_str(), options
 
 
 def _cp2k_needs_gapw(apply):
@@ -82,7 +82,7 @@ SCANS = {
                            SWITCH, ""),
     },
     "qe": {
-        "ecutwfc": (_qe_set("ecutwfc"), float, "Ry"),
+        "ecutwfc": (_qe_ecutwfc, float, "Ry"),
     },
 }
 

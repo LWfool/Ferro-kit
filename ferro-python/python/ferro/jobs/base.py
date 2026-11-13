@@ -39,6 +39,7 @@ class JobOptions:
     ensemble: str | None = None
     vary_cell: bool = False           # 只用于 opt
     fine_grid: float | None = None    # VASP：NGXF = fine_grid × NGX；CP2K：USE_FINER_GRID
+    fixed_dual: bool = False          # QE without ecutrho in the template: ecutrho = 4 (NC) or 8 x ecutwfc; set by an ecutwfc scan
 
     def check(self):
         if self.task not in TASKS:
