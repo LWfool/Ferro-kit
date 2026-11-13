@@ -95,6 +95,25 @@ command line alike; regenerate it rather than migrating it.
   it writes nothing, but used to create the directory and ask for an output format.
 - `dataset filter` / `merge` `--ratio` with no training share (`0:1:1`) fails before any input is
   read; it used to fail on each system after reading it.
+- CIF: quotes and comments are read as CIF 1.1 says. A primed atom label (`C1'`, nucleotides)
+  followed by a `# comment` used to push the comment's words into the loop's columns; `'O'Brien'`
+  is one value. Re-read molecular CIFs with primed labels.
+- Python: `ferro-py conv -s qe --scan ecutwfc=...` moves `ecutrho` with `ecutwfc` at a fixed
+  dual, 4 × for norm-conserving UPFs and 8 × once any is ultrasoft, PAW or unlabelled, unless the
+  template writes `ecutrho`. The low values used to sit at the UPF suggestion and only the high
+  ones moved, so the reference value changed two cutoffs at once. Rerun such scans.
+- Writing LAMMPS data or dump from a left-handed cell warns that the box is right-handed and the
+  structure is written as its mirror image (as ASE does, silently).
+- LAMMPS data and dump write charges with 10 decimals, as every other number.
+- `traj msd` fit: `r2` is empty (NaN) when the MSD is flat over the window, and computed on an
+  MSD in small numbers, where it used to be reported as 1.
+- `ferro net`: pair columns (`former_a` / `former_b`, `elem_a` / `elem_b`) and the rows of
+  `ligand_type` and `linkage` are in atomic-number order; they were alphabetical, which differs
+  for pairs such as Si–P or B–Al.
+- `build merge --type-map` goes to the LAMMPS dump among the two inputs, so a dump without
+  element names merges with a POSCAR; the POSCAR used to refuse the flag.
+- `build box`: the molar masses of the built-in compounds with S or Cl use the element table's
+  atomic weights (CIAAW 2024; relative change at most 1e-4), as a formula does.
 
 ### Code review fixes (2026-11-06): broken files, empty fields, names
 
