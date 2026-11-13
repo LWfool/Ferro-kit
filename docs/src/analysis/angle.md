@@ -89,8 +89,7 @@ on the sphere: for two bond directions with no angular correlation at all, the c
 $\sin\theta$ (there is more solid angle near 90° than near 0° or 180°), so a broad hump around 90° is
 partly geometry, not preference.  To compare against an isotropic baseline, divide each bin by
 $\sin\theta_i$ yourself — the result is flat for uncorrelated directions — but expect that quotient to be
-noisy near 0° and 180°, where $\sin\theta \to 0$ and few counts fall.  $\bar\theta$ and $\sigma$ above are
-taken over the raw counts.
+noisy near 0° and 180°, where $\sin\theta \to 0$ and few counts fall.
 
 ## Parameters
 

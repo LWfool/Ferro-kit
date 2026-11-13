@@ -61,7 +61,7 @@ For every ligand atom $k$, count its network-former neighbours $n_k$:
 | ≥3 | `O_t` | Tricluster — a three-coordinate ligand, common in Al-bearing glasses |
 
 **The label carries no partner element.** Both `P–O–P` and `P–O–Al` are labelled `O_b`; the two are told
-apart by the `former_a` / `former_b` **data columns** of the `oxy` table.  The label stays plain and the
+apart by the `former_a` / `former_b` **data columns** of the `ligand_type` table.  The label stays plain and the
 statistics stay complete, which decouples the two: the label is for structure files, the partner decomposition is for analysis.
 
 ### Two quantities that must be kept apart: number of bridges and coordination number
@@ -272,6 +272,9 @@ In batch mode, inputs with different element sets take the **union of the column
 empty (NaN), never padded with zeros, never interpolated** — a system without Al has an empty `m_Al` column, not 0.
 
 ### Example: `network_composition.csv`
+
+The examples below come from one run on the 5-frame `43Z43P15A` trajectory:
+`ferro net -i 43Z43P15A.lammpstrj --P-O=2.4 --Al-O=2.4 --Zn-O=2.8 --modifier Zn`.
 
 ```csv
 file,label,element,count,fraction,sd

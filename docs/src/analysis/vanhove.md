@@ -6,7 +6,9 @@ The van Hove self-correlation function $G_s(r, \tau)$ is the probability distrib
 
 ### Definition
 
-$$G_s(r, \tau) = \frac{1}{N} \sum_j \langle \delta\!\left(r - |\mathbf{r}_j(t_0 + \tau) - \mathbf{r}_j(t_0)|\right) \rangle_{t_0}$$
+$$G_s(\mathbf{r}, \tau) = \frac{1}{N} \sum_j \langle \delta\!\left(\mathbf{r} - [\mathbf{r}_j(t_0 + \tau) - \mathbf{r}_j(t_0)]\right) \rangle_{t_0}$$
+
+a density in space (Å⁻³).  For an isotropic system it depends on $r = |\mathbf{r}|$ only, written $G_s(r, \tau)$.
 
 ferro writes the **radial probability density** $P(r, \tau) = 4\pi r^2 G_s(r, \tau)$, in Å⁻¹: the histogram count of bin $i$ divided by $N_\text{origins} N_\text{atoms} \Delta r$.  It does not depend on the bin width, and
 
